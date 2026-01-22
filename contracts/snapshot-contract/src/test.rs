@@ -137,3 +137,47 @@ fn test_verify_not_found() {
 
     assert!(!client.verify_snapshot(&bytes!(&env, 0x999999999999)));
 }
+
+#[test]
+#[should_panic(expected = "Invalid hash size")]
+fn test_invalid_hash_size() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SnapshotContract);
+    let client = SnapshotContractClient::new(&env, &contract_id);
+
+    // Hash too short (not 32 bytes)
+    let short_hash = bytes!(&env, 0x1234);
+    client.submit_snapshot(&short_hash, &1);
+}
+
+#[test]
+#[should_panic(expected = "Invalid epoch")]
+fn test_invalid_epoch_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SnapshotContract);
+    let client = SnapshotContractClient::new(&env, &contract_id);
+
+    let hash = bytes!(&env, 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
+    client.submit_snapshot(&hash, &0);
+}
+
+#[test]
+#[should_panic(expected = "already exists")]
+fn test_duplicate_epoch_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SnapshotContract);
+    let client = SnapshotContractClient::new(&env, &contract_id);
+
+    let hash1 = bytes!(&env, 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
+    let hash2 = bytes!(&env, 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
+
+    client.submit_snapshot(&hash1, &1);
+    // Attempt to overwrite with different hash should panic
+    client.submit_snapshot(&hash2, &1);
+}
