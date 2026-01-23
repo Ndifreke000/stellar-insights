@@ -372,30 +372,4 @@ mod tests {
         assert!(response.id.contains("EURC:issuer2"));
         assert!(response.id.contains("USDC:issuer1"));
     }
-
-fn parse_asset_pair(asset_pair: &str) -> ApiResult<String> {
-    // Expected format: "USDC:issuer1->EURC:issuer2" or "USDC:issuer1 -> EURC:issuer2"
-    let normalized = asset_pair.replace(" ", "");
-    
-    if !normalized.contains("->") {
-        return Err(ApiError::BadRequest(
-            "Invalid asset pair format. Expected: 'ASSET_A:ISSUER_A->ASSET_B:ISSUER_B'".to_string(),
-        ));
-    }
-
-    let parts: Vec<&str> = normalized.split("->").collect();
-    if parts.len() != 2 {
-        return Err(ApiError::BadRequest(
-            "Invalid asset pair format. Expected: 'ASSET_A:ISSUER_A->ASSET_B:ISSUER_B'".to_string(),
-        ));
-    }
-
-    let asset_a_parts: Vec<&str> = parts[0].split(':').collect();
-    let asset_b_parts: Vec<&str> = parts[1].split(':').collect();
-
-    if asset_a_parts.len() != 2 || asset_b_parts.len() != 2 {
-        return Err(ApiError::BadRequest(
-            "Invalid asset format. Each asset must be in format 'CODE:ISSUER'".to_string(),
-        ));
-    }
 }

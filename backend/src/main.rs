@@ -117,13 +117,8 @@ async fn main() -> Result<()> {
             "/api/corridors/:id/metrics-from-transactions",
             put(update_corridor_metrics_from_transactions),
         )
-        .layer(cors.clone())
-        .route("/api/anchors/:id/assets", get(get_anchor_assets).post(create_anchor_asset))
-        .route("/api/corridors", get(list_corridors))
         .route("/api/corridors/:corridor_key", get(get_corridor_detail))
         .with_state(db.clone());
-
-    // Build corridor router
 
     // Build RPC router
     let rpc_routes = Router::new()

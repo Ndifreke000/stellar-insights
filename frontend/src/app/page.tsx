@@ -192,7 +192,7 @@ export default function Home() {
               <span className="text-balance">
                 Payment Reliability,
                 <br />
-                <span className="bg-linear-to-r from-blue-500 to-accent bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-blue-500 to-accent bg-clip-text text-transparent">
                   Not Just Speed
                 </span>
               </span>
@@ -213,7 +213,7 @@ export default function Home() {
                   >
                     Access Dashboard <ArrowRight className="w-5 h-5" />
                   </Link>
-                  <button className="px-8 py-4 bg-blue-9000 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
+                  <button className="px-8 py-4 bg-blue-900 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     View Documentation
                   </button>
                 </>
@@ -352,7 +352,7 @@ export default function Home() {
                 className="flex flex-col md:flex-row gap-8 items-center"
               >
                 <div
-                  className={`shrink-0 w-16 h-16 bg-linear-to-br ${item.color} to-blue-500/50 rounded-xl flex items-center justify-center text-primary-foreground`}
+                  className={`shrink-0 w-16 h-16 bg-gradient-to-br ${item.color} to-blue-500/50 rounded-xl flex items-center justify-center text-primary-foreground`}
                 >
                   {item.icon}
                 </div>
@@ -419,7 +419,7 @@ export default function Home() {
       {/* CTA */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
-          <div className="bg-linear-to-r from-blue-500/20 to-accent/20 border border-blue-500/30 rounded-2xl p-12 text-center">
+          <div className="bg-gradient-to-r from-blue-500/20 to-accent/20 border border-blue-500/30 rounded-2xl p-12 text-center">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               {isConnected
                 ? "Welcome to Stellar Insights"
