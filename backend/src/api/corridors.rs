@@ -341,6 +341,8 @@ mod tests {
             failed_transactions: 50,
             success_rate: 95.0,
             volume_usd: 1000000.0,
+            avg_settlement_latency_ms: Some(400),
+            liquidity_depth_usd: 500000.0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
