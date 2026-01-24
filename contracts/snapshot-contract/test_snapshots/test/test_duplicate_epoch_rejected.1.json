@@ -24,6 +24,45 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestEpoch"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestEpoch"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 1
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Snapshots"
                 }
               ]
@@ -280,7 +319,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Snapshot for epoch 1 already exists' from contract function 'Symbol(obj#31)'"
+                  "string": "caught panic 'Snapshot for epoch 1 already exists' from contract function 'Symbol(obj#39)'"
                 },
                 {
                   "bytes": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"

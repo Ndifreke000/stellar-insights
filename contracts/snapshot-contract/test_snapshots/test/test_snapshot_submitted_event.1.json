@@ -62,7 +62,6 @@
             "key": {
               "vec": [
                 {
-
                   "symbol": "Snapshots"
                 }
               ]
@@ -106,7 +105,6 @@
                               "symbol": "hash"
                             },
                             "val": {
-                              "bytes": "abcdef1234567890"
                               "bytes": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
                             }
                           },
@@ -207,7 +205,6 @@
             "data": {
               "vec": [
                 {
-                  "bytes": "abcdef1234567890"
                   "bytes": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
                 },
                 {
@@ -235,7 +232,6 @@
             "data": {
               "vec": [
                 {
-                  "bytes": "abcdef1234567890"
                   "bytes": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
                 },
                 {

@@ -26,6 +26,45 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestEpoch"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestEpoch"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 7
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Snapshots"
                 }
               ]
@@ -512,15 +551,30 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "bytes": "3333333333333333333333333333333333333333333333333333333333333333"
+                  "key": {
+                    "symbol": "epoch"
+                  },
+                  "val": {
+                    "u64": 7
+                  }
                 },
                 {
-                  "u64": 7
+                  "key": {
+                    "symbol": "hash"
+                  },
+                  "val": {
+                    "bytes": "3333333333333333333333333333333333333333333333333333333333333333"
+                  }
                 },
                 {
-                  "u64": 0
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
                 }
               ]
             }

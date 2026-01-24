@@ -105,76 +105,24 @@ impl SnapshotContract {
         }
     }
 
-    /// Return the most recent snapshot (by epoch number)
-    /// Returns: (hash, epoch, timestamp)
-    pub fn latest_snapshot(env: Env) -> (Bytes, u64, u64) {
-        let snapshots: Map<u64, Snapshot> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
-        if snapshots.is_empty() {
-            panic!("No snapshots exist");
-        }
-
-        let mut max_epoch: u64 = 0;
-        let mut latest: Option<Snapshot> = None;
-
-        // We have to iterate — Soroban maps don't have max_by_key yet
-        for (epoch, snap) in snapshots.iter() {
-            if epoch > max_epoch {
-                max_epoch = epoch;
-                latest = Some(snap);
-            }
-        }
-
-        let snap = latest.unwrap(); // safe because we checked !is_empty()
-
-        (snap.hash, snap.epoch, snap.timestamp)
-    }
-
-    /// Verify whether a provided hash matches the stored snapshot for that epoch
-    pub fn verify_snapshot(env: Env, hash: Bytes) -> bool {
-        // We assume the client knows which epoch → hash pair to verify.
-        // If you want epoch-specific verification, change signature to:
-        // verify_snapshot(env: Env, epoch: u64, hash: Bytes) -> bool
-
-        let snapshots: Map<u64, Snapshot> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
-        // Naive version: check if this exact hash exists anywhere
-        // (works if hashes are unique — common when including merkle root + epoch)
-        for (_, snap) in snapshots.iter() {
-            if snap.hash == hash {
-                return true;
-            }
-        }
-
-        false
-
-        // Alternative (recommended) — require epoch:
-        // match snapshots.get(epoch) {
-        //     Some(snap) => snap.hash == hash,
-        //     None => false,
-        // }
-    }
-
-    /// Get the latest snapshot
-    ///
-    /// # Returns
-    /// The most recent snapshot if any exist
-    pub fn get_latest_snapshot(env: Env) -> Option<Snapshot> {
+    pub fn latest_snapshot(env: Env) -> Option<Snapshot> {
         let latest_epoch: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
         
         match latest_epoch {
-            Some(epoch) => Self::get_snapshot(env, epoch),
+            Some(epoch) => {
+                let snapshots: Map<u64, Snapshot> = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::Snapshots)
+                    .unwrap_or_else(|| Map::new(&env));
+                
+                snapshots.get(epoch)
+            },
             None => None,
         }
     }
+
+
 
     /// Verify if a snapshot hash is canonical (exists in stored snapshots)
     ///
@@ -233,7 +181,7 @@ impl SnapshotContract {
     /// # Returns
     /// `true` if the hash matches the latest snapshot, `false` otherwise
     pub fn verify_latest_snapshot(env: Env, hash: Bytes) -> bool {
-        match Self::get_latest_snapshot(env) {
+        match Self::latest_snapshot(env.clone()) {
             Some(snapshot) => snapshot.hash == hash,
             None => false,
         }
@@ -362,9 +310,20 @@ mod test {
         client.submit_snapshot(&bytes!(&env, 0x2222222222222222222222222222222222222222222222222222222222222222), &3);
         client.submit_snapshot(&bytes!(&env, 0x3333333333333333333333333333333333333333333333333333333333333333), &7);
 
-        let (h, e, _t) = client.latest_snapshot();
-        assert_eq!(e, 7);
-        assert_eq!(h, bytes!(&env, 0x3333333333333333333333333333333333333333333333333333333333333333));
+        let snapshot = client.latest_snapshot().unwrap();
+        assert_eq!(snapshot.epoch, 7);
+        assert_eq!(snapshot.hash, bytes!(&env, 0x3333333333333333333333333333333333333333333333333333333333333333));
+    }
+
+    #[test]
+    fn test_latest_snapshot_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, SnapshotContract);
+        let client = SnapshotContractClient::new(&env, &contract_id);
+
+        assert_eq!(client.latest_snapshot(), None);
     }
 
     #[test]
