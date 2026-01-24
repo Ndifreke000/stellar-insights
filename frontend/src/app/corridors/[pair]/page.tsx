@@ -30,6 +30,7 @@ import {
 } from "@/components/corridor-charts";
 import { MainLayout } from "@/components/layout";
 import Link from "next/link";
+import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/Skeleton";
 
 export default function CorridorDetailPage() {
   const params = useParams();
@@ -70,12 +71,26 @@ export default function CorridorDetailPage() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-4">
-            <Loader className="w-8 h-8 text-blue-500 animate-spin" />
-            <p className="text-gray-600 dark:text-gray-400">
-              Loading corridor data...
-            </p>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+          <div className="mb-6">
+            <Skeleton className="h-8 w-48 mb-4" />
+            <SkeletonText lines={2} className="max-w-2xl" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
+              <Skeleton className="h-6 w-40 mb-4" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
+              <Skeleton className="h-6 w-40 mb-4" />
+              <Skeleton className="h-64 w-full" />
+            </div>
           </div>
         </div>
       </MainLayout>

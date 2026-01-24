@@ -19,6 +19,7 @@ import {
   CorridorMetrics,
 } from "@/lib/api";
 import { MainLayout } from "@/components/layout";
+import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 
 export default function CorridorsPage() {
   const router = useRouter();
@@ -223,11 +224,13 @@ export default function CorridorsPage() {
 
         {/* Content */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-            <p className="text-gray-600 dark:text-gray-400">
-              Loading corridors...
-            </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <SkeletonCorridorCard />
+            <SkeletonCorridorCard />
+            <SkeletonCorridorCard />
+            <SkeletonCorridorCard />
+            <SkeletonCorridorCard />
+            <SkeletonCorridorCard />
           </div>
         ) : filteredCorridors.length === 0 ? (
           <div className="text-center py-12">
