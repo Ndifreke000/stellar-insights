@@ -1,6 +1,6 @@
 pub mod stellar;
 
 pub use stellar::{
-    Asset, HealthResponse, LedgerInfo, OrderBook, OrderBookEntry, Payment, Price,
-    StellarRpcClient, Trade,
+    Asset, GetLedgersResult, HealthResponse, LedgerInfo, OrderBook, OrderBookEntry, Payment, Price,
+    RpcLedger, StellarRpcClient, Trade,
 };

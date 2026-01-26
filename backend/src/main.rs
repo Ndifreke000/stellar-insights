@@ -1,19 +1,20 @@
 use anyhow::Result;
 use axum::{
-    routing::{get, post, put},
+    routing::{get, put},
     Router,
 };
 use dotenv::dotenv;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+use std::str::FromStr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use backend::api::anchors::get_anchors;
+use backend::api::corridors::{get_corridor_detail, list_corridors};
 use backend::database::Database;
 use backend::handlers::*;
-use backend::api::anchors::get_anchors;
 use backend::ingestion::DataIngestionService;
-use backend::api::corridors::{get_corridors, get_corridor_by_asset_pair};
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
 
@@ -32,15 +33,12 @@ async fn main() -> Result<()> {
         .init();
 
     // Database connection
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "postgresql://postgres:password@localhost:5432/stellar_insights".to_string()
-    });
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
 
     tracing::info!("Connecting to database...");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+    let pool = SqlitePool::connect_with(options).await?;
 
     tracing::info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
@@ -55,7 +53,7 @@ async fn main() -> Result<()> {
 
     let rpc_url = std::env::var("STELLAR_RPC_URL")
         .unwrap_or_else(|_| "https://stellar.api.onfinality.io/public".to_string());
-    
+
     let horizon_url = std::env::var("STELLAR_HORIZON_URL")
         .unwrap_or_else(|_| "https://horizon.stellar.org".to_string());
 
@@ -117,22 +115,21 @@ async fn main() -> Result<()> {
             "/api/corridors/:id/metrics-from-transactions",
             put(update_corridor_metrics_from_transactions),
         )
-        .layer(cors)
-        .route("/api/anchors/:id/assets", get(get_anchor_assets).post(create_anchor_asset))
-        .with_state(db.clone());
-
-    // Build corridor router
-    let corridor_routes = Router::new()
-        .route("/api/corridors", get(get_corridors))
-        .route("/api/corridors/:asset_pair", get(get_corridor_by_asset_pair))
+        .route("/api/corridors/:corridor_key", get(get_corridor_detail))
         .with_state(db);
 
     // Build RPC router
     let rpc_routes = Router::new()
         .route("/api/rpc/health", get(rpc_handlers::rpc_health_check))
-        .route("/api/rpc/ledger/latest", get(rpc_handlers::get_latest_ledger))
+        .route(
+            "/api/rpc/ledger/latest",
+            get(rpc_handlers::get_latest_ledger),
+        )
         .route("/api/rpc/payments", get(rpc_handlers::get_payments))
-        .route("/api/rpc/payments/account/:account_id", get(rpc_handlers::get_account_payments))
+        .route(
+            "/api/rpc/payments/account/:account_id",
+            get(rpc_handlers::get_account_payments),
+        )
         .route("/api/rpc/trades", get(rpc_handlers::get_trades))
         .route("/api/rpc/orderbook", get(rpc_handlers::get_order_book))
         .with_state(rpc_client);
@@ -140,7 +137,6 @@ async fn main() -> Result<()> {
     // Merge routers
     let app = Router::new()
         .merge(anchor_routes)
-        .merge(corridor_routes)
         .merge(rpc_routes)
         .layer(cors);
 

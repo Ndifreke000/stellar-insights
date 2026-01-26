@@ -9,7 +9,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::database::Database;
-use crate::models::{AnchorDetailResponse, Corridor, CreateAnchorRequest, CreateCorridorRequest};
+use crate::models::corridor::Corridor;
+use crate::models::{AnchorDetailResponse, CreateAnchorRequest, CreateCorridorRequest};
 use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -294,7 +295,7 @@ pub async fn update_corridor_metrics_from_transactions(
         })
         .collect();
 
-    let metrics = compute_corridor_metrics(&txs);
+    let metrics = compute_corridor_metrics(&txs, None, 1.0);
     let corridor = db.update_corridor_metrics(id, metrics).await?;
     Ok(Json(corridor))
 }

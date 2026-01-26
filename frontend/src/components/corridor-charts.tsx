@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 import {
   LineChart,
   Line,
@@ -12,8 +12,14 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-} from 'recharts';
-import { SuccessRateDataPoint, LatencyDataPoint, LiquidityDataPoint } from '@/lib/api';
+} from "recharts";
+import {
+  SuccessRateDataPoint,
+  LatencyDataPoint,
+  LiquidityDataPoint,
+  VolumeDataPoint,
+  SlippageDataPoint,
+} from "@/lib/api";
 
 interface SuccessRateChartProps {
   data: SuccessRateDataPoint[];
@@ -34,12 +40,16 @@ export function SuccessRateChart({ data }: SuccessRateChartProps) {
             interval={Math.floor(data.length / 6)}
           />
           <YAxis
-            label={{ value: 'Success Rate (%)', angle: -90, position: 'insideLeft' }}
+            label={{
+              value: "Success Rate (%)",
+              angle: -90,
+              position: "insideLeft",
+            }}
             domain={[0, 100]}
           />
           <Tooltip
             formatter={(value: any) => {
-              if (typeof value === 'number') {
+              if (typeof value === "number") {
                 return `${value.toFixed(2)}%`;
               }
               return value;
@@ -83,11 +93,15 @@ export function LatencyDistributionChart({
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="label" tick={{ fontSize: 12 }} />
           <YAxis
-            label={{ value: 'Payment Count', angle: -90, position: 'insideLeft' }}
+            label={{
+              value: "Payment Count",
+              angle: -90,
+              position: "insideLeft",
+            }}
           />
           <Tooltip
             formatter={(value: any) => {
-              if (typeof value === 'number') {
+              if (typeof value === "number") {
                 return value.toLocaleString();
               }
               return value;
@@ -123,7 +137,7 @@ export function LiquidityTrendChart({ data }: LiquidityTrendChartProps) {
           <YAxis yAxisId="right" orientation="right" />
           <Tooltip
             formatter={(value: any) => {
-              if (typeof value === 'number') {
+              if (typeof value === "number") {
                 return `$${(value / 1000000).toFixed(2)}M`;
               }
               return value;
@@ -148,6 +162,95 @@ export function LiquidityTrendChart({ data }: LiquidityTrendChartProps) {
             dot={false}
             strokeWidth={2}
             name="24h Volume"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+interface VolumeTrendChartProps {
+  data: VolumeDataPoint[];
+}
+
+export function VolumeTrendChart({ data }: VolumeTrendChartProps) {
+  return (
+    <div className="w-full h-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+        24h Volume Trends (30 days)
+      </h3>
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis
+            dataKey="timestamp"
+            tick={{ fontSize: 12 }}
+            interval={Math.floor(data.length / 6)}
+          />
+          <YAxis
+            label={{ value: "Volume ($)", angle: -90, position: "insideLeft" }}
+            tickFormatter={(value: any) => `$${(value / 1000).toFixed(0)}k`}
+          />
+          <Tooltip
+            formatter={(value: any) => {
+              if (typeof value === "number") {
+                return `$${value.toLocaleString()}`;
+              }
+              return value;
+            }}
+            labelFormatter={(label: any) => `Date: ${label}`}
+          />
+          <Legend />
+          <Bar dataKey="volume_usd" fill="#f59e0b" name="24h Volume" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+interface SlippageTrendChartProps {
+  data: SlippageDataPoint[];
+}
+
+export function SlippageTrendChart({ data }: SlippageTrendChartProps) {
+  return (
+    <div className="w-full h-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+        Average Slippage (30 days)
+      </h3>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis
+            dataKey="timestamp"
+            tick={{ fontSize: 12 }}
+            interval={Math.floor(data.length / 6)}
+          />
+          <YAxis
+            label={{
+              value: "Slippage (bps)",
+              angle: -90,
+              position: "insideLeft",
+            }}
+            domain={["auto", "auto"]}
+          />
+          <Tooltip
+            formatter={(value: any) => {
+              if (typeof value === "number") {
+                return `${value.toFixed(2)} bps`;
+              }
+              return value;
+            }}
+            labelFormatter={(label: any) => `Date: ${label}`}
+          />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="average_slippage_bps"
+            stroke="#ef4444"
+            dot={false}
+            strokeWidth={2}
+            name="Slippage (bps)"
           />
         </LineChart>
       </ResponsiveContainer>

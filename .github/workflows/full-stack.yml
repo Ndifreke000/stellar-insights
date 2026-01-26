@@ -1,0 +1,137 @@
+name: Full Stack CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: stellar_insights
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Build backend
+      working-directory: ./backend
+      run: cargo build --release
+    
+    - name: Start backend server
+      working-directory: ./backend
+      env:
+        DATABASE_URL: sqlite:stellar_insights.db
+        SERVER_PORT: 8080
+        RUST_LOG: info
+      run: |
+        cargo run --release &
+        echo $! > backend.pid
+        sleep 10
+    
+    - name: Test backend health
+      run: |
+        curl -f http://localhost:8080/health || exit 1
+        curl -f http://localhost:8080/api/rpc/health || exit 1
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      env:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+      run: npm run build
+    
+    - name: Stop backend
+      run: |
+        if [ -f backend/backend.pid ]; then
+          kill $(cat backend/backend.pid) || true
+        fi
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check commit messages
+      run: |
+        git log --format=%s origin/main..HEAD | while read msg; do
+          if ! echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+            echo "❌ Invalid commit message: $msg"
+            echo "Commit messages must follow conventional commits format"
+            exit 1
+          fi
+        done
+    
+    - name: Check for large files
+      run: |
+        large_files=$(find . -type f -size +1M -not -path "*/node_modules/*" -not -path "*/target/*" -not -path "*/.git/*")
+        if [ -n "$large_files" ]; then
+          echo "❌ Large files detected:"
+          echo "$large_files"
+          exit 1
+        fi
+    
+    - name: Check for secrets
+      run: |
+        if grep -r "sk_live_" . --exclude-dir={node_modules,target,.git} || \
+           grep -r "api_key" . --exclude-dir={node_modules,target,.git} | grep -v "example"; then
+          echo "❌ Potential secrets detected"
+          exit 1
+        fi
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check README exists
+      run: |
+        [ -f README.md ] || (echo "❌ README.md missing" && exit 1)
+        [ -f CONTRIBUTING.md ] || (echo "❌ CONTRIBUTING.md missing" && exit 1)
+    
+    - name: Check documentation links
+      run: |
+        # Check for broken internal links
+        for file in *.md; do
+          echo "Checking $file..."
+          grep -o '\[.*\](\.\/.*\.md)' "$file" | while read link; do
+            target=$(echo "$link" | sed 's/.*(\(.*\))/\1/')
+            if [ ! -f "$target" ]; then
+              echo "❌ Broken link in $file: $target"
+              exit 1
+            fi
+          done
+        done

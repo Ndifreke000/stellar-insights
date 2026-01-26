@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, sqlx::FromRow)]
 pub struct Corridor {
     pub asset_a_code: String,
     pub asset_a_issuer: String,
@@ -11,7 +11,12 @@ pub struct Corridor {
 }
 
 impl Corridor {
-    pub fn new(asset_a_code: String, asset_a_issuer: String, asset_b_code: String, asset_b_issuer: String) -> Self {
+    pub fn new(
+        asset_a_code: String,
+        asset_a_issuer: String,
+        asset_b_code: String,
+        asset_b_issuer: String,
+    ) -> Self {
         let mut corridor = Corridor {
             asset_a_code,
             asset_a_issuer,
@@ -33,16 +38,16 @@ impl Corridor {
     }
 
     pub fn to_string_key(&self) -> String {
-        format!("{}:{}->{}:{}", 
-            self.asset_a_code, self.asset_a_issuer,
-            self.asset_b_code, self.asset_b_issuer
+        format!(
+            "{}:{}->{}:{}",
+            self.asset_a_code, self.asset_a_issuer, self.asset_b_code, self.asset_b_issuer
         )
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CorridorMetrics {
-    pub id: Uuid,
+    pub id: String,
     pub corridor_key: String,
     pub asset_a_code: String,
     pub asset_a_issuer: String,
@@ -54,8 +59,25 @@ pub struct CorridorMetrics {
     pub failed_transactions: i64,
     pub success_rate: f64,
     pub volume_usd: f64,
+    pub avg_settlement_latency_ms: Option<i32>,
+    #[serde(default)]
+    pub liquidity_depth_usd: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CorridorMetricsHistory {
+    pub id: String,
+    pub corridor_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub success_rate: f64,
+    pub avg_settlement_latency_ms: i32,
+    pub liquidity_depth_usd: f64,
+    pub total_transactions: i64,
+    pub successful_transactions: i64,
+    pub failed_transactions: i64,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -33,7 +33,10 @@ async fn main() -> Result<()> {
             println!("   ✅ Status: {}", health.status);
             println!("   📈 Latest Ledger: {}", health.latest_ledger);
             println!("   📉 Oldest Ledger: {}", health.oldest_ledger);
-            println!("   🔢 Retention Window: {} ledgers\n", health.ledger_retention_window);
+            println!(
+                "   🔢 Retention Window: {} ledgers\n",
+                health.ledger_retention_window
+            );
         }
         Err(e) => {
             println!("   ❌ Error: {}\n", e);
@@ -63,17 +66,20 @@ async fn main() -> Result<()> {
             for (i, payment) in payments.iter().enumerate().take(3) {
                 println!("   \n   Payment #{}:", i + 1);
                 println!("     ID: {}", payment.id);
-                println!("     Amount: {} {}", 
+                println!(
+                    "     Amount: {} {}",
                     payment.amount,
                     payment.asset_code.as_deref().unwrap_or("XLM")
                 );
-                println!("     From: {}...{}", 
+                println!(
+                    "     From: {}...{}",
                     &payment.source_account[..10],
-                    &payment.source_account[payment.source_account.len()-5..]
+                    &payment.source_account[payment.source_account.len() - 5..]
                 );
-                println!("     To: {}...{}", 
+                println!(
+                    "     To: {}...{}",
                     &payment.destination[..10],
-                    &payment.destination[payment.destination.len()-5..]
+                    &payment.destination[payment.destination.len() - 5..]
                 );
             }
             println!();
@@ -91,11 +97,13 @@ async fn main() -> Result<()> {
             for (i, trade) in trades.iter().enumerate() {
                 println!("   \n   Trade #{}:", i + 1);
                 println!("     ID: {}", trade.id);
-                println!("     Base: {} {}", 
+                println!(
+                    "     Base: {} {}",
                     trade.base_amount,
                     trade.base_asset_code.as_deref().unwrap_or("XLM")
                 );
-                println!("     Counter: {} {}", 
+                println!(
+                    "     Counter: {} {}",
                     trade.counter_amount,
                     trade.counter_asset_code.as_deref().unwrap_or("XLM")
                 );
@@ -123,16 +131,29 @@ async fn main() -> Result<()> {
         asset_issuer: Some("GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string()),
     };
 
-    match client.fetch_order_book(&selling_asset, &buying_asset, 10).await {
+    match client
+        .fetch_order_book(&selling_asset, &buying_asset, 10)
+        .await
+    {
         Ok(order_book) => {
             println!("   ✅ Order Book Retrieved:");
             println!("   \n   📗 Top Bids:");
             for (i, bid) in order_book.bids.iter().take(3).enumerate() {
-                println!("     {}. Price: {} | Amount: {}", i + 1, bid.price, bid.amount);
+                println!(
+                    "     {}. Price: {} | Amount: {}",
+                    i + 1,
+                    bid.price,
+                    bid.amount
+                );
             }
             println!("   \n   📕 Top Asks:");
             for (i, ask) in order_book.asks.iter().take(3).enumerate() {
-                println!("     {}. Price: {} | Amount: {}", i + 1, ask.price, ask.amount);
+                println!(
+                    "     {}. Price: {} | Amount: {}",
+                    i + 1,
+                    ask.price,
+                    ask.amount
+                );
             }
             println!();
         }

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/Ndifreke000/stellar-insights/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📚 Documentation
+    url: https://github.com/Ndifreke000/stellar-insights/blob/main/README.md
+    about: Read the project documentation
+  - name: 🌟 Stellar Developers
+    url: https://developers.stellar.org
+    about: Learn more about Stellar development

@@ -1,5 +1,7 @@
+// I'm exporting the ledger ingestion module as required by issue #2
+pub mod ledger;
+
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -21,7 +23,7 @@ impl DataIngestionService {
         info!("Starting metrics synchronization");
 
         self.sync_anchor_metrics().await?;
-        
+
         info!("Metrics synchronization completed");
         Ok(())
     }
@@ -31,7 +33,7 @@ impl DataIngestionService {
         info!("Syncing anchor metrics from Stellar network");
 
         let anchors = self.db.list_anchors(0, 100).await?;
-        
+
         for anchor in anchors {
             match self.process_anchor_metrics(&anchor.stellar_account).await {
                 Ok(_) => info!("Updated metrics for anchor: {}", anchor.name),
@@ -55,14 +57,14 @@ impl DataIngestionService {
         }
 
         let mut successful = 0;
-        let mut failed = 0;
+        let failed = 0;
         let mut total_volume = 0.0;
-        let mut settlement_times = Vec::new();
+        let settlement_times = Vec::new(); // Removed mut as it's never pushed to
 
         for payment in &payments {
             let amount: f64 = payment.amount.parse().unwrap_or(0.0);
             total_volume += amount;
-            
+
             successful += 1;
         }
 
@@ -74,7 +76,7 @@ impl DataIngestionService {
         };
 
         let reliability_score = self.calculate_reliability_score(success_rate, failed as i64);
-        
+
         let avg_settlement_time = if !settlement_times.is_empty() {
             settlement_times.iter().sum::<i32>() / settlement_times.len() as i32
         } else {
@@ -114,7 +116,7 @@ impl DataIngestionService {
     /// Get current network health status
     pub async fn get_network_health(&self) -> Result<NetworkHealth> {
         let health = self.rpc_client.check_health().await?;
-        
+
         Ok(NetworkHealth {
             status: health.status,
             latest_ledger: health.latest_ledger,

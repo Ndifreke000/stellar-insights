@@ -85,7 +85,8 @@ pub async fn get_anchors(
 
     for anchor in anchors {
         // Get assets for each anchor to calculate asset coverage
-        let assets = db.get_assets_by_anchor(anchor.id).await?;
+        let anchor_id = uuid::Uuid::parse_str(&anchor.id).unwrap_or_else(|_| uuid::Uuid::nil());
+        let assets = db.get_assets_by_anchor(anchor_id).await?;
 
         let failure_rate = if anchor.total_transactions > 0 {
             (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0
@@ -128,7 +129,7 @@ mod tests {
     fn test_anchor_metrics_response_creation() {
         let anchor_id = Uuid::new_v4();
         let anchor = Anchor {
-            id: anchor_id,
+            id: anchor_id.to_string(),
             name: "Test Anchor".to_string(),
             stellar_account: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
             home_domain: Some("test.com".to_string()),
@@ -143,7 +144,8 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        let failure_rate = (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0;
+        let failure_rate =
+            (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0;
 
         let response = AnchorMetricsResponse {
             id: anchor.id.to_string(),
@@ -168,7 +170,7 @@ mod tests {
     #[test]
     fn test_failure_rate_calculation_zero_transactions() {
         let anchor = Anchor {
-            id: Uuid::new_v4(),
+            id: Uuid::new_v4().to_string(),
             name: "Empty Anchor".to_string(),
             stellar_account: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
             home_domain: None,
@@ -195,7 +197,7 @@ mod tests {
     #[test]
     fn test_failure_rate_calculation_with_transactions() {
         let anchor = Anchor {
-            id: Uuid::new_v4(),
+            id: Uuid::new_v4().to_string(),
             name: "Test Anchor".to_string(),
             stellar_account: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
             home_domain: None,
@@ -210,7 +212,8 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        let failure_rate = (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0;
+        let failure_rate =
+            (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0;
 
         assert_eq!(failure_rate, 20.0);
     }

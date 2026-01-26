@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   ArrowRight,
   TrendingUp,
@@ -12,11 +13,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useState } from "react";
-import { Geist, Geist_Mono } from "next/font/google";
 import { useWallet } from "../components/lib/wallet-context";
-
-const geist = Geist({ subsets: ["latin"] });
-const geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export default function Home() {
   const {
@@ -30,9 +27,7 @@ export default function Home() {
   const [showWalletMenu, setShowWalletMenu] = useState(false);
 
   return (
-    <div
-      className={`${geist.className} ${geistMono.className} min-h-screen bg-background text-foreground`}
-    >
+    <div className="min-h-screen bg-background text-foreground">
       {/* Navigation */}
       <nav className="fixed w-full top-0 z-50 bg-background/80 backdrop-blur-sm border-b border-gray-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -212,9 +207,12 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               {isConnected ? (
                 <>
-                  <button className="px-8 py-4 bg-blue-500 text-primary-foreground rounded-full font-semibold hover:opacity-90 transition flex items-center justify-center gap-2">
+                  <Link
+                    href="/dashboard"
+                    className="px-8 py-4 bg-blue-500 text-primary-foreground rounded-full font-semibold hover:opacity-90 transition flex items-center justify-center gap-2"
+                  >
                     Access Dashboard <ArrowRight className="w-5 h-5" />
-                  </button>
+                  </Link>
                   <button className="px-8 py-4 bg-blue-9000 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     View Documentation
                   </button>
