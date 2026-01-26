@@ -1,4 +1,5 @@
-use crate::models::corridor::CorridorMetrics;
+use crate::models::corridor::{CorridorMetrics, PaymentRecord};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct CorridorTransaction {
@@ -132,9 +133,155 @@ pub fn compute_corridor_metrics(
     }
 }
 
+/// Compute metrics for all corridors found in the provided payment records
+pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<CorridorMetrics> {
+    let mut corridor_map: HashMap<String, Vec<&PaymentRecord>> = HashMap::new();
+
+    // Group payments by corridor
+    for payment in payments {
+        let corridor = payment.get_corridor();
+        let key = corridor.to_string_key();
+        corridor_map.entry(key).or_default().push(payment);
+    }
+
+    let mut results = Vec::new();
+
+    for (key, corridor_payments) in corridor_map {
+        // We need to parse the key back to get asset details, or just take from the first payment
+        // Taking from first payment is safer/easier if we trust the grouping
+        let first = corridor_payments[0];
+        let corridor = first.get_corridor();
+
+        let total_transactions = corridor_payments.len() as i64;
+        let mut successful_transactions = 0;
+        let mut failed_transactions = 0;
+        let mut volume_usd = 0.0;
+        // Note: PaymentRecord currently doesn't have latency, so we can't compute it yet.
+        // If it did, we would sum it here.
+
+        for p in corridor_payments {
+            if p.successful {
+                successful_transactions += 1;
+                volume_usd += p.amount; // Assuming amount is already USD or normalized. If not, this is a limitation.
+            } else {
+                failed_transactions += 1;
+            }
+        }
+
+        let success_rate = if total_transactions > 0 {
+            (successful_transactions as f64 / total_transactions as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        results.push(CorridorMetrics {
+            id: uuid::Uuid::new_v4().to_string(), // Generate new ID for this snapshot
+            corridor_key: key,
+            asset_a_code: corridor.asset_a_code,
+            asset_a_issuer: corridor.asset_a_issuer,
+            asset_b_code: corridor.asset_b_code,
+            asset_b_issuer: corridor.asset_b_issuer,
+            date: chrono::Utc::now(),
+            total_transactions,
+            successful_transactions,
+            failed_transactions,
+            success_rate,
+            volume_usd,
+            avg_settlement_latency_ms: None, // Not available in PaymentRecord yet
+            liquidity_depth_usd: 0.0, // Needs order book
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+    }
+
+    results
+}
+
+/// Filter payments by time window and compute metrics
+pub fn compute_metrics_by_window(
+    payments: &[PaymentRecord],
+    start: chrono::DateTime<chrono::Utc>,
+    end: chrono::DateTime<chrono::Utc>,
+) -> Vec<CorridorMetrics> {
+    let filtered: Vec<PaymentRecord> = payments
+        .iter()
+        .filter(|p| p.timestamp >= start && p.timestamp <= end)
+        .cloned()
+        .collect();
+
+    compute_metrics_from_payments(&filtered)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+    use crate::models::corridor::PaymentRecord;
+    use uuid::Uuid;
+
+    fn create_test_payment_record(
+        source_code: &str,
+        dest_code: &str,
+        amount: f64,
+        successful: bool,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> PaymentRecord {
+        PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: source_code.to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: dest_code.to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
+            amount,
+            successful,
+            timestamp,
+        }
+    }
+
+    #[test]
+    fn test_compute_metrics_from_payments() {
+        let payments = vec![
+            create_test_payment_record("USDC", "EURC", 100.0, true, Utc::now()),
+            create_test_payment_record("USDC", "EURC", 50.0, true, Utc::now()),
+            create_test_payment_record("BTC", "ETH", 10.0, false, Utc::now()),
+        ];
+
+        let metrics = compute_metrics_from_payments(&payments);
+        assert_eq!(metrics.len(), 2);
+
+        // Find USDC -> EURC metrics
+        let usdc_metrics = metrics
+            .iter()
+            .find(|m| m.asset_a_code == "EURC" || m.asset_a_code == "USDC") // Normalized
+            .expect("Should find USDC/EURC metrics");
+        
+        assert_eq!(usdc_metrics.total_transactions, 2);
+        assert_eq!(usdc_metrics.successful_transactions, 2);
+        assert_eq!(usdc_metrics.success_rate, 100.0);
+        assert_eq!(usdc_metrics.volume_usd, 150.0);
+    }
+
+    #[test]
+    fn test_compute_metrics_by_window() {
+        let now = Utc::now();
+        let yesterday = now - chrono::Duration::days(1);
+        let two_days_ago = now - chrono::Duration::days(2);
+
+        let payments = vec![
+            create_test_payment_record("USDC", "EURC", 100.0, true, now),
+            create_test_payment_record("USDC", "EURC", 50.0, true, yesterday), // Should include
+            create_test_payment_record("USDC", "EURC", 50.0, true, two_days_ago), // Should exclude
+        ];
+
+        // Window: 30 hours ago to now (covers yesterday and today, excludes 2 days ago)
+        let start = now - chrono::Duration::hours(30);
+        let end = now + chrono::Duration::seconds(10); // buffer
+
+        let metrics = compute_metrics_by_window(&payments, start, end);
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].total_transactions, 2);
+    }
+
 
     #[test]
     fn test_compute_corridor_metrics_basic() {
