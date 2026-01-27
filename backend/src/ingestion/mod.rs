@@ -93,16 +93,16 @@ impl DataIngestionService {
         };
 
         self.db
-            .update_anchor_from_rpc(
-                account_id,
+            .update_anchor_from_rpc(crate::database::AnchorRpcUpdate {
+                stellar_account: account_id.to_string(),
                 total_transactions,
-                successful as i64,
-                failed as i64,
-                total_volume,
-                avg_settlement_time,
+                successful_transactions: successful as i64,
+                failed_transactions: failed as i64,
+                total_volume_usd: total_volume,
+                avg_settlement_time_ms: avg_settlement_time,
                 reliability_score,
-                status,
-            )
+                status: status.to_string(),
+            })
             .await?;
 
         Ok(())

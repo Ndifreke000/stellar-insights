@@ -195,10 +195,7 @@ fn test_snapshot_submitted_event() {
     let events = env.events().all();
 
     // Should have at least one event from the snapshot submission
-    assert!(
-        !events.is_empty(),
-        "Expected at least one event to be emitted"
-    );
+    assert!(!events.is_empty(), "Expected at least one event to be emitted");
 
     // Verify the event contains the correct topics and structure
     // The event should have SNAPSHOT_SUBMITTED and SNAPSHOT_LIFECYCLE topics

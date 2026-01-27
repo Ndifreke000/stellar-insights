@@ -548,8 +548,8 @@ mod tests {
         // Create snapshot with specific floating point values
         let mut snapshot = AnalyticsSnapshot::new(1, now);
         let mut metrics = create_test_anchor_metrics(id, "Anchor1");
-        metrics.success_rate = 99.123456789012345;
-        metrics.failure_rate = 0.876543210987655;
+        metrics.success_rate = 99.123_456_789_012_35;
+        metrics.failure_rate = 0.876_543_210_987_655;
         snapshot.add_anchor_metrics(metrics);
 
         let json1 = SnapshotService::serialize_deterministically(snapshot.clone()).unwrap();
