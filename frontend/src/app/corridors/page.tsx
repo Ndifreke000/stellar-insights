@@ -39,6 +39,27 @@ function CorridorsContent() {
   const [sortBy, setSortBy] = useState<
     "success_rate" | "health_score" | "liquidity"
   >("health_score");
+  
+  // Filter state variables
+  const [successRateRange, setSuccessRateRange] = useState<[number, number]>([0, 100]);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000000]);
+  const [assetCodeFilter, setAssetCodeFilter] = useState("");
+  const [timePeriod, setTimePeriod] = useState("7d");
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter presets state
+  const [filterPresets, setFilterPresets] = useState<Array<{
+    name: string;
+    filters: {
+      successRateRange: [number, number];
+      volumeRange: [number, number];
+      assetCodeFilter: string;
+      timePeriod: string;
+      searchTerm: string;
+      sortBy: "success_rate" | "health_score" | "liquidity";
+    };
+  }>>([]);
+  const [presetName, setPresetName] = useState("");
 
   const {
     startIndex,
@@ -50,7 +71,7 @@ function CorridorsContent() {
       try {
         setLoading(true);
         try {
-          const filters: any = {};
+          const filters: Record<string, string | number> = {};
           if (successRateRange[0] > 0) filters.success_rate_min = successRateRange[0];
           if (successRateRange[1] < 100) filters.success_rate_max = successRateRange[1];
           if (volumeRange[0] > 0) filters.volume_min = volumeRange[0];
@@ -254,7 +275,7 @@ function CorridorsContent() {
   };
 
   const deleteFilterPreset = (index: number) => {
-    const updatedPresets = filterPresets.filter((_, i) => i !== index);
+    const updatedPresets = filterPresets.filter((_preset, i) => i !== index);
     setFilterPresets(updatedPresets);
     localStorage.setItem('corridorFilterPresets', JSON.stringify(updatedPresets));
   };

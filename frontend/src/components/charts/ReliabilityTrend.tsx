@@ -12,29 +12,6 @@ import {
 } from 'recharts';
 import { ReliabilityDataPoint } from '@/lib/api';
 
-interface TooltipProps {
-    active?: boolean;
-    payload?: Array<{
-        value: number;
-        [key: string]: unknown;
-    }>;
-    label?: string;
-}
-
-const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
-    if (active && payload && payload.length) {
-        return (
-            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl">
-                <p className="text-slate-400 text-xs mb-1">{label}</p>
-                <p className="text-emerald-400 font-bold text-sm">
-                    Score: {payload[0].value.toFixed(1)}
-                </p>
-            </div>
-        );
-    }
-    return null;
-};
-
 interface ReliabilityTrendProps {
     data: ReliabilityDataPoint[];
 }
