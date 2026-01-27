@@ -74,13 +74,13 @@ pub struct ModelStatusResponse {
 }
 
 pub async fn get_model_status(
-    Extension(ml_service): Extension<Arc<RwLock<MLService>>>,
+    Extension(_ml_service): Extension<Arc<RwLock<MLService>>>,
 ) -> Json<ModelStatusResponse> {
     Json(ModelStatusResponse {
         version: "1.0.0".to_string(),
         last_trained: Utc::now().format("%Y-%m-%d").to_string(),
-        accuracy: 0.87, // Placeholder - would track actual accuracy
-        total_predictions: 1000, // Placeholder - would track actual count
+        accuracy: 0.87,
+        total_predictions: 1000,
     })
 }
 

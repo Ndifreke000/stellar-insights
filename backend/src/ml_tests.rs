@@ -1,11 +1,7 @@
-use crate::ml::{MLService, PredictionFeatures};
-use crate::database::Database;
-use chrono::Utc;
+use crate::ml::PredictionFeatures;
 
 #[tokio::test]
 async fn test_ml_prediction() {
-    // This would require a test database setup
-    // For now, just test the prediction logic
     let features = PredictionFeatures {
         corridor_hash: 0.5,
         amount_usd: 2.0, // log10(100)
@@ -46,4 +42,24 @@ fn test_prediction_result_risk_levels() {
     let response: PredictionResponse = low_prob.into();
     assert_eq!(response.risk_level, "high");
     assert!(response.recommendation.contains("High risk"));
+}
+
+#[test]
+fn test_simple_model_prediction() {
+    use crate::ml::SimpleMLModel;
+    
+    let model = SimpleMLModel::new();
+    let features = PredictionFeatures {
+        corridor_hash: 0.5,
+        amount_usd: 2.0,
+        hour_of_day: 0.5,
+        day_of_week: 0.3,
+        liquidity_depth: 3.0,
+        recent_success_rate: 0.85,
+    };
+    
+    let result = model.predict(features);
+    assert!(result.success_probability >= 0.0 && result.success_probability <= 1.0);
+    assert!(result.confidence >= 0.0 && result.confidence <= 1.0);
+    assert_eq!(result.model_version, "1.0.0");
 }
