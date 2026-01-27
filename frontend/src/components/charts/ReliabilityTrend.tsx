@@ -41,6 +41,26 @@ interface ReliabilityTrendProps {
 
 type TimeWindow = '7d' | '30d' | '90d';
 
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ value: number }>;
+    label?: string;
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl">
+                <p className="text-slate-400 text-xs mb-1">{label}</p>
+                <p className="text-emerald-400 font-bold text-sm">
+                    Score: {payload[0].value.toFixed(1)}
+                </p>
+            </div>
+        );
+    }
+    return null;
+};
+
 export function ReliabilityTrend({ data }: ReliabilityTrendProps) {
     const [timeWindow, setTimeWindow] = useState<TimeWindow>('30d');
 
@@ -56,6 +76,8 @@ export function ReliabilityTrend({ data }: ReliabilityTrendProps) {
         return sortedData.slice(-days);
     }, [data, timeWindow]);
 
+
+
     return (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm h-full">
             <div className="flex flex-row justify-between items-center mb-6">
@@ -70,8 +92,8 @@ export function ReliabilityTrend({ data }: ReliabilityTrendProps) {
                             key={window}
                             onClick={() => setTimeWindow(window)}
                             className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeWindow === window
-                                    ? 'bg-slate-800 text-white shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-300'
+                                ? 'bg-slate-800 text-white shadow-sm'
+                                : 'text-slate-500 hover:text-slate-300'
                                 }`}
                         >
                             {window}

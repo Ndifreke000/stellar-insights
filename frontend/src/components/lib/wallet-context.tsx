@@ -4,6 +4,16 @@ import React from "react"
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
+interface StellarWallet {
+  requestPublicKey: () => Promise<string>;
+}
+
+declare global {
+  interface Window {
+    stellar?: StellarWallet;
+  }
+}
+
 interface WalletContextType {
   isConnected: boolean
   address: string | null
@@ -40,8 +50,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setIsConnecting(true)
     try {
       // Check for Stellar wallet extensions (Freighter, etc.)
-      if (typeof window !== 'undefined' && (window as any).stellar) {
-        const result = await (window as any).stellar.requestPublicKey()
+      if (typeof window !== 'undefined' && window.stellar) {
+        const result = await window.stellar.requestPublicKey()
         if (result) {
           setAddress(result)
           setIsConnected(true)

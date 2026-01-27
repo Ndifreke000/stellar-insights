@@ -41,63 +41,61 @@ impl AnalyticsContract {
         }
     }
 
-    /// Submit a new snapshot for a specific epoch
-    /// Stores the snapshot in the historical map and updates latest epoch if newer
+    /// Submit a new snapshot for a specific epoch.
+    /// Stores the snapshot in the historical map and updates latest epoch.
+    /// Epochs must be submitted in strictly increasing order (monotonicity).
     ///
     /// # Arguments
     /// * `env` - Contract environment
-    /// * `epoch` - Epoch identifier (must be positive and unique)
+    /// * `epoch` - Epoch identifier (must be positive and strictly greater than latest)
     /// * `hash` - 32-byte hash of the analytics snapshot
     ///
     /// # Panics
     /// * If epoch is 0 (invalid)
-    /// * If snapshot already exists for this epoch
+    /// * If epoch <= latest (monotonicity violated: out-of-order or duplicate)
     ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
     pub fn submit_snapshot(env: Env, epoch: u64, hash: BytesN<32>) -> u64 {
-        // Validate epoch
         if epoch == 0 {
             panic!("Invalid epoch: must be greater than 0");
         }
 
-        let timestamp = env.ledger().timestamp();
+        let latest: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
 
-        // Create snapshot metadata
+        if epoch <= latest {
+            if epoch == latest {
+                panic!("Snapshot for epoch {} already exists", epoch);
+            } else {
+                panic!(
+                    "Epoch monotonicity violated: epoch {} must be strictly greater than latest {}",
+                    epoch, latest
+                );
+            }
+        }
+
+        let timestamp = env.ledger().timestamp();
         let metadata = SnapshotMetadata {
             epoch,
             timestamp,
             hash,
         };
 
-        // Get existing snapshots or create new map
         let mut snapshots: Map<u64, SnapshotMetadata> = env
             .storage()
             .persistent()
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Prevent duplicate epochs
-        if snapshots.contains_key(epoch) {
-            panic!("Snapshot for epoch {} already exists", epoch);
-        }
-
-        // Store snapshot in history
         snapshots.set(epoch, metadata);
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
-
-        // Update latest epoch if this is newer
-        let current_latest: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::LatestEpoch)
-            .unwrap_or(0);
-
-        if epoch > current_latest {
-            env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
-        }
+        env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
 
         timestamp
     }
@@ -237,27 +235,25 @@ mod test {
     }
 
     #[test]
-    fn test_multiple_snapshots_different_epochs() {
+    fn test_multiple_snapshots_strictly_increasing_epochs() {
         let env = Env::default();
         let contract_id = env.register_contract(None, AnalyticsContract);
         let client = AnalyticsContractClient::new(&env, &contract_id);
 
         client.initialize();
 
-        // Submit snapshots for different epochs
         let epoch1 = 1u64;
         let hash1 = BytesN::from_array(&env, &[1u8; 32]);
         client.submit_snapshot(&epoch1, &hash1);
 
-        let epoch2 = 3u64;
+        let epoch2 = 2u64;
         let hash2 = BytesN::from_array(&env, &[2u8; 32]);
         client.submit_snapshot(&epoch2, &hash2);
 
-        let epoch3 = 2u64; // Submit out of order
+        let epoch3 = 3u64;
         let hash3 = BytesN::from_array(&env, &[3u8; 32]);
         client.submit_snapshot(&epoch3, &hash3);
 
-        // Verify all snapshots are retrievable
         let snapshot1 = client.get_snapshot(&epoch1).unwrap();
         assert_eq!(snapshot1.epoch, epoch1);
         assert_eq!(snapshot1.hash, hash1);
@@ -270,24 +266,20 @@ mod test {
         assert_eq!(snapshot3.epoch, epoch3);
         assert_eq!(snapshot3.hash, hash3);
 
-        // Verify latest epoch is the highest
-        assert_eq!(client.get_latest_epoch(), epoch2);
+        assert_eq!(client.get_latest_epoch(), epoch3);
 
-        // Verify latest snapshot is from highest epoch
         let latest = client.get_latest_snapshot().unwrap();
-        assert_eq!(latest.epoch, epoch2);
-        assert_eq!(latest.hash, hash2);
+        assert_eq!(latest.epoch, epoch3);
+        assert_eq!(latest.hash, hash3);
 
-        // Verify history contains all snapshots
         let history = client.get_snapshot_history();
         assert_eq!(history.len(), 3);
 
-        // Verify all epochs are accessible
         let all_epochs = client.get_all_epochs();
         assert_eq!(all_epochs.len(), 3);
-        assert!(all_epochs.contains(&epoch1));
-        assert!(all_epochs.contains(&epoch2));
-        assert!(all_epochs.contains(&epoch3));
+        assert!(all_epochs.contains(epoch1));
+        assert!(all_epochs.contains(epoch2));
+        assert!(all_epochs.contains(epoch3));
     }
 
     #[test]
@@ -365,6 +357,19 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "must be strictly greater than latest")]
+    fn test_epoch_monotonicity_error_message() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, AnalyticsContract);
+        let client = AnalyticsContractClient::new(&env, &contract_id);
+
+        client.initialize();
+
+        client.submit_snapshot(&3u64, &BytesN::from_array(&env, &[1u8; 32]));
+        client.submit_snapshot(&1u64, &BytesN::from_array(&env, &[2u8; 32]));
+    }
+
+    #[test]
     #[should_panic(expected = "already exists")]
     fn test_duplicate_epoch_fails() {
         let env = Env::default();
@@ -382,65 +387,52 @@ mod test {
     }
 
     #[test]
-    fn test_latest_epoch_not_updated_for_older_epoch() {
+    #[should_panic(expected = "Epoch monotonicity violated")]
+    fn test_older_epoch_rejected() {
         let env = Env::default();
         let contract_id = env.register_contract(None, AnalyticsContract);
         let client = AnalyticsContractClient::new(&env, &contract_id);
 
         client.initialize();
 
-        // Submit newer epoch first
         let epoch_new = 10u64;
         let hash_new = BytesN::from_array(&env, &[10u8; 32]);
         client.submit_snapshot(&epoch_new, &hash_new);
         assert_eq!(client.get_latest_epoch(), epoch_new);
 
-        // Submit older epoch
         let epoch_old = 5u64;
         let hash_old = BytesN::from_array(&env, &[5u8; 32]);
         client.submit_snapshot(&epoch_old, &hash_old);
-
-        // Latest epoch should not change
-        assert_eq!(client.get_latest_epoch(), epoch_new);
-
-        // But both snapshots should be accessible
-        assert!(client.get_snapshot(&epoch_new).is_some());
-        assert!(client.get_snapshot(&epoch_old).is_some());
     }
 
     #[test]
-    fn test_non_sequential_epochs() {
+    fn test_non_sequential_epochs_monotonic_order() {
         let env = Env::default();
         let contract_id = env.register_contract(None, AnalyticsContract);
         let client = AnalyticsContractClient::new(&env, &contract_id);
 
         client.initialize();
 
-        // Submit non-sequential epochs
-        let epochs = [1u64, 5u64, 3u64, 10u64, 7u64];
-        let mut hashes = soroban_sdk::Vec::new(&env);
-
+        let epochs = [1u64, 5u64, 10u64];
         for (i, &epoch) in epochs.iter().enumerate() {
             let mut hash_bytes = [0u8; 32];
             hash_bytes[0] = (i + 1) as u8;
             let hash = BytesN::from_array(&env, &hash_bytes);
-            hashes.push_back(hash.clone());
             client.submit_snapshot(&epoch, &hash);
         }
 
-        // Verify all snapshots are retrievable
         for (i, &epoch) in epochs.iter().enumerate() {
             let snapshot = client.get_snapshot(&epoch).unwrap();
             assert_eq!(snapshot.epoch, epoch);
-            assert_eq!(snapshot.hash, hashes.get(i as u32).unwrap());
+            let mut expected = [0u8; 32];
+            expected[0] = (i + 1) as u8;
+            assert_eq!(snapshot.hash, BytesN::from_array(&env, &expected));
         }
 
-        // Verify latest epoch is the maximum
         assert_eq!(client.get_latest_epoch(), 10u64);
 
-        // Verify history integrity
         let history = client.get_snapshot_history();
-        assert_eq!(history.len(), epochs.len() as u32);
+        assert_eq!(history.len(), 3);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import {
   Anchor,
   Search,
@@ -17,6 +17,8 @@ import { MainLayout } from "@/components/layout";
 import { AnchorMetrics } from "@/lib/api";
 import Link from "next/link";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { usePagination } from "@/hooks/usePagination";
+import { DataTablePagination } from "@/components/ui/DataTablePagination";
 
 // Mock data for demonstration
 const generateMockAnchors = (): AnchorMetrics[] => [
@@ -112,6 +114,14 @@ const generateMockHistoricalData = (baseScore: number) => {
 };
 
 export default function AnchorsPage() {
+  return (
+    <Suspense>
+      <AnchorsContent />
+    </Suspense>
+  );
+}
+
+function AnchorsContent() {
   const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -119,6 +129,8 @@ export default function AnchorsPage() {
     "reliability" | "transactions" | "failure_rate"
   >("reliability");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+
 
   useEffect(() => {
     const fetchAnchors = async () => {
@@ -172,6 +184,17 @@ export default function AnchorsPage() {
 
       return sortOrder === "desc" ? bValue - aValue : aValue - bValue;
     });
+
+  const {
+    currentPage,
+    pageSize,
+    onPageChange,
+    onPageSizeChange,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredAndSortedAnchors.length);
+
+  const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
 
   const getHealthStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -249,9 +272,9 @@ export default function AnchorsPage() {
               onChange={(e) =>
                 setSortBy(
                   e.target.value as
-                    | "reliability"
-                    | "transactions"
-                    | "failure_rate",
+                  | "reliability"
+                  | "transactions"
+                  | "failure_rate",
                 )
               }
               className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -289,121 +312,245 @@ export default function AnchorsPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
-            {/* Desktop Table */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-slate-700">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Anchor
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Health Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Reliability Score
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Success Rate
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Asset Coverage
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Total Transactions
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      30-Day Trend
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                  {filteredAndSortedAnchors.map((anchor) => {
-                    const successRate =
-                      (anchor.successful_transactions /
-                        anchor.total_transactions) *
-                      100;
-                    const historicalData = generateMockHistoricalData(
-                      anchor.reliability_score,
-                    );
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+              {/* Desktop Table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-slate-700">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Anchor
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Health Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Reliability Score
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Success Rate
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Asset Coverage
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Total Transactions
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        30-Day Trend
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                    {paginatedAnchors.map((anchor) => {
+                      const successRate =
+                        (anchor.successful_transactions /
+                          anchor.total_transactions) *
+                        100;
+                      const historicalData = generateMockHistoricalData(
+                        anchor.reliability_score,
+                      );
 
-                    return (
-                      <tr
-                        key={anchor.id}
-                        className="hover:bg-gray-50 dark:hover:bg-slate-700"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                              <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                      return (
+                        <tr
+                          key={anchor.id}
+                          className="hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
+                                <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {anchor.name}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                  {truncateAddress(anchor.stellar_account)}
+                                </div>
+                              </div>
                             </div>
-                            <div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthStatusColor(anchor.status)}`}
+                            >
+                              {getHealthStatusIcon(anchor.status)}
+                              {anchor.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {anchor.name}
+                                {anchor.reliability_score.toFixed(1)}%
                               </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                                {truncateAddress(anchor.stellar_account)}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthStatusColor(anchor.status)}`}
-                          >
-                            {getHealthStatusIcon(anchor.status)}
-                            {anchor.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {anchor.reliability_score.toFixed(1)}%
-                            </div>
-                            <div className="ml-2 w-16 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  anchor.reliability_score >= 95
+                              <div className="ml-2 w-16 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full ${anchor.reliability_score >= 95
                                     ? "bg-green-500"
                                     : anchor.reliability_score >= 85
                                       ? "bg-yellow-500"
                                       : "bg-red-500"
-                                }`}
-                                style={{
-                                  width: `${anchor.reliability_score}%`,
-                                }}
+                                    }`}
+                                  style={{
+                                    width: `${anchor.reliability_score}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900 dark:text-white">
+                              {successRate.toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatNumber(anchor.successful_transactions)}/
+                              {formatNumber(anchor.total_transactions)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {anchor.asset_coverage} assets
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {formatNumber(anchor.total_transactions)}
+                            </div>
+                            <div className="text-xs text-red-500">
+                              {formatNumber(anchor.failed_transactions)} failed
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="w-20 h-8">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={historicalData.slice(-7)}>
+                                  <Line
+                                    type="monotone"
+                                    dataKey="score"
+                                    stroke={
+                                      anchor.reliability_score >= 95
+                                        ? "#10b981"
+                                        : anchor.reliability_score >= 85
+                                          ? "#f59e0b"
+                                          : "#ef4444"
+                                    }
+                                    strokeWidth={2}
+                                    dot={false}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <Link
+                              href={`/anchors/${anchor.stellar_account}`}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
+                            >
+                              View Details
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="lg:hidden divide-y divide-gray-200 dark:divide-slate-700">
+                {paginatedAnchors.map((anchor) => {
+                  const successRate =
+                    (anchor.successful_transactions / anchor.total_transactions) *
+                    100;
+                  const historicalData = generateMockHistoricalData(
+                    anchor.reliability_score,
+                  );
+
+                  return (
+                    <div key={anchor.id} className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center">
+                          <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
+                            <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {anchor.name}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                              {truncateAddress(anchor.stellar_account)}
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthStatusColor(anchor.status)}`}
+                        >
+                          {getHealthStatusIcon(anchor.status)}
+                          {anchor.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            Reliability
+                          </div>
+                          <div className="flex items-center">
+                            <span className="text-sm font-medium text-gray-900 dark:text-white mr-2">
+                              {anchor.reliability_score.toFixed(1)}%
+                            </span>
+                            <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full ${anchor.reliability_score >= 95
+                                  ? "bg-green-500"
+                                  : anchor.reliability_score >= 85
+                                    ? "bg-yellow-500"
+                                    : "bg-red-500"
+                                  }`}
+                                style={{ width: `${anchor.reliability_score}%` }}
                               />
                             </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            Success Rate
+                          </div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {successRate.toFixed(1)}%
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatNumber(anchor.successful_transactions)}/
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            Assets
+                          </div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            {anchor.asset_coverage}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            Transactions
+                          </div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {formatNumber(anchor.total_transactions)}
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {anchor.asset_coverage} assets
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {formatNumber(anchor.total_transactions)}
-                          </div>
-                          <div className="text-xs text-red-500">
-                            {formatNumber(anchor.failed_transactions)} failed
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="w-20 h-8">
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-gray-400" />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            30-day trend
+                          </span>
+                          <div className="w-16 h-6">
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={historicalData.slice(-7)}>
                                 <Line
@@ -422,144 +569,28 @@ export default function AnchorsPage() {
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <Link
-                            href={`/anchors/${anchor.stellar_account}`}
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
-                          >
-                            View Details
-                            <ExternalLink className="w-3 h-3" />
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                        <Link
+                          href={`/anchors/${anchor.stellar_account}`}
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
+                        >
+                          Details
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Mobile Cards */}
-            <div className="lg:hidden divide-y divide-gray-200 dark:divide-slate-700">
-              {filteredAndSortedAnchors.map((anchor) => {
-                const successRate =
-                  (anchor.successful_transactions / anchor.total_transactions) *
-                  100;
-                const historicalData = generateMockHistoricalData(
-                  anchor.reliability_score,
-                );
-
-                return (
-                  <div key={anchor.id} className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                          <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {anchor.name}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                            {truncateAddress(anchor.stellar_account)}
-                          </div>
-                        </div>
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthStatusColor(anchor.status)}`}
-                      >
-                        {getHealthStatusIcon(anchor.status)}
-                        {anchor.status}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                          Reliability
-                        </div>
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white mr-2">
-                            {anchor.reliability_score.toFixed(1)}%
-                          </span>
-                          <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                anchor.reliability_score >= 95
-                                  ? "bg-green-500"
-                                  : anchor.reliability_score >= 85
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500"
-                              }`}
-                              style={{ width: `${anchor.reliability_score}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                          Success Rate
-                        </div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {successRate.toFixed(1)}%
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                          Assets
-                        </div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {anchor.asset_coverage}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                          Transactions
-                        </div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {formatNumber(anchor.total_transactions)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4 text-gray-400" />
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          30-day trend
-                        </span>
-                        <div className="w-16 h-6">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={historicalData.slice(-7)}>
-                              <Line
-                                type="monotone"
-                                dataKey="score"
-                                stroke={
-                                  anchor.reliability_score >= 95
-                                    ? "#10b981"
-                                    : anchor.reliability_score >= 85
-                                      ? "#f59e0b"
-                                      : "#ef4444"
-                                }
-                                strokeWidth={2}
-                                dot={false}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                      <Link
-                        href={`/anchors/${anchor.stellar_account}`}
-                        className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
-                      >
-                        Details
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <DataTablePagination
+              totalItems={filteredAndSortedAnchors.length}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+            />
           </div>
         )}
 

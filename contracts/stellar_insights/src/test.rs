@@ -196,7 +196,7 @@ fn test_snapshot_submitted_event() {
 
     // Should have at least one event from the snapshot submission
     assert!(
-        events.len() >= 1,
+        !events.is_empty(),
         "Expected at least one event to be emitted"
     );
 
@@ -256,7 +256,7 @@ fn test_event_payload_matches_stored_data() {
     // Verify events were emitted
     let events = env.events().all();
     assert!(
-        events.len() >= 1,
+        !events.is_empty(),
         "Event must be emitted on every valid submission"
     );
 }

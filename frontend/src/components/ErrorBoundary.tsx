@@ -3,6 +3,7 @@
 import React, { Component, ErrorInfo, ReactNode } from "react"
 import Link from "next/link"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
+import Link from "next/link"
 
 interface Props {
   children: ReactNode
@@ -33,7 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error to console
     console.error("ErrorBoundary caught an error:", error, errorInfo)
-    
+
     // Update state with error details
     this.setState({
       error,
