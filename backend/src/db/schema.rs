@@ -69,6 +69,8 @@ impl Schema {
             entity_id TEXT NOT NULL,
             entity_type TEXT NOT NULL,
             data TEXT NOT NULL,
+            hash TEXT,
+            epoch INTEGER,
             timestamp TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );

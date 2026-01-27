@@ -5,9 +5,7 @@ mod events;
 
 use errors::Error;
 use events::emit_snapshot_submitted;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, BytesN, Env, Map,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map};
 
 /// Storage keys for persistent contract data
 #[contracttype]
@@ -39,11 +37,11 @@ pub struct StellarInsightsContract;
 #[contractimpl]
 impl StellarInsightsContract {
     /// Initialize the contract with an admin address
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `admin` - Address that will be authorized to submit snapshots
-    /// 
+    ///
     /// # Returns
     /// * Success confirmation
     pub fn initialize(env: Env, admin: Address) {
@@ -54,29 +52,29 @@ impl StellarInsightsContract {
 
         // Store the admin address
         env.storage().instance().set(&DataKey::Admin, &admin);
-        
+
         // Initialize latest epoch to 0
         env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
     }
 
     /// Submit a cryptographic hash of an analytics snapshot on-chain
-    /// 
+    ///
     /// Only the authorized admin can call this function. Each epoch can only
     /// have one snapshot submitted. Upon successful submission, an event is
     /// emitted for verification purposes.
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `epoch` - Epoch identifier (must be positive and unique)
     /// * `hash` - 32-byte SHA-256 hash of the analytics snapshot
     /// * `caller` - Address attempting to submit the snapshot
-    /// 
+    ///
     /// # Errors
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::UnauthorizedCaller` - If caller is not the admin
     /// * `Error::InvalidEpoch` - If epoch is 0
     /// * `Error::DuplicateEpoch` - If snapshot already exists for this epoch
-    /// 
+    ///
     /// # Returns
     /// * Ledger timestamp when the snapshot was recorded
     pub fn submit_snapshot(
@@ -147,7 +145,7 @@ impl StellarInsightsContract {
         // Emit structured event for off-chain indexing
         // Event payload matches stored data exactly:
         // - hash: same as snapshot.hash
-        // - epoch: same as snapshot.epoch  
+        // - epoch: same as snapshot.epoch
         // - timestamp: same as snapshot.timestamp
         // - submitter: the authenticated caller
         emit_snapshot_submitted(&env, hash, epoch, timestamp, caller);
@@ -156,14 +154,14 @@ impl StellarInsightsContract {
     }
 
     /// Retrieve a snapshot hash for a specific epoch
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `epoch` - Epoch to retrieve
-    /// 
+    ///
     /// # Errors
     /// * `Error::SnapshotNotFound` - If no snapshot exists for the epoch
-    /// 
+    ///
     /// # Returns
     /// * The 32-byte hash stored for that epoch
     pub fn get_snapshot(env: Env, epoch: u64) -> Result<BytesN<32>, Error> {
@@ -180,13 +178,13 @@ impl StellarInsightsContract {
     }
 
     /// Get the most recent snapshot
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
-    /// 
+    ///
     /// # Errors
     /// * `Error::SnapshotNotFound` - If no snapshots exist
-    /// 
+    ///
     /// # Returns
     /// * Tuple of (hash, epoch, timestamp) for the latest snapshot
     pub fn latest_snapshot(env: Env) -> Result<(BytesN<32>, u64, u64), Error> {
@@ -212,13 +210,13 @@ impl StellarInsightsContract {
     }
 
     /// Get the current admin address
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
-    /// 
+    ///
     /// # Errors
     /// * `Error::AdminNotSet` - If admin was not initialized
-    /// 
+    ///
     /// # Returns
     /// * The admin address
     pub fn get_admin(env: Env) -> Result<Address, Error> {
@@ -229,10 +227,10 @@ impl StellarInsightsContract {
     }
 
     /// Get the latest epoch number
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
-    /// 
+    ///
     /// # Returns
     /// * The latest epoch number (0 if no snapshots)
     pub fn get_latest_epoch(env: Env) -> u64 {

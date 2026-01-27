@@ -1,5 +1,7 @@
 import { IssuedAsset } from '@/lib/api';
-import { ArrowUpRight, ArrowDownRight, AlertTriangle } from 'lucide-react';
+import { ArrowUpRight, AlertTriangle } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 
 interface IssuedAssetsTableProps {
     assets: IssuedAsset[];
@@ -16,8 +18,19 @@ export function IssuedAssetsTable({ assets }: IssuedAssetsTableProps) {
     };
 
     const formatPercent = (value: number) => {
-        return `${value.toFixed(1)}%`;
+        return `${value.toFixed(1)}% `;
     };
+
+    const {
+        currentPage,
+        pageSize,
+        onPageChange,
+        onPageSizeChange,
+        startIndex,
+        endIndex,
+    } = usePagination(assets.length);
+
+    const paginatedAssets = assets.slice(startIndex, endIndex);
 
     return (
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
@@ -47,7 +60,7 @@ export function IssuedAssetsTable({ assets }: IssuedAssetsTableProps) {
                                 </td>
                             </tr>
                         ) : (
-                            assets.map((asset) => (
+                            paginatedAssets.map((asset) => (
                                 <tr key={asset.asset_code} className="hover:bg-slate-800/30 transition-colors">
                                     <td className="px-6 py-4 font-medium text-white">
                                         <div className="flex items-center gap-2">
@@ -82,6 +95,15 @@ export function IssuedAssetsTable({ assets }: IssuedAssetsTableProps) {
                     </tbody>
                 </table>
             </div>
+            {assets.length > 0 && (
+                <DataTablePagination
+                    totalItems={assets.length}
+                    pageSize={pageSize}
+                    currentPage={currentPage}
+                    onPageChange={onPageChange}
+                    onPageSizeChange={onPageSizeChange}
+                />
+            )}
         </div>
     );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { SkeletonMetricsCard } from '@/components/ui/Skeleton'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { SettlementSpeedCard } from '@/components/dashboard/SettlementSpeedCard'
@@ -34,7 +34,7 @@ type DashboardData = {
   timeseries: TimePoint[];
 };
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,15 +75,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
-        {loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <SkeletonMetricsCard className="col-span-1" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-            <SkeletonMetricsCard className="col-span-1" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-          </div>
-        )}
+      {loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SkeletonMetricsCard className="col-span-1" />
+          <SkeletonChart className="col-span-1 lg:col-span-2" height={400} />
+          <SkeletonChart className="col-span-1 lg:col-span-2" height={400} />
+          <SkeletonMetricsCard className="col-span-1" />
+          <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
+        </div>
+      )}
 
       {error && (
         <div className="rounded p-4 bg-rose-50 text-rose-700">
@@ -109,5 +109,17 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-4 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

@@ -17,6 +17,7 @@ use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
+use backend::api::metrics;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -138,6 +139,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .merge(anchor_routes)
         .merge(rpc_routes)
+        .merge(metrics::routes())
         .layer(cors);
 
     // Start server

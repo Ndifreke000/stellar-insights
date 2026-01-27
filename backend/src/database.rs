@@ -475,12 +475,14 @@ impl Database {
         entity_id: &str,
         entity_type: &str,
         data: serde_json::Value,
+        hash: Option<String>,
+        epoch: Option<i64>,
     ) -> Result<SnapshotRecord> {
         let id = Uuid::new_v4().to_string();
         let snapshot = sqlx::query_as::<_, SnapshotRecord>(
             r#"
-            INSERT INTO snapshots (id, entity_id, entity_type, data, timestamp)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO snapshots (id, entity_id, entity_type, data, hash, epoch, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             "#,
         )
@@ -488,11 +490,47 @@ impl Database {
         .bind(entity_id)
         .bind(entity_type)
         .bind(data.to_string())
+        .bind(hash)
+        .bind(epoch)
         .bind(Utc::now())
         .fetch_one(&self.pool)
         .await?;
 
         Ok(snapshot)
+    }
+
+    pub async fn get_snapshot_by_epoch(&self, epoch: i64) -> Result<Option<SnapshotRecord>> {
+        let snapshot = sqlx::query_as::<_, SnapshotRecord>(
+            r#"
+            SELECT * FROM snapshots WHERE epoch = ? LIMIT 1
+            "#,
+        )
+        .bind(epoch)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(snapshot)
+    }
+
+    pub async fn list_snapshots(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<SnapshotRecord>> {
+        let snapshots = sqlx::query_as::<_, SnapshotRecord>(
+            r#"
+            SELECT * FROM snapshots
+            WHERE epoch IS NOT NULL
+            ORDER BY epoch DESC
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(snapshots)
     }
 
     // Ingestion methods

@@ -138,6 +138,8 @@ pub struct SnapshotRecord {
     pub entity_id: String,
     pub entity_type: String,
     pub data: String, // JSON serialized
+    pub hash: Option<String>, // SHA-256 hash
+    pub epoch: Option<i64>, // Epoch identifier
     pub timestamp: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }

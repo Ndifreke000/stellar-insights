@@ -12,6 +12,8 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { ReliabilityDataPoint } from '@/lib/api';
+import { TooltipProps } from 'recharts';
+import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface ReliabilityTrendProps {
     data: ReliabilityDataPoint[];
@@ -62,8 +64,8 @@ export function ReliabilityTrend({ data }: ReliabilityTrendProps) {
                             key={window}
                             onClick={() => setTimeWindow(window)}
                             className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeWindow === window
-                                    ? 'bg-slate-800 text-white shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-300'
+                                ? 'bg-slate-800 text-white shadow-sm'
+                                : 'text-slate-500 hover:text-slate-300'
                                 }`}
                         >
                             {window}

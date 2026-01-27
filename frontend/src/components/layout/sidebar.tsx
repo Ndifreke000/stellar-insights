@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, TrendingUp, Anchor, BarChart3, X } from "lucide-react";
@@ -46,10 +46,59 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number>(0);
+  const touchEndX = useRef<number>(0);
 
   const isActive = (href: string) => {
     return pathname === href || pathname.startsWith(href + "/");
   };
+
+  // Swipe gesture handling
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      touchEndX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = () => {
+      const swipeDistance = touchStartX.current - touchEndX.current;
+      const minSwipeDistance = 50;
+
+      // Swipe left to close
+      if (swipeDistance > minSwipeDistance && open) {
+        onClose();
+      }
+    };
+
+    const sidebar = sidebarRef.current;
+    if (sidebar && open) {
+      sidebar.addEventListener("touchstart", handleTouchStart);
+      sidebar.addEventListener("touchmove", handleTouchMove);
+      sidebar.addEventListener("touchend", handleTouchEnd);
+
+      return () => {
+        sidebar.removeEventListener("touchstart", handleTouchStart);
+        sidebar.removeEventListener("touchmove", handleTouchMove);
+        sidebar.removeEventListener("touchend", handleTouchEnd);
+      };
+    }
+  }, [open, onClose]);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   return (
     <>
@@ -64,17 +113,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 transition-transform duration-300 z-40 lg:translate-x-0 overflow-y-auto ${
+        ref={sidebarRef}
+        className={`fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 transition-transform duration-300 z-40 lg:translate-x-0 overflow-y-auto touch-pan-y ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="p-4 lg:hidden">
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg min-w-[44px] min-h-[44px] touch-manipulation active:bg-gray-200 dark:active:bg-slate-700"
             aria-label="Close sidebar"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
@@ -86,10 +136,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 key={item.id}
                 href={item.href}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors min-h-[44px] touch-manipulation ${
                   active
                     ? "bg-blue-500 text-white"
-                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 active:bg-gray-200 dark:active:bg-slate-700"
                 }`}
                 aria-current={active ? "page" : undefined}
               >

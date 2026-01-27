@@ -8,7 +8,7 @@ import { ReliabilityTrend } from '@/components/charts/ReliabilityTrend';
 import { AlertCircle, Clock, ArrowLeft, XCircle } from 'lucide-react';
 import Link from 'next/link';
 
-export default function AnchorDetailPage({ params }: { params: Promise<{ address: string }> }) {
+function AnchorDetailPageContent({ params }: { params: Promise<{ address: string }> }) {
     const unwrappedParams = use(params);
     const { address } = unwrappedParams;
     const [data, setData] = useState<AnchorDetailData | null>(null);
@@ -151,5 +151,17 @@ export default function AnchorDetailPage({ params }: { params: Promise<{ address
                 <IssuedAssetsTable assets={data.issued_assets} />
             </div>
         </div>
+    );
+}
+
+export default function AnchorDetailPage(props: { params: Promise<{ address: string }> }) {
+    return (
+        <Suspense fallback={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-center min-h-[400px]">
+                <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        }>
+            <AnchorDetailPageContent {...props} />
+        </Suspense>
     );
 }
