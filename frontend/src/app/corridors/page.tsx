@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   Search,
   Filter,
-  Loader,
+  Grid3x3,
+  List,
   Droplets,
   CheckCircle2,
   AlertCircle,
@@ -15,20 +15,51 @@ import {
 import Link from "next/link";
 import {
   getCorridors,
-  generateMockCorridorData,
   CorridorMetrics,
 } from "@/lib/api";
+import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { MainLayout } from "@/components/layout";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
+import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
 
 export default function CorridorsPage() {
-  const router = useRouter();
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
+  const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<
     "success_rate" | "health_score" | "liquidity"
   >("health_score");
+
+  const filteredCorridors = useMemo(() => {
+    return corridors
+      .filter(
+        (c) =>
+          c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.destination_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.id.toLowerCase().includes(searchTerm.toLowerCase()),
+      )
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "success_rate":
+            return b.success_rate - a.success_rate;
+          case "liquidity":
+            return b.liquidity_depth_usd - a.liquidity_depth_usd;
+          case "health_score":
+          default:
+            return b.health_score - a.health_score;
+        }
+      });
+  }, [corridors, searchTerm, sortBy]);
+
+  const {
+    currentPage,
+    pageSize,
+    onPageChange,
+    onPageSizeChange,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredCorridors.length);
 
   useEffect(() => {
     async function fetchCorridors() {
@@ -37,98 +68,11 @@ export default function CorridorsPage() {
         try {
           const result = await getCorridors();
           setCorridors(result);
-        } catch (apiError) {
+        } catch {
           console.log("API not available, using mock data");
-          // Generate mock corridors
-          const mockCorridors: CorridorMetrics[] = [
-            {
-              ...generateMockCorridorData("USDC-PHP").corridor,
-              id: "USDC-PHP",
-              source_asset: "USDC",
-              destination_asset: "PHP",
-            },
-            {
-              ...generateMockCorridorData("USDC-JPY").corridor,
-              id: "USDC-JPY",
-              source_asset: "USDC",
-              destination_asset: "JPY",
-            },
-            {
-              ...generateMockCorridorData("USDC-INR").corridor,
-              id: "USDC-INR",
-              source_asset: "USDC",
-              destination_asset: "INR",
-              success_rate: 95.2,
-              total_attempts: 2100,
-              successful_payments: 2000,
-              failed_payments: 100,
-              average_latency_ms: 420,
-              median_latency_ms: 320,
-              p95_latency_ms: 1100,
-              p99_latency_ms: 1800,
-              liquidity_depth_usd: 8500000,
-              liquidity_volume_24h_usd: 1200000,
-              liquidity_trend: "increasing",
-              health_score: 96,
-            },
-            {
-              ...generateMockCorridorData("USDC-KES").corridor,
-              id: "USDC-KES",
-              source_asset: "USDC",
-              destination_asset: "KES",
-              success_rate: 81.3,
-              total_attempts: 950,
-              successful_payments: 772,
-              failed_payments: 178,
-              average_latency_ms: 650,
-              median_latency_ms: 520,
-              p95_latency_ms: 1800,
-              p99_latency_ms: 2500,
-              liquidity_depth_usd: 2800000,
-              liquidity_volume_24h_usd: 320000,
-              liquidity_trend: "decreasing",
-              health_score: 72,
-            },
-            {
-              ...generateMockCorridorData("USDC-EUR").corridor,
-              id: "USDC-EUR",
-              source_asset: "USDC",
-              destination_asset: "EUR",
-              success_rate: 97.8,
-              total_attempts: 3200,
-              successful_payments: 3130,
-              failed_payments: 70,
-              average_latency_ms: 380,
-              median_latency_ms: 280,
-              p95_latency_ms: 950,
-              p99_latency_ms: 1500,
-              liquidity_depth_usd: 12000000,
-              liquidity_volume_24h_usd: 2500000,
-              liquidity_trend: "increasing",
-              health_score: 98,
-            },
-            {
-              ...generateMockCorridorData("USDC-GBP").corridor,
-              id: "USDC-GBP",
-              source_asset: "USDC",
-              destination_asset: "GBP",
-              success_rate: 94.1,
-              total_attempts: 2450,
-              successful_payments: 2305,
-              failed_payments: 145,
-              average_latency_ms: 410,
-              median_latency_ms: 310,
-              p95_latency_ms: 1050,
-              p99_latency_ms: 1700,
-              liquidity_depth_usd: 9800000,
-              liquidity_volume_24h_usd: 1800000,
-              liquidity_trend: "stable",
-              health_score: 91,
-            },
-          ];
           setCorridors(mockCorridors);
         }
-      } catch (err) {
+   } catch (err) {
         console.error("Error fetching corridors:", err);
       } finally {
         setLoading(false);
@@ -138,25 +82,16 @@ export default function CorridorsPage() {
     fetchCorridors();
   }, []);
 
-  // Filter and sort corridors
-  const filteredCorridors = corridors
-    .filter(
-      (c) =>
-        c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.destination_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.id.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "success_rate":
-          return b.success_rate - a.success_rate;
-        case "liquidity":
-          return b.liquidity_depth_usd - a.liquidity_depth_usd;
-        case "health_score":
-        default:
-          return b.health_score - a.health_score;
-      }
-    });
+  const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
+
+  const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
+
+  const {
+    currentPage: finalCurrentPage,
+    pageSize: finalPageSize,
+    onPageChange: finalOnPageChange,
+    onPageSizeChange: finalOnPageSizeChange,
+  } = usePagination(filteredCorridors.length);
 
   const getHealthColor = (score: number) => {
     if (score >= 90)
@@ -212,7 +147,7 @@ export default function CorridorsPage() {
             <Filter className="w-5 h-5 text-gray-400" />
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as "success_rate" | "health_score" | "liquidity")}
               className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="health_score">Sort by Health Score</option>
@@ -221,6 +156,32 @@ export default function CorridorsPage() {
             </select>
           </div>
         </div>
+
+        {/* View Mode Toggle - NEW */}
+  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-1">
+    <button
+      onClick={() => setViewMode("grid")}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
+        viewMode === "grid"
+          ? "bg-blue-500 text-white"
+          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+      }`}
+    >
+      <List className="w-4 h-4" />
+      <span className="text-sm font-medium">Grid</span>
+    </button>
+    <button
+      onClick={() => setViewMode("heatmap")}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
+        viewMode === "heatmap"
+          ? "bg-blue-500 text-white"
+          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+      }`}
+    >
+      <Grid3x3 className="w-4 h-4" />
+      <span className="text-sm font-medium">Heatmap</span>
+    </button>
+  </div>
 
         {/* Content */}
         {loading ? (
@@ -239,7 +200,21 @@ export default function CorridorsPage() {
               No corridors found
             </p>
           </div>
+        ) : viewMode === "heatmap" ? (
+          /* Heatmap View */
+          <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                Corridor Health Matrix
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Hover over cells to view detailed metrics. Colors represent health scores.
+              </p>
+            </div>
+            <CorridorHeatmap corridors={filteredCorridors} />
+          </div>
         ) : (
+          // Grid view
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCorridors.map((corridor) => (
               <Link
@@ -257,94 +232,101 @@ export default function CorridorsPage() {
                       {corridor.id}
                     </p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 duration-200 shrink-0 ml-2" />
-                </div>
 
-                {/* Success Rate and Health Score */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                      Success Rate
-                    </p>
-                    <div className="flex items-center gap-2">
-                      {getSuccessStatusIcon(corridor.success_rate)}
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                        {corridor.success_rate.toFixed(1)}%
+                  {/* Success Rate and Health Score */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        Success Rate
                       </p>
+                      <div className="flex items-center gap-2">
+                        {getSuccessStatusIcon(corridor.success_rate)}
+                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                          {corridor.success_rate.toFixed(1)}%
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div
-                    className={`rounded-lg p-3 border ${getHealthColor(
-                      corridor.health_score,
-                    )}`}
-                  >
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                      Health
-                    </p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">
-                      {corridor.health_score.toFixed(0)}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs">
-                        {getHealthStatus(corridor.health_score).icon}
-                      </span>
-                      <span
-                        className={`text-xs font-semibold ${getHealthStatus(corridor.health_score).color}`}
-                      >
-                        {getHealthStatus(corridor.health_score).label}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metrics */}
-                <div className="space-y-2 text-sm mb-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600 dark:text-gray-400">
-                      Avg Latency
-                    </span>
-                    <span className="font-semibold text-blue-600 dark:text-blue-400">
-                      {corridor.average_latency_ms.toFixed(0)}ms
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                      <Droplets className="w-4 h-4" />
-                      Liquidity
-                    </span>
-                    <span className="font-semibold text-purple-600 dark:text-purple-400">
-                      ${(corridor.liquidity_depth_usd / 1000000).toFixed(1)}M
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600 dark:text-gray-400">
-                      24h Volume
-                    </span>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      $
-                      {(corridor.liquidity_volume_24h_usd / 1000000).toFixed(2)}
-                      M
-                    </span>
-                  </div>
-                </div>
-
-                {/* Payment Attempts */}
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
-                  <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
-                    <span>{corridor.successful_payments} successful</span>
-                    <span>{corridor.failed_payments} failed</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2 mt-2">
                     <div
-                      className="bg-green-500 rounded-full h-full transition-all duration-300"
-                      style={{
-                        width: `${(corridor.successful_payments / corridor.total_attempts) * 100}%`,
-                      }}
-                    />
+                      className={`rounded-lg p-3 border ${getHealthColor(
+                        corridor.health_score,
+                      )}`}
+                    >
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        Health
+                      </p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">
+                        {corridor.health_score.toFixed(0)}
+                      </p>
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-xs">
+                          {getHealthStatus(corridor.health_score).icon}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold ${getHealthStatus(corridor.health_score).color}`}
+                        >
+                          {getHealthStatus(corridor.health_score).label}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+
+                  {/* Metrics */}
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Avg Latency
+                      </span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {corridor.average_latency_ms.toFixed(0)}ms
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                        <Droplets className="w-4 h-4" />
+                        Liquidity
+                      </span>
+                      <span className="font-semibold text-purple-600 dark:text-purple-400">
+                        ${(corridor.liquidity_depth_usd / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        24h Volume
+                      </span>
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">
+                        $
+                        {(corridor.liquidity_volume_24h_usd / 1000000).toFixed(2)}
+                        M
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Payment Attempts */}
+                  <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
+                      <span>{corridor.successful_payments} successful</span>
+                      <span>{corridor.failed_payments} failed</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-green-500 rounded-full h-full transition-all duration-300"
+                        style={{
+                          width: `${(corridor.successful_payments / corridor.total_attempts) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            <DataTablePagination
+              totalItems={filteredCorridors.length}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+            />
           </div>
         )}
 
@@ -354,10 +336,26 @@ export default function CorridorsPage() {
             Showing {filteredCorridors.length} of {corridors.length} corridors
           </p>
           <p className="mt-2 text-xs">
-            Click any card to view detailed analytics
+          {viewMode === "grid"
+              ? "Click any card to view detailed analytics"
+              : "Hover over heatmap cells to see detailed corridor metrics"}
           </p>
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+export default function CorridorsPage() {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MainLayout>
+    }>
+      <CorridorsPageContent />
+    </Suspense>
   );
 }

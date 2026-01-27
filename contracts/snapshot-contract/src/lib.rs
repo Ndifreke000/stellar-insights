@@ -1,8 +1,5 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
-    Bytes, Env, Map
-};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Bytes, Env, Map};
 
 const HASH_SIZE: u32 = 32;
 
@@ -25,24 +22,27 @@ pub struct SnapshotContract;
 
 #[contractimpl]
 impl SnapshotContract {
-
     /// Submit a snapshot hash for an epoch with input validation
-    /// 
+    ///
     /// # Arguments
     /// * `hash` - 32-byte SHA-256 hash of analytics snapshot
     /// * `epoch` - Epoch identifier (must be positive)
-    /// 
+    ///
     /// # Panics
     /// * If hash is not exactly 32 bytes
     /// * If epoch is 0
     /// * If snapshot already exists for this epoch
-    /// 
+    ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
     pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> u64 {
         // Validate inputs
         if hash.len() != HASH_SIZE {
-            panic!("Invalid hash size: expected {} bytes, got {}", HASH_SIZE, hash.len());
+            panic!(
+                "Invalid hash size: expected {} bytes, got {}",
+                HASH_SIZE,
+                hash.len()
+            );
         }
 
         if epoch == 0 {
@@ -77,16 +77,15 @@ impl SnapshotContract {
         // Update latest epoch if this is newer
         let current_latest: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
         if current_latest.is_none() || epoch > current_latest.unwrap() {
-            env.storage().persistent().set(&DataKey::LatestEpoch, &epoch);
+            env.storage()
+                .persistent()
+                .set(&DataKey::LatestEpoch, &epoch);
         }
 
         // Emit event
         // Emit event exactly once
         env.events()
-            .publish(
-                (symbol_short!("SNAP_SUB"),),
-                (hash, epoch, timestamp)
-            );
+            .publish((symbol_short!("SNAP_SUB"),), (hash, epoch, timestamp));
 
         timestamp
     }
@@ -100,14 +99,14 @@ impl SnapshotContract {
             .unwrap_or_else(|| Map::new(&env));
 
         match snapshots.get(epoch) {
-            Some(snapshot) => snapshot.hash,           // return raw hash bytes
+            Some(snapshot) => snapshot.hash, // return raw hash bytes
             None => panic!("No snapshot found for epoch {}", epoch),
         }
     }
 
     pub fn latest_snapshot(env: Env) -> Option<Snapshot> {
         let latest_epoch: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
-        
+
         match latest_epoch {
             Some(epoch) => {
                 let snapshots: Map<u64, Snapshot> = env
@@ -115,14 +114,12 @@ impl SnapshotContract {
                     .persistent()
                     .get(&DataKey::Snapshots)
                     .unwrap_or_else(|| Map::new(&env));
-                
+
                 snapshots.get(epoch)
-            },
+            }
             None => None,
         }
     }
-
-
 
     /// Verify if a snapshot hash is canonical (exists in stored snapshots)
     ///
@@ -191,9 +188,7 @@ impl SnapshotContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{
-        bytes, testutils::Events, Env,
-    };
+    use soroban_sdk::{bytes, testutils::Events, Env};
 
     #[test]
     fn test_submit_and_retrieve() {
@@ -203,7 +198,10 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash = bytes!(&env, 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
+        let hash = bytes!(
+            &env,
+            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        );
         let epoch = 42u64;
 
         let _timestamp = client.submit_snapshot(&hash, &epoch);
@@ -220,7 +218,10 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash = bytes!(&env, 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
+        let hash = bytes!(
+            &env,
+            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+        );
         let epoch = 100u64;
 
         client.submit_snapshot(&hash, &epoch);
@@ -258,7 +259,10 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash = bytes!(&env, 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
+        let hash = bytes!(
+            &env,
+            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        );
         client.submit_snapshot(&hash, &0);
     }
 
@@ -271,8 +275,14 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash1 = bytes!(&env, 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
-        let hash2 = bytes!(&env, 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
+        let hash1 = bytes!(
+            &env,
+            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        );
+        let hash2 = bytes!(
+            &env,
+            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+        );
 
         client.submit_snapshot(&hash1, &1);
         client.submit_snapshot(&hash2, &1);
@@ -286,11 +296,17 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash1 = bytes!(&env, 0x1111111111111111111111111111111111111111111111111111111111111111);
+        let hash1 = bytes!(
+            &env,
+            0x1111111111111111111111111111111111111111111111111111111111111111
+        );
         let epoch1 = 1u64;
         client.submit_snapshot(&hash1, &epoch1);
 
-        let hash2 = bytes!(&env, 0x2222222222222222222222222222222222222222222222222222222222222222);
+        let hash2 = bytes!(
+            &env,
+            0x2222222222222222222222222222222222222222222222222222222222222222
+        );
         let epoch2 = 2u64;
         client.submit_snapshot(&hash2, &epoch2);
 
@@ -306,13 +322,37 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        client.submit_snapshot(&bytes!(&env, 0x1111111111111111111111111111111111111111111111111111111111111111), &1);
-        client.submit_snapshot(&bytes!(&env, 0x2222222222222222222222222222222222222222222222222222222222222222), &3);
-        client.submit_snapshot(&bytes!(&env, 0x3333333333333333333333333333333333333333333333333333333333333333), &7);
+        client.submit_snapshot(
+            &bytes!(
+                &env,
+                0x1111111111111111111111111111111111111111111111111111111111111111
+            ),
+            &1,
+        );
+        client.submit_snapshot(
+            &bytes!(
+                &env,
+                0x2222222222222222222222222222222222222222222222222222222222222222
+            ),
+            &3,
+        );
+        client.submit_snapshot(
+            &bytes!(
+                &env,
+                0x3333333333333333333333333333333333333333333333333333333333333333
+            ),
+            &7,
+        );
 
         let snapshot = client.latest_snapshot().unwrap();
         assert_eq!(snapshot.epoch, 7);
-        assert_eq!(snapshot.hash, bytes!(&env, 0x3333333333333333333333333333333333333333333333333333333333333333));
+        assert_eq!(
+            snapshot.hash,
+            bytes!(
+                &env,
+                0x3333333333333333333333333333333333333333333333333333333333333333
+            )
+        );
     }
 
     #[test]
@@ -334,7 +374,10 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        let hash = bytes!(&env, 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
+        let hash = bytes!(
+            &env,
+            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+        );
         client.submit_snapshot(&hash, &100);
 
         assert!(client.verify_snapshot(&hash));
@@ -348,8 +391,17 @@ mod test {
         let contract_id = env.register_contract(None, SnapshotContract);
         let client = SnapshotContractClient::new(&env, &contract_id);
 
-        client.submit_snapshot(&bytes!(&env, 0x1111111111111111111111111111111111111111111111111111111111111111), &5);
+        client.submit_snapshot(
+            &bytes!(
+                &env,
+                0x1111111111111111111111111111111111111111111111111111111111111111
+            ),
+            &5,
+        );
 
-        assert!(!client.verify_snapshot(&bytes!(&env, 0x9999999999999999999999999999999999999999999999999999999999999999)));
+        assert!(!client.verify_snapshot(&bytes!(
+            &env,
+            0x9999999999999999999999999999999999999999999999999999999999999999
+        )));
     }
 }

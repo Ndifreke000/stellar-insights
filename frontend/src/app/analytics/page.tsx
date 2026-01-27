@@ -2,11 +2,15 @@
 
 import React, { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout";
-import { TrendingUp, Activity, AlertCircle, RefreshCw } from "lucide-react";
 import {
-  fetchAnalyticsMetrics,
-  AnalyticsMetrics,
-} from "@/lib/analytics-api";
+  TrendingUp,
+  Activity,
+  AlertCircle,
+  RefreshCw,
+  Download,
+} from "lucide-react";
+import Link from "next/link";
+import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
 import { LiquidityChart } from "@/components/charts/LiquidityChart";
 import { TVLChart } from "@/components/charts/TVLChart";
 import { SettlementLatencyChart } from "@/components/charts/SettlementLatencyChart";
@@ -27,7 +31,8 @@ export default function AnalyticsPage() {
         setMetrics(data);
         setLastUpdated(new Date());
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to load metrics";
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to load metrics";
         setError(errorMessage);
         console.error("Error loading analytics metrics:", err);
       } finally {
@@ -63,7 +68,9 @@ export default function AnalyticsPage() {
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
               <RefreshCw className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-spin" />
-              <p className="text-gray-600 dark:text-gray-400">Loading metrics...</p>
+              <p className="text-gray-600 dark:text-gray-400">
+                Loading metrics...
+              </p>
             </div>
           </div>
         </div>
@@ -94,14 +101,25 @@ export default function AnalyticsPage() {
               Deep insights into Stellar network performance and metrics
             </p>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex gap-3">
+            <Link
+              href="/analytics/export"
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition font-medium text-sm text-gray-700 dark:text-gray-200"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </Link>
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Error State */}
@@ -152,9 +170,7 @@ export default function AnalyticsPage() {
               </h3>
             </div>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {metrics
-                ? `${metrics.avg_success_rate.toFixed(1)}%`
-                : "0%"}
+              {metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
             </p>
             <p className="text-sm text-green-600 dark:text-green-400">
               Network-wide
@@ -190,7 +206,10 @@ export default function AnalyticsPage() {
             <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               {metrics
                 ? formatCurrency(
-                    metrics.top_corridors.reduce((sum, c) => sum + c.liquidity_depth_usd, 0)
+                    metrics.top_corridors.reduce(
+                      (sum, c) => sum + c.liquidity_depth_usd,
+                      0,
+                    ),
                   )
                 : "$0"}
             </p>

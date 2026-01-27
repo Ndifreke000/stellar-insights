@@ -1,7 +1,7 @@
 'use client';
 
 import { CorridorAnalytics } from '@/lib/analytics-api';
-import { ArrowUp, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 interface TopCorridorsProps {
   corridors: CorridorAnalytics[];

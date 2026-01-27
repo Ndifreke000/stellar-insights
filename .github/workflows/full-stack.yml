@@ -48,6 +48,7 @@ jobs:
         DATABASE_URL: sqlite:stellar_insights.db
         SERVER_PORT: 8080
         RUST_LOG: info
+        RPC_MOCK_MODE: "true"
       run: |
         cargo run --release &
         echo $! > backend.pid
@@ -85,7 +86,8 @@ jobs:
     
     - name: Check commit messages
       run: |
-        git log --format=%s origin/main..HEAD | while read msg; do
+        git log --no-merges --format=%s origin/main..HEAD | while read msg; do
+          [ -z "$msg" ] && continue
           if ! echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
             echo "❌ Invalid commit message: $msg"
             echo "Commit messages must follow conventional commits format"
@@ -104,9 +106,12 @@ jobs:
     
     - name: Check for secrets
       run: |
-        if grep -r "sk_live_" . --exclude-dir={node_modules,target,.git} || \
-           grep -r "api_key" . --exclude-dir={node_modules,target,.git} | grep -v "example"; then
-          echo "❌ Potential secrets detected"
+        if grep -r "sk_live_" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github -l 2>/dev/null | grep -q .; then
+          echo "❌ Potential secrets detected (sk_live_)"
+          exit 1
+        fi
+        if grep -r "api_key" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github 2>/dev/null | grep -v "example" | grep -q .; then
+          echo "❌ Potential secrets detected (api_key)"
           exit 1
         fi
 

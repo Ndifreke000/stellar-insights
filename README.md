@@ -83,7 +83,7 @@ stellar-insights/
 - `GET /api/corridors` - List payment corridors
 - `GET /api/corridors/:key` - Corridor details
 
-See [RPC.md](./RPC.md) for complete API documentation.
+See [RPC.md](./docs/RPC.md) for complete API documentation.
 
 ---
 
@@ -123,14 +123,14 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 **Quick Links:**
 - [GitHub Issues](https://github.com/Ndifreke000/stellar-insights/issues) - 70 issues ready to work on
-- [API Documentation](./RPC.md) - Complete endpoint reference
+- [API Documentation](./docs/RPC.md) - Complete endpoint reference
 - [Smart Contracts](./contracts/README.md) - Soroban contract docs
 
 ---
 
 ## 📖 Documentation
 
-- [RPC.md](./RPC.md) - API endpoints and usage
+- [RPC.md](./docs/RPC.md) - API endpoints and usage
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development guidelines
 - [GITHUB_ISSUES.md](./GITHUB_ISSUES.md) - 70 development tasks
 - [backend/README.md](./backend/README.md) - Backend setup

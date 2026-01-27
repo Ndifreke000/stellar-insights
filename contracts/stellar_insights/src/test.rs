@@ -193,9 +193,12 @@ fn test_snapshot_submitted_event() {
 
     // Verify event was emitted
     let events = env.events().all();
-    
+
     // Should have at least one event from the snapshot submission
-    assert!(events.len() >= 1, "Expected at least one event to be emitted");
+    assert!(
+        !events.is_empty(),
+        "Expected at least one event to be emitted"
+    );
 
     // Verify the event contains the correct topics and structure
     // The event should have SNAPSHOT_SUBMITTED and SNAPSHOT_LIFECYCLE topics
@@ -241,7 +244,10 @@ fn test_event_payload_matches_stored_data() {
     // Verify the stored data matches what was submitted
     assert_eq!(stored_hash, hash, "Stored hash should match submitted hash");
     assert_eq!(latest_hash, hash, "Latest hash should match submitted hash");
-    assert_eq!(latest_epoch, epoch, "Latest epoch should match submitted epoch");
+    assert_eq!(
+        latest_epoch, epoch,
+        "Latest epoch should match submitted epoch"
+    );
     assert_eq!(
         stored_timestamp, returned_timestamp,
         "Stored timestamp should match returned timestamp"
@@ -250,7 +256,7 @@ fn test_event_payload_matches_stored_data() {
     // Verify events were emitted
     let events = env.events().all();
     assert!(
-        events.len() >= 1,
+        !events.is_empty(),
         "Event must be emitted on every valid submission"
     );
 }
