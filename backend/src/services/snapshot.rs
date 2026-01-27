@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
+use super::contract::{ContractService, SubmissionResult};
+
 /// Service for creating cryptographically verifiable analytics snapshots
 /// 
 /// This service ensures that:
@@ -209,6 +211,51 @@ impl SnapshotService {
         let hash = Self::hash_snapshot(snapshot)?;
         let hash_hex = hex::encode(hash);
         Ok((hash, hash_hex, SCHEMA_VERSION))
+    }
+
+    /// Create snapshot, hash it, and submit to on-chain contract
+    /// 
+    /// This method combines snapshot creation with automatic submission to the
+    /// Soroban smart contract. It handles the complete workflow:
+    /// 1. Generate snapshot hash
+    /// 2. Submit to contract with retry logic
+    /// 3. Return both hash and submission result
+    /// 
+    /// # Arguments
+    /// * `snapshot` - The analytics snapshot to hash and submit
+    /// * `contract_service` - Contract service for blockchain submission
+    /// 
+    /// # Returns
+    /// Tuple of (hash_bytes, hash_hex, schema_version, submission_result)
+    pub async fn version_hash_and_submit(
+        snapshot: AnalyticsSnapshot,
+        contract_service: &ContractService,
+    ) -> Result<([u8; 32], String, u32, SubmissionResult), anyhow::Error> {
+        use tracing::info;
+
+        // Get epoch before consuming snapshot
+        let epoch = snapshot.epoch;
+        
+        // Generate hash
+        let (hash_bytes, hash_hex, version) = Self::version_and_hash(snapshot)
+            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {}", e))?;
+
+        info!(
+            "Generated snapshot hash for epoch {}: {}",
+            epoch, hash_hex
+        );
+
+        // Submit to contract
+        let submission = contract_service
+            .submit_snapshot_hash(hash_bytes, epoch)
+            .await?;
+
+        info!(
+            "Successfully submitted snapshot for epoch {} to contract",
+            epoch
+        );
+
+        Ok((hash_bytes, hash_hex, version, submission))
     }
 }
 
