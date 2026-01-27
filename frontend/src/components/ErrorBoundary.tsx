@@ -26,45 +26,27 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    // Update state so the next render will show the fallback UI
     return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to console
     console.error("ErrorBoundary caught an error:", error, errorInfo)
-
-    // Update state with error details
-    this.setState({
-      error,
-      errorInfo,
-    })
-
-    // You can also log the error to an error reporting service here
-    // Example: logErrorToService(error, errorInfo)
+    this.setState({ error, errorInfo })
   }
 
   handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    })
+    this.setState({ hasError: false, error: null, errorInfo: null })
   }
 
   render() {
     if (this.state.hasError) {
-      // Custom fallback UI
-      if (this.props.fallback) {
-        return this.props.fallback
-      }
+      if (this.props.fallback) return this.props.fallback
 
-      // Default fallback UI
       return (
         <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-8">
             <div className="flex items-center gap-4 mb-6">
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <AlertTriangle className="w-12 h-12 text-rose-500" />
               </div>
               <div>
@@ -128,4 +110,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children
   }
 }
-

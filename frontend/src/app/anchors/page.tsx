@@ -103,7 +103,8 @@ const generateMockHistoricalData = (baseScore: number) => {
 
   for (let i = 29; i >= 0; i--) {
     const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const variation = (Math.random() - 0.5) * 10;
+    // Use deterministic variation based on date to avoid Math.random during render
+    const variation = (((date.getTime() / 1000) % 20) - 10);
     data.push({
       date: date.toISOString().split("T")[0],
       score: Math.max(0, Math.min(100, baseScore + variation)),

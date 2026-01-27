@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface SkeletonProps {
   className?: string;
   variant?: 'text' | 'circle' | 'rect' | 'card';
+  style?: React.CSSProperties;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({ 
   className = '', 
-  variant = 'rect' 
+  variant = 'rect',
+  style
 }) => {
   const baseStyles = 'animate-pulse bg-gray-200 dark:bg-gray-700';
   
@@ -21,6 +23,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
   return (
     <div 
       className={`${baseStyles} ${variantStyles[variant]} ${className}`}
+      style={style}
       aria-hidden="true"
     />
   );
@@ -40,6 +43,24 @@ export const SkeletonText: React.FC<{ lines?: number; className?: string }> = ({
     ))}
   </div>
 );
+
+export const SkeletonChart: React.FC<{ className?: string }> = ({ className = '' }) => {
+  const randomHeights = useMemo(() => (
+    Array.from({ length: 12 }, () => Math.max(20, Math.random() * 100))
+  ), []);
+
+  return (
+    <div className={`flex items-end justify-between h-32 ${className}`}>
+      {randomHeights.map((height, i) => (
+        <Skeleton
+          key={i}
+          className="w-full rounded-t mx-0.5"
+          style={{ height: `${height}%` }}
+        />
+      ))}
+    </div>
+  );
+};
 
 export const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
   <div className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6 ${className}`}>

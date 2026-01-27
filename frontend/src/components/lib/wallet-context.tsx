@@ -59,7 +59,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         // Fallback: Generate a demo address for testing
-        const demoAddress = `G${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`
+        const demoAddress = `GDEMO${Date.now().toString(36).toUpperCase()}TESTADDRESS`
         setAddress(demoAddress)
         setIsConnected(true)
         localStorage.setItem('stellar_wallet_address', demoAddress)

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { SkeletonMetricsCard } from '@/components/ui/Skeleton'
+import React, { useEffect, useState, useCallback, Suspense } from "react";
+import { SkeletonMetricsCard, SkeletonChart } from '@/components/ui/Skeleton'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { SettlementSpeedCard } from '@/components/dashboard/SettlementSpeedCard'
 import { LiquidityDepthCard } from '@/components/dashboard/LiquidityDepthCard'

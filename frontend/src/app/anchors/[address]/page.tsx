@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, use, Suspense } from 'react';
 import { getAnchorDetail, AnchorDetailData } from '@/lib/api';
 import { AnchorHeader } from '@/components/anchors/AnchorHeader';
 import { IssuedAssetsTable } from '@/components/anchors/IssuedAssetsTable';

@@ -22,7 +22,7 @@ jobs:
     
     - name: Install Soroban CLI
       run: |
-        cargo install --locked soroban-cli --features opt
+        cargo install --locked soroban-cli
     
     - name: Cache dependencies
       uses: actions/cache@v3
