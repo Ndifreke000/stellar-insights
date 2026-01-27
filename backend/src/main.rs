@@ -1,12 +1,13 @@
 use anyhow::Result;
 use axum::{
-    routing::{get, put},
+    routing::{get, put, post},
     Router,
 };
 use dotenv::dotenv;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -16,7 +17,8 @@ use backend::api::metrics;
 use backend::database::Database;
 use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
-// use backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use backend::ml::MLService;
+use backend::ml_handlers;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
 use backend::state::AppState;
@@ -49,6 +51,18 @@ async fn main() -> Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let db = Arc::new(Database::new(pool));
+
+    // Initialize ML Service
+    tracing::info!("Initializing ML service...");
+    let ml_service = Arc::new(RwLock::new(MLService::new((**db).clone())?));
+    
+    // Train initial model
+    {
+        let mut service = ml_service.write().await;
+        if let Err(e) = service.train_model().await {
+            tracing::warn!("Initial ML model training failed: {}", e);
+        }
+    }
 
     // Initialize Stellar RPC Client
     let mock_mode = std::env::var("RPC_MOCK_MODE")
@@ -96,7 +110,21 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Run initial sync (skip on network errors)
+    // Setup weekly ML retraining
+    let ml_service_clone = ml_service.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(7 * 24 * 3600)); // 7 days
+        loop {
+            interval.tick().await;
+            if let Ok(mut service) = ml_service_clone.try_write() {
+                if let Err(e) = service.retrain_weekly().await {
+                    tracing::error!("Weekly ML retraining failed: {}", e);
+                }
+            }
+        }
+    });
+
+    // Run initial sync
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
 
@@ -236,10 +264,18 @@ async fn main() -> Result<()> {
         .with_state(ws_state.clone())
         .layer(cors.clone());
 
+    // Build ML router
+    let ml_routes = Router::new()
+        .route("/api/ml/predict", get(ml_handlers::predict_payment_success))
+        .route("/api/ml/status", get(ml_handlers::get_model_status))
+        .route("/api/ml/retrain", post(ml_handlers::retrain_model))
+        .with_state(ml_service);
+
     // Merge routers
     let app = Router::new()
         .merge(anchor_routes)
         .merge(rpc_routes)
+        .merge(ml_routes)
         .merge(metrics::routes())
         .merge(ws_routes);
 

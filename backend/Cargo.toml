@@ -1,40 +1,26 @@
 [package]
-name = "backend"
+name = "stellar-insights-backend"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-path = "src/lib.rs"
-
-[[bin]]
-name = "backend"
-path = "src/main.rs"
-
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors"] }
+tokio = { version = "1.0", features = ["full"] }
+axum = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "postgres"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
+reqwest = { version = "0.11", features = ["json"] }
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-dotenv = "0.15"
-async-trait = "0.1"
-reqwest = { version = "0.12", features = ["json"] }
-thiserror = "1.0"
+tracing-subscriber = "0.3"
+dotenvy = "0.15"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors"] }
 sha2 = "0.10"
 hex = "0.4"
-redis = { version = "0.25", features = ["aio", "tokio-comp"] }
-async-lock = "3.0"
-futures = "0.3"
-tokio-tungstenite = "0.21"
-dashmap = "5.5"
-jsonwebtoken = "9.0"
-
-[dev-dependencies]
-urlencoding = "2.1"
+candle-core = "0.6"
+candle-nn = "0.6"
+candle-transformers = "0.6"
+ndarray = "0.15"
