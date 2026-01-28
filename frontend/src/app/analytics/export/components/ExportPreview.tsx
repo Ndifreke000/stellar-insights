@@ -1,10 +1,9 @@
-import React from "react";
 import { MetricOption } from "./MetricSelector";
 import { format } from "date-fns";
 
 interface ExportPreviewProps {
   metrics: MetricOption[];
-  data: any[];
+  data: Record<string, unknown>[];
 }
 
 export function ExportPreview({ metrics, data }: ExportPreviewProps) {
@@ -46,30 +45,33 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
                 key={idx}
                 className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors"
               >
-                {activeMetrics.map((metric) => (
-                  <td
-                    key={`${idx}-${metric.id}`}
-                    className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300"
-                  >
-                    {/* Basic formatting logic */}
-                    {metric.id === "date" &&
-                      format(new Date(row[metric.id]), "yyyy-MM-dd HH:mm")}
-                    {metric.id === "success_rate" &&
-                      `${(row[metric.id] * 100).toFixed(2)}%`}
-                    {metric.id === "total_volume" &&
-                      `$${row[metric.id].toLocaleString()}`}
-                    {metric.id === "tvl" &&
-                      `$${row[metric.id].toLocaleString()}`}
-                    {metric.id === "latency" && `${row[metric.id]} ms`}
-                    {![
-                      "date",
-                      "success_rate",
-                      "total_volume",
-                      "tvl",
-                      "latency",
-                    ].includes(metric.id) && row[metric.id]}
-                  </td>
-                ))}
+                {activeMetrics.map((metric) => {
+                  const value = row[metric.id];
+                  return (
+                    <td
+                      key={`${idx}-${metric.id}`}
+                      className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300"
+                    >
+                      {metric.id === "date" &&
+                        format(new Date(value as string), "yyyy-MM-dd HH:mm")}
+                      {metric.id === "success_rate" &&
+                        `${((value as number) * 100).toFixed(2)}%`}
+                      {metric.id === "total_volume" &&
+                        `${(value as number).toLocaleString()}`}
+                      {metric.id === "tvl" &&
+                        `${(value as number).toLocaleString()}`}
+                      {metric.id === "latency" &&
+                        `${value as string} ms`}
+                      {![
+                        "date",
+                        "success_rate",
+                        "total_volume",
+                        "tvl",
+                        "latency",
+                      ].includes(metric.id) && String(value)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

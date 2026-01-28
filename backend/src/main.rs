@@ -10,15 +10,14 @@ use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use backend::api::anchors::get_anchors;
-use backend::api::corridors::{get_corridor_detail, list_corridors};
+use backend::api::cached_handlers;
 use backend::api::metrics;
+use backend::cache::RedisCache;
 use backend::database::Database;
 use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
-use backend::api::metrics;
 use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
 
 #[tokio::main]
@@ -91,6 +90,18 @@ async fn main() -> Result<()> {
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
 
+    // Initialize Redis cache
+    let cache = match RedisCache::new().await {
+        Ok(c) => {
+            tracing::info!("Redis cache initialized successfully");
+            Arc::new(c)
+        }
+        Err(e) => {
+            tracing::warn!("Failed to initialize Redis cache, using memory fallback: {}", e);
+            Arc::new(RedisCache::new().await.expect("Failed to create cache with memory fallback"))
+        }
+    };
+
     // Initialize rate limiter
     let rate_limiter_result = RateLimiter::new().await;
     let rate_limiter = match rate_limiter_result {
@@ -146,24 +157,25 @@ async fn main() -> Result<()> {
     // Build anchor router
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/api/anchors", get(get_anchors).post(create_anchor))
-        .route("/api/anchors/:id", get(get_anchor))
+        .route("/api/anchors", get(cached_handlers::list_anchors_cached).post(cached_handlers::create_anchor_cached))
+        .route("/api/anchors/:id", get(cached_handlers::get_anchor_cached))
         .route(
             "/api/anchors/account/:stellar_account",
-            get(get_anchor_by_account),
+            get(cached_handlers::get_anchor_by_account_cached),
         )
-        .route("/api/anchors/:id/metrics", put(update_anchor_metrics))
+        .route("/api/anchors/:id/metrics", put(cached_handlers::update_anchor_metrics_cached))
         .route(
             "/api/anchors/:id/assets",
-            get(get_anchor_assets).post(create_anchor_asset),
+            get(cached_handlers::get_anchor_assets_cached).post(cached_handlers::create_anchor_asset_cached),
         )
-        .route("/api/corridors", get(list_corridors).post(create_corridor))
+        .route("/api/corridors", get(cached_handlers::list_corridors_cached).post(cached_handlers::create_corridor_cached))
         .route(
             "/api/corridors/:id/metrics-from-transactions",
-            put(update_corridor_metrics_from_transactions),
+            put(cached_handlers::update_corridor_metrics_from_transactions_cached),
         )
-        .route("/api/corridors/:corridor_key", get(get_corridor_detail))
-        .with_state(db)
+        .route("/api/cache/stats", get(cached_handlers::get_cache_stats))
+        .route("/api/cache/clear", put(cached_handlers::clear_cache))
+        .with_state((db.clone(), cache.clone()))
         .layer(
             ServiceBuilder::new()
                 .layer(middleware::from_fn_with_state(

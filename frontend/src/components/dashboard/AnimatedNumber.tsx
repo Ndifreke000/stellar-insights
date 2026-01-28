@@ -1,9 +1,5 @@
-import { MotionValue, motion, useSpring, useTransform } from "framer-motion";
+import { motion, useSpring, useTransform } from "framer-motion";
 import { useEffect } from "react";
-
-const fontSize = 30;
-const padding = 15;
-const height = fontSize + padding;
 
 interface AnimatedNumberProps {
   value: number;

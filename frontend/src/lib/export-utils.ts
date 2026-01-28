@@ -3,7 +3,7 @@ import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 
 export function generateCSV(
-  data: any[],
+  data: Record<string, unknown>[],
   columns: { id: string; label: string }[],
 ) {
   const headers = columns.map((c) => c.label).join(",");
@@ -12,8 +12,8 @@ export function generateCSV(
       .map((col) => {
         let val = row[col.id];
         if (col.id === "date")
-          val = format(new Date(val), "yyyy-MM-dd HH:mm:ss");
-        if (col.id === "success_rate") val = (val * 100).toFixed(2) + "%";
+          val = format(new Date(val as string), "yyyy-MM-dd HH:mm:ss");
+        if (col.id === "success_rate") val = ((val as number) * 100).toFixed(2) + "%";
         if (typeof val === "string" && val.includes(",")) return `"${val}"`;
         return val;
       })
@@ -38,12 +38,12 @@ export function generateCSV(
 }
 
 export function generateJSON(
-  data: any[],
+  data: Record<string, unknown>[],
   columns: { id: string; label: string }[],
 ) {
   // Filter data to only include selected columns
   const filteredData = data.map((row) => {
-    const newRow: any = {};
+    const newRow: Record<string, unknown> = {};
     columns.forEach((col) => {
       newRow[col.id] = row[col.id]; // keep raw values for JSON
     });
@@ -68,7 +68,7 @@ export function generateJSON(
 }
 
 export function generatePDF(
-  data: any[],
+  data: Record<string, unknown>[],
   columns: { id: string; label: string }[],
   dateRange: { start: Date | null; end: Date | null },
 ) {
@@ -95,19 +95,19 @@ export function generatePDF(
   const tableHeaders = columns.map((c) => c.label);
   const tableData = data.map((row) =>
     columns.map((col) => {
-      let val = row[col.id];
-      if (col.id === "date") val = format(new Date(val), "yyyy-MM-dd HH:mm");
-      if (col.id === "success_rate") val = (val * 100).toFixed(2) + "%";
+      const val = row[col.id];
+      if (col.id === "date") return format(new Date(val as string), "yyyy-MM-dd HH:mm");
+      if (col.id === "success_rate") return ((val as number) * 100).toFixed(2) + "%";
       if (col.id === "total_volume" || col.id === "tvl")
-        val = `$${val.toLocaleString()}`;
-      if (col.id === "latency") val = `${val} ms`;
+        return `${(val as number).toLocaleString()}`;
+      if (col.id === "latency") return `${val} ms`;
       return val;
     }),
   );
 
   autoTable(doc, {
     head: [tableHeaders],
-    body: tableData,
+    body: tableData as (string | number)[][],
     startY: 44,
     theme: "grid",
     headStyles: { fillColor: [59, 130, 246] }, // Blue-500

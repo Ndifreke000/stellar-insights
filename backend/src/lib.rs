@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod api;
+pub mod cache;
 pub mod database;
 pub mod db;
 pub mod handlers;

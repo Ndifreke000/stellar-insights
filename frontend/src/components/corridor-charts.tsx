@@ -48,13 +48,12 @@ export function SuccessRateChart({ data }: SuccessRateChartProps) {
             domain={[0, 100]}
           />
           <Tooltip
-            formatter={(value, _name, _props) => {
+            formatter={(value) => {
               if (typeof value === "number") {
                 return `${value.toFixed(2)}%`;
               }
               return value;
             }}
-            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Line
@@ -100,7 +99,7 @@ export function LatencyDistributionChart({
             }}
           />
           <Tooltip
-            formatter={(value, _name, _props) => {
+            formatter={(value) => {
               if (typeof value === "number") {
                 return value.toLocaleString();
               }
@@ -235,13 +234,12 @@ export function SlippageTrendChart({ data }: SlippageTrendChartProps) {
             domain={["auto", "auto"]}
           />
           <Tooltip
-            formatter={(value, _name, _props) => {
+            formatter={(value) => {
               if (typeof value === "number") {
                 return `${value.toFixed(2)} bps`;
               }
               return value;
             }}
-            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Line
