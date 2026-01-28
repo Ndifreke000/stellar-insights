@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, Suspense } from "react";
 import {
   TrendingUp,
   Search,
@@ -24,8 +24,10 @@ import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { MainLayout } from "@/components/layout";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
+import { usePagination } from "@/hooks/usePagination";
+import { DataTablePagination } from "@/components/ui/DataTablePagination";
 
-export default function CorridorsPage() {
+function CorridorsPageContent() {
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
   const [loading, setLoading] = useState(true);
@@ -117,14 +119,6 @@ export default function CorridorsPage() {
 
   const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
-  const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
-
-  const {
-    currentPage: finalCurrentPage,
-    pageSize: finalPageSize,
-    onPageChange: finalOnPageChange,
-    onPageSizeChange: finalOnPageSizeChange,
-  } = usePagination(filteredCorridors.length);
 
   const getHealthColor = (score: number) => {
     if (score >= 90)
@@ -202,8 +196,7 @@ export default function CorridorsPage() {
   }, []);
 
   return (
-    <MainLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
@@ -305,57 +298,59 @@ export default function CorridorsPage() {
           </div>
         ) : (
           // Grid view
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCorridors.map((corridor) => (
-              <Link
-                key={corridor.id}
-                href={`/corridors/${corridor.id}`}
-                className="group bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 hover:shadow-lg transition-all duration-200 transform hover:-translate-y-1 text-left cursor-pointer"
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-500 transition-colors truncate">
-                      {corridor.source_asset} → {corridor.destination_asset}
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
-                      {corridor.id}
-                    </p>
-                  </div>
-
-                  {/* Success Rate and Health Score */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                        Success Rate
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedCorridors.map((corridor) => (
+                <Link
+                  key={corridor.id}
+                  href={`/corridors/${corridor.id}`}
+                  className="group bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 hover:shadow-lg transition-all duration-200 transform hover:-translate-y-1 text-left cursor-pointer"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-500 transition-colors truncate">
+                        {corridor.source_asset} → {corridor.destination_asset}
+                      </h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
+                        {corridor.id}
                       </p>
-                      <div className="flex items-center gap-2">
-                        {getSuccessStatusIcon(corridor.success_rate)}
-                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                          {corridor.success_rate.toFixed(1)}%
-                        </p>
-                      </div>
                     </div>
-                    <div
-                      className={`rounded-lg p-3 border ${getHealthColor(
-                        corridor.health_score,
-                      )}`}
-                    >
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                        Health
-                      </p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">
-                        {corridor.health_score.toFixed(0)}
-                      </p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-xs">
-                          {getHealthStatus(corridor.health_score).icon}
-                        </span>
-                        <span
-                          className={`text-xs font-semibold ${getHealthStatus(corridor.health_score).color}`}
-                        >
-                          {getHealthStatus(corridor.health_score).label}
-                        </span>
+
+                    {/* Success Rate and Health Score */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          Success Rate
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {getSuccessStatusIcon(corridor.success_rate)}
+                          <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                            {corridor.success_rate.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                      <div
+                        className={`rounded-lg p-3 border ${getHealthColor(
+                          corridor.health_score,
+                        )}`}
+                      >
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          Health
+                        </p>
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">
+                          {corridor.health_score.toFixed(0)}
+                        </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-xs">
+                            {getHealthStatus(corridor.health_score).icon}
+                          </span>
+                          <span
+                            className={`text-xs font-semibold ${getHealthStatus(corridor.health_score).color}`}
+                          >
+                            {getHealthStatus(corridor.health_score).label}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -417,7 +412,7 @@ export default function CorridorsPage() {
               onPageChange={onPageChange}
               onPageSizeChange={onPageSizeChange}
             />
-          </div>
+          </>
         )}
 
         {/* Info Footer */}
@@ -432,20 +427,19 @@ export default function CorridorsPage() {
           </p>
         </div>
       </div>
-    </MainLayout>
   );
 }
 
 export default function CorridorsPage() {
   return (
-    <Suspense fallback={
-      <MainLayout>
+    <MainLayout>
+      <Suspense fallback={
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      </MainLayout>
-    }>
-      <CorridorsPageContent />
-    </Suspense>
+      }>
+        <CorridorsPageContent />
+      </Suspense>
+    </MainLayout>
   );
 }
