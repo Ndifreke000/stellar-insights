@@ -1,30 +1,17 @@
-<<<<<<< HEAD
-import React, { useMemo } from 'react';
-
-interface SkeletonProps {
-  className?: string;
-  variant?: 'text' | 'circle' | 'rect' | 'card';
-  style?: React.CSSProperties;
-}
-
-export const Skeleton: React.FC<SkeletonProps> = ({ 
-  className = '', 
-  variant = 'rect',
-  style
-=======
 import React from "react";
 
 interface SkeletonProps {
   className?: string;
   variant?: "text" | "circle" | "rect" | "card";
+  style?: React.CSSProperties;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({
   className = "",
   variant = "rect",
->>>>>>> de6d2c8756ed85a38ae33459341bfdbed9b43aa4
+  style,
 }) => {
-  const baseStyles = "animate-shimmer";
+  const baseStyles = "animate-shimmer bg-gray-200 dark:bg-slate-700";
 
   const variantStyles = {
     text: "h-4 rounded",
@@ -57,35 +44,12 @@ export const SkeletonText: React.FC<{ lines?: number; className?: string }> = ({
   </div>
 );
 
-<<<<<<< HEAD
-export const SkeletonChart: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const randomHeights = useMemo(() => (
-    Array.from({ length: 12 }, () => Math.max(20, Math.random() * 100))
-  ), []);
-
-  return (
-    <div className={`flex items-end justify-between h-32 ${className}`}>
-      {randomHeights.map((height, i) => (
-        <Skeleton
-          key={i}
-          className="w-full rounded-t mx-0.5"
-          style={{ height: `${height}%` }}
-        />
-      ))}
-    </div>
-  );
-};
-
-export const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6 ${className}`}>
-=======
 export const SkeletonCard: React.FC<{ className?: string }> = ({
   className = "",
 }) => (
   <div
     className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6 ${className}`}
   >
->>>>>>> de6d2c8756ed85a38ae33459341bfdbed9b43aa4
     <div className="flex items-start justify-between mb-4">
       <Skeleton variant="circle" className="w-10 h-10" />
     </div>
@@ -129,7 +93,7 @@ export const SkeletonCorridorCard: React.FC<{ className?: string }> = ({
 export const SkeletonMetricsCard: React.FC<{ className?: string }> = ({
   className = "",
 }) => (
-  <div className={`bg-white rounded shadow p-4 ${className}`}>
+  <div className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-4 ${className}`}>
     <SkeletonText lines={1} className="w-40 mb-4" />
     <Skeleton className="h-32 w-full mb-4" />
     <div className="grid grid-cols-2 gap-4">
@@ -145,33 +109,38 @@ export const SkeletonMetricsCard: React.FC<{ className?: string }> = ({
   </div>
 );
 
+// Predefined heights for consistent skeleton appearance
+const CHART_BAR_HEIGHTS = [65, 40, 80, 55, 70, 35, 85, 45, 75, 50, 60, 90];
+
 export const SkeletonChart: React.FC<{
   className?: string;
   height?: string | number;
-}> = ({ className = "", height = 300 }) => (
-  <div
-    className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
-  >
-    <div className="flex items-center justify-between mb-6">
-      <Skeleton className="h-6 w-48" />
-      <Skeleton className="h-4 w-24" />
-    </div>
+}> = ({ className = "", height = 300 }) => {
+  return (
     <div
-      className="w-full flex items-end justify-between gap-2"
-      style={{
-        height: typeof height === "number" ? `${height}px` : height,
-      }}
+      className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
     >
-      {[...Array(12)].map((_, i) => (
-        <Skeleton
-          key={i}
-          className="w-full rounded-t"
-          style={{ height: `${Math.max(20, Math.random() * 100)}%` }}
-        />
-      ))}
+      <div className="flex items-center justify-between mb-6">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div
+        className="w-full flex items-end justify-between gap-2"
+        style={{
+          height: typeof height === "number" ? `${height}px` : height,
+        }}
+      >
+        {CHART_BAR_HEIGHTS.map((h, i) => (
+          <Skeleton
+            key={i}
+            className="w-full rounded-t"
+            style={{ height: `${h}%` }}
+          />
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const SkeletonAnchorRow: React.FC = () => (
   <div className="p-4 sm:p-6 border-b border-gray-100 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center gap-4 animate-shimmer">
@@ -210,6 +179,38 @@ export const SkeletonTable: React.FC<{ rows?: number }> = ({ rows = 5 }) => (
       {[...Array(rows)].map((_, i) => (
         <SkeletonAnchorRow key={i} />
       ))}
+    </div>
+  </div>
+);
+
+// KPI-specific skeletons for dashboard
+export const SkeletonKPI: React.FC<{ className?: string }> = ({
+  className = "",
+}) => (
+  <div
+    className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
+  >
+    <div className="flex items-center justify-between mb-4">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton variant="circle" className="w-10 h-10" />
+    </div>
+    <Skeleton className="h-8 w-32 mb-2" />
+    <Skeleton className="h-4 w-20" />
+  </div>
+);
+
+export const SkeletonDashboard: React.FC = () => (
+  <div className="space-y-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {[...Array(4)].map((_, i) => (
+        <SkeletonKPI key={i} />
+      ))}
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <SkeletonChart className="lg:col-span-2" height={300} />
+      <SkeletonChart height={300} />
+      <SkeletonChart height={300} />
+      <SkeletonChart className="lg:col-span-2" height={300} />
     </div>
   </div>
 );

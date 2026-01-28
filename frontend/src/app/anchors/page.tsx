@@ -190,17 +190,6 @@ function AnchorsPageContent() {
 
   const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
 
-  const {
-    currentPage,
-    pageSize,
-    onPageChange,
-    onPageSizeChange,
-    startIndex,
-    endIndex,
-  } = usePagination(filteredAndSortedAnchors.length);
-
-  const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
-
   const getHealthStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case "healthy":
