@@ -1,219 +1,120 @@
-"use client";
+"use client"
 
-import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react";
-import { SkeletonMetricsCard, SkeletonChart } from '@/components/ui/Skeleton'
-import { SettlementSpeedCard } from "@/components/dashboard/SettlementSpeedCard";
-import { KpiCard } from '@/components/dashboard/KpiCard'
-import { LiquidityDepthCard } from "@/components/dashboard/LiquidityDepthCard";
-import { CorridorHealthCard } from "@/components/dashboard/CorridorHealthCard";
-import { TopAssetsCard } from "@/components/dashboard/TopAssetsCard";
-import { MetricCard } from "@/components/dashboard/MetricCard";
-import {
-  CheckCircle2,
-  Activity,
-  Wallet,
-  Clock,
-  TrendingUp,
-} from "lucide-react";
+import React, { useEffect, useState } from 'react';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { CorridorHealth } from '@/components/dashboard/CorridorHealth';
+import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
+import { TopAssetsTable } from '@/components/dashboard/TopAssetsTable';
+import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
 
-type Corridor = {
-  id: string;
-  health: number;
-  successRate: number;
-};
+interface DashboardData {
+  kpi: {
+    successRate: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    activeCorridors: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    liquidityDepth: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    settlementSpeed: { value: number; trend: number; trendDirection: 'up' | 'down' };
+  };
+  corridors: any[];
+  liquidity: any[];
+  assets: any[];
+  settlement: any[];
+}
 
-type TopAsset = {
-  asset: string;
-  volume: number;
-  tvl: number;
-};
-
-type TimePoint = {
-  ts: string;
-  successRate: number;
-  settlementMs: number;
-  tvl: number;
-};
-
-type DashboardData = {
-  totalSuccessRate: number;
-  activeCorridors: Corridor[];
-  topAssets: TopAsset[];
-  timeseries: TimePoint[];
-};
-
-function DashboardPageContent() {
+export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/dashboard");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/dashboard');
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+        const result = await response.json();
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
-  useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 30_000); // refresh every 30s
-    return () => clearInterval(id);
-  }, [fetchData]);
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-muted-foreground animate-pulse">Loading dashboard insights...</div>
+      </div>
+    );
+  }
 
-  const metrics = useMemo(() => {
-    if (!data || !data.timeseries || data.timeseries.length === 0) return null;
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
 
-    const current = data.timeseries[data.timeseries.length - 1];
-    const previous = data.timeseries[0]; // Assuming 0 is the start of the period (24h ago)
-
-    // Helper to calculate trend
-    const getTrend = (curr: number, prev: number, lowerIsBetter = false) => {
-      if (!prev) return undefined;
-      const diff = curr - prev;
-      const pct = (diff / prev) * 100;
-
-      let direction: "up" | "down" | "neutral" = "neutral";
-      if (pct > 0.1) direction = "up";
-      if (pct < -0.1) direction = "down";
-
-      // Determine if "Good"
-      // Normal: Up is good (Green), Down is bad (Red)
-      // LowerIsBetter: Down is good (Green), Up is bad (Red)
-      let isGood = true;
-      if (lowerIsBetter) {
-        isGood = direction === "down" || direction === "neutral";
-      } else {
-        isGood = direction === "up" || direction === "neutral";
-      }
-
-      return {
-        value: pct,
-        direction,
-        isGood,
-      };
-    };
-
-    return {
-      successRate: {
-        value: data.totalSuccessRate * 100,
-        trend: getTrend(data.totalSuccessRate, previous.successRate, false),
-      },
-      activeCorridors: {
-        value: data.activeCorridors.length,
-        // Mock trend for corridors as explicit history isn't in timeseries usually,
-        // but we can try if there was a property, defaulting to neutral/mock for now or omitting
-        // Omitting trend for corridors to be safe
-      },
-      tvl: {
-        value: current.tvl,
-        trend: getTrend(current.tvl, previous.tvl, false),
-      },
-      settlementTime: {
-        value: current.settlementMs,
-        trend: getTrend(current.settlementMs, previous.settlementMs, true), // Lower is better
-      },
-    };
-  }, [data]);
+  if (!data) return null;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Network Dashboard</h1>
-        <div className="flex gap-2 items-center">
-          <button
-            className="px-3 py-1 rounded bg-sky-600 text-white text-sm hover:bg-sky-700 transition-colors"
-            onClick={() => fetchData()}
-            disabled={loading}
-          >
-            Refresh
-          </button>
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Network Overview</h2>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Payment Success Rate"
+          value={`${data.kpi.successRate.value}%`}
+          trend={data.kpi.successRate.trend}
+          trendDirection={data.kpi.successRate.trendDirection}
+        />
+        <MetricCard
+          label="Active Corridors"
+          value={data.kpi.activeCorridors.value}
+          trend={data.kpi.activeCorridors.trend}
+          trendDirection={data.kpi.activeCorridors.trendDirection}
+        />
+        <MetricCard
+          label="Liquidity Depth"
+          value={`$${(data.kpi.liquidityDepth.value / 1000000).toFixed(1)}M`}
+          trend={data.kpi.liquidityDepth.trend}
+          trendDirection={data.kpi.liquidityDepth.trendDirection}
+        />
+        <MetricCard
+          label="Avg Settlement Speed"
+          value={`${data.kpi.settlementSpeed.value}s`}
+          trend={Math.abs(data.kpi.settlementSpeed.trend)}
+          trendDirection={data.kpi.settlementSpeed.trendDirection}
+        />
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
+          <LiquidityChart data={data.liquidity} />
+        </div>
+        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
+          <CorridorHealth corridors={data.corridors} />
         </div>
       </div>
 
-      {loading && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <SkeletonMetricsCard className="col-span-1" />
-          <SkeletonChart className="col-span-1 lg:col-span-2" height={400} />
-          <SkeletonChart className="col-span-1 lg:col-span-2" height={400} />
-          <SkeletonMetricsCard className="col-span-1" />
-          <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
+      {/* Charts Row 2 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
+          <SettlementSpeedChart data={data.settlement} />
         </div>
-      )}
-
-      {error && (
-        <div className="rounded p-4 bg-rose-50 text-rose-700 border border-rose-200">
-          Error: {error}
+        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
+          <TopAssetsTable assets={data.assets} />
         </div>
-      )}
-
-      {data && metrics && (
-        <div className="space-y-6">
-          {/* Metric Cards Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <MetricCard
-              title="Success Rate"
-              value={metrics.successRate.value}
-              format="percent"
-              trend={metrics.successRate.trend}
-              icon={CheckCircle2}
-              delay={0}
-            />
-            <MetricCard
-              title="Active Corridors"
-              value={metrics.activeCorridors.value}
-              format="number"
-              icon={Activity}
-              delay={0.1}
-            />
-            <MetricCard
-              title="Total Liquidity"
-              value={metrics.tvl.value}
-              format="currency"
-              trend={metrics.tvl.trend}
-              icon={Wallet}
-              delay={0.2}
-            />
-            <MetricCard
-              title="Avg Settlement Time"
-              value={metrics.settlementTime.value}
-              format="time"
-              trend={metrics.settlementTime.trend}
-              icon={Clock}
-              delay={0.3}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <SettlementSpeedCard data={data.timeseries} />
-
-            <LiquidityDepthCard data={data.timeseries} />
-
-            <CorridorHealthCard corridors={data.activeCorridors} />
-
-            <TopAssetsCard assets={data.topAssets} />
-          </div>
-        </div>
-      )}
+      </div>
     </div>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    }>
-      <DashboardPageContent />
-    </Suspense>
   );
 }
