@@ -13,12 +13,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use backend::api::anchors::get_anchors;
 use backend::api::corridors::{get_corridor_detail, list_corridors};
 use backend::api::metrics;
+use backend::cache::{CacheConfig, CacheManager};
+use backend::cache_invalidation::CacheInvalidationService;
 use backend::database::Database;
 use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
-use backend::api::metrics;
 use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
 
 #[tokio::main]
@@ -48,6 +49,22 @@ async fn main() -> Result<()> {
 
     let db = Arc::new(Database::new(pool));
 
+    // Initialize Cache Manager
+    let cache_config = CacheConfig::default();
+    let cache = match CacheManager::new(cache_config).await {
+        Ok(cache) => {
+            tracing::info!("Cache manager initialized successfully");
+            Arc::new(cache)
+        }
+        Err(e) => {
+            tracing::warn!("Failed to initialize cache manager: {}", e);
+            // Create a cache manager that will gracefully degrade
+            Arc::new(CacheManager::new(CacheConfig::default()).await?)
+        }
+    };
+
+    let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
+
     // Initialize Stellar RPC Client
     let mock_mode = std::env::var("RPC_MOCK_MODE")
         .unwrap_or_else(|_| "false".to_string())
@@ -75,14 +92,26 @@ async fn main() -> Result<()> {
         Arc::clone(&db),
     ));
 
-    // Start background sync task
+    // Start background sync task with cache invalidation
     let ingestion_clone = Arc::clone(&ingestion_service);
+    let cache_invalidation_clone = Arc::clone(&cache_invalidation);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
         loop {
             interval.tick().await;
             if let Err(e) = ingestion_clone.sync_all_metrics().await {
                 tracing::error!("Metrics synchronization failed: {}", e);
+            } else {
+                // Invalidate caches after successful sync
+                if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
+                    tracing::warn!("Failed to invalidate anchor caches: {}", e);
+                }
+                if let Err(e) = cache_invalidation_clone.invalidate_corridors().await {
+                    tracing::warn!("Failed to invalidate corridor caches: {}", e);
+                }
+                if let Err(e) = cache_invalidation_clone.invalidate_metrics().await {
+                    tracing::warn!("Failed to invalidate metrics caches: {}", e);
+                }
             }
         }
     });
@@ -100,7 +129,6 @@ async fn main() -> Result<()> {
         },
         Err(e) => {
             tracing::warn!("Failed to initialize Redis rate limiter, creating with memory fallback: {}", e);
-            // Create a rate limiter that will use memory store only
             Arc::new(RateLimiter::new().await.unwrap_or_else(|_| {
                 panic!("Failed to create rate limiter: critical error")
             }))
@@ -109,7 +137,7 @@ async fn main() -> Result<()> {
 
     // Configure rate limits for endpoints
     rate_limiter.register_endpoint("/health".to_string(), RateLimitConfig {
-        requests_per_minute: 1000, // Health checks can be more frequent
+        requests_per_minute: 1000,
         whitelist_ips: vec!["127.0.0.1".to_string()],
     }).await;
 
@@ -197,11 +225,18 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
+    // Build cache stats router
+    let cache_stats_routes = backend::api::cache_stats::routes(Arc::clone(&cache));
+
+    // Build metrics router with cache
+    let metrics_routes = backend::api::metrics_cached::routes(Arc::clone(&cache));
+
     // Merge routers
     let app = Router::new()
         .merge(anchor_routes)
         .merge(rpc_routes)
-        .merge(metrics::routes());
+        .merge(cache_stats_routes)
+        .merge(metrics_routes);
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
