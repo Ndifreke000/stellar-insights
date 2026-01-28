@@ -1,62 +1,31 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { AnimatedNumber } from "./AnimatedNumber";
-import { TrendIndicator } from "./TrendIndicator";
-import { LucideIcon } from "lucide-react";
+import React from 'react';
+import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 interface MetricCardProps {
-  title: string;
-  value: number;
-  format?: "currency" | "percent" | "number" | "time";
-  trend?: {
-    value: number;
-    direction: "up" | "down" | "neutral";
-    isGood: boolean;
-  };
-  icon: LucideIcon;
-  subtitle?: string;
-  className?: string;
-  delay?: number;
+  label: string;
+  value: string | number;
+  trend?: number;
+  trendDirection?: 'up' | 'down';
+  subLabel?: string;
 }
 
-export function MetricCard({
-  title,
-  value,
-  format = "number",
-  trend,
-  icon: Icon,
-  subtitle,
-  className = "",
-  delay = 0,
-}: MetricCardProps) {
+export const MetricCard: React.FC<MetricCardProps> = ({ label, value, trend, trendDirection, subLabel }) => {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow relative overflow-hidden ${className}`}
-    >
-      {/* Background Decoration */}
-      <div className="absolute top-0 right-0 p-4 opacity-5">
-        <Icon className="w-24 h-24 text-gray-900 rotate-12" />
+    <div className="bg-card text-card-foreground rounded-xl border p-6 shadow-sm">
+      <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <h3 className="tracking-tight text-sm font-medium">{label}</h3>
       </div>
-
-      <div className="relative z-10 flex flex-col h-full justify-between">
-        <div className="flex items-start justify-between mb-4">
-          <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-            <Icon className="w-5 h-5" />
+      <div className="flex flex-col">
+        <div className="text-2xl font-bold">{value}</div>
+        {trend !== undefined && (
+          <div className={`text-xs flex items-center mt-1 ${trendDirection === 'up' ? 'text-green-500' : 'text-red-500'}`}>
+            {trendDirection === 'up' ? <ArrowUpRight className="h-4 w-4 mr-1" /> : <ArrowDownRight className="h-4 w-4 mr-1" />}
+            <span className="font-medium">{Math.abs(trend)}%</span>
+            <span className="text-muted-foreground ml-1">vs last month</span>
           </div>
-          {trend && <TrendIndicator trend={trend} />}
-        </div>
-
-        <div>
-          <h3 className="text-sm font-medium text-gray-500 mb-1">{title}</h3>
-          <div className="text-2xl font-bold text-gray-900 tracking-tight">
-            <AnimatedNumber value={value} format={format} />
-          </div>
-          {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
-        </div>
+        )}
+        {subLabel && <p className="text-xs text-muted-foreground mt-1">{subLabel}</p>}
       </div>
-    </motion.div>
+    </div>
   );
-}
+};

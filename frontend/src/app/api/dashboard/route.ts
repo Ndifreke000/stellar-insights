@@ -1,29 +1,53 @@
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
 
-// Mocked dashboard data — replace with RPC-driven data in the future
 export async function GET() {
-  const now = Date.now()
-  const timeseries = Array.from({ length: 24 }).map((_, i) => ({
-    ts: new Date(now - (23 - i) * 3600 * 1000).toISOString(),
-    successRate: 85 + Math.round(Math.sin(i / 3) * 3),
-    settlementMs: 400 + Math.round(Math.cos(i / 2) * 80),
-    tvl: 1_000_000 + i * 15000 + Math.round(Math.sin(i) * 20000),
-  }))
+  // Mock Data
+  const kpiData = {
+    successRate: { value: 99.8, trend: 0.2, trendDirection: 'up' },
+    activeCorridors: { value: 12, trend: 1, trendDirection: 'up' },
+    liquidityDepth: { value: 45000000, trend: 5.5, trendDirection: 'up' }, // In USD
+    settlementSpeed: { value: 3.2, trend: -0.5, trendDirection: 'down' }, // In seconds
+  };
 
-  const payload = {
-    totalSuccessRate: 0.8825,
-    activeCorridors: [
-      { id: 'USD-EUR', health: 0.98, successRate: 0.985 },
-      { id: 'XLM-USD', health: 0.92, successRate: 0.93 },
-      { id: 'USDC-GBP', health: 0.89, successRate: 0.9 },
-    ],
-    topAssets: [
-      { asset: 'USDC', volume: 12_345_678, tvl: 4_200_000 },
-      { asset: 'EURT', volume: 5_123_456, tvl: 1_000_000 },
-      { asset: 'XLM', volume: 3_210_000, tvl: 600_000 },
-    ],
-    timeseries,
-  }
+  const corridorHealth = [
+    { id: '1', name: 'BRZ-NGN', status: 'optimal', uptime: 99.9, volume24h: 1200000 },
+    { id: '2', name: 'USD-EUR', status: 'optimal', uptime: 100, volume24h: 5400000 },
+    { id: '3', name: 'EUR-NGN', status: 'degraded', uptime: 95.5, volume24h: 800000 },
+    { id: '4', name: 'USD-ARS', status: 'optimal', uptime: 99.2, volume24h: 2100000 },
+  ];
 
-  return NextResponse.json(payload)
+  const liquidityHistory = [
+    { date: '2023-01', value: 30000000 },
+    { date: '2023-02', value: 32000000 },
+    { date: '2023-03', value: 31000000 },
+    { date: '2023-04', value: 35000000 },
+    { date: '2023-05', value: 38000000 },
+    { date: '2023-06', value: 42000000 },
+    { date: '2023-07', value: 45000000 },
+  ];
+
+  const topAssets = [
+    { symbol: 'USDC', name: 'USD Coin', volume24h: 12000000, price: 1.00, change24h: 0.01 },
+    { symbol: 'XLM', name: 'Stellar Lumens', volume24h: 8500000, price: 0.11, change24h: 2.5 },
+    { symbol: 'EURT', name: 'Euro', volume24h: 3200000, price: 1.09, change24h: -0.1 },
+    { symbol: 'NGNC', name: 'Nigerian Naira', volume24h: 1500000, price: 0.00064, change24h: 0.0 },
+  ];
+
+  const settlementSpeedHistory = [
+      { time: '00:00', speed: 3.1 },
+      { time: '04:00', speed: 3.5 },
+      { time: '08:00', speed: 2.8 },
+      { time: '12:00', speed: 3.2 },
+      { time: '16:00', speed: 4.0 },
+      { time: '20:00', speed: 3.0 },
+  ];
+
+
+  return NextResponse.json({
+    kpi: kpiData,
+    corridors: corridorHealth,
+    liquidity: liquidityHistory,
+    assets: topAssets,
+    settlement: settlementSpeedHistory
+  });
 }
