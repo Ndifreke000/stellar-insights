@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense, useMemo } from "react";
 import {
   TrendingUp,
   Search,
@@ -23,9 +23,11 @@ import {
 import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { MainLayout } from "@/components/layout";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
+import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
+import { usePagination } from "@/hooks/usePagination";
 
-export default function CorridorsPage() {
+function CorridorsPageContent() {
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
   const [loading, setLoading] = useState(true);
@@ -114,8 +116,6 @@ export default function CorridorsPage() {
 
     fetchCorridors();
   }, [successRateRange, volumeRange, assetCodeFilter, timePeriod, sortBy]);
-
-  const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
   const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
@@ -305,7 +305,8 @@ export default function CorridorsPage() {
           </div>
         ) : (
           // Grid view
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCorridors.map((corridor) => (
               <Link
                 key={corridor.id}
@@ -322,8 +323,9 @@ export default function CorridorsPage() {
                       {corridor.id}
                     </p>
                   </div>
+                </div>
 
-                  {/* Success Rate and Health Score */}
+                {/* Success Rate and Health Score */}
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
                       <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
