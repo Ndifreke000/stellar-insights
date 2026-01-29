@@ -1,7 +1,6 @@
-// I'm creating the ledger ingestion service as specified in issue #2
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -10,7 +9,7 @@ use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
 /// Ledger ingestion service that fetches and persists ledgers sequentially
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 /// Represents a payment operation extracted from a ledger
@@ -27,14 +26,20 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, pool: SqlitePool) -> Self {
+    pub fn new(rpc_client: Arc<StellarRpcClient>, pool: PgPool) -> Self {
         Self { rpc_client, pool }
     }
 
     /// I'm running the main ingestion loop - fetches ledgers and persists them
     pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
         let cursor = self.get_cursor().await?;
-        let start_ledger = self.get_last_ledger().await?.map(|l| l + 1);
+        let start_ledger = match self.get_last_ledger().await? {
+            Some(l) => Some(l + 1),
+            None => {
+                let health = self.rpc_client.check_health().await.context("Failed to check health")?;
+                Some(health.oldest_ledger)
+            },
+        };
 
         info!(
             "Starting ingestion from ledger {:?}, cursor: {:?}",
@@ -68,11 +73,30 @@ impl LedgerIngestionService {
                 continue;
             }
 
-            // I'm extracting mock payments here - real XDR parsing would need stellar-xdr crate
-            let payments = self.extract_payments_from_ledger(ledger);
-            for payment in payments {
-                if let Err(e) = self.persist_payment(&payment).await {
-                    warn!("Failed to persist payment: {}", e);
+            // Fetch real payments from Horizon
+            match self.rpc_client.fetch_payments_for_ledger(ledger.sequence).await {
+                Ok(payments) => {
+                     for payment in payments {
+                         // Convert RPC Payment to ExtractedPayment
+                         let extracted = ExtractedPayment {
+                            ledger_sequence: ledger.sequence,
+                            transaction_hash: payment.transaction_hash,
+                            operation_type: "payment".to_string(), // Horizon 'payments' endpoint returns payments
+                            source_account: payment.source_account,
+                            destination: payment.destination,
+                            asset_code: payment.asset_code,
+                            asset_issuer: payment.asset_issuer,
+                            amount: payment.amount,
+                         };
+
+                        if let Err(e) = self.persist_payment(&extracted).await {
+                            warn!("Failed to persist payment: {}", e);
+                        }
+                     }
+                }
+                Err(e) => {
+                     warn!("Failed to fetch payments for ledger {}: {}", ledger.sequence, e);
+                     // Non-fatal, continue ingesting ledgers
                 }
             }
 
@@ -90,7 +114,7 @@ impl LedgerIngestionService {
         sqlx::query(
             r#"
             INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (sequence) DO NOTHING
             "#,
         )
@@ -107,7 +131,7 @@ impl LedgerIngestionService {
         sqlx::query(
             r#"
             INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (hash) DO NOTHING
             "#,
         )
@@ -123,28 +147,14 @@ impl LedgerIngestionService {
         Ok(())
     }
 
-    /// I'm extracting payment operations from ledger - simplified without full XDR parsing
-    fn extract_payments_from_ledger(&self, ledger: &RpcLedger) -> Vec<ExtractedPayment> {
-        // Note: Full implementation would parse metadataXdr using stellar-xdr crate
-        // I'm returning mock data for testing purposes
-        vec![ExtractedPayment {
-            ledger_sequence: ledger.sequence,
-            transaction_hash: format!("tx_{}", ledger.sequence),
-            operation_type: "payment".to_string(),
-            source_account: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string(),
-            destination: "GBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string(),
-            asset_code: Some("XLM".to_string()),
-            asset_issuer: None,
-            amount: "100.0000000".to_string(),
-        }]
-    }
+
 
     /// I'm persisting an extracted payment to the database
     async fn persist_payment(&self, payment: &ExtractedPayment) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
         .bind(payment.ledger_sequence as i64)
@@ -185,7 +195,7 @@ impl LedgerIngestionService {
         sqlx::query(
             r#"
             INSERT INTO ingestion_cursor (id, last_ledger_sequence, cursor, updated_at)
-            VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (1, $1, $2, CURRENT_TIMESTAMP)
             ON CONFLICT (id) DO UPDATE SET
                 last_ledger_sequence = EXCLUDED.last_ledger_sequence,
                 cursor = EXCLUDED.cursor,

@@ -4,8 +4,6 @@ use axum::{
     Router,
 };
 use dotenv::dotenv;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
@@ -16,7 +14,7 @@ use backend::api::corridors::{get_corridor_detail, list_corridors};
 use backend::api::metrics;
 use backend::database::Database;
 use backend::handlers::*;
-use backend::ingestion::DataIngestionService;
+use backend::ingestion::{DataIngestionService, ledger::LedgerIngestionService};
 use backend::ml::MLService;
 use backend::ml_handlers;
 use backend::rpc::StellarRpcClient;
@@ -41,16 +39,16 @@ async fn main() -> Result<()> {
 
     // Database connection
     let database_url =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     tracing::info!("Connecting to database...");
-    let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
-    let pool = SqlitePool::connect_with(options).await?;
+    // let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+    let pool = sqlx::PgPool::connect(&database_url).await?;
 
     tracing::info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    let db = Arc::new(Database::new(pool));
+    let db = Arc::new(Database::new(pool.clone()));
 
     // Initialize ML Service
     tracing::info!("Initializing ML service...");
@@ -89,16 +87,26 @@ async fn main() -> Result<()> {
     let ws_state = Arc::new(WsState::new());
     tracing::info!("WebSocket state initialized");
 
-    // Create shared app state
-    let app_state = AppState::new(Arc::clone(&db), Arc::clone(&ws_state));
-
     // Initialize Data Ingestion Service
     let ingestion_service = Arc::new(DataIngestionService::new(
         Arc::clone(&rpc_client),
         Arc::clone(&db),
     ));
 
-    // Start background sync task
+    // Initialize Ledger Ingestion Service
+    let ledger_ingestion_service = Arc::new(LedgerIngestionService::new(
+        Arc::clone(&rpc_client),
+        pool.clone(),
+    ));
+
+    // Create shared app state
+    let app_state = AppState::new(
+        Arc::clone(&db),
+        Arc::clone(&ws_state),
+        Arc::clone(&ingestion_service),
+    );
+
+    // Start background sync task (metrics)
     let ingestion_clone = Arc::clone(&ingestion_service);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
@@ -124,7 +132,32 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Run initial sync
+    // Start background ledger ingestion task
+    let ledger_ingestion_clone = Arc::clone(&ledger_ingestion_service);
+    tokio::spawn(async move {
+        tracing::info!("Starting ledger ingestion background task");
+        loop {
+            // Process batches of 5 ledgers (reduced from 50 to avoid timeouts)
+            match ledger_ingestion_clone.run_ingestion(5).await {
+                Ok(count) => {
+                    if count == 0 {
+                        // If no new ledgers, sleep for a bit (5 seconds)
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    } else {
+                        // If we processed data, yield briefly to let other tasks run, but continue aggressively
+                        // to meet the "1000 ledgers/minute" goal if catching up.
+                        tokio::task::yield_now().await;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Ledger ingestion failed: {}", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                }
+            }
+        }
+    });
+
+    // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
 
@@ -230,6 +263,7 @@ async fn main() -> Result<()> {
             put(update_corridor_metrics_from_transactions),
         )
         .route("/api/corridors/:corridor_key", get(get_corridor_detail))
+        .route("/api/ingestion/status", get(ingestion_status))
         .with_state(app_state.clone())
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
