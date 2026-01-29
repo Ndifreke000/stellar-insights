@@ -60,6 +60,9 @@ pub struct CorridorMetrics {
     pub success_rate: f64,
     pub volume_usd: f64,
     pub avg_settlement_latency_ms: Option<i32>,
+    /// Median settlement latency in milliseconds
+    #[sqlx(default)]
+    pub median_settlement_latency_ms: Option<i32>,
     #[serde(default)]
     pub liquidity_depth_usd: f64,
     pub created_at: DateTime<Utc>,
@@ -100,9 +103,25 @@ pub struct PaymentRecord {
     pub amount: f64,
     pub successful: bool,
     pub timestamp: DateTime<Utc>,
+    /// Time when the transaction was submitted
+    pub submission_time: Option<DateTime<Utc>>,
+    /// Time when the transaction was confirmed
+    pub confirmation_time: Option<DateTime<Utc>>,
 }
 
 impl PaymentRecord {
+    /// Computes settlement latency in milliseconds between submission and confirmation times.
+    pub fn settlement_latency_ms(&self) -> Option<i64> {
+        match (self.submission_time, self.confirmation_time) {
+            (Some(submitted), Some(confirmed)) => {
+                let duration = confirmed.signed_duration_since(submitted);
+                Some(duration.num_milliseconds())
+            }
+            _ => None,
+        }
+    }
+
+    /// Extracts the corridor from source and destination assets.
     pub fn get_corridor(&self) -> Corridor {
         Corridor::new(
             self.source_asset_code.clone(),
@@ -110,6 +129,21 @@ impl PaymentRecord {
             self.destination_asset_code.clone(),
             self.destination_asset_issuer.clone(),
         )
+    }
+}
+
+/// Computes the median value from a slice of i64 latency measurements.
+pub fn compute_median(values: &mut [i64]) -> Option<i64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    let len = values.len();
+    if len % 2 == 0 {
+        // Average of two middle values
+        Some((values[len / 2 - 1] + values[len / 2]) / 2)
+    } else {
+        Some(values[len / 2])
     }
 }
 
@@ -179,10 +213,75 @@ mod tests {
             amount: 100.0,
             successful: true,
             timestamp: Utc::now(),
+            submission_time: None,
+            confirmation_time: None,
         };
 
         let corridor = payment.get_corridor();
         assert_eq!(corridor.asset_a_code, "EURC");
         assert_eq!(corridor.asset_b_code, "USDC");
+    }
+
+    #[test]
+    fn test_payment_record_settlement_latency() {
+        let now = Utc::now();
+        let submitted = now - chrono::Duration::milliseconds(1500);
+        
+        let payment = PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: "USDC".to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: "EURC".to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
+            amount: 100.0,
+            successful: true,
+            timestamp: now,
+            submission_time: Some(submitted),
+            confirmation_time: Some(now),
+        };
+
+        assert_eq!(payment.settlement_latency_ms(), Some(1500));
+    }
+
+    #[test]
+    fn test_payment_record_settlement_latency_missing_times() {
+        let payment = PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: "USDC".to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: "EURC".to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
+            amount: 100.0,
+            successful: true,
+            timestamp: Utc::now(),
+            submission_time: None,
+            confirmation_time: None,
+        };
+
+        assert_eq!(payment.settlement_latency_ms(), None);
+    }
+
+    #[test]
+    fn test_compute_median_odd_count() {
+        let mut values = vec![1000, 3000, 2000];
+        assert_eq!(compute_median(&mut values), Some(2000));
+    }
+
+    #[test]
+    fn test_compute_median_even_count() {
+        let mut values = vec![1000, 2000, 3000, 4000];
+        assert_eq!(compute_median(&mut values), Some(2500)); // (2000 + 3000) / 2
+    }
+
+    #[test]
+    fn test_compute_median_empty() {
+        let mut values: Vec<i64> = vec![];
+        assert_eq!(compute_median(&mut values), None);
+    }
+
+    #[test]
+    fn test_compute_median_single() {
+        let mut values = vec![5000];
+        assert_eq!(compute_median(&mut values), Some(5000));
     }
 }

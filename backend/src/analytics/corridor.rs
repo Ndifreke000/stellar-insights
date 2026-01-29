@@ -129,6 +129,8 @@ mod tests {
             amount,
             successful,
             timestamp: Utc::now(),
+            submission_time: None,
+            confirmation_time: None,
         }
     }
 
