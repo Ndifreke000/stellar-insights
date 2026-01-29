@@ -4,7 +4,9 @@
  */
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
+
+
 
 /**
  * Custom error class for API responses
@@ -374,17 +376,9 @@ export interface AnchorDetailData {
  * Fetch detailed metrics for a single anchor
  */
 export async function getAnchorDetail(address: string): Promise<AnchorDetailData> {
-  // If in development and no backend, return mock
-  // In a real scenario we'd just call the API
-  // return api.get<AnchorDetailData>(`/anchors/${address}`);
-
-  // For now, let's wrap the mock in a promise to simulate network delay
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(generateMockAnchorDetail(address));
-    }, 800);
-  });
+  return api.get<AnchorDetailData>(`/anchors/${address}`);
 }
+
 
 /**
  * Mock data generator for Anchor Details

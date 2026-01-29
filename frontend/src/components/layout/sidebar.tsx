@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, TrendingUp, Anchor, BarChart3, X } from "lucide-react";
+import { Home, TrendingUp, Anchor, BarChart3, X, HeartPulse } from "lucide-react";
 
 interface SidebarProps {
   open: boolean;
@@ -41,6 +41,12 @@ const navItems: NavItem[] = [
     href: "/analytics",
     icon: <BarChart3 className="w-5 h-5" />,
     id: "analytics",
+  },
+  {
+    name: "Health",
+    href: "/health",
+    icon: <HeartPulse className="w-5 h-5" />,
+    id: "health",
   },
 ];
 

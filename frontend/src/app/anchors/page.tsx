@@ -190,16 +190,6 @@ function AnchorsPageContent() {
 
   const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
 
-  const {
-    currentPage,
-    pageSize,
-    onPageChange,
-    onPageSizeChange,
-    startIndex,
-    endIndex,
-  } = usePagination(filteredAndSortedAnchors.length);
-
-  const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
 
   const getHealthStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -277,9 +267,9 @@ function AnchorsPageContent() {
               onChange={(e) =>
                 setSortBy(
                   e.target.value as
-                    | "reliability"
-                    | "transactions"
-                    | "failure_rate",
+                  | "reliability"
+                  | "transactions"
+                  | "failure_rate",
                 )
               }
               className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -393,13 +383,12 @@ function AnchorsPageContent() {
                               </div>
                               <div className="ml-2 w-16 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                                 <div
-                                  className={`h-2 rounded-full ${
-                                    anchor.reliability_score >= 95
+                                  className={`h-2 rounded-full ${anchor.reliability_score >= 95
                                       ? "bg-green-500"
                                       : anchor.reliability_score >= 85
                                         ? "bg-yellow-500"
                                         : "bg-red-500"
-                                  }`}
+                                    }`}
                                   style={{
                                     width: `${anchor.reliability_score}%`,
                                   }}
@@ -512,13 +501,12 @@ function AnchorsPageContent() {
                             </span>
                             <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                               <div
-                                className={`h-2 rounded-full ${
-                                  anchor.reliability_score >= 95
+                                className={`h-2 rounded-full ${anchor.reliability_score >= 95
                                     ? "bg-green-500"
                                     : anchor.reliability_score >= 85
                                       ? "bg-yellow-500"
                                       : "bg-red-500"
-                                }`}
+                                  }`}
                                 style={{
                                   width: `${anchor.reliability_score}%`,
                                 }}

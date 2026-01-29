@@ -92,7 +92,7 @@ export default function DashboardPage() {
           label="Avg Settlement Speed"
           value={`${data.kpi.settlementSpeed.value}s`}
           trend={Math.abs(data.kpi.settlementSpeed.trend)}
-          trendDirection={data.kpi.settlementSpeed.trendDirection} // Direction handles color
+          trendDirection={data.kpi.settlementSpeed.trendDirection}
         />
       </div>
 
