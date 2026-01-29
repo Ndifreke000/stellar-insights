@@ -1,11 +1,6 @@
 //! HTTP handlers for snapshot generation and submission
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -53,7 +48,7 @@ pub struct SnapshotAppState {
 }
 
 /// Generate a snapshot (optionally submit to contract)
-/// 
+///
 /// POST /api/snapshots/generate
 pub async fn generate_snapshot(
     State(state): State<SnapshotAppState>,
@@ -67,7 +62,7 @@ pub async fn generate_snapshot(
     // Create a snapshot with current timestamp
     // In a real implementation, this would fetch metrics from the database
     let snapshot = AnalyticsSnapshot::new(request.epoch, Utc::now());
-    
+
     // TODO: Populate snapshot with actual metrics from database
     // Example:
     // let anchors = state.db.get_all_anchors().await?;
@@ -107,8 +102,8 @@ pub async fn generate_snapshot(
         (hash_bytes, hash_hex, version, submission)
     } else {
         // Just hash without submitting
-        let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot)
-            .map_err(|e| {
+        let (hash_bytes, hash_hex, version) =
+            SnapshotService::version_and_hash(snapshot).map_err(|e| {
                 error!("Failed to hash snapshot: {}", e);
                 SnapshotError::HashingError(e.to_string())
             })?;
@@ -137,7 +132,7 @@ pub async fn generate_snapshot(
 }
 
 /// Health check for contract service
-/// 
+///
 /// GET /api/snapshots/contract/health
 pub async fn contract_health_check(
     State(state): State<SnapshotAppState>,

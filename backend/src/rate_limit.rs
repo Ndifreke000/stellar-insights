@@ -35,8 +35,9 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub async fn new() -> anyhow::Result<Self> {
-        let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-        
+        let redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
             match client.get_multiplexed_tokio_connection().await {
                 Ok(conn) => {
@@ -44,7 +45,10 @@ impl RateLimiter {
                     Some(conn)
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to connect to Redis ({}), using memory-only rate limiting", e);
+                    tracing::warn!(
+                        "Failed to connect to Redis ({}), using memory-only rate limiting",
+                        e
+                    );
                     None
                 }
             }
@@ -67,32 +71,29 @@ impl RateLimiter {
 
     /// Check if IP is in whitelist for an endpoint
     fn is_whitelisted(&self, ip: &str, config: &RateLimitConfig) -> bool {
-        config.whitelist_ips.iter().any(|whitelisted_ip| {
-            whitelisted_ip == ip || whitelisted_ip == "*"
-        })
+        config
+            .whitelist_ips
+            .iter()
+            .any(|whitelisted_ip| whitelisted_ip == ip || whitelisted_ip == "*")
     }
 
     /// Check rate limit for an IP/endpoint combination
-    pub async fn check_rate_limit(
-        &self,
-        ip: &str,
-        endpoint: &str,
-    ) -> (bool, RateLimitInfo) {
+    pub async fn check_rate_limit(&self, ip: &str, endpoint: &str) -> (bool, RateLimitInfo) {
         // Get endpoint config
         let configs = self.endpoint_configs.read().await;
-        let config = configs
-            .get(endpoint)
-            .cloned()
-            .unwrap_or_default();
+        let config = configs.get(endpoint).cloned().unwrap_or_default();
 
         // Check whitelist
         if self.is_whitelisted(ip, &config) {
-            return (true, RateLimitInfo {
-                limit: config.requests_per_minute,
-                remaining: config.requests_per_minute,
-                reset_after: 60,
-                is_whitelisted: true,
-            });
+            return (
+                true,
+                RateLimitInfo {
+                    limit: config.requests_per_minute,
+                    remaining: config.requests_per_minute,
+                    reset_after: 60,
+                    is_whitelisted: true,
+                },
+            );
         }
 
         let key = format!("ratelimit:{}:{}", endpoint, ip);
@@ -101,17 +102,16 @@ impl RateLimiter {
         // Try Redis first
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match self.check_redis_limit(&mut conn, &key, limit).await {
-                Ok((allowed, remaining, reset)) => {
-                    return (allowed, RateLimitInfo {
+            if let Ok((allowed, remaining, reset)) = self.check_redis_limit(&mut conn, &key, limit).await {
+                return (
+                    allowed,
+                    RateLimitInfo {
                         limit,
                         remaining,
                         reset_after: reset,
                         is_whitelisted: false,
-                    });
-                }
-                Err(_) => {
-                }
+                    },
+                );
             }
         }
 
@@ -151,16 +151,12 @@ impl RateLimiter {
             conn.expire::<_, ()>(key, 60).await?;
         }
 
-        let remaining = if new_count >= limit { 0 } else { limit - new_count };
+        let remaining = limit.saturating_sub(new_count);
         Ok((new_count < limit, remaining, 60))
     }
 
     /// Check rate limit in memory (fallback)
-    async fn check_memory_limit(
-        &self,
-        key: &str,
-        limit: u32,
-    ) -> (bool, u32, u32) {
+    async fn check_memory_limit(&self, key: &str, limit: u32) -> (bool, u32, u32) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -179,7 +175,7 @@ impl RateLimiter {
         } else {
             let new_count = count + 1;
             store.insert(key.to_string(), (new_count, expiry));
-            let remaining = if new_count >= limit { 0 } else { limit - new_count };
+            let remaining = limit.saturating_sub(new_count);
             (new_count < limit, remaining, (expiry - now) as u32)
         }
     }
@@ -210,16 +206,11 @@ impl IntoResponse for RateLimitError {
 
         (
             StatusCode::TOO_MANY_REQUESTS,
-            [(
-                "RateLimit-Limit",
-                self.info.limit.to_string(),
-            ), (
-                "RateLimit-Remaining",
-                self.info.remaining.to_string(),
-            ), (
-                "RateLimit-Reset",
-                self.info.reset_after.to_string(),
-            )],
+            [
+                ("RateLimit-Limit", self.info.limit.to_string()),
+                ("RateLimit-Remaining", self.info.remaining.to_string()),
+                ("RateLimit-Reset", self.info.reset_after.to_string()),
+            ],
             axum::Json(body),
         )
             .into_response()
@@ -243,10 +234,9 @@ pub async fn rate_limit_middleware(
     }
 
     let mut response = next.run(req).await;
-    response.headers_mut().insert(
-        "RateLimit-Limit",
-        info.limit.to_string().parse().unwrap(),
-    );
+    response
+        .headers_mut()
+        .insert("RateLimit-Limit", info.limit.to_string().parse().unwrap());
     response.headers_mut().insert(
         "RateLimit-Remaining",
         info.remaining.to_string().parse().unwrap(),

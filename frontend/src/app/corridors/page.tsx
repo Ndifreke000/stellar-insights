@@ -140,8 +140,7 @@ function CorridorsPageContent() {
   };
 
   return (
-    <MainLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
@@ -246,6 +245,12 @@ function CorridorsPageContent() {
                         <p className="text-lg font-bold text-green-600 dark:text-green-400">
                           {corridor.success_rate.toFixed(1)}%
                         </p>
+                        <div className="flex items-center gap-2">
+                          {getSuccessStatusIcon(corridor.success_rate)}
+                          <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                            {corridor.success_rate.toFixed(1)}%
+                          </p>
+                        </div>
                       </div>
                     </div>
                     <div className={`rounded-lg p-3 border ${getHealthColor(corridor.health_score)}`}>
@@ -283,7 +288,7 @@ function CorridorsPageContent() {
               onPageChange={onPageChange}
               onPageSizeChange={onPageSizeChange}
             />
-          </div>
+          </>
         )}
 
         {/* Info Footer */}
@@ -293,20 +298,19 @@ function CorridorsPageContent() {
           </p>
         </div>
       </div>
-    </MainLayout>
   );
 }
 
 export default function CorridorsPage() {
   return (
-    <Suspense fallback={
-      <MainLayout>
+    <MainLayout>
+      <Suspense fallback={
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      </MainLayout>
-    }>
-      <CorridorsPageContent />
-    </Suspense>
+      }>
+        <CorridorsPageContent />
+      </Suspense>
+    </MainLayout>
   );
 }

@@ -1,5 +1,5 @@
 //! Contract Service for submitting snapshots to Soroban smart contracts
-//! 
+//!
 //! This service handles:
 //! - Connecting to Soroban RPC endpoints
 //! - Submitting snapshot hashes on-chain
@@ -123,18 +123,18 @@ impl ContractService {
     }
 
     /// Submit a snapshot hash to the on-chain contract
-    /// 
+    ///
     /// This function will:
     /// 1. Build and simulate the transaction
     /// 2. Sign the transaction
     /// 3. Submit to the network
     /// 4. Wait for confirmation
     /// 5. Retry on transient failures
-    /// 
+    ///
     /// # Arguments
     /// * `hash` - 32-byte snapshot hash
     /// * `epoch` - Epoch identifier
-    /// 
+    ///
     /// # Returns
     /// Result containing submission details or error
     pub async fn submit_snapshot_hash(
@@ -153,7 +153,7 @@ impl ContractService {
 
         loop {
             attempt += 1;
-            
+
             match self.try_submit_snapshot(hash, epoch).await {
                 Ok(result) => {
                     info!(
@@ -187,11 +187,7 @@ impl ContractService {
     }
 
     /// Single attempt to submit snapshot (without retry logic)
-    async fn try_submit_snapshot(
-        &self,
-        hash: [u8; 32],
-        epoch: u64,
-    ) -> Result<SubmissionResult> {
+    async fn try_submit_snapshot(&self, hash: [u8; 32], epoch: u64) -> Result<SubmissionResult> {
         // Step 1: Build the contract invocation
         debug!("Building contract invocation for epoch {}", epoch);
         let invoke_args = self.build_invoke_args(hash, epoch)?;
@@ -219,7 +215,7 @@ impl ContractService {
     fn build_invoke_args(&self, hash: [u8; 32], epoch: u64) -> Result<serde_json::Value> {
         // Convert hash to hex for the contract call
         let hash_hex = hex::encode(hash);
-        
+
         // Build Soroban contract invocation parameters
         // Format: invoke contract_id submit_snapshot [hash_bytes, epoch_u64]
         Ok(json!({
@@ -239,7 +235,10 @@ impl ContractService {
     }
 
     /// Simulate the transaction to get resource estimates
-    async fn simulate_transaction(&self, invoke_args: &serde_json::Value) -> Result<serde_json::Value> {
+    async fn simulate_transaction(
+        &self,
+        invoke_args: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: 1,
@@ -282,10 +281,10 @@ impl ContractService {
         // 2. Set appropriate fees and sequence number
         // 3. Sign with the source account's secret key
         // 4. Return the signed XDR
-        
+
         // For now, return a placeholder that would need stellar-sdk integration
         // TODO: Integrate stellar-sdk for proper transaction signing
-        
+
         warn!("Transaction signing not yet implemented - requires stellar-sdk integration");
         Err(anyhow::anyhow!(
             "Transaction signing requires stellar-sdk library integration"
@@ -474,8 +473,11 @@ mod tests {
         let epoch = 123;
 
         let args = service.build_invoke_args(hash, epoch).unwrap();
-        
-        assert_eq!(args["contractId"], "CBGTG4JJFEQE3SPBGQFP3X5HM46N47LXZPXQACVKB7QA6X2XB2IG5CTA");
+
+        assert_eq!(
+            args["contractId"],
+            "CBGTG4JJFEQE3SPBGQFP3X5HM46N47LXZPXQACVKB7QA6X2XB2IG5CTA"
+        );
         assert_eq!(args["function"], "submit_snapshot");
         assert!(args["args"].is_array());
     }

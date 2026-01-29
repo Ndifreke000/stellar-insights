@@ -305,7 +305,6 @@ impl StellarRpcClient {
     }
 
     /// Fetch recent payments
-
     pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
