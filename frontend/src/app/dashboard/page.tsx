@@ -35,7 +35,18 @@ export default function DashboardPage() {
         const result = await response.json();
         setData(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        // Only log non-network errors to avoid noise
+        const isNetworkError = err instanceof TypeError && 
+          (err.message.includes('Failed to fetch') || 
+           err.message.includes('fetch is not defined') ||
+           err.message.includes('Network request failed'));
+           
+        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        setError(errorMessage);
+        
+        if (!isNetworkError) {
+          console.error("Dashboard API error:", err);
+        }
       } finally {
         setLoading(false);
       }

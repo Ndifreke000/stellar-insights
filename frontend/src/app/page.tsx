@@ -12,8 +12,9 @@ import {
   X,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "../components/lib/wallet-context";
+import { useNotifications } from "../contexts/NotificationContext";
 
 export default function Home() {
   const {
@@ -23,8 +24,78 @@ export default function Home() {
     connectWallet,
     disconnectWallet,
   } = useWallet();
+  const { showToast } = useNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showWalletMenu, setShowWalletMenu] = useState(false);
+  const prevConnectedRef = useRef<boolean | null>(null);
+
+  // Show notification when wallet connection status changes
+  useEffect(() => {
+    // Skip the first render to avoid showing notification on initial load
+    if (prevConnectedRef.current === null) {
+      prevConnectedRef.current = isConnected;
+      return;
+    }
+
+    // Only show notification if the connection status actually changed
+    if (prevConnectedRef.current !== isConnected) {
+      const displayAddress = address
+        ? `${address.slice(0, 6)}...${address.slice(-4)}`
+        : null;
+
+      if (isConnected && address) {
+        showToast({
+          type: 'success',
+          priority: 'medium',
+          title: 'Wallet Connected',
+          message: `Successfully connected to ${displayAddress}`,
+          category: 'system',
+          duration: 4000,
+        });
+      } else if (!isConnected && prevConnectedRef.current) {
+        showToast({
+          type: 'info',
+          priority: 'medium',
+          title: 'Wallet Disconnected',
+          message: 'Your wallet has been disconnected',
+          category: 'system',
+          duration: 3000,
+        });
+      }
+      prevConnectedRef.current = isConnected;
+    }
+  }, [isConnected, address, showToast]);
+
+  const handleConnect = async () => {
+    try {
+      await connectWallet();
+    } catch (error) {
+      showToast({
+        type: 'error',
+        priority: 'high',
+        title: 'Connection Failed',
+        message: 'Failed to connect wallet. Please try again.',
+        category: 'system',
+        duration: 5000,
+      });
+    }
+  };
+
+  const handleDisconnect = () => {
+    try {
+      disconnectWallet();
+      setShowWalletMenu(false);
+    } catch (error) {
+      showToast({
+        type: 'error',
+        priority: 'medium',
+        title: 'Disconnection Failed',
+        message: 'Failed to disconnect wallet properly.',
+        category: 'system',
+        duration: 4000,
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -83,7 +154,7 @@ export default function Home() {
                       </div>
                       <button
                         onClick={() => {
-                          disconnectWallet();
+                          handleDisconnect();
                           setShowWalletMenu(false);
                         }}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-blue-900 transition"
@@ -95,7 +166,7 @@ export default function Home() {
                 </div>
               ) : (
                 <button
-                  onClick={connectWallet}
+                  onClick={handleConnect}
                   disabled={isConnecting}
                   className="px-6 py-2 bg-blue-500 text-primary-foreground rounded-full font-medium hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
                 >
@@ -150,7 +221,7 @@ export default function Home() {
               {isConnected && address ? (
                 <button
                   onClick={() => {
-                    disconnectWallet();
+                    handleDisconnect();
                     setMobileMenuOpen(false);
                   }}
                   className="w-full px-6 py-2 bg-blue-500 text-secondary-foreground rounded-full font-medium hover:opacity-90 transition text-sm"
@@ -160,7 +231,7 @@ export default function Home() {
               ) : (
                 <button
                   onClick={() => {
-                    connectWallet();
+                    handleConnect();
                     setMobileMenuOpen(false);
                   }}
                   disabled={isConnecting}
@@ -220,7 +291,7 @@ export default function Home() {
               ) : (
                 <>
                   <button
-                    onClick={connectWallet}
+                    onClick={handleConnect}
                     disabled={isConnecting}
                     className="px-8 py-4 bg-blue-500 text-primary-foreground rounded-full font-semibold hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
@@ -444,7 +515,7 @@ export default function Home() {
               ) : (
                 <>
                   <button
-                    onClick={connectWallet}
+                    onClick={handleConnect}
                     disabled={isConnecting}
                     className="px-8 py-3 bg-blue-500 text-primary-foreground rounded-full font-semibold hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
