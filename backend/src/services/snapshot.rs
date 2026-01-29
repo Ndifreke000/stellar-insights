@@ -291,17 +291,17 @@ impl SnapshotService {
     }
 
     /// Create snapshot, hash it, and submit to on-chain contract
-    /// 
+    ///
     /// This method combines snapshot creation with automatic submission to the
     /// Soroban smart contract. It handles the complete workflow:
     /// 1. Generate snapshot hash
     /// 2. Submit to contract with retry logic
     /// 3. Return both hash and submission result
-    /// 
+    ///
     /// # Arguments
     /// * `snapshot` - The analytics snapshot to hash and submit
     /// * `contract_service` - Contract service for blockchain submission
-    /// 
+    ///
     /// # Returns
     /// Tuple of (hash_bytes, hash_hex, schema_version, submission_result)
     pub async fn version_hash_and_submit(
@@ -312,15 +312,12 @@ impl SnapshotService {
 
         // Get epoch before consuming snapshot
         let epoch = snapshot.epoch;
-        
+
         // Generate hash
         let (hash_bytes, hash_hex, version) = Self::version_and_hash(snapshot)
             .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {}", e))?;
 
-        info!(
-            "Generated snapshot hash for epoch {}: {}",
-            epoch, hash_hex
-        );
+        info!("Generated snapshot hash for epoch {}: {}", epoch, hash_hex);
 
         // Submit to contract
         let submission = contract_service

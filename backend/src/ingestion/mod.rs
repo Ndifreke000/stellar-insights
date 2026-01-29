@@ -110,7 +110,7 @@ impl DataIngestionService {
     fn calculate_reliability_score(&self, success_rate: f64, failed_count: i64) -> f64 {
         let base_score = success_rate / 100.0;
         let penalty = (failed_count as f64 * 0.01).min(0.2);
-        (base_score - penalty).max(0.0).min(1.0)
+        (base_score - penalty).clamp(0.0, 1.0)
     }
 
     /// Get current network health status

@@ -5,9 +5,9 @@ pub mod db;
 pub mod handlers;
 pub mod ingestion;
 pub mod models;
+pub mod rate_limit;
 pub mod services;
 pub mod snapshot;
-pub mod rate_limit;
 pub mod snapshot_handlers;
 
 pub mod rpc;

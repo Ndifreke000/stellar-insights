@@ -209,6 +209,7 @@ impl Database {
     }
 
     // Update anchor metrics from RPC ingestion
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_anchor_from_rpc(
         &self,
         stellar_account: &str,
@@ -250,6 +251,7 @@ impl Database {
     }
 
     // Metrics history operations
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_anchor_metrics_history(
         &self,
         anchor_id: Uuid,
