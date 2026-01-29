@@ -394,13 +394,7 @@ export interface AnchorDetailData {
 export async function getAnchorDetail(
   address: string,
 ): Promise<AnchorDetailData> {
-  try {
-    return await api.get<AnchorDetailData>(`/anchors/account/${address}`);
-  } catch (error) {
-    // Fallback to mock data if API fails
-    console.warn(`API call failed for anchor ${address}, using mock data`);
-    return generateMockAnchorDetail(address);
-  }
+  return api.get<AnchorDetailData>(`/anchors/${address}`);
 }
 
 /**
