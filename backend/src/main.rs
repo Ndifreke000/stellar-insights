@@ -19,7 +19,6 @@ use backend::ingestion::DataIngestionService;
 // use backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
-use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
 use backend::state::AppState;
 use backend::websocket::{ws_handler, WsState};
 
