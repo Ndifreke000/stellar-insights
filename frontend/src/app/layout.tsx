@@ -1,7 +1,7 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-// import { Analytics } from '@vercel/analytics/next'
+import { MonitoringProvider } from "../components/MonitoringProvider";
 import { WalletProvider } from "../components/lib/wallet-context";
 import "./globals.css";
 
@@ -43,13 +43,12 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans antialiased`}>
         <ErrorBoundary>
-          <WalletProvider>{children}</WalletProvider>
+          <MonitoringProvider>
+            <WalletProvider>{children}</WalletProvider>
+          </MonitoringProvider>
         </ErrorBoundary>
         {/* <Analytics /> */}
       </body>
     </html>
   );
 }
-
-
-

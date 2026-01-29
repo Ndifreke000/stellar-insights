@@ -16,7 +16,7 @@ use backend::api::metrics;
 use backend::database::Database;
 use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
-use backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+// use backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
 use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
@@ -203,7 +203,7 @@ async fn main() -> Result<()> {
             put(update_corridor_metrics_from_transactions),
         )
         .route("/api/corridors/:corridor_key", get(get_corridor_detail))
-        .with_state(db)
+        .with_state(app_state.clone())
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,

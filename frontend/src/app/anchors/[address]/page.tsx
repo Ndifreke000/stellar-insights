@@ -37,6 +37,8 @@ function AnchorDetailPageContent({
         const result = await getAnchorDetail(address);
         setData(result);
         setError(null);
+        console.log(`Data loaded: ${result?.anchor.name}`);
+        console.log(`Data: `, result);
       } catch (err) {
         console.error("Failed to fetch anchor details:", err);
         setError("Failed to load anchor data. Please try again later.");
