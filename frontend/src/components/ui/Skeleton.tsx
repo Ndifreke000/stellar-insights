@@ -1,15 +1,15 @@
-import React from "react";
+import React, { useMemo } from 'react';
 
 interface SkeletonProps {
   className?: string;
-  variant?: "text" | "circle" | "rect" | "card";
-  style?: React.CSSProperties; 
+  variant?: 'text' | 'circle' | 'rect' | 'card';
+  style?: React.CSSProperties;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({
-  className = "",
-  variant = "rect",
-  style,
+  className = '',
+  variant = 'rect',
+  style
 }) => {
   const baseStyles = "animate-shimmer";
 
@@ -112,30 +112,37 @@ export const SkeletonMetricsCard: React.FC<{ className?: string }> = ({
 export const SkeletonChart: React.FC<{
   className?: string;
   height?: string | number;
-}> = ({ className = "", height = 300 }) => (
-  <div
-    className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
-  >
-    <div className="flex items-center justify-between mb-6">
-      <Skeleton className="h-6 w-48" />
-      <Skeleton className="h-4 w-24" />
-    </div>
+}> = ({ className = "", height = 300 }) => {
+  const randomHeights = useMemo(() =>
+    [...Array(12)].map(() => Math.max(20, Math.random() * 100)),
+    []);
+
+  return (
     <div
-      className="w-full flex items-end justify-between gap-2"
-      style={{
-        height: typeof height === "number" ? `${height}px` : height,
-      }}
+      className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
     >
-      {[...Array(12)].map((_, i) => (
-        <Skeleton
-          key={i}
-          className="w-full rounded-t"
-          style={{ height: `${Math.max(20, Math.random() * 100)}%` }}
-        />
-      ))}
+      <div className="flex items-center justify-between mb-6">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div
+        className="w-full flex items-end justify-between gap-2"
+        style={{
+          height: typeof height === "number" ? `${height}px` : height,
+        }}
+      >
+        {randomHeights.map((h, i) => (
+          <Skeleton
+            key={i}
+            className="w-full rounded-t"
+            style={{ height: `${h}%` }}
+          />
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
 
 export const SkeletonAnchorRow: React.FC = () => (
   <div className="p-4 sm:p-6 border-b border-gray-100 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center gap-4 animate-shimmer">
