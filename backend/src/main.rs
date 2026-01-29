@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{
-    routing::{get, put},
+    routing::{get, put, post},
     Router,
 };
 use dotenv::dotenv;
