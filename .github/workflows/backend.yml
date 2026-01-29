@@ -76,7 +76,7 @@ jobs:
     - name: Run tests
       working-directory: ./backend
       env:
-        DATABASE_URL: sqlite::memory:
+        DATABASE_URL: postgres://postgres:password@localhost:5432/stellar_insights_test
         RUST_LOG: info
       run: cargo test --verbose
 
