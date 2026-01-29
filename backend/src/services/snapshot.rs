@@ -1,19 +1,337 @@
 use crate::snapshot::schema::{
     AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION,
 };
+use crate::database::Database;
+use crate::models::{Anchor, SnapshotRecord};
+use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 use super::contract::{ContractService, SubmissionResult};
+
+/// Result of snapshot generation and submission process
+#[derive(Debug, Clone, Serialize)]
+pub struct SnapshotGenerationResult {
+    pub snapshot_id: String,
+    pub epoch: u64,
+    pub hash: String,
+    pub canonical_json: String,
+    pub anchor_count: usize,
+    pub corridor_count: usize,
+    pub submission_result: Option<SubmissionResult>,
+    pub verification_successful: bool,
+    pub timestamp: DateTime<Utc>,
+}
 
 /// Service for creating cryptographically verifiable analytics snapshots
 ///
 /// This service ensures that:
-/// 1. Metrics are serialized deterministically (same input = same output)
-/// 2. Snapshots are hashed using SHA-256
-/// 3. Snapshot versions are tracked via schema_version
-pub struct SnapshotService;
+/// 1. Metrics are aggregated from all data sources
+/// 2. Snapshots are serialized deterministically (same input = same output)
+/// 3. SHA-256 hashes are computed and stored
+/// 4. Hashes are submitted to smart contracts
+/// 5. Submission success is verified
+pub struct SnapshotService {
+    db: Arc<Database>,
+    contract_service: Option<Arc<ContractService>>,
+}
+
+impl SnapshotService {
+    /// Create a new snapshot service
+    pub fn new(db: Arc<Database>, contract_service: Option<Arc<ContractService>>) -> Self {
+        Self {
+            db,
+            contract_service,
+        }
+    }
+
+    /// Generate a complete analytics snapshot with hash generation and submission
+    /// 
+    /// This is the main entry point that fulfills all acceptance criteria:
+    /// 1. Aggregate all metrics
+    /// 2. Serialize to deterministic JSON
+    /// 3. Compute SHA-256 hash
+    /// 4. Store hash in database
+    /// 5. Submit to smart contract
+    /// 6. Verify submission success
+    pub async fn generate_and_submit_snapshot(&self, epoch: u64) -> Result<SnapshotGenerationResult> {
+        info!("Starting snapshot generation for epoch {}", epoch);
+
+        // Step 1: Aggregate all metrics
+        let snapshot = self.aggregate_all_metrics(epoch).await
+            .context("Failed to aggregate metrics")?;
+
+        info!("Aggregated {} anchor metrics and {} corridor metrics", 
+              snapshot.anchor_metrics.len(), snapshot.corridor_metrics.len());
+
+        // Step 2: Serialize to deterministic JSON
+        let canonical_json = Self::serialize_deterministically(snapshot.clone())
+            .context("Failed to serialize snapshot deterministically")?;
+
+        // Step 3: Compute SHA-256 hash
+        let hash = Self::compute_sha256_hash(&canonical_json);
+        let hash_hex = hex::encode(&hash);
+
+        info!("Generated snapshot hash: {}", hash_hex);
+
+        // Step 4: Store hash in database
+        let snapshot_id = self.store_snapshot_in_database(&snapshot, &hash_hex, &canonical_json).await
+            .context("Failed to store snapshot in database")?;
+
+        info!("Stored snapshot in database with ID: {}", snapshot_id);
+
+        // Step 5: Submit to smart contract (if configured)
+        let submission_result = if let Some(contract_service) = &self.contract_service {
+            match contract_service.submit_snapshot(hash, epoch).await {
+                Ok(result) => {
+                    info!("Successfully submitted snapshot to contract: {:?}", result);
+                    Some(result)
+                }
+                Err(e) => {
+                    error!("Failed to submit snapshot to contract: {}", e);
+                    return Err(e.context("Contract submission failed"));
+                }
+            }
+        } else {
+            warn!("Contract service not configured, skipping on-chain submission");
+            None
+        };
+
+        // Step 6: Verify submission success (if submitted)
+        let verification_result = if let Some(ref submission) = submission_result {
+            self.verify_submission_success(&hash_hex, epoch, submission).await
+                .context("Failed to verify submission success")?
+        } else {
+            false
+        };
+
+        Ok(SnapshotGenerationResult {
+            snapshot_id,
+            epoch,
+            hash: hash_hex,
+            canonical_json,
+            anchor_count: snapshot.anchor_metrics.len(),
+            corridor_count: snapshot.corridor_metrics.len(),
+            submission_result,
+            verification_successful: verification_result,
+            timestamp: snapshot.timestamp,
+        })
+    }
+
+    /// Aggregate all metrics from the database into a snapshot
+    async fn aggregate_all_metrics(&self, epoch: u64) -> Result<AnalyticsSnapshot> {
+        let timestamp = Utc::now();
+        let mut snapshot = AnalyticsSnapshot::new(epoch, timestamp);
+
+        // Aggregate anchor metrics
+        let anchor_metrics = self.aggregate_anchor_metrics().await
+            .context("Failed to aggregate anchor metrics")?;
+        
+        for metrics in anchor_metrics {
+            snapshot.add_anchor_metrics(metrics);
+        }
+
+        // Aggregate corridor metrics
+        let corridor_metrics = self.aggregate_corridor_metrics().await
+            .context("Failed to aggregate corridor metrics")?;
+        
+        for metrics in corridor_metrics {
+            snapshot.add_corridor_metrics(metrics);
+        }
+
+        Ok(snapshot)
+    }
+
+    /// Aggregate anchor metrics from database
+    async fn aggregate_anchor_metrics(&self) -> Result<Vec<SnapshotAnchorMetrics>> {
+        let query = r#"
+            SELECT 
+                id,
+                name,
+                stellar_account,
+                total_transactions,
+                successful_transactions,
+                failed_transactions,
+                total_volume_usd,
+                avg_settlement_time_ms,
+                reliability_score,
+                status
+            FROM anchors
+            WHERE status != 'inactive'
+            ORDER BY id
+        "#;
+
+        let rows = sqlx::query(query)
+            .fetch_all(&self.db.pool)
+            .await
+            .context("Failed to fetch anchor data")?;
+
+        let mut metrics = Vec::new();
+        
+        for row in rows {
+            let total_transactions: i64 = row.get("total_transactions");
+            let successful_transactions: i64 = row.get("successful_transactions");
+            let failed_transactions: i64 = row.get("failed_transactions");
+            
+            let success_rate = if total_transactions > 0 {
+                successful_transactions as f64 / total_transactions as f64
+            } else {
+                0.0
+            };
+            
+            let failure_rate = if total_transactions > 0 {
+                failed_transactions as f64 / total_transactions as f64
+            } else {
+                0.0
+            };
+
+            let anchor_metrics = SnapshotAnchorMetrics {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))
+                    .context("Invalid anchor ID format")?,
+                name: row.get("name"),
+                stellar_account: row.get("stellar_account"),
+                success_rate,
+                failure_rate,
+                reliability_score: row.get("reliability_score"),
+                total_transactions,
+                successful_transactions,
+                failed_transactions,
+                avg_settlement_time_ms: row.get("avg_settlement_time_ms"),
+                volume_usd: row.get("total_volume_usd"),
+                status: row.get("status"),
+            };
+
+            metrics.push(anchor_metrics);
+        }
+
+        debug!("Aggregated {} anchor metrics", metrics.len());
+        Ok(metrics)
+    }
+
+    /// Aggregate corridor metrics from database
+    async fn aggregate_corridor_metrics(&self) -> Result<Vec<SnapshotCorridorMetrics>> {
+        let query = r#"
+            SELECT 
+                cm.id,
+                cm.corridor_key,
+                cm.asset_a_code,
+                cm.asset_a_issuer,
+                cm.asset_b_code,
+                cm.asset_b_issuer,
+                cm.total_transactions,
+                cm.successful_transactions,
+                cm.failed_transactions,
+                cm.success_rate,
+                cm.volume_usd,
+                cm.avg_settlement_latency_ms,
+                cm.liquidity_depth_usd
+            FROM corridor_metrics cm
+            WHERE cm.date >= datetime('now', '-1 day')
+            GROUP BY cm.corridor_key
+            HAVING cm.date = MAX(cm.date)
+            ORDER BY cm.corridor_key
+        "#;
+
+        let rows = sqlx::query(query)
+            .fetch_all(&self.db.pool)
+            .await
+            .context("Failed to fetch corridor metrics")?;
+
+        let mut metrics = Vec::new();
+        
+        for row in rows {
+            let corridor_metrics = SnapshotCorridorMetrics {
+                id: Uuid::parse_str(&row.get::<String, _>("id"))
+                    .context("Invalid corridor metrics ID format")?,
+                corridor_key: row.get("corridor_key"),
+                asset_a_code: row.get("asset_a_code"),
+                asset_a_issuer: row.get("asset_a_issuer"),
+                asset_b_code: row.get("asset_b_code"),
+                asset_b_issuer: row.get("asset_b_issuer"),
+                total_transactions: row.get("total_transactions"),
+                successful_transactions: row.get("successful_transactions"),
+                failed_transactions: row.get("failed_transactions"),
+                success_rate: row.get("success_rate"),
+                volume_usd: row.get("volume_usd"),
+                avg_settlement_latency_ms: row.get("avg_settlement_latency_ms"),
+                liquidity_depth_usd: row.get("liquidity_depth_usd"),
+            };
+
+            metrics.push(corridor_metrics);
+        }
+
+        debug!("Aggregated {} corridor metrics", metrics.len());
+        Ok(metrics)
+    }
+
+    /// Store snapshot and hash in database
+    async fn store_snapshot_in_database(
+        &self,
+        snapshot: &AnalyticsSnapshot,
+        hash: &str,
+        canonical_json: &str,
+    ) -> Result<String> {
+        let snapshot_id = Uuid::new_v4().to_string();
+        
+        let query = r#"
+            INSERT INTO snapshots (
+                id, entity_id, entity_type, data, hash, epoch, timestamp, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+
+        sqlx::query(query)
+            .bind(&snapshot_id)
+            .bind("system") // entity_id for system-wide snapshots
+            .bind("analytics_snapshot") // entity_type
+            .bind(canonical_json)
+            .bind(hash)
+            .bind(snapshot.epoch as i64)
+            .bind(snapshot.timestamp)
+            .bind(Utc::now())
+            .execute(&self.db.pool)
+            .await
+            .context("Failed to insert snapshot record")?;
+
+        Ok(snapshot_id)
+    }
+
+    /// Verify that the submission was successful by querying the contract
+    async fn verify_submission_success(
+        &self,
+        hash: &str,
+        epoch: u64,
+        submission: &SubmissionResult,
+    ) -> Result<bool> {
+        if let Some(contract_service) = &self.contract_service {
+            // Wait a moment for the transaction to be confirmed
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            
+            match contract_service.verify_snapshot_exists(hash, epoch).await {
+                Ok(exists) => {
+                    if exists {
+                        info!("Verification successful: snapshot exists on-chain for epoch {}", epoch);
+                    } else {
+                        warn!("Verification failed: snapshot not found on-chain for epoch {}", epoch);
+                    }
+                    Ok(exists)
+                }
+                Err(e) => {
+                    error!("Verification error: {}", e);
+                    Ok(false) // Don't fail the entire process for verification errors
+                }
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+}
 
 impl SnapshotService {
     /// Serialize metrics deterministically to JSON
