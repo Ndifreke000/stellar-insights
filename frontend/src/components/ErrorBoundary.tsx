@@ -1,6 +1,7 @@
 "use client"
 
 import React, { Component, ErrorInfo, ReactNode } from "react"
+import Link from "next/link"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 
 interface Props {
@@ -25,45 +26,27 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    // Update state so the next render will show the fallback UI
     return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to console
     console.error("ErrorBoundary caught an error:", error, errorInfo)
-    
-    // Update state with error details
-    this.setState({
-      error,
-      errorInfo,
-    })
-
-    // You can also log the error to an error reporting service here
-    // Example: logErrorToService(error, errorInfo)
+    this.setState({ error, errorInfo })
   }
 
   handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    })
+    this.setState({ hasError: false, error: null, errorInfo: null })
   }
 
   render() {
     if (this.state.hasError) {
-      // Custom fallback UI
-      if (this.props.fallback) {
-        return this.props.fallback
-      }
+      if (this.props.fallback) return this.props.fallback
 
-      // Default fallback UI
       return (
         <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-8">
             <div className="flex items-center gap-4 mb-6">
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <AlertTriangle className="w-12 h-12 text-rose-500" />
               </div>
               <div>
@@ -71,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   Something went wrong
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-1">
-                  An unexpected error occurred. Don't worry, we're on it!
+                  An unexpected error occurred. Don&apos;t worry, we&apos;re on it!
                 </p>
               </div>
             </div>
@@ -105,13 +88,13 @@ export class ErrorBoundary extends Component<Props, State> {
                 <RefreshCw className="w-4 h-4" />
                 Try Again
               </button>
-              <a
+              <Link
                 href="/"
                 className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors font-medium"
               >
                 <Home className="w-4 h-4" />
                 Go Home
-              </a>
+              </Link>
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
@@ -127,4 +110,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children
   }
 }
-

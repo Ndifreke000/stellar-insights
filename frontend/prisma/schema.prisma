@@ -1,0 +1,40 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Example models - customize based on your needs
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Corridor {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  sourceAsset     String
+  destAsset       String
+  successRate     Float
+  liquidityDepth  Float
+  healthScore     Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Anchor {
+  id              String   @id @default(cuid())
+  name            String
+  domain          String   @unique
+  reliabilityScore Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

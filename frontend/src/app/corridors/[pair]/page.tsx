@@ -12,7 +12,6 @@ import {
   AlertCircle,
   Clock,
   BarChart3,
-  Loader,
   ChevronRight,
   Home,
 } from "lucide-react";
@@ -20,6 +19,7 @@ import {
   getCorridorDetail,
   generateMockCorridorData,
   CorridorDetailData,
+  CorridorMetrics,
 } from "@/lib/api";
 import {
   SuccessRateChart,
@@ -49,7 +49,7 @@ export default function CorridorDetailPage() {
         try {
           const result = await getCorridorDetail(corridorPair);
           setData(result);
-        } catch (apiError) {
+        } catch {
           console.log("API not available, using mock data");
           // Fallback to mock data
           const mockData = generateMockCorridorData(corridorPair);
@@ -298,7 +298,7 @@ export default function CorridorDetailPage() {
               Related Corridors
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.related_corridors.map((related: any) => (
+              {data.related_corridors.map((related: CorridorMetrics) => (
                 <Link
                   key={related.id}
                   href={`/corridors/${related.id}`}

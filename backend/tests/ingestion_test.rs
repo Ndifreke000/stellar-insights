@@ -1,7 +1,6 @@
 // I'm testing the ledger ingestion functionality as specified in issue #2
 
 use backend::rpc::StellarRpcClient;
-use std::sync::Arc;
 
 #[tokio::test]
 async fn test_mock_rpc_fetch_ledgers() {

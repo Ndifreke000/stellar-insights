@@ -24,10 +24,11 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
         <div className="flex items-center gap-4">
           <button
             onClick={onMenuToggle}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors lg:hidden"
-            aria-label="Toggle sidebar"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors lg:hidden min-w-[44px] min-h-[44px] touch-manipulation active:bg-gray-200 dark:active:bg-slate-700"
+            aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-expanded={sidebarOpen}
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
@@ -51,10 +52,11 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               </div>
               <button
                 onClick={() => setShowWalletMenu(!showWalletMenu)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors min-w-[44px] min-h-[44px] touch-manipulation active:bg-gray-200 dark:active:bg-slate-700"
                 aria-label="Wallet menu"
+                aria-expanded={showWalletMenu}
               >
-                <Wallet className="w-5 h-5" />
+                <Wallet className="w-6 h-6" />
               </button>
 
               {showWalletMenu && (
@@ -75,7 +77,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
           ) : (
             <button
               onClick={connectWallet}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2"
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2 min-h-[44px] touch-manipulation active:bg-blue-700"
             >
               <Wallet className="w-4 h-4" />
               <span className="hidden sm:inline">Connect Wallet</span>

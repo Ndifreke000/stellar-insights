@@ -1,216 +1,120 @@
-"use client";
+"use client"
 
-import React, { useEffect, useState, useCallback } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-} from 'recharts'
-import { SkeletonMetricsCard } from '@/components/ui/Skeleton'
-import { MainLayout } from "@/components/layout"
+import React, { useEffect, useState } from 'react';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { CorridorHealth } from '@/components/dashboard/CorridorHealth';
+import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
+import { TopAssetsTable } from '@/components/dashboard/TopAssetsTable';
+import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
 
-type Corridor = {
-  id: string;
-  health: number;
-  successRate: number;
-};
-
-type TopAsset = {
-  asset: string;
-  volume: number;
-  tvl: number;
-};
-
-type TimePoint = {
-  ts: string;
-  successRate: number;
-  settlementMs: number;
-  tvl: number;
-};
-
-type DashboardData = {
-  totalSuccessRate: number;
-  activeCorridors: Corridor[];
-  topAssets: TopAsset[];
-  timeseries: TimePoint[];
-};
+interface DashboardData {
+  kpi: {
+    successRate: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    activeCorridors: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    liquidityDepth: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    settlementSpeed: { value: number; trend: number; trendDirection: 'up' | 'down' };
+  };
+  corridors: any[];
+  liquidity: any[];
+  assets: any[];
+  settlement: any[];
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/dashboard");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/dashboard');
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+        const result = await response.json();
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
-  useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 30_000); // refresh every 30s
-    return () => clearInterval(id);
-  }, [fetchData]);
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-muted-foreground animate-pulse">Loading dashboard insights...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Network Dashboard</h1>
-        <div className="flex gap-2 items-center">
-          <button
-            className="px-3 py-1 rounded bg-sky-600 text-white text-sm"
-            onClick={() => fetchData()}
-            disabled={loading}
-          >
-            Refresh
-          </button>
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Network Overview</h2>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Payment Success Rate"
+          value={`${data.kpi.successRate.value}%`}
+          trend={data.kpi.successRate.trend}
+          trendDirection={data.kpi.successRate.trendDirection}
+        />
+        <MetricCard
+          label="Active Corridors"
+          value={data.kpi.activeCorridors.value}
+          trend={data.kpi.activeCorridors.trend}
+          trendDirection={data.kpi.activeCorridors.trendDirection}
+        />
+        <MetricCard
+          label="Liquidity Depth"
+          value={`$${(data.kpi.liquidityDepth.value / 1000000).toFixed(1)}M`}
+          trend={data.kpi.liquidityDepth.trend}
+          trendDirection={data.kpi.liquidityDepth.trendDirection}
+        />
+        <MetricCard
+          label="Avg Settlement Speed"
+          value={`${data.kpi.settlementSpeed.value}s`}
+          trend={Math.abs(data.kpi.settlementSpeed.trend)}
+          trendDirection={data.kpi.settlementSpeed.trendDirection}
+        />
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
+          <LiquidityChart data={data.liquidity} />
+        </div>
+        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
+          <CorridorHealth corridors={data.corridors} />
         </div>
       </div>
 
-        {loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <SkeletonMetricsCard className="col-span-1" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-            <SkeletonMetricsCard className="col-span-1" />
-            <SkeletonMetricsCard className="col-span-1 lg:col-span-2" />
-          </div>
-        )}
-
-      {error && (
-        <div className="rounded p-4 bg-rose-50 text-rose-700">
-          Error: {error}
+      {/* Charts Row 2 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
+          <SettlementSpeedChart data={data.settlement} />
         </div>
-      )}
-
-      {data && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="col-span-1 bg-white rounded shadow p-4">
-            <h2 className="text-sm text-gray-500">
-              Total Payment Success Rate
-            </h2>
-            <div className="mt-3 flex items-end gap-4">
-              <div className="text-4xl font-bold">
-                {(data.totalSuccessRate * 100).toFixed(2)}%
-              </div>
-              <div className="text-sm text-gray-500">(last 24h)</div>
-            </div>
-          </div>
-
-          <div className="col-span-1 lg:col-span-2 bg-white rounded shadow p-4">
-            <h2 className="text-sm text-gray-500">
-              Settlement Speed (ms) — last 24 points
-            </h2>
-            <div style={{ width: "100%", height: 220 }} className="mt-3">
-              <ResponsiveContainer>
-                <LineChart data={data.timeseries}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="ts"
-                    tickFormatter={(s) => new Date(s).getHours() + ":00"}
-                  />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(s) => new Date(s).toLocaleString()}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="settlementMs"
-                    stroke="#8884d8"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="col-span-1 lg:col-span-2 bg-white rounded shadow p-4">
-            <h2 className="text-sm text-gray-500">
-              Liquidity Depth / TVL (24h)
-            </h2>
-            <div style={{ width: "100%", height: 240 }} className="mt-3">
-              <ResponsiveContainer>
-                <LineChart data={data.timeseries}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="ts"
-                    tickFormatter={(s) => new Date(s).getHours() + ":00"}
-                  />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(s) => new Date(s).toLocaleString()}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="tvl"
-                    stroke="#82ca9d"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="col-span-1 bg-white rounded shadow p-4">
-            <h2 className="text-sm text-gray-500">Active Corridor Health</h2>
-            <ul className="mt-3 space-y-3">
-              {data.activeCorridors.map((c) => (
-                <li key={c.id} className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{c.id}</div>
-                    <div className="text-sm text-gray-500">
-                      Success: {(c.successRate * 100).toFixed(2)}%
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    {(c.health * 100).toFixed(0)}%
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="col-span-1 lg:col-span-2 bg-white rounded shadow p-4">
-            <h2 className="text-sm text-gray-500">Top-performing Assets</h2>
-            <div className="mt-3 overflow-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-gray-500 text-xs uppercase">
-                  <tr>
-                    <th className="pb-2">Asset</th>
-                    <th className="pb-2">Volume</th>
-                    <th className="pb-2">TVL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topAssets.map((a) => (
-                    <tr key={a.asset} className="border-t">
-                      <td className="py-2 font-medium">{a.asset}</td>
-                      <td className="py-2">{a.volume.toLocaleString()}</td>
-                      <td className="py-2">${a.tvl.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
+          <TopAssetsTable assets={data.assets} />
         </div>
-      )}
+      </div>
     </div>
   );
 }

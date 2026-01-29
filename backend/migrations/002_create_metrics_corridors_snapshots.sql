@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     entity_id TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     data TEXT NOT NULL, -- JSON blob of the state
+    hash TEXT, -- SHA-256 hash of the snapshot
+    epoch INTEGER, -- Epoch identifier for historical tracking
     timestamp TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -39,3 +41,4 @@ CREATE INDEX idx_metrics_entity ON metrics(entity_id, entity_type);
 CREATE INDEX idx_metrics_timestamp ON metrics(timestamp DESC);
 CREATE INDEX idx_snapshots_entity ON snapshots(entity_id, entity_type);
 CREATE INDEX idx_snapshots_timestamp ON snapshots(timestamp DESC);
+CREATE INDEX idx_snapshots_epoch ON snapshots(epoch DESC);

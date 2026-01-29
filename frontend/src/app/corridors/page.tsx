@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useMemo, Suspense } from "react";
 import {
   TrendingUp,
   Search,
   Filter,
-  Loader,
+  Grid3x3,
+  List,
   Droplets,
   CheckCircle2,
   AlertCircle,
@@ -19,15 +19,18 @@ import {
 import Link from "next/link";
 import {
   getCorridors,
-  generateMockCorridorData,
   CorridorMetrics,
 } from "@/lib/api";
+import { mockCorridors } from "@/components/lib/mockCorridorData";
 import { MainLayout } from "@/components/layout";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
+import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
+import { usePagination } from "@/hooks/usePagination";
+import { DataTablePagination } from "@/components/ui/DataTablePagination";
 
-export default function CorridorsPage() {
-  const router = useRouter();
+function CorridorsPageContent() {
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
+  const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<
@@ -35,102 +38,75 @@ export default function CorridorsPage() {
   >("health_score");
   const [selectedCorridors, setSelectedCorridors] = useState<string[]>([]);
 
+  // Filter state variables
+  const [successRateRange, setSuccessRateRange] = useState<[number, number]>([0, 100]);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000000]);
+  const [assetCodeFilter, setAssetCodeFilter] = useState("");
+  const [timePeriod, setTimePeriod] = useState("7d");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter presets state
+  const [filterPresets, setFilterPresets] = useState<Array<{
+    name: string;
+    filters: {
+      successRateRange: [number, number];
+      volumeRange: [number, number];
+      assetCodeFilter: string;
+      timePeriod: string;
+      searchTerm: string;
+      sortBy: "success_rate" | "health_score" | "liquidity";
+    };
+  }>>([]);
+  const [presetName, setPresetName] = useState("");
+
+  const filteredCorridors = useMemo(() => {
+    return corridors
+      .filter(
+        (c) =>
+          c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.destination_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.id.toLowerCase().includes(searchTerm.toLowerCase()),
+      )
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "success_rate":
+            return b.success_rate - a.success_rate;
+          case "liquidity":
+            return b.liquidity_depth_usd - a.liquidity_depth_usd;
+          case "health_score":
+          default:
+            return b.health_score - a.health_score;
+        }
+      });
+  }, [corridors, searchTerm, sortBy]);
+
+  const {
+    currentPage,
+    pageSize,
+    onPageChange,
+    onPageSizeChange,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredCorridors.length);
+
   useEffect(() => {
     async function fetchCorridors() {
       try {
         setLoading(true);
         try {
-          const result = await getCorridors();
+          const filters: Record<string, string | number> = {};
+          if (successRateRange[0] > 0) filters.success_rate_min = successRateRange[0];
+          if (successRateRange[1] < 100) filters.success_rate_max = successRateRange[1];
+          if (volumeRange[0] > 0) filters.volume_min = volumeRange[0];
+          if (volumeRange[1] < 10000000) filters.volume_max = volumeRange[1];
+          if (assetCodeFilter) filters.asset_code = assetCodeFilter;
+          if (timePeriod) filters.time_period = timePeriod;
+          filters.sort_by = sortBy;
+
+          const result = await getCorridors(filters);
           setCorridors(result);
-        } catch (apiError) {
+        } catch {
           console.log("API not available, using mock data");
-          // Generate mock corridors
-          const mockCorridors: CorridorMetrics[] = [
-            {
-              ...generateMockCorridorData("USDC-PHP").corridor,
-              id: "USDC-PHP",
-              source_asset: "USDC",
-              destination_asset: "PHP",
-            },
-            {
-              ...generateMockCorridorData("USDC-JPY").corridor,
-              id: "USDC-JPY",
-              source_asset: "USDC",
-              destination_asset: "JPY",
-            },
-            {
-              ...generateMockCorridorData("USDC-INR").corridor,
-              id: "USDC-INR",
-              source_asset: "USDC",
-              destination_asset: "INR",
-              success_rate: 95.2,
-              total_attempts: 2100,
-              successful_payments: 2000,
-              failed_payments: 100,
-              average_latency_ms: 420,
-              median_latency_ms: 320,
-              p95_latency_ms: 1100,
-              p99_latency_ms: 1800,
-              liquidity_depth_usd: 8500000,
-              liquidity_volume_24h_usd: 1200000,
-              liquidity_trend: "increasing",
-              health_score: 96,
-            },
-            {
-              ...generateMockCorridorData("USDC-KES").corridor,
-              id: "USDC-KES",
-              source_asset: "USDC",
-              destination_asset: "KES",
-              success_rate: 81.3,
-              total_attempts: 950,
-              successful_payments: 772,
-              failed_payments: 178,
-              average_latency_ms: 650,
-              median_latency_ms: 520,
-              p95_latency_ms: 1800,
-              p99_latency_ms: 2500,
-              liquidity_depth_usd: 2800000,
-              liquidity_volume_24h_usd: 320000,
-              liquidity_trend: "decreasing",
-              health_score: 72,
-            },
-            {
-              ...generateMockCorridorData("USDC-EUR").corridor,
-              id: "USDC-EUR",
-              source_asset: "USDC",
-              destination_asset: "EUR",
-              success_rate: 97.8,
-              total_attempts: 3200,
-              successful_payments: 3130,
-              failed_payments: 70,
-              average_latency_ms: 380,
-              median_latency_ms: 280,
-              p95_latency_ms: 950,
-              p99_latency_ms: 1500,
-              liquidity_depth_usd: 12000000,
-              liquidity_volume_24h_usd: 2500000,
-              liquidity_trend: "increasing",
-              health_score: 98,
-            },
-            {
-              ...generateMockCorridorData("USDC-GBP").corridor,
-              id: "USDC-GBP",
-              source_asset: "USDC",
-              destination_asset: "GBP",
-              success_rate: 94.1,
-              total_attempts: 2450,
-              successful_payments: 2305,
-              failed_payments: 145,
-              average_latency_ms: 410,
-              median_latency_ms: 310,
-              p95_latency_ms: 1050,
-              p99_latency_ms: 1700,
-              liquidity_depth_usd: 9800000,
-              liquidity_volume_24h_usd: 1800000,
-              liquidity_trend: "stable",
-              health_score: 91,
-            },
-          ];
           setCorridors(mockCorridors);
         }
       } catch (err) {
@@ -141,27 +117,9 @@ export default function CorridorsPage() {
     }
 
     fetchCorridors();
-  }, []);
+  }, [successRateRange, volumeRange, assetCodeFilter, timePeriod, sortBy]);
 
-  // Filter and sort corridors
-  const filteredCorridors = corridors
-    .filter(
-      (c) =>
-        c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.destination_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.id.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "success_rate":
-          return b.success_rate - a.success_rate;
-        case "liquidity":
-          return b.liquidity_depth_usd - a.liquidity_depth_usd;
-        case "health_score":
-        default:
-          return b.health_score - a.health_score;
-      }
-    });
+  const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
   const getHealthColor = (score: number) => {
     if (score >= 90)
@@ -231,7 +189,7 @@ export default function CorridorsPage() {
             <Filter className="w-5 h-5 text-gray-400" />
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as "success_rate" | "health_score" | "liquidity")}
               className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="health_score">Sort by Health Score</option>
@@ -241,12 +199,33 @@ export default function CorridorsPage() {
           </div>
         </div>
 
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-1 mb-6">
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${viewMode === "grid"
+              ? "bg-blue-500 text-white"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+              }`}
+          >
+            <List className="w-4 h-4" />
+            <span className="text-sm font-medium">Grid</span>
+          </button>
+          <button
+            onClick={() => setViewMode("heatmap")}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${viewMode === "heatmap"
+              ? "bg-blue-500 text-white"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+              }`}
+          >
+            <Grid3x3 className="w-4 h-4" />
+            <span className="text-sm font-medium">Heatmap</span>
+          </button>
+        </div>
+
         {/* Content */}
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <SkeletonCorridorCard />
-            <SkeletonCorridorCard />
-            <SkeletonCorridorCard />
             <SkeletonCorridorCard />
             <SkeletonCorridorCard />
             <SkeletonCorridorCard />
@@ -257,6 +236,10 @@ export default function CorridorsPage() {
             <p className="text-gray-600 dark:text-gray-400">
               No corridors found
             </p>
+          </div>
+        ) : viewMode === "heatmap" ? (
+          <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6">
+            <CorridorHeatmap corridors={filteredCorridors} />
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -441,5 +424,19 @@ export default function CorridorsPage() {
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+export default function CorridorsPage() {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MainLayout>
+    }>
+      <CorridorsPageContent />
+    </Suspense>
   );
 }

@@ -1,10 +1,14 @@
-use crate::snapshot::schema::{AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION};
-use sha2::{Digest, Sha256};
+use crate::snapshot::schema::{
+    AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION,
+};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+use super::contract::{ContractService, SubmissionResult};
+
 /// Service for creating cryptographically verifiable analytics snapshots
-/// 
+///
 /// This service ensures that:
 /// 1. Metrics are serialized deterministically (same input = same output)
 /// 2. Snapshots are hashed using SHA-256
@@ -13,46 +17,59 @@ pub struct SnapshotService;
 
 impl SnapshotService {
     /// Serialize metrics deterministically to JSON
-    /// 
+    ///
     /// This method ensures that:
     /// - All arrays are sorted by object identifiers
     /// - All object keys are in a consistent order
     /// - Floating point numbers are serialized consistently
     /// - No extra whitespace or formatting variations
-    /// 
+    ///
     /// # Arguments
     /// * `snapshot` - The analytics snapshot to serialize
-    /// 
+    ///
     /// # Returns
     /// A canonical JSON string representation suitable for hashing
-    pub fn serialize_deterministically(mut snapshot: AnalyticsSnapshot) -> Result<String, serde_json::Error> {
+    pub fn serialize_deterministically(
+        mut snapshot: AnalyticsSnapshot,
+    ) -> Result<String, serde_json::Error> {
         // Normalize the snapshot (sort all arrays by ID)
         snapshot.normalize();
 
         // Build a BTreeMap to ensure key ordering
         let mut map = BTreeMap::new();
-        
+
         // Add fields in a fixed order
-        map.insert("schema_version".to_string(), Value::Number(snapshot.schema_version.into()));
+        map.insert(
+            "schema_version".to_string(),
+            Value::Number(snapshot.schema_version.into()),
+        );
         map.insert("epoch".to_string(), Value::Number(snapshot.epoch.into()));
-        
+
         // Serialize timestamp as ISO 8601 string (deterministic format)
-        map.insert("timestamp".to_string(), Value::String(snapshot.timestamp.to_rfc3339()));
-        
+        map.insert(
+            "timestamp".to_string(),
+            Value::String(snapshot.timestamp.to_rfc3339()),
+        );
+
         // Serialize anchor metrics array (already sorted by normalize())
-        let anchor_metrics: Vec<Value> = snapshot.anchor_metrics
+        let anchor_metrics: Vec<Value> = snapshot
+            .anchor_metrics
             .into_iter()
             .map(|m| Self::serialize_anchor_metrics(&m))
             .collect();
         map.insert("anchor_metrics".to_string(), Value::Array(anchor_metrics));
-        
+
         // Serialize corridor metrics array (already sorted by normalize())
-        let corridor_metrics: Vec<Value> = snapshot.corridor_metrics
+        let corridor_metrics: Vec<Value> = snapshot
+            .corridor_metrics
             .into_iter()
             .map(|m| Self::serialize_corridor_metrics(&m))
             .collect();
-        map.insert("corridor_metrics".to_string(), Value::Array(corridor_metrics));
-        
+        map.insert(
+            "corridor_metrics".to_string(),
+            Value::Array(corridor_metrics),
+        );
+
         // Convert to JSON string with no extra whitespace
         // Note: serde_json::Map uses IndexMap internally which preserves insertion order.
         // Since we iterate over BTreeMap (sorted), insertion order is sorted, ensuring determinism.
@@ -66,31 +83,55 @@ impl SnapshotService {
     /// Serialize anchor metrics to a deterministic JSON value
     fn serialize_anchor_metrics(metrics: &SnapshotAnchorMetrics) -> Value {
         let mut map = BTreeMap::new();
-        
+
         map.insert("id".to_string(), Value::String(metrics.id.to_string()));
         map.insert("name".to_string(), Value::String(metrics.name.clone()));
-        map.insert("stellar_account".to_string(), Value::String(metrics.stellar_account.clone()));
-        map.insert("success_rate".to_string(), Self::serialize_f64(metrics.success_rate));
-        map.insert("failure_rate".to_string(), Self::serialize_f64(metrics.failure_rate));
-        map.insert("reliability_score".to_string(), Self::serialize_f64(metrics.reliability_score));
-        map.insert("total_transactions".to_string(), Value::Number(metrics.total_transactions.into()));
-        map.insert("successful_transactions".to_string(), Value::Number(metrics.successful_transactions.into()));
-        map.insert("failed_transactions".to_string(), Value::Number(metrics.failed_transactions.into()));
-        
+        map.insert(
+            "stellar_account".to_string(),
+            Value::String(metrics.stellar_account.clone()),
+        );
+        map.insert(
+            "success_rate".to_string(),
+            Self::serialize_f64(metrics.success_rate),
+        );
+        map.insert(
+            "failure_rate".to_string(),
+            Self::serialize_f64(metrics.failure_rate),
+        );
+        map.insert(
+            "reliability_score".to_string(),
+            Self::serialize_f64(metrics.reliability_score),
+        );
+        map.insert(
+            "total_transactions".to_string(),
+            Value::Number(metrics.total_transactions.into()),
+        );
+        map.insert(
+            "successful_transactions".to_string(),
+            Value::Number(metrics.successful_transactions.into()),
+        );
+        map.insert(
+            "failed_transactions".to_string(),
+            Value::Number(metrics.failed_transactions.into()),
+        );
+
         if let Some(ms) = metrics.avg_settlement_time_ms {
-            map.insert("avg_settlement_time_ms".to_string(), Value::Number(ms.into()));
+            map.insert(
+                "avg_settlement_time_ms".to_string(),
+                Value::Number(ms.into()),
+            );
         } else {
             map.insert("avg_settlement_time_ms".to_string(), Value::Null);
         }
-        
+
         if let Some(volume) = metrics.volume_usd {
             map.insert("volume_usd".to_string(), Self::serialize_f64(volume));
         } else {
             map.insert("volume_usd".to_string(), Value::Null);
         }
-        
+
         map.insert("status".to_string(), Value::String(metrics.status.clone()));
-        
+
         // serde_json::Map preserves insertion order (uses IndexMap internally)
         // Since BTreeMap iteration is sorted, insertion order is sorted
         let mut json_map = Map::new();
@@ -103,27 +144,63 @@ impl SnapshotService {
     /// Serialize corridor metrics to a deterministic JSON value
     fn serialize_corridor_metrics(metrics: &SnapshotCorridorMetrics) -> Value {
         let mut map = BTreeMap::new();
-        
+
         map.insert("id".to_string(), Value::String(metrics.id.to_string()));
-        map.insert("corridor_key".to_string(), Value::String(metrics.corridor_key.clone()));
-        map.insert("asset_a_code".to_string(), Value::String(metrics.asset_a_code.clone()));
-        map.insert("asset_a_issuer".to_string(), Value::String(metrics.asset_a_issuer.clone()));
-        map.insert("asset_b_code".to_string(), Value::String(metrics.asset_b_code.clone()));
-        map.insert("asset_b_issuer".to_string(), Value::String(metrics.asset_b_issuer.clone()));
-        map.insert("total_transactions".to_string(), Value::Number(metrics.total_transactions.into()));
-        map.insert("successful_transactions".to_string(), Value::Number(metrics.successful_transactions.into()));
-        map.insert("failed_transactions".to_string(), Value::Number(metrics.failed_transactions.into()));
-        map.insert("success_rate".to_string(), Self::serialize_f64(metrics.success_rate));
-        map.insert("volume_usd".to_string(), Self::serialize_f64(metrics.volume_usd));
-        
+        map.insert(
+            "corridor_key".to_string(),
+            Value::String(metrics.corridor_key.clone()),
+        );
+        map.insert(
+            "asset_a_code".to_string(),
+            Value::String(metrics.asset_a_code.clone()),
+        );
+        map.insert(
+            "asset_a_issuer".to_string(),
+            Value::String(metrics.asset_a_issuer.clone()),
+        );
+        map.insert(
+            "asset_b_code".to_string(),
+            Value::String(metrics.asset_b_code.clone()),
+        );
+        map.insert(
+            "asset_b_issuer".to_string(),
+            Value::String(metrics.asset_b_issuer.clone()),
+        );
+        map.insert(
+            "total_transactions".to_string(),
+            Value::Number(metrics.total_transactions.into()),
+        );
+        map.insert(
+            "successful_transactions".to_string(),
+            Value::Number(metrics.successful_transactions.into()),
+        );
+        map.insert(
+            "failed_transactions".to_string(),
+            Value::Number(metrics.failed_transactions.into()),
+        );
+        map.insert(
+            "success_rate".to_string(),
+            Self::serialize_f64(metrics.success_rate),
+        );
+        map.insert(
+            "volume_usd".to_string(),
+            Self::serialize_f64(metrics.volume_usd),
+        );
+
         if let Some(ms) = metrics.avg_settlement_latency_ms {
-            map.insert("avg_settlement_latency_ms".to_string(), Value::Number(ms.into()));
+            map.insert(
+                "avg_settlement_latency_ms".to_string(),
+                Value::Number(ms.into()),
+            );
         } else {
             map.insert("avg_settlement_latency_ms".to_string(), Value::Null);
         }
-        
-        map.insert("liquidity_depth_usd".to_string(), Self::serialize_f64(metrics.liquidity_depth_usd));
-        
+
+        map.insert(
+            "liquidity_depth_usd".to_string(),
+            Self::serialize_f64(metrics.liquidity_depth_usd),
+        );
+
         // serde_json::Map preserves insertion order (uses IndexMap internally)
         // Since BTreeMap iteration is sorted, insertion order is sorted
         let mut json_map = Map::new();
@@ -134,7 +211,7 @@ impl SnapshotService {
     }
 
     /// Serialize f64 to a deterministic JSON number representation
-    /// 
+    ///
     /// This ensures that floating point numbers are always serialized
     /// in the same way. serde_json handles this deterministically,
     /// but we ensure special cases are handled consistently.
@@ -161,14 +238,14 @@ impl SnapshotService {
     }
 
     /// Generate SHA-256 hash of the snapshot
-    /// 
+    ///
     /// This method creates a cryptographically verifiable hash of the snapshot.
     /// The same snapshot content will always produce the same hash, regardless
     /// of the original ordering of metrics in memory.
-    /// 
+    ///
     /// # Arguments
     /// * `snapshot` - The analytics snapshot to hash
-    /// 
+    ///
     /// # Returns
     /// A 32-byte SHA-256 hash as a byte array
     pub fn hash_snapshot(snapshot: AnalyticsSnapshot) -> Result<[u8; 32], serde_json::Error> {
@@ -176,17 +253,17 @@ impl SnapshotService {
         let mut hasher = Sha256::new();
         hasher.update(canonical_json.as_bytes());
         let result = hasher.finalize();
-        
+
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&result[..]);
         Ok(hash)
     }
 
     /// Generate hex-encoded hash string suitable for display/storage
-    /// 
+    ///
     /// # Arguments
     /// * `snapshot` - The analytics snapshot to hash
-    /// 
+    ///
     /// # Returns
     /// A 64-character hexadecimal string representation of the hash
     pub fn hash_snapshot_hex(snapshot: AnalyticsSnapshot) -> Result<String, serde_json::Error> {
@@ -195,29 +272,76 @@ impl SnapshotService {
     }
 
     /// Create a versioned snapshot with hash
-    /// 
+    ///
     /// This method creates a snapshot with the current schema version and
     /// generates its cryptographic hash for verification.
-    /// 
+    ///
     /// # Arguments
     /// * `snapshot` - The analytics snapshot to version and hash
-    /// 
+    ///
     /// # Returns
     /// A tuple containing (hash_bytes, hash_hex, schema_version)
-    pub fn version_and_hash(snapshot: AnalyticsSnapshot) -> Result<([u8; 32], String, u32), serde_json::Error> {
+    pub fn version_and_hash(
+        snapshot: AnalyticsSnapshot,
+    ) -> Result<([u8; 32], String, u32), serde_json::Error> {
         // Ensure snapshot has correct schema version
         let hash = Self::hash_snapshot(snapshot)?;
         let hash_hex = hex::encode(hash);
         Ok((hash, hash_hex, SCHEMA_VERSION))
+    }
+
+    /// Create snapshot, hash it, and submit to on-chain contract
+    /// 
+    /// This method combines snapshot creation with automatic submission to the
+    /// Soroban smart contract. It handles the complete workflow:
+    /// 1. Generate snapshot hash
+    /// 2. Submit to contract with retry logic
+    /// 3. Return both hash and submission result
+    /// 
+    /// # Arguments
+    /// * `snapshot` - The analytics snapshot to hash and submit
+    /// * `contract_service` - Contract service for blockchain submission
+    /// 
+    /// # Returns
+    /// Tuple of (hash_bytes, hash_hex, schema_version, submission_result)
+    pub async fn version_hash_and_submit(
+        snapshot: AnalyticsSnapshot,
+        contract_service: &ContractService,
+    ) -> Result<([u8; 32], String, u32, SubmissionResult), anyhow::Error> {
+        use tracing::info;
+
+        // Get epoch before consuming snapshot
+        let epoch = snapshot.epoch;
+        
+        // Generate hash
+        let (hash_bytes, hash_hex, version) = Self::version_and_hash(snapshot)
+            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {}", e))?;
+
+        info!(
+            "Generated snapshot hash for epoch {}: {}",
+            epoch, hash_hex
+        );
+
+        // Submit to contract
+        let submission = contract_service
+            .submit_snapshot_hash(hash_bytes, epoch)
+            .await?;
+
+        info!(
+            "Successfully submitted snapshot for epoch {} to contract",
+            epoch
+        );
+
+        Ok((hash_bytes, hash_hex, version, submission))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::snapshot::schema::{SnapshotAnchorMetrics, SnapshotCorridorMetrics};
     use chrono::Utc;
     use uuid::Uuid;
-    use crate::snapshot::schema::{SnapshotAnchorMetrics, SnapshotCorridorMetrics};
 
     fn create_test_anchor_metrics(id: Uuid, name: &str) -> SnapshotAnchorMetrics {
         SnapshotAnchorMetrics {
@@ -345,10 +469,10 @@ mod tests {
         let snapshot = AnalyticsSnapshot::new(1, now);
 
         let hex = SnapshotService::hash_snapshot_hex(snapshot).unwrap();
-        
+
         // Should be 64 characters (32 bytes × 2 hex chars)
         assert_eq!(hex.len(), 64);
-        
+
         // Should only contain valid hex characters
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -359,7 +483,7 @@ mod tests {
         let snapshot = AnalyticsSnapshot::new(1, now);
 
         let hash = SnapshotService::hash_snapshot(snapshot).unwrap();
-        
+
         // Should be exactly 32 bytes
         assert_eq!(hash.len(), 32);
     }
@@ -370,7 +494,7 @@ mod tests {
         let snapshot = AnalyticsSnapshot::new(1, now);
 
         let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot).unwrap();
-        
+
         assert_eq!(hash_bytes.len(), 32);
         assert_eq!(hash_hex.len(), 64);
         assert_eq!(version, SCHEMA_VERSION);
@@ -412,7 +536,7 @@ mod tests {
         let snapshot = AnalyticsSnapshot::new(1, now);
 
         let json = SnapshotService::serialize_deterministically(snapshot).unwrap();
-        
+
         // Should not contain unnecessary whitespace
         assert!(!json.contains("  ")); // No double spaces
         assert!(!json.starts_with(" "));
@@ -445,14 +569,16 @@ mod tests {
 
         let json = SnapshotService::serialize_deterministically(snapshot).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        
+
         // Verify top-level keys are in sorted order
         if let serde_json::Value::Object(map) = parsed {
             let keys: Vec<&String> = map.keys().collect();
             let mut sorted_keys = keys.clone();
             sorted_keys.sort();
-            assert_eq!(keys, sorted_keys, "Top-level JSON keys should be in sorted order");
+            assert_eq!(
+                keys, sorted_keys,
+                "Top-level JSON keys should be in sorted order"
+            );
         }
     }
 }
-

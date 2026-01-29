@@ -5,9 +5,8 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
-use crate::database::Database;
+use crate::state::AppState;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -76,17 +75,17 @@ pub struct AnchorsResponse {
 
 /// GET /api/anchors - List all anchors with key metrics
 pub async fn get_anchors(
-    State(db): State<Arc<Database>>,
+    State(app_state): State<AppState>,
     Query(params): Query<ListAnchorsQuery>,
 ) -> ApiResult<Json<AnchorsResponse>> {
-    let anchors = db.list_anchors(params.limit, params.offset).await?;
+    let anchors = app_state.db.list_anchors(params.limit, params.offset).await?;
 
     let mut anchor_responses = Vec::new();
 
     for anchor in anchors {
         // Get assets for each anchor to calculate asset coverage
         let anchor_id = uuid::Uuid::parse_str(&anchor.id).unwrap_or_else(|_| uuid::Uuid::nil());
-        let assets = db.get_assets_by_anchor(anchor_id).await?;
+        let assets = app_state.db.get_assets_by_anchor(anchor_id).await?;
 
         let failure_rate = if anchor.total_transactions > 0 {
             (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0

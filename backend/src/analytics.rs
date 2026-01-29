@@ -98,16 +98,16 @@ pub fn count_assets_per_anchor(assets: &[String]) -> usize {
 }
 
 /// Compute comprehensive anchor reliability score based on asset performance metrics
-/// 
+///
 /// This function aggregates multiple dimensions of anchor performance:
 /// - Asset performance (weighted success rate)
 /// - Volume (logarithmically scaled)
 /// - Asset diversity
-/// 
+///
 /// # Arguments
 /// * `asset_performances` - Slice of asset performance metrics for the anchor
 /// * `network_max_volume` - Maximum volume across all anchors in the network for normalization
-/// 
+///
 /// # Returns
 /// `AnchorReliabilityScore` with composite score (0-100) and component scores
 pub fn compute_anchor_reliability_score(
@@ -135,10 +135,11 @@ pub fn compute_anchor_reliability_score(
 
     for asset in asset_performances {
         total_volume_usd += asset.total_volume_usd;
-        
+
         // Calculate success rate for this asset
         if asset.total_transactions > 0 {
-            let success_rate = (asset.successful_transactions as f64 / asset.total_transactions as f64) * 100.0;
+            let success_rate =
+                (asset.successful_transactions as f64 / asset.total_transactions as f64) * 100.0;
             weighted_success_sum += success_rate * asset.total_volume_usd;
         }
     }
@@ -176,9 +177,8 @@ pub fn compute_anchor_reliability_score(
 
     // 5. Calculate composite_score
     // Weights: 60% performance, 30% volume, 10% diversity
-    let composite_score = (0.6 * asset_performance_score) 
-        + (0.3 * volume_score) 
-        + (0.1 * asset_diversity_score);
+    let composite_score =
+        (0.6 * asset_performance_score) + (0.3 * volume_score) + (0.1 * asset_diversity_score);
 
     AnchorReliabilityScore {
         anchor_address: String::new(), // Caller will set this
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn test_compute_anchor_reliability_score_empty_assets() {
         let score = compute_anchor_reliability_score(&[], 1000000.0);
-        
+
         assert_eq!(score.composite_score, 0.0);
         assert_eq!(score.asset_performance_score, 0.0);
         assert_eq!(score.volume_score, 0.0);
@@ -277,19 +277,17 @@ mod tests {
 
     #[test]
     fn test_compute_anchor_reliability_score_perfect_performance() {
-        let assets = vec![
-            AnchorAssetPerformance {
-                asset_code: "USDC".to_string(),
-                asset_issuer: "ISSUER1".to_string(),
-                total_transactions: 1000,
-                successful_transactions: 1000,
-                failed_transactions: 0,
-                total_volume_usd: 100000.0,
-            },
-        ];
-        
+        let assets = vec![AnchorAssetPerformance {
+            asset_code: "USDC".to_string(),
+            asset_issuer: "ISSUER1".to_string(),
+            total_transactions: 1000,
+            successful_transactions: 1000,
+            failed_transactions: 0,
+            total_volume_usd: 100000.0,
+        }];
+
         let score = compute_anchor_reliability_score(&assets, 1000000.0);
-        
+
         assert_eq!(score.weighted_success_rate, 100.0);
         assert_eq!(score.asset_performance_score, 100.0);
         assert_eq!(score.total_assets, 1);
@@ -317,9 +315,9 @@ mod tests {
                 total_volume_usd: 20000.0, // 20% of volume
             },
         ];
-        
+
         let score = compute_anchor_reliability_score(&assets, 1000000.0);
-        
+
         // Weighted: (100 * 80000 + 50 * 20000) / 100000 = 90
         assert_eq!(score.weighted_success_rate, 90.0);
         assert_eq!(score.asset_performance_score, 90.0);
@@ -340,9 +338,9 @@ mod tests {
                 total_volume_usd: 10000.0,
             })
             .collect();
-        
+
         let score = compute_anchor_reliability_score(&assets, 1000000.0);
-        
+
         assert_eq!(score.total_assets, 15);
         assert_eq!(score.asset_diversity_score, 100.0); // Capped at 100
         assert_eq!(score.weighted_success_rate, 95.0);
@@ -350,38 +348,34 @@ mod tests {
 
     #[test]
     fn test_compute_anchor_reliability_score_zero_network_volume() {
-        let assets = vec![
-            AnchorAssetPerformance {
-                asset_code: "USDC".to_string(),
-                asset_issuer: "ISSUER1".to_string(),
-                total_transactions: 100,
-                successful_transactions: 100,
-                failed_transactions: 0,
-                total_volume_usd: 50000.0,
-            },
-        ];
-        
+        let assets = vec![AnchorAssetPerformance {
+            asset_code: "USDC".to_string(),
+            asset_issuer: "ISSUER1".to_string(),
+            total_transactions: 100,
+            successful_transactions: 100,
+            failed_transactions: 0,
+            total_volume_usd: 50000.0,
+        }];
+
         let score = compute_anchor_reliability_score(&assets, 0.0);
-        
+
         assert_eq!(score.volume_score, 50.0); // Default middle score
         assert!(score.composite_score > 0.0);
     }
 
     #[test]
     fn test_compute_anchor_reliability_score_composite_weights() {
-        let assets = vec![
-            AnchorAssetPerformance {
-                asset_code: "USDC".to_string(),
-                asset_issuer: "ISSUER1".to_string(),
-                total_transactions: 100,
-                successful_transactions: 100, // 100% success
-                failed_transactions: 0,
-                total_volume_usd: 1000000.0, // Max volume
-            },
-        ];
-        
+        let assets = vec![AnchorAssetPerformance {
+            asset_code: "USDC".to_string(),
+            asset_issuer: "ISSUER1".to_string(),
+            total_transactions: 100,
+            successful_transactions: 100, // 100% success
+            failed_transactions: 0,
+            total_volume_usd: 1000000.0, // Max volume
+        }];
+
         let score = compute_anchor_reliability_score(&assets, 1000000.0);
-        
+
         // Performance: 100, Volume: ~100, Diversity: 10
         // Composite: 0.6*100 + 0.3*100 + 0.1*10 = 60 + 30 + 1 = 91
         assert!(score.composite_score > 90.0 && score.composite_score < 92.0);
@@ -390,43 +384,39 @@ mod tests {
     #[test]
     fn test_realistic_anchor_scenarios() {
         // Scenario 1: Established USDC-like anchor
-        let usdc_anchor = vec![
-            AnchorAssetPerformance {
-                asset_code: "USDC".to_string(),
-                asset_issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
-                total_transactions: 10000,
-                successful_transactions: 9950,
-                failed_transactions: 50,
-                total_volume_usd: 50_000_000.0,
-            },
-        ];
-        
+        let usdc_anchor = vec![AnchorAssetPerformance {
+            asset_code: "USDC".to_string(),
+            asset_issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+            total_transactions: 10000,
+            successful_transactions: 9950,
+            failed_transactions: 50,
+            total_volume_usd: 50_000_000.0,
+        }];
+
         let usdc_score = compute_anchor_reliability_score(&usdc_anchor, 100_000_000.0);
         println!("\nEstablished Anchor (USDC-like):");
         println!("  Composite Score: {:.2}", usdc_score.composite_score);
         println!("  Performance: {:.2}", usdc_score.asset_performance_score);
         println!("  Volume: {:.2}", usdc_score.volume_score);
         println!("  Diversity: {:.2}", usdc_score.asset_diversity_score);
-        
+
         // Scenario 2: New regional anchor
-        let new_anchor = vec![
-            AnchorAssetPerformance {
-                asset_code: "NGN".to_string(),
-                asset_issuer: "GBXXX".to_string(),
-                total_transactions: 500,
-                successful_transactions: 485,
-                failed_transactions: 15,
-                total_volume_usd: 500_000.0,
-            },
-        ];
-        
+        let new_anchor = vec![AnchorAssetPerformance {
+            asset_code: "NGN".to_string(),
+            asset_issuer: "GBXXX".to_string(),
+            total_transactions: 500,
+            successful_transactions: 485,
+            failed_transactions: 15,
+            total_volume_usd: 500_000.0,
+        }];
+
         let new_score = compute_anchor_reliability_score(&new_anchor, 100_000_000.0);
         println!("\nNew Regional Anchor:");
         println!("  Composite Score: {:.2}", new_score.composite_score);
         println!("  Performance: {:.2}", new_score.asset_performance_score);
         println!("  Volume: {:.2}", new_score.volume_score);
         println!("  Diversity: {:.2}", new_score.asset_diversity_score);
-        
+
         // Verify established anchor has higher score
         assert!(usdc_score.composite_score > new_score.composite_score);
         println!("\nEstablished anchor scores higher than new anchor");

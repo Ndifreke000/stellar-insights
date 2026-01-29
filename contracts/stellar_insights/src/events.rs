@@ -15,12 +15,12 @@ pub const SNAPSHOT_LIFECYCLE: Symbol = symbol_short!("SNAP_LFE");
 // ============================================================================
 
 /// Event emitted when an analytics snapshot is successfully submitted.
-/// 
+///
 /// This event enables off-chain indexing services to:
 /// - Track all snapshot submissions in real-time
 /// - Verify data integrity by comparing stored hash with off-chain data
 /// - Build historical records of analytics epochs
-/// 
+///
 /// # Fields
 /// - `hash`: The 32-byte SHA-256 hash of the analytics snapshot data
 /// - `epoch`: The epoch identifier for this snapshot (positive integer)
@@ -41,24 +41,18 @@ pub struct SnapshotSubmitted {
 
 impl SnapshotSubmitted {
     /// Create and publish a SnapshotSubmitted event
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `hash` - 32-byte SHA-256 hash of the snapshot
     /// * `epoch` - Epoch identifier
     /// * `timestamp` - Ledger timestamp
     /// * `submitter` - Address of the submitter
-    /// 
+    ///
     /// # Event Format
     /// Topic: (SNAPSHOT_SUBMITTED, SNAPSHOT_LIFECYCLE)
     /// Data: SnapshotSubmitted struct containing hash, epoch, timestamp, submitter
-    pub fn publish(
-        env: &Env,
-        hash: BytesN<32>,
-        epoch: u64,
-        timestamp: u64,
-        submitter: Address,
-    ) {
+    pub fn publish(env: &Env, hash: BytesN<32>, epoch: u64, timestamp: u64, submitter: Address) {
         let event = SnapshotSubmitted {
             hash,
             epoch,
@@ -74,7 +68,7 @@ impl SnapshotSubmitted {
 }
 
 /// Legacy event structure for backwards compatibility
-/// 
+///
 /// This event emitted when an analytics snapshot is successfully submitted.
 /// Deprecated: Use `SnapshotSubmitted` for new implementations.
 #[contracttype]
@@ -90,7 +84,7 @@ pub struct AnalyticsSnapshotSubmitted {
 
 impl AnalyticsSnapshotSubmitted {
     /// Publish this event to the blockchain (legacy format)
-    /// 
+    ///
     /// # Deprecated
     /// Use `SnapshotSubmitted::publish()` instead for new implementations.
     pub fn publish(env: &Env, epoch: u64, hash: BytesN<32>, timestamp: u64) {
@@ -109,10 +103,10 @@ impl AnalyticsSnapshotSubmitted {
 // ============================================================================
 
 /// Emit a snapshot submitted event with full payload
-/// 
+///
 /// This is the primary function for emitting snapshot lifecycle events.
 /// It ensures the event payload matches the stored data exactly.
-/// 
+///
 /// # Arguments
 /// * `env` - Contract environment
 /// * `hash` - The exact hash that was stored

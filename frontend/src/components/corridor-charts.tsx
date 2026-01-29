@@ -48,13 +48,13 @@ export function SuccessRateChart({ data }: SuccessRateChartProps) {
             domain={[0, 100]}
           />
           <Tooltip
-            formatter={(value: any) => {
+            formatter={(value, _name, _props) => {
               if (typeof value === "number") {
                 return `${value.toFixed(2)}%`;
               }
               return value;
             }}
-            labelFormatter={(label: any) => `Date: ${label}`}
+            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Line
@@ -100,7 +100,7 @@ export function LatencyDistributionChart({
             }}
           />
           <Tooltip
-            formatter={(value: any) => {
+            formatter={(value, _name, _props) => {
               if (typeof value === "number") {
                 return value.toLocaleString();
               }
@@ -136,13 +136,13 @@ export function LiquidityTrendChart({ data }: LiquidityTrendChartProps) {
           <YAxis yAxisId="left" />
           <YAxis yAxisId="right" orientation="right" />
           <Tooltip
-            formatter={(value: any) => {
+            formatter={(value, _name, _props) => {
               if (typeof value === "number") {
                 return `$${(value / 1000000).toFixed(2)}M`;
               }
               return value;
             }}
-            labelFormatter={(label: any) => `Date: ${label}`}
+            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Line
@@ -189,16 +189,16 @@ export function VolumeTrendChart({ data }: VolumeTrendChartProps) {
           />
           <YAxis
             label={{ value: "Volume ($)", angle: -90, position: "insideLeft" }}
-            tickFormatter={(value: any) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={(value: number) => `$${(value / 1000).toFixed(0)}k`}
           />
           <Tooltip
-            formatter={(value: any) => {
+            formatter={(value, _name, _props) => {
               if (typeof value === "number") {
                 return `$${value.toLocaleString()}`;
               }
               return value;
             }}
-            labelFormatter={(label: any) => `Date: ${label}`}
+            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Bar dataKey="volume_usd" fill="#f59e0b" name="24h Volume" />
@@ -235,13 +235,13 @@ export function SlippageTrendChart({ data }: SlippageTrendChartProps) {
             domain={["auto", "auto"]}
           />
           <Tooltip
-            formatter={(value: any) => {
+            formatter={(value, _name, _props) => {
               if (typeof value === "number") {
                 return `${value.toFixed(2)} bps`;
               }
               return value;
             }}
-            labelFormatter={(label: any) => `Date: ${label}`}
+            labelFormatter={(label, _payload) => `Date: ${label}`}
           />
           <Legend />
           <Line

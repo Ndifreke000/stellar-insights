@@ -59,12 +59,12 @@ export default function Home() {
               >
                 Features
               </a>
-              <a
-                href="/corridors"
+              <Link
+                href="/corridors/"
                 className="text-sm font-medium hover:text-blue-500"
               >
                 Corridors
-              </a>
+              </Link>
 
               {isConnected && address ? (
                 <div className="relative">
@@ -140,12 +140,12 @@ export default function Home() {
               >
                 Features
               </a>
-              <a
-                href="/corridors"
+              <Link
+                href="/corridors/"
                 className="block text-sm font-medium hover:text-blue-500"
               >
                 Corridors
-              </a>
+              </Link>
 
               {isConnected && address ? (
                 <button
@@ -250,7 +250,7 @@ export default function Home() {
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Stellar is powerful for stablecoins, payments, and asset issuance,
-              but speed alone isn't enough
+              but speed alone isn&apos;t enough
             </p>
           </div>
 

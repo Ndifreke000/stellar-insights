@@ -4,12 +4,11 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
-use crate::database::Database;
 use crate::handlers::{ApiError, ApiResult};
-use crate::models::corridor::Corridor;
+use crate::models::corridor::{Corridor, CorridorMetrics};
 use crate::models::SortBy;
+use crate::state::AppState;
 
 // Response DTOs matching frontend TypeScript interfaces
 
@@ -71,6 +70,13 @@ pub struct ListCorridorsQuery {
     pub offset: i64,
     #[serde(default)]
     pub sort_by: SortBy,
+    // Filter parameters
+    pub success_rate_min: Option<f64>,
+    pub success_rate_max: Option<f64>,
+    pub volume_min: Option<f64>,
+    pub volume_max: Option<f64>,
+    pub asset_code: Option<String>,
+    pub time_period: Option<String>, // "7d", "30d", "90d"
 }
 
 fn default_limit() -> i64 {
@@ -114,18 +120,100 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
 
 /// GET /api/corridors - List all corridors
 pub async fn list_corridors(
-    State(db): State<Arc<Database>>,
-    Query(_params): Query<ListCorridorsQuery>,
+    State(app_state): State<AppState>,
+    Query(params): Query<ListCorridorsQuery>,
 ) -> ApiResult<Json<Vec<CorridorResponse>>> {
     let today = Utc::now().date_naive();
 
-    let metrics = db
-        .corridor_aggregates()
-        .get_corridor_metrics_for_date(today)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to fetch corridors: {}", e)))?;
+    // Determine date range based on time_period
+    let (start_date, end_date) = match params.time_period.as_deref() {
+        Some("7d") => (today - Duration::days(7), today),
+        Some("30d") => (today - Duration::days(30), today),
+        Some("90d") => (today - Duration::days(90), today),
+        _ => (today, today), // Default to today
+    };
 
-    let corridors: Vec<CorridorResponse> = metrics
+    let metrics = if params.time_period.is_some() {
+        // Use aggregated metrics for time periods
+        let aggregated = app_state.db
+            .corridor_aggregates()
+            .get_aggregated_corridor_metrics(start_date, end_date)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to fetch corridors: {}", e)))?;
+
+        // Convert to CorridorMetrics-like structure for filtering
+        aggregated
+            .into_iter()
+            .map(|m| CorridorMetrics {
+                id: format!("{}-{}", m.corridor_key, start_date),
+                corridor_key: m.corridor_key,
+                asset_a_code: m.asset_a_code,
+                asset_a_issuer: m.asset_a_issuer,
+                asset_b_code: m.asset_b_code,
+                asset_b_issuer: m.asset_b_issuer,
+                date: m.latest_date,
+                total_transactions: m.total_transactions,
+                successful_transactions: m.successful_transactions,
+                failed_transactions: m.failed_transactions,
+                success_rate: m.avg_success_rate,
+                volume_usd: m.total_volume_usd,
+                avg_settlement_latency_ms: None,
+                liquidity_depth_usd: m.total_volume_usd,
+                created_at: m.latest_date,
+                updated_at: m.latest_date,
+            })
+            .collect()
+    } else {
+        // Use daily metrics for single day
+        app_state.db.corridor_aggregates()
+            .get_corridor_metrics_for_date(today)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to fetch corridors: {}", e)))?
+    };
+
+    // Apply filters
+    let filtered_metrics: Vec<_> = metrics
+        .into_iter()
+        .filter(|m| {
+            // Success rate filter
+            if let Some(min) = params.success_rate_min {
+                if m.success_rate < min {
+                    return false;
+                }
+            }
+            if let Some(max) = params.success_rate_max {
+                if m.success_rate > max {
+                    return false;
+                }
+            }
+
+            // Volume filter
+            if let Some(min) = params.volume_min {
+                if m.volume_usd < min {
+                    return false;
+                }
+            }
+            if let Some(max) = params.volume_max {
+                if m.volume_usd > max {
+                    return false;
+                }
+            }
+
+            // Asset code filter
+            if let Some(asset_code) = &params.asset_code {
+                let asset_code_lower = asset_code.to_lowercase();
+                if !m.asset_a_code.to_lowercase().contains(&asset_code_lower)
+                    && !m.asset_b_code.to_lowercase().contains(&asset_code_lower)
+                {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect();
+
+    let corridors: Vec<CorridorResponse> = filtered_metrics
         .iter()
         .map(|m| {
             let health_score =
@@ -159,7 +247,7 @@ pub async fn list_corridors(
 
 /// GET /api/corridors/:corridor_key - Get detailed corridor information
 pub async fn get_corridor_detail(
-    State(db): State<Arc<Database>>,
+    State(app_state): State<AppState>,
     Path(corridor_key): Path<String>,
 ) -> ApiResult<Json<CorridorDetailResponse>> {
     let parts: Vec<&str> = corridor_key.split("->").collect();
@@ -188,7 +276,7 @@ pub async fn get_corridor_detail(
     let end_date = Utc::now().date_naive();
     let start_date = end_date - Duration::days(30);
 
-    let metrics = db
+    let metrics = app_state.db
         .corridor_aggregates()
         .get_corridor_metrics(&corridor, start_date, end_date)
         .await
@@ -277,7 +365,7 @@ pub async fn get_corridor_detail(
         })
         .collect();
 
-    let related_metrics = db
+    let related_metrics = app_state.db
         .corridor_aggregates()
         .get_top_corridors_by_volume(end_date, 4)
         .await
@@ -328,9 +416,9 @@ pub async fn get_corridor_detail(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::corridor::CorridorMetrics;
     use chrono::Utc;
     use uuid::Uuid;
-    use crate::models::corridor::CorridorMetrics;
 
     #[test]
     fn test_corridor_response_from_metrics() {

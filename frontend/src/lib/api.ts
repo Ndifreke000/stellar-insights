@@ -4,16 +4,18 @@
  */
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
+
+
 
 /**
  * Custom error class for API responses
  */
 export class ApiError extends Error {
   status: number;
-  data: any;
+  data: unknown;
 
-  constructor(status: number, message: string, data?: any) {
+  constructor(status: number, message: string, data?: unknown) {
     super(message);
     this.status = status;
     this.data = data;
@@ -83,14 +85,14 @@ export const api = {
   get: <T>(endpoint: string, options?: RequestInit) =>
     fetchApi<T>(endpoint, { ...options, method: "GET" }),
 
-  post: <T>(endpoint: string, body?: any, options?: RequestInit) =>
+  post: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
     fetchApi<T>(endpoint, {
       ...options,
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  put: <T>(endpoint: string, body?: any, options?: RequestInit) =>
+  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
     fetchApi<T>(endpoint, {
       ...options,
       method: "PUT",
@@ -189,8 +191,34 @@ export async function getCorridorDetail(
 /**
  * Fetch all corridors (for listing and navigation)
  */
-export async function getCorridors(): Promise<CorridorMetrics[]> {
-  return api.get<CorridorMetrics[]>("/corridors");
+export interface CorridorFilters {
+  success_rate_min?: number;
+  success_rate_max?: number;
+  volume_min?: number;
+  volume_max?: number;
+  asset_code?: string;
+  time_period?: '7d' | '30d' | '90d' | '';
+  limit?: number;
+  offset?: number;
+  sort_by?: 'success_rate' | 'health_score' | 'liquidity';
+}
+
+export async function getCorridors(filters?: CorridorFilters): Promise<CorridorMetrics[]> {
+  const params = new URLSearchParams();
+  if (filters) {
+    if (filters.success_rate_min !== undefined) params.append('success_rate_min', filters.success_rate_min.toString());
+    if (filters.success_rate_max !== undefined) params.append('success_rate_max', filters.success_rate_max.toString());
+    if (filters.volume_min !== undefined) params.append('volume_min', filters.volume_min.toString());
+    if (filters.volume_max !== undefined) params.append('volume_max', filters.volume_max.toString());
+    if (filters.asset_code) params.append('asset_code', filters.asset_code);
+    if (filters.time_period) params.append('time_period', filters.time_period);
+    if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
+    if (filters.offset !== undefined) params.append('offset', filters.offset.toString());
+    if (filters.sort_by) params.append('sort_by', filters.sort_by);
+  }
+  const query = params.toString();
+  const url = query ? `/corridors?${query}` : '/corridors';
+  return api.get<CorridorMetrics[]>(url);
 }
 
 /**
@@ -348,17 +376,9 @@ export interface AnchorDetailData {
  * Fetch detailed metrics for a single anchor
  */
 export async function getAnchorDetail(address: string): Promise<AnchorDetailData> {
-  // If in development and no backend, return mock
-  // In a real scenario we'd just call the API
-  // return api.get<AnchorDetailData>(`/anchors/${address}`);
-
-  // For now, let's wrap the mock in a promise to simulate network delay
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(generateMockAnchorDetail(address));
-    }, 800);
-  });
+  return api.get<AnchorDetailData>(`/anchors/${address}`);
 }
+
 
 /**
  * Mock data generator for Anchor Details
