@@ -114,7 +114,7 @@ export const SkeletonChart: React.FC<{
   height?: string | number;
 }> = ({ className = "", height = 300 }) => {
   const randomHeights = useMemo(() =>
-    [...Array(12)].map(() => Math.max(20, Math.random() * 100)),
+    [...Array(12)].map((_, i) => Math.max(20, 30 + (i * 7) % 70)),
     []);
 
   return (
@@ -125,7 +125,7 @@ export const SkeletonChart: React.FC<{
         <Skeleton
           key={i}
           className="w-full rounded-t"
-          style={{ height: `${Math.max(20, 30 + (i * 7) % 70)}%` }}
+          style={{ height: `${randomHeights[i]}%` }}
         />
       ))}
     </div>

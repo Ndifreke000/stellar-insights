@@ -288,7 +288,7 @@ function CorridorsPageContent() {
               onPageChange={onPageChange}
               onPageSizeChange={onPageSizeChange}
             />
-          </>
+          </div>
         )}
 
         {/* Info Footer */}

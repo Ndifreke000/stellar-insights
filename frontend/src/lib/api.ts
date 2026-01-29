@@ -376,7 +376,9 @@ export interface AnchorDetailData {
  * Fetch detailed metrics for a single anchor
  */
 export async function getAnchorDetail(address: string): Promise<AnchorDetailData> {
-  return api.get<AnchorDetailData>(`/anchors/${address}`);
+  // For now, use mock data since the backend doesn't have a full anchor detail endpoint
+  // TODO: Replace with actual API call when backend endpoint is implemented
+  return generateMockAnchorDetail(address);
 }
 
 
@@ -390,10 +392,15 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
   const reliability_history: ReliabilityDataPoint[] = [];
   for (let i = 29; i >= 0; i--) {
     const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    // score between 70 and 100 with some random fluctuation
+    // Use deterministic variation based on address and day
+    const addressHash = address.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    const dayVariation = (addressHash + i) % 20 - 10; // ±10 variation
+    const baseScore = 85 + (addressHash % 10); // Base score between 85-95
+    const score = Math.max(70, Math.min(100, baseScore + dayVariation));
+    
     reliability_history.push({
       timestamp: date.toISOString().split('T')[0],
-      score: 85 + Math.random() * 15 - (Math.random() > 0.8 ? 10 : 0),
+      score: score,
     });
   }
 
@@ -420,7 +427,7 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
   return {
     anchor: {
       id: address,
-      name: 'Simulated Anchor Inc.',
+      name: `Anchor ${address.slice(0, 8)}...`,
       stellar_account: address,
       reliability_score: reliability_history[reliability_history.length - 1].score,
       asset_coverage: 2,

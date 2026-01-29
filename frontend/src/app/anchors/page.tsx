@@ -1,18 +1,86 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
-import { Search, Anchor as AnchorIcon } from "lucide-react";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { Search, Anchor as AnchorIcon, ExternalLink, BarChart3, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ResponsiveContainer, LineChart, Line } from "recharts";
 import { MainLayout } from "@/components/layout";
 import { AnchorMetrics, fetchAnchors} from "@/lib/api";
-import AnchorTable from "@/components/tables/AnchorsTables";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 
+// Utility functions
+const truncateAddress = (address: string) => {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
+
+const getHealthStatusColor = (status: string) => {
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === "green" || normalizedStatus === "healthy") {
+    return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
+  } else if (normalizedStatus === "yellow" || normalizedStatus === "warning") {
+    return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
+  } else {
+    return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
+  }
+};
+
+const getHealthStatusIcon = (status: string) => {
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === "green" || normalizedStatus === "healthy") {
+    return "●";
+  } else if (normalizedStatus === "yellow" || normalizedStatus === "warning") {
+    return "●";
+  } else {
+    return "●";
+  }
+};
+
+const generateMockHistoricalData = (currentScore: number) => {
+  const data = [];
+  for (let i = 30; i >= 0; i--) {
+    const variation = (Math.random() - 0.5) * 10; // ±5 point variation
+    const score = Math.max(0, Math.min(100, currentScore + variation));
+    data.push({
+      date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      score: score
+    });
+  }
+  return data;
+};
+
+// Sort handler function
+const handleSort = (column: "reliability" | "transactions" | "failure_rate", currentSortBy: string, currentDirection: "asc" | "desc", setSortBy: (sort: "reliability" | "transactions" | "failure_rate") => void, setSortDirection: (dir: "asc" | "desc") => void) => {
+  if (currentSortBy === column) {
+    // Toggle direction if same column
+    setSortDirection(currentDirection === "asc" ? "desc" : "asc");
+  } else {
+    // New column, default to desc for most metrics
+    setSortBy(column);
+    setSortDirection(column === "failure_rate" ? "asc" : "desc");
+  }
+};
+
+// Sort indicator component
+const SortIndicator = ({ column, currentSort, direction }: { column: string, currentSort: string, direction: "asc" | "desc" }) => {
+  if (currentSort !== column) {
+    return <ChevronsUpDown className="w-4 h-4 text-gray-400" />;
+  }
+  return direction === "asc" ? 
+    <ChevronUp className="w-4 h-4 text-blue-500" /> : 
+    <ChevronDown className="w-4 h-4 text-blue-500" />;
+};
+
 const AnchorsPageContent = () => {
+  const router = useRouter();
   const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState<"reliability" | "transactions" | "failure_rate">("reliability");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Fetch anchors from the backend
   useEffect(() => {
@@ -44,6 +112,27 @@ const AnchorsPageContent = () => {
     );
   }, [anchors, searchTerm]);
 
+  // Sort and paginate anchors
+  const sortedAndFilteredAnchors = useMemo(() => {
+    return [...filteredAnchors].sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case "reliability":
+          comparison = b.reliability_score - a.reliability_score;
+          break;
+        case "transactions":
+          comparison = b.total_transactions - a.total_transactions;
+          break;
+        case "failure_rate":
+          comparison = a.failure_rate - b.failure_rate;
+          break;
+        default:
+          return 0;
+      }
+      return sortDirection === "asc" ? -comparison : comparison;
+    });
+  }, [filteredAnchors, sortBy, sortDirection]);
+
   // Pagination
   const {
     currentPage,
@@ -52,9 +141,9 @@ const AnchorsPageContent = () => {
     onPageSizeChange,
     startIndex,
     endIndex,
-  } = usePagination(filteredAnchors.length);
+  } = usePagination(sortedAndFilteredAnchors.length);
 
-  const paginatedAnchors = filteredAnchors.slice(startIndex, endIndex);
+  const paginatedAnchors = sortedAndFilteredAnchors.slice(startIndex, endIndex);
 
   // Helper functions for stats
   const formatNumber = (num: number) => {
@@ -89,33 +178,6 @@ const AnchorsPageContent = () => {
               {error}
             </div>
           </div>
-
-          {/* Sort Controls */}
-          <div className="flex gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                setSortBy(
-                  e.target.value as
-                  | "reliability"
-                  | "transactions"
-                  | "failure_rate",
-                )
-              }
-              className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="reliability">Reliability Score</option>
-              <option value="transactions">Total Transactions</option>
-              <option value="failure_rate">Failure Rate</option>
-            </select>
-
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
-            >
-              Retry
-            </button>
-          </div>
         )}
 
         {/* Search Bar */}
@@ -131,7 +193,12 @@ const AnchorsPageContent = () => {
               disabled={loading}
             />
           </div>
-        ) : (
+          {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              💡 Click on any row to view anchor details • Click column headers to sort
+            </p>
+          )}
+        </div>
           <div className="space-y-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
               {/* Desktop Table */}
@@ -145,17 +212,35 @@ const AnchorsPageContent = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Health Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Reliability Score
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("reliability", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Reliability Score
+                          <SortIndicator column="reliability" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Success Rate
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("failure_rate", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Success Rate
+                          <SortIndicator column="failure_rate" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Asset Coverage
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Total Transactions
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("transactions", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Total Transactions
+                          <SortIndicator column="transactions" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         30-Day Trend
@@ -178,12 +263,13 @@ const AnchorsPageContent = () => {
                       return (
                         <tr
                           key={anchor.id}
-                          className="hover:bg-gray-50 dark:hover:bg-slate-700"
+                          className="hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                               <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                                <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                                <AnchorIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -270,6 +356,7 @@ const AnchorsPageContent = () => {
                             <Link
                               href={`/anchors/${anchor.stellar_account}`}
                               className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               View Details
                               <ExternalLink className="w-3 h-3" />
@@ -294,11 +381,15 @@ const AnchorsPageContent = () => {
                   );
 
                   return (
-                    <div key={anchor.id} className="p-4">
+                    <div 
+                      key={anchor.id} 
+                      className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                      onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
+                    >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                            <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                            <AnchorIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -396,6 +487,7 @@ const AnchorsPageContent = () => {
                         <Link
                           href={`/anchors/${anchor.stellar_account}`}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Details
                           <ExternalLink className="w-3 h-3" />
@@ -408,9 +500,9 @@ const AnchorsPageContent = () => {
             </div>
 
           {/* Pagination */}
-          {!loading && !error && filteredAnchors.length > 0 && (
+          {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
             <DataTablePagination
-              totalItems={filteredAnchors.length}
+              totalItems={sortedAndFilteredAnchors.length}
               pageSize={pageSize}
               currentPage={currentPage}
               onPageChange={onPageChange}
@@ -420,14 +512,14 @@ const AnchorsPageContent = () => {
         </div>
 
         {/* Summary Stats */}
-        {!loading && !error && filteredAnchors.length > 0 && (
+        {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
                 Total Anchors
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                {filteredAnchors.length}
+                {sortedAndFilteredAnchors.length}
               </div>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
@@ -435,10 +527,10 @@ const AnchorsPageContent = () => {
                 Avg Reliability
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                {filteredAnchors.length > 0
+                {sortedAndFilteredAnchors.length > 0
                   ? (
-                      filteredAnchors.reduce((sum, a) => sum + a.reliability_score, 0) /
-                      filteredAnchors.length
+                      sortedAndFilteredAnchors.reduce((sum, a) => sum + a.reliability_score, 0) /
+                      sortedAndFilteredAnchors.length
                     ).toFixed(1)
                   : "0.0"}
                 %
@@ -450,7 +542,7 @@ const AnchorsPageContent = () => {
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {formatNumber(
-                  filteredAnchors.reduce((sum, a) => sum + a.total_transactions, 0)
+                  sortedAndFilteredAnchors.reduce((sum, a) => sum + a.total_transactions, 0)
                 )}
               </div>
             </div>
@@ -459,14 +551,14 @@ const AnchorsPageContent = () => {
                 Healthy Anchors
               </div>
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {filteredAnchors.filter((a) => a.status.toLowerCase() === "green" || a.status === "Healthy").length}
+                {sortedAndFilteredAnchors.filter((a) => a.status.toLowerCase() === "green" || a.status === "Healthy").length}
               </div>
             </div>
           </div>
         )}
 
         {/* Empty State (when no error but also no data) */}
-        {!loading && !error && filteredAnchors.length === 0 && anchors.length > 0 && (
+        {!loading && !error && sortedAndFilteredAnchors.length === 0 && anchors.length > 0 && (
           <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-12 text-center">
             <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400">
