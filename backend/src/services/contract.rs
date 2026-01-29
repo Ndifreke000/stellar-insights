@@ -137,6 +137,29 @@ impl ContractService {
     /// 
     /// # Returns
     /// Result containing submission details or error
+    pub async fn submit_snapshot(
+        &self,
+        hash: [u8; 32],
+        epoch: u64,
+    ) -> Result<SubmissionResult> {
+        self.submit_snapshot_hash(hash, epoch).await
+    }
+
+    /// Submit a snapshot hash to the on-chain contract
+    /// 
+    /// This function will:
+    /// 1. Build and simulate the transaction
+    /// 2. Sign the transaction
+    /// 3. Submit to the network
+    /// 4. Wait for confirmation
+    /// 5. Retry on transient failures
+    /// 
+    /// # Arguments
+    /// * `hash` - 32-byte snapshot hash
+    /// * `epoch` - Epoch identifier
+    /// 
+    /// # Returns
+    /// Result containing submission details or error
     pub async fn submit_snapshot_hash(
         &self,
         hash: [u8; 32],
@@ -453,6 +476,130 @@ impl ContractService {
             .context("Failed to parse health check response")?;
 
         Ok(body.result.is_some() && body.error.is_none())
+    }
+
+    /// Verify that a snapshot exists on-chain for the given hash and epoch
+    pub async fn verify_snapshot_exists(&self, hash: &str, epoch: u64) -> Result<bool> {
+        debug!("Verifying snapshot exists for epoch {} with hash {}", epoch, hash);
+
+        // Convert hex hash back to bytes for contract call
+        let hash_bytes = hex::decode(hash)
+            .context("Invalid hash format")?;
+        
+        if hash_bytes.len() != 32 {
+            return Err(anyhow::anyhow!("Hash must be exactly 32 bytes"));
+        }
+
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(&hash_bytes);
+
+        // Call the contract's verify_snapshot function
+        let verify_args = json!({
+            "contractId": self.config.contract_id,
+            "function": "verify_snapshot",
+            "args": [
+                {
+                    "type": "bytes",
+                    "value": hash
+                }
+            ]
+        });
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "simulateTransaction".to_string(),
+            params: json!({
+                "transaction": verify_args
+            }),
+        };
+
+        let response = self
+            .client
+            .post(&self.config.rpc_url)
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send verification request")?;
+
+        let body: JsonRpcResponse<serde_json::Value> = response
+            .json()
+            .await
+            .context("Failed to parse verification response")?;
+
+        if let Some(error) = body.error {
+            warn!("Verification request failed: {}", error.message);
+            return Ok(false);
+        }
+
+        if let Some(result) = body.result {
+            // Extract the return value from the simulation
+            let return_value = result
+                .get("returnValue")
+                .and_then(|rv| rv.as_bool())
+                .unwrap_or(false);
+
+            debug!("Verification result for epoch {}: {}", epoch, return_value);
+            Ok(return_value)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Get snapshot data for a specific epoch from the contract
+    pub async fn get_snapshot_by_epoch(&self, epoch: u64) -> Result<Option<String>> {
+        debug!("Getting snapshot for epoch {}", epoch);
+
+        let get_args = json!({
+            "contractId": self.config.contract_id,
+            "function": "get_snapshot",
+            "args": [
+                {
+                    "type": "u64",
+                    "value": epoch.to_string()
+                }
+            ]
+        });
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "simulateTransaction".to_string(),
+            params: json!({
+                "transaction": get_args
+            }),
+        };
+
+        let response = self
+            .client
+            .post(&self.config.rpc_url)
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send get snapshot request")?;
+
+        let body: JsonRpcResponse<serde_json::Value> = response
+            .json()
+            .await
+            .context("Failed to parse get snapshot response")?;
+
+        if let Some(error) = body.error {
+            if error.message.contains("not found") {
+                return Ok(None);
+            }
+            return Err(anyhow::anyhow!("Get snapshot failed: {}", error.message));
+        }
+
+        if let Some(result) = body.result {
+            let hash_hex = result
+                .get("returnValue")
+                .and_then(|rv| rv.as_str())
+                .map(|s| s.to_string());
+
+            Ok(hash_hex)
+        } else {
+            Ok(None)
+        }
     }
 }
 
