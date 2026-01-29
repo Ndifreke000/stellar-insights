@@ -19,6 +19,8 @@ use backend::ingestion::DataIngestionService;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
 use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
+use backend::state::AppState;
+use backend::websocket::{ws_handler, WsState};
 
 
 #[tokio::main]
@@ -68,6 +70,13 @@ async fn main() -> Result<()> {
     );
 
     let rpc_client = Arc::new(StellarRpcClient::new(rpc_url, horizon_url, mock_mode));
+
+    // Initialize WebSocket state
+    let ws_state = Arc::new(WsState::new());
+    tracing::info!("WebSocket state initialized");
+
+    // Create shared app state
+    let app_state = AppState::new(Arc::clone(&db), Arc::clone(&ws_state));
 
     // Initialize Data Ingestion Service
     let ingestion_service = Arc::new(DataIngestionService::new(
@@ -163,7 +172,7 @@ async fn main() -> Result<()> {
             put(update_corridor_metrics_from_transactions),
         )
         .route("/api/corridors/:corridor_key", get(get_corridor_detail))
-        .with_state(db)
+        .with_state(app_state.clone())
         .layer(
             ServiceBuilder::new()
                 .layer(middleware::from_fn_with_state(
@@ -197,11 +206,18 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
+    // Build WebSocket router
+    let ws_routes = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(ws_state.clone())
+        .layer(cors.clone());
+
     // Merge routers
     let app = Router::new()
         .merge(anchor_routes)
         .merge(rpc_routes)
-        .merge(metrics::routes());
+        .merge(metrics::routes())
+        .merge(ws_routes);
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

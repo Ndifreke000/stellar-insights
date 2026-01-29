@@ -2,11 +2,10 @@
  * API Client for Stellar Insights
  * Handles all API calls to the backend
  */
+import { monitoring } from "./monitoring";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
-
-
 
 /**
  * Custom error class for API responses
@@ -40,9 +39,18 @@ async function fetchApi<T>(
   };
 
   try {
+    const startTime = performance.now();
     const response = await fetch(url, {
       ...options,
       headers,
+    });
+    const duration = performance.now() - startTime;
+
+    // Track API performance
+    monitoring.trackMetric("api-response-time", duration, {
+      endpoint,
+      status: response.status,
+      method: options.method || "GET",
     });
 
     if (!response.ok) {
@@ -208,27 +216,35 @@ export interface CorridorFilters {
   volume_min?: number;
   volume_max?: number;
   asset_code?: string;
-  time_period?: '7d' | '30d' | '90d' | '';
+  time_period?: "7d" | "30d" | "90d" | "";
   limit?: number;
   offset?: number;
-  sort_by?: 'success_rate' | 'health_score' | 'liquidity';
+  sort_by?: "success_rate" | "health_score" | "liquidity";
 }
 
-export async function getCorridors(filters?: CorridorFilters): Promise<CorridorMetrics[]> {
+export async function getCorridors(
+  filters?: CorridorFilters,
+): Promise<CorridorMetrics[]> {
   const params = new URLSearchParams();
   if (filters) {
-    if (filters.success_rate_min !== undefined) params.append('success_rate_min', filters.success_rate_min.toString());
-    if (filters.success_rate_max !== undefined) params.append('success_rate_max', filters.success_rate_max.toString());
-    if (filters.volume_min !== undefined) params.append('volume_min', filters.volume_min.toString());
-    if (filters.volume_max !== undefined) params.append('volume_max', filters.volume_max.toString());
-    if (filters.asset_code) params.append('asset_code', filters.asset_code);
-    if (filters.time_period) params.append('time_period', filters.time_period);
-    if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
-    if (filters.offset !== undefined) params.append('offset', filters.offset.toString());
-    if (filters.sort_by) params.append('sort_by', filters.sort_by);
+    if (filters.success_rate_min !== undefined)
+      params.append("success_rate_min", filters.success_rate_min.toString());
+    if (filters.success_rate_max !== undefined)
+      params.append("success_rate_max", filters.success_rate_max.toString());
+    if (filters.volume_min !== undefined)
+      params.append("volume_min", filters.volume_min.toString());
+    if (filters.volume_max !== undefined)
+      params.append("volume_max", filters.volume_max.toString());
+    if (filters.asset_code) params.append("asset_code", filters.asset_code);
+    if (filters.time_period) params.append("time_period", filters.time_period);
+    if (filters.limit !== undefined)
+      params.append("limit", filters.limit.toString());
+    if (filters.offset !== undefined)
+      params.append("offset", filters.offset.toString());
+    if (filters.sort_by) params.append("sort_by", filters.sort_by);
   }
   const query = params.toString();
-  const url = query ? `/corridors?${query}` : '/corridors';
+  const url = query ? `/corridors?${query}` : "/corridors";
   return api.get<CorridorMetrics[]>(url);
 }
 
@@ -386,10 +402,11 @@ export interface AnchorDetailData {
 /**
  * Fetch detailed metrics for a single anchor
  */
-export async function getAnchorDetail(address: string): Promise<AnchorDetailData> {
+export async function getAnchorDetail(
+  address: string,
+): Promise<AnchorDetailData> {
   return api.get<AnchorDetailData>(`/anchors/${address}`);
 }
-
 
 /**
  * Mock data generator for Anchor Details
@@ -403,7 +420,7 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
     const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
     // score between 70 and 100 with some random fluctuation
     reliability_history.push({
-      timestamp: date.toISOString().split('T')[0],
+      timestamp: date.toISOString().split("T")[0],
       score: 85 + Math.random() * 15 - (Math.random() > 0.8 ? 10 : 0),
     });
   }
@@ -411,46 +428,53 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
   // Generate issued assets
   const assets: IssuedAsset[] = [
     {
-      asset_code: 'USDC',
+      asset_code: "USDC",
       issuer: address,
       volume_24h_usd: 1250000,
       success_rate: 98.5,
       failure_rate: 1.5,
-      total_transactions: 5400
+      total_transactions: 5400,
     },
     {
-      asset_code: 'EURC',
+      asset_code: "EURC",
       issuer: address,
       volume_24h_usd: 450000,
       success_rate: 94.2,
       failure_rate: 5.8,
-      total_transactions: 1200
-    }
+      total_transactions: 1200,
+    },
   ];
 
   return {
     anchor: {
       id: address,
-      name: 'Simulated Anchor Inc.',
+      name: "Simulated Anchor Inc.",
       stellar_account: address,
-      reliability_score: reliability_history[reliability_history.length - 1].score,
+      reliability_score:
+        reliability_history[reliability_history.length - 1].score,
       asset_coverage: 2,
       failure_rate: 2.1,
       total_transactions: 6600,
       successful_transactions: 6461,
       failed_transactions: 139,
-      status: 'Healthy'
+      status: "Healthy",
     },
     issued_assets: assets,
     reliability_history,
     top_failure_reasons: [
-      { reason: 'Timeout awaiting response', count: 45 },
-      { reason: 'Insufficient liquidity', count: 23 },
-      { reason: 'Path payment failed', count: 12 }
+      { reason: "Timeout awaiting response", count: 45 },
+      { reason: "Insufficient liquidity", count: 23 },
+      { reason: "Path payment failed", count: 12 },
     ],
     recent_failed_corridors: [
-      { corridor_id: 'USDC-PHP', timestamp: new Date(now.getTime() - 1000 * 60 * 15).toISOString() },
-      { corridor_id: 'EURC-NGN', timestamp: new Date(now.getTime() - 1000 * 60 * 145).toISOString() }
-    ]
+      {
+        corridor_id: "USDC-PHP",
+        timestamp: new Date(now.getTime() - 1000 * 60 * 15).toISOString(),
+      },
+      {
+        corridor_id: "EURC-NGN",
+        timestamp: new Date(now.getTime() - 1000 * 60 * 145).toISOString(),
+      },
+    ],
   };
 }

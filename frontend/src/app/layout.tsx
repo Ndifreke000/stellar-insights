@@ -1,7 +1,7 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-// import { Analytics } from '@vercel/analytics/next'
+import { MonitoringProvider } from "../components/MonitoringProvider";
 import { WalletProvider } from "../components/lib/wallet-context";
 import { NotificationProvider } from "../contexts/NotificationContext";
 import { NotificationSystem } from "../components/notifications/NotificationSystem";
@@ -57,6 +57,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-
-

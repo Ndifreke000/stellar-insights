@@ -588,4 +588,72 @@ impl Database {
         }
         Ok(())
     }
+
+    // Aggregation methods
+    pub fn aggregation_db(&self) -> crate::db::aggregation::AggregationDb {
+        crate::db::aggregation::AggregationDb::new(self.pool.clone())
+    }
+
+    pub async fn fetch_payments_by_timerange(
+        &self,
+        start_time: chrono::DateTime<chrono::Utc>,
+        end_time: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<crate::models::corridor::PaymentRecord>> {
+        self.aggregation_db()
+            .fetch_payments_by_timerange(start_time, end_time, limit)
+            .await
+    }
+
+    pub async fn upsert_hourly_corridor_metric(
+        &self,
+        metric: &crate::services::aggregation::HourlyCorridorMetrics,
+    ) -> Result<()> {
+        self.aggregation_db()
+            .upsert_hourly_corridor_metric(metric)
+            .await
+    }
+
+    pub async fn fetch_hourly_metrics_by_timerange(
+        &self,
+        start_time: chrono::DateTime<chrono::Utc>,
+        end_time: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<crate::services::aggregation::HourlyCorridorMetrics>> {
+        self.aggregation_db()
+            .fetch_hourly_metrics_by_timerange(start_time, end_time)
+            .await
+    }
+
+    pub async fn create_aggregation_job(&self, job_id: &str, job_type: &str) -> Result<()> {
+        self.aggregation_db()
+            .create_aggregation_job(job_id, job_type)
+            .await
+    }
+
+    pub async fn update_aggregation_job_status(
+        &self,
+        job_id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        self.aggregation_db()
+            .update_aggregation_job_status(job_id, status, error_message)
+            .await
+    }
+
+    pub async fn update_last_processed_hour(&self, job_id: &str, last_hour: &str) -> Result<()> {
+        self.aggregation_db()
+            .update_last_processed_hour(job_id, last_hour)
+            .await
+    }
+
+    pub async fn get_job_retry_count(&self, job_id: &str) -> Result<i32> {
+        self.aggregation_db().get_job_retry_count(job_id).await
+    }
+
+    pub async fn increment_job_retry_count(&self, job_id: &str) -> Result<()> {
+        self.aggregation_db()
+            .increment_job_retry_count(job_id)
+            .await
+    }
 }
