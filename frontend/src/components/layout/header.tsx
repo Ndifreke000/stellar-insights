@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Menu, Wallet, LogOut } from "lucide-react";
 import { useWallet } from "../lib/wallet-context";
+import { useNotifications } from "../../contexts/NotificationContext";
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -11,11 +12,81 @@ interface HeaderProps {
 
 export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
   const { isConnected, address, connectWallet, disconnectWallet } = useWallet();
+  const { showToast } = useNotifications();
   const [showWalletMenu, setShowWalletMenu] = React.useState(false);
+  const prevConnectedRef = useRef<boolean | null>(null);
 
   const displayAddress = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : null;
+
+  // Show notification when wallet connection status changes
+  useEffect(() => {
+    // Skip the first render to avoid showing notification on initial load
+    if (prevConnectedRef.current === null) {
+      prevConnectedRef.current = isConnected;
+      return;
+    }
+
+    // Only show notification if the connection status actually changed
+    if (prevConnectedRef.current !== isConnected) {
+      const currentDisplayAddress = address
+        ? `${address.slice(0, 6)}...${address.slice(-4)}`
+        : null;
+
+      if (isConnected && address) {
+        showToast({
+          type: 'success',
+          priority: 'medium',
+          title: 'Wallet Connected',
+          message: `Successfully connected to ${currentDisplayAddress}`,
+          category: 'system',
+          duration: 4000,
+        });
+      } else if (!isConnected && prevConnectedRef.current) {
+        showToast({
+          type: 'info',
+          priority: 'medium',
+          title: 'Wallet Disconnected',
+          message: 'Your wallet has been disconnected',
+          category: 'system',
+          duration: 3000,
+        });
+      }
+      prevConnectedRef.current = isConnected;
+    }
+  }, [isConnected, address, showToast]); // Remove displayAddress from dependencies
+
+  const handleConnect = async () => {
+    try {
+      await connectWallet();
+    } catch (error) {
+      showToast({
+        type: 'error',
+        priority: 'high',
+        title: 'Connection Failed',
+        message: 'Failed to connect wallet. Please try again.',
+        category: 'system',
+        duration: 5000,
+      });
+    }
+  };
+
+  const handleDisconnect = () => {
+    try {
+      disconnectWallet();
+      setShowWalletMenu(false);
+    } catch (error) {
+      showToast({
+        type: 'error',
+        priority: 'medium',
+        title: 'Disconnection Failed',
+        message: 'Failed to disconnect wallet properly.',
+        category: 'system',
+        duration: 4000,
+      });
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 z-40">
@@ -62,10 +133,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               {showWalletMenu && (
                 <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg py-2 min-w-[180px]">
                   <button
-                    onClick={() => {
-                      disconnectWallet();
-                      setShowWalletMenu(false);
-                    }}
+                    onClick={handleDisconnect}
                     className="w-full px-4 py-2 flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 transition-colors"
                   >
                     <LogOut className="w-4 h-4" />
@@ -76,7 +144,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
             </div>
           ) : (
             <button
-              onClick={connectWallet}
+              onClick={handleConnect}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2 min-h-[44px] touch-manipulation active:bg-blue-700"
             >
               <Wallet className="w-4 h-4" />

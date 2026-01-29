@@ -79,9 +79,20 @@ async function fetchApi<T>(
       throw error;
     }
 
+    // Check if this is a network error (backend not running)
+    const isNetworkError = error instanceof TypeError && 
+      (error.message.includes('Failed to fetch') || 
+       error.message.includes('fetch is not defined') ||
+       error.message.includes('Network request failed'));
+
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";
-    console.error(`API Request Error [${url}]:`, error);
+    
+    // Only log non-network errors to avoid noise when backend is not running
+    if (!isNetworkError) {
+      console.error(`API Request Error [${url}]:`, error);
+    }
+    
     throw new ApiError(0, message);
   }
 }

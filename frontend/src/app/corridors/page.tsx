@@ -106,7 +106,8 @@ function CorridorsPageContent() {
           const result = await getCorridors(filters);
           setCorridors(result);
         } catch {
-          console.log("API not available, using mock data");
+          // Backend API not available - gracefully fall back to mock data
+          // This is expected behavior when the backend server isn't running
           setCorridors(mockCorridors);
         }
       } catch (err) {
