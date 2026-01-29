@@ -11,9 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-  X,
-  Save,
-  RotateCcw,
+
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -35,7 +33,6 @@ function CorridorsPageContent() {
   const [sortBy, setSortBy] = useState<
     "success_rate" | "health_score" | "liquidity"
   >("health_score");
-  
   // Filter state variables
   const [successRateRange, setSuccessRateRange] = useState<[number, number]>([0, 100]);
   const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000000]);
@@ -142,58 +139,6 @@ function CorridorsPageContent() {
     if (rate >= 75) return <TrendingUp className="w-5 h-5 text-yellow-500" />;
     return <AlertCircle className="w-5 h-5 text-red-500" />;
   };
-
-  // Filter functions
-  const clearAllFilters = () => {
-    setSuccessRateRange([0, 100]);
-    setVolumeRange([0, 10000000]);
-    setAssetCodeFilter("");
-    setTimePeriod("");
-    setSearchTerm("");
-  };
-
-  const saveFilterPreset = () => {
-    if (!presetName.trim()) return;
-    const preset = {
-      name: presetName,
-      filters: {
-        successRateRange,
-        volumeRange,
-        assetCodeFilter,
-        timePeriod,
-        searchTerm,
-        sortBy,
-      },
-    };
-    const updatedPresets = [...filterPresets, preset];
-    setFilterPresets(updatedPresets);
-    localStorage.setItem('corridorFilterPresets', JSON.stringify(updatedPresets));
-    setPresetName("");
-  };
-
-  const loadFilterPreset = (preset: typeof filterPresets[0]) => {
-    setSuccessRateRange(preset.filters.successRateRange);
-    setVolumeRange(preset.filters.volumeRange);
-    setAssetCodeFilter(preset.filters.assetCodeFilter);
-    setTimePeriod(preset.filters.timePeriod);
-    setSearchTerm(preset.filters.searchTerm);
-    setSortBy(preset.filters.sortBy);
-  };
-
-  const deleteFilterPreset = (index: number) => {
-    const updatedPresets = filterPresets.filter((_preset, i) => i !== index);
-    setFilterPresets(updatedPresets);
-    localStorage.setItem('corridorFilterPresets', JSON.stringify(updatedPresets));
-  };
-
-  // Load presets on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('corridorFilterPresets');
-    if (saved) {
-      setFilterPresets(JSON.parse(saved));
-    }
-  }, []);
-
   return (
     <MainLayout>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -297,14 +242,8 @@ function CorridorsPageContent() {
             <CorridorHeatmap corridors={filteredCorridors} />
           </div>
         ) : (
-          // Grid view
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paginatedCorridors.map((corridor) => (
                 <Link
-                  key={corridor.id}
                   href={`/corridors/${corridor.id}`}
-                  className="group bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 hover:shadow-lg transition-all duration-200 transform hover:-translate-y-1 text-left cursor-pointer"
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between mb-4">
@@ -316,12 +255,6 @@ function CorridorsPageContent() {
                         {corridor.id}
                       </p>
                     </div>
-
-                    {/* Success Rate and Health Score */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                          Success Rate
                         </p>
                         <div className="flex items-center gap-2">
                           {getSuccessStatusIcon(corridor.success_rate)}
@@ -384,47 +317,22 @@ function CorridorsPageContent() {
                         M
                       </span>
                     </div>
-
-                    {/* Payment Attempts */}
-                    <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
-                      <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
-                        <span>{corridor.successful_payments} successful</span>
-                        <span>{corridor.failed_payments} failed</span>
-                      </div>
-                      <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2 mt-2">
-                        <div
-                          className="bg-green-500 rounded-full h-full transition-all duration-300"
-                          style={{
-                            width: `${(corridor.successful_payments / corridor.total_attempts) * 100}%`,
-                          }}
-                        />
-                      </div>
                     </div>
                   </div>
                 </Link>
-              ))}
-            </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-            <DataTablePagination
-              totalItems={filteredCorridors.length}
-              pageSize={pageSize}
-              currentPage={currentPage}
-              onPageChange={onPageChange}
-              onPageSizeChange={onPageSizeChange}
-            />
-          </>
         )}
 
         {/* Info Footer */}
         <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-400 text-sm">
           <p>
-            Showing {paginatedCorridors.length} of {corridors.length} corridors
+            Showing {filteredCorridors.length} of {corridors.length} corridors
           </p>
-          <p className="mt-2 text-xs">
-            {viewMode === "grid"
-              ? "Click any card to view detailed analytics"
-              : "Hover over heatmap cells to see detailed corridor metrics"}
-          </p>
+
         </div>
       </div>
     </MainLayout>
