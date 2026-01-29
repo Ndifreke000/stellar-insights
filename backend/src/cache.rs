@@ -56,7 +56,6 @@ impl Default for CacheConfig {
 pub struct CacheManager {
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
     pub config: CacheConfig,
-    stats: Arc<CacheStats>,
     hits: Arc<AtomicU64>,
     misses: Arc<AtomicU64>,
     invalidations: Arc<AtomicU64>,
@@ -86,11 +85,6 @@ impl CacheManager {
         Ok(Self {
             redis_connection: Arc::new(RwLock::new(connection)),
             config,
-            stats: Arc::new(CacheStats {
-                hits: 0,
-                misses: 0,
-                invalidations: 0,
-            }),
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
             invalidations: Arc::new(AtomicU64::new(0)),

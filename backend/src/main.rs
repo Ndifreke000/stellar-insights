@@ -12,7 +12,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use backend::api::anchors::get_anchors;
 use backend::api::corridors::{get_corridor_detail, list_corridors};
-use backend::api::metrics;
 use backend::cache::{CacheConfig, CacheManager};
 use backend::cache_invalidation::CacheInvalidationService;
 use backend::database::Database;
