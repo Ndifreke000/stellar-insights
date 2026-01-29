@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { Search, Anchor as AnchorIcon } from "lucide-react";
 import { MainLayout } from "@/components/layout";
 import { AnchorMetrics, fetchAnchors} from "@/lib/api";
@@ -8,7 +8,7 @@ import AnchorTable from "@/components/tables/AnchorsTables";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 
-const AnchorsPage = () => {
+const AnchorsPageContent = () => {
   const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -470,12 +470,29 @@ const AnchorsPage = () => {
           <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-12 text-center">
             <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400">
-              No anchors found matching "{searchTerm}"
+              No anchors found matching &quot;{searchTerm}&quot;
             </p>
           </div>
         )}
       </div>
     </MainLayout>
+  );
+};
+
+const AnchorsPage = () => {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <AnchorIcon className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-pulse" />
+            <p className="text-gray-600 dark:text-gray-400">Loading anchors...</p>
+          </div>
+        </div>
+      </MainLayout>
+    }>
+      <AnchorsPageContent />
+    </Suspense>
   );
 };
 

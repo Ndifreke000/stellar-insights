@@ -121,24 +121,13 @@ export const SkeletonChart: React.FC<{
     <div
       className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 ${className}`}
     >
-      <div className="flex items-center justify-between mb-6">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-4 w-24" />
-      </div>
-      <div
-        className="w-full flex items-end justify-between gap-2"
-        style={{
-          height: typeof height === "number" ? `${height}px` : height,
-        }}
-      >
-        {randomHeights.map((h, i) => (
-          <Skeleton
-            key={i}
-            className="w-full rounded-t"
-            style={{ height: `${h}%` }}
-          />
-        ))}
-      </div>
+      {[...Array(12)].map((_, i) => (
+        <Skeleton
+          key={i}
+          className="w-full rounded-t"
+          style={{ height: `${Math.max(20, 30 + (i * 7) % 70)}%` }}
+        />
+      ))}
     </div>
   );
 };

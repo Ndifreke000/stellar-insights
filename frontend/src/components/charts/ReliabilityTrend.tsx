@@ -12,7 +12,6 @@ import {
     TooltipProps
 } from 'recharts';
 import { ReliabilityDataPoint } from '@/lib/api';
-import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface ReliabilityTrendProps {
     data: ReliabilityDataPoint[];

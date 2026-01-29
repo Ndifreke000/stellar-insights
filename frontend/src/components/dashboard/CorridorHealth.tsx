@@ -1,5 +1,4 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge'; // Assuming you have a Badge component, or I will use standard tailwind
 
 // Defines the shape of a corridor object
 interface Corridor {
