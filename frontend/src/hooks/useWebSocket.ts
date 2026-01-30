@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { WebSocketNotificationPayload } from '@/types/notifications';
 
@@ -219,3 +220,4 @@ export const useWebSocket = ({
     sendMessage,
   };
 };
+

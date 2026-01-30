@@ -160,6 +160,29 @@ impl ContractService {
     /// 
     /// # Returns
     /// Result containing submission details or error
+    pub async fn submit_snapshot(
+        &self,
+        hash: [u8; 32],
+        epoch: u64,
+    ) -> Result<SubmissionResult> {
+        self.submit_snapshot_hash(hash, epoch).await
+    }
+
+    /// Submit a snapshot hash to the on-chain contract
+    /// 
+    /// This function will:
+    /// 1. Build and simulate the transaction
+    /// 2. Sign the transaction
+    /// 3. Submit to the network
+    /// 4. Wait for confirmation
+    /// 5. Retry on transient failures
+    /// 
+    /// # Arguments
+    /// * `hash` - 32-byte snapshot hash
+    /// * `epoch` - Epoch identifier
+    /// 
+    /// # Returns
+    /// Result containing submission details or error
     pub async fn submit_snapshot_hash(
         &self,
         hash: [u8; 32],
