@@ -9,6 +9,31 @@ use crate::models::{
     MetricRecord, SnapshotRecord,
 };
 
+/// Parameters for updating anchor from RPC data
+pub struct AnchorRpcUpdate {
+    pub stellar_account: String,
+    pub total_transactions: i64,
+    pub successful_transactions: i64,
+    pub failed_transactions: i64,
+    pub total_volume_usd: f64,
+    pub avg_settlement_time_ms: i32,
+    pub reliability_score: f64,
+    pub status: String,
+}
+
+/// Parameters for recording anchor metrics history
+pub struct AnchorMetricsParams {
+    pub anchor_id: Uuid,
+    pub success_rate: f64,
+    pub failure_rate: f64,
+    pub reliability_score: f64,
+    pub total_transactions: i64,
+    pub successful_transactions: i64,
+    pub failed_transactions: i64,
+    pub avg_settlement_time_ms: Option<i32>,
+    pub volume_usd: Option<f64>,
+}
+
 pub struct Database {
     pool: PgPool,
 }
@@ -137,17 +162,17 @@ impl Database {
         .await?;
 
         // Record metrics history
-        self.record_anchor_metrics_history(
+        self.record_anchor_metrics_history(AnchorMetricsParams {
             anchor_id,
-            metrics.success_rate,
-            metrics.failure_rate,
-            metrics.reliability_score,
+            success_rate: metrics.success_rate,
+            failure_rate: metrics.failure_rate,
+            reliability_score: metrics.reliability_score,
             total_transactions,
             successful_transactions,
             failed_transactions,
             avg_settlement_time_ms,
             volume_usd,
-        )
+        })
         .await?;
 
         Ok(anchor)
@@ -209,17 +234,7 @@ impl Database {
     }
 
     // Update anchor metrics from RPC ingestion
-    pub async fn update_anchor_from_rpc(
-        &self,
-        stellar_account: &str,
-        total_transactions: i64,
-        successful_transactions: i64,
-        failed_transactions: i64,
-        total_volume_usd: f64,
-        avg_settlement_time_ms: i32,
-        reliability_score: f64,
-        status: &str,
-    ) -> Result<()> {
+    pub async fn update_anchor_from_rpc(&self, params: AnchorRpcUpdate) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE anchors
@@ -234,15 +249,15 @@ impl Database {
             WHERE stellar_account = $9
             "#,
         )
-        .bind(total_transactions)
-        .bind(successful_transactions)
-        .bind(failed_transactions)
-        .bind(total_volume_usd)
-        .bind(avg_settlement_time_ms)
-        .bind(reliability_score)
-        .bind(status)
+        .bind(params.total_transactions)
+        .bind(params.successful_transactions)
+        .bind(params.failed_transactions)
+        .bind(params.total_volume_usd)
+        .bind(params.avg_settlement_time_ms)
+        .bind(params.reliability_score)
+        .bind(&params.status)
         .bind(Utc::now())
-        .bind(stellar_account)
+        .bind(&params.stellar_account)
         .execute(&self.pool)
         .await?;
 
@@ -252,15 +267,7 @@ impl Database {
     // Metrics history operations
     pub async fn record_anchor_metrics_history(
         &self,
-        anchor_id: Uuid,
-        success_rate: f64,
-        failure_rate: f64,
-        reliability_score: f64,
-        total_transactions: i64,
-        successful_transactions: i64,
-        failed_transactions: i64,
-        avg_settlement_time_ms: Option<i32>,
-        volume_usd: Option<f64>,
+        params: AnchorMetricsParams,
     ) -> Result<AnchorMetricsHistory> {
         let id = Uuid::new_v4().to_string();
         let history = sqlx::query_as::<_, AnchorMetricsHistory>(
@@ -275,16 +282,16 @@ impl Database {
             "#,
         )
         .bind(id)
-        .bind(anchor_id.to_string())
+        .bind(params.anchor_id.to_string())
         .bind(Utc::now())
-        .bind(success_rate)
-        .bind(failure_rate)
-        .bind(reliability_score)
-        .bind(total_transactions)
-        .bind(successful_transactions)
-        .bind(failed_transactions)
-        .bind(avg_settlement_time_ms.unwrap_or(0))
-        .bind(volume_usd.unwrap_or(0.0))
+        .bind(params.success_rate)
+        .bind(params.failure_rate)
+        .bind(params.reliability_score)
+        .bind(params.total_transactions)
+        .bind(params.successful_transactions)
+        .bind(params.failed_transactions)
+        .bind(params.avg_settlement_time_ms.unwrap_or(0))
+        .bind(params.volume_usd.unwrap_or(0.0))
         .fetch_one(&self.pool)
         .await?;
 

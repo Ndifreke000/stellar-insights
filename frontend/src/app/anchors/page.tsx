@@ -1,161 +1,139 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
-import {
-  Anchor,
-  Search,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  CheckCircle,
-  Activity,
-  Loader,
-  ExternalLink,
-  BarChart3,
-} from "lucide-react";
-import { MainLayout } from "@/components/layout";
-import { AnchorMetrics } from "@/lib/api";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { Search, Anchor as AnchorIcon, ExternalLink, BarChart3, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import Link from "next/link";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { useRouter } from "next/navigation";
+import { ResponsiveContainer, LineChart, Line } from "recharts";
+import { MainLayout } from "@/components/layout";
+import { AnchorMetrics, fetchAnchors} from "@/lib/api";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
-import { SkeletonTable } from "@/components/ui/Skeleton";
 
-// Mock data for demonstration
-const generateMockAnchors = (): AnchorMetrics[] => [
-  {
-    id: "GCKFBEIYTKP6RCZX6DSQT4JDKQF6NKPZ7IQXQJY5QJZQJZQJZQJZQJZQ",
-    name: "Circle USDC Anchor",
-    stellar_account: "GCKFBEIYTKP6RCZX6DSQT4JDKQF6NKPZ7IQXQJY5QJZQJZQJZQJZQJZQ",
-    reliability_score: 98.5,
-    asset_coverage: 3,
-    failure_rate: 1.5,
-    total_transactions: 15420,
-    successful_transactions: 15188,
-    failed_transactions: 232,
-    status: "Healthy",
-  },
-  {
-    id: "GDQOE23CFSUMSVQK4Y5JHPPYK73VYCNHZHA7ENKCV37P6SUEO6XQBKPP",
-    name: "MoneyGram Access",
-    stellar_account: "GDQOE23CFSUMSVQK4Y5JHPPYK73VYCNHZHA7ENKCV37P6SUEO6XQBKPP",
-    reliability_score: 94.2,
-    asset_coverage: 5,
-    failure_rate: 5.8,
-    total_transactions: 8750,
-    successful_transactions: 8242,
-    failed_transactions: 508,
-    status: "Healthy",
-  },
-  {
-    id: "GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCH",
-    name: "AnchorUSD",
-    stellar_account: "GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCH",
-    reliability_score: 91.8,
-    asset_coverage: 2,
-    failure_rate: 8.2,
-    total_transactions: 5230,
-    successful_transactions: 4801,
-    failed_transactions: 429,
-    status: "Warning",
-  },
-  {
-    id: "GBSTRUSD7IRX73RQZBL3RQUH6KS3O4NYFY3QCALDLZD77XMZOPWAVTUK",
-    name: "Stellar Development Foundation",
-    stellar_account: "GBSTRUSD7IRX73RQZBL3RQUH6KS3O4NYFY3QCALDLZD77XMZOPWAVTUK",
-    reliability_score: 96.7,
-    asset_coverage: 4,
-    failure_rate: 3.3,
-    total_transactions: 12100,
-    successful_transactions: 11700,
-    failed_transactions: 400,
-    status: "Healthy",
-  },
-  {
-    id: "GCKFBEIYTKP6RCZX6DSQT4JDKQF6NKPZ7IQXQJY5QJZQJZQJZQJZQJZA",
-    name: "Vibrant Network",
-    stellar_account: "GCKFBEIYTKP6RCZX6DSQT4JDKQF6NKPZ7IQXQJY5QJZQJZQJZQJZQJZA",
-    reliability_score: 87.3,
-    asset_coverage: 6,
-    failure_rate: 12.7,
-    total_transactions: 3420,
-    successful_transactions: 2986,
-    failed_transactions: 434,
-    status: "Warning",
-  },
-  {
-    id: "GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCZ",
-    name: "Tempo Money Transfer",
-    stellar_account: "GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCZ",
-    reliability_score: 82.1,
-    asset_coverage: 8,
-    failure_rate: 17.9,
-    total_transactions: 2150,
-    successful_transactions: 1765,
-    failed_transactions: 385,
-    status: "Critical",
-  },
-];
+// Utility functions
+const truncateAddress = (address: string) => {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
 
-// Generate mock historical data for mini charts
-const generateMockHistoricalData = (baseScore: number) => {
+const getHealthStatusColor = (status: string) => {
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === "green" || normalizedStatus === "healthy") {
+    return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
+  } else if (normalizedStatus === "yellow" || normalizedStatus === "warning") {
+    return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
+  } else {
+    return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
+  }
+};
+
+const getHealthStatusIcon = (status: string) => {
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === "green" || normalizedStatus === "healthy") {
+    return "●";
+  } else if (normalizedStatus === "yellow" || normalizedStatus === "warning") {
+    return "●";
+  } else {
+    return "●";
+  }
+};
+
+const generateMockHistoricalData = (currentScore: number) => {
   const data = [];
-  const now = new Date();
-
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    // Use deterministic variation based on date to avoid Math.random during render
-    const variation = (((date.getTime() / 1000) % 20) - 10);
+  for (let i = 30; i >= 0; i--) {
+    const variation = (Math.random() - 0.5) * 10; // ±5 point variation
+    const score = Math.max(0, Math.min(100, currentScore + variation));
     data.push({
-      date: date.toISOString().split("T")[0],
-      score: Math.max(0, Math.min(100, baseScore + variation)),
+      date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      score: score
     });
   }
-
   return data;
 };
 
-function AnchorsPageContent() {
+// Sort handler function
+const handleSort = (column: "reliability" | "transactions" | "failure_rate", currentSortBy: string, currentDirection: "asc" | "desc", setSortBy: (sort: "reliability" | "transactions" | "failure_rate") => void, setSortDirection: (dir: "asc" | "desc") => void) => {
+  if (currentSortBy === column) {
+    // Toggle direction if same column
+    setSortDirection(currentDirection === "asc" ? "desc" : "asc");
+  } else {
+    // New column, default to desc for most metrics
+    setSortBy(column);
+    setSortDirection(column === "failure_rate" ? "asc" : "desc");
+  }
+};
+
+// Sort indicator component
+const SortIndicator = ({ column, currentSort, direction }: { column: string, currentSort: string, direction: "asc" | "desc" }) => {
+  if (currentSort !== column) {
+    return <ChevronsUpDown className="w-4 h-4 text-gray-400" />;
+  }
+  return direction === "asc" ? 
+    <ChevronUp className="w-4 h-4 text-blue-500" /> : 
+    <ChevronDown className="w-4 h-4 text-blue-500" />;
+};
+
+const AnchorsPageContent = () => {
+  const router = useRouter();
   const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState<
-    "reliability" | "transactions" | "failure_rate"
-  >("reliability");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState<"reliability" | "transactions" | "failure_rate">("reliability");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  const filteredAndSortedAnchors = useMemo(() => {
-    return anchors
-      .filter(
-        (anchor) =>
-          anchor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          anchor.stellar_account.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-      .sort((a, b) => {
-        let aValue, bValue;
+  // Fetch anchors from the backend
+  useEffect(() => {
+    const loadAnchors = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch data from the backend API
+        const response = await fetchAnchors({ limit: 100, offset: 0 });
+        setAnchors(response.anchors);
+      } catch (err) {
+        console.error("Failed to fetch anchors:", err);
+        setError(err instanceof Error ? err.message : "Failed to load anchors");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-        switch (sortBy) {
-          case "reliability":
-            aValue = a.reliability_score;
-            bValue = b.reliability_score;
-            break;
-          case "transactions":
-            aValue = a.total_transactions;
-            bValue = b.total_transactions;
-            break;
-          case "failure_rate":
-            aValue = a.failure_rate;
-            bValue = b.failure_rate;
-            break;
-          default:
-            aValue = a.reliability_score;
-            bValue = b.reliability_score;
-        }
+    loadAnchors();
+  }, []);
 
-        return sortOrder === "desc" ? bValue - aValue : aValue - bValue;
-      });
-  }, [anchors, searchTerm, sortBy, sortOrder]);
+  // Filter anchors based on search
+  const filteredAnchors = useMemo(() => {
+    return anchors.filter(
+      (anchor) =>
+        anchor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        anchor.stellar_account.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [anchors, searchTerm]);
 
+  // Sort and paginate anchors
+  const sortedAndFilteredAnchors = useMemo(() => {
+    return [...filteredAnchors].sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case "reliability":
+          comparison = b.reliability_score - a.reliability_score;
+          break;
+        case "transactions":
+          comparison = b.total_transactions - a.total_transactions;
+          break;
+        case "failure_rate":
+          comparison = a.failure_rate - b.failure_rate;
+          break;
+        default:
+          return 0;
+      }
+      return sortDirection === "asc" ? -comparison : comparison;
+    });
+  }, [filteredAnchors, sortBy, sortDirection]);
+
+  // Pagination
   const {
     currentPage,
     pageSize,
@@ -163,32 +141,7 @@ function AnchorsPageContent() {
     onPageSizeChange,
     startIndex,
     endIndex,
-  } = usePagination(filteredAndSortedAnchors.length);
-
-  useEffect(() => {
-    const fetchAnchors = async () => {
-      try {
-        // Try to fetch from API, fallback to mock data
-        // const response = await getAnchors();
-        // setAnchors(response.anchors);
-
-        // For now, use mock data
-        setTimeout(() => {
-          setAnchors(generateMockAnchors());
-          setLoading(false);
-        }, 800);
-      } catch (error) {
-        console.error("Failed to fetch anchors:", error);
-        // Fallback to mock data
-        setAnchors(generateMockAnchors());
-        setLoading(false);
-      }
-    };
-
-    fetchAnchors();
-  }, []);
-
-  const paginatedAnchors = filteredAndSortedAnchors.slice(startIndex, endIndex);
+  } = usePagination(sortedAndFilteredAnchors.length);
 
   const getHealthStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -217,16 +170,9 @@ function AnchorsPageContent() {
   };
 
   const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
-    } else if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
-    }
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
-  };
-
-  const truncateAddress = (address: string) => {
-    return `${address.slice(0, 8)}...${address.slice(-8)}`;
   };
 
   return (
@@ -234,30 +180,28 @@ function AnchorsPageContent() {
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+            <AnchorIcon className="w-8 h-8 text-blue-500" />
             Anchor Analytics
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Monitor anchor reliability, asset coverage, and transaction success
-            rates
+            Monitor anchor reliability, asset coverage, and transaction success rates
           </p>
         </div>
 
-        {/* Controls */}
-        <div className="mb-6 flex flex-col sm:flex-row gap-4">
-          {/* Search Bar */}
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-4 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search anchors by name or address..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <div className="text-red-600 dark:text-red-400 font-medium">
+                Error loading anchors
+              </div>
+            </div>
+            <div className="text-sm text-red-600 dark:text-red-400 mt-1">
+              {error}
             </div>
           </div>
+        )}
 
           {/* Sort Controls */}
           <div className="flex gap-2">
@@ -291,19 +235,12 @@ function AnchorsPageContent() {
               )}
             </button>
           </div>
-        </div>
-
-        {/* Anchors Table */}
-        {loading ? (
-          <SkeletonTable rows={10} />
-        ) : filteredAndSortedAnchors.length === 0 ? (
-          <div className="text-center py-12">
-            <Anchor className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 dark:text-gray-400">
-              No anchors found matching your search.
+          {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              💡 Click on any row to view anchor details • Click column headers to sort
             </p>
-          </div>
-        ) : (
+          )}
+        </div>
           <div className="space-y-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
               {/* Desktop Table */}
@@ -317,17 +254,35 @@ function AnchorsPageContent() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Health Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Reliability Score
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("reliability", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Reliability Score
+                          <SortIndicator column="reliability" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Success Rate
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("failure_rate", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Success Rate
+                          <SortIndicator column="failure_rate" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Asset Coverage
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Total Transactions
+                      <th 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        onClick={() => handleSort("transactions", sortBy, sortDirection, setSortBy, setSortDirection)}
+                      >
+                        <div className="flex items-center gap-1">
+                          Total Transactions
+                          <SortIndicator column="transactions" currentSort={sortBy} direction={sortDirection} />
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         30-Day Trend
@@ -350,12 +305,13 @@ function AnchorsPageContent() {
                       return (
                         <tr
                           key={anchor.id}
-                          className="hover:bg-gray-50 dark:hover:bg-slate-700"
+                          className="hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                               <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                                <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                                <AnchorIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -443,6 +399,7 @@ function AnchorsPageContent() {
                             <Link
                               href={`/anchors/${anchor.stellar_account}`}
                               className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               View Details
                               <ExternalLink className="w-3 h-3" />
@@ -467,11 +424,15 @@ function AnchorsPageContent() {
                   );
 
                   return (
-                    <div key={anchor.id} className="p-4">
+                    <div 
+                      key={anchor.id} 
+                      className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                      onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
+                    >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                            <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                            <AnchorIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -570,6 +531,7 @@ function AnchorsPageContent() {
                         <Link
                           href={`/anchors/${anchor.stellar_account}`}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Details
                           <ExternalLink className="w-3 h-3" />
@@ -581,25 +543,27 @@ function AnchorsPageContent() {
               </div>
             </div>
 
+          {/* Pagination */}
+          {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
             <DataTablePagination
-              totalItems={filteredAndSortedAnchors.length}
+              totalItems={sortedAndFilteredAnchors.length}
               pageSize={pageSize}
               currentPage={currentPage}
               onPageChange={onPageChange}
               onPageSizeChange={onPageSizeChange}
             />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Summary Stats */}
-        {!loading && filteredAndSortedAnchors.length > 0 && (
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+        {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
                 Total Anchors
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                {filteredAndSortedAnchors.length}
+                {sortedAndFilteredAnchors.length}
               </div>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
@@ -607,12 +571,12 @@ function AnchorsPageContent() {
                 Avg Reliability
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                {(
-                  filteredAndSortedAnchors.reduce(
-                    (sum, a) => sum + a.reliability_score,
-                    0,
-                  ) / filteredAndSortedAnchors.length
-                ).toFixed(1)}
+                {sortedAndFilteredAnchors.length > 0
+                  ? (
+                      sortedAndFilteredAnchors.reduce((sum, a) => sum + a.reliability_score, 0) /
+                      sortedAndFilteredAnchors.length
+                    ).toFixed(1)
+                  : "0.0"}
                 %
               </div>
             </div>
@@ -622,10 +586,7 @@ function AnchorsPageContent() {
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {formatNumber(
-                  filteredAndSortedAnchors.reduce(
-                    (sum, a) => sum + a.total_transactions,
-                    0,
-                  ),
+                  sortedAndFilteredAnchors.reduce((sum, a) => sum + a.total_transactions, 0)
                 )}
               </div>
             </div>
@@ -634,29 +595,41 @@ function AnchorsPageContent() {
                 Healthy Anchors
               </div>
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {
-                  filteredAndSortedAnchors.filter((a) => a.status === "Healthy")
-                    .length
-                }
+                {sortedAndFilteredAnchors.filter((a) => a.status.toLowerCase() === "green" || a.status === "Healthy").length}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Empty State (when no error but also no data) */}
+        {!loading && !error && sortedAndFilteredAnchors.length === 0 && anchors.length > 0 && (
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-12 text-center">
+            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">
+              No anchors found matching &quot;{searchTerm}&quot;
+            </p>
           </div>
         )}
       </div>
     </MainLayout>
   );
-}
+};
 
-export default function AnchorsPage() {
+const AnchorsPage = () => {
   return (
     <Suspense fallback={
       <MainLayout>
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center h-64">
-          <Loader className="w-8 h-8 animate-spin text-blue-500" />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <AnchorIcon className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-pulse" />
+            <p className="text-gray-600 dark:text-gray-400">Loading anchors...</p>
+          </div>
         </div>
       </MainLayout>
     }>
       <AnchorsPageContent />
     </Suspense>
   );
-}
+};
+
+export default AnchorsPage;

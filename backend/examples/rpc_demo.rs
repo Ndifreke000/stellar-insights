@@ -1,6 +1,5 @@
 use anyhow::Result;
 use backend::rpc::{Asset, StellarRpcClient};
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> Result<()> {

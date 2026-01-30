@@ -67,6 +67,8 @@ impl AggregationDb {
                     amount: row.amount,
                     successful,
                     timestamp,
+                    submission_time: None,
+                    confirmation_time: None,
                 })
             })
             .collect();
