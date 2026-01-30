@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge'; // Assuming you have a Badge component, or I will use standard tailwind
+import { Badge } from '@/components/ui/badge';
 
 // Defines the shape of a corridor object
 interface Corridor {
@@ -13,6 +13,19 @@ interface Corridor {
 interface CorridorHealthProps {
     corridors: Corridor[];
 }
+
+const getStatusVariant = (status: Corridor['status']): 'success' | 'warning' | 'destructive' => {
+    switch (status) {
+        case 'optimal':
+            return 'success';
+        case 'degraded':
+            return 'warning';
+        case 'down':
+            return 'destructive';
+        default:
+            return 'success';
+    }
+};
 
 export const CorridorHealth: React.FC<CorridorHealthProps> = ({ corridors }) => {
     return (
@@ -32,14 +45,9 @@ export const CorridorHealth: React.FC<CorridorHealthProps> = ({ corridors }) => 
                                 </div>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${corridor.status === 'optimal'
-                                        ? 'border-transparent bg-green-500/15 text-green-600 hover:bg-green-500/25'
-                                        : corridor.status === 'degraded'
-                                            ? 'border-transparent bg-yellow-500/15 text-yellow-600 hover:bg-yellow-500/25'
-                                            : 'border-transparent bg-red-500/15 text-red-600 hover:bg-red-500/25'
-                                    }`}>
+                                <Badge variant={getStatusVariant(corridor.status)}>
                                     {corridor.status.charAt(0).toUpperCase() + corridor.status.slice(1)}
-                                </span>
+                                </Badge>
                                 <span className="text-sm text-muted-foreground text-right w-12">{corridor.uptime}%</span>
                             </div>
                         </div>

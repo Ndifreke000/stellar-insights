@@ -52,3 +52,5 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+requirements.md

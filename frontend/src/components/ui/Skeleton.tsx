@@ -6,8 +6,8 @@ interface SkeletonProps {
   style?: React.CSSProperties;
 }
 
-export const Skeleton: React.FC<SkeletonProps> = ({
-  className = '',
+export const Skeleton: React.FC<SkeletonProps> = ({ 
+  className = '', 
   variant = 'rect',
   style
 }) => {
@@ -44,12 +44,8 @@ export const SkeletonText: React.FC<{ lines?: number; className?: string }> = ({
   </div>
 );
 
-export const SkeletonCard: React.FC<{ className?: string }> = ({
-  className = "",
-}) => (
-  <div
-    className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6 ${className}`}
-  >
+export const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6 ${className}`}>
     <div className="flex items-start justify-between mb-4">
       <Skeleton variant="circle" className="w-10 h-10" />
     </div>
@@ -113,9 +109,9 @@ export const SkeletonChart: React.FC<{
   className?: string;
   height?: string | number;
 }> = ({ className = "", height = 300 }) => {
-  const randomHeights = useMemo(() =>
-    [...Array(12)].map(() => Math.max(20, Math.random() * 100)),
-    []);
+  const randomHeights = useMemo(() => (
+    Array.from({ length: 12 }, () => Math.max(20, Math.random() * 100))
+  ), []);
 
   return (
     <div
@@ -131,18 +127,17 @@ export const SkeletonChart: React.FC<{
           height: typeof height === "number" ? `${height}px` : height,
         }}
       >
-        {randomHeights.map((h, i) => (
+        {randomHeights.map((height, i) => (
           <Skeleton
             key={i}
             className="w-full rounded-t"
-            style={{ height: `${h}%` }}
+            style={{ height: `${height}%` }}
           />
         ))}
       </div>
     </div>
   );
 };
-
 
 export const SkeletonAnchorRow: React.FC = () => (
   <div className="p-4 sm:p-6 border-b border-gray-100 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center gap-4 animate-shimmer">

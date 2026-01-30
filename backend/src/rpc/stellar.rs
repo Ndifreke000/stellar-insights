@@ -305,7 +305,6 @@ impl StellarRpcClient {
     }
 
     /// Fetch recent payments
-
     pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
@@ -401,6 +400,29 @@ impl StellarRpcClient {
             .context("Failed to parse order book response")?;
 
         Ok(order_book)
+    }
+
+    pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>> {
+        if self.mock_mode {
+            return Ok(Self::mock_payments(5));
+        }
+
+        let url = format!("{}/ledgers/{}/payments?limit=200", self.horizon_url, sequence);
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch ledger payments")?;
+
+        let horizon_response: HorizonResponse<Payment> = response
+            .json()
+            .await
+            .context("Failed to parse ledger payments response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
     }
 
     /// Fetch payments for a specific account

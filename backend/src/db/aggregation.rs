@@ -1,15 +1,15 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 use crate::services::aggregation::HourlyCorridorMetrics;
 
 pub struct AggregationDb {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl AggregationDb {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -67,6 +67,8 @@ impl AggregationDb {
                     amount: row.amount,
                     successful,
                     timestamp,
+                    submission_time: None,
+                    confirmation_time: None,
                 })
             })
             .collect();

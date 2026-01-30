@@ -8,11 +8,10 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    ResponsiveContainer,
-    TooltipProps
+    TooltipProps,
+    ResponsiveContainer
 } from 'recharts';
 import { ReliabilityDataPoint } from '@/lib/api';
-import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface ReliabilityTrendProps {
     data: ReliabilityDataPoint[];

@@ -2,6 +2,7 @@
 pub mod ledger;
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -92,16 +93,16 @@ impl DataIngestionService {
         };
 
         self.db
-            .update_anchor_from_rpc(
-                account_id,
+            .update_anchor_from_rpc(crate::database::AnchorRpcUpdate {
+                stellar_account: account_id.to_string(),
                 total_transactions,
-                successful as i64,
-                failed as i64,
-                total_volume,
-                avg_settlement_time,
+                successful_transactions: successful as i64,
+                failed_transactions: failed as i64,
+                total_volume_usd: total_volume,
+                avg_settlement_time_ms: avg_settlement_time,
                 reliability_score,
-                status,
-            )
+                status: status.to_string(),
+            })
             .await?;
 
         Ok(())
@@ -110,7 +111,7 @@ impl DataIngestionService {
     fn calculate_reliability_score(&self, success_rate: f64, failed_count: i64) -> f64 {
         let base_score = success_rate / 100.0;
         let penalty = (failed_count as f64 * 0.01).min(0.2);
-        (base_score - penalty).max(0.0).min(1.0)
+        (base_score - penalty).clamp(0.0, 1.0)
     }
 
     /// Get current network health status
@@ -130,4 +131,33 @@ pub struct NetworkHealth {
     pub status: String,
     pub latest_ledger: u64,
     pub ledger_retention: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IngestionStatus {
+    pub last_ingested_ledger: u64,
+    pub network_latest_ledger: u64,
+}
+
+impl DataIngestionService {
+    // ... (existing methods remain, adding new one below)
+    
+    pub async fn get_ingestion_status(&self) -> Result<IngestionStatus> {
+        // We get local state
+        let cursor_row: Option<(i64,)> = sqlx::query_as(
+            "SELECT last_ledger_sequence FROM ingestion_cursor WHERE id = 1"
+        )
+        .fetch_optional(self.db.pool())
+        .await?;
+        
+        let last_ingested = cursor_row.map(|r| r.0 as u64).unwrap_or(0);
+
+        // We get network state
+        let health = self.rpc_client.check_health().await?;
+        
+        Ok(IngestionStatus {
+            last_ingested_ledger: last_ingested,
+            network_latest_ledger: health.latest_ledger,
+        })
+    }
 }

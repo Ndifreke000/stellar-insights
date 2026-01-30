@@ -34,7 +34,16 @@ export default function AnalyticsPage() {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load metrics";
         setError(errorMessage);
-        console.error("Error loading analytics metrics:", err);
+        
+        // Only log non-network errors to avoid noise when backend is not running
+        const isNetworkError = err instanceof TypeError && 
+          (err.message.includes('Failed to fetch') || 
+           err.message.includes('fetch is not defined') ||
+           err.message.includes('Network request failed'));
+           
+        if (!isNetworkError) {
+          console.error("Error loading analytics metrics:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -55,7 +64,15 @@ export default function AnalyticsPage() {
       setMetrics(data);
       setLastUpdated(new Date());
     } catch (err) {
-      console.error("Error refreshing metrics:", err);
+      // Only log non-network errors to avoid noise when backend is not running
+      const isNetworkError = err instanceof TypeError && 
+        (err.message.includes('Failed to fetch') || 
+         err.message.includes('fetch is not defined') ||
+         err.message.includes('Network request failed'));
+         
+      if (!isNetworkError) {
+        console.error("Error refreshing metrics:", err);
+      }
     } finally {
       setLoading(false);
     }

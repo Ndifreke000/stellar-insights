@@ -79,9 +79,20 @@ async function fetchApi<T>(
       throw error;
     }
 
+    // Check if this is a network error (backend not running)
+    const isNetworkError = error instanceof TypeError && 
+      (error.message.includes('Failed to fetch') || 
+       error.message.includes('fetch is not defined') ||
+       error.message.includes('Network request failed'));
+
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";
-    console.error(`API Request Error [${url}]:`, error);
+    
+    // Only log non-network errors to avoid noise when backend is not running
+    if (!isNetworkError) {
+      console.error(`API Request Error [${url}]:`, error);
+    }
+    
     throw new ApiError(0, message);
   }
 }
@@ -466,4 +477,50 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
       },
     ],
   };
+}
+
+export interface AnchorsResponse {
+  anchors: AnchorMetrics[];
+  total: number;
+}
+
+export interface ListAnchorsParams {
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Fetch anchors from the backend API
+ */
+export async function fetchAnchors(params?: ListAnchorsParams): Promise<AnchorsResponse> {
+  const searchParams = new URLSearchParams();
+  
+  if (params?.limit) {
+    searchParams.append('limit', params.limit.toString());
+  }
+  if (params?.offset) {
+    searchParams.append('offset', params.offset.toString());
+  }
+
+  const url = `${API_BASE_URL}/anchors${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data: AnchorsResponse = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching anchors:', error);
+    throw error;
+  }
 }
