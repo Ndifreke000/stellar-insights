@@ -80,10 +80,14 @@ async function fetchApi<T>(
     }
 
     // Check if this is a network error (backend not running)
-    const isNetworkError = error instanceof TypeError &&
-      (error.message.includes('Failed to fetch') ||
-        error.message.includes('fetch is not defined') ||
-        error.message.includes('Network request failed'));
+    const isAbortError =
+      error instanceof Error && error.name === "AbortError";
+    const isNetworkError =
+      (error instanceof TypeError &&
+        (error.message.includes("Failed to fetch") ||
+          error.message.includes("fetch is not defined") ||
+          error.message.includes("Network request failed"))) ||
+      isAbortError;
 
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";
@@ -524,6 +528,7 @@ export async function fetchAnchors(params?: ListAnchorsParams): Promise<AnchorsR
     throw error;
   }
 }
+<<<<<<< HEAD
 
 /**
  * Prediction Request and Response Types
@@ -659,3 +664,5 @@ export async function getPaymentPrediction(request: PredictionRequest): Promise<
     return generateMockPrediction(request);
   }
 }
+=======
+>>>>>>> e3aef7b (fix: connect dashboard kpis to live data)
