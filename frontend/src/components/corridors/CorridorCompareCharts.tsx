@@ -31,7 +31,7 @@ export function SuccessRateCompareChart({ corridors }: CompareChartsProps) {
   ).sort();
 
   const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+    const dataPoint: Record<string, string | number> = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_success_rate.find((d) => d.timestamp === ts);
       if (point) {
@@ -95,7 +95,7 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
   ).sort();
 
   const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+    const dataPoint: Record<string, string | number> = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_volume.find((d) => d.timestamp === ts);
       if (point) {
@@ -160,7 +160,7 @@ export function SlippageCompareChart({ corridors }: CompareChartsProps) {
   ).sort();
 
   const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+    const dataPoint: Record<string, string | number> = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_slippage.find((d) => d.timestamp === ts);
       if (point) {

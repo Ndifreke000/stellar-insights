@@ -30,13 +30,13 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
   const [localPreferences, setLocalPreferences] = useState<NotificationPreferencesType>(preferences);
   const [hasChanges, setHasChanges] = useState(false);
 
-  const handlePreferenceChange = (key: keyof NotificationPreferencesType, value: any) => {
+  const handlePreferenceChange = (key: keyof NotificationPreferencesType, value: NotificationPreferencesType[keyof NotificationPreferencesType]) => {
     const newPreferences = { ...localPreferences, [key]: value };
     setLocalPreferences(newPreferences);
     setHasChanges(JSON.stringify(newPreferences) !== JSON.stringify(preferences));
   };
 
-  const handleSoundChange = (key: keyof NotificationPreferencesType['sound'], value: any) => {
+  const handleSoundChange = (key: keyof NotificationPreferencesType['sound'], value: boolean | number | string) => {
     const newSound = { ...localPreferences.sound, [key]: value };
     handlePreferenceChange('sound', newSound);
   };
@@ -59,7 +59,8 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
   const testSound = () => {
     // Create a simple test sound
     if (typeof window !== 'undefined' && localPreferences.sound.enabled) {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioContext = new AudioContextClass();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       

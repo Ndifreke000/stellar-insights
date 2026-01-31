@@ -2,9 +2,13 @@ import React from "react";
 import { MetricOption } from "./MetricSelector";
 import { format } from "date-fns";
 
+interface ExportDataRow {
+  [key: string]: string | number | boolean | null;
+}
+
 interface ExportPreviewProps {
   metrics: MetricOption[];
-  data: any[];
+  data: ExportDataRow[];
 }
 
 export function ExportPreview({ metrics, data }: ExportPreviewProps) {
@@ -51,23 +55,25 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
                     key={`${idx}-${metric.id}`}
                     className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300"
                   >
-                    {/* Basic formatting logic */}
-                    {metric.id === "date" &&
-                      format(new Date(row[metric.id]), "yyyy-MM-dd HH:mm")}
-                    {metric.id === "success_rate" &&
-                      `${(row[metric.id] * 100).toFixed(2)}%`}
-                    {metric.id === "total_volume" &&
-                      `$${row[metric.id].toLocaleString()}`}
-                    {metric.id === "tvl" &&
-                      `$${row[metric.id].toLocaleString()}`}
-                    {metric.id === "latency" && `${row[metric.id]} ms`}
-                    {![
-                      "date",
-                      "success_rate",
-                      "total_volume",
-                      "tvl",
-                      "latency",
-                    ].includes(metric.id) && row[metric.id]}
+                    {(() => {
+                      const value = row[metric.id];
+                      if (metric.id === "date" && value != null) {
+                        return format(new Date(String(value)), "yyyy-MM-dd HH:mm");
+                      }
+                      if (metric.id === "success_rate" && typeof value === "number") {
+                        return `${(value * 100).toFixed(2)}%`;
+                      }
+                      if (metric.id === "total_volume" && typeof value === "number") {
+                        return `$${value.toLocaleString()}`;
+                      }
+                      if (metric.id === "tvl" && typeof value === "number") {
+                        return `$${value.toLocaleString()}`;
+                      }
+                      if (metric.id === "latency") {
+                        return `${value} ms`;
+                      }
+                      return String(value ?? "");
+                    })()}
                   </td>
                 ))}
               </tr>

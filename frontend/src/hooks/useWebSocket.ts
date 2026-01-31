@@ -65,6 +65,8 @@ export const useWebSocket = ({
     }
   }, []);
 
+  const startHeartbeatRef = useRef<() => void>(() => {});
+
   const startHeartbeat = useCallback(() => {
     if (heartbeatTimeoutRef.current) {
       clearTimeout(heartbeatTimeoutRef.current);
@@ -73,10 +75,15 @@ export const useWebSocket = ({
     heartbeatTimeoutRef.current = setTimeout(() => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'ping' }));
-        startHeartbeat();
+        startHeartbeatRef.current?.();
       }
     }, heartbeatInterval);
   }, [heartbeatInterval]);
+
+  // Update ref with latest startHeartbeat
+  useEffect(() => {
+    startHeartbeatRef.current = startHeartbeat;
+  }, [startHeartbeat]);
 
   const connectRef = useRef<() => void>(() => {});
   const disconnectRef = useRef<() => void>(() => {});
@@ -183,11 +190,16 @@ export const useWebSocket = ({
     reconnectCountRef.current = 0;
   }, [clearTimeouts]);
 
-  // Update refs
-  connectRef.current = connect;
-  disconnectRef.current = disconnect;
+  // Update refs in effects
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
-  const sendMessage = useCallback((message: any) => {
+  useEffect(() => {
+    disconnectRef.current = disconnect;
+  }, [disconnect]);
+
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
       return true;

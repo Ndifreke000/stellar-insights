@@ -7,6 +7,32 @@ import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
 import { TopAssetsTable } from '@/components/dashboard/TopAssetsTable';
 import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
 
+interface CorridorData {
+  id: string;
+  name: string;
+  status: 'optimal' | 'degraded' | 'down';
+  uptime: number;
+  volume24h: number;
+}
+
+interface LiquidityData {
+  date: string;
+  value: number;
+}
+
+interface AssetData {
+  symbol: string;
+  name: string;
+  volume24h: number;
+  price: number;
+  change24h: number;
+}
+
+interface SettlementData {
+  time: string;
+  speed: number;
+}
+
 interface DashboardData {
   kpi: {
     successRate: { value: number; trend: number; trendDirection: 'up' | 'down' };
@@ -14,10 +40,10 @@ interface DashboardData {
     liquidityDepth: { value: number; trend: number; trendDirection: 'up' | 'down' };
     settlementSpeed: { value: number; trend: number; trendDirection: 'up' | 'down' };
   };
-  corridors: any[];
-  liquidity: any[];
-  assets: any[];
-  settlement: any[];
+  corridors: CorridorData[];
+  liquidity: LiquidityData[];
+  assets: AssetData[];
+  settlement: SettlementData[];
 }
 
 export default function DashboardPage() {

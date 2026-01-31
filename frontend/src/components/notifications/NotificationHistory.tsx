@@ -261,7 +261,7 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
               <div className="flex flex-col items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                 <BellOff className="h-12 w-12 mb-4" />
                 <p className="text-lg font-medium">No notifications</p>
-                <p className="text-sm">You're all caught up!</p>
+                <p className="text-sm">You&apos;re all caught up!</p>
               </div>
             ) : (
               <div className="p-4 space-y-6">

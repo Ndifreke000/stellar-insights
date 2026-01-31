@@ -116,7 +116,7 @@ export function AssetPortfolio({ assets }: AssetPortfolioProps) {
                 <select
                   className="bg-slate-950 border border-slate-700 text-slate-300 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2"
                   value={filterType}
-                  onChange={(e) => setFilterType(e.target.value as any)}
+                  onChange={(e) => setFilterType(e.target.value as "all" | "credit_alphanum4" | "credit_alphanum12")}
                 >
                   <option value="all">All Types</option>
                   <option value="credit_alphanum4">Alphanum 4</option>
