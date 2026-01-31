@@ -423,8 +423,8 @@ pub struct VolumeTrend {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_truncate_to_hour() {
+    #[tokio::test]
+    async fn test_truncate_to_hour() {
         let service = AggregationService::new(
             Arc::new(Database::new_mock()),
             AggregationConfig::default(),
@@ -438,8 +438,8 @@ mod tests {
         assert_eq!(truncated.nanosecond(), 0);
     }
 
-    #[test]
-    fn test_compute_volume_trends() {
+    #[tokio::test]
+    async fn test_compute_volume_trends() {
         let service = AggregationService::new(
             Arc::new(Database::new_mock()),
             AggregationConfig::default(),

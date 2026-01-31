@@ -78,7 +78,7 @@ impl std::fmt::Display for RpcError {
 impl std::error::Error for RpcError {}
 
 /// Result of a successful snapshot submission
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmissionResult {
     /// Transaction hash
     pub transaction_hash: String,

@@ -10,9 +10,10 @@
 //! 5. Submit to smart contract
 //! 6. Verify submission success
 
-use stellar_insights::database::Database;
-use stellar_insights::services::contract::{ContractService, ContractConfig};
-use stellar_insights::services::snapshot::SnapshotService;
+use sqlx::PgPool;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::services::contract::ContractService;
+use stellar_insights_backend::services::snapshot::SnapshotService;
 use std::sync::Arc;
 use tracing::{info, Level};
 use tracing_subscriber;
@@ -28,10 +29,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize database connection
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/stellar_insights".to_string());
     
     info!("Connecting to database: {}", database_url);
-    let db = Arc::new(Database::new(&database_url).await?);
+    let pool = PgPool::connect(&database_url).await?;
+    let db = Arc::new(Database::new(pool));
 
     // Initialize contract service (optional)
     let contract_service = if std::env::var("SNAPSHOT_CONTRACT_ID").is_ok() {
@@ -69,18 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("   • Verification: {}", if result.verification_successful { "✅ SUCCESS" } else { "❌ FAILED" });
             } else {
                 info!("🔗 Blockchain submission: SKIPPED (no contract service)");
-            }
-
-            // Demonstrate hash determinism
-            info!("🔍 Testing hash determinism...");
-            let snapshot = snapshot_service.aggregate_all_metrics(epoch).await?;
-            let json1 = SnapshotService::serialize_deterministically(snapshot.clone())?;
-            let json2 = SnapshotService::serialize_deterministically(snapshot)?;
-            
-            if json1 == json2 {
-                info!("✅ Deterministic serialization verified");
-            } else {
-                info!("❌ Deterministic serialization failed");
             }
 
             // Show JSON structure (truncated)

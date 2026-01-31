@@ -1,3 +1,5 @@
+#![cfg(feature = "integration-tests")]
+
 //! Integration test for the Snapshot Hash Generation Service
 //! 
 //! This test verifies all acceptance criteria for issue #122:

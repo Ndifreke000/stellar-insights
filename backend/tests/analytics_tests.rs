@@ -1,4 +1,4 @@
-use backend::{analytics::*, models::AnchorStatus};
+use stellar_insights_backend::{analytics::*, models::AnchorStatus};
 
 #[test]
 fn test_compute_metrics_green_status() {

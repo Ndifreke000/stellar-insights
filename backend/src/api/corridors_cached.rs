@@ -175,6 +175,7 @@ pub async fn list_corridors(
                         success_rate: m.avg_success_rate,
                         volume_usd: m.total_volume_usd,
                         avg_settlement_latency_ms: None,
+                        median_settlement_latency_ms: None,
                         liquidity_depth_usd: m.total_volume_usd,
                         created_at: m.latest_date,
                         updated_at: m.latest_date,

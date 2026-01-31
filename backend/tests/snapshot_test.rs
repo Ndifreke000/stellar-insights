@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use backend::snapshot::{
+    use stellar_insights_backend::snapshot::{
         AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SnapshotGenerator,
         SCHEMA_VERSION,
     };

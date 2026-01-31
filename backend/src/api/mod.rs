@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod anchors;
 pub mod anchors_cached;
 pub mod cache_stats;

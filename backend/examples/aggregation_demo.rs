@@ -1,7 +1,7 @@
 use anyhow::Result;
-use backend::database::Database;
-use backend::services::aggregation::{AggregationConfig, AggregationService};
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::postgres::PgPoolOptions;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::services::aggregation::{AggregationConfig, AggregationService};
 use std::sync::Arc;
 use tracing::{info, Level};
 use tracing_subscriber;
@@ -17,9 +17,9 @@ async fn main() -> Result<()> {
 
     // Connect to database
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/stellar_insights".to_string());
 
-    let pool = SqlitePoolOptions::new()
+    let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await?;

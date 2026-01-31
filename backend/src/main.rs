@@ -8,20 +8,20 @@ use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use backend::api::anchors::get_anchors;
-use backend::api::corridors::{get_corridor_detail, list_corridors};
-use backend::cache::{CacheConfig, CacheManager};
-use backend::cache_invalidation::CacheInvalidationService;
-use backend::database::Database;
-use backend::handlers::*;
-use backend::ingestion::{DataIngestionService, ledger::LedgerIngestionService};
-use backend::ml::MLService;
-use backend::ml_handlers;
-use backend::rpc::StellarRpcClient;
-use backend::rpc_handlers;
-use backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
-use backend::state::AppState;
-use backend::websocket::WsState;
+use stellar_insights_backend::api::anchors::get_anchors;
+use stellar_insights_backend::api::corridors::{get_corridor_detail, list_corridors};
+use stellar_insights_backend::auth::AuthService;
+use stellar_insights_backend::auth_middleware::auth_middleware;
+use stellar_insights_backend::cache::{CacheConfig, CacheManager};
+use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::handlers::*;
+use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::rpc::StellarRpcClient;
+use stellar_insights_backend::rpc_handlers;
+use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::websocket::WsState;
 
 
 #[tokio::main]
@@ -49,6 +49,10 @@ async fn main() -> Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let db = Arc::new(Database::new(pool.clone()));
+
+    // Cache (Redis with graceful fallback)
+    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await?);
+    let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
 
     // Initialize Stellar RPC Client
     let mock_mode = std::env::var("RPC_MOCK_MODE")
@@ -81,6 +85,11 @@ async fn main() -> Result<()> {
         Arc::clone(&db),
     ));
 
+    let app_state = AppState::new(
+        Arc::clone(&db),
+        Arc::clone(&ws_state),
+        Arc::clone(&ingestion_service),
+    );
 
     let ingestion_clone = Arc::clone(&ingestion_service);
     let cache_invalidation_clone = Arc::clone(&cache_invalidation);
@@ -246,11 +255,11 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build protected anchor routes (require authentication)
-    let protected_anchor_routes = Router::new()
-        .route("/api/anchors", axum::routing::post(create_anchor))
+    let _protected_anchor_routes: Router<AppState> = Router::new()
+        .route("/api/anchors", post(create_anchor))
         .route("/api/anchors/:id/metrics", put(update_anchor_metrics))
-        .route("/api/anchors/:id/assets", axum::routing::post(create_anchor_asset))
-        .route("/api/corridors", axum::routing::post(create_corridor))
+        .route("/api/anchors/:id/assets", post(create_anchor_asset))
+        .route("/api/corridors", post(create_corridor))
         .route(
             "/api/corridors/:id/metrics-from-transactions",
             put(update_corridor_metrics_from_transactions),
@@ -264,6 +273,11 @@ async fn main() -> Result<()> {
                     rate_limit_middleware,
                 ))
         )
+        .layer(cors.clone());
+
+    let cache_stats_routes = stellar_insights_backend::api::cache_stats::routes(cache.clone())
+        .layer(cors.clone());
+    let metrics_routes = stellar_insights_backend::api::metrics_cached::routes(cache.clone())
         .layer(cors.clone());
 
     // Build RPC router
@@ -294,6 +308,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .merge(auth_routes)
         .merge(anchor_routes)
+        .merge(cache_stats_routes)
+        .merge(metrics_routes)
         .merge(rpc_routes);
 
     // Start server

@@ -2,12 +2,12 @@ use crate::snapshot::schema::{
     AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION,
 };
 use crate::database::Database;
-use crate::models::{Anchor, SnapshotRecord};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use sqlx::{Postgres, Row};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -167,17 +167,17 @@ impl SnapshotService {
             ORDER BY id
         "#;
 
-        let rows = sqlx::query(query)
-            .fetch_all(&self.db.pool)
+        let rows = sqlx::query::<Postgres>(query)
+            .fetch_all(self.db.pool())
             .await
             .context("Failed to fetch anchor data")?;
 
         let mut metrics = Vec::new();
         
         for row in rows {
-            let total_transactions: i64 = row.get("total_transactions");
-            let successful_transactions: i64 = row.get("successful_transactions");
-            let failed_transactions: i64 = row.get("failed_transactions");
+            let total_transactions = row.get::<i64, _>("total_transactions");
+            let successful_transactions = row.get::<i64, _>("successful_transactions");
+            let failed_transactions = row.get::<i64, _>("failed_transactions");
             
             let success_rate = if total_transactions > 0 {
                 successful_transactions as f64 / total_transactions as f64
@@ -194,17 +194,17 @@ impl SnapshotService {
             let anchor_metrics = SnapshotAnchorMetrics {
                 id: Uuid::parse_str(&row.get::<String, _>("id"))
                     .context("Invalid anchor ID format")?,
-                name: row.get("name"),
-                stellar_account: row.get("stellar_account"),
+                name: row.get::<String, _>("name"),
+                stellar_account: row.get::<String, _>("stellar_account"),
                 success_rate,
                 failure_rate,
-                reliability_score: row.get("reliability_score"),
+                reliability_score: row.get::<f64, _>("reliability_score"),
                 total_transactions,
                 successful_transactions,
                 failed_transactions,
-                avg_settlement_time_ms: row.get("avg_settlement_time_ms"),
-                volume_usd: row.get("total_volume_usd"),
-                status: row.get("status"),
+                avg_settlement_time_ms: row.get::<Option<i32>, _>("avg_settlement_time_ms"),
+                volume_usd: row.get::<Option<f64>, _>("total_volume_usd"),
+                status: row.get::<String, _>("status"),
             };
 
             metrics.push(anchor_metrics);
@@ -238,8 +238,8 @@ impl SnapshotService {
             ORDER BY cm.corridor_key
         "#;
 
-        let rows = sqlx::query(query)
-            .fetch_all(&self.db.pool)
+        let rows = sqlx::query::<Postgres>(query)
+            .fetch_all(self.db.pool())
             .await
             .context("Failed to fetch corridor metrics")?;
 
@@ -249,18 +249,18 @@ impl SnapshotService {
             let corridor_metrics = SnapshotCorridorMetrics {
                 id: Uuid::parse_str(&row.get::<String, _>("id"))
                     .context("Invalid corridor metrics ID format")?,
-                corridor_key: row.get("corridor_key"),
-                asset_a_code: row.get("asset_a_code"),
-                asset_a_issuer: row.get("asset_a_issuer"),
-                asset_b_code: row.get("asset_b_code"),
-                asset_b_issuer: row.get("asset_b_issuer"),
-                total_transactions: row.get("total_transactions"),
-                successful_transactions: row.get("successful_transactions"),
-                failed_transactions: row.get("failed_transactions"),
-                success_rate: row.get("success_rate"),
-                volume_usd: row.get("volume_usd"),
-                avg_settlement_latency_ms: row.get("avg_settlement_latency_ms"),
-                liquidity_depth_usd: row.get("liquidity_depth_usd"),
+                corridor_key: row.get::<String, _>("corridor_key"),
+                asset_a_code: row.get::<String, _>("asset_a_code"),
+                asset_a_issuer: row.get::<String, _>("asset_a_issuer"),
+                asset_b_code: row.get::<String, _>("asset_b_code"),
+                asset_b_issuer: row.get::<String, _>("asset_b_issuer"),
+                total_transactions: row.get::<i64, _>("total_transactions"),
+                successful_transactions: row.get::<i64, _>("successful_transactions"),
+                failed_transactions: row.get::<i64, _>("failed_transactions"),
+                success_rate: row.get::<f64, _>("success_rate"),
+                volume_usd: row.get::<f64, _>("volume_usd"),
+                avg_settlement_latency_ms: row.get::<Option<i32>, _>("avg_settlement_latency_ms"),
+                liquidity_depth_usd: row.get::<f64, _>("liquidity_depth_usd"),
             };
 
             metrics.push(corridor_metrics);
@@ -285,7 +285,7 @@ impl SnapshotService {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#;
 
-        sqlx::query(query)
+        sqlx::query::<Postgres>(query)
             .bind(&snapshot_id)
             .bind("system") // entity_id for system-wide snapshots
             .bind("analytics_snapshot") // entity_type
@@ -294,7 +294,7 @@ impl SnapshotService {
             .bind(snapshot.epoch as i64)
             .bind(snapshot.timestamp)
             .bind(Utc::now())
-            .execute(&self.db.pool)
+            .execute(self.db.pool())
             .await
             .context("Failed to insert snapshot record")?;
 
@@ -306,7 +306,7 @@ impl SnapshotService {
         &self,
         hash: &str,
         epoch: u64,
-        submission: &SubmissionResult,
+        _submission: &SubmissionResult,
     ) -> Result<bool> {
         if let Some(contract_service) = &self.contract_service {
             // Wait a moment for the transaction to be confirmed
@@ -331,6 +331,10 @@ impl SnapshotService {
         }
     }
 
+    fn compute_sha256_hash(canonical_json: &str) -> [u8; 32] {
+        let digest = Sha256::digest(canonical_json.as_bytes());
+        digest.into()
+    }
 }
 
 impl SnapshotService {

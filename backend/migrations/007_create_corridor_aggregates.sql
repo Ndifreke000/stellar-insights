@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS corridor_metrics_hourly (
     asset_a_issuer TEXT NOT NULL,
     asset_b_code TEXT NOT NULL,
     asset_b_issuer TEXT NOT NULL,
-    hour_bucket TEXT NOT NULL, -- ISO 8601 timestamp truncated to hour
+    hour_bucket TIMESTAMPTZ NOT NULL, -- timestamp truncated to hour
     total_transactions INTEGER DEFAULT 0,
     successful_transactions INTEGER DEFAULT 0,
     failed_transactions INTEGER DEFAULT 0,
@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS corridor_metrics_hourly (
     avg_slippage_bps REAL DEFAULT 0, -- basis points
     avg_settlement_latency_ms INTEGER,
     liquidity_depth_usd REAL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(corridor_key, hour_bucket)
 );
 
@@ -43,7 +43,7 @@ CREATE INDEX idx_aggregation_jobs_status ON aggregation_jobs(status, job_type);
 CREATE INDEX idx_aggregation_jobs_created ON aggregation_jobs(created_at DESC);
 
 -- Create view for latest corridor metrics
-CREATE VIEW IF NOT EXISTS corridor_metrics_latest AS
+CREATE OR REPLACE VIEW corridor_metrics_latest AS
 SELECT 
     corridor_key,
     asset_a_code,
@@ -60,5 +60,5 @@ SELECT
     AVG(liquidity_depth_usd) as avg_liquidity_depth_usd,
     MAX(hour_bucket) as last_updated
 FROM corridor_metrics_hourly
-WHERE hour_bucket >= datetime('now', '-24 hours')
+WHERE hour_bucket >= (NOW() - INTERVAL '24 hours')
 GROUP BY corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer;

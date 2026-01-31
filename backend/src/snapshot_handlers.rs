@@ -13,8 +13,7 @@ use tracing::{error, info};
 
 use crate::database::Database;
 use crate::services::contract::ContractService;
-use crate::services::snapshot::{SnapshotService, SnapshotGenerationResult};
-use crate::snapshot::schema::AnalyticsSnapshot;
+use crate::services::snapshot::SnapshotService;
 
 /// Response for snapshot generation
 #[derive(Debug, Serialize)]
@@ -68,10 +67,11 @@ pub async fn generate_snapshot(
     // Use the comprehensive snapshot service to handle all requirements
     match state.snapshot_service.generate_and_submit_snapshot(request.epoch).await {
         Ok(result) => {
+            let hash = result.hash.clone();
             let response = SnapshotResponse {
                 epoch: result.epoch,
                 timestamp: result.timestamp.to_rfc3339(),
-                hash: result.hash,
+                hash,
                 schema_version: 1, // From SCHEMA_VERSION
                 anchor_count: result.anchor_count,
                 corridor_count: result.corridor_count,
@@ -85,7 +85,7 @@ pub async fn generate_snapshot(
             info!(
                 "Successfully generated snapshot for epoch {}: hash={}, anchors={}, corridors={}, submitted={}",
                 result.epoch,
-                result.hash,
+                response.hash,
                 result.anchor_count,
                 result.corridor_count,
                 result.verification_successful

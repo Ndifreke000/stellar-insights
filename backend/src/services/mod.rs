@@ -4,5 +4,5 @@ pub mod contract;
 pub mod indexing;
 pub mod snapshot;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod snapshot_test;

@@ -9,6 +9,8 @@ use crate::models::{
     MetricRecord, SnapshotRecord,
 };
 
+#[cfg(test)]
+use sqlx::postgres::PgPoolOptions;
 /// Parameters for updating anchor from RPC data
 pub struct AnchorRpcUpdate {
     pub stellar_account: String,
@@ -662,5 +664,16 @@ impl Database {
         self.aggregation_db()
             .increment_job_retry_count(job_id)
             .await
+    }
+}
+
+#[cfg(test)]
+impl Database {
+    pub fn new_mock() -> Self {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://localhost/postgres")
+            .expect("Failed to create lazy PgPool for tests");
+        Self::new(pool)
     }
 }

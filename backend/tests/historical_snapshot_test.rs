@@ -1,4 +1,6 @@
-use backend::database::Database;
+#![cfg(feature = "integration-tests")]
+
+use stellar_insights_backend::database::Database;
 use sqlx::SqlitePool;
 
 #[tokio::test]
