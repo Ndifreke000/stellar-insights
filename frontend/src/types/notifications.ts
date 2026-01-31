@@ -33,7 +33,7 @@ export interface BaseNotification {
   read: boolean;
   persistent?: boolean;
   actions?: NotificationAction[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotificationAction {
@@ -55,7 +55,7 @@ export interface WebSocketNotificationPayload {
     title: string;
     message: string;
     priority: NotificationPriority;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 

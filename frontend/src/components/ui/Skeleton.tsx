@@ -105,13 +105,14 @@ export const SkeletonMetricsCard: React.FC<{ className?: string }> = ({
   </div>
 );
 
+// Pre-computed random heights to avoid impure function calls during render
+const SKELETON_BAR_HEIGHTS = [45, 72, 28, 91, 56, 38, 82, 63, 47, 75, 33, 58];
+
 export const SkeletonChart: React.FC<{
   className?: string;
   height?: string | number;
 }> = ({ className = "", height = 300 }) => {
-  const randomHeights = useMemo(() => (
-    Array.from({ length: 12 }, () => Math.max(20, Math.random() * 100))
-  ), []);
+  const randomHeights = SKELETON_BAR_HEIGHTS;
 
   return (
     <div

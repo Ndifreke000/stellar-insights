@@ -189,7 +189,7 @@ export default function NotificationsDemo() {
               Test Wallet Connection Notifications
             </h3>
             <p className="text-sm text-green-700 dark:text-green-300 mb-3">
-              Use the "Connect Wallet" button in the header to test connection/disconnection notifications.
+              Use the &quot;Connect Wallet&quot; button in the header to test connection/disconnection notifications.
             </p>
             <ul className="text-sm text-green-700 dark:text-green-300 space-y-1">
               <li>• <span className="font-medium">Connect</span> - Shows success notification with wallet address</li>

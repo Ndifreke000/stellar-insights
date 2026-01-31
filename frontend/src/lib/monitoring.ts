@@ -8,7 +8,7 @@ export interface Metric {
   value: number;
   path: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AppError {
@@ -17,7 +17,7 @@ export interface AppError {
   path: string;
   timestamp: string;
   userAgent: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 class Monitoring {
@@ -47,7 +47,7 @@ class Monitoring {
   public trackMetric(
     name: string,
     value: number,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, unknown>,
   ) {
     const metric: Metric = {
       name,
@@ -68,7 +68,7 @@ class Monitoring {
   /**
    * Report an error
    */
-  public reportError(error: Error | string, metadata?: Record<string, any>) {
+  public reportError(error: Error | string, metadata?: Record<string, unknown>) {
     const errorObj: AppError = {
       message: typeof error === "string" ? error : error.message,
       stack: typeof error === "string" ? undefined : error.stack,
