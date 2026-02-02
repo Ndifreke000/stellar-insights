@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -9,7 +9,7 @@ use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
 /// Ledger ingestion service that fetches and persists ledgers sequentially
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 /// Represents a payment operation extracted from a ledger
@@ -26,7 +26,7 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, pool: PgPool) -> Self {
+    pub fn new(rpc_client: Arc<StellarRpcClient>, pool: SqlitePool) -> Self {
         Self { rpc_client, pool }
     }
 

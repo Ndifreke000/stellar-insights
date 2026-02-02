@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { MainLayout } from "@/components/layout";
 import {
   TrendingUp,
   Activity,
@@ -16,6 +15,8 @@ import { TVLChart } from "@/components/charts/TVLChart";
 import { SettlementLatencyChart } from "@/components/charts/SettlementLatencyChart";
 import { TopCorridors } from "@/components/charts/TopCorridors";
 import { LiquidityHeatmap } from "@/components/charts/LiquidityHeatmap";
+import { MetricCard } from "@/components/dashboard/MetricCard";
+import { Badge } from "@/components/ui/badge";
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
@@ -35,13 +36,12 @@ export default function AnalyticsPage() {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load metrics";
         setError(errorMessage);
-        
-        // Only log non-network errors to avoid noise when backend is not running
-        const isNetworkError = err instanceof TypeError && 
-          (err.message.includes('Failed to fetch') || 
-           err.message.includes('fetch is not defined') ||
-           err.message.includes('Network request failed'));
-           
+
+        const isNetworkError = err instanceof TypeError &&
+          (err.message.includes('Failed to fetch') ||
+            err.message.includes('fetch is not defined') ||
+            err.message.includes('Network request failed'));
+
         if (!isNetworkError) {
           console.error("Error loading analytics metrics:", err);
         }
@@ -51,10 +51,7 @@ export default function AnalyticsPage() {
     };
 
     loadMetrics();
-
-    // Refresh every 5 minutes
     const interval = setInterval(loadMetrics, 5 * 60 * 1000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -65,15 +62,7 @@ export default function AnalyticsPage() {
       setMetrics(data);
       setLastUpdated(new Date());
     } catch (err) {
-      // Only log non-network errors to avoid noise when backend is not running
-      const isNetworkError = err instanceof TypeError && 
-        (err.message.includes('Failed to fetch') || 
-         err.message.includes('fetch is not defined') ||
-         err.message.includes('Network request failed'));
-         
-      if (!isNetworkError) {
-        console.error("Error refreshing metrics:", err);
-      }
+      console.error("Error refreshing metrics:", err);
     } finally {
       setLoading(false);
     }
@@ -81,185 +70,109 @@ export default function AnalyticsPage() {
 
   if (!metrics && loading) {
     return (
-      <MainLayout>
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center">
-              <RefreshCw className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-spin" />
-              <p className="text-gray-600 dark:text-gray-400">
-                Loading metrics...
-              </p>
-            </div>
-          </div>
-        </div>
-      </MainLayout>
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest italic">Calibrating Intelligence Sensors... // 707-Z</div>
+      </div>
     );
   }
 
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(2)}M`;
-    }
-    if (value >= 1000) {
-      return `$${(value / 1000).toFixed(0)}K`;
-    }
-    return `$${value.toFixed(0)}`;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      notation: 'compact',
+      maximumFractionDigits: 2
+    }).format(value);
   };
 
   return (
-    <MainLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-        {/* Page Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Analytics
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Deep insights into Stellar network performance and metrics
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href="/analytics/export"
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition font-medium text-sm text-gray-700 dark:text-gray-200"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </Link>
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </button>
-          </div>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+        <div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Deep Analytics // 03</div>
+          <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
+            Network Intelligence
+          </h2>
         </div>
-
-        {/* Error State */}
-        {error && (
-          <div className="mb-8 p-4 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg">
-            <p className="text-red-800 dark:text-red-300 font-medium">
-              ⚠️ {error}
-            </p>
-            <p className="text-sm text-red-700 dark:text-red-400 mt-1">
-              Using mock data. Connect the backend API to see real data.
-            </p>
+        <div className="flex items-center gap-3">
+          <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Last Sync: {lastUpdated?.toLocaleTimeString()}
           </div>
-        )}
-
-        {/* Last Updated */}
-        {lastUpdated && (
-          <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-            Last updated: {lastUpdated.toLocaleTimeString()}
-          </div>
-        )}
-
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-blue-600 dark:text-blue-300" />
-              </div>
-              <h3 className="font-medium text-gray-700 dark:text-gray-300">
-                Total Volume
-              </h3>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              All corridors
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                <Activity className="w-6 h-6 text-green-600 dark:text-green-300" />
-              </div>
-              <h3 className="font-medium text-gray-700 dark:text-gray-300">
-                Avg Success Rate
-              </h3>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
-            </p>
-            <p className="text-sm text-green-600 dark:text-green-400">
-              Network-wide
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-300" />
-              </div>
-              <h3 className="font-medium text-gray-700 dark:text-gray-300">
-                Active Corridors
-              </h3>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {metrics ? metrics.active_corridors : "0"}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Trading active
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-300" />
-              </div>
-              <h3 className="font-medium text-gray-700 dark:text-gray-300">
-                Total Liquidity
-              </h3>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {metrics
-                ? formatCurrency(
-                    metrics.top_corridors.reduce(
-                      (sum, c) => sum + c.liquidity_depth_usd,
-                      0,
-                    ),
-                  )
-                : "$0"}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Available
-            </p>
-          </div>
-        </div>
-
-        {/* Top Corridors */}
-        {metrics && <TopCorridors corridors={metrics.top_corridors} />}
-
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8 mb-8">
-          {metrics && (
-            <LiquidityHeatmap
-              corridors={metrics.top_corridors}
-              onTimePeriodChange={(period: string) => {
-                console.log(`Time period changed to ${period}`);
-                handleRefresh();
-              }}
-            />
-          )}
-          {metrics && <LiquidityChart data={metrics.liquidity_history} />}
-          {metrics && <TVLChart data={metrics.tvl_history} />}
-          {metrics && (
-            <div className="lg:col-span-2">
-              <SettlementLatencyChart data={metrics.settlement_latency_history} />
-            </div>
-          )}
+          <button
+            onClick={handleRefresh}
+            className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
+          >
+            <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+            Re-Scan
+          </button>
         </div>
       </div>
-    </MainLayout>
+
+      {/* Error State */}
+      {error && (
+        <div className="glass border-red-500/50 p-4 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            <p className="text-[10px] font-mono text-red-500 uppercase tracking-widest">
+              Emergency Shutdown Avoided // Running on Local Cache (Mock Data)
+            </p>
+          </div>
+          <Badge variant="outline" className="border-red-500/30 text-red-500 text-[10px]">FIX_REQUIRED</Badge>
+        </div>
+      )}
+
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard
+          label="Cumulative Volume"
+          value={metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
+          subLabel="Total Network Flow"
+        />
+        <MetricCard
+          label="Success Probability"
+          value={metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
+          trend={1.2}
+          trendDirection="up"
+        />
+        <MetricCard
+          label="Active Routing Nodes"
+          value={metrics ? metrics.active_corridors : "0"}
+          subLabel="Online Corridors"
+        />
+        <MetricCard
+          label="Aggregated Liquidity"
+          value={metrics ? formatCurrency(metrics.top_corridors.reduce((sum, c) => sum + c.liquidity_depth_usd, 0)) : "$0"}
+          subLabel="Available Capital"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-8 space-y-6">
+          <div className="glass-card rounded-2xl p-1">
+            {metrics && <LiquidityChart data={metrics.liquidity_history} />}
+          </div>
+          <div className="glass-card rounded-2xl p-1">
+            {metrics && <TVLChart data={metrics.tvl_history} />}
+          </div>
+          <div className="glass-card rounded-2xl p-1">
+            {metrics && <SettlementLatencyChart data={metrics.settlement_latency_history} />}
+          </div>
+        </div>
+        <div className="lg:col-span-4 space-y-6">
+          <div className="glass-card rounded-2xl p-1">
+            {metrics && <TopCorridors corridors={metrics.top_corridors} />}
+          </div>
+          <div className="glass-card rounded-2xl p-1">
+            {metrics && (
+              <LiquidityHeatmap
+                corridors={metrics.top_corridors}
+                onTimePeriodChange={handleRefresh}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { MonitoringProvider } from "../components/MonitoringProvider";
 import { WalletProvider } from "../components/lib/wallet-context";
 import { NotificationProvider } from "../contexts/NotificationContext";
 import { NotificationSystem } from "../components/notifications/NotificationSystem";
+import { Sidebar } from "../components/layout/sidebar";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -16,24 +17,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Stellar Insights - Payment Network Intelligence",
   description:
-    "Deep insights into Stellar payment network performance. Predict success, optimize routing, quantify reliability, and identify liquidity bottlenecks.",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
-  },
+    "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity.",
 };
 
 export default function RootLayout({
@@ -42,17 +26,27 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="font-sans antialiased text-foreground selection:bg-accent/30" suppressHydrationWarning>
         <ErrorBoundary>
           <WalletProvider>
             <NotificationProvider>
-              {children}
+              <div className="flex min-h-screen">
+                <Sidebar />
+                <main className="flex-1 ml-20 lg:ml-64 transition-all duration-300 relative">
+                  {/* Background Ambient Glow */}
+                  <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" />
+                  <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" />
+
+                  <div className="p-4 md:p-8">
+                    {children}
+                  </div>
+                </main>
+              </div>
               <NotificationSystem />
             </NotificationProvider>
           </WalletProvider>
         </ErrorBoundary>
-        {/* <Analytics /> */}
       </body>
     </html>
   );

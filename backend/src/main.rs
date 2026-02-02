@@ -42,10 +42,10 @@ async fn main() -> Result<()> {
 
     // Database connection
     let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
 
-    tracing::info!("Connecting to database...");
-    let pool = sqlx::PgPool::connect(&database_url).await?;
+    tracing::info!("Connecting to database: {}", database_url);
+    let pool = sqlx::SqlitePool::connect(&database_url).await?;
 
     tracing::info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
     );
 
     // Create cached state tuple for cached API handlers
-    let cached_state = (Arc::clone(&db), Arc::clone(&cache));
+    let cached_state = (Arc::clone(&db), Arc::clone(&cache), Arc::clone(&rpc_client));
 
     let ingestion_clone = Arc::clone(&ingestion_service);
     let cache_invalidation_clone = Arc::clone(&cache_invalidation);

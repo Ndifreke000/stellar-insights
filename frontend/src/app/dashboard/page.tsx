@@ -61,15 +61,14 @@ export default function DashboardPage() {
         const result = await response.json();
         setData(result);
       } catch (err) {
-        // Only log non-network errors to avoid noise
-        const isNetworkError = err instanceof TypeError && 
-          (err.message.includes('Failed to fetch') || 
-           err.message.includes('fetch is not defined') ||
-           err.message.includes('Network request failed'));
-           
+        const isNetworkError = err instanceof TypeError &&
+          (err.message.includes('Failed to fetch') ||
+            err.message.includes('fetch is not defined') ||
+            err.message.includes('Network request failed'));
+
         const errorMessage = err instanceof Error ? err.message : 'An error occurred';
         setError(errorMessage);
-        
+
         if (!isNetworkError) {
           console.error("Dashboard API error:", err);
         }
@@ -83,26 +82,48 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-lg text-muted-foreground animate-pulse">Loading dashboard insights...</div>
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest">Initialising Terminal... // System Handshake</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-lg text-red-500">Error: {error}</div>
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="px-6 py-4 glass border-red-500/50 text-red-500 font-mono text-sm uppercase tracking-widest">
+          Terminal Error: {error}
+        </div>
       </div>
     );
   }
 
   if (!data) return null;
 
+  const formatVolume = (val: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      notation: 'compact',
+      maximumFractionDigits: 1
+    }).format(val);
+  };
+
   return (
-    <div className="flex-1 space-y-4 p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Network Overview</h2>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+        <div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Intelligence Terminal // 01</div>
+          <h2 className="text-4xl font-black tracking-tighter uppercase italic">Network Overview</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Last Update: {new Date().toLocaleTimeString()}
+          </div>
+          <button className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform">
+            Refresh Node
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -121,7 +142,7 @@ export default function DashboardPage() {
         />
         <MetricCard
           label="Liquidity Depth"
-          value={`$${(data.kpi.liquidityDepth.value / 1000000).toFixed(1)}M`}
+          value={formatVolume(data.kpi.liquidityDepth.value)}
           trend={data.kpi.liquidityDepth.trend}
           trendDirection={data.kpi.liquidityDepth.trendDirection}
         />
@@ -130,26 +151,50 @@ export default function DashboardPage() {
           value={`${data.kpi.settlementSpeed.value}s`}
           trend={Math.abs(data.kpi.settlementSpeed.trend)}
           trendDirection={data.kpi.settlementSpeed.trendDirection}
+          inverse={true} // Lower is better
         />
       </div>
 
-      {/* Charts Row 1 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
-          <LiquidityChart data={data.liquidity} />
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-12">
+        <div className="lg:col-span-8 space-y-6">
+          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+            {data.liquidity.length > 0 ? (
+              <LiquidityChart data={data.liquidity} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                Waiting for Liquidity Data...
+              </div>
+            )}
+          </div>
+          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+            {data.assets.length > 0 ? (
+              <TopAssetsTable assets={data.assets} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                Waiting for Asset Data...
+              </div>
+            )}
+          </div>
         </div>
-        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
-          <CorridorHealth corridors={data.corridors} />
-        </div>
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <div className="col-span-3 transition-all duration-300 hover:shadow-md">
-          <SettlementSpeedChart data={data.settlement} />
-        </div>
-        <div className="col-span-4 transition-all duration-300 hover:shadow-md">
-          <TopAssetsTable assets={data.assets} />
+        <div className="lg:col-span-4 space-y-6">
+          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+            {data.corridors.length > 0 ? (
+              <CorridorHealth corridors={data.corridors} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                Waiting for Corridor Data...
+              </div>
+            )}
+          </div>
+          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+            {data.settlement.length > 0 ? (
+              <SettlementSpeedChart data={data.settlement} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                Waiting for Settlement Data...
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

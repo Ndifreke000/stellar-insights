@@ -51,52 +51,70 @@ export function LiquidityChart({ data }: LiquidityChartProps) {
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(1)}M`;
-    }
-    return `$${(value / 1000).toFixed(0)}K`;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value);
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-6">
-      <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+    <div className="glass-card rounded-2xl p-6 border border-border/50">
+      <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Market Velocity // 05.A</div>
+      <h2 className="text-xl font-black tracking-tighter uppercase italic mb-2">
         Liquidity Over Time
       </h2>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Total available liquidity across all corridors
+      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-8">
+        Global Depth Index across verified corridors
       </p>
-      <ResponsiveContainer width="100%" height={350}>
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis
-            dataKey="timestamp"
-            stroke="#6b7280"
-            tick={{ fontSize: 12 }}
-          />
-          <YAxis
-            stroke="#6b7280"
-            tickFormatter={formatCurrency}
-            tick={{ fontSize: 12 }}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1f2937',
-              border: '1px solid #4b5563',
-              borderRadius: '0.5rem',
-            }}
-            labelStyle={{ color: '#fff' }}
-            formatter={(value: number) => formatCurrency(value)}
-          />
-          <Line
-            type="monotone"
-            dataKey="liquidity_usd"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={false}
-            name="Liquidity"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+
+      <div className="h-[350px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis
+              dataKey="timestamp"
+              stroke="rgba(255,255,255,0.3)"
+              tick={{ fontSize: 10, fontFamily: 'monospace' }}
+              axisLine={false}
+              tickLine={false}
+              dy={10}
+            />
+            <YAxis
+              stroke="rgba(255,255,255,0.3)"
+              tickFormatter={formatCurrency}
+              tick={{ fontSize: 10, fontFamily: 'monospace' }}
+              axisLine={false}
+              tickLine={false}
+              dx={-10}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
+                backdropFilter: 'blur(12px)',
+                fontSize: '10px',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase'
+              }}
+              itemStyle={{ color: '#6366f1', fontWeight: 'bold' }}
+              labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+              formatter={(value: number) => [formatCurrency(value), 'GLOBAL_DEPTH']}
+            />
+            <Line
+              type="monotone"
+              dataKey="liquidity_usd"
+              stroke="#6366f1"
+              strokeWidth={3}
+              dot={false}
+              activeDot={{ r: 4, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }}
+              name="Liquidity"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

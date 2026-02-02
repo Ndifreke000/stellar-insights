@@ -1,58 +1,76 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '../ui/badge';
+import { Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
 
-// Defines the shape of a corridor object
 interface Corridor {
     id: string;
     name: string;
     status: 'optimal' | 'degraded' | 'down';
-    uptime: number;
     volume24h: number;
+    uptime: number;
 }
 
 interface CorridorHealthProps {
     corridors: Corridor[];
 }
 
-const getStatusVariant = (status: Corridor['status']): 'success' | 'warning' | 'destructive' => {
-    switch (status) {
-        case 'optimal':
-            return 'success';
-        case 'degraded':
-            return 'warning';
-        case 'down':
-            return 'destructive';
-        default:
-            return 'success';
-    }
-};
-
 export const CorridorHealth: React.FC<CorridorHealthProps> = ({ corridors }) => {
+    const getStatusIcon = (status: string) => {
+        switch (status) {
+            case 'optimal': return <ShieldCheck className="w-4 h-4 text-green-500" />;
+            case 'degraded': return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+            case 'down': return <Activity className="w-4 h-4 text-red-500" />;
+            default: return <Activity className="w-4 h-4 text-muted-foreground" />;
+        }
+    };
+
     return (
-        <div className="bg-card text-card-foreground rounded-xl border shadow-sm col-span-1">
-            <div className="flex flex-col space-y-1.5 p-6">
-                <h3 className="font-semibold leading-none tracking-tight">Corridor Health</h3>
-                <p className="text-sm text-muted-foreground">Real-time status of key payment corridors.</p>
+        <div className="p-6 h-full">
+            <div className="flex items-center justify-between mb-6">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Corridor Analytics</h3>
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">ACTIVE_MONITORING</Badge>
             </div>
-            <div className="p-6 pt-0">
-                <div className="space-y-4">
-                    {corridors.map((corridor) => (
-                        <div key={corridor.id} className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4">
-                                <div className="space-y-1">
-                                    <p className="text-sm font-medium leading-none">{corridor.name}</p>
-                                    <p className="text-sm text-muted-foreground">Vol: ${(corridor.volume24h / 1000).toFixed(1)}k</p>
+            <div className="space-y-4">
+                {corridors.map((corridor) => (
+                    <div key={corridor.id} className="group p-4 rounded-xl glass border border-border/20 hover:border-accent/40 transition-all duration-300">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                {getStatusIcon(corridor.status)}
+                                <span className="font-bold text-sm tracking-tight">{corridor.name}</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase">{corridor.uptime}% UP</span>
+                        </div>
+
+                        <div className="flex items-end justify-between">
+                            <div>
+                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/50 mb-1">Volume 24h</p>
+                                <div className="text-sm font-mono font-bold">
+                                    {new Intl.NumberFormat('en-US', {
+                                        style: 'currency',
+                                        currency: 'USD',
+                                        notation: 'compact'
+                                    }).format(corridor.volume24h)}
                                 </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <Badge variant={getStatusVariant(corridor.status)}>
-                                    {corridor.status.charAt(0).toUpperCase() + corridor.status.slice(1)}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground text-right w-12">{corridor.uptime}%</span>
+
+                            <div className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-tighter ${corridor.status === 'optimal' ? 'bg-green-500/10 text-green-500' :
+                                    corridor.status === 'degraded' ? 'bg-yellow-500/10 text-yellow-500' :
+                                        'bg-red-500/10 text-red-500'
+                                }`}>
+                                {corridor.status}
                             </div>
                         </div>
-                    ))}
-                </div>
+
+                        <div className="mt-3 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div
+                                className={`h-full transition-all duration-1000 ${corridor.status === 'optimal' ? 'bg-green-500' :
+                                        corridor.status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                style={{ width: `${corridor.uptime}%` }}
+                            />
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );

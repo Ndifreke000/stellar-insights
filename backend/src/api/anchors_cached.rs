@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
+use crate::rpc::StellarRpcClient;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -77,8 +78,12 @@ pub struct AnchorsResponse {
 }
 
 /// GET /api/anchors - List all anchors with key metrics (cached)
+/// 
+/// **DATA SOURCE: RPC + Database**
+/// - Anchor metadata (name, account) from database
+/// - Transaction metrics calculated from RPC payment data
 pub async fn get_anchors(
-    State((db, cache)): State<(Arc<Database>, Arc<CacheManager>)>,
+    State((db, cache, rpc_client)): State<(Arc<Database>, Arc<CacheManager>, Arc<StellarRpcClient>)>,
     Query(params): Query<ListAnchorsQuery>,
 ) -> ApiResult<Json<AnchorsResponse>> {
     let cache_key = keys::anchor_list(params.limit, params.offset);
@@ -88,6 +93,7 @@ pub async fn get_anchors(
         &cache_key,
         cache.config.get_ttl("anchor"),
         async {
+            // Get anchor metadata from database (names, accounts, etc.)
             let anchors = db.list_anchors(params.limit, params.offset).await?;
 
             let mut anchor_responses = Vec::new();
@@ -95,25 +101,76 @@ pub async fn get_anchors(
             for anchor in anchors {
                 let anchor_id = uuid::Uuid::parse_str(&anchor.id)
                     .unwrap_or_else(|_| uuid::Uuid::nil());
+                
+                // Get asset count from database (metadata)
                 let assets = db.get_assets_by_anchor(anchor_id).await?;
 
-                let failure_rate = if anchor.total_transactions > 0 {
-                    (anchor.failed_transactions as f64 / anchor.total_transactions as f64) * 100.0
+                // **RPC DATA**: Fetch real-time payment data for this anchor
+                let payments = match rpc_client
+                    .fetch_account_payments(&anchor.stellar_account, 200)
+                    .await
+                {
+                    Ok(payments) => payments,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to fetch payments for anchor {}: {}. Using cached data.",
+                            anchor.stellar_account,
+                            e
+                        );
+                        // Fallback to database values if RPC fails
+                        vec![]
+                    }
+                };
+
+                // Calculate metrics from RPC payment data
+                let (total_transactions, successful_transactions, failed_transactions) = 
+                    if !payments.is_empty() {
+                        let total = payments.len() as i64;
+                        // In Stellar, if a payment appears in the ledger, it was successful
+                        // Failed payments don't appear in the payment stream
+                        let successful = total;
+                        let failed = 0;
+                        (total, successful, failed)
+                    } else {
+                        // Fallback to database values
+                        (
+                            anchor.total_transactions,
+                            anchor.successful_transactions,
+                            anchor.failed_transactions,
+                        )
+                    };
+
+                let failure_rate = if total_transactions > 0 {
+                    (failed_transactions as f64 / total_transactions as f64) * 100.0
                 } else {
                     0.0
+                };
+
+                let reliability_score = if total_transactions > 0 {
+                    (successful_transactions as f64 / total_transactions as f64) * 100.0
+                } else {
+                    anchor.reliability_score
+                };
+
+                let status = if reliability_score >= 99.0 {
+                    "green".to_string()
+                } else if reliability_score >= 95.0 {
+                    "yellow".to_string()
+                } else {
+                    "red".to_string()
                 };
 
                 let anchor_response = AnchorMetricsResponse {
                     id: anchor.id.to_string(),
                     name: anchor.name,
                     stellar_account: anchor.stellar_account,
-                    reliability_score: anchor.reliability_score,
+                    reliability_score,
                     asset_coverage: assets.len(),
                     failure_rate,
-                    total_transactions: anchor.total_transactions,
-                    successful_transactions: anchor.successful_transactions,
-                    failed_transactions: anchor.failed_transactions,
-                    status: anchor.status,
+                    total_transactions,
+                    successful_transactions,
+                    failed_transactions,
+                    status,
                 };
 
                 anchor_responses.push(anchor_response);

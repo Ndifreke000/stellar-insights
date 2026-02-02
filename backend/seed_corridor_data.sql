@@ -73,7 +73,7 @@ ON CONFLICT (corridor_key, date) DO UPDATE SET
     failed_transactions = EXCLUDED.failed_transactions,
     success_rate = EXCLUDED.success_rate,
     volume_usd = EXCLUDED.volume_usd,
-    updated_at = NOW();
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Verify the data was inserted
 SELECT 

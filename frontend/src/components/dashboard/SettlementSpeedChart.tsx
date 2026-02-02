@@ -1,7 +1,8 @@
 "use client"
 
 import React from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
+import { Badge } from '../ui/badge';
 
 interface SettlementData {
     time: string;
@@ -14,39 +15,59 @@ interface SettlementSpeedChartProps {
 
 export const SettlementSpeedChart: React.FC<SettlementSpeedChartProps> = ({ data }) => {
     return (
-        <div className="bg-card text-card-foreground rounded-xl border shadow-sm">
-            <div className="flex flex-col space-y-1.5 p-6">
-                <h3 className="font-semibold leading-none tracking-tight">Average Settlement Speed</h3>
-                <p className="text-sm text-muted-foreground">Seconds to finality over the last 24 hours.</p>
+        <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+                <div>
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Speed Distributions // Finality</h3>
+                    <p className="text-[10px] text-muted-foreground/50 font-mono uppercase mt-1">Network Latency (24h)</p>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">REAL_TIME</Badge>
             </div>
-            <div className="p-6 pt-0 h-[300px]">
+
+            <div className="h-[300px] w-full mt-4">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff10" />
                         <XAxis
                             dataKey="time"
                             axisLine={false}
                             tickLine={false}
                             tickMargin={10}
-                            tick={{ fontSize: 12, fill: "#6B7280" }}
+                            tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 500, fontFamily: 'monospace' }}
                         />
                         <YAxis
                             axisLine={false}
                             tickLine={false}
                             tickFormatter={(value) => `${value}s`}
-                            tick={{ fontSize: 12, fill: "#6B7280" }}
+                            tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 500, fontFamily: 'monospace' }}
                         />
                         <Tooltip
-                            cursor={{ fill: 'transparent' }}
-                            contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}
-                            formatter={(value: number) => [`${value}s`, "Speed"]}
+                            cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                            contentStyle={{
+                                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                backdropFilter: 'blur(8px)',
+                                color: '#f8fafc',
+                                fontSize: '12px',
+                                fontFamily: 'monospace'
+                            }}
+                            formatter={(value: number) => [`${value}s`, "Settlement Time"]}
                         />
                         <Bar
                             dataKey="speed"
-                            fill="#3b82f6"
                             radius={[4, 4, 0, 0]}
-                            barSize={30}
-                        />
+                            barSize={20}
+                            animationDuration={1500}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.speed > 5 ? '#f43f5e' : entry.speed > 3 ? '#6366f1' : '#10b981'}
+                                    fillOpacity={0.8}
+                                />
+                            ))}
+                        </Bar>
                     </BarChart>
                 </ResponsiveContainer>
             </div>

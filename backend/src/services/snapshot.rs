@@ -306,7 +306,7 @@ impl SnapshotService {
         &self,
         hash: &str,
         epoch: u64,
-        submission: &SubmissionResult,
+        _submission: &SubmissionResult,
     ) -> Result<bool> {
         if let Some(contract_service) = &self.contract_service {
             // Wait a moment for the transaction to be confirmed

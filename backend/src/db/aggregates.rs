@@ -1,15 +1,15 @@
 use anyhow::Result;
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::models::corridor::{Corridor, CorridorAnalytics, CorridorMetrics};
 
 pub struct CorridorAggregates {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl CorridorAggregates {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 

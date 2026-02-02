@@ -1,15 +1,15 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::services::aggregation::HourlyCorridorMetrics;
 
 pub struct AggregationDb {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl AggregationDb {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -324,6 +324,7 @@ impl AggregationDb {
 
 // Database row structures
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct PaymentRecordRow {
     id: String,
     transaction_hash: String,
