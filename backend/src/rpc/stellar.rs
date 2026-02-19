@@ -76,6 +76,42 @@ pub struct Payment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonTransaction {
+    pub id: String,
+    pub hash: String,
+    pub ledger: u64,
+    pub created_at: String,
+    pub source_account: String,
+    #[serde(rename = "fee_account")]
+    pub fee_account: Option<String>,
+    #[serde(rename = "fee_charged")]
+    pub fee_charged: Option<String>, // Can be number or string, Horizon usually string
+    #[serde(rename = "max_fee")]
+    pub max_fee: Option<String>,
+    pub operation_count: u32,
+    pub successful: bool,
+    pub paging_token: String,
+    #[serde(rename = "fee_bump_transaction")]
+    pub fee_bump_transaction: Option<FeeBumpTransactionInfo>,
+    #[serde(rename = "inner_transaction")]
+    pub inner_transaction: Option<InnerTransaction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeeBumpTransactionInfo {
+    pub hash: String,
+    pub signatures: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InnerTransaction {
+    pub hash: String,
+    #[serde(rename = "max_fee")]
+    pub max_fee: Option<String>,
+    pub signatures: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trade {
     pub id: String,
     pub ledger_close_time: String,
@@ -425,6 +461,30 @@ impl StellarRpcClient {
             .unwrap_or_default())
     }
 
+    /// Fetch transactions for a specific ledger
+    pub async fn fetch_transactions_for_ledger(&self, sequence: u64) -> Result<Vec<HorizonTransaction>> {
+        if self.mock_mode {
+            return Ok(Self::mock_transactions(5));
+        }
+
+        let url = format!("{}/ledgers/{}/transactions?limit=200&include_failed=true", self.horizon_url, sequence);
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch ledger transactions")?;
+
+        let horizon_response: HorizonResponse<HorizonTransaction> = response
+            .json()
+            .await
+            .context("Failed to parse ledger transactions response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
     /// Fetch payments for a specific account
     pub async fn fetch_account_payments(
         &self,
@@ -707,6 +767,44 @@ impl StellarRpcClient {
             base: selling_asset.clone(),
             counter: buying_asset.clone(),
         }
+    }
+
+    fn mock_transactions(limit: u32) -> Vec<HorizonTransaction> {
+        (0..limit)
+            .map(|i| {
+                let is_fee_bump = i % 2 == 0;
+                HorizonTransaction {
+                    id: format!("tx_{}", i),
+                    hash: format!("txhash_{}", i),
+                    ledger: 51583040,
+                    created_at: "2026-01-22T10:30:00Z".to_string(),
+                    source_account: "GXX".to_string(),
+                    fee_account: Some("GXX".to_string()),
+                    fee_charged: Some("100".to_string()),
+                    max_fee: Some("1000".to_string()),
+                    operation_count: 1,
+                    successful: true,
+                    paging_token: format!("pt_{}", i),
+                    fee_bump_transaction: if is_fee_bump {
+                        Some(FeeBumpTransactionInfo {
+                            hash: format!("fb_hash_{}", i),
+                            signatures: vec!["sig1".to_string()],
+                        })
+                    } else {
+                        None
+                    },
+                    inner_transaction: if is_fee_bump {
+                        Some(InnerTransaction {
+                            hash: format!("inner_hash_{}", i),
+                            max_fee: Some("500".to_string()),
+                            signatures: vec!["sig1".to_string()],
+                        })
+                    } else {
+                        None
+                    },
+                }
+            })
+            .collect()
     }
 }
 

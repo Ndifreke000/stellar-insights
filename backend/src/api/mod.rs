@@ -6,3 +6,4 @@ pub mod corridors;
 pub mod corridors_cached;
 pub mod metrics;
 pub mod metrics_cached;
+pub mod fee_bump;

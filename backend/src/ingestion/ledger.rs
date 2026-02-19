@@ -5,10 +5,12 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
+use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 
 /// Ledger ingestion service that fetches and persists ledgers sequentially
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
+    fee_bump_tracker: Arc<FeeBumpTrackerService>,
     pool: SqlitePool,
 }
 
@@ -26,8 +28,16 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, pool: SqlitePool) -> Self {
-        Self { rpc_client, pool }
+    pub fn new(
+        rpc_client: Arc<StellarRpcClient>,
+        fee_bump_tracker: Arc<FeeBumpTrackerService>,
+        pool: SqlitePool,
+    ) -> Self {
+        Self {
+            rpc_client,
+            fee_bump_tracker,
+            pool,
+        }
     }
 
     /// I'm running the main ingestion loop - fetches ledgers and persists them
@@ -97,6 +107,18 @@ impl LedgerIngestionService {
                 Err(e) => {
                      warn!("Failed to fetch payments for ledger {}: {}", ledger.sequence, e);
                      // Non-fatal, continue ingesting ledgers
+                }
+            }
+
+            // Fetch and process transactions for fee bumps
+            match self.rpc_client.fetch_transactions_for_ledger(ledger.sequence).await {
+                Ok(transactions) => {
+                    if let Err(e) = self.fee_bump_tracker.process_transactions(&transactions).await {
+                        warn!("Failed to process transactions for fee bumps: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to fetch transactions for ledger {}: {}", ledger.sequence, e);
                 }
             }
 

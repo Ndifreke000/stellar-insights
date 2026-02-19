@@ -18,7 +18,11 @@ use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::handlers::*;
+use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
+use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
+use stellar_insights_backend::api::fee_bump;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::rate_limit::{RateLimiter, RateLimitConfig, rate_limit_middleware};
@@ -96,6 +100,16 @@ async fn main() -> Result<()> {
     let ingestion_service = Arc::new(DataIngestionService::new(
         Arc::clone(&rpc_client),
         Arc::clone(&db),
+    ));
+
+    // Initialize Fee Bump Tracker Service
+    let fee_bump_tracker = Arc::new(FeeBumpTrackerService::new(pool.clone()));
+
+    // Initialize Ledger Ingestion Service
+    let ledger_ingestion_service = Arc::new(LedgerIngestionService::new(
+        Arc::clone(&rpc_client),
+        Arc::clone(&fee_bump_tracker),
+        pool.clone(),
     ));
 
 
@@ -176,8 +190,7 @@ async fn main() -> Result<()> {
     });
     */
 
-    // Ledger ingestion task (commented out)
-    /*
+    // Ledger ingestion task
     let ledger_ingestion_clone = Arc::clone(&ledger_ingestion_service);
     tokio::spawn(async move {
         tracing::info!("Starting ledger ingestion background task");
@@ -196,9 +209,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        tracing::info!("Background sync task stopped");
     });
-    */
 
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
@@ -341,6 +352,18 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
+    // Build fee bump routes
+    let fee_bump_routes = Router::new()
+        .nest("/api/fee-bumps", fee_bump::routes(Arc::clone(&fee_bump_tracker)))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                ))
+        )
+        .layer(cors.clone());
+
     // Merge routers
     let app = Router::new()
         .merge(auth_routes)
@@ -348,6 +371,7 @@ async fn main() -> Result<()> {
         .merge(anchor_routes)
         .merge(protected_anchor_routes)
         .merge(rpc_routes)
+        .merge(fee_bump_routes)
         .merge(cache_routes)
         .merge(metrics_routes);
 

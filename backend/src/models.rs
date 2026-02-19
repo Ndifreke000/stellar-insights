@@ -187,3 +187,29 @@ pub struct IngestionState {
     pub last_cursor: String,
     pub updated_at: DateTime<Utc>,
 }
+
+// =========================
+// Fee Bump domain
+// =========================
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FeeBumpTransaction {
+    pub transaction_hash: String,
+    pub ledger_sequence: i64,
+    pub fee_source: String,
+    pub fee_charged: i64,
+    pub max_fee: i64,
+    pub inner_transaction_hash: String,
+    pub inner_max_fee: i64,
+    pub signatures_count: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeeBumpStats {
+    pub total_fee_bumps: i64,
+    pub avg_fee_charged: f64,
+    pub max_fee_charged: i64,
+    pub min_fee_charged: i64,
+    pub unique_fee_sources: i64,
+}
