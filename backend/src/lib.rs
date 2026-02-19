@@ -6,6 +6,7 @@ pub mod handlers;
 pub mod ingestion;
 pub mod models;
 pub mod services;
+pub mod shutdown;
 pub mod snapshot;
 
 pub mod rpc;

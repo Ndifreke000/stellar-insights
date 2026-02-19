@@ -17,9 +17,16 @@ use backend::handlers::*;
 use backend::ingestion::DataIngestionService;
 use backend::rpc::StellarRpcClient;
 use backend::rpc_handlers;
+use backend::shutdown::{
+    flush_caches, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
+    wait_for_signal, ShutdownConfig, ShutdownCoordinator,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Track shutdown start time for logging
+    let shutdown_start = std::time::Instant::now();
+
     // Load environment variables
     dotenv().ok();
 
@@ -32,6 +39,18 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    tracing::info!("Starting Stellar Insights Backend");
+
+    // Initialize shutdown coordinator
+    let shutdown_config = ShutdownConfig::from_env();
+    tracing::info!(
+        "Shutdown configuration: graceful_timeout={:?}, background_timeout={:?}, db_timeout={:?}",
+        shutdown_config.graceful_timeout,
+        shutdown_config.background_task_timeout,
+        shutdown_config.db_close_timeout
+    );
+    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
+
     // Database connection
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
@@ -43,7 +62,7 @@ async fn main() -> Result<()> {
     tracing::info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    let db = Arc::new(Database::new(pool));
+    let db = Arc::new(Database::new(pool.clone()));
 
     // Initialize Stellar RPC Client
     let mock_mode = std::env::var("RPC_MOCK_MODE")
@@ -72,16 +91,25 @@ async fn main() -> Result<()> {
         Arc::clone(&db),
     ));
 
-    // Start background sync task
+    // Start background sync task with shutdown handling
     let ingestion_clone = Arc::clone(&ingestion_service);
-    tokio::spawn(async move {
+    let mut shutdown_rx = shutdown_coordinator.subscribe();
+    let sync_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
         loop {
-            interval.tick().await;
-            if let Err(e) = ingestion_clone.sync_all_metrics().await {
-                tracing::error!("Metrics synchronization failed: {}", e);
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = ingestion_clone.sync_all_metrics().await {
+                        tracing::error!("Metrics synchronization failed: {}", e);
+                    }
+                }
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Background sync task received shutdown signal");
+                    break;
+                }
             }
         }
+        tracing::info!("Background sync task stopped");
     });
 
     // Run initial sync
@@ -147,7 +175,64 @@ async fn main() -> Result<()> {
 
     tracing::info!("Server starting on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+
+    // Spawn server with graceful shutdown
+    let shutdown_coordinator_clone = Arc::clone(&shutdown_coordinator);
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let mut rx = shutdown_coordinator_clone.subscribe();
+                let _ = rx.recv().await;
+                tracing::info!("Server received shutdown signal, stopping accepting new connections");
+            })
+            .await
+            .expect("Server error");
+    });
+
+    tracing::info!("Server is running. Press Ctrl+C to shutdown gracefully.");
+
+    // Wait for shutdown signal
+    wait_for_signal().await;
+
+    // Trigger coordinated shutdown
+    tracing::info!("Initiating graceful shutdown sequence...");
+    shutdown_coordinator.trigger_shutdown();
+
+    // Step 1: Wait for server to stop accepting new connections and finish in-flight requests
+    tracing::info!("Step 1/4: Waiting for server to finish in-flight requests...");
+    let server_shutdown = tokio::time::timeout(
+        shutdown_coordinator.graceful_timeout(),
+        server_handle,
+    );
+    
+    match server_shutdown.await {
+        Ok(Ok(_)) => tracing::info!("Server shutdown completed successfully"),
+        Ok(Err(e)) => tracing::error!("Server task failed: {}", e),
+        Err(_) => tracing::warn!(
+            "Server did not shutdown within {:?}, proceeding anyway",
+            shutdown_coordinator.graceful_timeout()
+        ),
+    }
+
+    // Step 2: Shutdown background tasks
+    tracing::info!("Step 2/4: Shutting down background tasks...");
+    shutdown_background_tasks(
+        vec![sync_task],
+        shutdown_coordinator.background_task_timeout(),
+    )
+    .await;
+
+    // Step 3: Flush caches
+    tracing::info!("Step 3/4: Flushing caches...");
+    flush_caches().await;
+
+    // Step 4: Close database connections
+    tracing::info!("Step 4/4: Closing database connections...");
+    shutdown_database(pool, shutdown_coordinator.db_close_timeout()).await;
+
+    // Log shutdown summary
+    log_shutdown_summary(shutdown_start);
+    tracing::info!("Graceful shutdown complete. Goodbye!");
 
     Ok(())
 }

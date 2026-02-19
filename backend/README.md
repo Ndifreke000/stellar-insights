@@ -139,6 +139,36 @@ DATABASE_URL                # PostgreSQL connection string
 RUST_LOG                   # Log level (info, debug, trace)
 SERVER_HOST                # Server bind address (default: 127.0.0.1)
 SERVER_PORT                # Server port (default: 8080)
+
+# Graceful Shutdown Configuration (in seconds)
+SHUTDOWN_GRACEFUL_TIMEOUT   # Max time for in-flight requests (default: 30)
+SHUTDOWN_BACKGROUND_TIMEOUT # Max time for background tasks (default: 10)
+SHUTDOWN_DB_TIMEOUT         # Max time for DB closure (default: 5)
+```
+
+## Graceful Shutdown
+
+The backend implements comprehensive graceful shutdown handling. When receiving SIGTERM or SIGINT (Ctrl+C), it will:
+
+1. Stop accepting new connections
+2. Wait for in-flight requests to complete (with timeout)
+3. Shutdown background tasks cleanly
+4. Flush caches
+5. Close database connections properly
+
+See [GRACEFUL_SHUTDOWN.md](./GRACEFUL_SHUTDOWN.md) for detailed documentation.
+
+### Quick Test
+
+```bash
+# Start server
+cargo run
+
+# In another terminal, send SIGTERM
+kill -TERM $(pgrep -f "cargo run")
+
+# Or just press Ctrl+C in the server terminal
+# Watch the logs for graceful shutdown sequence
 ```
 
 ## Troubleshooting
