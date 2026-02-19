@@ -14,7 +14,9 @@ import {
   ChevronRight,
   Database,
   LayoutDashboard,
-  Waves
+  Waves,
+  ArrowDownToLine,
+  Send
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,6 +24,8 @@ const navItems = [
   { name: 'Home', icon: LayoutDashboard, path: '/' },
   { name: 'Terminal', icon: LayoutDashboard, path: '/dashboard' },
   { name: 'Corridors', icon: Compass, path: '/corridors' },
+  { name: 'Deposit & Withdraw', icon: ArrowDownToLine, path: '/deposit-withdraw' },
+  { name: 'Send payment', icon: Send, path: '/send-payment' },
   { name: 'Analytics', icon: BarChart3, path: '/analytics' },
   { name: 'Network Health', icon: Activity, path: '/health' },
   { name: 'Liquidity', icon: Waves, path: '/liquidity' },

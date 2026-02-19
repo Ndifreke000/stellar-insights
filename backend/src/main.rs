@@ -12,12 +12,15 @@ use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::metrics_cached;
+use stellar_insights_backend::api::sep24_proxy;
+use stellar_insights_backend::api::sep31_proxy;
 use stellar_insights_backend::auth::AuthService;
 use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::handlers::*;
+use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::ingestion::DataIngestionService;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
@@ -245,6 +248,46 @@ async fn main() -> Result<()> {
         whitelist_ips: vec![],
     }).await;
 
+    rate_limiter.register_endpoint("/api/sep24/info".to_string(), RateLimitConfig {
+        requests_per_minute: 60,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep24/deposit/interactive".to_string(), RateLimitConfig {
+        requests_per_minute: 30,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep24/withdraw/interactive".to_string(), RateLimitConfig {
+        requests_per_minute: 30,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep24/transactions".to_string(), RateLimitConfig {
+        requests_per_minute: 60,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep31/info".to_string(), RateLimitConfig {
+        requests_per_minute: 60,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep31/quote".to_string(), RateLimitConfig {
+        requests_per_minute: 60,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep31/transactions".to_string(), RateLimitConfig {
+        requests_per_minute: 30,
+        whitelist_ips: vec![],
+    }).await;
+
+    rate_limiter.register_endpoint("/api/sep31/customer".to_string(), RateLimitConfig {
+        requests_per_minute: 30,
+        whitelist_ips: vec![],
+    }).await;
+
     // CORS configuration
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -349,7 +392,23 @@ async fn main() -> Result<()> {
         .merge(protected_anchor_routes)
         .merge(rpc_routes)
         .merge(cache_routes)
-        .merge(metrics_routes);
+        .merge(metrics_routes)
+        .merge(
+            sep24_proxy::routes().layer(
+                ServiceBuilder::new().layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+            ).layer(cors.clone())
+        )
+        .merge(
+            sep31_proxy::routes().layer(
+                ServiceBuilder::new().layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+            ).layer(cors.clone())
+        );
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

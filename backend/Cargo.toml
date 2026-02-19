@@ -31,6 +31,7 @@ dashmap = "5.5"
 stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
 base64 = "0.22"
 jsonwebtoken = "9.0"
+urlencoding = "2.1"
 
 [dev-dependencies]
 urlencoding = "2.1"
