@@ -13,6 +13,7 @@ pub mod ingestion;
 pub mod ml;
 pub mod ml_handlers;
 pub mod models;
+pub mod openapi;
 pub mod services;
 pub mod shutdown;
 pub mod snapshot;

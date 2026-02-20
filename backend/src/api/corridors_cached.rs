@@ -2,81 +2,153 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{ToSchema, IntoParams};
 
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
 use crate::handlers::ApiResult;
-use crate::models::corridor::Corridor;
 use crate::models::SortBy;
 use crate::rpc::StellarRpcClient;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CorridorResponse {
+    /// Unique identifier for the corridor
+    #[schema(example = "USDC:native->XLM:native")]
     pub id: String,
+    /// Source asset code
+    #[schema(example = "USDC")]
     pub source_asset: String,
+    /// Destination asset code
+    #[schema(example = "XLM")]
     pub destination_asset: String,
+    /// Success rate percentage
+    #[schema(example = 99.8)]
     pub success_rate: f64,
+    /// Total payment attempts
+    #[schema(example = 5000)]
     pub total_attempts: i64,
+    /// Number of successful payments
+    #[schema(example = 4990)]
     pub successful_payments: i64,
+    /// Number of failed payments
+    #[schema(example = 10)]
     pub failed_payments: i64,
+    /// Average latency in milliseconds
+    #[schema(example = 450.5)]
     pub average_latency_ms: f64,
+    /// Median latency in milliseconds
+    #[schema(example = 380.0)]
     pub median_latency_ms: f64,
+    /// 95th percentile latency in milliseconds
+    #[schema(example = 850.0)]
     pub p95_latency_ms: f64,
+    /// 99th percentile latency in milliseconds
+    #[schema(example = 1200.0)]
     pub p99_latency_ms: f64,
+    /// Liquidity depth in USD
+    #[schema(example = 1500000.0)]
     pub liquidity_depth_usd: f64,
+    /// 24-hour trading volume in USD
+    #[schema(example = 150000.0)]
     pub liquidity_volume_24h_usd: f64,
+    /// Liquidity trend (increasing, stable, decreasing)
+    #[schema(example = "stable")]
     pub liquidity_trend: String,
+    /// Overall health score (0-100)
+    #[schema(example = 95.5)]
     pub health_score: f64,
+    /// Last update timestamp
+    #[schema(example = "2024-01-15T10:30:00Z")]
     pub last_updated: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SuccessRateDataPoint {
+    /// Timestamp of the data point
+    #[schema(example = "2024-01-15T10:00:00Z")]
     pub timestamp: String,
+    /// Success rate percentage at this time
+    #[schema(example = 99.5)]
     pub success_rate: f64,
+    /// Number of attempts at this time
+    #[schema(example = 150)]
     pub attempts: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LatencyDataPoint {
+    /// Latency bucket in milliseconds
+    #[schema(example = 500)]
     pub latency_bucket_ms: i32,
+    /// Number of transactions in this bucket
+    #[schema(example = 250)]
     pub count: i64,
+    /// Percentage of total transactions
+    #[schema(example = 25.5)]
     pub percentage: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LiquidityDataPoint {
+    /// Timestamp of the data point
+    #[schema(example = "2024-01-15T10:00:00Z")]
     pub timestamp: String,
+    /// Liquidity in USD at this time
+    #[schema(example = 1500000.0)]
     pub liquidity_usd: f64,
+    /// 24-hour volume in USD
+    #[schema(example = 150000.0)]
     pub volume_24h_usd: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CorridorDetailResponse {
+    /// Corridor summary information
     pub corridor: CorridorResponse,
+    /// Historical success rate data points
     pub historical_success_rate: Vec<SuccessRateDataPoint>,
+    /// Latency distribution histogram
     pub latency_distribution: Vec<LatencyDataPoint>,
+    /// Liquidity trend over time
     pub liquidity_trends: Vec<LiquidityDataPoint>,
+    /// Related corridors
     pub related_corridors: Option<Vec<CorridorResponse>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListCorridorsQuery {
+    /// Maximum number of results to return (default: 50)
     #[serde(default = "default_limit")]
+    #[param(example = 50)]
     pub limit: i64,
+    /// Pagination offset (default: 0)
     #[serde(default)]
+    #[param(example = 0)]
     pub offset: i64,
+    /// Sort by field (success_rate or volume)
     #[serde(default)]
     pub sort_by: SortBy,
+    /// Minimum success rate filter
+    #[param(example = 95.0)]
     pub success_rate_min: Option<f64>,
+    /// Maximum success rate filter
+    #[param(example = 100.0)]
     pub success_rate_max: Option<f64>,
+    /// Minimum volume filter (USD)
+    #[param(example = 100000.0)]
     pub volume_min: Option<f64>,
+    /// Maximum volume filter (USD)
+    #[param(example = 10000000.0)]
     pub volume_max: Option<f64>,
+    /// Filter by asset code
+    #[param(example = "USDC")]
     pub asset_code: Option<String>,
+    /// Time period for metrics (24h, 7d, 30d)
+    #[param(example = "24h")]
     pub time_period: Option<String>,
 }
 
@@ -130,13 +202,26 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     keys::corridor_list(params.limit, params.offset, &filter_str)
 }
 
-/// GET /api/corridors - List all corridors (cached)
+/// List all payment corridors
+///
+/// Returns a list of payment corridors with performance metrics.
+/// Supports filtering by success rate, volume, and asset code.
 ///
 /// **DATA SOURCE: RPC**
 /// - Payment data from Horizon API
 /// - Trade data from Horizon API  
 /// - Order book data from Horizon API
 /// - Calculates corridor metrics from real-time RPC data
+#[utoipa::path(
+    get,
+    path = "/api/corridors",
+    params(ListCorridorsQuery),
+    responses(
+        (status = 200, description = "List of corridors retrieved successfully", body = Vec<CorridorResponse>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Corridors"
+)]
 pub async fn list_corridors(
     State((_db, cache, rpc_client)): State<(Arc<Database>, Arc<CacheManager>, Arc<StellarRpcClient>)>,
     Query(params): Query<ListCorridorsQuery>,
@@ -286,7 +371,24 @@ pub async fn list_corridors(
 }
 
 
-/// GET /api/corridors/:corridor_key - Get detailed corridor information (cached)
+/// Get detailed corridor information
+///
+/// Returns detailed metrics and historical data for a specific corridor.
+///
+/// **DATA SOURCE: RPC**
+#[utoipa::path(
+    get,
+    path = "/api/corridors/{corridor_key}",
+    params(
+        ("corridor_key" = String, Path, description = "Corridor identifier (e.g., USDC:native->XLM:native)")
+    ),
+    responses(
+        (status = 200, description = "Corridor details retrieved successfully", body = CorridorDetailResponse),
+        (status = 404, description = "Corridor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Corridors"
+)]
 pub async fn get_corridor_detail(
     State((_db, _cache, _rpc_client)): State<(Arc<Database>, Arc<CacheManager>, Arc<StellarRpcClient>)>,
     Path(_corridor_key): Path<String>,

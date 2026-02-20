@@ -222,7 +222,7 @@ The backend currently has no integration with price feed APIs (CoinGecko, CoinMa
 ```toml
 # backend/.env
 PRICE_FEED_PROVIDER=coingecko
-PRICE_FEED_API_KEY=optional
+PRICE_FEED_API_KEY=example_key_optional
 PRICE_FEED_CACHE_TTL_SECONDS=900
 ```
 

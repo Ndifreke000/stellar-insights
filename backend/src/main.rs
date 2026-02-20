@@ -7,6 +7,8 @@ use dotenv::dotenv;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -18,6 +20,7 @@ use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::handlers::*;
+use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::ingestion::DataIngestionService;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
@@ -35,7 +38,7 @@ use stellar_insights_backend::websocket::WsState;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Track shutdown start time for logging
-    let shutdown_start = std::time::Instant::now();
+    let _shutdown_start = std::time::Instant::now();
 
     // Load environment variables
     dotenv().ok();
@@ -59,7 +62,7 @@ async fn main() -> Result<()> {
         shutdown_config.background_task_timeout,
         shutdown_config.db_close_timeout
     );
-    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
+    let _shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
 
     // Database connection
     let database_url =
@@ -407,6 +410,7 @@ async fn main() -> Result<()> {
 
     // Merge routers
     let app = Router::new()
+        .merge(swagger_routes)
         .merge(auth_routes)
         .merge(cached_routes)
         .merge(anchor_routes)

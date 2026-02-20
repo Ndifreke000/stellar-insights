@@ -132,7 +132,7 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 - [RPC.md](./docs/RPC.md) - API endpoints and usage
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development guidelines
-- [GITHUB_ISSUES.md](./GITHUB_ISSUES.md) - 70 development tasks
+- [BACKEND_ISSUES.md](./BACKEND_ISSUES.md) - 70 development tasks
 - [backend/README.md](./backend/README.md) - Backend setup
 - [contracts/README.md](./contracts/README.md) - Smart contract guide
 

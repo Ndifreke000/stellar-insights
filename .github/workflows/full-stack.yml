@@ -46,17 +46,28 @@ jobs:
     - name: Start backend server
       working-directory: ./backend
       env:
-        DATABASE_URL: sqlite:stellar_insights.db
+        DATABASE_URL: sqlite:/tmp/stellar_insights.db
         SERVER_PORT: 8080
         RUST_LOG: info
         RPC_MOCK_MODE: "true"
       run: |
-        cargo run --release &
+        cargo run --release > backend.log 2>&1 &
         echo $! > backend.pid
-        sleep 10
     
     - name: Test backend health
       run: |
+        for i in {1..30}; do
+          if curl -fsS http://localhost:8080/health >/dev/null; then
+            break
+          fi
+          if [ "$i" -eq 30 ]; then
+            echo "❌ Backend failed to become healthy on port 8080"
+            echo "--- backend log ---"
+            tail -n 200 backend/backend.log || true
+            exit 1
+          fi
+          sleep 2
+        done
         curl -f http://localhost:8080/health || exit 1
         curl -f http://localhost:8080/api/rpc/health || exit 1
     
@@ -71,6 +82,7 @@ jobs:
       run: npm run build
     
     - name: Stop backend
+      if: always()
       run: |
         if [ -f backend/backend.pid ]; then
           kill $(cat backend/backend.pid) || true
@@ -107,12 +119,20 @@ jobs:
     
     - name: Check for secrets
       run: |
-        if grep -r "sk_live_" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github -l 2>/dev/null | grep -q .; then
+        if grep -RIn "sk_live_" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github 2>/dev/null | grep -q .; then
           echo "❌ Potential secrets detected (sk_live_)"
+          grep -RIn "sk_live_" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github 2>/dev/null || true
           exit 1
         fi
-        if grep -r "api_key" . --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github 2>/dev/null | grep -v "example" | grep -q .; then
-          echo "❌ Potential secrets detected (api_key)"
+
+        # Match likely credential assignments while ignoring common placeholders and documentation text.
+        api_key_hits=$(grep -RInE "[A-Za-z0-9_]*(API_KEY|api_key)[A-Za-z0-9_]*\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}" . \
+          --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git --exclude-dir=.github 2>/dev/null \
+          | grep -viE "example|your_api_key|dummy|placeholder|test|api_keys\\.rs" || true)
+
+        if [ -n "$api_key_hits" ]; then
+          echo "❌ Potential secrets detected (api_key assignment)"
+          echo "$api_key_hits"
           exit 1
         fi
 

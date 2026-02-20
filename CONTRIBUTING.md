@@ -123,7 +123,7 @@ Then create a Pull Request on GitHub with:
 
 ## 🎯 Finding Issues to Work On
 
-Check out our [70 GitHub issues](./GITHUB_ISSUES.md):
+Check out our [70 GitHub issues](./issues/README.md):
 - **Frontend:** 25 issues (UI, charts, features)
 - **Backend:** 25 issues (API, analytics, performance)
 - **Contracts:** 20 issues (Soroban, security, optimization)

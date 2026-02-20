@@ -1,7 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{Pool, Sqlite};
-use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::models::{FeeBumpStats, FeeBumpTransaction};
