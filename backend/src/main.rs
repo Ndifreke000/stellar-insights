@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Starting Stellar Insights Backend");
 
-    // Initialize shutdown coordinator
+    // Initialize shutdown configuration
     let shutdown_config = ShutdownConfig::from_env();
     tracing::info!(
         "Shutdown configuration: graceful_timeout={:?}, background_timeout={:?}, db_timeout={:?}",
@@ -62,7 +62,6 @@ async fn main() -> Result<()> {
         shutdown_config.background_task_timeout,
         shutdown_config.db_close_timeout
     );
-    let _shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
 
     // Database connection
     let database_url = std::env::var("DATABASE_URL")
@@ -499,11 +498,42 @@ async fn main() -> Result<()> {
 
     tracing::info!("Server starting on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    
+    // Create shutdown coordinator
+    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
+    let shutdown_rx = shutdown_coordinator.subscribe();
+    
+    // Spawn signal handler task
+    let coordinator_clone = Arc::clone(&shutdown_coordinator);
+    tokio::spawn(async move {
+        stellar_insights_backend::shutdown::wait_for_signal().await;
+        coordinator_clone.trigger_shutdown();
+    });
+    
+    // Start server with graceful shutdown
+    let graceful_timeout = shutdown_coordinator.graceful_timeout();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(async move {
+        let _ = shutdown_rx.resubscribe().recv().await;
+        tracing::info!("Graceful shutdown initiated, waiting up to {:?} for in-flight requests", graceful_timeout);
+    })
     .await?;
+
+    // Perform cleanup after server stops accepting connections
+    tracing::info!("Server stopped accepting new connections, performing cleanup");
+    
+    // Flush caches
+    stellar_insights_backend::shutdown::flush_caches().await;
+    
+    // Close database connections
+    let db_timeout = shutdown_coordinator.db_close_timeout();
+    stellar_insights_backend::shutdown::shutdown_database(pool, db_timeout).await;
+    
+    // Log shutdown summary
+    stellar_insights_backend::shutdown::log_shutdown_summary(_shutdown_start);
 
     Ok(())
 }
