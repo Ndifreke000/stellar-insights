@@ -3,6 +3,11 @@ name = "stellar-insights-backend"
 version = "0.1.0"
 edition = "2021"
 
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["ws"] }
