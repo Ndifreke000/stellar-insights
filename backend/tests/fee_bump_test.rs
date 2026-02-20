@@ -1,6 +1,5 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use stellar_insights_backend::rpc::{FeeBumpTransactionInfo, HorizonTransaction, InnerTransaction};
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 

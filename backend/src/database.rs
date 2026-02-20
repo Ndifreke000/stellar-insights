@@ -663,4 +663,111 @@ impl Database {
             .increment_job_retry_count(job_id)
             .await
     }
+
+    // =========================
+    // Transaction Builder Methods
+    // =========================
+
+    pub async fn create_pending_transaction(
+        &self,
+        source_account: &str,
+        xdr: &str,
+        required_signatures: i32,
+    ) -> Result<crate::models::PendingTransaction> {
+        let id = Uuid::new_v4().to_string();
+        let status = "pending";
+
+        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+            r#"
+            INSERT INTO pending_transactions (id, source_account, xdr, required_signatures, status)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+            "#,
+        )
+        .bind(&id)
+        .bind(source_account)
+        .bind(xdr)
+        .bind(required_signatures)
+        .bind(status)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(tx)
+    }
+
+    pub async fn get_pending_transaction(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
+        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+            r#"
+            SELECT * FROM pending_transactions WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(transaction) = tx {
+            let signatures = sqlx::query_as::<_, crate::models::Signature>(
+                r#"
+                SELECT * FROM transaction_signatures WHERE transaction_id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            Ok(Some(crate::models::PendingTransactionWithSignatures {
+                transaction,
+                collected_signatures: signatures,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn add_transaction_signature(
+        &self,
+        transaction_id: &str,
+        signer: &str,
+        signature: &str,
+    ) -> Result<()> {
+        let id = Uuid::new_v4().to_string();
+        
+        sqlx::query(
+            r#"
+            INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(id)
+        .bind(transaction_id)
+        .bind(signer)
+        .bind(signature)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_transaction_status(
+        &self,
+        id: &str,
+        status: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE pending_transactions
+            SET status = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            "#,
+        )
+        .bind(status)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
 }

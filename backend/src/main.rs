@@ -441,6 +441,16 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build transaction routes
+    let transaction_routes = Router::new()
+        .nest("/api/transactions", stellar_insights_backend::api::transactions::routes())
+        .with_state(app_state.clone())
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
@@ -454,7 +464,8 @@ async fn main() -> Result<()> {
         .merge(fee_bump_routes)
         .merge(lp_routes)
         .merge(cache_routes)
-        .merge(metrics_routes);
+        .merge(metrics_routes)
+        .merge(transaction_routes);
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

@@ -266,3 +266,40 @@ pub struct LiquidityPoolStats {
     pub avg_apy: f64,
     pub avg_impermanent_loss: f64,
 }
+
+// =========================
+// Transactions domain
+// =========================
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PendingTransaction {
+    pub id: String,
+    pub source_account: String,
+    pub xdr: String,
+    pub required_signatures: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Signature {
+    pub id: String,
+    pub transaction_id: String,
+    pub signer: String,
+    pub signature: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTransactionWithSignatures {
+    #[serde(flatten)]
+    pub transaction: PendingTransaction,
+    pub collected_signatures: Vec<Signature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionResult {
+    pub hash: String,
+    pub status: String,
+}
