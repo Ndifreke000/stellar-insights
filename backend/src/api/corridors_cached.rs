@@ -12,6 +12,7 @@ use crate::database::Database;
 use crate::handlers::ApiResult;
 use crate::models::SortBy;
 use crate::rpc::StellarRpcClient;
+use crate::services::price_feed::PriceFeedClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CorridorResponse {
@@ -223,10 +224,11 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     tag = "Corridors"
 )]
 pub async fn list_corridors(
-    State((_db, cache, rpc_client)): State<(
+    State((_db, cache, rpc_client, price_feed)): State<(
         Arc<Database>,
         Arc<CacheManager>,
         Arc<StellarRpcClient>,
+        Arc<PriceFeedClient>,
     )>,
     Query(params): Query<ListCorridorsQuery>,
 ) -> ApiResult<Json<Vec<CorridorResponse>>> {
@@ -287,17 +289,6 @@ pub async fn list_corridors(
                 let failed_payments = 0;
                 let success_rate = if total_attempts > 0 { 100.0 } else { 0.0 };
 
-                // Calculate volume from payment amounts
-                let volume_usd: f64 = corridor_payments
-                    .iter()
-                    .filter_map(|p| p.amount.parse::<f64>().ok())
-                    .sum();
-
-                // Calculate health score
-                let health_score = calculate_health_score(success_rate, total_attempts, volume_usd);
-                let liquidity_trend = get_liquidity_trend(volume_usd);
-                let avg_latency = 400.0 + (success_rate * 2.0);
-
                 // Parse corridor key to get assets
                 let parts: Vec<&str> = corridor_key.split("->").collect();
                 if parts.len() != 2 {
@@ -310,6 +301,31 @@ pub async fn list_corridors(
                 if source_parts.len() != 2 || dest_parts.len() != 2 {
                     continue;
                 }
+
+                // Calculate volume from payment amounts and convert to USD
+                let mut volume_usd: f64 = 0.0;
+                let source_asset_key = parts[0];
+                
+                // Get price for source asset
+                if let Ok(price) = price_feed.get_price(source_asset_key).await {
+                    for payment in corridor_payments.iter() {
+                        if let Ok(amount) = payment.amount.parse::<f64>() {
+                            volume_usd += amount * price;
+                        }
+                    }
+                } else {
+                    // Fallback: use raw amounts if price unavailable
+                    tracing::warn!("Price unavailable for {}, using raw amounts", source_asset_key);
+                    volume_usd = corridor_payments
+                        .iter()
+                        .filter_map(|p| p.amount.parse::<f64>().ok())
+                        .sum();
+                }
+
+                // Calculate health score
+                let health_score = calculate_health_score(success_rate, total_attempts, volume_usd);
+                let liquidity_trend = get_liquidity_trend(volume_usd);
+                let avg_latency = 400.0 + (success_rate * 2.0);
 
                 let corridor_response = CorridorResponse {
                     id: corridor_key.clone(),
@@ -399,10 +415,11 @@ pub async fn list_corridors(
     tag = "Corridors"
 )]
 pub async fn get_corridor_detail(
-    State((_db, _cache, _rpc_client)): State<(
+    State((_db, _cache, _rpc_client, _price_feed)): State<(
         Arc<Database>,
         Arc<CacheManager>,
         Arc<StellarRpcClient>,
+        Arc<PriceFeedClient>,
     )>,
     Path(_corridor_key): Path<String>,
 ) -> ApiResult<Json<CorridorDetailResponse>> {

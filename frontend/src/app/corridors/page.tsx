@@ -11,14 +11,10 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import {
-  getCorridors,
-  CorridorMetrics,
-} from "@/lib/api";
+import { getCorridors, CorridorMetrics } from "@/lib/api";
 import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { MainLayout } from "@/components/layout";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
@@ -35,24 +31,30 @@ function CorridorsPageContent() {
     "success_rate" | "health_score" | "liquidity"
   >("health_score");
   // Filter state variables
-  const [successRateRange, setSuccessRateRange] = useState<[number, number]>([0, 100]);
-  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000000]);
+  const [successRateRange, setSuccessRateRange] = useState<[number, number]>([
+    0, 100,
+  ]);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([
+    0, 10000000,
+  ]);
   const [assetCodeFilter, setAssetCodeFilter] = useState("");
   const [timePeriod, setTimePeriod] = useState("7d");
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter presets state
-  const [filterPresets, setFilterPresets] = useState<Array<{
-    name: string;
-    filters: {
-      successRateRange: [number, number];
-      volumeRange: [number, number];
-      assetCodeFilter: string;
-      timePeriod: string;
-      searchTerm: string;
-      sortBy: "success_rate" | "health_score" | "liquidity";
-    };
-  }>>([]);
+  const [filterPresets, setFilterPresets] = useState<
+    Array<{
+      name: string;
+      filters: {
+        successRateRange: [number, number];
+        volumeRange: [number, number];
+        assetCodeFilter: string;
+        timePeriod: string;
+        searchTerm: string;
+        sortBy: "success_rate" | "health_score" | "liquidity";
+      };
+    }>
+  >([]);
   const [presetName, setPresetName] = useState("");
 
   const filteredCorridors = useMemo(() => {
@@ -60,7 +62,9 @@ function CorridorsPageContent() {
       .filter(
         (c) =>
           c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.destination_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.destination_asset
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
           c.id.toLowerCase().includes(searchTerm.toLowerCase()),
       )
       .sort((a, b) => {
@@ -91,8 +95,10 @@ function CorridorsPageContent() {
         setLoading(true);
         try {
           const filters: Record<string, string | number> = {};
-          if (successRateRange[0] > 0) filters.success_rate_min = successRateRange[0];
-          if (successRateRange[1] < 100) filters.success_rate_max = successRateRange[1];
+          if (successRateRange[0] > 0)
+            filters.success_rate_min = successRateRange[0];
+          if (successRateRange[1] < 100)
+            filters.success_rate_max = successRateRange[1];
           if (volumeRange[0] > 0) filters.volume_min = volumeRange[0];
           if (volumeRange[1] < 10000000) filters.volume_max = volumeRange[1];
           if (assetCodeFilter) filters.asset_code = assetCodeFilter;
@@ -146,14 +152,19 @@ function CorridorsPageContent() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
         <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Network Routing // 02</div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+            Network Routing // 02
+          </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             <TrendingUp className="w-8 h-8 text-accent" />
             Payment Corridors
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-[10px] font-mono border-accent/30 text-accent px-3 py-1 bg-accent/5">
+          <Badge
+            variant="outline"
+            className="text-[10px] font-mono border-accent/30 text-accent px-3 py-1 bg-accent/5"
+          >
             {filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
         </div>
@@ -173,8 +184,22 @@ function CorridorsPageContent() {
         </div>
         <div className="lg:col-span-4 flex gap-2">
           <select
+            value={timePeriod}
+            onChange={(e) => setTimePeriod(e.target.value)}
+            className="flex-1 bg-slate-900/50 border border-border/50 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-accent/50 appearance-none cursor-pointer"
+          >
+            <option value="7d">Time: 7 Days</option>
+            <option value="30d">Time: 30 Days</option>
+            <option value="90d">Time: 90 Days</option>
+            <option value="">Time: All</option>
+          </select>
+          <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as "success_rate" | "health_score" | "liquidity")}
+            onChange={(e) =>
+              setSortBy(
+                e.target.value as "success_rate" | "health_score" | "liquidity",
+              )
+            }
             className="flex-1 bg-slate-900/50 border border-border/50 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-accent/50 appearance-none cursor-pointer"
           >
             <option value="health_score">Sort: Health</option>
@@ -183,7 +208,7 @@ function CorridorsPageContent() {
           </select>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`p-3 border border-border/50 rounded-xl transition-all ${showFilters ? 'bg-accent text-white border-accent' : 'bg-slate-900/50 text-muted-foreground hover:border-accent/50'}`}
+            className={`p-3 border border-border/50 rounded-xl transition-all ${showFilters ? "bg-accent text-white border-accent" : "bg-slate-900/50 text-muted-foreground hover:border-accent/50"}`}
           >
             <Filter className="w-4 h-4" />
           </button>
@@ -194,20 +219,22 @@ function CorridorsPageContent() {
       <div className="flex items-center gap-1 p-1 bg-slate-950/50 border border-border/20 rounded-xl w-fit">
         <button
           onClick={() => setViewMode("grid")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${viewMode === "grid"
-            ? "bg-accent text-white glow-accent"
-            : "text-muted-foreground hover:text-foreground"
-            }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+            viewMode === "grid"
+              ? "bg-accent text-white glow-accent"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
         >
           <List className="w-3 h-3" />
           Grid
         </button>
         <button
           onClick={() => setViewMode("heatmap")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${viewMode === "heatmap"
-            ? "bg-accent text-white glow-accent"
-            : "text-muted-foreground hover:text-foreground"
-            }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+            viewMode === "heatmap"
+              ? "bg-accent text-white glow-accent"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
         >
           <Grid3x3 className="w-3 h-3" />
           Heatmap
@@ -217,17 +244,26 @@ function CorridorsPageContent() {
       {/* Content */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-64 glass-card rounded-2xl animate-pulse" />)}
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="h-64 glass-card rounded-2xl animate-pulse"
+            />
+          ))}
         </div>
       ) : filteredCorridors.length === 0 ? (
         <div className="py-20 flex flex-col items-center justify-center glass-card rounded-3xl border-dashed">
           <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">No matching corridors detected</p>
+          <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">
+            No matching corridors detected
+          </p>
         </div>
       ) : viewMode === "heatmap" ? (
         <div className="glass-card rounded-3xl p-8">
           <div className="mb-8">
-            <h2 className="text-xl font-black tracking-tight uppercase italic mb-2">Corridor Health Matrix</h2>
+            <h2 className="text-xl font-black tracking-tight uppercase italic mb-2">
+              Corridor Health Matrix
+            </h2>
             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
               System health distribution across network pairs
             </p>
@@ -246,7 +282,11 @@ function CorridorsPageContent() {
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex-1 min-w-0">
                     <h2 className="text-xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors truncate">
-                      {corridor.source_asset} <span className="text-muted-foreground text-xs mx-1">/</span> {corridor.destination_asset}
+                      {corridor.source_asset}{" "}
+                      <span className="text-muted-foreground text-xs mx-1">
+                        /
+                      </span>{" "}
+                      {corridor.destination_asset}
                     </h2>
                     <p className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-tighter mt-1 truncate">
                       ID: {corridor.id}
@@ -265,18 +305,30 @@ function CorridorsPageContent() {
                 {/* Health Radial Area */}
                 <div className="mb-6 p-4 rounded-xl bg-slate-900/30 border border-white/5">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Health Score</span>
-                    <span className={`text-sm font-mono font-black ${corridor.health_score >= 90 ? 'text-green-400' :
-                      corridor.health_score >= 75 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
+                    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                      Health Score
+                    </span>
+                    <span
+                      className={`text-sm font-mono font-black ${
+                        corridor.health_score >= 90
+                          ? "text-green-400"
+                          : corridor.health_score >= 75
+                            ? "text-yellow-400"
+                            : "text-red-400"
+                      }`}
+                    >
                       {corridor.health_score.toFixed(0)}
                     </span>
                   </div>
                   <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-1000 ${corridor.health_score >= 90 ? 'bg-green-500' :
-                        corridor.health_score >= 75 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
+                      className={`h-full transition-all duration-1000 ${
+                        corridor.health_score >= 90
+                          ? "bg-green-500"
+                          : corridor.health_score >= 75
+                            ? "bg-yellow-500"
+                            : "bg-red-500"
+                      }`}
                       style={{ width: `${corridor.health_score}%` }}
                     />
                   </div>
@@ -285,19 +337,33 @@ function CorridorsPageContent() {
                 {/* Metrics */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
-                    <span className="text-muted-foreground">Settlement Time</span>
-                    <span className="text-accent font-bold">{corridor.average_latency_ms.toFixed(0)}ms</span>
+                    <span className="text-muted-foreground">
+                      Settlement Time
+                    </span>
+                    <span className="text-accent font-bold">
+                      {corridor.average_latency_ms.toFixed(0)}ms
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
-                    <span className="text-muted-foreground">Liquidity Depth</span>
+                    <span className="text-muted-foreground">
+                      Liquidity Depth
+                    </span>
                     <span className="text-foreground font-bold">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(corridor.liquidity_depth_usd)}
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        notation: "compact",
+                      }).format(corridor.liquidity_depth_usd)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
                     <span className="text-muted-foreground">24h Vol</span>
                     <span className="text-foreground font-bold">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(corridor.liquidity_volume_24h_usd)}
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        notation: "compact",
+                      }).format(corridor.liquidity_volume_24h_usd)}
                     </span>
                   </div>
                 </div>
@@ -314,7 +380,9 @@ function CorridorsPageContent() {
       {/* Pagination */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card rounded-2xl p-6 border border-border/30">
         <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-          Telemetry Feed: Viewing {startIndex + 1}-{Math.min(endIndex, filteredCorridors.length)} of {filteredCorridors.length} Nodes
+          Telemetry Feed: Viewing {startIndex + 1}-
+          {Math.min(endIndex, filteredCorridors.length)} of{" "}
+          {filteredCorridors.length} Nodes
         </div>
         <DataTablePagination
           currentPage={currentPage}
@@ -330,11 +398,15 @@ function CorridorsPageContent() {
 
 export default function CorridorsPage() {
   return (
-    <Suspense fallback={
-      <div className="flex h-[80vh] items-center justify-center">
-        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest italic">Syncing Satellite Routes... // 404-X</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex h-[80vh] items-center justify-center">
+          <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest italic">
+            Syncing Satellite Routes... // 404-X
+          </div>
+        </div>
+      }
+    >
       <CorridorsPageContent />
     </Suspense>
   );

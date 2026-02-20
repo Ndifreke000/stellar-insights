@@ -1,4 +1,4 @@
-use backend::{analytics::*, models::AnchorStatus};
+use stellar_insights_backend::{analytics::compute_anchor_metrics, analytics::count_assets_per_anchor, models::AnchorStatus};
 
 #[test]
 fn test_compute_metrics_green_status() {

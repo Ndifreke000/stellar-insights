@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, use, Suspense } from "react";
 import { getAnchorDetail, AnchorDetailData } from "@/lib/api";
+import { getAddressValidationError } from "@/lib/address";
 import { AnchorHeader } from "@/components/anchors/AnchorHeader";
 import { AssetPortfolio } from "@/components/anchors/AssetPortfolio";
 import { ReliabilityTrend } from "@/components/charts/ReliabilityTrend";
@@ -23,11 +24,10 @@ function AnchorDetailPageContent({
     async function fetchData() {
       if (!address) return;
 
-      // Validate Stellar address format (G... and 56 chars)
-      if (!/^[G][A-Z0-9]{55}$/.test(address)) {
-        setError(
-          "Invalid anchor address format. Expected a 56-character Stellar public key starting with G.",
-        );
+      // Validate Stellar address (G-address or M-address / muxed)
+      const validationError = getAddressValidationError(address);
+      if (validationError) {
+        setError(validationError);
         setLoading(false);
         return;
       }

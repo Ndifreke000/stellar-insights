@@ -1,5 +1,5 @@
 use anyhow::Result;
-use backend::rpc::{Asset, StellarRpcClient};
+use stellar_insights_backend::rpc::{Asset, Payment, StellarRpcClient, Trade};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -61,6 +61,7 @@ async fn main() -> Result<()> {
     println!("3️⃣  Fetching Recent Payments (limit: 5)...");
     match client.fetch_payments(5, None).await {
         Ok(payments) => {
+            let payments: std::vec::Vec<Payment> = payments;
             println!("   ✅ Found {} payments:", payments.len());
             for (i, payment) in payments.iter().enumerate().take(3) {
                 println!("   \n   Payment #{}:", i + 1);
@@ -92,6 +93,7 @@ async fn main() -> Result<()> {
     println!("4️⃣  Fetching Recent Trades (limit: 3)...");
     match client.fetch_trades(3, None).await {
         Ok(trades) => {
+            let trades: std::vec::Vec<Trade> = trades;
             println!("   ✅ Found {} trades:", trades.len());
             for (i, trade) in trades.iter().enumerate() {
                 println!("   \n   Trade #{}:", i + 1);

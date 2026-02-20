@@ -14,6 +14,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { AnchorMetrics } from "@/lib/api";
+import { formatAddressShort } from "@/lib/address";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
 interface AnchorTableProps {
@@ -151,10 +152,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
     return num.toString();
   };
 
-  const truncateAddress = (address: string) => {
-    if (address.length <= 16) return address;
-    return `${address.slice(0, 8)}...${address.slice(-8)}`;
-  };
+  const truncateAddress = (address: string) =>
+    formatAddressShort(address, 8, 8);
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) {

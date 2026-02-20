@@ -136,7 +136,7 @@ impl SnapshotService {
     }
 
     /// Aggregate all metrics from the database into a snapshot
-    pub(crate) async fn aggregate_all_metrics(&self, epoch: u64) -> Result<AnalyticsSnapshot> {
+    pub async fn aggregate_all_metrics(&self, epoch: u64) -> Result<AnalyticsSnapshot> {
         let timestamp = Utc::now();
         let mut snapshot = AnalyticsSnapshot::new(epoch, timestamp);
 

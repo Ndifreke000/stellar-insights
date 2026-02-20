@@ -106,23 +106,51 @@ pub async fn get_anchor(
     Ok(Json(anchor_detail))
 }
 
-/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account
+/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account (G- or M-address)
 pub async fn get_anchor_by_account(
     State(app_state): State<AppState>,
     Path(stellar_account): Path<String>,
 ) -> ApiResult<Json<crate::models::Anchor>> {
+    let account_lookup = stellar_account.trim();
+    // If M-address, resolve to base account for anchor lookup (anchors are keyed by G-address)
+    let lookup_key = if crate::muxed::is_muxed_address(account_lookup) {
+        crate::muxed::parse_muxed_address(account_lookup)
+            .and_then(|i| i.base_account)
+            .unwrap_or_else(|| account_lookup.to_string())
+    } else {
+        account_lookup.to_string()
+    };
     let anchor = app_state
         .db
-        .get_anchor_by_stellar_account(&stellar_account)
+        .get_anchor_by_stellar_account(&lookup_key)
         .await?
         .ok_or_else(|| {
             ApiError::NotFound(format!(
                 "Anchor with stellar account {} not found",
-                stellar_account
+                account_lookup
             ))
         })?;
 
     Ok(Json(anchor))
+}
+
+/// GET /api/analytics/muxed - Muxed account usage analytics
+#[derive(Debug, Deserialize)]
+pub struct MuxedAnalyticsQuery {
+    #[serde(default = "default_muxed_limit")]
+    pub limit: i64,
+}
+fn default_muxed_limit() -> i64 {
+    20
+}
+
+pub async fn get_muxed_analytics(
+    State(app_state): State<AppState>,
+    Query(params): Query<MuxedAnalyticsQuery>,
+) -> ApiResult<Json<crate::models::MuxedAccountAnalytics>> {
+    let limit = params.limit.clamp(1, 100);
+    let analytics = app_state.db.get_muxed_analytics(limit).await?;
+    Ok(Json(analytics))
 }
 
 /// POST /api/anchors - Create a new anchor

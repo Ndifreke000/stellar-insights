@@ -12,12 +12,14 @@ use std::sync::Arc;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::services::snapshot::SnapshotService;
 use stellar_insights_backend::snapshot::schema::AnalyticsSnapshot;
+use sqlx::Row;
 
 async fn setup_test_database() -> Arc<Database> {
-    let db = Database::new("sqlite::memory:").await.unwrap();
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let db = Database::new(pool);
 
     // Create test tables
-    sqlx::query(
+    let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(
         r#"
         CREATE TABLE anchors (
             id TEXT PRIMARY KEY,
@@ -33,11 +35,11 @@ async fn setup_test_database() -> Arc<Database> {
         )
     "#,
     )
-    .execute(&db.pool)
+    .execute(db.pool())
     .await
     .unwrap();
 
-    sqlx::query(
+    let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(
         r#"
         CREATE TABLE corridor_metrics (
             id TEXT PRIMARY KEY,
@@ -57,11 +59,11 @@ async fn setup_test_database() -> Arc<Database> {
         )
     "#,
     )
-    .execute(&db.pool)
+    .execute(db.pool())
     .await
     .unwrap();
 
-    sqlx::query(
+    let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(
         r#"
         CREATE TABLE snapshots (
             id TEXT PRIMARY KEY,
@@ -75,24 +77,24 @@ async fn setup_test_database() -> Arc<Database> {
         )
     "#,
     )
-    .execute(&db.pool)
+    .execute(db.pool())
     .await
     .unwrap();
 
     // Insert test data
-    sqlx::query(r#"
+    let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(r#"
         INSERT INTO anchors (id, name, stellar_account, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status)
         VALUES 
-        ('anchor1', 'Test Anchor 1', 'GTEST1', 1000, 950, 50, 100000.0, 500, 0.95, 'green'),
-        ('anchor2', 'Test Anchor 2', 'GTEST2', 2000, 1900, 100, 200000.0, 600, 0.95, 'green')
-    "#).execute(&db.pool).await.unwrap();
+        ('00000000-0000-0000-0000-000000000001', 'Test Anchor 1', 'GTEST1', 1000, 950, 50, 100000.0, 500, 0.95, 'green'),
+        ('00000000-0000-0000-0000-000000000002', 'Test Anchor 2', 'GTEST2', 2000, 1900, 100, 200000.0, 600, 0.95, 'green')
+    "#).execute(db.pool()).await.unwrap();
 
-    sqlx::query(r#"
+    let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(r#"
         INSERT INTO corridor_metrics (id, corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer, date, total_transactions, successful_transactions, failed_transactions, success_rate, volume_usd, avg_settlement_latency_ms, liquidity_depth_usd)
         VALUES 
-        ('corridor1', 'USDC:ISSUER1->EURC:ISSUER2', 'USDC', 'ISSUER1', 'EURC', 'ISSUER2', datetime('now'), 500, 475, 25, 95.0, 50000.0, 250, 100000.0),
-        ('corridor2', 'USDC:ISSUER1->GBPC:ISSUER3', 'USDC', 'ISSUER1', 'GBPC', 'ISSUER3', datetime('now'), 300, 285, 15, 95.0, 30000.0, 300, 75000.0)
-    "#).execute(&db.pool).await.unwrap();
+        ('00000000-0000-0000-0000-000000000003', 'USDC:ISSUER1->EURC:ISSUER2', 'USDC', 'ISSUER1', 'EURC', 'ISSUER2', datetime('now'), 500, 475, 25, 95.0, 50000.0, 250, 100000.0),
+        ('00000000-0000-0000-0000-000000000004', 'USDC:ISSUER1->GBPC:ISSUER3', 'USDC', 'ISSUER1', 'GBPC', 'ISSUER3', datetime('now'), 300, 285, 15, 95.0, 30000.0, 300, 75000.0)
+    "#).execute(db.pool()).await.unwrap();
 
     Arc::new(db)
 }
@@ -132,8 +134,11 @@ async fn test_acceptance_criteria_2_serialize_deterministic_json() {
     let db = setup_test_database().await;
     let service = SnapshotService::new(db, None);
 
-    let snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
-    let snapshot2 = service.aggregate_all_metrics(2).await.unwrap();
+    let mut snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
+    let mut snapshot2 = service.aggregate_all_metrics(2).await.unwrap();
+
+    // Normalize timestamps so the hashes match exactly
+    snapshot2.timestamp = snapshot1.timestamp;
 
     let json1 = SnapshotService::serialize_deterministically(snapshot1).unwrap();
     let json2 = SnapshotService::serialize_deterministically(snapshot2).unwrap();
@@ -191,9 +196,9 @@ async fn test_acceptance_criteria_4_store_hash_in_database() {
     let result = service.generate_and_submit_snapshot(4).await.unwrap();
 
     // Verify stored in database
-    let stored = sqlx::query("SELECT id, hash, epoch, data FROM snapshots WHERE id = ?")
+    let stored: sqlx::sqlite::SqliteRow = sqlx::query("SELECT id, hash, epoch, data FROM snapshots WHERE id = ?")
         .bind(&result.snapshot_id)
-        .fetch_one(&db.pool)
+        .fetch_one(db.pool())
         .await
         .unwrap();
 
@@ -257,16 +262,20 @@ async fn test_complete_workflow() {
     assert!(!result.snapshot_id.is_empty());
 
     // Verify determinism
-    let snapshot1 = service.aggregate_all_metrics(epoch).await.unwrap();
-    let snapshot2 = service.aggregate_all_metrics(epoch).await.unwrap();
+    let mut snapshot1 = service.aggregate_all_metrics(epoch).await.unwrap();
+    let mut snapshot2 = service.aggregate_all_metrics(epoch).await.unwrap();
+    
+    // Normalize timestamps
+    snapshot2.timestamp = snapshot1.timestamp;
+
     let json1 = SnapshotService::serialize_deterministically(snapshot1).unwrap();
     let json2 = SnapshotService::serialize_deterministically(snapshot2).unwrap();
     assert_eq!(json1, json2);
 
     // Verify database storage
-    let stored = sqlx::query("SELECT hash FROM snapshots WHERE id = ?")
+    let stored: sqlx::sqlite::SqliteRow = sqlx::query("SELECT hash FROM snapshots WHERE id = ?")
         .bind(&result.snapshot_id)
-        .fetch_one(&db.pool)
+        .fetch_one(db.pool())
         .await
         .unwrap();
     let stored_hash: String = stored.get("hash");
@@ -285,11 +294,12 @@ async fn test_complete_workflow() {
 async fn test_hash_determinism_across_different_insertion_orders() {
     println!("🧪 Testing Hash Determinism with Different Insertion Orders");
 
-    let db = setup_test_database().await;
+    let _db = setup_test_database().await;
 
     // Create two identical snapshots with different insertion orders
-    let snapshot1 = AnalyticsSnapshot::new(100, chrono::Utc::now());
-    let snapshot2 = AnalyticsSnapshot::new(100, chrono::Utc::now());
+    let now = chrono::Utc::now();
+    let snapshot1 = AnalyticsSnapshot::new(100, now);
+    let snapshot2 = AnalyticsSnapshot::new(100, now);
 
     // Same content, different order - should produce same hash
     let hash1 = SnapshotService::hash_snapshot_hex(snapshot1).unwrap();
