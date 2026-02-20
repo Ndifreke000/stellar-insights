@@ -36,7 +36,7 @@ use stellar_insights_backend::websocket::WsState;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Track shutdown start time for logging
-    let shutdown_start = std::time::Instant::now();
+    let _shutdown_start = std::time::Instant::now();
 
     // Load environment variables
     dotenv().ok();
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
         shutdown_config.background_task_timeout,
         shutdown_config.db_close_timeout
     );
-    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
+    let _shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
 
     // Database connection
     let database_url =

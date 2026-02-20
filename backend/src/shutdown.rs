@@ -3,7 +3,6 @@
 //! This module provides utilities for handling shutdown signals (SIGTERM, SIGINT)
 //! and coordinating graceful shutdown of server components.
 
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::time::timeout;

@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{ToSchema, IntoParams};
@@ -11,7 +10,6 @@ use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
 use crate::handlers::ApiResult;
-use crate::models::corridor::Corridor;
 use crate::models::SortBy;
 use crate::rpc::StellarRpcClient;
 
