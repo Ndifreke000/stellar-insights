@@ -266,3 +266,38 @@ pub struct LiquidityPoolStats {
     pub avg_apy: f64,
     pub avg_impermanent_loss: f64,
 }
+
+// =========================
+// Trustline domain
+// =========================
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TrustlineStat {
+    pub asset_code: String,
+    pub asset_issuer: String,
+    pub total_trustlines: i64,
+    pub authorized_trustlines: i64,
+    pub unauthorized_trustlines: i64,
+    pub total_supply: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TrustlineSnapshot {
+    pub id: i64,
+    pub asset_code: String,
+    pub asset_issuer: String,
+    pub total_trustlines: i64,
+    pub authorized_trustlines: i64,
+    pub unauthorized_trustlines: i64,
+    pub total_supply: f64,
+    pub snapshot_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustlineMetrics {
+    pub total_assets_tracked: i64,
+    pub total_trustlines_across_network: i64,
+    pub active_assets: i64,
+}

@@ -30,6 +30,7 @@ use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::state::AppState;
 use stellar_insights_backend::websocket::WsState;
@@ -111,6 +112,12 @@ async fn main() -> Result<()> {
 
     // Initialize Liquidity Pool Analyzer
     let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
+        pool.clone(),
+        Arc::clone(&rpc_client),
+    ));
+
+    // Initialize Trustline Analyzer
+    let trustline_analyzer = Arc::new(TrustlineAnalyzer::new(
         pool.clone(),
         Arc::clone(&rpc_client),
     ));
@@ -238,6 +245,22 @@ async fn main() -> Result<()> {
             }
             if let Err(e) = lp_analyzer_clone.take_snapshots().await {
                 tracing::error!("Liquidity pool snapshot failed: {}", e);
+            }
+        }
+    });
+
+    // Trustline stats sync background task
+    let trustline_analyzer_clone = Arc::clone(&trustline_analyzer);
+    tokio::spawn(async move {
+        tracing::info!("Starting trustline stats sync background task");
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(900)); // 15 minutes
+        loop {
+            interval.tick().await;
+            if let Err(e) = trustline_analyzer_clone.sync_assets().await {
+                tracing::error!("Trustline sync failed: {}", e);
+            }
+            if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
+                tracing::error!("Trustline snapshot failed: {}", e);
             }
         }
     });
@@ -441,6 +464,18 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build trustline routes
+    let trustline_routes = Router::new()
+        .nest(
+            "/api/trustlines",
+            stellar_insights_backend::api::trustlines::routes(Arc::clone(&trustline_analyzer)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
@@ -453,6 +488,7 @@ async fn main() -> Result<()> {
         .merge(rpc_routes)
         .merge(fee_bump_routes)
         .merge(lp_routes)
+        .merge(trustline_routes)
         .merge(cache_routes)
         .merge(metrics_routes);
 
