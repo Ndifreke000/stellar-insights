@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Waves,
   Droplets,
+  Link2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -27,6 +28,7 @@ const navItems = [
   { name: "Network Health", icon: Activity, path: "/health" },
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },
+  { name: "Trustlines", icon: Link2, path: "/trustlines" },
 ];
 
 interface SidebarProps {
@@ -40,7 +42,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
   return (
     <aside
-      className={`fixed top-0 left-0 h-screen glass border-r border-border transition-all duration-500 z-50 ${
+      className={`fixed top-0 left-0 h-screen glass border-r border-border transition-all duration-500 z-50 hidden lg:block ${
         collapsed ? "w-20" : "w-64"
       }`}
     >
