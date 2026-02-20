@@ -408,6 +408,7 @@ async fn main() -> Result<()> {
             get(get_anchor_by_account),
         )
         .route("/api/anchors/:id/assets", get(get_anchor_assets))
+        .route("/api/analytics/muxed", get(get_muxed_analytics))
         .with_state(app_state.clone())
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),

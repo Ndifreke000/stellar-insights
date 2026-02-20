@@ -17,6 +17,7 @@ import { TopCorridors } from "@/components/charts/TopCorridors";
 import { LiquidityHeatmap } from "@/components/charts/LiquidityHeatmap";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { Badge } from "@/components/ui/badge";
+import { MuxedAccountCard } from "@/components/analytics/MuxedAccountCard";
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
@@ -171,6 +172,7 @@ export default function AnalyticsPage() {
               />
             )}
           </div>
+          <MuxedAccountCard />
         </div>
       </div>
     </div>

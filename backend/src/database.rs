@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::analytics::compute_anchor_metrics;
 use crate::models::{
     Anchor, AnchorDetailResponse, AnchorMetricsHistory, Asset, CorridorRecord, CreateAnchorRequest,
-    MetricRecord, SnapshotRecord,
+    MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
 
 /// Parameters for updating anchor from RPC data

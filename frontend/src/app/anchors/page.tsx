@@ -6,15 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ResponsiveContainer, LineChart, Line } from "recharts";
 import { MainLayout } from "@/components/layout";
-import { AnchorMetrics, fetchAnchors} from "@/lib/api";
+import { AnchorMetrics, fetchAnchors } from "@/lib/api";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
+import { formatAddressShort } from "@/lib/address";
 
-// Utility functions
-const truncateAddress = (address: string) => {
-  if (!address) return "";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-};
+const truncateAddress = (address: string) =>
+  formatAddressShort(address, 6, 4);
 
 const getHealthStatusColor = (status: string) => {
   const normalizedStatus = status.toLowerCase();

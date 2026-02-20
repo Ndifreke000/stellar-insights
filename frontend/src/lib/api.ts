@@ -3,6 +3,7 @@
  * Handles all API calls to the backend
  */
 import { monitoring } from "./monitoring";
+import { isStellarAccountAddress } from "./address";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
@@ -401,12 +402,18 @@ export interface AnchorDetailData {
 }
 
 /**
- * Fetch detailed metrics for a single anchor
+ * Fetch detailed metrics for a single anchor (by G-address, M-address, or anchor ID)
  */
 export async function getAnchorDetail(
   address: string,
 ): Promise<AnchorDetailData> {
-  return api.get<AnchorDetailData>(`/anchors/${address}`);
+  const trimmed = address?.trim() ?? "";
+  if (isStellarAccountAddress(trimmed)) {
+    return api.get<AnchorDetailData>(
+      `/anchors/account/${encodeURIComponent(trimmed)}`
+    );
+  }
+  return api.get<AnchorDetailData>(`/anchors/${trimmed}`);
 }
 
 /**
@@ -555,6 +562,43 @@ export interface PredictionResponse {
   recommendation: string;
   alternative_routes: AlternativeRoute[];
   model_version: string;
+}
+
+// =========================
+// Muxed account analytics
+// =========================
+
+export interface MuxedAccountUsage {
+  account_address: string;
+  base_account: string | null;
+  muxed_id: number | null;
+  payment_count_as_source: number;
+  payment_count_as_destination: number;
+  total_payments: number;
+}
+
+/** Response fields match backend snake_case */
+export type MuxedAccountAnalyticsResponse = MuxedAccountAnalytics;
+
+export interface MuxedAccountAnalytics {
+  total_muxed_payments: number;
+  unique_muxed_addresses: number;
+  top_muxed_by_activity: MuxedAccountUsage[];
+  base_accounts_with_muxed: string[];
+}
+
+/**
+ * Fetch muxed account usage analytics from the backend
+ */
+export async function getMuxedAnalytics(
+  limit?: number
+): Promise<MuxedAccountAnalytics> {
+  const params = new URLSearchParams();
+  if (limit != null) params.set("limit", String(limit));
+  const q = params.toString();
+  return api.get<MuxedAccountAnalytics>(
+    `/analytics/muxed${q ? `?${q}` : ""}`
+  );
 }
 
 /**
