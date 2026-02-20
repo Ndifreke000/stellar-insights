@@ -16,6 +16,7 @@ import {
   Waves,
   Droplets,
   Users,
+  Database,
 } from "lucide-react";
 import { useState } from "react";
 

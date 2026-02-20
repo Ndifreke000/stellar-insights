@@ -1,15 +1,55 @@
 import { NextResponse } from 'next/server';
 
+function normalizeBackendBaseUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed;
+}
+
+function backendCandidates(): string[] {
+  const envCandidates = [process.env.BACKEND_URL, process.env.NEXT_PUBLIC_API_URL]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizeBackendBaseUrl);
+
+  const fallbackCandidates = [
+    'http://127.0.0.1:8080',
+    'http://localhost:8080',
+  ];
+
+  return [...new Set([...envCandidates, ...fallbackCandidates])];
+}
+
 export async function GET() {
-  const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8080';
+  const candidates = backendCandidates();
 
   try {
-    // Fetch data in parallel
-    const [corridorsRes, ledgerRes, paymentsRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/corridors`, { cache: 'no-store' }),
-      fetch(`${BACKEND_URL}/api/rpc/ledger/latest`, { cache: 'no-store' }),
-      fetch(`${BACKEND_URL}/api/rpc/payments?limit=50`, { cache: 'no-store' }),
-    ]);
+    let corridorsRes: Response | null = null;
+    let ledgerRes: Response | null = null;
+    let paymentsRes: Response | null = null;
+    let lastError: Error | null = null;
+
+    for (const backendUrl of candidates) {
+      try {
+        const responses = await Promise.all([
+          fetch(`${backendUrl}/api/corridors`, { cache: 'no-store' }),
+          fetch(`${backendUrl}/api/rpc/ledger/latest`, { cache: 'no-store' }),
+          fetch(`${backendUrl}/api/rpc/payments?limit=50`, { cache: 'no-store' }),
+        ]);
+
+        if (!responses[0].ok) {
+          lastError = new Error(`Corridors API failed (${backendUrl}): ${responses[0].status}`);
+          continue;
+        }
+
+        [corridorsRes, ledgerRes, paymentsRes] = responses;
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown backend fetch error');
+      }
+    }
+
+    if (!corridorsRes || !ledgerRes || !paymentsRes) {
+      throw lastError ?? new Error('No reachable backend URL');
+    }
 
     // Handle initial fetch errors (graceful degradation)
     if (!corridorsRes.ok) throw new Error(`Corridors API failed: ${corridorsRes.status}`);

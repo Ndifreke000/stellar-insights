@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Info, Phone, BookOpen, X, Menu } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 
 const navLinks = [
   {
@@ -45,22 +46,21 @@ export function Navbar() {
   return (
     <>
       <nav
-        className={`fixed top-0 right-0 left-0 z-40 transition-all duration-300 ${
-          scrolled
+        className={`fixed top-0 right-0 left-0 z-40 transition-all duration-300 ${scrolled
             ? "navbar-scrolled"
             : "navbar-default"
-        }`}
-     
+          }`}
+
         style={{ paddingLeft: "var(--sidebar-offset, 5rem)" }}
       >
         <div className="navbar-inner flex items-center justify-between h-14 px-6">
-         
+
           <div className="flex items-center gap-2">
             <span className="navbar-live-dot" />
             <span className="navbar-live-text">LIVE NETWORK</span>
           </div>
 
-    
+
           <ul className="navbar-links hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = pathname === link.href;
@@ -80,24 +80,27 @@ export function Navbar() {
             })}
           </ul>
 
-       
-          <button
-            className="md:hidden navbar-hamburger"
-            onClick={() => setMobileOpen((v) => !v)}
-            aria-label="Toggle navigation menu"
-            aria-expanded={mobileOpen}
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {/* Right side: Theme toggle + hamburger (mobile) + brand tag (desktop) */}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
 
-  
-          <div className="hidden md:flex items-center gap-2 navbar-brand-tag">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-            <span>Stellar Insights</span>
+            <button
+              className="md:hidden navbar-hamburger"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            <div className="hidden md:flex items-center gap-2 navbar-brand-tag">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span>Stellar Insights</span>
+            </div>
           </div>
         </div>
 
- 
+
         <div className={`navbar-mobile-panel md:hidden ${mobileOpen ? "open" : ""}`}>
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
@@ -127,3 +130,4 @@ export function Navbar() {
     </>
   );
 }
+

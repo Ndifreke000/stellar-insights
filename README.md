@@ -88,6 +88,9 @@ stellar-insights/
 - `GET /api/anchors` - List all anchors
 - `GET /api/corridors` - List payment corridors
 - `GET /api/corridors/:key` - Corridor details
+- `GET /api/account-merges/stats` - Account merge aggregate metrics
+- `GET /api/account-merges/recent` - Recent account merge events
+- `GET /api/account-merges/destinations` - Top destination accounts for merges
 
 See [RPC.md](./docs/RPC.md) for complete API documentation.
 
@@ -188,6 +191,7 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 - [RPC Integration Summary](./docs/RPC_INTEGRATION_SUMMARY.md) - Integration overview
 - [SEP-24](./docs/SEP24.md) - Hosted Deposit/Withdrawal
 - [SEP-31](./docs/SEP31.md) - Cross-Border Payments
+- [Account Merges](./docs/ACCOUNT_MERGES.md) - Account merge detection and analytics
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development guidelines
 - [Remaining Issues](./issues/REMAINING-ISSUES-022-090.md) - Development tasks
 

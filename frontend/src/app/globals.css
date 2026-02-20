@@ -14,40 +14,131 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+/* ─── Dark Theme (Default) ─────────────────────────────────────────────── */
 :root {
-  /* Industrial Noir Palette (Dark Mode by Default) */
   --background: #020617;
-  /* Very Deep Navy/Black */
   --foreground: #f8fafc;
 
   --card: rgba(15, 23, 42, 0.6);
-  /* Slate-900 with Alpha */
   --card-foreground: #f8fafc;
 
   --accent: #6366f1;
-  /* Indigo-500 */
   --accent-foreground: #ffffff;
 
   --border: rgba(51, 65, 85, 0.5);
-  /* Slate-700 with Alpha */
 
   --muted: #1e293b;
   --muted-foreground: #94a3b8;
+
+  /* Theme-aware alpha channels for glassmorphism & overlays */
+  --glass-bg: rgba(15, 23, 42, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-card-from: rgba(30, 41, 59, 0.7);
+  --glass-card-to: rgba(15, 23, 42, 0.8);
+  --glass-card-border: rgba(255, 255, 255, 0.05);
+  --glass-card-shadow: rgba(0, 0, 0, 0.8);
+  --glow-accent-shadow: rgba(99, 102, 241, 0.2);
+  --glow-success-shadow: rgba(34, 197, 94, 0.2);
+
+  /* Navbar */
+  --navbar-scrolled-bg: rgba(2, 6, 23, 0.75);
+  --navbar-scrolled-border: rgba(99, 102, 241, 0.15);
+  --navbar-scrolled-shadow: rgba(0, 0, 0, 0.4);
+  --navbar-link-hover-bg: rgba(255, 255, 255, 0.05);
+  --navbar-link-hover-border: rgba(99, 102, 241, 0.2);
+  --navbar-link-active-bg: rgba(99, 102, 241, 0.1);
+  --navbar-link-active-border: rgba(99, 102, 241, 0.25);
+  --navbar-hamburger-border: rgba(255, 255, 255, 0.08);
+  --navbar-hamburger-bg: rgba(255, 255, 255, 0.03);
+  --navbar-hamburger-hover-bg: rgba(99, 102, 241, 0.12);
+  --navbar-mobile-panel-bg: rgba(2, 6, 23, 0.92);
+  --navbar-mobile-panel-border: rgba(99, 102, 241, 0.1);
+  --navbar-mobile-link-hover-bg: rgba(255, 255, 255, 0.04);
+  --navbar-mobile-link-hover-border: rgba(99, 102, 241, 0.15);
+  --navbar-mobile-link-active-bg: rgba(99, 102, 241, 0.1);
+  --navbar-mobile-link-active-border: rgba(99, 102, 241, 0.25);
+  --navbar-mobile-icon-bg: rgba(99, 102, 241, 0.12);
+
+  /* Contact form */
+  --contact-input-border: rgba(51, 65, 85, 0.5);
+  --contact-input-bg: rgba(15, 23, 42, 0.5);
+  --contact-input-focus-border: rgba(99, 102, 241, 0.5);
+  --contact-input-focus-shadow: rgba(99, 102, 241, 0.1);
+  --contact-option-bg: #0f172a;
+
+  /* Sidebar hover */
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
 }
 
-/* Light Mode Overrides (Disabled for strict Industrial Noir feel) 
-@media (prefers-color-scheme: light) {
-  :root {
-    --background: #f8fafc;
-    --foreground: #020617;
-    --card: #ffffff;
-    --card-foreground: #0f172a;
-    --border: #e2e8f0;
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
-  }
+/* ─── Light Theme ──────────────────────────────────────────────────────── */
+html.light,
+[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+
+  --card: rgba(255, 255, 255, 0.85);
+  --card-foreground: #0f172a;
+
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+
+  --border: rgba(148, 163, 184, 0.35);
+
+  --muted: #e2e8f0;
+  --muted-foreground: #475569;
+
+  /* Glassmorphism – light variant */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(148, 163, 184, 0.25);
+  --glass-card-from: rgba(255, 255, 255, 0.8);
+  --glass-card-to: rgba(241, 245, 249, 0.9);
+  --glass-card-border: rgba(148, 163, 184, 0.15);
+  --glass-card-shadow: rgba(0, 0, 0, 0.08);
+  --glow-accent-shadow: rgba(79, 70, 229, 0.15);
+  --glow-success-shadow: rgba(22, 163, 74, 0.15);
+
+  /* Navbar – light */
+  --navbar-scrolled-bg: rgba(248, 250, 252, 0.82);
+  --navbar-scrolled-border: rgba(79, 70, 229, 0.12);
+  --navbar-scrolled-shadow: rgba(0, 0, 0, 0.06);
+  --navbar-link-hover-bg: rgba(0, 0, 0, 0.04);
+  --navbar-link-hover-border: rgba(79, 70, 229, 0.18);
+  --navbar-link-active-bg: rgba(79, 70, 229, 0.08);
+  --navbar-link-active-border: rgba(79, 70, 229, 0.22);
+  --navbar-hamburger-border: rgba(0, 0, 0, 0.08);
+  --navbar-hamburger-bg: rgba(0, 0, 0, 0.02);
+  --navbar-hamburger-hover-bg: rgba(79, 70, 229, 0.1);
+  --navbar-mobile-panel-bg: rgba(248, 250, 252, 0.96);
+  --navbar-mobile-panel-border: rgba(79, 70, 229, 0.1);
+  --navbar-mobile-link-hover-bg: rgba(0, 0, 0, 0.03);
+  --navbar-mobile-link-hover-border: rgba(79, 70, 229, 0.12);
+  --navbar-mobile-link-active-bg: rgba(79, 70, 229, 0.08);
+  --navbar-mobile-link-active-border: rgba(79, 70, 229, 0.22);
+  --navbar-mobile-icon-bg: rgba(79, 70, 229, 0.1);
+
+  /* Contact form – light */
+  --contact-input-border: rgba(148, 163, 184, 0.4);
+  --contact-input-bg: rgba(255, 255, 255, 0.7);
+  --contact-input-focus-border: rgba(79, 70, 229, 0.5);
+  --contact-input-focus-shadow: rgba(79, 70, 229, 0.08);
+  --contact-option-bg: #ffffff;
+
+  /* Sidebar hover – light */
+  --sidebar-hover-bg: rgba(0, 0, 0, 0.04);
 }
-*/
+
+/* ─── Smooth theme transitions ─────────────────────────────────────────── */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    fill 0.3s ease,
+    stroke 0.3s ease !important;
+}
 
 body {
   background-color: var(--background);
@@ -57,31 +148,32 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glassmorphism Utilities */
+/* ─── Glassmorphism Utilities ──────────────────────────────────────────── */
 .glass {
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(12px);
+  background: var(--glass-bg);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
 }
 
 .glass-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+  background: linear-gradient(135deg, var(--glass-card-from) 0%, var(--glass-card-to) 100%);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--glass-card-border);
+  box-shadow: 0 8px 32px 0 var(--glass-card-shadow);
 }
 
-/* Data Glow Effects */
+/* ─── Data Glow Effects ────────────────────────────────────────────────── */
 .glow-accent {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 20px var(--glow-accent-shadow);
 }
 
 .glow-success {
-  box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
+  box-shadow: 0 0 20px var(--glow-success-shadow);
 }
 
-/* Animations */
+/* ─── Animations ───────────────────────────────────────────────────────── */
 @keyframes pulse-slow {
 
   0%,
@@ -98,7 +190,7 @@ body {
   animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Scrollbar Customization */
+/* ─── Scrollbar Customization ──────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -116,7 +208,7 @@ body {
   background: var(--muted-foreground);
 }
 
-/* ─── Sidebar offset CSS variable ─────────────────────────────────────── */
+/* ─── Sidebar offset CSS variable ──────────────────────────────────────── */
 :root {
   --sidebar-offset: 5rem;
   /* collapsed sidebar = 80px */
@@ -129,11 +221,11 @@ body {
 }
 
 .navbar-scrolled {
-  background: rgba(2, 6, 23, 0.75);
-  backdrop-filter: blur(18px);
+  background: var(--navbar-scrolled-bg);
   -webkit-backdrop-filter: blur(18px);
-  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--navbar-scrolled-border);
+  box-shadow: 0 4px 32px var(--navbar-scrolled-shadow);
 }
 
 .navbar-inner {
@@ -200,14 +292,14 @@ body {
 
 .navbar-link:hover {
   color: var(--foreground);
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(99, 102, 241, 0.2);
+  background: var(--navbar-link-hover-bg);
+  border-color: var(--navbar-link-hover-border);
 }
 
 .navbar-link--active {
   color: var(--accent);
-  background: rgba(99, 102, 241, 0.1);
-  border-color: rgba(99, 102, 241, 0.25);
+  background: var(--navbar-link-active-bg);
+  border-color: var(--navbar-link-active-border);
   box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
 }
 
@@ -238,17 +330,17 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--navbar-hamburger-border);
   color: var(--muted-foreground);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--navbar-hamburger-bg);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
 
 .navbar-hamburger:hover {
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--navbar-hamburger-hover-bg);
   color: var(--accent);
-  border-color: rgba(99, 102, 241, 0.25);
+  border-color: var(--navbar-link-active-border);
 }
 
 /* Mobile panel */
@@ -258,10 +350,10 @@ body {
   transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.25s ease;
   opacity: 0;
-  background: rgba(2, 6, 23, 0.92);
-  backdrop-filter: blur(20px);
+  background: var(--navbar-mobile-panel-bg);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--navbar-mobile-panel-border);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -287,15 +379,15 @@ body {
 }
 
 .navbar-mobile-link:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--navbar-mobile-link-hover-bg);
   color: var(--foreground);
-  border-color: rgba(99, 102, 241, 0.15);
+  border-color: var(--navbar-mobile-link-hover-border);
 }
 
 .navbar-mobile-link--active {
-  background: rgba(99, 102, 241, 0.1);
+  background: var(--navbar-mobile-link-active-bg);
   color: var(--accent);
-  border-color: rgba(99, 102, 241, 0.25);
+  border-color: var(--navbar-mobile-link-active-border);
 }
 
 .navbar-mobile-icon-wrap {
@@ -305,9 +397,31 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--navbar-mobile-icon-bg);
   color: var(--accent);
   flex-shrink: 0;
+}
+
+/* ─── Theme Toggle Button ─────────────────────────────────────────────── */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--navbar-hamburger-border);
+  color: var(--muted-foreground);
+  background: var(--navbar-hamburger-bg);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--navbar-hamburger-hover-bg);
+  color: var(--accent);
+  border-color: var(--navbar-link-active-border);
+  box-shadow: 0 0 12px var(--glow-accent-shadow);
 }
 
 /* ─── Contact Form ─────────────────────────────────────────────────────── */
@@ -324,8 +438,8 @@ body {
   width: 100%;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(51, 65, 85, 0.5);
-  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--contact-input-border);
+  background: var(--contact-input-bg);
   color: var(--foreground);
   font-size: 14px;
   outline: none;
@@ -338,11 +452,11 @@ body {
 }
 
 .contact-input:focus {
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: var(--contact-input-focus-border);
+  box-shadow: 0 0 0 3px var(--contact-input-focus-shadow);
 }
 
 .contact-input option {
-  background: #0f172a;
+  background: var(--contact-option-bg);
   color: var(--foreground);
 }

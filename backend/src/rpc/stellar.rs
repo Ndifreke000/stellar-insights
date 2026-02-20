@@ -8,6 +8,8 @@ use tracing::{debug, info, warn};
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 100;
 const BACKOFF_MULTIPLIER: u64 = 2;
+const MOCK_OLDEST_LEDGER: u64 = 51_565_760;
+const MOCK_LATEST_LEDGER: u64 = 51_565_820;
 
 /// Stellar RPC Client for interacting with Stellar network via RPC and Horizon API
 // Asset Models (Horizon API)
@@ -128,6 +130,29 @@ pub struct Payment {
     pub to: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonOperation {
+    pub id: String,
+    pub paging_token: String,
+    pub transaction_hash: String,
+    pub source_account: String,
+    #[serde(rename = "type")]
+    pub operation_type: String,
+    pub created_at: String,
+    pub account: Option<String>,
+    pub into: Option<String>,
+    pub amount: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonEffect {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub effect_type: String,
+    pub account: Option<String>,
+    pub amount: Option<String>,
+    pub asset_type: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorizonTransaction {
@@ -373,7 +398,15 @@ impl StellarRpcClient {
         cursor: Option<&str>,
     ) -> Result<GetLedgersResult> {
         if self.mock_mode {
-            return Ok(Self::mock_get_ledgers(start_ledger.unwrap_or(1000), limit));
+            let start = if let Some(c) = cursor {
+                c.parse::<u64>()
+                    .ok()
+                    .map(|v| v.saturating_add(1))
+                    .unwrap_or_else(|| start_ledger.unwrap_or(MOCK_OLDEST_LEDGER))
+            } else {
+                start_ledger.unwrap_or(MOCK_OLDEST_LEDGER)
+            };
+            return Ok(Self::mock_get_ledgers(start, limit));
         }
 
         info!("Fetching ledgers via RPC getLedgers");
@@ -549,7 +582,7 @@ impl StellarRpcClient {
         sequence: u64,
     ) -> Result<Vec<HorizonTransaction>> {
         if self.mock_mode {
-            return Ok(Self::mock_transactions(5));
+            return Ok(Self::mock_transactions(5, sequence));
         }
 
         let url = format!(
@@ -566,6 +599,63 @@ impl StellarRpcClient {
             .json()
             .await
             .context("Failed to parse ledger transactions response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
+    /// Fetch operations for a specific ledger
+    pub async fn fetch_operations_for_ledger(
+        &self,
+        sequence: u64,
+    ) -> Result<Vec<HorizonOperation>> {
+        if self.mock_mode {
+            return Ok(Self::mock_operations_for_ledger(sequence));
+        }
+
+        let url = format!(
+            "{}/ledgers/{}/operations?limit=200",
+            self.horizon_url, sequence
+        );
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch ledger operations")?;
+
+        let horizon_response: HorizonResponse<HorizonOperation> = response
+            .json()
+            .await
+            .context("Failed to parse ledger operations response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
+    /// Fetch effects for a specific operation
+    pub async fn fetch_operation_effects(&self, operation_id: &str) -> Result<Vec<HorizonEffect>> {
+        if self.mock_mode {
+            return Ok(Self::mock_effects_for_operation(operation_id));
+        }
+
+        let url = format!(
+            "{}/operations/{}/effects?limit=200",
+            self.horizon_url, operation_id
+        );
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch operation effects")?;
+
+        let horizon_response: HorizonResponse<HorizonEffect> = response
+            .json()
+            .await
+            .context("Failed to parse operation effects response")?;
 
         Ok(horizon_response
             .embedded
@@ -711,9 +801,9 @@ impl StellarRpcClient {
     fn mock_health_response() -> HealthResponse {
         HealthResponse {
             status: "healthy".to_string(),
-            latest_ledger: 51583040,
-            oldest_ledger: 51565760,
-            ledger_retention_window: 17280,
+            latest_ledger: MOCK_LATEST_LEDGER,
+            oldest_ledger: MOCK_OLDEST_LEDGER,
+            ledger_retention_window: 60,
         }
     }
 
@@ -734,20 +824,32 @@ impl StellarRpcClient {
 
     // I'm mocking getLedgers response for testing
     fn mock_get_ledgers(start: u64, limit: u32) -> GetLedgersResult {
-        let ledgers = (0..limit)
-            .map(|i| RpcLedger {
-                hash: format!("hash_{}", start + i as u64),
-                sequence: start + i as u64,
+        if start > MOCK_LATEST_LEDGER {
+            return GetLedgersResult {
+                ledgers: Vec::new(),
+                latest_ledger: MOCK_LATEST_LEDGER,
+                oldest_ledger: MOCK_OLDEST_LEDGER,
+                cursor: Some(MOCK_LATEST_LEDGER.to_string()),
+            };
+        }
+
+        let end = (start.saturating_add(limit as u64).saturating_sub(1)).min(MOCK_LATEST_LEDGER);
+        let ledgers = (start..=end)
+            .enumerate()
+            .map(|(i, seq)| RpcLedger {
+                hash: format!("hash_{}", seq),
+                sequence: seq,
                 ledger_close_time: format!("{}", 1734032457 + i as u64 * 5),
                 header_xdr: Some("mock_header".to_string()),
                 metadata_xdr: Some("mock_metadata".to_string()),
             })
             .collect();
+
         GetLedgersResult {
             ledgers,
-            latest_ledger: start + limit as u64 + 100,
-            oldest_ledger: start.saturating_sub(1000),
-            cursor: Some(format!("{}", start + limit as u64 - 1)),
+            latest_ledger: MOCK_LATEST_LEDGER,
+            oldest_ledger: MOCK_OLDEST_LEDGER,
+            cursor: Some(end.to_string()),
         }
     }
 
@@ -757,7 +859,7 @@ impl StellarRpcClient {
                 let is_path_payment = i % 5 == 0;
                 let is_native_source = i % 3 == 0;
                 let is_native_dest = i % 4 == 0;
-                
+
                 Payment {
                     id: format!("payment_{}", i),
                     paging_token: format!("paging_{}", i),
@@ -766,7 +868,10 @@ impl StellarRpcClient {
                         "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{:03}",
                         i
                     ),
-                    destination: format!("GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}", i),
+                    destination: format!(
+                        "GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}",
+                        i
+                    ),
                     // For regular payments, asset_type/code/issuer represent the transferred asset
                     // For path payments, they represent the destination asset
                     asset_type: if is_native_dest {
@@ -786,12 +891,19 @@ impl StellarRpcClient {
                     asset_issuer: if is_native_dest {
                         None
                     } else {
-                        Some(format!("GISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", i % 10))
+                        Some(format!(
+                            "GISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                            i % 10
+                        ))
                     },
                     amount: format!("{}.0000000", 100 + i * 10),
                     created_at: format!("2026-01-22T10:{:02}:00Z", i % 60),
                     operation_type: if is_path_payment {
-                        Some(if i % 2 == 0 { "path_payment_strict_send".to_string() } else { "path_payment_strict_receive".to_string() })
+                        Some(if i % 2 == 0 {
+                            "path_payment_strict_send".to_string()
+                        } else {
+                            "path_payment_strict_receive".to_string()
+                        })
                     } else {
                         Some("payment".to_string())
                     },
@@ -811,7 +923,10 @@ impl StellarRpcClient {
                         None
                     },
                     source_asset_issuer: if is_path_payment && !is_native_source {
-                        Some(format!("GSRCISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", i % 10))
+                        Some(format!(
+                            "GSRCISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                            i % 10
+                        ))
                     } else {
                         None
                     },
@@ -820,8 +935,14 @@ impl StellarRpcClient {
                     } else {
                         None
                     },
-                    from: Some(format!("GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{:03}", i)),
-                    to: Some(format!("GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}", i)),
+                    from: Some(format!(
+                        "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{:03}",
+                        i
+                    )),
+                    to: Some(format!(
+                        "GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}",
+                        i
+                    )),
                 }
             })
             .collect()
@@ -901,14 +1022,14 @@ impl StellarRpcClient {
         }
     }
 
-    fn mock_transactions(limit: u32) -> Vec<HorizonTransaction> {
+    fn mock_transactions(limit: u32, ledger_sequence: u64) -> Vec<HorizonTransaction> {
         (0..limit)
             .map(|i| {
                 let is_fee_bump = i % 2 == 0;
                 HorizonTransaction {
                     id: format!("tx_{}", i),
                     hash: format!("txhash_{}", i),
-                    ledger: 51583040,
+                    ledger: ledger_sequence,
                     created_at: "2026-01-22T10:30:00Z".to_string(),
                     source_account: "GXX".to_string(),
                     fee_account: Some("GXX".to_string()),
@@ -937,6 +1058,89 @@ impl StellarRpcClient {
                 }
             })
             .collect()
+    }
+
+    fn mock_operations_for_ledger(sequence: u64) -> Vec<HorizonOperation> {
+        let source_a = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string();
+        let source_b = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string();
+        let dest_a = "GDESTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string();
+        let dest_b = "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string();
+
+        vec![
+            HorizonOperation {
+                id: format!("op_{}_0", sequence),
+                paging_token: format!("pt_{}_0", sequence),
+                transaction_hash: format!("txhash_{}_0", sequence),
+                source_account: source_a.clone(),
+                operation_type: "account_merge".to_string(),
+                created_at: "2026-01-22T10:30:00Z".to_string(),
+                account: Some(source_a),
+                into: Some(dest_a),
+                amount: None,
+            },
+            HorizonOperation {
+                id: format!("op_{}_1", sequence),
+                paging_token: format!("pt_{}_1", sequence),
+                transaction_hash: format!("txhash_{}_1", sequence),
+                source_account: "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+                    .to_string(),
+                operation_type: "payment".to_string(),
+                created_at: "2026-01-22T10:31:00Z".to_string(),
+                account: None,
+                into: None,
+                amount: Some("25.0000000".to_string()),
+            },
+            HorizonOperation {
+                id: format!("op_{}_2", sequence),
+                paging_token: format!("pt_{}_2", sequence),
+                transaction_hash: format!("txhash_{}_2", sequence),
+                source_account: source_b.clone(),
+                operation_type: "account_merge".to_string(),
+                created_at: "2026-01-22T10:32:00Z".to_string(),
+                account: Some(source_b),
+                into: Some(dest_b),
+                amount: None,
+            },
+        ]
+    }
+
+    fn mock_effects_for_operation(operation_id: &str) -> Vec<HorizonEffect> {
+        if operation_id.ends_with("_0") {
+            return vec![HorizonEffect {
+                id: format!("effect_{}_0", operation_id),
+                effect_type: "account_credited".to_string(),
+                account: Some(
+                    "GDESTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                ),
+                amount: Some("125.5000000".to_string()),
+                asset_type: Some("native".to_string()),
+            }];
+        }
+
+        if operation_id.ends_with("_2") {
+            return vec![
+                HorizonEffect {
+                    id: format!("effect_{}_0", operation_id),
+                    effect_type: "account_credited".to_string(),
+                    account: Some(
+                        "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                    ),
+                    amount: Some("10.0000000".to_string()),
+                    asset_type: Some("native".to_string()),
+                },
+                HorizonEffect {
+                    id: format!("effect_{}_1", operation_id),
+                    effect_type: "account_credited".to_string(),
+                    account: Some(
+                        "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                    ),
+                    amount: Some("0.5000000".to_string()),
+                    asset_type: Some("native".to_string()),
+                },
+            ];
+        }
+
+        Vec::new()
     }
 
     // ============================================================================
@@ -1039,11 +1243,7 @@ impl StellarRpcClient {
     }
 
     /// Fetch assets from Horizon API, sorted by rating
-    pub async fn fetch_assets(
-        &self,
-        limit: u32,
-        rating_sort: bool,
-    ) -> Result<Vec<HorizonAsset>> {
+    pub async fn fetch_assets(&self, limit: u32, rating_sort: bool) -> Result<Vec<HorizonAsset>> {
         if self.mock_mode {
             return Ok(Self::mock_assets(limit));
         }
@@ -1053,7 +1253,7 @@ impl StellarRpcClient {
         if rating_sort {
             url.push_str("&order=desc&sort=rating");
         } else {
-             url.push_str("&order=desc");
+            url.push_str("&order=desc");
         }
 
         let response = self
@@ -1168,10 +1368,22 @@ impl StellarRpcClient {
     fn mock_assets(limit: u32) -> Vec<HorizonAsset> {
         let mut assets = Vec::new();
         let issues = vec![
-            ("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
-            ("AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"),
-            ("yXLM", "GARDNV3Q7YGT4AKSDF25A9NTVAMQUD8UAKGHXONL6R2FMBXVGFZDFZEM"),
-            ("BTC", "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT")
+            (
+                "USDC",
+                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+            ),
+            (
+                "AQUA",
+                "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+            ),
+            (
+                "yXLM",
+                "GARDNV3Q7YGT4AKSDF25A9NTVAMQUD8UAKGHXONL6R2FMBXVGFZDFZEM",
+            ),
+            (
+                "BTC",
+                "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT",
+            ),
         ];
 
         for (i, (code, issuer)) in issues.iter().take(limit as usize).enumerate() {
@@ -1201,7 +1413,7 @@ impl StellarRpcClient {
                     auth_revocable: false,
                     auth_immutable: false,
                     auth_clawback_enabled: false,
-                }
+                },
             })
         }
         assets
@@ -1304,5 +1516,35 @@ mod tests {
 
         assert_eq!(trades.len(), 5);
         assert!(!trades[0].id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_operations_for_ledger() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let operations = client.fetch_operations_for_ledger(123).await.unwrap();
+
+        assert_eq!(operations.len(), 3);
+        assert_eq!(operations[0].operation_type, "account_merge");
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_operation_effects() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let effects = client.fetch_operation_effects("op_123_0").await.unwrap();
+
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].effect_type, "account_credited");
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_ledgers_stops_at_latest() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let result = client
+            .fetch_ledgers(Some(MOCK_LATEST_LEDGER.saturating_add(1)), 5, None)
+            .await
+            .unwrap();
+
+        assert!(result.ledgers.is_empty());
+        assert_eq!(result.latest_ledger, MOCK_LATEST_LEDGER);
     }
 }
