@@ -12,10 +12,10 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
-  Database,
   LayoutDashboard,
   Waves,
   Droplets,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -24,6 +24,7 @@ const navItems = [
   { name: "Terminal", icon: LayoutDashboard, path: "/dashboard" },
   { name: "Corridors", icon: Compass, path: "/corridors" },
   { name: "Analytics", icon: BarChart3, path: "/analytics" },
+  { name: "Trustlines", icon: Users, path: "/trustlines" },
   { name: "Network Health", icon: Activity, path: "/health" },
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },

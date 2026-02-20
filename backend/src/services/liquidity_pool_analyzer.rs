@@ -2,10 +2,10 @@ use anyhow::Result;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
-use crate::rpc::{HorizonLiquidityPool, StellarRpcClient};
+use crate::rpc::StellarRpcClient;
 
 pub struct LiquidityPoolAnalyzer {
     pool: Pool<Sqlite>,

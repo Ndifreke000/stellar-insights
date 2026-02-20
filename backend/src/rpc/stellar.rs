@@ -10,6 +10,46 @@ const INITIAL_BACKOFF_MS: u64 = 100;
 const BACKOFF_MULTIPLIER: u64 = 2;
 
 /// Stellar RPC Client for interacting with Stellar network via RPC and Horizon API
+// Asset Models (Horizon API)
+// ==========================================
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonAsset {
+    pub asset_type: String,
+    pub asset_code: String,
+    pub asset_issuer: String,
+    pub num_claimable_balances: i32,
+    pub num_liquidity_pools: i32,
+    pub num_contracts: i32,
+    pub accounts: AssetAccounts,
+    pub claimable_balances_amount: String,
+    pub liquidity_pools_amount: String,
+    pub contracts_amount: String,
+    pub balances: AssetBalances,
+    pub flags: AssetFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetAccounts {
+    pub authorized: i32,
+    pub authorized_to_maintain_liabilities: i32,
+    pub unauthorized: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetBalances {
+    pub authorized: String,
+    pub authorized_to_maintain_liabilities: String,
+    pub unauthorized: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetFlags {
+    pub auth_required: bool,
+    pub auth_revocable: bool,
+    pub auth_immutable: bool,
+    pub auth_clawback_enabled: bool,
+}
+
 #[derive(Clone)]
 pub struct StellarRpcClient {
     client: Client,
@@ -940,6 +980,40 @@ impl StellarRpcClient {
             .unwrap_or_default())
     }
 
+    /// Fetch assets from Horizon API, sorted by rating
+    pub async fn fetch_assets(
+        &self,
+        limit: u32,
+        rating_sort: bool,
+    ) -> Result<Vec<HorizonAsset>> {
+        if self.mock_mode {
+            return Ok(Self::mock_assets(limit));
+        }
+
+        info!("Fetching {} assets from Horizon API", limit);
+        let mut url = format!("{}/assets?limit={}", self.horizon_url, limit);
+        if rating_sort {
+            url.push_str("&order=desc&sort=rating");
+        } else {
+             url.push_str("&order=desc");
+        }
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch assets")?;
+
+        let horizon_response: HorizonResponse<HorizonAsset> = response
+            .json()
+            .await
+            .context("Failed to parse assets response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
     // ============================================================================
     // Liquidity Pool Mock Data
     // ============================================================================
@@ -1031,6 +1105,48 @@ impl StellarRpcClient {
                 },
             )
             .collect()
+    }
+
+    fn mock_assets(limit: u32) -> Vec<HorizonAsset> {
+        let mut assets = Vec::new();
+        let issues = vec![
+            ("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+            ("AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"),
+            ("yXLM", "GARDNV3Q7YGT4AKSDF25A9NTVAMQUD8UAKGHXONL6R2FMBXVGFZDFZEM"),
+            ("BTC", "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT")
+        ];
+
+        for (i, (code, issuer)) in issues.iter().take(limit as usize).enumerate() {
+            let base_trustlines = 10000 - (i as i32 * 2000);
+            assets.push(HorizonAsset {
+                asset_type: "credit_alphanum4".to_string(),
+                asset_code: code.to_string(),
+                asset_issuer: issuer.to_string(),
+                num_claimable_balances: 0,
+                num_liquidity_pools: 0,
+                num_contracts: 0,
+                accounts: AssetAccounts {
+                    authorized: base_trustlines,
+                    authorized_to_maintain_liabilities: 0,
+                    unauthorized: base_trustlines / 20,
+                },
+                claimable_balances_amount: "0.0".to_string(),
+                liquidity_pools_amount: "0.0".to_string(),
+                contracts_amount: "0.0".to_string(),
+                balances: AssetBalances {
+                    authorized: format!("{}.0000000", base_trustlines * 1000),
+                    authorized_to_maintain_liabilities: "0.0".to_string(),
+                    unauthorized: "0.0".to_string(),
+                },
+                flags: AssetFlags {
+                    auth_required: false,
+                    auth_revocable: false,
+                    auth_immutable: false,
+                    auth_clawback_enabled: false,
+                }
+            })
+        }
+        assets
     }
 }
 
