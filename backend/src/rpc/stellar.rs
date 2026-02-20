@@ -194,6 +194,31 @@ pub struct GetLedgersResult {
 }
 
 // ============================================================================
+// Liquidity Pool Models (Horizon API)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonPoolReserve {
+    pub asset: String,  // "native" or "CODE:ISSUER"
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonLiquidityPool {
+    pub id: String,
+    #[serde(rename = "fee_bp")]
+    pub fee_bp: u32,
+    #[serde(rename = "type")]
+    pub pool_type: String,
+    #[serde(rename = "total_trustlines")]
+    pub total_trustlines: u64,
+    #[serde(rename = "total_shares")]
+    pub total_shares: String,
+    pub reserves: Vec<HorizonPoolReserve>,
+    pub paging_token: Option<String>,
+}
+
+// ============================================================================
 // Implementation
 // ============================================================================
 
@@ -806,6 +831,152 @@ impl StellarRpcClient {
             })
             .collect()
     }
+
+    // ============================================================================
+    // Liquidity Pool Methods
+    // ============================================================================
+
+    /// Fetch liquidity pools from Horizon API
+    pub async fn fetch_liquidity_pools(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<HorizonLiquidityPool>> {
+        if self.mock_mode {
+            return Ok(Self::mock_liquidity_pools(limit));
+        }
+
+        info!("Fetching {} liquidity pools from Horizon API", limit);
+
+        let mut url = format!(
+            "{}/liquidity_pools?order=desc&limit={}",
+            self.horizon_url, limit
+        );
+
+        if let Some(cursor) = cursor {
+            url.push_str(&format!("&cursor={}", cursor));
+        }
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch liquidity pools")?;
+
+        let horizon_response: HorizonResponse<HorizonLiquidityPool> = response
+            .json()
+            .await
+            .context("Failed to parse liquidity pools response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
+    /// Fetch a single liquidity pool by ID
+    pub async fn fetch_liquidity_pool(&self, pool_id: &str) -> Result<HorizonLiquidityPool> {
+        if self.mock_mode {
+            let pools = Self::mock_liquidity_pools(1);
+            let mut pool = pools.into_iter().next().unwrap();
+            pool.id = pool_id.to_string();
+            return Ok(pool);
+        }
+
+        info!("Fetching liquidity pool {} from Horizon API", pool_id);
+
+        let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch liquidity pool")?;
+
+        let pool: HorizonLiquidityPool = response
+            .json()
+            .await
+            .context("Failed to parse liquidity pool response")?;
+
+        Ok(pool)
+    }
+
+    /// Fetch trades for a specific liquidity pool
+    pub async fn fetch_pool_trades(
+        &self,
+        pool_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Trade>> {
+        if self.mock_mode {
+            return Ok(Self::mock_trades(limit));
+        }
+
+        info!("Fetching {} trades for pool {} from Horizon API", limit, pool_id);
+
+        let url = format!(
+            "{}/liquidity_pools/{}/trades?order=desc&limit={}",
+            self.horizon_url, pool_id, limit
+        );
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch pool trades")?;
+
+        let horizon_response: HorizonResponse<Trade> = response
+            .json()
+            .await
+            .context("Failed to parse pool trades response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
+    // ============================================================================
+    // Liquidity Pool Mock Data
+    // ============================================================================
+
+    fn mock_liquidity_pools(limit: u32) -> Vec<HorizonLiquidityPool> {
+        let pool_configs = vec![
+            ("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "XLM", "", "500000.0", "1200000.0", "850000.0"),
+            ("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "EURC", "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y36DAVIZA67CE7BKBHP4V2OA", "320000.0", "295000.0", "610000.0"),
+            ("XLM", "", "BTC", "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT", "450000.0", "12.5", "750000.0"),
+            ("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "yUSDC", "GDGTVWSM4MGS2T7Z7GVZE5SAEVLSWM5SGY5Q2EMUQWRMEV2RNYY3YFG6", "180000.0", "179500.0", "360000.0"),
+            ("XLM", "", "AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "800000.0", "5000000.0", "420000.0"),
+        ];
+
+        pool_configs.iter().take(limit as usize).enumerate().map(|(i, (code_a, issuer_a, code_b, issuer_b, amt_a, amt_b, shares))| {
+            let asset_a = if issuer_a.is_empty() {
+                "native".to_string()
+            } else {
+                format!("{}:{}", code_a, issuer_a)
+            };
+            let asset_b = if issuer_b.is_empty() {
+                "native".to_string()
+            } else {
+                format!("{}:{}", code_b, issuer_b)
+            };
+
+            HorizonLiquidityPool {
+                id: format!("pool_{:064x}", i + 1),
+                fee_bp: 30,
+                pool_type: "constant_product".to_string(),
+                total_trustlines: 100 + (i as u64 * 50),
+                total_shares: shares.to_string(),
+                reserves: vec![
+                    HorizonPoolReserve {
+                        asset: asset_a,
+                        amount: amt_a.to_string(),
+                    },
+                    HorizonPoolReserve {
+                        asset: asset_b,
+                        amount: amt_b.to_string(),
+                    },
+                ],
+                paging_token: Some(format!("pt_pool_{}", i)),
+            }
+        }).collect()
+    }
 }
 
 // ============================================================================
@@ -875,5 +1046,34 @@ mod tests {
 
         assert!(!order_book.bids.is_empty());
         assert!(!order_book.asks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_liquidity_pools() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let pools = client.fetch_liquidity_pools(3, None).await.unwrap();
+
+        assert_eq!(pools.len(), 3);
+        assert!(!pools[0].id.is_empty());
+        assert_eq!(pools[0].reserves.len(), 2);
+        assert_eq!(pools[0].fee_bp, 30);
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_single_liquidity_pool() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let pool = client.fetch_liquidity_pool("test_pool_id").await.unwrap();
+
+        assert_eq!(pool.id, "test_pool_id");
+        assert_eq!(pool.reserves.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_mock_fetch_pool_trades() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let trades = client.fetch_pool_trades("test_pool_id", 5).await.unwrap();
+
+        assert_eq!(trades.len(), 5);
+        assert!(!trades[0].id.is_empty());
     }
 }

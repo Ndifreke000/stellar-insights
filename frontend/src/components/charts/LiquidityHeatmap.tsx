@@ -1,7 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CorridorAnalytics } from "@/lib/analytics-api";
-import { TrendingUp, Droplets, Clock, ArrowRight, Maximize2, Info } from "lucide-react";
+import {
+  TrendingUp,
+  Droplets,
+  Clock,
+  ArrowRight,
+  Maximize2,
+  Info,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface LiquidityHeatmapProps {
@@ -30,38 +38,39 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
   const [timePeriod, setTimePeriod] = useState("7d");
 
   // Transform corridor data into matrix structure
-  const { matrix, sourceAssets, destinationAssets, maxLiquidity } = useMemo(() => {
-    const sources = Array.from(
-      new Set(corridors.map((c) => c.asset_a_code))
-    ).sort();
-    const destinations = Array.from(
-      new Set(corridors.map((c) => c.asset_b_code))
-    ).sort();
+  const { matrix, sourceAssets, destinationAssets, maxLiquidity } =
+    useMemo(() => {
+      const sources = Array.from(
+        new Set(corridors.map((c) => c.asset_a_code)),
+      ).sort();
+      const destinations = Array.from(
+        new Set(corridors.map((c) => c.asset_b_code)),
+      ).sort();
 
-    let maxLiq = 0;
-    const matrixMap = new Map<string, HeatmapCell>();
+      let maxLiq = 0;
+      const matrixMap = new Map<string, HeatmapCell>();
 
-    corridors.forEach((corridor) => {
-      const key = `${corridor.asset_a_code}-${corridor.asset_b_code}`;
-      if (corridor.liquidity_depth_usd > maxLiq) {
-        maxLiq = corridor.liquidity_depth_usd;
-      }
+      corridors.forEach((corridor) => {
+        const key = `${corridor.asset_a_code}-${corridor.asset_b_code}`;
+        if (corridor.liquidity_depth_usd > maxLiq) {
+          maxLiq = corridor.liquidity_depth_usd;
+        }
 
-      matrixMap.set(key, {
-        sourceAsset: corridor.asset_a_code,
-        destinationAsset: corridor.asset_b_code,
-        liquidity: corridor.liquidity_depth_usd,
-        corridorData: corridor,
+        matrixMap.set(key, {
+          sourceAsset: corridor.asset_a_code,
+          destinationAsset: corridor.asset_b_code,
+          liquidity: corridor.liquidity_depth_usd,
+          corridorData: corridor,
+        });
       });
-    });
 
-    return {
-      matrix: matrixMap,
-      sourceAssets: sources,
-      destinationAssets: destinations,
-      maxLiquidity: maxLiq,
-    };
-  }, [corridors]);
+      return {
+        matrix: matrixMap,
+        sourceAssets: sources,
+        destinationAssets: destinations,
+        maxLiquidity: maxLiq,
+      };
+    }, [corridors]);
 
   // Get color based on liquidity relative to max
   const getLiquidityColor = (liquidity: number): string => {
@@ -90,7 +99,7 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
 
   const handleCellHover = (
     cell: HeatmapCell | null,
-    event?: React.MouseEvent<HTMLDivElement>
+    event?: React.MouseEvent<HTMLDivElement>,
   ) => {
     if (cell && event) {
       const rect = event.currentTarget.getBoundingClientRect();
@@ -115,7 +124,8 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
     }
   };
 
-  const cellSize = "w-14 h-14 sm:w-18 sm:h-18 lg:w-22 lg:h-22 text-[10px] sm:text-xs";
+  const cellSize =
+    "w-14 h-14 sm:w-18 sm:h-18 lg:w-22 lg:h-22 text-[10px] sm:text-xs";
 
   return (
     <motion.div
@@ -126,7 +136,9 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
     >
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8">
         <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Market Concentration // 05.B</div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+            Market Concentration // 05.B
+          </div>
           <h2 className="text-2xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             Liquidity Distribution
           </h2>
@@ -140,10 +152,11 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
             <button
               key={period}
               onClick={() => handlePeriodClick(period)}
-              className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all duration-300 ${timePeriod === period
+              className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all duration-300 ${
+                timePeriod === period
                   ? "bg-accent text-white shadow-[0_0_15px_rgba(99,102,241,0.4)]"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
+              }`}
             >
               {period}
             </button>
@@ -228,14 +241,19 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
                             animate={{ scale: 1, opacity: 1 }}
                             whileHover={{ scale: 1.05, zIndex: 10 }}
                             className={`${cellSize} p-1`}
-                            onMouseEnter={(e) => handleCellHover(cell || null, e)}
+                            onMouseEnter={(e) =>
+                              handleCellHover(cell || null, e)
+                            }
                             onMouseLeave={() => handleCellHover(null)}
-                            onClick={() => cell && handleCellClick(cell.corridorData.corridor_key)}
+                            onClick={() =>
+                              cell &&
+                              handleCellClick(cell.corridorData.corridor_key)
+                            }
                           >
                             {cell ? (
                               <div
                                 className={`w-full h-full rounded-lg cursor-pointer transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center border border-white/10 ${getLiquidityColor(
-                                  cell.liquidity
+                                  cell.liquidity,
                                 )} ${getOpacity(cell.liquidity)}`}
                               >
                                 <span className="text-[10px] sm:text-[11px] font-mono font-black text-white drop-shadow-md truncate px-1">
@@ -276,38 +294,52 @@ export const LiquidityHeatmap: React.FC<LiquidityHeatmapProps> = ({
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shadow-[0_0_8px_#6366f1]"></div>
                     <span className="font-mono font-black text-[10px] uppercase tracking-tighter">
-                      {tooltipData.sourceAsset} <ArrowRight className="inline w-3 h-3 mx-1 text-muted-foreground" /> {tooltipData.destinationAsset}
+                      {tooltipData.sourceAsset}{" "}
+                      <ArrowRight className="inline w-3 h-3 mx-1 text-muted-foreground" />{" "}
+                      {tooltipData.destinationAsset}
                     </span>
                   </div>
-                  <Badge variant="outline" className="border-accent/30 text-accent text-[9px] font-mono font-black py-0">
+                  <Badge
+                    variant="outline"
+                    className="border-accent/30 text-accent text-[9px] font-mono font-black py-0"
+                  >
                     {tooltipData.corridorData.success_rate}%_OK
                   </Badge>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Depth Index</span>
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">
+                      Depth Index
+                    </span>
                     <span className="font-mono text-accent font-black text-sm tabular-nums">
                       {new Intl.NumberFormat("en-US", {
                         style: "currency",
                         currency: "USD",
                         maximumFractionDigits: 0,
-                        notation: 'compact'
+                        notation: "compact",
                       }).format(tooltipData.liquidity)}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">24h Flux</span>
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">
+                      24h Flux
+                    </span>
                     <span className="font-mono text-emerald-400 font-black text-sm tabular-nums">
                       {formatCurrency(tooltipData.corridorData.volume_usd)}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Latency</span>
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">
+                      Latency
+                    </span>
                     <span className="font-mono text-amber-400 font-black text-sm tabular-nums">
-                      {tooltipData.corridorData.avg_settlement_latency_ms?.toFixed(0) || "---"}ms
+                      {tooltipData.corridorData.avg_settlement_latency_ms?.toFixed(
+                        0,
+                      ) || "---"}
+                      ms
                     </span>
                   </div>
 
