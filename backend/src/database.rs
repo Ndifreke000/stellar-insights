@@ -664,6 +664,112 @@ impl Database {
             .await
     }
 
+    /// Muxed account analytics: counts and top addresses from payments table.
+    /// Uses M-address detection (starts with 'M', length 69).
+    pub async fn get_muxed_analytics(&self, top_limit: i64) -> Result<MuxedAccountAnalytics> {
+        use crate::muxed;
+        const MUXED_LEN: i64 = 69;
+
+        let total_muxed_payments = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM payments
+            WHERE (source_account LIKE 'M%' AND LENGTH(source_account) = ?1)
+               OR (destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1)
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .fetch_one(&self.pool)
+        .await?;
+
+        #[derive(sqlx::FromRow)]
+        struct AddrCount {
+            addr: String,
+            cnt: i64,
+        }
+
+        let source_counts: Vec<AddrCount> = sqlx::query_as(
+            r#"
+            SELECT source_account AS addr, COUNT(*) AS cnt FROM payments
+            WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
+            GROUP BY source_account
+            ORDER BY cnt DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .bind(top_limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let dest_counts: Vec<AddrCount> = sqlx::query_as(
+            r#"
+            SELECT destination_account AS addr, COUNT(*) AS cnt FROM payments
+            WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
+            GROUP BY destination_account
+            ORDER BY cnt DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .bind(top_limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut by_addr: std::collections::HashMap<String, (i64, i64)> =
+            std::collections::HashMap::new();
+        for row in source_counts {
+            by_addr.entry(row.addr).or_insert((0, 0)).0 = row.cnt;
+        }
+        for row in dest_counts {
+            by_addr.entry(row.addr).or_insert((0, 0)).1 = row.cnt;
+        }
+
+        let mut top_muxed_by_activity: Vec<MuxedAccountUsage> = by_addr
+            .into_iter()
+            .map(|(account_address, (src, dest))| {
+                let total = src + dest;
+                let info = muxed::parse_muxed_address(&account_address);
+                MuxedAccountUsage {
+                    account_address,
+                    base_account: info.as_ref().and_then(|i| i.base_account.clone()),
+                    muxed_id: info.and_then(|i| i.muxed_id),
+                    payment_count_as_source: src,
+                    payment_count_as_destination: dest,
+                    total_payments: total,
+                }
+            })
+            .collect();
+        top_muxed_by_activity.sort_by(|a, b| b.total_payments.cmp(&a.total_payments));
+        top_muxed_by_activity.truncate(top_limit as usize);
+
+        let unique_muxed_addresses = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(DISTINCT addr) FROM (
+                SELECT source_account AS addr FROM payments WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
+                UNION
+                SELECT destination_account AS addr FROM payments WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
+            )
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let base_accounts_with_muxed: Vec<String> = top_muxed_by_activity
+            .iter()
+            .filter_map(|u| u.base_account.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
+        Ok(MuxedAccountAnalytics {
+            total_muxed_payments,
+            unique_muxed_addresses,
+            top_muxed_by_activity,
+            base_accounts_with_muxed,
+        })
+    }
+
     // =========================
     // Transaction Builder Methods
     // =========================

@@ -11,6 +11,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -29,6 +30,7 @@ use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
+use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use stellar_insights_backend::services::price_feed::{
@@ -114,6 +116,12 @@ async fn main() -> Result<()> {
     // Initialize Fee Bump Tracker Service
     let fee_bump_tracker = Arc::new(FeeBumpTrackerService::new(pool.clone()));
 
+    // Initialize Account Merge Detector Service
+    let account_merge_detector = Arc::new(AccountMergeDetector::new(
+        pool.clone(),
+        Arc::clone(&rpc_client),
+    ));
+
     // Initialize Liquidity Pool Analyzer
     let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
         pool.clone(),
@@ -136,6 +144,7 @@ async fn main() -> Result<()> {
     let ledger_ingestion_service = Arc::new(LedgerIngestionService::new(
         Arc::clone(&rpc_client),
         Arc::clone(&fee_bump_tracker),
+        Arc::clone(&account_merge_detector),
         pool.clone(),
     ));
 
@@ -375,6 +384,16 @@ async fn main() -> Result<()> {
         )
         .await;
 
+    rate_limiter
+        .register_endpoint(
+            "/api/account-merges".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 100,
+                whitelist_ips: vec![],
+            },
+        )
+        .await;
+
     // CORS configuration
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -495,6 +514,18 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build account merge routes
+    let account_merge_routes = Router::new()
+        .nest(
+            "/api/account-merges",
+            account_merges::routes(Arc::clone(&account_merge_detector)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
     // Build liquidity pool routes
     let lp_routes = Router::new()
         .nest(
@@ -542,6 +573,7 @@ async fn main() -> Result<()> {
         .merge(protected_anchor_routes)
         .merge(rpc_routes)
         .merge(fee_bump_routes)
+        .merge(account_merge_routes)
         .merge(lp_routes)
         .merge(price_routes)
         .merge(trustline_routes)
