@@ -73,6 +73,8 @@ impl SimpleMLModel {
 
 pub struct MLService {
     model: SimpleMLModel,
+    /// Database connection reserved for future ML training data fetching.
+    /// Currently using mock data, but will be used to fetch historical metrics.
     #[allow(dead_code)]
     db: Database,
 }

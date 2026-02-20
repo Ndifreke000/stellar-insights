@@ -48,6 +48,8 @@ struct JsonRpcRequest {
 }
 
 /// RPC response structure
+/// Note: Some fields are deserialized from JSON but not directly accessed in code.
+/// They're kept to match the JSON-RPC 2.0 specification.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct JsonRpcResponse<T> {
@@ -60,6 +62,7 @@ struct JsonRpcResponse<T> {
 }
 
 /// RPC error details
+/// Note: Fields match the JSON-RPC error object specification.
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 struct RpcError {

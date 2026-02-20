@@ -323,13 +323,19 @@ impl AggregationDb {
 }
 
 // Database row structures
+// Note: Some fields are fetched from DB but not directly used in the conversion logic.
+// They're kept for potential future use and to match the database schema.
 #[derive(sqlx::FromRow)]
 #[allow(dead_code)]
 struct PaymentRecordRow {
     id: String,
+    #[allow(dead_code)]
     transaction_hash: String,
+    #[allow(dead_code)]
     source_account: String,
+    #[allow(dead_code)]
     destination_account: String,
+    #[allow(dead_code)]
     asset_type: String,
     asset_code: Option<String>,
     asset_issuer: Option<String>,

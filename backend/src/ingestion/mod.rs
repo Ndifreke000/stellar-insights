@@ -58,9 +58,9 @@ impl DataIngestionService {
         }
 
         let mut successful = 0;
-        let failed = 0;
+        let _failed = 0; // Currently not tracking failures, but kept for future implementation
         let mut total_volume = 0.0;
-        let settlement_times = Vec::new(); // Removed mut as it's never pushed to
+        let settlement_times: Vec<i32> = Vec::new(); // Currently not populated, but used for avg calculation
 
         for payment in &payments {
             let amount: f64 = payment.amount.parse().unwrap_or(0.0);
@@ -69,14 +69,14 @@ impl DataIngestionService {
             successful += 1;
         }
 
-        let total_transactions = (successful + failed) as i64;
+        let total_transactions = (successful + _failed) as i64;
         let success_rate = if total_transactions > 0 {
             (successful as f64 / total_transactions as f64) * 100.0
         } else {
             0.0
         };
 
-        let reliability_score = self.calculate_reliability_score(success_rate, failed as i64);
+        let reliability_score = self.calculate_reliability_score(success_rate, _failed as i64);
 
         let avg_settlement_time = if !settlement_times.is_empty() {
             settlement_times.iter().sum::<i32>() / settlement_times.len() as i32
@@ -97,7 +97,7 @@ impl DataIngestionService {
                 stellar_account: account_id.to_string(),
                 total_transactions,
                 successful_transactions: successful as i64,
-                failed_transactions: failed as i64,
+                failed_transactions: _failed as i64,
                 total_volume_usd: total_volume,
                 avg_settlement_time_ms: avg_settlement_time,
                 reliability_score,
