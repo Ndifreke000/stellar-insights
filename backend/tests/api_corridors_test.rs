@@ -9,8 +9,12 @@ use std::sync::Arc;
 use tower::util::ServiceExt;
 
 // Use correct handlers from the updated API
-use backend::api::corridors::{get_corridor_detail, list_corridors};
-use backend::database::Database;
+use stellar_insights_backend::api::corridors::{get_corridor_detail, list_corridors};
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::websocket::WsState;
+use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::rpc::StellarRpcClient;
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();
@@ -22,13 +26,17 @@ async fn setup_test_db() -> SqlitePool {
 }
 
 fn create_test_router(db: Arc<Database>) -> Router {
+    let ws_state = Arc::new(WsState::new());
+    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let ingestion = Arc::new(DataIngestionService::new(rpc_client, Arc::clone(&db)));
+    let state = AppState { db, ws_state, ingestion };
     Router::new()
         .route("/api/corridors", axum::routing::get(list_corridors))
         .route(
             "/api/corridors/:corridor_key",
             axum::routing::get(get_corridor_detail),
         )
-        .with_state(db)
+        .with_state(state)
 }
 
 #[tokio::test]

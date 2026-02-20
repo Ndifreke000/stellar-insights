@@ -99,8 +99,12 @@ fn test_impermanent_loss_computation() {
     assert!((il - 0.0).abs() < 0.001);
 
     // 2x price change => ~5.72% IL
-    let il = LiquidityPoolAnalyzer::compute_impermanent_loss(100.0, 100.0, 200.0, 50.0);
+    let il = LiquidityPoolAnalyzer::compute_impermanent_loss(100.0, 100.0, 141.421, 70.710);
     assert!(il > 5.0 && il < 6.0, "IL was {} but expected ~5.72%", il);
+
+    // 4x price change => ~20.0% IL
+    let il = LiquidityPoolAnalyzer::compute_impermanent_loss(100.0, 100.0, 200.0, 50.0);
+    assert!(il > 19.9 && il < 20.1, "IL was {} but expected ~20.0%", il);
 
     // Edge case: zero values
     let il = LiquidityPoolAnalyzer::compute_impermanent_loss(0.0, 100.0, 100.0, 100.0);

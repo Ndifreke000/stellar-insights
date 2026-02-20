@@ -12,6 +12,7 @@ use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
+use crate::services::price_feed::PriceFeedClient;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -125,10 +126,11 @@ pub struct AnchorsResponse {
     tag = "Anchors"
 )]
 pub async fn get_anchors(
-    State((db, cache, rpc_client)): State<(
+    State((db, cache, rpc_client, _price_feed)): State<(
         Arc<Database>,
         Arc<CacheManager>,
         Arc<StellarRpcClient>,
+        Arc<PriceFeedClient>,
     )>,
     Query(params): Query<ListAnchorsQuery>,
 ) -> ApiResult<Json<AnchorsResponse>> {

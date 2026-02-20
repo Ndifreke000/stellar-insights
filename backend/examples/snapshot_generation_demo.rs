@@ -11,9 +11,9 @@
 //! 6. Verify submission success
 
 use std::sync::Arc;
-use stellar_insights::database::Database;
-use stellar_insights::services::contract::{ContractConfig, ContractService};
-use stellar_insights::services::snapshot::SnapshotService;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::services::contract::{ContractConfig, ContractService};
+use stellar_insights_backend::services::snapshot::SnapshotService;
 use tracing::{info, Level};
 use tracing_subscriber;
 
@@ -29,7 +29,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
 
     info!("Connecting to database: {}", database_url);
-    let db = Arc::new(Database::new(&database_url).await?);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+    let db = Arc::new(Database::new(pool));
 
     // Initialize contract service (optional)
     let contract_service = if std::env::var("SNAPSHOT_CONTRACT_ID").is_ok() {

@@ -664,113 +664,110 @@ impl Database {
             .await
     }
 
-    /// Muxed account analytics: counts and top addresses from payments table.
-    /// Uses M-address detection (starts with 'M', length 69).
-    pub async fn get_muxed_analytics(&self, top_limit: i64) -> Result<MuxedAccountAnalytics> {
-        use crate::muxed;
-        const MUXED_LEN: i64 = 69;
+    // =========================
+    // Transaction Builder Methods
+    // =========================
 
-        // Count payments where source or destination is muxed
-        let total_row = sqlx::query_scalar::<_, i64>(
+    pub async fn create_pending_transaction(
+        &self,
+        source_account: &str,
+        xdr: &str,
+        required_signatures: i32,
+    ) -> Result<crate::models::PendingTransaction> {
+        let id = Uuid::new_v4().to_string();
+        let status = "pending";
+
+        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
-            SELECT COUNT(*) FROM payments
-            WHERE (source_account LIKE 'M%' AND LENGTH(source_account) = ?1)
-               OR (destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1)
+            INSERT INTO pending_transactions (id, source_account, xdr, required_signatures, status)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
             "#,
         )
-        .bind(MUXED_LEN)
+        .bind(&id)
+        .bind(source_account)
+        .bind(xdr)
+        .bind(required_signatures)
+        .bind(status)
         .fetch_one(&self.pool)
         .await?;
-        let total_muxed_payments = total_row;
 
-        #[derive(sqlx::FromRow)]
-        struct AddrCount {
-            addr: String,
-            cnt: i64,
-        }
+        Ok(tx)
+    }
 
-        // Source counts per muxed address
-        let source_counts: Vec<AddrCount> = sqlx::query_as(
+    pub async fn get_pending_transaction(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
+        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
-            SELECT source_account AS addr, COUNT(*) AS cnt FROM payments
-            WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
-            GROUP BY source_account
-            ORDER BY cnt DESC
-            LIMIT ?2
+            SELECT * FROM pending_transactions WHERE id = $1
             "#,
         )
-        .bind(MUXED_LEN)
-        .bind(top_limit)
-        .fetch_all(&self.pool)
+        .bind(id)
+        .fetch_optional(&self.pool)
         .await?;
 
-        // Destination counts per muxed address
-        let dest_counts: Vec<AddrCount> = sqlx::query_as(
-            r#"
-            SELECT destination_account AS addr, COUNT(*) AS cnt FROM payments
-            WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
-            GROUP BY destination_account
-            ORDER BY cnt DESC
-            LIMIT ?2
-            "#,
-        )
-        .bind(MUXED_LEN)
-        .bind(top_limit)
-        .fetch_all(&self.pool)
-        .await?;
-
-        // Merge and dedupe by address for top_muxed_by_activity
-        let mut by_addr: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
-        for row in source_counts {
-            by_addr.entry(row.addr).or_insert((0, 0)).0 = row.cnt;
-        }
-        for row in dest_counts {
-            by_addr.entry(row.addr).or_insert((0, 0)).1 = row.cnt;
-        }
-        let mut top_muxed_by_activity: Vec<MuxedAccountUsage> = by_addr
-            .into_iter()
-            .map(|(account_address, (src, dest))| {
-                let total = src + dest;
-                let info = muxed::parse_muxed_address(&account_address);
-                MuxedAccountUsage {
-                    account_address: account_address.clone(),
-                    base_account: info.as_ref().and_then(|i| i.base_account.clone()),
-                    muxed_id: info.and_then(|i| i.muxed_id),
-                    payment_count_as_source: src,
-                    payment_count_as_destination: dest,
-                    total_payments: total,
-                }
-            })
-            .collect();
-        top_muxed_by_activity.sort_by(|a, b| b.total_payments.cmp(&a.total_payments));
-        top_muxed_by_activity.truncate(top_limit as usize);
-
-        // Unique muxed addresses (source or destination)
-        let unique_row = sqlx::query_scalar::<_, i64>(
-            r#"
-            SELECT COUNT(DISTINCT addr) FROM (
-                SELECT source_account AS addr FROM payments WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
-                UNION
-                SELECT destination_account AS addr FROM payments WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
+        if let Some(transaction) = tx {
+            let signatures = sqlx::query_as::<_, crate::models::Signature>(
+                r#"
+                SELECT * FROM transaction_signatures WHERE transaction_id = $1
+                "#,
             )
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            Ok(Some(crate::models::PendingTransactionWithSignatures {
+                transaction,
+                collected_signatures: signatures,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn add_transaction_signature(
+        &self,
+        transaction_id: &str,
+        signer: &str,
+        signature: &str,
+    ) -> Result<()> {
+        let id = Uuid::new_v4().to_string();
+        
+        sqlx::query(
+            r#"
+            INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
+            VALUES ($1, $2, $3, $4)
             "#,
         )
-        .bind(MUXED_LEN)
-        .fetch_one(&self.pool)
+        .bind(id)
+        .bind(transaction_id)
+        .bind(signer)
+        .bind(signature)
+        .execute(&self.pool)
         .await?;
 
-        let base_accounts_with_muxed: Vec<String> = top_muxed_by_activity
-            .iter()
-            .filter_map(|u| u.base_account.clone())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
+        Ok(())
+    }
 
-        Ok(MuxedAccountAnalytics {
-            total_muxed_payments,
-            unique_muxed_addresses: unique_row,
-            top_muxed_by_activity,
-            base_accounts_with_muxed,
-        })
+    pub async fn update_transaction_status(
+        &self,
+        id: &str,
+        status: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE pending_transactions
+            SET status = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            "#,
+        )
+        .bind(status)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }

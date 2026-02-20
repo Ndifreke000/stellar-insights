@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use backend::snapshot::{
+    use stellar_insights_backend::snapshot::{
         AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SnapshotGenerator,
         SCHEMA_VERSION,
     };
@@ -206,7 +206,7 @@ mod tests {
             "Hex hash should be 64 characters (32 bytes * 2)"
         );
         assert!(
-            hex.chars().all(|c| c.is_ascii_hexdigit()),
+            hex.chars().all(|c: char| c.is_ascii_hexdigit()),
             "Hex should contain only valid hex characters"
         );
     }

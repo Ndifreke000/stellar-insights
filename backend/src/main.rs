@@ -30,6 +30,9 @@ use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use stellar_insights_backend::services::price_feed::{
+    default_asset_mapping, PriceFeedClient, PriceFeedConfig,
+};
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::state::AppState;
@@ -116,6 +119,12 @@ async fn main() -> Result<()> {
         Arc::clone(&rpc_client),
     ));
 
+    // Initialize Price Feed Client
+    let price_feed_config = PriceFeedConfig::from_env();
+    let asset_mapping = default_asset_mapping();
+    let price_feed = Arc::new(PriceFeedClient::new(price_feed_config, asset_mapping));
+    tracing::info!("Price feed client initialized");
+
     // Initialize Trustline Analyzer
     let trustline_analyzer = Arc::new(TrustlineAnalyzer::new(
         pool.clone(),
@@ -145,7 +154,12 @@ async fn main() -> Result<()> {
     );
 
     // Create cached state tuple for cached API handlers
-    let cached_state = (Arc::clone(&db), Arc::clone(&cache), Arc::clone(&rpc_client));
+    let cached_state = (
+        Arc::clone(&db),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+        Arc::clone(&price_feed),
+    );
 
     let ingestion_clone = Arc::clone(&ingestion_service);
     let cache_invalidation_clone = Arc::clone(&cache_invalidation);
@@ -350,6 +364,16 @@ async fn main() -> Result<()> {
         )
         .await;
 
+    rate_limiter
+        .register_endpoint(
+            "/api/prices".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 100,
+                whitelist_ips: vec![],
+            },
+        )
+        .await;
+
     // CORS configuration
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -465,6 +489,18 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build price feed routes
+    let price_routes = Router::new()
+        .nest(
+            "/api/prices",
+            stellar_insights_backend::api::price_feed::routes(Arc::clone(&price_feed)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
     // Build trustline routes
     let trustline_routes = Router::new()
         .nest(
@@ -489,6 +525,7 @@ async fn main() -> Result<()> {
         .merge(rpc_routes)
         .merge(fee_bump_routes)
         .merge(lp_routes)
+        .merge(price_routes)
         .merge(trustline_routes)
         .merge(cache_routes)
         .merge(metrics_routes);
@@ -504,7 +541,21 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .await?;
+    .with_state(app_state.clone())
+    .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+        rate_limiter.clone(),
+        rate_limit_middleware,
+    )))
+    .layer(cors.clone());
 
-    Ok(())
-}
+// Build trustline routes
+let trustline_routes = Router::new()
+    .nest(
+        "/api/trustlines",
+        stellar_insights_backend::api::trustlines::routes(Arc::clone(&trustline_analyzer)),
+    )
+    .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+        rate_limiter.clone(),
+        rate_limit_middleware,
+    )))
+    .layer(cors.clone());

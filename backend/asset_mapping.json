@@ -1,0 +1,76 @@
+{
+  "description": "Mapping of Stellar assets to CoinGecko API IDs for price feed integration",
+  "version": "1.0.0",
+  "mappings": {
+    "XLM:native": {
+      "coingecko_id": "stellar",
+      "description": "Native Stellar Lumens",
+      "type": "native"
+    },
+    "native": {
+      "coingecko_id": "stellar",
+      "description": "Native Stellar Lumens (alternative key)",
+      "type": "native"
+    },
+    "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN": {
+      "coingecko_id": "usd-coin",
+      "description": "USD Coin (Circle)",
+      "type": "stablecoin",
+      "issuer": "Circle"
+    },
+    "EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2": {
+      "coingecko_id": "euro-coin",
+      "description": "Euro Coin (Circle)",
+      "type": "stablecoin",
+      "issuer": "Circle"
+    },
+    "USDT:GCQTGZQQ5G4PTM2GL7CDIFKUBIPEC52BROAQIAPW53XBRJVN6ZJVTG6V": {
+      "coingecko_id": "tether",
+      "description": "Tether USD",
+      "type": "stablecoin",
+      "issuer": "Tether"
+    },
+    "BTC:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI": {
+      "coingecko_id": "bitcoin",
+      "description": "Bitcoin (wrapped)",
+      "type": "wrapped",
+      "issuer": "Ultra Stellar"
+    },
+    "ETH:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI": {
+      "coingecko_id": "ethereum",
+      "description": "Ethereum (wrapped)",
+      "type": "wrapped",
+      "issuer": "Ultra Stellar"
+    },
+    "yXLM:GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55": {
+      "coingecko_id": "stellar",
+      "description": "Yield-bearing XLM (Ultra Stellar)",
+      "type": "yield_bearing",
+      "issuer": "Ultra Stellar"
+    },
+    "AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA": {
+      "coingecko_id": "aquarius",
+      "description": "Aquarius token",
+      "type": "ecosystem",
+      "issuer": "Aquarius"
+    }
+  },
+  "notes": [
+    "Asset keys follow the format: ASSET_CODE:ISSUER_ADDRESS",
+    "Native XLM uses 'native' as the issuer address",
+    "CoinGecko IDs can be found at: https://www.coingecko.com/en/api/documentation",
+    "To add new assets, add entries to the default_asset_mapping() function in backend/src/services/price_feed.rs"
+  ],
+  "api_providers": {
+    "coingecko": {
+      "free_tier": {
+        "rate_limit": "10-50 calls/minute",
+        "features": ["simple price", "multiple currencies", "historical data"]
+      },
+      "pro_tier": {
+        "rate_limit": "500 calls/minute",
+        "features": ["all free tier features", "priority support", "higher limits"]
+      }
+    }
+  }
+}

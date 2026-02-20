@@ -28,6 +28,7 @@ const navItems = [
   { name: "Network Health", icon: Activity, path: "/health" },
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },
+  { name: "SEP-6", icon: Database, path: "/sep6" },
 ];
 
 interface SidebarProps {

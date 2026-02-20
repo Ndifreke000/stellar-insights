@@ -72,6 +72,12 @@ stellar-insights/
 
 ## 🔌 API Endpoints
 
+**Price Feed Endpoints:**
+- `GET /api/prices?asset=XLM:native` - Get price for a single asset
+- `GET /api/prices/batch?assets=XLM:native,USDC:...` - Get prices for multiple assets
+- `GET /api/prices/convert?asset=XLM:native&amount=100` - Convert asset amount to USD
+- `GET /api/prices/cache-stats` - Get price cache statistics
+
 **RPC Endpoints:**
 - `GET /api/rpc/health` - Network health check
 - `GET /api/rpc/payments` - Recent payments
@@ -84,6 +90,53 @@ stellar-insights/
 - `GET /api/corridors/:key` - Corridor details
 
 See [RPC.md](./docs/RPC.md) for complete API documentation.
+
+---
+
+## 💰 Price Feed Integration
+
+Stellar Insights integrates with CoinGecko API to provide real-time USD pricing for all Stellar assets. This enables accurate volume calculations, liquidity metrics, and cross-asset comparisons.
+
+**Features:**
+- ✅ Real-time price data from CoinGecko
+- ✅ 15-minute caching with stale data fallback
+- ✅ Support for all major Stellar assets (XLM, USDC, EURC, etc.)
+- ✅ Automatic USD conversion for volumes and liquidity
+- ✅ Rate limiting protection
+- ✅ Graceful error handling
+
+**Configuration:**
+
+Add to your `.env` file:
+```bash
+PRICE_FEED_PROVIDER=coingecko
+PRICE_FEED_API_KEY=                    # Optional for free tier
+PRICE_FEED_CACHE_TTL_SECONDS=900       # 15 minutes
+PRICE_FEED_REQUEST_TIMEOUT_SECONDS=10
+```
+
+**Supported Assets:**
+- XLM (native Stellar)
+- USDC, USDT, EURC (stablecoins)
+- BTC, ETH (wrapped assets)
+- AQUA, yXLM (ecosystem tokens)
+
+**API Usage:**
+```bash
+# Get XLM price
+curl "http://localhost:8080/api/prices?asset=XLM:native"
+
+# Convert 100 XLM to USD
+curl "http://localhost:8080/api/prices/convert?asset=XLM:native&amount=100"
+
+# Get multiple prices
+curl "http://localhost:8080/api/prices/batch?assets=XLM:native,USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+```
+
+**Rate Limits:**
+- CoinGecko Free Tier: 10-50 calls/minute
+- Cached responses reduce API calls
+- Stale cache used as fallback on errors
 
 ---
 
