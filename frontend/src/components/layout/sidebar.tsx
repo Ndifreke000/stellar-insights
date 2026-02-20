@@ -17,6 +17,7 @@ import {
   Droplets,
   Users,
   Database,
+  Wallet,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -29,6 +30,7 @@ const navItems = [
   { name: "Network Health", icon: Activity, path: "/health" },
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },
+  { name: "Claimable Balances", icon: Wallet, path: "/claimable-balances" },
   { name: "SEP-6", icon: Database, path: "/sep6" },
 ];
 

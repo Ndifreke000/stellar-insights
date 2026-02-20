@@ -1,4 +1,5 @@
 pub mod account_merge_detector;
+pub mod claimable_balance_tracker;
 pub mod aggregation;
 pub mod analytics;
 pub mod contract;

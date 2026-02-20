@@ -41,6 +41,8 @@ pub struct AnchorDetailResponse {
     pub anchor: Anchor,
     pub assets: Vec<Asset>,
     pub metrics_history: Vec<AnchorMetricsHistory>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Asset {
     pub id: String,
@@ -116,20 +118,6 @@ impl AnchorStatus {
 }
 
 // =========================
-// Asset domain
-// =========================
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Asset {
-    pub id: String,
-    pub code: String,
-    pub issuer: String,
-    pub anchor_id: String,
-    pub asset_type: String,
-    pub created_at: DateTime<Utc>,
-}
-
-// =========================
 // Corridor domain
 // =========================
 
@@ -143,18 +131,6 @@ pub struct CreateCorridorRequest {
     pub source_asset_issuer: String,
     pub dest_asset_code: String,
     pub dest_asset_issuer: String,
-        }
-    }
-
-    pub fn from_metrics(success_rate: f64, failure_rate: f64) -> Self {
-        if success_rate > 98.0 && failure_rate <= 1.0 {
-            AnchorStatus::Green
-        } else if success_rate >= 95.0 && failure_rate <= 5.0 {
-            AnchorStatus::Yellow
-        } else {
-            AnchorStatus::Red
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -379,6 +355,44 @@ pub struct LiquidityPoolStats {
     pub total_fees_24h_usd: f64,
     pub avg_apy: f64,
     pub avg_impermanent_loss: f64,
+}
+
+// ============================================================================
+// Claimable Balance Models
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ClaimableBalance {
+    pub id: String,
+    pub asset_code: String,
+    pub asset_issuer: Option<String>,
+    pub amount: String,
+    pub sponsor: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub claimed: bool,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub claimed_by: Option<String>,
+    pub last_modified_ledger: Option<i32>,
+    pub claimant_count: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaimableBalanceAnalytics {
+    pub total_locked_count: i64,
+    pub pending_claims_count: i64,
+    pub expiring_soon_count: i64,
+    pub total_locked_value_usd: f64,
+    pub claim_success_rate: f64,
+    pub top_assets: Vec<TopAssetClaimable>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopAssetClaimable {
+    pub asset_code: String,
+    pub asset_issuer: Option<String>,
+    pub total_amount: f64,
+    pub count: i64,
 }
 
 // =========================

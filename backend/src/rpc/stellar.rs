@@ -300,6 +300,32 @@ pub struct HorizonLiquidityPool {
 }
 
 // ============================================================================
+// Claimable Balance Models (Horizon API)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonClaimant {
+    pub destination: String,
+    #[serde(default)]
+    pub predicate: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonClaimableBalance {
+    pub id: String,
+    #[serde(rename = "paging_token")]
+    pub paging_token: Option<String>,
+    pub asset: String,
+    pub amount: String,
+    pub sponsor: Option<String>,
+    #[serde(rename = "last_modified_ledger")]
+    pub last_modified_ledger: Option<i32>,
+    #[serde(rename = "last_modified_time")]
+    pub last_modified_time: Option<String>,
+    pub claimants: Vec<HorizonClaimant>,
+}
+
+// ============================================================================
 // Implementation
 // ============================================================================
 
@@ -1316,6 +1342,100 @@ impl StellarRpcClient {
             .embedded
             .map(|e| e.records)
             .unwrap_or_default())
+    }
+
+    /// Fetch claimable balances from Horizon API
+    pub async fn fetch_claimable_balances(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<HorizonClaimableBalance>> {
+        if self.mock_mode {
+            return Ok(Self::mock_claimable_balances(limit));
+        }
+
+        info!("Fetching {} claimable balances from Horizon API", limit);
+
+        let mut url = format!(
+            "{}/claimable_balances?order=desc&limit={}",
+            self.horizon_url, limit
+        );
+        if let Some(cursor) = cursor {
+            url.push_str(&format!("&cursor={}", cursor));
+        }
+
+        let response = self
+            .retry_request(|| async { self.client.get(&url).send().await })
+            .await
+            .context("Failed to fetch claimable balances")?;
+
+        let horizon_response: HorizonResponse<HorizonClaimableBalance> = response
+            .json()
+            .await
+            .context("Failed to parse claimable balances response")?;
+
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
+
+    /// Fetch a single claimable balance by ID
+    pub async fn fetch_claimable_balance(
+        &self,
+        balance_id: &str,
+    ) -> Result<Option<HorizonClaimableBalance>> {
+        if self.mock_mode {
+            let balances = Self::mock_claimable_balances(1);
+            let mut b = balances.into_iter().next().unwrap();
+            b.id = balance_id.to_string();
+            return Ok(Some(b));
+        }
+
+        let url = format!("{}/claimable_balances/{}", self.horizon_url, balance_id);
+        let response = self.client.get(&url).send().await;
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let balance: HorizonClaimableBalance = resp
+                    .json()
+                    .await
+                    .context("Failed to parse claimable balance response")?;
+                Ok(Some(balance))
+            }
+            Ok(_) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // ============================================================================
+    // Claimable Balance Mock Data
+    // ============================================================================
+
+    fn mock_claimable_balances(limit: u32) -> Vec<HorizonClaimableBalance> {
+        let now = chrono::Utc::now();
+        let expires = (now + chrono::Duration::days(10)).to_rfc3339();
+        (0..limit.min(5))
+            .map(|i| HorizonClaimableBalance {
+                id: format!("cb_mock_{:016x}", i + 1),
+                paging_token: Some(format!("pt_cb_{}", i)),
+                asset: if i % 2 == 0 {
+                    "native".to_string()
+                } else {
+                    "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string()
+                },
+                amount: format!("{}.0", 1000 * (i + 1)),
+                sponsor: Some("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string()),
+                last_modified_ledger: Some(51565800 + i as i32),
+                last_modified_time: Some(now.to_rfc3339()),
+                claimants: vec![HorizonClaimant {
+                    destination: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                    predicate: serde_json::json!({
+                        "abs_before": if i < 2 { expires.clone() } else { "1970-01-01T00:00:00Z".to_string() },
+                        "unconditional": i >= 2
+                    }),
+                }],
+            })
+            .collect()
     }
 
     // ============================================================================

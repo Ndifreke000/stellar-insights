@@ -12,6 +12,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::api::account_merges;
+use stellar_insights_backend::api::claimable_balances;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -32,6 +33,7 @@ use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfi
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+use stellar_insights_backend::services::claimable_balance_tracker::ClaimableBalanceTracker;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use stellar_insights_backend::services::price_feed::{
@@ -141,6 +143,12 @@ async fn main() -> Result<()> {
 
     // Initialize Trustline Analyzer
     let trustline_analyzer = Arc::new(TrustlineAnalyzer::new(
+        pool.clone(),
+        Arc::clone(&rpc_client),
+    ));
+
+    // Initialize Claimable Balance Tracker
+    let claimable_balance_tracker = Arc::new(ClaimableBalanceTracker::new(
         pool.clone(),
         Arc::clone(&rpc_client),
     ));
@@ -303,6 +311,19 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Claimable balance sync background task
+    let claimable_balance_tracker_clone = Arc::clone(&claimable_balance_tracker);
+    tokio::spawn(async move {
+        tracing::info!("Starting claimable balance sync background task");
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(600)); // 10 minutes
+        loop {
+            interval.tick().await;
+            if let Err(e) = claimable_balance_tracker_clone.sync_balances().await {
+                tracing::error!("Claimable balance sync failed: {}", e);
+            }
+        }
+    });
+
     // Start RealtimeBroadcaster background task
     tokio::spawn(async move {
         tracing::info!("Starting RealtimeBroadcaster background task");
@@ -407,6 +428,16 @@ async fn main() -> Result<()> {
     rate_limiter
         .register_endpoint(
             "/api/account-merges".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 100,
+                whitelist_ips: vec![],
+            },
+        )
+        .await;
+
+    rate_limiter
+        .register_endpoint(
+            "/api/claimable-balances".to_string(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -591,6 +622,18 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build claimable balance routes
+    let claimable_balance_routes = Router::new()
+        .nest(
+            "/api/claimable-balances",
+            claimable_balances::routes(Arc::clone(&claimable_balance_tracker)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
@@ -613,11 +656,12 @@ async fn main() -> Result<()> {
         .merge(lp_routes)
         .merge(price_routes)
         .merge(trustline_routes)
+        .merge(claimable_balance_routes)
         .merge(network_routes)
         .merge(cache_routes)
         .merge(metrics_routes)
-        .merge(ws_routes);
-        .layer(compression); // Apply compression to all routes
+        .merge(ws_routes)
+        .layer(compression);
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
