@@ -101,7 +101,10 @@ impl VerificationRewardsService {
             // Add early verification bonus
             if self.is_early_verification(&snapshot.created_at).await? {
                 points += EARLY_VERIFICATION_BONUS;
-                debug!("Early verification bonus applied: +{}", EARLY_VERIFICATION_BONUS);
+                debug!(
+                    "Early verification bonus applied: +{}",
+                    EARLY_VERIFICATION_BONUS
+                );
             }
 
             points
@@ -124,7 +127,9 @@ impl VerificationRewardsService {
         .await?;
 
         // Update user rewards
-        let total_points = self.update_user_rewards(user_id, is_match, reward_points).await?;
+        let total_points = self
+            .update_user_rewards(user_id, is_match, reward_points)
+            .await?;
 
         let message = if is_match {
             format!(

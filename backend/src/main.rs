@@ -36,7 +36,6 @@ use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
-use stellar_insights_backend::vault;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
@@ -48,6 +47,7 @@ use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
 use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::vault;
 use stellar_insights_backend::websocket::WsState;
 
 #[tokio::main]
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     // Validate environment configuration
     stellar_insights_backend::env_config::validate_env()
         .context("Environment configuration validation failed")?;
-    
+
     // Log sanitized environment configuration
     stellar_insights_backend::env_config::log_env_config();
 
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
 
     tracing::info!("Connecting to database: {}", database_url);
-    
+
     // Load pool configuration from environment
     let pool_config = stellar_insights_backend::database::PoolConfig::from_env();
     tracing::info!(
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
         pool_config.idle_timeout_seconds,
         pool_config.max_lifetime_seconds
     );
-    
+
     let pool = pool_config.create_pool(&database_url).await?;
 
     tracing::info!("Running database migrations...");
@@ -268,8 +268,9 @@ async fn main() -> Result<()> {
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
-            std::env::var("SEP10_SERVER_PUBLIC_KEY")
-                .unwrap_or_else(|_| "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string()),
+            std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
+                "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string()
+            }),
             network_config.network_passphrase.clone(),
             std::env::var("SEP10_HOME_DOMAIN")
                 .unwrap_or_else(|_| "stellar-insights.local".to_string()),

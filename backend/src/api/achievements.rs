@@ -30,7 +30,8 @@ fn quest_definitions() -> Vec<QuestDef> {
         QuestDef {
             id: "view-corridor".to_string(),
             title: "Corridor Explorer".to_string(),
-            description: "View the corridors page to understand asset flow between networks.".to_string(),
+            description: "View the corridors page to understand asset flow between networks."
+                .to_string(),
             category: "exploration".to_string(),
             xp: 50,
             path_match: vec!["/corridors".to_string()],

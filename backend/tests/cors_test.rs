@@ -90,8 +90,7 @@ async fn test_cors_allowed_origin_receives_acao_header() {
         .expect("Access-Control-Allow-Origin header must be present for an allowed origin");
 
     assert_eq!(
-        acao,
-        "http://localhost:3000",
+        acao, "http://localhost:3000",
         "ACAO header should reflect the matching allowed origin"
     );
 }
@@ -144,8 +143,7 @@ async fn test_cors_disallowed_origin_does_not_receive_acao_header() {
     let acao = response.headers().get("access-control-allow-origin");
     if let Some(value) = acao {
         assert_ne!(
-            value,
-            "https://evil.example.com",
+            value, "https://evil.example.com",
             "Disallowed origin must not be reflected in ACAO header"
         );
     }
@@ -235,7 +233,10 @@ async fn test_cors_preflight_returns_allow_headers() {
                 .uri("/health")
                 .header(header::ORIGIN, "http://localhost:3000")
                 .header("access-control-request-method", "POST")
-                .header("access-control-request-headers", "authorization, content-type")
+                .header(
+                    "access-control-request-headers",
+                    "authorization, content-type",
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -316,9 +317,8 @@ async fn test_cors_request_without_origin_still_succeeds() {
 
 #[tokio::test]
 async fn test_cors_production_origin_receives_acao_header() {
-    let cors = cors_layer_from_origins(
-        "https://stellar-insights.com,https://www.stellar-insights.com",
-    );
+    let cors =
+        cors_layer_from_origins("https://stellar-insights.com,https://www.stellar-insights.com");
     let app = build_router_with_cors(cors);
 
     let response = app

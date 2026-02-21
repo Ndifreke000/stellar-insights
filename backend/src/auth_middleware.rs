@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Request, Extension},
+    extract::{Extension, Request},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},

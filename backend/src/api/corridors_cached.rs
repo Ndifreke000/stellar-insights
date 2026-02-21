@@ -33,7 +33,7 @@ impl AssetPair {
 /// Handles regular payments, path_payment_strict_send, and path_payment_strict_receive
 fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<AssetPair> {
     let operation_type = payment.operation_type.as_deref().unwrap_or("payment");
-    
+
     match operation_type {
         "path_payment_strict_send" | "path_payment_strict_receive" => {
             // Path payments have explicit source and destination assets
@@ -50,7 +50,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
             } else {
                 return None;
             };
-            
+
             let destination_asset = if payment.asset_type == "native" {
                 "XLM:native".to_string()
             } else {
@@ -60,7 +60,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
                     payment.asset_issuer.as_deref().unwrap_or("unknown")
                 )
             };
-            
+
             Some(AssetPair {
                 source_asset,
                 destination_asset,
@@ -77,7 +77,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
                     payment.asset_issuer.as_deref().unwrap_or("unknown")
                 )
             };
-            
+
             Some(AssetPair {
                 source_asset: asset.clone(),
                 destination_asset: asset,
@@ -312,8 +312,9 @@ pub async fn list_corridors(
         &cache_key,
         cache.config.get_ttl("corridor"),
         async {
-            // **RPC DATA**: Fetch recent payments to identify active corridors
-            let payments = match rpc_client.fetch_payments(200, None).await {
+            // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
+            // Use paginated fetch to get more complete data (up to configured limit)
+            let payments = match rpc_client.fetch_all_payments(Some(1000)).await {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!("Failed to fetch payments from RPC: {}", e);
@@ -321,8 +322,8 @@ pub async fn list_corridors(
                 }
             };
 
-            // **RPC DATA**: Fetch recent trades for volume data
-            let _trades = match rpc_client.fetch_trades(200, None).await {
+            // **RPC DATA**: Fetch recent trades with pagination for volume data
+            let _trades = match rpc_client.fetch_all_trades(Some(1000)).await {
                 Ok(t) => t,
                 Err(e) => {
                     tracing::warn!("Failed to fetch trades from RPC: {}", e);
@@ -343,10 +344,7 @@ pub async fn list_corridors(
                         .or_insert_with(Vec::new)
                         .push(payment);
                 } else {
-                    tracing::warn!(
-                        "Failed to extract asset pair from payment: {}",
-                        payment.id
-                    );
+                    tracing::warn!("Failed to extract asset pair from payment: {}", payment.id);
                 }
             }
 
@@ -377,7 +375,7 @@ pub async fn list_corridors(
                 // Calculate volume from payment amounts and convert to USD
                 let mut volume_usd: f64 = 0.0;
                 let source_asset_key = parts[0];
-                
+
                 // Get price for source asset
                 if let Ok(price) = price_feed.get_price(source_asset_key).await {
                     for payment in corridor_payments.iter() {
@@ -387,7 +385,10 @@ pub async fn list_corridors(
                     }
                 } else {
                     // Fallback: use raw amounts if price unavailable
-                    tracing::warn!("Price unavailable for {}, using raw amounts", source_asset_key);
+                    tracing::warn!(
+                        "Price unavailable for {}, using raw amounts",
+                        source_asset_key
+                    );
                     volume_usd = corridor_payments
                         .iter()
                         .filter_map(|p| p.amount.parse::<f64>().ok())

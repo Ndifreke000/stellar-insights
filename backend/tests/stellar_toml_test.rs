@@ -6,11 +6,7 @@ use stellar_insights_backend::services::stellar_toml::StellarTomlClient;
 
 #[tokio::test]
 async fn test_domain_validation() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     // Valid domains
     assert!(client.validate_domain("stellar.org").is_ok());
@@ -47,11 +43,7 @@ async fn test_domain_validation() {
 
 #[tokio::test]
 async fn test_parse_basic_toml() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Example Anchor"
@@ -70,7 +62,10 @@ NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
     let toml = result.unwrap();
     assert_eq!(toml.organization_name, Some("Example Anchor".to_string()));
     assert_eq!(toml.organization_dba, Some("Example DBA".to_string()));
-    assert_eq!(toml.organization_url, Some("https://example.com".to_string()));
+    assert_eq!(
+        toml.organization_url,
+        Some("https://example.com".to_string())
+    );
     assert_eq!(
         toml.organization_logo,
         Some("https://example.com/logo.png".to_string())
@@ -96,11 +91,7 @@ NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
 
 #[tokio::test]
 async fn test_parse_toml_with_currencies() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Multi-Currency Anchor"
@@ -169,11 +160,7 @@ status = "test"
 
 #[tokio::test]
 async fn test_parse_toml_with_principals() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -212,11 +199,7 @@ keybase = "johnsmith"
 
 #[tokio::test]
 async fn test_parse_toml_with_documentation() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -248,11 +231,7 @@ ORG_DESCRIPTION = "Test organization description"
 
 #[tokio::test]
 async fn test_parse_invalid_toml() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     // Invalid TOML syntax
     let invalid_toml = r#"
@@ -266,11 +245,7 @@ INVALID [[[
 
 #[tokio::test]
 async fn test_parse_empty_toml() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let empty_toml = "";
 
@@ -313,11 +288,7 @@ NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
 #[tokio::test]
 async fn test_parse_currency_without_code() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Test"
@@ -333,11 +304,7 @@ name = "Missing Code"
 
 #[tokio::test]
 async fn test_parse_minimal_currency() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Test"
@@ -378,11 +345,7 @@ async fn test_url_construction() {
 
 #[tokio::test]
 async fn test_parse_all_organization_fields() {
-    let client = StellarTomlClient::new(
-        Arc::new(RwLock::new(None)),
-        None,
-    )
-    .unwrap();
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
     let toml_content = r#"
 ORGANIZATION_NAME = "Full Org"

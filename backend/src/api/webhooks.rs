@@ -58,7 +58,10 @@ pub async fn list_webhooks(
             id: w.id,
             url: w.url,
             event_types: w.event_types.split(',').map(|s| s.to_string()).collect(),
-            filters: w.filters.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+            filters: w
+                .filters
+                .as_ref()
+                .and_then(|f| serde_json::from_str(f).ok()),
             is_active: w.is_active,
             created_at: w.created_at,
         })
@@ -80,12 +83,14 @@ pub async fn delete_webhook(
         .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
 
     if !deleted {
-        return Err(WebhookApiError::NotFound(
-            "Webhook not found".to_string(),
-        ));
+        return Err(WebhookApiError::NotFound("Webhook not found".to_string()));
     }
 
-    Ok((StatusCode::OK, Json(json!({"message": "Webhook deleted successfully"}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Webhook deleted successfully"})),
+    )
+        .into_response())
 }
 
 /// POST /api/webhooks/:id/test - Send test payload to webhook
@@ -125,7 +130,11 @@ pub async fn test_webhook(
         test_payload
     );
 
-    Ok((StatusCode::OK, Json(json!({"message": "Test webhook prepared", "payload": test_payload}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Test webhook prepared", "payload": test_payload})),
+    )
+        .into_response())
 }
 
 /// Webhook API Error types

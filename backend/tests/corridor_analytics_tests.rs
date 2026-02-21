@@ -1,4 +1,6 @@
-use stellar_insights_backend::services::analytics::{compute_corridor_metrics, CorridorTransaction};
+use stellar_insights_backend::services::analytics::{
+    compute_corridor_metrics, CorridorTransaction,
+};
 
 #[test]
 fn test_corridor_metrics_basic() {

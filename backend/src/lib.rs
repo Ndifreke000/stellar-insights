@@ -2,14 +2,13 @@ pub mod analytics;
 pub mod api;
 pub mod auth;
 pub mod auth_middleware;
-pub mod request_signing_middleware;
 pub mod broadcast;
 pub mod cache;
 pub mod cache_invalidation;
 pub mod cache_middleware;
 pub mod database;
 pub mod db;
-pub mod crypto;
+pub mod request_signing_middleware;
 // pub mod email;  // Commented out - missing lettre dependency
 pub mod env_config;
 pub mod handlers;

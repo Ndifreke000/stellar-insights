@@ -1,5 +1,4 @@
 /// Error types for Vault operations
-
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -28,9 +27,15 @@ impl fmt::Display for VaultError {
             VaultError::SecretNotFound(path) => write!(f, "Secret not found: {}", path),
             VaultError::FieldNotFound(field) => write!(f, "Field not found: {}", field),
             VaultError::NoDataInSecret => write!(f, "No data in secret"),
-            VaultError::CredentialsFailed(role) => write!(f, "Failed to get credentials for role: {}", role),
-            VaultError::LeaseRenewalFailed(lease_id) => write!(f, "Failed to renew lease: {}", lease_id),
-            VaultError::LeaseRevokeFailed(lease_id) => write!(f, "Failed to revoke lease: {}", lease_id),
+            VaultError::CredentialsFailed(role) => {
+                write!(f, "Failed to get credentials for role: {}", role)
+            }
+            VaultError::LeaseRenewalFailed(lease_id) => {
+                write!(f, "Failed to renew lease: {}", lease_id)
+            }
+            VaultError::LeaseRevokeFailed(lease_id) => {
+                write!(f, "Failed to revoke lease: {}", lease_id)
+            }
         }
     }
 }

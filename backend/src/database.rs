@@ -1,3 +1,4 @@
+use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;
@@ -69,7 +70,7 @@ impl PoolConfig {
             .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
             .connect(database_url)
             .await?;
-        
+
         Ok(pool)
     }
 }
@@ -108,11 +109,13 @@ pub struct PoolMetrics {
 
 pub struct Database {
     pool: SqlitePool,
+    pub admin_audit_logger: AdminAuditLogger,
 }
 
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let admin_audit_logger = AdminAuditLogger::new(pool.clone());
+        Self { pool, admin_audit_logger }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -920,7 +923,7 @@ impl Database {
         signature: &str,
     ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
-        
+
         sqlx::query(
             r#"
             INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
@@ -937,11 +940,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn update_transaction_status(
-        &self,
-        id: &str,
-        status: &str,
-    ) -> Result<()> {
+    pub async fn update_transaction_status(&self, id: &str, status: &str) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE pending_transactions
@@ -956,5 +955,4 @@ impl Database {
 
         Ok(())
     }
-
 }

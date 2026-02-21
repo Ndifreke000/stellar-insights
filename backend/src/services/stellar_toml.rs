@@ -26,56 +26,56 @@ pub struct StellarToml {
     // Organization Information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_name: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_dba: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_url: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_logo: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_description: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_physical_address: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_phone_number: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_keybase: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_twitter: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_github: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_official_email: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_support_email: Option<String>,
-    
+
     // Network Information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network_passphrase: Option<String>,
-    
+
     // Currencies
     #[serde(skip_serializing_if = "Option::is_none")]
     pub currencies: Option<Vec<CurrencyInfo>>,
-    
+
     // Principals
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principals: Option<Vec<Principal>>,
-    
+
     // Documentation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub documentation: Option<Documentation>,
-    
+
     // Metadata
     pub domain: String,
     pub fetched_at: i64,
@@ -84,46 +84,46 @@ pub struct StellarToml {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CurrencyInfo {
     pub code: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_decimals: Option<i32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conditions: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixed_number: Option<i64>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_number: Option<i64>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_unlimited: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_asset_anchored: Option<bool>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anchor_asset_type: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anchor_asset: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redemption_instructions: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
 }
@@ -132,16 +132,16 @@ pub struct CurrencyInfo {
 pub struct Principal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keybase: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub twitter: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github: Option<String>,
 }
@@ -150,16 +150,16 @@ pub struct Principal {
 pub struct Documentation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_name: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_dba: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_url: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_logo: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_description: Option<String>,
 }
@@ -301,7 +301,7 @@ impl StellarTomlClient {
     async fn fetch_toml_from_network(&self, domain: &str) -> Result<StellarToml> {
         // Try HTTPS first
         let https_url = format!("https://{}/.well-known/stellar.toml", domain);
-        
+
         match self.fetch_url(&https_url).await {
             Ok(content) => return self.parse_toml(&content, domain),
             Err(e) => {
@@ -311,12 +311,14 @@ impl StellarTomlClient {
 
         // Fallback to HTTP
         let http_url = format!("http://{}/.well-known/stellar.toml", domain);
-        
+
         match self.fetch_url(&http_url).await {
             Ok(content) => self.parse_toml(&content, domain),
             Err(e) => {
                 tracing::warn!("HTTP fetch also failed for {}: {}", domain, e);
-                Err(anyhow!("Failed to fetch stellar.toml from both HTTPS and HTTP"))
+                Err(anyhow!(
+                    "Failed to fetch stellar.toml from both HTTPS and HTTP"
+                ))
             }
         }
     }
@@ -324,8 +326,7 @@ impl StellarTomlClient {
     /// Fetch URL content
     async fn fetch_url(&self, url: &str) -> Result<String> {
         // Validate URL
-        let parsed_url = Url::parse(url)
-            .map_err(|e| anyhow!("Invalid URL: {}", e))?;
+        let parsed_url = Url::parse(url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
 
         // Additional security checks
         if parsed_url.scheme() != "https" && parsed_url.scheme() != "http" {
@@ -333,7 +334,8 @@ impl StellarTomlClient {
         }
 
         // Fetch content
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(url)
             .send()
             .await
@@ -361,67 +363,79 @@ impl StellarTomlClient {
             return Err(anyhow!("Response exceeds size limit"));
         }
 
-        String::from_utf8(bytes.to_vec())
-            .map_err(|e| anyhow!("Invalid UTF-8: {}", e))
+        String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!("Invalid UTF-8: {}", e))
     }
 
     /// Parse TOML content
     pub fn parse_toml(&self, content: &str, domain: &str) -> Result<StellarToml> {
         // Parse TOML
-        let parsed: toml::Value = toml::from_str(content)
-            .map_err(|e| anyhow!("Failed to parse TOML: {}", e))?;
+        let parsed: toml::Value =
+            toml::from_str(content).map_err(|e| anyhow!("Failed to parse TOML: {}", e))?;
 
         // Extract organization information
-        let organization_name = parsed.get("ORGANIZATION_NAME")
+        let organization_name = parsed
+            .get("ORGANIZATION_NAME")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_dba = parsed.get("ORGANIZATION_DBA")
+        let organization_dba = parsed
+            .get("ORGANIZATION_DBA")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_url = parsed.get("ORGANIZATION_URL")
+        let organization_url = parsed
+            .get("ORGANIZATION_URL")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_logo = parsed.get("ORGANIZATION_LOGO")
+        let organization_logo = parsed
+            .get("ORGANIZATION_LOGO")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_description = parsed.get("ORGANIZATION_DESCRIPTION")
+        let organization_description = parsed
+            .get("ORGANIZATION_DESCRIPTION")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_physical_address = parsed.get("ORGANIZATION_PHYSICAL_ADDRESS")
+        let organization_physical_address = parsed
+            .get("ORGANIZATION_PHYSICAL_ADDRESS")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_phone_number = parsed.get("ORGANIZATION_PHONE_NUMBER")
+        let organization_phone_number = parsed
+            .get("ORGANIZATION_PHONE_NUMBER")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_keybase = parsed.get("ORGANIZATION_KEYBASE")
+        let organization_keybase = parsed
+            .get("ORGANIZATION_KEYBASE")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_twitter = parsed.get("ORGANIZATION_TWITTER")
+        let organization_twitter = parsed
+            .get("ORGANIZATION_TWITTER")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_github = parsed.get("ORGANIZATION_GITHUB")
+        let organization_github = parsed
+            .get("ORGANIZATION_GITHUB")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_official_email = parsed.get("ORGANIZATION_OFFICIAL_EMAIL")
+        let organization_official_email = parsed
+            .get("ORGANIZATION_OFFICIAL_EMAIL")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let organization_support_email = parsed.get("ORGANIZATION_SUPPORT_EMAIL")
+        let organization_support_email = parsed
+            .get("ORGANIZATION_SUPPORT_EMAIL")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
         // Extract network passphrase
-        let network_passphrase = parsed.get("NETWORK_PASSPHRASE")
+        let network_passphrase = parsed
+            .get("NETWORK_PASSPHRASE")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -431,7 +445,9 @@ impl StellarTomlClient {
                 if actual != expected {
                     tracing::warn!(
                         "Network passphrase mismatch for {}: expected {}, got {}",
-                        domain, expected, actual
+                        domain,
+                        expected,
+                        actual
                     );
                 }
             }
@@ -479,32 +495,67 @@ impl StellarTomlClient {
 
         for currency in currencies_array {
             if let toml::Value::Table(table) = currency {
-                let code = table.get("code")
+                let code = table
+                    .get("code")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Currency missing code"))?
                     .to_string();
 
                 currencies.push(CurrencyInfo {
                     code,
-                    issuer: table.get("issuer").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    display_decimals: table.get("display_decimals").and_then(|v| v.as_integer()).map(|i| i as i32),
-                    name: table.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    desc: table.get("desc").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    conditions: table.get("conditions").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    image: table.get("image").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    issuer: table
+                        .get("issuer")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    display_decimals: table
+                        .get("display_decimals")
+                        .and_then(|v| v.as_integer())
+                        .map(|i| i as i32),
+                    name: table
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    desc: table
+                        .get("desc")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    conditions: table
+                        .get("conditions")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    image: table
+                        .get("image")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     fixed_number: table.get("fixed_number").and_then(|v| v.as_integer()),
                     max_number: table.get("max_number").and_then(|v| v.as_integer()),
                     is_unlimited: table.get("is_unlimited").and_then(|v| v.as_bool()),
                     is_asset_anchored: table.get("is_asset_anchored").and_then(|v| v.as_bool()),
-                    anchor_asset_type: table.get("anchor_asset_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    anchor_asset: table.get("anchor_asset").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    redemption_instructions: table.get("redemption_instructions").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    status: table.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    anchor_asset_type: table
+                        .get("anchor_asset_type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    anchor_asset: table
+                        .get("anchor_asset")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    redemption_instructions: table
+                        .get("redemption_instructions")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    status: table
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 });
             }
         }
 
-        Ok(if currencies.is_empty() { None } else { Some(currencies) })
+        Ok(if currencies.is_empty() {
+            None
+        } else {
+            Some(currencies)
+        })
     }
 
     /// Parse principals from TOML
@@ -519,16 +570,35 @@ impl StellarTomlClient {
         for principal in principals_array {
             if let toml::Value::Table(table) = principal {
                 principals.push(Principal {
-                    name: table.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    email: table.get("email").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    keybase: table.get("keybase").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    twitter: table.get("twitter").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    github: table.get("github").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    name: table
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    email: table
+                        .get("email")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    keybase: table
+                        .get("keybase")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    twitter: table
+                        .get("twitter")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    github: table
+                        .get("github")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 });
             }
         }
 
-        Ok(if principals.is_empty() { None } else { Some(principals) })
+        Ok(if principals.is_empty() {
+            None
+        } else {
+            Some(principals)
+        })
     }
 
     /// Parse documentation from TOML
@@ -539,11 +609,26 @@ impl StellarTomlClient {
         };
 
         Ok(Some(Documentation {
-            org_name: doc_table.get("ORG_NAME").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            org_dba: doc_table.get("ORG_DBA").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            org_url: doc_table.get("ORG_URL").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            org_logo: doc_table.get("ORG_LOGO").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            org_description: doc_table.get("ORG_DESCRIPTION").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            org_name: doc_table
+                .get("ORG_NAME")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            org_dba: doc_table
+                .get("ORG_DBA")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            org_url: doc_table
+                .get("ORG_URL")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            org_logo: doc_table
+                .get("ORG_LOGO")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            org_description: doc_table
+                .get("ORG_DESCRIPTION")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }))
     }
 
@@ -603,10 +688,7 @@ mod tests {
 
     #[test]
     fn test_validate_domain() {
-        let client = StellarTomlClient::new(
-            Arc::new(RwLock::new(None)),
-            None,
-        ).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
         // Valid domains
         assert!(client.validate_domain("example.com").is_ok());
@@ -625,10 +707,7 @@ mod tests {
 
     #[test]
     fn test_parse_toml_basic() {
-        let client = StellarTomlClient::new(
-            Arc::new(RwLock::new(None)),
-            None,
-        ).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
         let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -647,17 +726,20 @@ NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
         assert_eq!(toml.organization_name, Some("Test Anchor".to_string()));
         assert_eq!(toml.organization_dba, Some("Test DBA".to_string()));
         assert_eq!(toml.organization_url, Some("https://test.com".to_string()));
-        assert_eq!(toml.organization_logo, Some("https://test.com/logo.png".to_string()));
-        assert_eq!(toml.organization_support_email, Some("support@test.com".to_string()));
+        assert_eq!(
+            toml.organization_logo,
+            Some("https://test.com/logo.png".to_string())
+        );
+        assert_eq!(
+            toml.organization_support_email,
+            Some("support@test.com".to_string())
+        );
         assert_eq!(toml.domain, "test.com");
     }
 
     #[test]
     fn test_parse_toml_with_currencies() {
-        let client = StellarTomlClient::new(
-            Arc::new(RwLock::new(None)),
-            None,
-        ).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
         let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -684,7 +766,7 @@ name = "Euro"
 
         let toml = result.unwrap();
         assert!(toml.currencies.is_some());
-        
+
         let currencies = toml.currencies.unwrap();
         assert_eq!(currencies.len(), 2);
         assert_eq!(currencies[0].code, "USD");
@@ -694,10 +776,7 @@ name = "Euro"
 
     #[test]
     fn test_parse_invalid_toml() {
-        let client = StellarTomlClient::new(
-            Arc::new(RwLock::new(None)),
-            None,
-        ).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
 
         let invalid_toml = "INVALID TOML [[[";
         let result = client.parse_toml(invalid_toml, "test.com");

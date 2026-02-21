@@ -60,6 +60,12 @@ pub struct StellarRpcClient {
     horizon_url: String,
     network_config: NetworkConfig,
     mock_mode: bool,
+    /// Maximum records per single request (default: 200)
+    max_records_per_request: u32,
+    /// Maximum total records across all paginated requests (default: 10000)
+    max_total_records: u32,
+    /// Delay between pagination requests in milliseconds (default: 100)
+    pagination_delay_ms: u64,
 }
 
 // ============================================================================
@@ -325,23 +331,58 @@ impl StellarRpcClient {
 
         let network_config = NetworkConfig::for_network(network);
 
+        // Load pagination config from environment or use defaults
+        let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+
+        let max_total_records = std::env::var("RPC_MAX_TOTAL_RECORDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10000);
+
+        let pagination_delay_ms = std::env::var("RPC_PAGINATION_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
+
         Self {
             client,
             rpc_url,
             horizon_url,
             network_config,
             mock_mode,
+            max_records_per_request,
+            max_total_records,
+            pagination_delay_ms,
         }
     }
 
     /// Create a new client with network configuration
     pub fn new_with_network(network: StellarNetwork, mock_mode: bool) -> Self {
         let network_config = NetworkConfig::for_network(network);
-        
+
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to build HTTP client");
+
+        // Load pagination config from environment or use defaults
+        let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+
+        let max_total_records = std::env::var("RPC_MAX_TOTAL_RECORDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10000);
+
+        let pagination_delay_ms = std::env::var("RPC_PAGINATION_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
 
         Self {
             client,
@@ -349,6 +390,9 @@ impl StellarRpcClient {
             horizon_url: network_config.horizon_url.clone(),
             network_config,
             mock_mode,
+            max_records_per_request,
+            max_total_records,
+            pagination_delay_ms,
         }
     }
 
@@ -745,6 +789,241 @@ impl StellarRpcClient {
             .unwrap_or_default();
 
         Ok(payments)
+    }
+
+    // ============================================================================
+    // Paginated Fetch Methods
+    // ============================================================================
+
+    /// Fetch all payments with automatic pagination up to max_total_records
+    ///
+    /// # Arguments
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched payments up to the limit
+    pub async fn fetch_all_payments(&self, max_records: Option<u32>) -> Result<Vec<Payment>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_payments(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_payments = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of payments (max: {}, per_request: {})",
+            max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            let payments = self
+                .fetch_payments(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch payments page")?;
+
+            if payments.is_empty() {
+                info!("No more payments available, stopping pagination");
+                break;
+            }
+
+            fetched += payments.len() as u32;
+
+            // Extract cursor from last payment for next page
+            if let Some(last_payment) = payments.last() {
+                cursor = Some(last_payment.paging_token.clone());
+            }
+
+            all_payments.extend(payments);
+
+            info!(
+                "Fetched {} payments so far ({}/{})",
+                all_payments.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total payments",
+            all_payments.len()
+        );
+        Ok(all_payments)
+    }
+
+    /// Fetch all trades with automatic pagination up to max_total_records
+    ///
+    /// # Arguments
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched trades up to the limit
+    pub async fn fetch_all_trades(&self, max_records: Option<u32>) -> Result<Vec<Trade>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_trades(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_trades = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of trades (max: {}, per_request: {})",
+            max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            // Note: Trade struct doesn't have paging_token, we'll use id as cursor
+            let trades = self
+                .fetch_trades(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch trades page")?;
+
+            if trades.is_empty() {
+                info!("No more trades available, stopping pagination");
+                break;
+            }
+
+            fetched += trades.len() as u32;
+
+            // Extract cursor from last trade for next page
+            // Horizon uses the id field as cursor for trades
+            if let Some(last_trade) = trades.last() {
+                cursor = Some(last_trade.id.clone());
+            }
+
+            all_trades.extend(trades);
+
+            info!(
+                "Fetched {} trades so far ({}/{})",
+                all_trades.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total trades",
+            all_trades.len()
+        );
+        Ok(all_trades)
+    }
+
+    /// Fetch all payments for a specific account with automatic pagination
+    ///
+    /// # Arguments
+    /// * `account_id` - The Stellar account ID
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched payments for the account up to the limit
+    pub async fn fetch_all_account_payments(
+        &self,
+        account_id: &str,
+        max_records: Option<u32>,
+    ) -> Result<Vec<Payment>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_payments(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_payments = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of payments for account {} (max: {}, per_request: {})",
+            account_id, max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            let mut url = format!(
+                "{}/accounts/{}/payments?order=desc&limit={}",
+                self.horizon_url, account_id, limit
+            );
+
+            if let Some(ref cursor_val) = cursor {
+                url.push_str(&format!("&cursor={}", cursor_val));
+            }
+
+            let response = self
+                .retry_request(|| async { self.client.get(&url).send().await })
+                .await
+                .context("Failed to fetch account payments page")?;
+
+            let horizon_response: HorizonResponse<Payment> = response
+                .json()
+                .await
+                .context("Failed to parse payments response")?;
+
+            let payments = horizon_response
+                .embedded
+                .map(|e| e.records)
+                .unwrap_or_default();
+
+            if payments.is_empty() {
+                info!("No more payments available for account, stopping pagination");
+                break;
+            }
+
+            fetched += payments.len() as u32;
+
+            // Extract cursor from last payment for next page
+            if let Some(last_payment) = payments.last() {
+                cursor = Some(last_payment.paging_token.clone());
+            }
+
+            all_payments.extend(payments);
+
+            info!(
+                "Fetched {} payments for account so far ({}/{})",
+                all_payments.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total payments for account {}",
+            all_payments.len(),
+            account_id
+        );
+        Ok(all_payments)
     }
 
     // ============================================================================
@@ -1592,5 +1871,72 @@ mod tests {
 
         assert!(result.ledgers.is_empty());
         assert_eq!(result.latest_ledger, MOCK_LATEST_LEDGER);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_config_defaults() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Verify default pagination config is loaded
+        assert_eq!(client.max_records_per_request, 200);
+        assert_eq!(client.max_total_records, 10000);
+        assert_eq!(client.pagination_delay_ms, 100);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_payments_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Test with custom limit
+        let payments = client.fetch_all_payments(Some(50)).await.unwrap();
+        assert_eq!(payments.len(), 50);
+
+        // Test with default limit (should use max_total_records)
+        let payments = client.fetch_all_payments(None).await.unwrap();
+        assert_eq!(payments.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_trades_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Test with custom limit
+        let trades = client.fetch_all_trades(Some(30)).await.unwrap();
+        assert_eq!(trades.len(), 30);
+
+        // Test with default limit
+        let trades = client.fetch_all_trades(None).await.unwrap();
+        assert_eq!(trades.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_account_payments_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let account_id = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
+        // Test with custom limit
+        let payments = client
+            .fetch_all_account_payments(account_id, Some(100))
+            .await
+            .unwrap();
+        assert_eq!(payments.len(), 100);
+
+        // Test with default limit
+        let payments = client
+            .fetch_all_account_payments(account_id, None)
+            .await
+            .unwrap();
+        assert_eq!(payments.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_respects_max_records() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Request more than available, should stop when no more data
+        let payments = client.fetch_all_payments(Some(500)).await.unwrap();
+
+        // In mock mode, we should get exactly what we asked for
+        assert_eq!(payments.len(), 500);
     }
 }

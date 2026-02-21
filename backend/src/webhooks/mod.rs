@@ -1,6 +1,5 @@
 /// Webhooks module for Zapier integration
 /// Manages webhook registrations, event definitions, and dispatching
-
 pub mod events;
 
 use hmac::{Hmac, Mac};
@@ -17,10 +16,9 @@ pub struct WebhookSignature;
 impl WebhookSignature {
     /// Generate HMAC-SHA256 signature for webhook payload
     pub fn sign(payload: &str, secret: &str) -> String {
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
-
         format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
     }
 
@@ -37,7 +35,7 @@ pub struct Webhook {
     pub id: String,
     pub user_id: String,
     pub url: String,
-    pub event_types: String, // comma-separated
+    pub event_types: String,     // comma-separated
     pub filters: Option<String>, // JSON
     pub secret: String,
     pub is_active: bool,
@@ -49,8 +47,8 @@ pub struct Webhook {
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {
     pub url: String,
-    pub event_types: Vec<String>, // e.g., ["corridor.health_degraded", "anchor.status_changed"]
-    pub filters: Option<serde_json::Value>, // Optional filters
+    pub event_types: Vec<String>,
+    pub filters: Option<serde_json::Value>,
 }
 
 /// Webhook creation response
@@ -64,7 +62,7 @@ pub struct WebhookResponse {
     pub created_at: String,
 }
 
-/// Webhook event envelope (what gets sent to webhook URL)
+/// Webhook event envelope
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEventEnvelope {
     pub id: String, // Delivery ID for idempotency
@@ -125,10 +123,7 @@ impl WebhookService {
         let id = Uuid::new_v4().to_string();
         let secret = Uuid::new_v4().to_string();
         let event_types_str = request.event_types.join(",");
-        let filters_str = request
-            .filters
-            .as_ref()
-            .map(|f| f.to_string());
+        let filters_str = request.filters.as_ref().map(|f| f.to_string());
         let now = chrono::Utc::now().to_rfc3339();
 
         let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
@@ -239,8 +234,12 @@ impl WebhookService {
     }
 
     /// Get pending webhook events
-    pub async fn get_pending_events(&self, limit: usize) -> anyhow::Result<Vec<(String, String, String, String)>> {
+    pub async fn get_pending_events(
+        &self,
+        limit: usize,
+    ) -> anyhow::Result<Vec<(String, String, String, String)>> {
         let query_limit = limit as i64;
+
         let events = sqlx::query!(
             r#"
             SELECT we.id, we.webhook_id, we.event_type, we.payload

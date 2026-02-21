@@ -149,9 +149,9 @@ pub async fn get_anchors(
             // Get asset count from database (metadata)
             let assets = db.get_assets_by_anchor(anchor_id).await?;
 
-            // **RPC DATA**: Fetch real-time payment data for this anchor
+            // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
             let payments = match rpc_client
-                .fetch_account_payments(&anchor.stellar_account, 200)
+                .fetch_all_account_payments(&anchor.stellar_account, Some(500))
                 .await
             {
                 Ok(payments) => payments,

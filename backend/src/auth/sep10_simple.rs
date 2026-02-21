@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// SEP-10 challenge transaction validity duration (5 minutes)
 const CHALLENGE_EXPIRY_SECONDS: i64 = 300;
@@ -55,7 +55,7 @@ pub struct Sep10Session {
 }
 
 /// SEP-10 Authentication Service
-/// 
+///
 /// This is a simplified implementation that provides the core SEP-10 functionality.
 /// For production use with actual Stellar transaction signing, integrate with stellar-sdk.
 pub struct Sep10Service {
@@ -87,7 +87,7 @@ impl Sep10Service {
     }
 
     /// Generate SEP-10 challenge transaction
-    /// 
+    ///
     /// In a full implementation, this would create a proper Stellar transaction.
     /// This simplified version creates a challenge structure that can be signed.
     pub async fn generate_challenge(&self, request: ChallengeRequest) -> Result<ChallengeResponse> {
@@ -135,7 +135,7 @@ impl Sep10Service {
     }
 
     /// Verify signed challenge transaction
-    /// 
+    ///
     /// In a full implementation, this would verify Stellar signatures.
     /// This simplified version validates the challenge structure and nonce.
     pub async fn verify_challenge(
@@ -143,30 +143,34 @@ impl Sep10Service {
         request: VerificationRequest,
     ) -> Result<VerificationResponse> {
         // Decode transaction
-        let challenge_bytes = BASE64.decode(&request.transaction)
+        let challenge_bytes = BASE64
+            .decode(&request.transaction)
             .map_err(|e| anyhow!("Invalid base64 encoding: {}", e))?;
 
-        let challenge_json = String::from_utf8(challenge_bytes)
-            .map_err(|e| anyhow!("Invalid UTF-8: {}", e))?;
+        let challenge_json =
+            String::from_utf8(challenge_bytes).map_err(|e| anyhow!("Invalid UTF-8: {}", e))?;
 
-        let challenge: serde_json::Value = serde_json::from_str(&challenge_json)
-            .map_err(|e| anyhow!("Invalid JSON: {}", e))?;
+        let challenge: serde_json::Value =
+            serde_json::from_str(&challenge_json).map_err(|e| anyhow!("Invalid JSON: {}", e))?;
 
         // Validate challenge structure
-        let challenge_type = challenge["type"].as_str()
+        let challenge_type = challenge["type"]
+            .as_str()
             .ok_or_else(|| anyhow!("Missing challenge type"))?;
-        
+
         if challenge_type != "sep10_challenge" {
             return Err(anyhow!("Invalid challenge type"));
         }
 
         // Extract client account
-        let client_account = challenge["client"].as_str()
+        let client_account = challenge["client"]
+            .as_str()
             .ok_or_else(|| anyhow!("Missing client account"))?
             .to_string();
 
         // Validate expiration
-        let expires_at = challenge["expires_at"].as_i64()
+        let expires_at = challenge["expires_at"]
+            .as_i64()
             .ok_or_else(|| anyhow!("Missing expiration"))?;
 
         if Utc::now().timestamp() > expires_at {
@@ -174,7 +178,8 @@ impl Sep10Service {
         }
 
         // Extract and validate nonce for replay protection
-        let nonce = challenge["nonce"].as_str()
+        let nonce = challenge["nonce"]
+            .as_str()
             .ok_or_else(|| anyhow!("Missing nonce"))?;
 
         self.validate_and_consume_challenge(&client_account, nonce)

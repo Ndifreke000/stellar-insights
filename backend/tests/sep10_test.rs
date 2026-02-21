@@ -1,13 +1,11 @@
 #![cfg(feature = "legacy_sep10_tests")]
 
 use anyhow::Result;
-use stellar_base::crypto::KeyPair;
 use std::sync::Arc;
+use stellar_base::crypto::KeyPair;
 use tokio::sync::RwLock;
 
-use stellar_analytics::auth::sep10::{
-    ChallengeRequest, Sep10Service, VerificationRequest,
-};
+use stellar_analytics::auth::sep10::{ChallengeRequest, Sep10Service, VerificationRequest};
 
 /// Helper to create a test SEP-10 service
 fn create_test_service() -> Sep10Service {
@@ -128,8 +126,8 @@ async fn test_verify_challenge_success() {
         .expect("Failed to generate challenge");
 
     // Decode and sign transaction
-    let xdr_bytes = base64::decode(&challenge_response.transaction)
-        .expect("Failed to decode challenge");
+    let xdr_bytes =
+        base64::decode(&challenge_response.transaction).expect("Failed to decode challenge");
 
     let mut envelope = stellar_base::transaction::TransactionEnvelope::from_xdr(&xdr_bytes)
         .expect("Failed to parse envelope");
@@ -137,13 +135,13 @@ async fn test_verify_challenge_success() {
     // Sign with client key
     let network = stellar_base::network::Network::new(&challenge_response.network_passphrase);
     let (transaction, mut signatures) = match envelope {
-        stellar_base::transaction::TransactionEnvelope::V1 { tx, signatures } => {
-            (tx, signatures)
-        }
+        stellar_base::transaction::TransactionEnvelope::V1 { tx, signatures } => (tx, signatures),
         _ => panic!("Unexpected envelope type"),
     };
 
-    let tx_hash = transaction.hash(&network).expect("Failed to hash transaction");
+    let tx_hash = transaction
+        .hash(&network)
+        .expect("Failed to hash transaction");
     let client_signature = client_keypair.sign(&tx_hash);
 
     let decorated_sig = stellar_base::xdr::DecoratedSignature {
@@ -220,21 +218,21 @@ async fn test_verify_challenge_replay_protection() {
         .expect("Failed to generate challenge");
 
     // Sign transaction
-    let xdr_bytes = base64::decode(&challenge_response.transaction)
-        .expect("Failed to decode challenge");
+    let xdr_bytes =
+        base64::decode(&challenge_response.transaction).expect("Failed to decode challenge");
 
     let envelope = stellar_base::transaction::TransactionEnvelope::from_xdr(&xdr_bytes)
         .expect("Failed to parse envelope");
 
     let network = stellar_base::network::Network::new(&challenge_response.network_passphrase);
     let (transaction, mut signatures) = match envelope {
-        stellar_base::transaction::TransactionEnvelope::V1 { tx, signatures } => {
-            (tx, signatures)
-        }
+        stellar_base::transaction::TransactionEnvelope::V1 { tx, signatures } => (tx, signatures),
         _ => panic!("Unexpected envelope type"),
     };
 
-    let tx_hash = transaction.hash(&network).expect("Failed to hash transaction");
+    let tx_hash = transaction
+        .hash(&network)
+        .expect("Failed to hash transaction");
     let client_signature = client_keypair.sign(&tx_hash);
 
     let decorated_sig = stellar_base::xdr::DecoratedSignature {
