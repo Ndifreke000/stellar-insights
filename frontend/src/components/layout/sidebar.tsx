@@ -9,7 +9,6 @@ import {
   Compass,
   Settings,
   Activity,
-  Zap,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
@@ -17,9 +16,9 @@ import {
   Droplets,
   Users,
   Database,
-  Calculator,
+  Trophy,
 } from "lucide-react";
-import { useState } from "react";
+import { useUserPreferences } from "@/contexts/UserPreferencesContext";
 
 const navItems = [
   { name: "Home", icon: LayoutDashboard, path: "/" },
@@ -31,7 +30,7 @@ const navItems = [
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },
   { name: "SEP-6", icon: Database, path: "/sep6" },
-  { name: "Calculator", icon: Calculator, path: "/calculator" },
+  { name: "Quests", icon: Trophy, path: "/quests" },
 ];
 
 interface SidebarProps {
@@ -41,7 +40,9 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps = {}) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const { prefs, setPrefs } = useUserPreferences();
+  const collapsed = prefs.sidebarCollapsed;
+  const setCollapsed = (val: boolean) => setPrefs({ sidebarCollapsed: val });
 
   return (
     <aside

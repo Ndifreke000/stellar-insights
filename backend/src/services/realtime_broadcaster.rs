@@ -1,7 +1,7 @@
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::models::corridor::CorridorMetrics;
-use crate::models::AnchorMetrics;
+use crate::models::{AnchorMetrics, PaymentRecord};
 use crate::rpc::StellarRpcClient;
 use crate::websocket::{WsMessage, WsState};
 use dashmap::DashMap;
@@ -49,10 +49,7 @@ pub enum BroadcastMessage {
         channel: String,
     },
     NewPayment {
-        corridor_key: String,
-        amount: f64,
-        successful: bool,
-        timestamp: String,
+        payment: PaymentRecord,
         channel: String,
     },
     HealthAlert {
@@ -383,14 +380,16 @@ impl WsMessage {
                     last_updated: Some(corridor.updated_at.to_rfc3339()),
                 }
             }
-            BroadcastMessage::AnchorStatusChange { anchor, old_status: _, .. } => {
-                WsMessage::AnchorUpdate {
-                    anchor_id: "unknown".to_string(),
-                    name: "unknown".to_string(),
-                    reliability_score: anchor.reliability_score,
-                    status: anchor.status.as_str().to_string(),
-                }
-            }
+            BroadcastMessage::AnchorStatusChange {
+                anchor,
+                old_status: _,
+                ..
+            } => WsMessage::AnchorUpdate {
+                anchor_id: "unknown".to_string(),
+                name: "unknown".to_string(),
+                reliability_score: anchor.reliability_score,
+                status: anchor.status.as_str().to_string(),
+            },
             BroadcastMessage::NewPayment { payment, .. } => {
                 let corridor = payment.get_corridor();
                 WsMessage::NewPayment {
@@ -401,14 +400,6 @@ impl WsMessage {
                         .timestamp
                         .map(|value| value.to_rfc3339())
                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                }
-            }
-            BroadcastMessage::HealthAlert { corridor_id, severity, message, timestamp } => {
-                WsMessage::HealthAlert { 
-                    corridor_id,
-                    severity,
-                    message,
-                    timestamp,
                 }
             }
             BroadcastMessage::HealthAlert {

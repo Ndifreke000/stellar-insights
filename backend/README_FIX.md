@@ -31,6 +31,35 @@ Accurate corridors: [Asset] → [Actual Asset]
 
 ## 🔧 Technical Changes
 
+## 🔒 Request Signing & Replay Protection
+
+### What is Request Signing?
+Request signing ensures API requests are authentic and untampered. Each client request includes:
+- `X-Signature`: HMAC-SHA256 signature of the request body and timestamp
+- `X-Timestamp`: Unix timestamp of request
+
+### How It Works
+1. Client generates HMAC signature using shared secret, request body, and timestamp.
+2. Server verifies signature and checks timestamp (prevents replay attacks).
+3. If valid, request is processed; otherwise, rejected.
+
+### Example (Client)
+```python
+import hmac, hashlib, time
+secret = b"your-secret-key"
+timestamp = str(int(time.time()))
+body = b"{...json...}"
+msg = timestamp.encode() + body
+signature = hmac.new(secret, msg, hashlib.sha256).hexdigest()
+# Send X-Signature and X-Timestamp headers
+```
+
+### Example (Server)
+See `backend/src/request_signing_middleware.rs` for implementation.
+
+### Replay Protection
+Requests older than 5 minutes are rejected.
+
 ### 1. Enhanced Payment Struct
 **File**: `src/rpc/stellar.rs`
 

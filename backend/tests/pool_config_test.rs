@@ -1,10 +1,13 @@
-use stellar_insights_backend::database::PoolConfig;
 use std::env;
+use std::sync::Mutex;
+use stellar_insights_backend::database::PoolConfig;
+
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_pool_config_defaults() {
     let config = PoolConfig::default();
-    
+
     assert_eq!(config.max_connections, 10);
     assert_eq!(config.min_connections, 2);
     assert_eq!(config.connect_timeout_seconds, 30);
@@ -14,21 +17,22 @@ fn test_pool_config_defaults() {
 
 #[test]
 fn test_pool_config_from_env() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Set environment variables
     env::set_var("DB_POOL_MAX_CONNECTIONS", "20");
     env::set_var("DB_POOL_MIN_CONNECTIONS", "5");
     env::set_var("DB_POOL_CONNECT_TIMEOUT_SECONDS", "60");
     env::set_var("DB_POOL_IDLE_TIMEOUT_SECONDS", "300");
     env::set_var("DB_POOL_MAX_LIFETIME_SECONDS", "3600");
-    
+
     let config = PoolConfig::from_env();
-    
+
     assert_eq!(config.max_connections, 20);
     assert_eq!(config.min_connections, 5);
     assert_eq!(config.connect_timeout_seconds, 60);
     assert_eq!(config.idle_timeout_seconds, 300);
     assert_eq!(config.max_lifetime_seconds, 3600);
-    
+
     // Clean up
     env::remove_var("DB_POOL_MAX_CONNECTIONS");
     env::remove_var("DB_POOL_MIN_CONNECTIONS");
@@ -39,15 +43,16 @@ fn test_pool_config_from_env() {
 
 #[test]
 fn test_pool_config_from_env_with_defaults() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Ensure no env vars are set
     env::remove_var("DB_POOL_MAX_CONNECTIONS");
     env::remove_var("DB_POOL_MIN_CONNECTIONS");
     env::remove_var("DB_POOL_CONNECT_TIMEOUT_SECONDS");
     env::remove_var("DB_POOL_IDLE_TIMEOUT_SECONDS");
     env::remove_var("DB_POOL_MAX_LIFETIME_SECONDS");
-    
+
     let config = PoolConfig::from_env();
-    
+
     // Should use defaults
     assert_eq!(config.max_connections, 10);
     assert_eq!(config.min_connections, 2);
@@ -58,19 +63,20 @@ fn test_pool_config_from_env_with_defaults() {
 
 #[test]
 fn test_pool_config_from_env_partial() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Set only some environment variables
     env::set_var("DB_POOL_MAX_CONNECTIONS", "15");
     env::remove_var("DB_POOL_MIN_CONNECTIONS");
     env::set_var("DB_POOL_CONNECT_TIMEOUT_SECONDS", "45");
-    
+
     let config = PoolConfig::from_env();
-    
+
     assert_eq!(config.max_connections, 15);
     assert_eq!(config.min_connections, 2); // default
     assert_eq!(config.connect_timeout_seconds, 45);
     assert_eq!(config.idle_timeout_seconds, 600); // default
     assert_eq!(config.max_lifetime_seconds, 1800); // default
-    
+
     // Clean up
     env::remove_var("DB_POOL_MAX_CONNECTIONS");
     env::remove_var("DB_POOL_CONNECT_TIMEOUT_SECONDS");
@@ -85,28 +91,28 @@ async fn test_pool_creation() {
         idle_timeout_seconds: 300,
         max_lifetime_seconds: 900,
     };
-    
+
     // Use in-memory SQLite for testing
     let result = config.create_pool("sqlite::memory:").await;
-    
+
     assert!(result.is_ok());
     let pool = result.unwrap();
-    
+
     // Verify pool was created
-    assert_eq!(pool.size(), 0); // No connections yet
+    assert_eq!(pool.size(), 1); // Respects min_connections: 1
 }
 
 #[tokio::test]
 async fn test_pool_metrics() {
     use stellar_insights_backend::database::Database;
-    
+
     let config = PoolConfig::default();
     let pool = config.create_pool("sqlite::memory:").await.unwrap();
     let db = Database::new(pool);
-    
+
     let metrics = db.pool_metrics();
-    
+
     // Initial state
-    assert_eq!(metrics.size, 0);
-    assert_eq!(metrics.idle, 0);
+    assert_eq!(metrics.size, 2);
+    assert_eq!(metrics.idle, 2);
 }

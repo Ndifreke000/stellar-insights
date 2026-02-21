@@ -1,0 +1,21 @@
+{
+  "version": "8.11.0",
+  "objects": [
+    {
+      "id": "stellar-insights-overview",
+      "type": "dashboard",
+      "attributes": {
+        "title": "Stellar Insights - Overview",
+        "description": "Main dashboard for Stellar Insights logs",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"type\":\"visualization\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{\"title\":\"Log Levels Over Time\"},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"type\":\"visualization\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{\"title\":\"Top Error Messages\"},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":15,\"w\":48,\"h\":20,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{\"title\":\"Recent Logs\"},\"panelRefName\":\"panel_3\"}]",
+        "timeRestore": true,
+        "timeFrom": "now-24h",
+        "timeTo": "now",
+        "refreshInterval": {
+          "pause": false,
+          "value": 30000
+        }
+      }
+    }
+  ]
+}

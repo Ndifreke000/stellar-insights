@@ -220,6 +220,17 @@ impl CacheManager {
         }
     }
 
+    /// Invalidate cache keys matching a pattern (alias for delete_pattern)
+    pub async fn invalidate_pattern(&self, pattern: &str) -> anyhow::Result<()> {
+        self.delete_pattern(pattern).await
+    }
+
+    /// Clean up expired entries (Redis handles this automatically, but useful for monitoring)
+    pub async fn cleanup_expired(&self) -> anyhow::Result<()> {
+        tracing::debug!("Cache cleanup triggered (Redis auto-expires keys)");
+        Ok(())
+    }
+
     /// Get current cache statistics
     pub fn get_stats(&self) -> CacheStats {
         CacheStats {

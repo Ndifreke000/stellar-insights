@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "access-control"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1079,6 +1086,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 name = "snapshot-contract"
 version = "0.0.0"
 dependencies = [
+ "access-control",
  "soroban-sdk",
 ]
 

@@ -14,6 +14,45 @@ use crate::models::{AnchorDetailResponse, CreateAnchorRequest, CreateCorridorReq
 use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
 use crate::state::AppState;
 
+pub type ApiResult<T> = Result<T, ApiError>;
+
+#[derive(Debug)]
+pub enum ApiError {
+    NotFound(String),
+    BadRequest(String),
+    InternalError(String),
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match self {
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+        };
+
+        (status, Json(serde_json::json!({ "error": message }))).into_response()
+    }
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        ApiError::InternalError(err.to_string())
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        ApiError::InternalError(err.to_string())
+    }
+}
+
+impl From<crate::rpc::RpcError> for ApiError {
+    fn from(err: crate::rpc::RpcError) -> Self {
+        ApiError::InternalError(err.to_string())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListAnchorsQuery {
     #[serde(default = "default_limit")]

@@ -64,7 +64,11 @@ impl DigestScheduler {
     }
 
     async fn generate_report(&self, period: &str) -> anyhow::Result<DigestReport> {
-        let payments = self.rpc_client.fetch_payments(500, None).await?;
+        let payments = self
+            .rpc_client
+            .fetch_payments(500, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
         
         let mut corridor_map = std::collections::HashMap::new();
         for payment in &payments {

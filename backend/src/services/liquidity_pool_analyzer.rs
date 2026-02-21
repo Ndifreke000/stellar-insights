@@ -24,7 +24,11 @@ impl LiquidityPoolAnalyzer {
     /// Fetch liquidity pools from Horizon and upsert into the database.
     /// Returns the number of pools synced.
     pub async fn sync_pools(&self) -> Result<u64> {
-        let horizon_pools = self.rpc_client.fetch_liquidity_pools(50, None).await?;
+        let horizon_pools = self
+            .rpc_client
+            .fetch_liquidity_pools(50, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
         let mut count = 0u64;
 
         for hp in &horizon_pools {

@@ -21,16 +21,29 @@ import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
+import {
+  useUserPreferences,
+  type CorridorsTimePeriod,
+} from "@/contexts/UserPreferencesContext";
 
 function CorridorsPageContent() {
+  const { prefs, setPrefs } = useUserPreferences();
+
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
-  const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
+  // Persisted preferences
+  const viewMode = prefs.corridorsViewMode;
+  const setViewMode = (v: typeof viewMode) =>
+    setPrefs({ corridorsViewMode: v });
+  const sortBy = prefs.corridorsSortBy;
+  const setSortBy = (v: typeof sortBy) => setPrefs({ corridorsSortBy: v });
+  const timePeriod = prefs.corridorsTimePeriod;
+  const setTimePeriod = (v: typeof timePeriod) =>
+    setPrefs({ corridorsTimePeriod: v });
+
   const [loading, setLoading] = useState(true);
+  // Volatile filters — intentionally session-only
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState<
-    "success_rate" | "health_score" | "liquidity"
-  >("health_score");
-  // Filter state variables
+  // Filter state variables (volatile — session only)
   const [successRateRange, setSuccessRateRange] = useState<[number, number]>([
     0, 100,
   ]);
@@ -38,7 +51,6 @@ function CorridorsPageContent() {
     0, 10000000,
   ]);
   const [assetCodeFilter, setAssetCodeFilter] = useState("");
-  const [timePeriod, setTimePeriod] = useState("7d");
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter presets state
@@ -185,7 +197,9 @@ function CorridorsPageContent() {
         <div className="lg:col-span-4 flex gap-2">
           <select
             value={timePeriod}
-            onChange={(e) => setTimePeriod(e.target.value)}
+            onChange={(e) =>
+              setTimePeriod(e.target.value as CorridorsTimePeriod)
+            }
             className="flex-1 bg-slate-900/50 border border-border/50 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-accent/50 appearance-none cursor-pointer"
           >
             <option value="7d">Time: 7 Days</option>

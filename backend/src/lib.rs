@@ -8,10 +8,14 @@ pub mod cache_invalidation;
 pub mod cache_middleware;
 pub mod database;
 pub mod db;
+pub mod request_signing_middleware;
+// pub mod email;  // Commented out - missing lettre dependency
 pub mod env_config;
 pub mod handlers;
+pub mod logging;
 pub mod http_cache;
 pub mod ingestion;
+pub mod jobs;
 pub mod ml;
 pub mod ml_handlers;
 pub mod models;
@@ -25,6 +29,8 @@ pub mod shutdown;
 pub mod snapshot;
 pub mod snapshot_handlers;
 pub mod state;
+pub mod vault;
+pub mod webhooks;
 pub mod websocket;
 
 pub mod rpc;
