@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "benchmark": "ts-node --esm benchmarks/api.bench.ts",
+    "benchmark:save-baseline": "SAVE_BASELINE=true ts-node --esm benchmarks/api.bench.ts"
   },
   "dependencies": {
     "@prisma/client": "^7.3.0",
@@ -26,10 +28,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autocannon": "^8.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "prisma": "^7.3.0",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
