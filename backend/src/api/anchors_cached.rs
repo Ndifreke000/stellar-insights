@@ -1,7 +1,5 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
-    response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -10,40 +8,8 @@ use std::sync::Arc;
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
+use crate::handlers::ApiResult;
 use crate::rpc::StellarRpcClient;
-
-pub type ApiResult<T> = Result<T, ApiError>;
-
-#[derive(Debug)]
-pub enum ApiError {
-    NotFound(String),
-    BadRequest(String),
-    InternalError(String),
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-        };
-
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    fn from(err: anyhow::Error) -> Self {
-        ApiError::InternalError(err.to_string())
-    }
-}
-
-impl From<sqlx::Error> for ApiError {
-    fn from(err: sqlx::Error) -> Self {
-        ApiError::InternalError(err.to_string())
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct ListAnchorsQuery {
@@ -113,11 +79,12 @@ pub async fn get_anchors(
                     Ok(payments) => payments,
                     Err(e) => {
                         tracing::warn!(
-                            "Failed to fetch payments for anchor {}: {}. Using cached data.",
+                            error_type = %e.error_type(),
+                            "Failed to fetch payments for anchor {}: {}",
                             anchor.stellar_account,
                             e
                         );
-                        // Fallback to database values if RPC fails
+                        // Fallback to empty so we use database metrics below
                         vec![]
                     }
                 };

@@ -46,6 +46,12 @@ impl From<sqlx::Error> for ApiError {
     }
 }
 
+impl From<crate::rpc::RpcError> for ApiError {
+    fn from(err: crate::rpc::RpcError) -> Self {
+        ApiError::InternalError(err.to_user_message())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListAnchorsQuery {
     #[serde(default = "default_limit")]

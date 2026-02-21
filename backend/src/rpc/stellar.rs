@@ -1,13 +1,78 @@
-use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use std::time::Duration;
+use tracing::info;
 
-const MAX_RETRIES: u32 = 3;
-const INITIAL_BACKOFF_MS: u64 = 100;
-const BACKOFF_MULTIPLIER: u64 = 2;
+use crate::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::rpc::error::RpcError;
+use crate::rpc::metrics;
+use crate::rpc::retry;
+
+/// Retry and circuit breaker configuration for the RPC client.
+#[derive(Clone)]
+pub struct RpcClientConfig {
+    pub max_retries: u32,
+    pub initial_backoff: Duration,
+    pub max_backoff: Duration,
+    pub circuit_breaker: CircuitBreakerConfig,
+}
+
+impl Default for RpcClientConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(5),
+            circuit_breaker: CircuitBreakerConfig::default(),
+        }
+    }
+}
+
+impl RpcClientConfig {
+    /// Load configuration from environment variables with defaults.
+    pub fn from_env() -> Self {
+        let max_retries = std::env::var("RPC_MAX_RETRIES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+        let initial_backoff = std::env::var("RPC_INITIAL_BACKOFF_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map(Duration::from_millis)
+            .unwrap_or(Duration::from_millis(100));
+        let max_backoff = std::env::var("RPC_MAX_BACKOFF_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map(Duration::from_millis)
+            .unwrap_or(Duration::from_secs(5));
+        let failure_threshold = std::env::var("RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5);
+        let success_threshold = std::env::var("RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2);
+        let timeout_secs = std::env::var("RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+        Self {
+            max_retries,
+            initial_backoff,
+            max_backoff,
+            circuit_breaker: CircuitBreakerConfig {
+                failure_threshold,
+                success_threshold,
+                timeout_duration: Duration::from_secs(timeout_secs),
+                half_open_max_calls: 3,
+            },
+        }
+    }
+}
+
+const RPC_ENDPOINT: &str = "stellar";
 
 /// Stellar RPC Client for interacting with Stellar network via RPC and Horizon API
 #[derive(Clone)]
@@ -16,6 +81,8 @@ pub struct StellarRpcClient {
     rpc_url: String,
     horizon_url: String,
     mock_mode: bool,
+    circuit_breaker: CircuitBreaker,
+    config: RpcClientConfig,
 }
 
 // ============================================================================
@@ -205,16 +272,31 @@ impl StellarRpcClient {
     /// * `horizon_url` - The Horizon API endpoint URL
     /// * `mock_mode` - If true, returns mock data instead of making real API calls
     pub fn new(rpc_url: String, horizon_url: String, mock_mode: bool) -> Self {
+        Self::new_with_config(rpc_url, horizon_url, mock_mode, RpcClientConfig::from_env())
+    }
+
+    /// Create a new client with explicit config (e.g. for tests).
+    pub fn new_with_config(
+        rpc_url: String,
+        horizon_url: String,
+        mock_mode: bool,
+        config: RpcClientConfig,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to build HTTP client");
+
+        let circuit_breaker =
+            CircuitBreaker::new(config.circuit_breaker.clone(), RPC_ENDPOINT.to_string());
 
         Self {
             client,
             rpc_url,
             horizon_url,
             mock_mode,
+            circuit_breaker,
+            config,
         }
     }
 
@@ -227,82 +309,190 @@ impl StellarRpcClient {
         )
     }
 
+    /// Convert a failed HTTP response or reqwest error into RpcError.
+    fn response_to_error(
+        status: reqwest::StatusCode,
+        body: String,
+    ) -> RpcError {
+        let status_code = status.as_u16();
+        if status_code == 429 {
+            let retry_after = None; // Could parse Retry-After header if present
+            return RpcError::RateLimitError {
+                retry_after,
+            };
+        }
+        if (500..=599).contains(&status_code) {
+            return RpcError::ServerError {
+                status: status_code,
+                message: body,
+            };
+        }
+        RpcError::ServerError {
+            status: status_code,
+            message: body,
+        }
+    }
+
+    /// Execute one HTTP GET and return response or RpcError.
+    async fn get_once(&self, url: &str) -> Result<reqwest::Response, RpcError> {
+        let response = self.client.get(url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                RpcError::TimeoutError(Duration::from_secs(30))
+            } else {
+                RpcError::NetworkError(e)
+            }
+        })?;
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(Self::response_to_error(status, body))
+        }
+    }
+
+    /// Execute one HTTP POST and return response or RpcError.
+    async fn post_once(&self, url: &str, payload: &serde_json::Value) -> Result<reqwest::Response, RpcError> {
+        let response = self.client.post(url).json(payload).send().await.map_err(|e| {
+            if e.is_timeout() {
+                RpcError::TimeoutError(Duration::from_secs(30))
+            } else {
+                RpcError::NetworkError(e)
+            }
+        })?;
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(Self::response_to_error(status, body))
+        }
+    }
+
     /// Check the health of the RPC endpoint
-    pub async fn check_health(&self) -> Result<HealthResponse> {
+    pub async fn check_health(&self) -> Result<HealthResponse, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_health_response());
         }
-
         info!("Checking RPC health at {}", self.rpc_url);
+        let result = self
+            .circuit_breaker
+            .call(async {
+                let client = self;
+                retry::retry_with_backoff(
+                    || Box::pin(client.check_health_internal()),
+                    client.config.max_retries,
+                    client.config.initial_backoff,
+                    client.config.max_backoff,
+                )
+                .await
+            })
+            .await;
+        if let Err(ref e) = result {
+            metrics::record_rpc_error(RPC_ENDPOINT, e);
+            tracing::error!(error_type = %e.error_type(), "RPC health check failed: {}", e);
+        }
+        result
+    }
 
+    async fn check_health_internal(&self) -> Result<HealthResponse, RpcError> {
         let payload = json!({
             "jsonrpc": "2.0",
             "method": "getHealth",
             "id": 1
         });
-
-        let response = self
-            .retry_request(|| async { self.client.post(&self.rpc_url).json(&payload).send().await })
-            .await
-            .context("Failed to check RPC health")?;
-
-        let json_response: JsonRpcResponse<HealthResponse> = response
+        let resp = self.post_once(&self.rpc_url, &payload).await?;
+        let json_response: JsonRpcResponse<HealthResponse> = resp
             .json()
             .await
-            .context("Failed to parse health response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         if let Some(error) = json_response.error {
-            anyhow::bail!("RPC error: {} (code: {})", error.message, error.code);
+            return Err(RpcError::JsonRpcError {
+                code: error.code,
+                message: error.message,
+            });
         }
+        json_response
+            .result
+            .ok_or_else(|| RpcError::ParseError("No result in health response".to_string()))
+    }
 
-        json_response.result.context("No result in health response")
+    /// Run an operation through circuit breaker and retry; record metrics on error.
+    async fn with_circuit_and_retry<F, Fut, T>(&self, mut f: F) -> Result<T, RpcError>
+    where
+        F: FnMut() -> std::pin::Pin<Box<Fut>>,
+        Fut: std::future::Future<Output = Result<T, RpcError>>,
+    {
+        let result = self
+            .circuit_breaker
+            .call(async move {
+                let client = self;
+                retry::retry_with_backoff(
+                    || f(),
+                    client.config.max_retries,
+                    client.config.initial_backoff,
+                    client.config.max_backoff,
+                )
+                .await
+            })
+            .await;
+        if let Err(ref e) = result {
+            metrics::record_rpc_error(RPC_ENDPOINT, e);
+            tracing::error!(error_type = %e.error_type(), "RPC request failed: {}", e);
+        }
+        result
     }
 
     /// Fetch latest ledger information
-    pub async fn fetch_latest_ledger(&self) -> Result<LedgerInfo> {
+    pub async fn fetch_latest_ledger(&self) -> Result<LedgerInfo, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_ledger_info());
         }
-
         info!("Fetching latest ledger from Horizon API");
-
-        let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
+        self.with_circuit_and_retry(|| Box::pin(self.fetch_latest_ledger_internal()))
             .await
-            .context("Failed to fetch latest ledger")?;
-
-        let horizon_response: HorizonResponse<LedgerInfo> = response
-            .json()
-            .await
-            .context("Failed to parse ledger response")?;
-
-        let ledger = horizon_response
-            .embedded
-            .and_then(|e| e.records.into_iter().next())
-            .context("No ledger data found")?;
-
-        Ok(ledger)
     }
 
-    /// I'm fetching ledgers via RPC getLedgers for sequential ingestion (issue #2)
+    async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<LedgerInfo> = resp
+            .json()
+            .await
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        horizon_response
+            .embedded
+            .and_then(|e| e.records.into_iter().next())
+            .ok_or_else(|| RpcError::ParseError("No ledger data found".to_string()))
+    }
+
+    /// Fetch ledgers via RPC getLedgers for sequential ingestion
     pub async fn fetch_ledgers(
         &self,
         start_ledger: Option<u64>,
         limit: u32,
         cursor: Option<&str>,
-    ) -> Result<GetLedgersResult> {
+    ) -> Result<GetLedgersResult, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_get_ledgers(start_ledger.unwrap_or(1000), limit));
         }
-
         info!("Fetching ledgers via RPC getLedgers");
+        let start_ledger = start_ledger;
+        let cursor_owned = cursor.map(|s| s.to_string());
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_ledgers_internal(start_ledger, limit, cursor_owned.as_deref()))
+        })
+        .await
+    }
 
+    async fn fetch_ledgers_internal(
+        &self,
+        start_ledger: Option<u64>,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<GetLedgersResult, RpcError> {
         let mut params = serde_json::Map::new();
         params.insert("pagination".to_string(), json!({ "limit": limit }));
-
-        // I must use either startLedger or cursor, not both
         if let Some(c) = cursor {
             params
                 .get_mut("pagination")
@@ -313,95 +503,92 @@ impl StellarRpcClient {
         } else if let Some(start) = start_ledger {
             params.insert("startLedger".to_string(), json!(start));
         }
-
         let payload = json!({
             "jsonrpc": "2.0",
             "method": "getLedgers",
             "id": 1,
             "params": params
         });
-
-        let response = self
-            .retry_request(|| async { self.client.post(&self.rpc_url).json(&payload).send().await })
-            .await
-            .context("Failed to fetch ledgers")?;
-
-        let json_response: JsonRpcResponse<GetLedgersResult> = response
+        let resp = self.post_once(&self.rpc_url, &payload).await?;
+        let json_response: JsonRpcResponse<GetLedgersResult> = resp
             .json()
             .await
-            .context("Failed to parse getLedgers response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         if let Some(error) = json_response.error {
-            anyhow::bail!("RPC error: {} (code: {})", error.message, error.code);
+            return Err(RpcError::JsonRpcError {
+                code: error.code,
+                message: error.message,
+            });
         }
-
         json_response
             .result
-            .context("No result in getLedgers response")
+            .ok_or_else(|| RpcError::ParseError("No result in getLedgers response".to_string()))
     }
 
     /// Fetch recent payments
-    pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>> {
+    pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
         }
-
         info!("Fetching {} payments from Horizon API", limit);
+        let cursor_owned = cursor.map(|s| s.to_string());
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_payments_internal(limit, cursor_owned.as_deref()))
+        })
+        .await
+    }
 
+    async fn fetch_payments_internal(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Payment>, RpcError> {
         let mut url = format!("{}/payments?order=desc&limit={}", self.horizon_url, limit);
-
-        if let Some(cursor) = cursor {
-            url.push_str(&format!("&cursor={}", cursor));
+        if let Some(c) = cursor {
+            url.push_str(&format!("&cursor={}", c));
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch payments")?;
-
-        let horizon_response: HorizonResponse<Payment> = response
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<Payment> = resp
             .json()
             .await
-            .context("Failed to parse payments response")?;
-
-        let payments = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
-
-        Ok(payments)
+            .unwrap_or_default())
     }
 
     /// Fetch recent trades
-    pub async fn fetch_trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>> {
+    pub async fn fetch_trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_trades(limit));
         }
-
         info!("Fetching {} trades from Horizon API", limit);
+        let cursor_owned = cursor.map(|s| s.to_string());
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_trades_internal(limit, cursor_owned.as_deref()))
+        })
+        .await
+    }
 
+    async fn fetch_trades_internal(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Trade>, RpcError> {
         let mut url = format!("{}/trades?order=desc&limit={}", self.horizon_url, limit);
-
-        if let Some(cursor) = cursor {
-            url.push_str(&format!("&cursor={}", cursor));
+        if let Some(c) = cursor {
+            url.push_str(&format!("&cursor={}", c));
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch trades")?;
-
-        let horizon_response: HorizonResponse<Trade> = response
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<Trade> = resp
             .json()
             .await
-            .context("Failed to parse trades response")?;
-
-        let trades = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
-
-        Ok(trades)
+            .unwrap_or_default())
     }
 
     /// Fetch order book for a trading pair
@@ -410,51 +597,52 @@ impl StellarRpcClient {
         selling_asset: &Asset,
         buying_asset: &Asset,
         limit: u32,
-    ) -> Result<OrderBook> {
+    ) -> Result<OrderBook, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_order_book(selling_asset, buying_asset));
         }
-
         info!("Fetching order book from Horizon API");
+        let selling_asset = selling_asset.clone();
+        let buying_asset = buying_asset.clone();
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_order_book_internal(&selling_asset, &buying_asset, limit))
+        })
+        .await
+    }
 
+    async fn fetch_order_book_internal(
+        &self,
+        selling_asset: &Asset,
+        buying_asset: &Asset,
+        limit: u32,
+    ) -> Result<OrderBook, RpcError> {
         let selling_params = Self::asset_to_query_params("selling", selling_asset);
         let buying_params = Self::asset_to_query_params("buying", buying_asset);
-
         let url = format!(
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
+        let resp = self.get_once(&url).await?;
+        resp.json()
             .await
-            .context("Failed to fetch order book")?;
-
-        let order_book: OrderBook = response
-            .json()
-            .await
-            .context("Failed to parse order book response")?;
-
-        Ok(order_book)
+            .map_err(|e| RpcError::ParseError(e.to_string()))
     }
 
-    pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>> {
+    pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(5));
         }
-
-        let url = format!("{}/ledgers/{}/payments?limit=200", self.horizon_url, sequence);
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
+        self.with_circuit_and_retry(|| Box::pin(self.fetch_payments_for_ledger_internal(sequence)))
             .await
-            .context("Failed to fetch ledger payments")?;
+    }
 
-        let horizon_response: HorizonResponse<Payment> = response
+    async fn fetch_payments_for_ledger_internal(&self, sequence: u64) -> Result<Vec<Payment>, RpcError> {
+        let url = format!("{}/ledgers/{}/payments?limit=200", self.horizon_url, sequence);
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<Payment> = resp
             .json()
             .await
-            .context("Failed to parse ledger payments response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -462,23 +650,29 @@ impl StellarRpcClient {
     }
 
     /// Fetch transactions for a specific ledger
-    pub async fn fetch_transactions_for_ledger(&self, sequence: u64) -> Result<Vec<HorizonTransaction>> {
+    pub async fn fetch_transactions_for_ledger(&self, sequence: u64) -> Result<Vec<HorizonTransaction>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_transactions(5));
         }
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_transactions_for_ledger_internal(sequence))
+        })
+        .await
+    }
 
-        let url = format!("{}/ledgers/{}/transactions?limit=200&include_failed=true", self.horizon_url, sequence);
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch ledger transactions")?;
-
-        let horizon_response: HorizonResponse<HorizonTransaction> = response
+    async fn fetch_transactions_for_ledger_internal(
+        &self,
+        sequence: u64,
+    ) -> Result<Vec<HorizonTransaction>, RpcError> {
+        let url = format!(
+            "{}/ledgers/{}/transactions?limit=200&include_failed=true",
+            self.horizon_url, sequence
+        );
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<HorizonTransaction> = resp
             .json()
             .await
-            .context("Failed to parse ledger transactions response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -490,37 +684,39 @@ impl StellarRpcClient {
         &self,
         account_id: &str,
         limit: u32,
-    ) -> Result<Vec<Payment>> {
+    ) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
         }
-
         info!(
             "Fetching {} payments for account {} from Horizon API",
             limit, account_id
         );
+        let account_id = account_id.to_string();
+        self.with_circuit_and_retry(|| {
+            Box::pin(self.fetch_account_payments_internal(&account_id, limit))
+        })
+        .await
+    }
 
+    async fn fetch_account_payments_internal(
+        &self,
+        account_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Payment>, RpcError> {
         let url = format!(
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch account payments")?;
-
-        let horizon_response: HorizonResponse<Payment> = response
+        let resp = self.get_once(&url).await?;
+        let horizon_response: HorizonResponse<Payment> = resp
             .json()
             .await
-            .context("Failed to parse payments response")?;
-
-        let payments = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
-
-        Ok(payments)
+            .unwrap_or_default())
     }
 
     // ============================================================================
@@ -541,78 +737,6 @@ impl StellarRpcClient {
                 prefix,
                 asset.asset_issuer.as_ref().unwrap()
             )
-        }
-    }
-
-    /// Retry a request with exponential backoff
-    async fn retry_request<F, Fut>(&self, request_fn: F) -> Result<reqwest::Response>
-    where
-        F: Fn() -> Fut,
-        Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
-    {
-        let mut attempt = 0;
-        let mut backoff_ms = INITIAL_BACKOFF_MS;
-
-        loop {
-            let start_time = Instant::now();
-
-            match request_fn().await {
-                Ok(response) => {
-                    let elapsed = start_time.elapsed().as_millis();
-
-                    if response.status().is_success() {
-                        debug!("Request succeeded in {} ms", elapsed);
-                        return Ok(response);
-                    } else {
-                        let status = response.status();
-                        let error_text = response
-                            .text()
-                            .await
-                            .unwrap_or_else(|_| "Unknown error".to_string());
-
-                        warn!(
-                            "Request failed with status {} in {} ms: {}",
-                            status, elapsed, error_text
-                        );
-
-                        if attempt >= MAX_RETRIES {
-                            anyhow::bail!(
-                                "Request failed after {} retries. Status: {}, Error: {}",
-                                MAX_RETRIES,
-                                status,
-                                error_text
-                            );
-                        }
-                    }
-                }
-                Err(err) => {
-                    let elapsed = start_time.elapsed().as_millis();
-                    warn!(
-                        "Request error after {} ms (attempt {}/{}): {}",
-                        elapsed,
-                        attempt + 1,
-                        MAX_RETRIES + 1,
-                        err
-                    );
-
-                    if attempt >= MAX_RETRIES {
-                        return Err(err)
-                            .context(format!("Request failed after {} retries", MAX_RETRIES));
-                    }
-                }
-            }
-
-            attempt += 1;
-
-            info!(
-                "Retrying request in {} ms (attempt {}/{})",
-                backoff_ms,
-                attempt + 1,
-                MAX_RETRIES + 1
-            );
-
-            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            backoff_ms *= BACKOFF_MULTIPLIER;
         }
     }
 

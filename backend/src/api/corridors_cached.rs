@@ -149,19 +149,24 @@ pub async fn list_corridors(
         cache.config.get_ttl("corridor"),
         async {
             // **RPC DATA**: Fetch recent payments to identify active corridors
-            let payments = match rpc_client.fetch_payments(200, None).await {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Failed to fetch payments from RPC: {}", e);
-                    return Ok(vec![]);
-                }
-            };
+            let payments = rpc_client.fetch_payments(200, None).await.map_err(|e| {
+                tracing::error!(
+                    error_type = %e.error_type(),
+                    "Failed to fetch payments from RPC: {}",
+                    e
+                );
+                e
+            })?;
 
-            // **RPC DATA**: Fetch recent trades for volume data
+            // **RPC DATA**: Fetch recent trades for volume data (best-effort; empty on failure)
             let _trades = match rpc_client.fetch_trades(200, None).await {
                 Ok(t) => t,
                 Err(e) => {
-                    tracing::warn!("Failed to fetch trades from RPC: {}", e);
+                    tracing::warn!(
+                        error_type = %e.error_type(),
+                        "Failed to fetch trades from RPC: {}",
+                        e
+                    );
                     vec![]
                 }
             };
