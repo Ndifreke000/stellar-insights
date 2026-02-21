@@ -1,0 +1,11 @@
+# k6 results
+results/
+*.json
+*.html
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
