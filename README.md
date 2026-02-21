@@ -44,9 +44,12 @@ docker run --name stellar-postgres \
 ```bash
 cd backend
 cp .env.example .env
+# Edit .env with your configuration (see ENVIRONMENT_SETUP.md)
 cargo run
 ```
 Server starts at `http://localhost:8080`
+
+**⚠️ Security Note:** Never commit `.env` to version control. See [backend/ENVIRONMENT_SETUP.md](./backend/ENVIRONMENT_SETUP.md) for detailed configuration guide.
 
 ### 3. Run Frontend
 ```bash
@@ -77,6 +80,9 @@ stellar-insights/
 - `GET /api/prices/batch?assets=XLM:native,USDC:...` - Get prices for multiple assets
 - `GET /api/prices/convert?asset=XLM:native&amount=100` - Convert asset amount to USD
 - `GET /api/prices/cache-stats` - Get price cache statistics
+
+**Cost Calculator Endpoint:**
+- `POST /api/cost-calculator/estimate` - Estimate cross-border payment costs and compare routes
 
 **RPC Endpoints:**
 - `GET /api/rpc/health` - Network health check
@@ -186,11 +192,14 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 ## 📖 Documentation
 
+- [Environment Setup](./backend/ENVIRONMENT_SETUP.md) - **START HERE** - Environment configuration guide
+- [Database Pool Configuration](./backend/DATABASE_POOL_CONFIG.md) - Connection pool tuning
 - [RPC.md](./docs/RPC.md) - API endpoints and usage
 - [RPC Data Sources](./docs/RPC_DATA_SOURCES.md) - Stellar RPC integration details
 - [RPC Integration Summary](./docs/RPC_INTEGRATION_SUMMARY.md) - Integration overview
 - [SEP-24](./docs/SEP24.md) - Hosted Deposit/Withdrawal
 - [SEP-31](./docs/SEP31.md) - Cross-Border Payments
+- [Cost Calculator](./docs/COST_CALCULATOR.md) - Route-by-route payment cost estimation
 - [Account Merges](./docs/ACCOUNT_MERGES.md) - Account merge detection and analytics
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development guidelines
 - [Remaining Issues](./issues/REMAINING-ISSUES-022-090.md) - Development tasks

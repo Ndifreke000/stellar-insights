@@ -1,0 +1,69 @@
+name: Deploy with Vault AppRole
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: backend=info,tower_http=debug
+
+jobs:
+  test-with-approle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate to Vault with AppRole
+        id: vault-auth
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "${{ secrets.VAULT_ADDR }}/v1/auth/approle/login" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"role_id\": \"${{ secrets.VAULT_ROLE_ID }}\",
+              \"secret_id\": \"${{ secrets.VAULT_SECRET_ID }}\"
+            }" | jq -r '.auth.client_token')
+          
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to obtain Vault token"
+            exit 1
+          fi
+          
+          echo "::add-mask::$TOKEN"
+          echo "VAULT_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Read JWT_SECRET from Vault
+        run: |
+          JWT_SECRET=$(curl -s -X GET \
+            "${{ secrets.VAULT_ADDR }}/v1/data/secret/stellar/jwt_secret" \
+            -H "X-Vault-Token: $VAULT_TOKEN" | jq -r '.data.data.value')
+          
+          echo "::add-mask::$JWT_SECRET"
+          echo "JWT_SECRET=$JWT_SECRET" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: cargo test --lib --verbose
+        working-directory: backend
+        env:
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+
+      - name: Build backend
+        run: cargo build --release
+        working-directory: backend
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        working-directory: backend
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+        working-directory: backend

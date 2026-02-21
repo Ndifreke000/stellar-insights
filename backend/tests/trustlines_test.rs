@@ -37,7 +37,10 @@ async fn test_trustlines_snapshots(pool: SqlitePool) {
     let rankings = analyzer.get_trustline_rankings(5).await.unwrap();
     let asset = &rankings[0];
 
-    let history = analyzer.get_asset_history(&asset.asset_code, &asset.asset_issuer, 10).await.unwrap();
+    let history = analyzer
+        .get_asset_history(&asset.asset_code, &asset.asset_issuer, 10)
+        .await
+        .unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].asset_code, asset.asset_code);
     assert_eq!(history[0].total_trustlines, asset.total_trustlines);

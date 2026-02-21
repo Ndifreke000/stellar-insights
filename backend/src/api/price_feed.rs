@@ -199,7 +199,10 @@ pub async fn convert_to_usd(
     State(price_feed): State<Arc<PriceFeedClient>>,
     Query(params): Query<ConvertQuery>,
 ) -> impl IntoResponse {
-    match price_feed.convert_to_usd(&params.asset, params.amount).await {
+    match price_feed
+        .convert_to_usd(&params.asset, params.amount)
+        .await
+    {
         Ok(amount_usd) => {
             let price_usd = amount_usd / params.amount;
             let response = ConvertResponse {

@@ -8,11 +8,11 @@
 //! 5. Submit to smart contract ✅ (mocked)
 //! 6. Verify submission success ✅ (mocked)
 
+use sqlx::Row;
 use std::sync::Arc;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::services::snapshot::SnapshotService;
 use stellar_insights_backend::snapshot::schema::AnalyticsSnapshot;
-use sqlx::Row;
 
 async fn setup_test_database() -> Arc<Database> {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -196,11 +196,12 @@ async fn test_acceptance_criteria_4_store_hash_in_database() {
     let result = service.generate_and_submit_snapshot(4).await.unwrap();
 
     // Verify stored in database
-    let stored: sqlx::sqlite::SqliteRow = sqlx::query("SELECT id, hash, epoch, data FROM snapshots WHERE id = ?")
-        .bind(&result.snapshot_id)
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+    let stored: sqlx::sqlite::SqliteRow =
+        sqlx::query("SELECT id, hash, epoch, data FROM snapshots WHERE id = ?")
+            .bind(&result.snapshot_id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
 
     let stored_hash: String = stored.get("hash");
     let stored_epoch: i64 = stored.get("epoch");
@@ -264,7 +265,7 @@ async fn test_complete_workflow() {
     // Verify determinism
     let mut snapshot1 = service.aggregate_all_metrics(epoch).await.unwrap();
     let mut snapshot2 = service.aggregate_all_metrics(epoch).await.unwrap();
-    
+
     // Normalize timestamps
     snapshot2.timestamp = snapshot1.timestamp;
 

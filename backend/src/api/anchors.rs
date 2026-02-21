@@ -5,7 +5,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use crate::models::AnchorMetadata;
+use crate::services::stellar_toml::StellarTomlClient;
 use crate::state::AppState;
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -65,6 +68,8 @@ pub struct AnchorMetricsResponse {
     pub successful_transactions: i64,
     pub failed_transactions: i64,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<AnchorMetadata>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,6 +88,15 @@ pub async fn get_anchors(
         .list_anchors(params.limit, params.offset)
         .await?;
 
+    // Create stellar.toml client
+    let toml_client = Arc::new(
+        StellarTomlClient::new(
+            app_state.redis_connection.clone(),
+            Some("Public Global Stellar Network ; September 2015".to_string()),
+        )
+        .map_err(|e| ApiError::InternalError(format!("Failed to create TOML client: {}", e)))?,
+    );
+
     let mut anchor_responses = Vec::new();
 
     for anchor in anchors {
@@ -96,6 +110,35 @@ pub async fn get_anchors(
             0.0
         };
 
+        // Fetch stellar.toml metadata if home_domain is available
+        let metadata = if let Some(ref domain) = anchor.home_domain {
+            match toml_client.fetch_toml(domain).await {
+                Ok(toml) => {
+                    let supported_currencies = toml
+                        .currencies
+                        .as_ref()
+                        .map(|currencies| currencies.iter().map(|c| c.code.clone()).collect());
+
+                    Some(AnchorMetadata {
+                        organization_name: toml.organization_name,
+                        organization_dba: toml.organization_dba,
+                        organization_url: toml.organization_url,
+                        organization_logo: toml.organization_logo,
+                        organization_description: toml.organization_description,
+                        organization_support_email: toml.organization_support_email,
+                        supported_currencies,
+                        fetched_at: Some(toml.fetched_at),
+                    })
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to fetch stellar.toml for {}: {}", domain, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let anchor_response = AnchorMetricsResponse {
             id: anchor.id.to_string(),
             name: anchor.name,
@@ -107,6 +150,7 @@ pub async fn get_anchors(
             successful_transactions: anchor.successful_transactions,
             failed_transactions: anchor.failed_transactions,
             status: anchor.status,
+            metadata,
         };
 
         anchor_responses.push(anchor_response);

@@ -57,7 +57,10 @@ pub fn routes(analyzer: Arc<TrustlineAnalyzer>) -> Router {
     Router::new()
         .route("/stats", get(get_trustline_metrics))
         .route("/rankings", get(get_trustline_rankings))
-        .route("/:asset_code/:asset_issuer/history", get(get_trustline_history))
+        .route(
+            "/:asset_code/:asset_issuer/history",
+            get(get_trustline_history),
+        )
         .with_state(analyzer)
 }
 
