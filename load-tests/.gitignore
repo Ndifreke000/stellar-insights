@@ -1,0 +1,13 @@
+# k6 test results
+load-test-results/
+*.json
+*.log
+*.html
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
