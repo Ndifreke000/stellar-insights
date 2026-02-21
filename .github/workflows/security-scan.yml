@@ -23,7 +23,7 @@ jobs:
           output: trivy-report.json
 
       - name: Upload Trivy artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: trivy-report
           path: trivy-report.json
@@ -42,7 +42,7 @@ jobs:
           output: tfsec-report.json
 
       - name: Upload tfsec artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tfsec-report
           path: tfsec-report.json
