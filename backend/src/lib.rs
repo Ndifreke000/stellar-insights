@@ -26,6 +26,7 @@ pub mod shutdown;
 pub mod snapshot;
 pub mod snapshot_handlers;
 pub mod state;
+pub mod webhooks;
 pub mod websocket;
 
 pub mod rpc;

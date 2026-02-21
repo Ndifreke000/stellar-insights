@@ -21,6 +21,8 @@ use stellar_insights_backend::api::cost_calculator;
 use stellar_insights_backend::api::fee_bump;
 use stellar_insights_backend::api::liquidity_pools;
 use stellar_insights_backend::api::metrics_cached;
+use stellar_insights_backend::api::oauth;
+use stellar_insights_backend::api::webhooks;
 use stellar_insights_backend::auth::AuthService;
 use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
@@ -42,6 +44,7 @@ use stellar_insights_backend::services::price_feed::{
 };
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
+use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
 use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
 use stellar_insights_backend::state::AppState;
 use stellar_insights_backend::websocket::WsState;
@@ -358,6 +361,14 @@ async fn main() -> Result<()> {
         realtime_broadcaster.start().await;
     });
 
+    // Start Webhook Dispatcher background task
+    let webhook_dispatcher = WebhookDispatcher::new(pool.clone());
+    tokio::spawn(async move {
+        if let Err(e) = webhook_dispatcher.run().await {
+            tracing::error!("Webhook dispatcher encountered fatal error: {}", e);
+        }
+    });
+
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
@@ -622,6 +633,22 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
+    // Build OAuth routes
+    let oauth_routes = oauth::routes(pool.clone());
+
+    // Build webhook routes (require authentication)
+    let webhook_routes = Router::new()
+        .nest("/api/webhooks", webhooks::routes(pool.clone()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn(auth_middleware))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
     // Build cache stats and metrics routes
     let cache_routes = cache_stats::routes(Arc::clone(&cache));
     let metrics_routes = metrics_cached::routes(Arc::clone(&cache));
@@ -759,6 +786,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .merge(swagger_routes)
         .merge(auth_routes)
+        .merge(oauth_routes)
+        .merge(webhook_routes)
         .merge(cached_routes)
         .merge(anchor_routes)
         .merge(protected_anchor_routes)

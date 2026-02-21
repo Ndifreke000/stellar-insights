@@ -20,6 +20,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
+hmac = "0.12"
 ndarray = "0.15"
 rand = "0.8"
 dotenv = "0.15"
