@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "benchmark": "node benchmarks/api.bench.mjs",
+    "benchmark:save-baseline": "SAVE_BASELINE=true node benchmarks/api.bench.mjs",
+    "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^7.3.0",
@@ -23,11 +26,12 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autocannon": "^8.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.1.4",
+    "eslint-config-next": "16.1.6",
     "prisma": "^7.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"

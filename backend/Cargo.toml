@@ -3,38 +3,60 @@ name = "stellar-insights-backend"
 version = "0.1.0"
 edition = "2021"
 
+# Clippy linting configuration
+[lints.clippy]
+# Enable all clippy warnings
+all = "warn"
+# Enable pedantic lints for code quality
+pedantic = "warn"
+# Enable nursery lints (experimental but useful)
+nursery = "warn"
+
+# Allow some pedantic lints that are too strict for this codebase
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["ws"] }
 tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+tracing-logstash = "0.2"
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
+hmac = "0.12"
 ndarray = "0.15"
-rand = "0.8"
+rand = "0.10"
 dotenv = "0.15"
 redis = { version = "0.25", features = ["aio", "tokio-comp"] }
 async-lock = "3.0"
 futures = "0.3"
-tokio-tungstenite = "0.21"
-dashmap = "5.5"
+tokio-tungstenite = "0.24"
+dashmap = "6.1"
 stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
+# stellar-base = "0.1"  # Commented out due to compilation errors with sodiumoxide
 base64 = "0.22"
 jsonwebtoken = "9.0"
+toml = "0.8"
+url = "2.5"
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
 async-trait = "0.1"
 urlencoding = "2.1"
+data-encoding = "2.6"
+aes-gcm = "0.10.3"
 
 [dev-dependencies]
 tempfile = "3.0"

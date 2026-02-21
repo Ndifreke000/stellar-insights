@@ -1,4 +1,10 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::HeaderMap,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -15,7 +21,10 @@ pub struct MetricsOverview {
 }
 
 /// Handler for GET /api/metrics/overview (cached with 1 min TTL)
-pub async fn metrics_overview(State(cache): State<Arc<CacheManager>>) -> Json<MetricsOverview> {
+pub async fn metrics_overview(
+    State(cache): State<Arc<CacheManager>>,
+    headers: HeaderMap,
+) -> Response {
     let cache_key = keys::metrics_overview();
 
     let overview = <()>::get_or_fetch(
@@ -42,7 +51,15 @@ pub async fn metrics_overview(State(cache): State<Arc<CacheManager>>) -> Json<Me
         corridor_count: 0,
     });
 
-    Json(overview)
+    let ttl = cache.config.get_ttl("dashboard");
+    match crate::http_cache::cached_json_response(&headers, &cache_key, &overview, ttl) {
+        Ok(response) => response,
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
 }
 
 pub fn routes(cache: Arc<CacheManager>) -> Router {

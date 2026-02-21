@@ -331,13 +331,18 @@ impl AggregationDb {
 }
 
 // Database row structures
+// Note: Some fields are fetched from DB for completeness but not used in Rust code.
+// They're kept for potential future use and to match the SQL SELECT statement.
 #[derive(sqlx::FromRow)]
-#[allow(dead_code)]
 struct PaymentRecordRow {
     id: String,
+    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     transaction_hash: String,
+    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     source_account: String,
+    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     destination_account: String,
+    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     asset_type: String,
     asset_code: Option<String>,
     asset_issuer: Option<String>,

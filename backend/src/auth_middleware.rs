@@ -1,12 +1,17 @@
 use axum::{
-    extract::Request,
+    extract::{Extension, Request},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use std::sync::Arc;
 
 use crate::auth::Claims;
+
+/// JWT secret shared via extension
+#[derive(Clone)]
+pub struct JwtSecret(pub Arc<str>);
 
 /// Extract user from authenticated request
 #[derive(Debug, Clone)]
@@ -15,8 +20,24 @@ pub struct AuthUser {
     pub username: String,
 }
 
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts.extensions.get::<AuthUser>().cloned().ok_or(AuthError::MissingToken)
+    }
+}
+
 /// Auth middleware - validates JWT from Authorization header
-pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, AuthError> {
+pub async fn auth_middleware(
+    Extension(JwtSecret(jwt_secret)): Extension<JwtSecret>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, AuthError> {
     // Extract Authorization header
     let auth_header = req
         .headers()
@@ -29,12 +50,8 @@ pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, A
         .strip_prefix("Bearer ")
         .ok_or(AuthError::InvalidToken)?;
 
-    // Get JWT secret from environment
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
-
     // Validate token
-    let claims = validate_access_token(token, &jwt_secret)?;
+    let claims = validate_access_token(token, jwt_secret.as_ref())?;
 
     // Attach user to request extensions
     let auth_user = AuthUser {

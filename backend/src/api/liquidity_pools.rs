@@ -60,6 +60,8 @@ async fn get_pool_stats(
         .await
         .unwrap_or_else(|_| LiquidityPoolStats {
             total_pools: 0,
+            total_liquidity_usd: 0.0,
+            avg_pool_size_usd: 0.0,
             total_value_locked_usd: 0.0,
             total_volume_24h_usd: 0.0,
             total_fees_24h_usd: 0.0,

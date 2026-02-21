@@ -1,6 +1,8 @@
+use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::analytics::compute_anchor_metrics;
@@ -8,6 +10,70 @@ use crate::models::{
     Anchor, AnchorDetailResponse, AnchorMetricsHistory, Asset, CorridorRecord, CreateAnchorRequest,
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
+
+/// Configuration for database connection pool
+#[derive(Debug, Clone)]
+pub struct PoolConfig {
+    pub max_connections: u32,
+    pub min_connections: u32,
+    pub connect_timeout_seconds: u64,
+    pub idle_timeout_seconds: u64,
+    pub max_lifetime_seconds: u64,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self {
+            max_connections: 10,
+            min_connections: 2,
+            connect_timeout_seconds: 30,
+            idle_timeout_seconds: 600,
+            max_lifetime_seconds: 1800,
+        }
+    }
+}
+
+impl PoolConfig {
+    /// Load pool configuration from environment variables
+    pub fn from_env() -> Self {
+        Self {
+            max_connections: std::env::var("DB_POOL_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10),
+            min_connections: std::env::var("DB_POOL_MIN_CONNECTIONS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2),
+            connect_timeout_seconds: std::env::var("DB_POOL_CONNECT_TIMEOUT_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
+            idle_timeout_seconds: std::env::var("DB_POOL_IDLE_TIMEOUT_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(600),
+            max_lifetime_seconds: std::env::var("DB_POOL_MAX_LIFETIME_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1800),
+        }
+    }
+
+    /// Create a configured SQLite pool with these settings
+    pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(self.max_connections)
+            .min_connections(self.min_connections)
+            .acquire_timeout(Duration::from_secs(self.connect_timeout_seconds))
+            .idle_timeout(Some(Duration::from_secs(self.idle_timeout_seconds)))
+            .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
+            .connect(database_url)
+            .await?;
+
+        Ok(pool)
+    }
+}
 
 /// Parameters for updating anchor from RPC data
 pub struct AnchorRpcUpdate {
@@ -34,13 +100,22 @@ pub struct AnchorMetricsParams {
     pub volume_usd: Option<f64>,
 }
 
+/// Connection pool metrics
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PoolMetrics {
+    pub size: u32,
+    pub idle: usize,
+}
+
 pub struct Database {
     pool: SqlitePool,
+    pub admin_audit_logger: AdminAuditLogger,
 }
 
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let admin_audit_logger = AdminAuditLogger::new(pool.clone());
+        Self { pool, admin_audit_logger }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -49,6 +124,14 @@ impl Database {
 
     pub fn corridor_aggregates(&self) -> crate::db::aggregates::CorridorAggregates {
         crate::db::aggregates::CorridorAggregates::new(self.pool.clone())
+    }
+
+    /// Get connection pool metrics
+    pub fn pool_metrics(&self) -> PoolMetrics {
+        PoolMetrics {
+            size: self.pool.size(),
+            idle: self.pool.num_idle(),
+        }
     }
 
     // Anchor operations
@@ -664,6 +747,115 @@ impl Database {
             .await
     }
 
+    /// Muxed account analytics: counts and top addresses from payments table.
+    /// Uses M-address detection (starts with 'M', length 69).
+    pub async fn get_muxed_analytics(&self, top_limit: i64) -> Result<MuxedAccountAnalytics> {
+        use crate::muxed;
+        const MUXED_LEN: i64 = 69;
+
+        let total_muxed_payments = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM payments
+            WHERE (source_account LIKE 'M%' AND LENGTH(source_account) = ?1)
+               OR (destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1)
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .fetch_one(&self.pool)
+        .await?;
+
+        #[derive(sqlx::FromRow)]
+        struct AddrCount {
+            addr: String,
+            cnt: i64,
+        }
+
+        let source_counts: Vec<AddrCount> = sqlx::query_as(
+            r#"
+            SELECT source_account AS addr, COUNT(*) AS cnt FROM payments
+            WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
+            GROUP BY source_account
+            ORDER BY cnt DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .bind(top_limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let dest_counts: Vec<AddrCount> = sqlx::query_as(
+            r#"
+            SELECT destination_account AS addr, COUNT(*) AS cnt FROM payments
+            WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
+            GROUP BY destination_account
+            ORDER BY cnt DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .bind(top_limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut by_addr: std::collections::HashMap<String, (i64, i64)> =
+            std::collections::HashMap::new();
+        for row in source_counts {
+            by_addr.entry(row.addr).or_insert((0, 0)).0 = row.cnt;
+        }
+        for row in dest_counts {
+            by_addr.entry(row.addr).or_insert((0, 0)).1 = row.cnt;
+        }
+
+        let mut top_muxed_by_activity: Vec<MuxedAccountUsage> = by_addr
+            .into_iter()
+            .map(|(account_address, (src, dest))| {
+                let total = src + dest;
+                let info = muxed::parse_muxed_address(&account_address);
+                MuxedAccountUsage {
+                    account_address,
+                    base_account: info.as_ref().and_then(|i| i.base_account.clone()),
+                    muxed_id: info.and_then(|i| i.muxed_id),
+                    payment_count_as_source: src,
+                    payment_count_as_destination: dest,
+                    total_payments: total,
+                }
+            })
+            .collect();
+        top_muxed_by_activity.sort_by(|a, b| b.total_payments.cmp(&a.total_payments));
+        top_muxed_by_activity.truncate(top_limit as usize);
+
+        let unique_muxed_addresses = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(DISTINCT addr) FROM (
+                SELECT source_account AS addr FROM payments WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
+                UNION
+                SELECT destination_account AS addr FROM payments WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
+            )
+            "#,
+        )
+        .bind(MUXED_LEN)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let base_accounts_with_muxed: Vec<String> = top_muxed_by_activity
+            .iter()
+            .filter_map(|u| u.base_account.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
+        Ok(MuxedAccountAnalytics {
+            total_muxed_accounts: None,
+            active_accounts: None,
+            top_accounts: None,
+            total_muxed_payments: Some(total_muxed_payments),
+            unique_muxed_addresses: Some(unique_muxed_addresses),
+            top_muxed_by_activity: Some(top_muxed_by_activity),
+            base_accounts_with_muxed: Some(base_accounts_with_muxed),
+        })
+    }
+
     // =========================
     // Transaction Builder Methods
     // =========================
@@ -734,7 +926,7 @@ impl Database {
         signature: &str,
     ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
-        
+
         sqlx::query(
             r#"
             INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
@@ -751,11 +943,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn update_transaction_status(
-        &self,
-        id: &str,
-        status: &str,
-    ) -> Result<()> {
+    pub async fn update_transaction_status(&self, id: &str, status: &str) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE pending_transactions

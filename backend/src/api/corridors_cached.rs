@@ -1,16 +1,20 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
+use anyhow::anyhow;
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
-use crate::handlers::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::models::SortBy;
+use crate::rpc::error::{with_retry, CircuitBreaker, CircuitBreakerConfig, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -31,7 +35,7 @@ impl AssetPair {
 /// Handles regular payments, path_payment_strict_send, and path_payment_strict_receive
 fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<AssetPair> {
     let operation_type = payment.operation_type.as_deref().unwrap_or("payment");
-    
+
     match operation_type {
         "path_payment_strict_send" | "path_payment_strict_receive" => {
             // Path payments have explicit source and destination assets
@@ -48,7 +52,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
             } else {
                 return None;
             };
-            
+
             let destination_asset = if payment.asset_type == "native" {
                 "XLM:native".to_string()
             } else {
@@ -58,7 +62,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
                     payment.asset_issuer.as_deref().unwrap_or("unknown")
                 )
             };
-            
+
             Some(AssetPair {
                 source_asset,
                 destination_asset,
@@ -75,7 +79,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
                     payment.asset_issuer.as_deref().unwrap_or("unknown")
                 )
             };
-            
+
             Some(AssetPair {
                 source_asset: asset.clone(),
                 destination_asset: asset,
@@ -259,6 +263,17 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
     }
 }
 
+fn rpc_circuit_breaker() -> Arc<Mutex<CircuitBreaker>> {
+    static CIRCUIT_BREAKER: OnceLock<Arc<Mutex<CircuitBreaker>>> = OnceLock::new();
+    CIRCUIT_BREAKER
+        .get_or_init(|| {
+            Arc::new(Mutex::new(CircuitBreaker::new(
+                CircuitBreakerConfig::default(),
+            )))
+        })
+        .clone()
+}
+
 /// Generate cache key for corridor list with filters
 fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     let filter_str = format!(
@@ -301,7 +316,8 @@ pub async fn list_corridors(
         Arc<PriceFeedClient>,
     )>,
     Query(params): Query<ListCorridorsQuery>,
-) -> ApiResult<Json<Vec<CorridorResponse>>> {
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let cache_key = generate_corridor_list_cache_key(&params);
 
     let corridors = <()>::get_or_fetch(
@@ -309,8 +325,38 @@ pub async fn list_corridors(
         &cache_key,
         cache.config.get_ttl("corridor"),
         async {
+            let circuit_breaker = rpc_circuit_breaker();
+
             // **RPC DATA**: Fetch recent payments to identify active corridors
-            let payments = match rpc_client.fetch_payments(200, None).await {
+            let payments = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_payments(200, None)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {}", e))?;
+
+            // **RPC DATA**: Fetch recent trades for volume data
+            let _trades = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_trades(200, None)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {}", e))?;
+            // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
+            // Use paginated fetch to get more complete data (up to configured limit)
+            let payments = match rpc_client.fetch_all_payments(Some(1000)).await {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!("Failed to fetch payments from RPC: {}", e);
@@ -318,8 +364,8 @@ pub async fn list_corridors(
                 }
             };
 
-            // **RPC DATA**: Fetch recent trades for volume data
-            let _trades = match rpc_client.fetch_trades(200, None).await {
+            // **RPC DATA**: Fetch recent trades with pagination for volume data
+            let _trades = match rpc_client.fetch_all_trades(Some(1000)).await {
                 Ok(t) => t,
                 Err(e) => {
                     tracing::warn!("Failed to fetch trades from RPC: {}", e);
@@ -340,10 +386,7 @@ pub async fn list_corridors(
                         .or_insert_with(Vec::new)
                         .push(payment);
                 } else {
-                    tracing::warn!(
-                        "Failed to extract asset pair from payment: {}",
-                        payment.id
-                    );
+                    tracing::warn!("Failed to extract asset pair from payment: {}", payment.id);
                 }
             }
 
@@ -374,7 +417,7 @@ pub async fn list_corridors(
                 // Calculate volume from payment amounts and convert to USD
                 let mut volume_usd: f64 = 0.0;
                 let source_asset_key = parts[0];
-                
+
                 // Get price for source asset
                 if let Ok(price) = price_feed.get_price(source_asset_key).await {
                     for payment in corridor_payments.iter() {
@@ -384,7 +427,10 @@ pub async fn list_corridors(
                     }
                 } else {
                     // Fallback: use raw amounts if price unavailable
-                    tracing::warn!("Price unavailable for {}, using raw amounts", source_asset_key);
+                    tracing::warn!(
+                        "Price unavailable for {}, using raw amounts",
+                        source_asset_key
+                    );
                     volume_usd = corridor_payments
                         .iter()
                         .filter_map(|p| p.amount.parse::<f64>().ok())
@@ -462,7 +508,9 @@ pub async fn list_corridors(
     )
     .await?;
 
-    Ok(Json(corridors))
+    let ttl = cache.config.get_ttl("corridor");
+    let response = crate::http_cache::cached_json_response(&headers, &cache_key, &corridors, ttl)?;
+    Ok(response)
 }
 
 /// Get detailed corridor information
@@ -493,8 +541,9 @@ pub async fn get_corridor_detail(
     Path(_corridor_key): Path<String>,
 ) -> ApiResult<Json<CorridorDetailResponse>> {
     // TODO: Implement RPC-based corridor detail
-    Err(crate::handlers::ApiError::NotFound(
-        "Corridor detail endpoint not yet implemented with RPC".to_string(),
+    Err(ApiError::not_found(
+        "NOT_IMPLEMENTED",
+        "Corridor detail endpoint not yet implemented with RPC",
     ))
 }
 
@@ -683,4 +732,3 @@ mod tests {
         assert_eq!(pair.destination_asset, "NGNT:GNGNTISSUER");
     }
 }
-

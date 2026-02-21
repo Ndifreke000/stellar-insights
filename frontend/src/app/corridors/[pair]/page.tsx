@@ -29,6 +29,8 @@ import {
   SlippageTrendChart,
 } from "@/components/corridor-charts";
 import { MainLayout } from "@/components/layout";
+import { WebSocketStatus } from "@/components/WebSocketStatus";
+import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
 import Link from "next/link";
 import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/Skeleton";
 
@@ -40,6 +42,48 @@ export default function CorridorDetailPage() {
   const [data, setData] = useState<CorridorDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  // Initialize WebSocket connection for real-time corridor updates
+  const {
+    isConnected,
+    isConnecting,
+    connectionAttempts,
+    corridorUpdates,
+    healthAlerts,
+    recentPayments,
+    reconnect,
+  } = useRealtimeCorridors({
+    corridorKeys: corridorPair ? [corridorPair] : [],
+    enablePaymentStream: true,
+    onCorridorUpdate: (update) => {
+      console.log('Received real-time corridor update:', update);
+      setLastUpdate(new Date());
+      
+      // Update the corridor data with real-time information
+      setData(prevData => {
+        if (!prevData || update.corridor_key !== corridorPair) return prevData;
+        
+        const updatedData = { ...prevData };
+        updatedData.corridor = {
+          ...updatedData.corridor,
+          success_rate: update.success_rate || updatedData.corridor.success_rate,
+          health_score: update.health_score || updatedData.corridor.health_score,
+          last_updated: update.last_updated || updatedData.corridor.last_updated,
+        };
+        
+        return updatedData;
+      });
+    },
+    onHealthAlert: (alert) => {
+      console.log('Health alert for corridor:', alert);
+      // You could show a toast notification here
+    },
+    onNewPayment: (payment) => {
+      console.log('New payment in corridor:', payment);
+      // Update payment-related metrics
+    },
+  });
 
   useEffect(() => {
     async function fetchData() {
@@ -177,18 +221,87 @@ export default function CorridorDetailPage() {
                 Pair: {corridorPair}
               </p>
             </div>
-            <div className="flex items-center gap-4 bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
-              <div className="text-right">
-                <div className={`text-3xl font-bold ${healthColor}`}>
-                  {corridor.health_score.toFixed(1)}
+            <div className="flex items-center gap-4">
+              <WebSocketStatus
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+                connectionAttempts={connectionAttempts}
+                onReconnect={reconnect}
+                className="mr-2"
+              />
+              <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
+                <div className="text-right">
+                  <div className={`text-3xl font-bold ${healthColor}`}>
+                    {corridor.health_score.toFixed(1)}
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-400 text-xs font-medium uppercase tracking-wider">
+                    Health Score
+                  </p>
                 </div>
-                <p className="text-gray-600 dark:text-gray-400 text-xs font-medium uppercase tracking-wider">
-                  Health Score
-                </p>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Real-time Alerts */}
+        {healthAlerts.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              Recent Alerts
+            </h2>
+            <div className="space-y-2">
+              {healthAlerts.slice(0, 3).map((alert, index) => (
+                <div
+                  key={index}
+                  className={`p-3 rounded-lg border ${
+                    alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' :
+                    alert.severity === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
+                    alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' :
+                    'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm font-medium">{alert.message}</p>
+                    <span className="text-xs opacity-75">
+                      {new Date(alert.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent Payments */}
+        {recentPayments.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-green-500" />
+              Live Payment Stream
+            </h2>
+            <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+              <div className="max-h-48 overflow-y-auto">
+                {recentPayments.slice(0, 10).map((payment, index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-3 border-b border-gray-100 dark:border-slate-700 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${payment.successful ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="text-sm font-mono">
+                        ${payment.amount.toFixed(2)}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {new Date(payment.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -344,10 +457,10 @@ export default function CorridorDetailPage() {
         {/* Footer Info */}
         <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-400 text-sm">
           <p>
-            Last updated: {new Date(corridor.last_updated).toLocaleString()}
+            Last updated: {lastUpdate.toLocaleString()}
           </p>
           <p className="mt-2 text-xs">
-            Charts update every 5 minutes with 30-day historical data.
+            Charts update every 5 minutes with 30-day historical data. Real-time updates via WebSocket.
           </p>
         </div>
       </div>

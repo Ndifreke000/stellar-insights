@@ -1,4 +1,10 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::HeaderMap,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -27,9 +33,21 @@ impl From<CacheStats> for CacheStatsResponse {
 }
 
 /// Handler for GET /api/cache/stats - Get cache hit rate monitoring
-pub async fn get_cache_stats(State(cache): State<Arc<CacheManager>>) -> Json<CacheStatsResponse> {
+pub async fn get_cache_stats(
+    State(cache): State<Arc<CacheManager>>,
+    headers: HeaderMap,
+) -> Response {
     let stats = cache.get_stats();
-    Json(CacheStatsResponse::from(stats))
+    let response = CacheStatsResponse::from(stats);
+
+    match crate::http_cache::cached_json_response(&headers, "cache:stats", &response, 30) {
+        Ok(resp) => resp,
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
 }
 
 /// Handler for POST /api/cache/reset - Reset cache statistics

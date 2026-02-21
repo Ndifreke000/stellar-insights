@@ -153,7 +153,7 @@ impl AggregationService {
     fn group_by_hour_bucket(
         &self,
         metrics: Vec<CorridorMetrics>,
-        _start_time: DateTime<Utc>,
+        _start_time: DateTime<Utc>, // Reserved for future time-based filtering
     ) -> Vec<HourlyCorridorMetrics> {
         use std::collections::HashMap;
 

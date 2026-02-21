@@ -9,6 +9,7 @@ use axum::{
 use dashmap::DashMap;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
@@ -18,6 +19,8 @@ use uuid::Uuid;
 pub struct WsState {
     /// Map of connection ID to broadcast sender
     pub connections: DashMap<Uuid, tokio::sync::mpsc::Sender<WsMessage>>,
+    /// Map of connection ID to subscribed channels
+    pub subscriptions: DashMap<Uuid, HashSet<String>>,
     ///Broadcast channel for sending messages to all connections
     pub tx: broadcast::Sender<WsMessage>,
 }
@@ -27,6 +30,7 @@ impl WsState {
         let (tx, _rx) = broadcast::channel(100);
         Self {
             connections: DashMap::new(),
+            subscriptions: DashMap::new(),
             tx,
         }
     }
@@ -38,9 +42,88 @@ impl WsState {
         }
     }
 
+    /// Broadcast a message to clients subscribed to a specific channel
+    pub async fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
+        let mut target_connections = Vec::new();
+
+        // Find connections subscribed to this channel
+        for entry in self.subscriptions.iter() {
+            let (connection_id, channels) = entry.pair();
+            if channels.contains(channel) {
+                target_connections.push(*connection_id);
+            }
+        }
+
+        // Send to targeted connections
+        for connection_id in target_connections {
+            if let Some(sender) = self.connections.get(&connection_id) {
+                if let Err(e) = sender.send(message.clone()).await {
+                    warn!(
+                        "Failed to send message to connection {}: {}",
+                        connection_id, e
+                    );
+                }
+            }
+        }
+    }
+
+    /// Subscribe a connection to channels
+    pub fn subscribe_connection(&self, connection_id: Uuid, channels: Vec<String>) {
+        let mut subscription_set = self
+            .subscriptions
+            .entry(connection_id)
+            .or_insert_with(HashSet::new);
+
+        for channel in channels {
+            subscription_set.insert(channel.clone());
+            info!(
+                "Connection {} subscribed to channel: {}",
+                connection_id, channel
+            );
+        }
+    }
+
+    /// Unsubscribe a connection from channels
+    pub fn unsubscribe_connection(&self, connection_id: Uuid, channels: Vec<String>) {
+        if let Some(mut subscription_set) = self.subscriptions.get_mut(&connection_id) {
+            for channel in channels {
+                subscription_set.remove(&channel);
+                info!(
+                    "Connection {} unsubscribed from channel: {}",
+                    connection_id, channel
+                );
+            }
+        }
+    }
+
     /// Get the number of active connections
     pub fn connection_count(&self) -> usize {
         self.connections.len()
+    }
+
+    /// Get subscription count for a channel
+    pub fn channel_subscription_count(&self, channel: &str) -> usize {
+        self.subscriptions
+            .iter()
+            .filter(|entry| entry.value().contains(channel))
+            .count()
+    }
+
+    /// Clean up disconnected connections
+    pub fn cleanup_connection(&self, connection_id: Uuid) {
+        self.connections.remove(&connection_id);
+        self.subscriptions.remove(&connection_id);
+    }
+
+    /// Close all WebSocket connections gracefully
+    pub async fn close_all_connections(&self) {
+        let connection_ids: Vec<Uuid> = self.connections.iter().map(|entry| *entry.key()).collect();
+        
+        for connection_id in connection_ids {
+            self.cleanup_connection(connection_id);
+        }
+        
+        info!("All WebSocket connections have been closed");
     }
 }
 
@@ -61,6 +144,12 @@ pub enum WsMessage {
         asset_a_issuer: String,
         asset_b_code: String,
         asset_b_issuer: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        success_rate: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        health_score: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        last_updated: Option<String>,
     },
     /// Anchor metrics updated
     AnchorUpdate {
@@ -69,14 +158,52 @@ pub enum WsMessage {
         reliability_score: f64,
         status: String,
     },
+    /// New payment event
+    NewPayment {
+        corridor_id: String,
+        amount: f64,
+        successful: bool,
+        timestamp: String,
+    },
+    /// Health alert for corridor
+    HealthAlert {
+        corridor_id: String,
+        severity: String,
+        message: String,
+        timestamp: String,
+    },
+    /// Subscription management
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
+    /// Subscription confirmation
+    SubscriptionConfirm {
+        channels: Vec<String>,
+        status: String,
+    },
     /// Heartbeat/Ping message
-    Ping { timestamp: i64 },
+    Ping {
+        timestamp: i64,
+    },
     /// Pong response
-    Pong { timestamp: i64 },
+    Pong {
+        timestamp: i64,
+    },
     /// Connection established
-    Connected { connection_id: String },
+    Connected {
+        connection_id: String,
+    },
+    /// Connection status update
+    ConnectionStatus {
+        status: String,
+    },
     /// Error message
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +278,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
     // Clone sender for tasks
     let send_sender = Arc::clone(&sender);
     let recv_sender = Arc::clone(&sender);
+    let state_clone = Arc::clone(&state);
 
     // Task for receiving messages from client
     let recv_task = {
@@ -170,10 +298,44 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                                         let _ = sender_guard.send(Message::Text(json)).await;
                                     }
                                 }
+                                WsMessage::Subscribe { channels } => {
+                                    info!(
+                                        "Connection {} subscribing to channels: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .subscribe_connection(connection_id, channels.clone());
+                                    let confirm = WsMessage::SubscriptionConfirm {
+                                        channels: channels.clone(),
+                                        status: "subscribed".to_string(),
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&confirm) {
+                                        let mut sender_guard = recv_sender.lock().await;
+                                        let _ = sender_guard.send(Message::Text(json)).await;
+                                    }
+                                }
+                                WsMessage::Unsubscribe { channels } => {
+                                    info!(
+                                        "Connection {} unsubscribing from channels: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .unsubscribe_connection(connection_id, channels.clone());
+                                    let confirm = WsMessage::SubscriptionConfirm {
+                                        channels: channels.clone(),
+                                        status: "unsubscribed".to_string(),
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&confirm) {
+                                        let mut sender_guard = recv_sender.lock().await;
+                                        let _ = sender_guard.send(Message::Text(json)).await;
+                                    }
+                                }
                                 _ => {
-                                    warn!("Unexpected message type from client");
+                                    warn!("Unexpected message type from client: {:?}", ws_msg);
                                 }
                             }
+                        } else {
+                            warn!("Failed to parse WebSocket message: {}", text);
                         }
                     }
                     Message::Ping(data) => {
@@ -248,7 +410,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
     }
 
     // Clean up connection
-    state.connections.remove(&connection_id);
+    state.cleanup_connection(connection_id);
     info!(
         "WebSocket connection {} closed. Active connections: {}",
         connection_id,

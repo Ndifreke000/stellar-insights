@@ -9,6 +9,33 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
 
 /**
+ * Network-related types and functions
+ */
+export interface NetworkInfo {
+  network: 'mainnet' | 'testnet';
+  display_name: string;
+  rpc_url: string;
+  horizon_url: string;
+  network_passphrase: string;
+  color: string;
+  is_mainnet: boolean;
+  is_testnet: boolean;
+}
+
+export interface SwitchNetworkRequest {
+  network: 'mainnet' | 'testnet';
+}
+
+export interface SwitchNetworkResponse {
+  success: boolean;
+  message: string;
+  network_info: NetworkInfo;
+}
+
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
+
+/**
  * Custom error class for API responses
  */
 export class ApiError extends Error {
@@ -712,4 +739,29 @@ export async function getPaymentPrediction(
     console.info("Using mock prediction data (backend unavailable)");
     return generateMockPrediction(request);
   }
+}
+
+/**
+ * Network API Functions
+ */
+
+/**
+ * Get current network information
+ */
+export async function getCurrentNetwork(): Promise<NetworkInfo> {
+  return api.get<NetworkInfo>('/network/info');
+}
+
+/**
+ * Get all available networks
+ */
+export async function getAvailableNetworks(): Promise<NetworkInfo[]> {
+  return api.get<NetworkInfo[]>('/network/available');
+}
+
+/**
+ * Switch to a different network
+ */
+export async function switchNetwork(network: 'mainnet' | 'testnet'): Promise<SwitchNetworkResponse> {
+  return api.post<SwitchNetworkResponse>('/network/switch', { network });
 }

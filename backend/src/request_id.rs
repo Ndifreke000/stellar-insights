@@ -73,7 +73,7 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
 
     // Add request ID to response headers
     let (mut parts, body) = response.into_parts();
-    
+
     if let Ok(header_value) = HeaderValue::from_str(&request_id) {
         parts.headers.insert("X-Request-ID", header_value);
     }
@@ -85,9 +85,7 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
 ///
 /// Returns None if no request ID is found (shouldn't happen if middleware is applied)
 pub fn get_request_id(req: &Request<Body>) -> Option<String> {
-    req.extensions()
-        .get::<RequestId>()
-        .map(|id| id.0.clone())
+    req.extensions().get::<RequestId>().map(|id| id.0.clone())
 }
 
 /// Error response with request ID
@@ -118,10 +116,10 @@ mod tests {
     fn test_request_id_creation() {
         let id1 = RequestId::new();
         let id2 = RequestId::new();
-        
+
         // IDs should be different
         assert_ne!(id1.0, id2.0);
-        
+
         // IDs should be valid UUIDs (36 characters with hyphens)
         assert_eq!(id1.0.len(), 36);
         assert_eq!(id2.0.len(), 36);
