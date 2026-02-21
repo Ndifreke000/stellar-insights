@@ -37,3 +37,18 @@ output "task_role_arn" {
   description = "ECS task role ARN"
   value       = aws_iam_role.ecs_task_role.arn
 }
+
+output "task_definition_family" {
+  description = "ECS task definition family name"
+  value       = aws_ecs_task_definition.app.family
+}
+
+output "container_name" {
+  description = "Name of the application container"
+  value       = "stellar-insights"
+}
+
+output "container_port" {
+  description = "Port the application container listens on"
+  value       = var.container_port
+}

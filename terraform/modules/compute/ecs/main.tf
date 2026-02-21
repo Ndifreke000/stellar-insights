@@ -340,6 +340,13 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
+  dynamic "deployment_controller" {
+    for_each = var.enable_blue_green ? [1] : []
+    content {
+      type = "CODE_DEPLOY"
+    }
+  }
+
   # Graceful shutdown: wait up to 30 seconds for container to stop
   depends_on = [
     aws_ecs_cluster.main,
@@ -351,7 +358,7 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [desired_count]  # Allow autoscaler to manage this
+    ignore_changes = [desired_count, task_definition, load_balancer]
   }
 }
 

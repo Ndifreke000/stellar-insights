@@ -214,3 +214,9 @@ variable "cpu_target_percentage" {
     error_message = "CPU target must be between 20 and 90 percent"
   }
 }
+
+variable "enable_blue_green" {
+  description = "Enable blue-green deployment with CodeDeploy"
+  type        = bool
+  default     = false
+}

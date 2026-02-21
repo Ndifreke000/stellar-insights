@@ -56,6 +56,40 @@ resource "aws_lb_target_group" "app" {
 }
 
 # ============================================================================
+# Green Target Group (Blue-Green Deployment)
+# ============================================================================
+
+resource "aws_lb_target_group" "green" {
+  count       = var.enable_blue_green ? 1 : 0
+  name        = "${var.target_group_name}-green"
+  port        = var.target_port
+  protocol    = "HTTP"
+  vpc_id      = data.aws_subnets.public[0].vpc_id
+  target_type = var.target_type
+
+  health_check {
+    healthy_threshold   = var.health_check_healthy_threshold
+    unhealthy_threshold = var.health_check_unhealthy_threshold
+    timeout             = var.health_check_timeout
+    interval            = var.health_check_interval
+    path                = var.health_check_path
+    matcher             = "200"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = true
+  }
+
+  deregistration_delay = 30
+
+  tags = {
+    Name = "stellar-insights-targets-green-${var.environment}"
+  }
+}
+
+# ============================================================================
 # HTTPS Listener (port 443)
 # ============================================================================
 
@@ -89,6 +123,24 @@ resource "aws_lb_listener" "http" {
       protocol    = "HTTPS"
       status_code = "HTTP_301"
     }
+  }
+}
+
+# ============================================================================
+# Test Listener (port 8443) - Blue-Green pre-traffic validation
+# ============================================================================
+
+resource "aws_lb_listener" "test" {
+  count             = var.enable_blue_green ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = var.test_listener_port
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = var.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.green[0].arn
   }
 }
 

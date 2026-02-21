@@ -127,6 +127,9 @@ module "load_balancing" {
   # WAF can be enabled separately
   enable_waf = false   # Set to true if WAF Web ACL exists
 
+  # Blue-green deployment: creates green target group + test listener
+  enable_blue_green = true
+
   environment = var.environment
 
   depends_on = [module.networking]
@@ -154,6 +157,9 @@ module "compute" {
   security_groups = [module.networking.security_group_backend_id]
   target_group_arn = module.load_balancing.target_group_arn
 
+  # Blue-green deployment: switches to CODE_DEPLOY controller
+  enable_blue_green = true
+
   # Configuration
   vault_addr = var.vault_addr
   db_url     = "postgresql://postgres@${module.database.rds_address}:5432/stellar_insights"
@@ -165,6 +171,28 @@ module "compute" {
   cpu_target_percentage = 70
 
   depends_on = [module.load_balancing, module.database, module.caching]
+}
+
+# ============================================================================
+# CODEDEPLOY (Blue-Green Deployment)
+# ============================================================================
+
+module "codedeploy" {
+  source = "../../modules/codedeploy"
+
+  cluster_name                  = module.compute.cluster_name
+  service_name                  = module.compute.service_name
+  listener_arn                  = module.load_balancing.https_listener_arn
+  test_listener_arn             = module.load_balancing.test_listener_arn
+  target_group_blue_name        = module.load_balancing.target_group_name
+  target_group_green_name       = module.load_balancing.target_group_green_name
+  deployment_config_name        = "CodeDeployDefault.ECSCanary10Percent5Minutes"
+  alb_arn_suffix                = module.load_balancing.alb_arn_suffix
+  target_group_blue_arn_suffix  = module.load_balancing.target_group_arn_suffix
+  target_group_green_arn_suffix = module.load_balancing.target_group_green_arn_suffix
+  environment                   = var.environment
+
+  depends_on = [module.compute]
 }
 
 # ============================================================================
@@ -222,6 +250,16 @@ output "redis_endpoints" {
 output "vault_secret_paths" {
   description = "Vault secret paths"
   value       = module.vault.vault_secret_paths
+}
+
+output "codedeploy_app_name" {
+  description = "CodeDeploy application name"
+  value       = module.codedeploy.app_name
+}
+
+output "codedeploy_deployment_group_name" {
+  description = "CodeDeploy deployment group name"
+  value       = module.codedeploy.deployment_group_name
 }
 
 output "cost_estimate" {
