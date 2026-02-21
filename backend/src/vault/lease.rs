@@ -6,10 +6,9 @@
 /// - Logs renewal failures and retries
 /// - Gracefully revokes all leases on shutdown
 use crate::vault::VaultClientRef;
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::time::interval;
-use tracing::{error, info, warn};
+use tracing::info;
 
 pub struct LeaseManager {
     check_interval: Duration,
@@ -23,7 +22,7 @@ impl LeaseManager {
     }
 
     /// Start the lease renewal background task
-    pub fn spawn(self, vault_client: VaultClientRef) -> tokio::task::JoinHandle<()> {
+    pub fn spawn(self, _vault_client: VaultClientRef) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut ticker = interval(self.check_interval);
 

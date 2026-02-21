@@ -5,7 +5,6 @@ use anyhow::Result;
 use reqwest::Client;
 use sqlx::SqlitePool;
 use std::time::Duration;
-use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::webhooks::{WebhookService, WebhookSignature, WebhookEventEnvelope};
@@ -185,7 +184,7 @@ impl WebhookDispatcher {
             .fetch_optional(&self.db)
             .await?;
 
-        Ok(record.map(|r| r.retries).unwrap_or(0))
+        Ok(record.map(|r| r.retries as i32).unwrap_or(0))
     }
 }
 

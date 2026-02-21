@@ -9,9 +9,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
-use crate::auth::oauth::{OAuthError, OAuthService, TokenResponse, AVAILABLE_SCOPES};
+use crate::auth::oauth::{OAuthService, TokenResponse};
 use crate::auth_middleware::AuthUser;
 
 /// OAuth Token Request (for /api/oauth/token)
@@ -247,7 +246,7 @@ pub async fn revoke(
     service
         .revoke_token(&request.access_token)
         .await
-        .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+        .map_err(|e: anyhow::Error| OAuthApiError::ServerError(e.to_string()))?;
 
     Ok((
         StatusCode::OK,
@@ -271,7 +270,7 @@ pub async fn list_apps(
     )
     .fetch_all(&db)
     .await
-    .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| OAuthApiError::ServerError(e.to_string()))?;
 
     let app_list: Vec<OAuthAppInfo> = apps
         .into_iter()

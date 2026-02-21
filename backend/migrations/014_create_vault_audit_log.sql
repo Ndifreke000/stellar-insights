@@ -19,7 +19,8 @@ CREATE INDEX IF NOT EXISTS idx_vault_audit_user_id ON vault_audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_vault_audit_status ON vault_audit_log(status);
 
 -- Create view for audit log summary
-CREATE OR REPLACE VIEW vault_audit_summary AS
+DROP VIEW IF EXISTS vault_audit_summary;
+CREATE VIEW vault_audit_summary AS
 SELECT 
     DATE(timestamp) as date,
     operation,

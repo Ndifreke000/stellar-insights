@@ -24,7 +24,7 @@ pub struct SignatureVerifiedUser {
 /// Middleware to verify request signature
 pub async fn request_signing_middleware(
     SigningSecret(signing_secret): SigningSecret,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Result<Response, SigningError> {
     // Extract signature header
@@ -49,16 +49,21 @@ pub async fn request_signing_middleware(
     }
 
     // Compute expected signature
-    let body = req.body().to_bytes().await.unwrap_or_default();
+    let (parts, body) = req.into_parts();
+    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+
     let mut mac = HmacSha256::new_from_slice(signing_secret.as_ref().as_bytes())
         .map_err(|_| SigningError::Internal)?;
     mac.update(timestamp.as_bytes());
-    mac.update(&body);
+    mac.update(&body_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
 
     if signature != expected {
         return Err(SigningError::InvalidSignature);
     }
+
+    // Reconstruct request
+    let mut req = Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
     // Attach verified user (stub, integrate with auth as needed)
     req.extensions_mut().insert(SignatureVerifiedUser {

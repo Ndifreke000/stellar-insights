@@ -322,7 +322,7 @@ mod tests {
     async fn test_generate_challenge() {
         let redis_conn = Arc::new(RwLock::new(None));
         let service = Sep10Service::new(
-            "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZCV3TIHIMIGG4USHRXFOKG72R3G".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "example.com".to_string(),
             redis_conn,
@@ -351,7 +351,7 @@ mod tests {
     async fn test_invalid_account_format() {
         let redis_conn = Arc::new(RwLock::new(None));
         let service = Sep10Service::new(
-            "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZCV3TIHIMIGG4USHRXFOKG72R3G".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "example.com".to_string(),
             redis_conn,
@@ -373,7 +373,7 @@ mod tests {
     async fn test_invalid_home_domain() {
         let redis_conn = Arc::new(RwLock::new(None));
         let service = Sep10Service::new(
-            "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZCV3TIHIMIGG4USHRXFOKG72R3G".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "example.com".to_string(),
             redis_conn,

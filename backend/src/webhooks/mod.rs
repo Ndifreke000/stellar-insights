@@ -19,7 +19,6 @@ impl WebhookSignature {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
-
         format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
     }
 
@@ -48,8 +47,8 @@ pub struct Webhook {
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {
     pub url: String,
-    pub event_types: Vec<String>, // e.g., ["corridor.health_degraded", "anchor.status_changed"]
-    pub filters: Option<serde_json::Value>, // Optional filters
+    pub event_types: Vec<String>,
+    pub filters: Option<serde_json::Value>,
 }
 
 /// Webhook creation response
@@ -63,7 +62,7 @@ pub struct WebhookResponse {
     pub created_at: String,
 }
 
-/// Webhook event envelope (what gets sent to webhook URL)
+/// Webhook event envelope
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEventEnvelope {
     pub id: String, // Delivery ID for idempotency
@@ -105,11 +104,14 @@ impl WebhookEventType {
 /// Webhook service - manages webhook operations
 pub struct WebhookService {
     db: SqlitePool,
+    encryption_key: String,
 }
 
 impl WebhookService {
     pub fn new(db: SqlitePool) -> Self {
-        Self { db }
+        let encryption_key = std::env::var("ENCRYPTION_KEY")
+            .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+        Self { db, encryption_key }
     }
 
     /// Register a new webhook
@@ -124,6 +126,9 @@ impl WebhookService {
         let filters_str = request.filters.as_ref().map(|f| f.to_string());
         let now = chrono::Utc::now().to_rfc3339();
 
+        let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
+            .unwrap_or_else(|_| secret.clone());
+
         sqlx::query!(
             r#"
             INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
@@ -134,7 +139,7 @@ impl WebhookService {
             request.url,
             event_types_str,
             filters_str,
-            secret,
+            encrypted_secret,
             true,
             now
         )
@@ -153,24 +158,34 @@ impl WebhookService {
 
     /// Get webhook by ID
     pub async fn get_webhook(&self, webhook_id: &str) -> anyhow::Result<Option<Webhook>> {
-        let webhook = sqlx::query_as::<_, Webhook>(
+        let mut webhook = sqlx::query_as::<_, Webhook>(
             "SELECT id, user_id, url, event_types, filters, secret, is_active, created_at, last_fired_at FROM webhooks WHERE id = ?"
         )
         .bind(webhook_id)
         .fetch_optional(&self.db)
         .await?;
 
+        if let Some(ref mut w) = webhook {
+            w.secret = crate::crypto::decrypt_data(&w.secret, &self.encryption_key)
+                .unwrap_or_else(|_| w.secret.clone());
+        }
+
         Ok(webhook)
     }
 
     /// List webhooks for a user
     pub async fn list_webhooks(&self, user_id: &str) -> anyhow::Result<Vec<Webhook>> {
-        let webhooks = sqlx::query_as::<_, Webhook>(
+        let mut webhooks = sqlx::query_as::<_, Webhook>(
             "SELECT id, user_id, url, event_types, filters, secret, is_active, created_at, last_fired_at FROM webhooks WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC"
         )
         .bind(user_id)
         .fetch_all(&self.db)
         .await?;
+
+        for w in &mut webhooks {
+            w.secret = crate::crypto::decrypt_data(&w.secret, &self.encryption_key)
+                .unwrap_or_else(|_| w.secret.clone());
+        }
 
         Ok(webhooks)
     }
@@ -197,6 +212,7 @@ impl WebhookService {
     ) -> anyhow::Result<String> {
         let id = Uuid::new_v4().to_string();
         let payload_str = payload.to_string();
+        let now = chrono::Utc::now().to_rfc3339();
 
         sqlx::query!(
             r#"
@@ -209,7 +225,7 @@ impl WebhookService {
             payload_str,
             "pending",
             0,
-            chrono::Utc::now().to_rfc3339()
+            now
         )
         .execute(&self.db)
         .await?;
@@ -222,6 +238,8 @@ impl WebhookService {
         &self,
         limit: usize,
     ) -> anyhow::Result<Vec<(String, String, String, String)>> {
+        let query_limit = limit as i64;
+
         let events = sqlx::query!(
             r#"
             SELECT we.id, we.webhook_id, we.event_type, we.payload
@@ -230,14 +248,14 @@ impl WebhookService {
             ORDER BY we.created_at ASC
             LIMIT ?
             "#,
-            limit as i64
+            query_limit
         )
         .fetch_all(&self.db)
         .await?;
 
         Ok(events
             .into_iter()
-            .map(|e| (e.id, e.webhook_id, e.event_type, e.payload))
+            .map(|e| (e.id.unwrap_or_default(), e.webhook_id, e.event_type, e.payload))
             .collect())
     }
 
@@ -264,9 +282,10 @@ impl WebhookService {
 
     /// Update webhook's last_fired_at timestamp
     pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
         sqlx::query!(
             "UPDATE webhooks SET last_fired_at = ? WHERE id = ?",
-            chrono::Utc::now().to_rfc3339(),
+            now,
             webhook_id
         )
         .execute(&self.db)

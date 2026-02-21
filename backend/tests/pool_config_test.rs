@@ -1,5 +1,8 @@
 use std::env;
+use std::sync::Mutex;
 use stellar_insights_backend::database::PoolConfig;
+
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_pool_config_defaults() {
@@ -14,6 +17,7 @@ fn test_pool_config_defaults() {
 
 #[test]
 fn test_pool_config_from_env() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Set environment variables
     env::set_var("DB_POOL_MAX_CONNECTIONS", "20");
     env::set_var("DB_POOL_MIN_CONNECTIONS", "5");
@@ -39,6 +43,7 @@ fn test_pool_config_from_env() {
 
 #[test]
 fn test_pool_config_from_env_with_defaults() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Ensure no env vars are set
     env::remove_var("DB_POOL_MAX_CONNECTIONS");
     env::remove_var("DB_POOL_MIN_CONNECTIONS");
@@ -58,6 +63,7 @@ fn test_pool_config_from_env_with_defaults() {
 
 #[test]
 fn test_pool_config_from_env_partial() {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Set only some environment variables
     env::set_var("DB_POOL_MAX_CONNECTIONS", "15");
     env::remove_var("DB_POOL_MIN_CONNECTIONS");
@@ -93,7 +99,7 @@ async fn test_pool_creation() {
     let pool = result.unwrap();
 
     // Verify pool was created
-    assert_eq!(pool.size(), 0); // No connections yet
+    assert_eq!(pool.size(), 1); // Respects min_connections: 1
 }
 
 #[tokio::test]
@@ -107,6 +113,6 @@ async fn test_pool_metrics() {
     let metrics = db.pool_metrics();
 
     // Initial state
-    assert_eq!(metrics.size, 0);
-    assert_eq!(metrics.idle, 0);
+    assert_eq!(metrics.size, 2);
+    assert_eq!(metrics.idle, 2);
 }

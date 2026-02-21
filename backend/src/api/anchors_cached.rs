@@ -5,12 +5,13 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
+use crate::rpc::error::{with_retry, CircuitBreaker, CircuitBreakerConfig, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -62,6 +63,17 @@ pub struct ListAnchorsQuery {
 
 fn default_limit() -> i64 {
     50
+}
+
+fn rpc_circuit_breaker() -> Arc<Mutex<CircuitBreaker>> {
+    static CIRCUIT_BREAKER: OnceLock<Arc<Mutex<CircuitBreaker>>> = OnceLock::new();
+    CIRCUIT_BREAKER
+        .get_or_init(|| {
+            Arc::new(Mutex::new(CircuitBreaker::new(
+                CircuitBreakerConfig::default(),
+            )))
+        })
+        .clone()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
@@ -140,6 +152,7 @@ pub async fn get_anchors(
     let response = <()>::get_or_fetch(&cache, &cache_key, cache.config.get_ttl("anchor"), async {
         // Get anchor metadata from database (names, accounts, etc.)
         let anchors = db.list_anchors(params.limit, params.offset).await?;
+        let circuit_breaker = rpc_circuit_breaker();
 
         let mut anchor_responses = Vec::new();
 
@@ -149,19 +162,38 @@ pub async fn get_anchors(
             // Get asset count from database (metadata)
             let assets = db.get_assets_by_anchor(anchor_id).await?;
 
+            // **RPC DATA**: Fetch real-time payment data for this anchor
+            let payments = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_account_payments(&anchor.stellar_account, 200)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to fetch payments for anchor {}: {}",
+                    anchor.stellar_account,
+                    e
+                )
+            })?;
             // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
             let payments = match rpc_client
                 .fetch_all_account_payments(&anchor.stellar_account, Some(500))
                 .await
             {
-                Ok(payments) => payments,
+                Ok(p) => p,
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to fetch payments for anchor {}: {}. Using cached data.",
+                        error_type = %e.error_type_label(),
+                        "Failed to fetch payments for anchor {}: {}",
                         anchor.stellar_account,
                         e
                     );
-                    // Fallback to database values if RPC fails
                     vec![]
                 }
             };
@@ -176,7 +208,6 @@ pub async fn get_anchors(
                     let failed = 0;
                     (total, successful, failed)
                 } else {
-                    // Fallback to database values
                     (
                         anchor.total_transactions,
                         anchor.successful_transactions,

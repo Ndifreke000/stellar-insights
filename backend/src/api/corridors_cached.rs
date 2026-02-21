@@ -5,14 +5,16 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
+use anyhow::anyhow;
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
 use crate::handlers::ApiResult;
 use crate::models::SortBy;
+use crate::rpc::error::{with_retry, CircuitBreaker, CircuitBreakerConfig, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -261,6 +263,17 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
     }
 }
 
+fn rpc_circuit_breaker() -> Arc<Mutex<CircuitBreaker>> {
+    static CIRCUIT_BREAKER: OnceLock<Arc<Mutex<CircuitBreaker>>> = OnceLock::new();
+    CIRCUIT_BREAKER
+        .get_or_init(|| {
+            Arc::new(Mutex::new(CircuitBreaker::new(
+                CircuitBreakerConfig::default(),
+            )))
+        })
+        .clone()
+}
+
 /// Generate cache key for corridor list with filters
 fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     let filter_str = format!(
@@ -312,6 +325,35 @@ pub async fn list_corridors(
         &cache_key,
         cache.config.get_ttl("corridor"),
         async {
+            let circuit_breaker = rpc_circuit_breaker();
+
+            // **RPC DATA**: Fetch recent payments to identify active corridors
+            let payments = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_payments(200, None)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {}", e))?;
+
+            // **RPC DATA**: Fetch recent trades for volume data
+            let _trades = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_trades(200, None)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {}", e))?;
             // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
             // Use paginated fetch to get more complete data (up to configured limit)
             let payments = match rpc_client.fetch_all_payments(Some(1000)).await {

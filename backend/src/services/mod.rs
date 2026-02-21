@@ -11,6 +11,7 @@ pub mod snapshot;
 pub mod stellar_toml;
 pub mod trustline_analyzer;
 pub mod verification_rewards;
+pub mod webhook_dispatcher;
 
 #[cfg(test)]
 mod snapshot_test;

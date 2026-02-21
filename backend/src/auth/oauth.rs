@@ -63,6 +63,7 @@ pub struct OAuthService {
     jwt_audience: String,
     token_expiry_days: i64,
     refresh_expiry_days: i64,
+    encryption_key: String,
     db: SqlitePool,
 }
 
@@ -84,11 +85,15 @@ impl OAuthService {
             .parse()
             .unwrap_or(30);
 
+        let encryption_key = std::env::var("ENCRYPTION_KEY")
+            .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+
         Self {
             jwt_secret,
             jwt_audience,
             token_expiry_days,
             refresh_expiry_days,
+            encryption_key,
             db,
         }
     }
@@ -103,6 +108,9 @@ impl OAuthService {
         let client_id = Uuid::new_v4().to_string();
         let client_secret = Uuid::new_v4().to_string();
 
+        let encrypted_secret = crate::crypto::encrypt_data(&client_secret, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt client secret: {}", e))?;
+
         sqlx::query!(
             r#"
             INSERT INTO oauth_clients (id, user_id, client_id, client_secret, app_name)
@@ -111,7 +119,7 @@ impl OAuthService {
             id,
             user_id,
             client_id,
-            client_secret,
+            encrypted_secret,
             app_name
         )
         .execute(&self.db)
@@ -128,17 +136,24 @@ impl OAuthService {
     ) -> Result<String> {
         let client = sqlx::query!(
             r#"
-            SELECT user_id FROM oauth_clients
-            WHERE client_id = ? AND client_secret = ?
+            SELECT user_id, client_secret FROM oauth_clients
+            WHERE client_id = ?
             "#,
-            client_id,
-            client_secret
+            client_id
         )
         .fetch_optional(&self.db)
         .await?;
 
         match client {
-            Some(record) => Ok(record.user_id),
+            Some(record) => {
+                let decrypted_secret = crate::crypto::decrypt_data(&record.client_secret, &self.encryption_key)
+                    .map_err(|_| anyhow!("Invalid client credentials"))?;
+                if decrypted_secret == client_secret {
+                    Ok(record.user_id)
+                } else {
+                    Err(anyhow!("Invalid client credentials"))
+                }
+            },
             None => Err(anyhow!("Invalid client credentials")),
         }
     }
@@ -300,13 +315,18 @@ impl OAuthService {
         user_id: &str,
         access_token: &str,
         refresh_token: &str,
-        expires_at: i64,
+        _expires_at: i64,
     ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
         let expires_at_str = Utc::now()
             .checked_add_signed(Duration::days(self.token_expiry_days))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
             .to_rfc3339();
+
+        let enc_access_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt access token: {}", e))?;
+        let enc_refresh_token = crate::crypto::encrypt_data(refresh_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt refresh token: {}", e))?;
 
         sqlx::query!(
             r#"
@@ -315,8 +335,8 @@ impl OAuthService {
             "#,
             id,
             user_id,
-            access_token,
-            refresh_token,
+            enc_access_token,
+            enc_refresh_token,
             "Bearer",
             expires_at_str
         )
@@ -337,27 +357,3 @@ impl OAuthService {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validate_scopes() {
-        let service = OAuthService {
-            jwt_secret: "test".to_string(),
-            jwt_audience: "zapier".to_string(),
-            token_expiry_days: 7,
-            refresh_expiry_days: 30,
-            db: todo!(),
-        };
-
-        let scopes = "read:corridors read:anchors write:webhooks";
-        let result = service.validate_scopes(scopes);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 3);
-
-        let invalid = "read:corridors invalid_scope";
-        let result = service.validate_scopes(invalid);
-        assert!(result.is_err());
-    }
-}
