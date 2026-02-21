@@ -93,7 +93,7 @@ jobs:
 
       - name: Send email notification (optional)
         if: ${{ secrets.MAIL_HOST != '' && (steps.summarize.outputs.trivy_count != '0' || steps.summarize.outputs.tfsec_count != '0') }}
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v9
         with:
           server_address: ${{ secrets.MAIL_HOST }}
           server_port: ${{ secrets.MAIL_PORT }}

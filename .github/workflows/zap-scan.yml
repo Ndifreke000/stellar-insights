@@ -54,7 +54,7 @@ jobs:
 
       - name: Optional email notification for ZAP
         if: ${{ secrets.MAIL_HOST != '' && steps.parse.outputs.alerts != '0' }}
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v9
         with:
           server_address: ${{ secrets.MAIL_HOST }}
           server_port: ${{ secrets.MAIL_PORT }}
