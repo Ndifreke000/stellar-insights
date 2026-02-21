@@ -64,6 +64,13 @@ async fn main() -> Result<()> {
 
     tracing::info!("Starting Stellar Insights Backend");
 
+    // Validate environment configuration
+    stellar_insights_backend::env_config::validate_env()
+        .context("Environment configuration validation failed")?;
+    
+    // Log sanitized environment configuration
+    stellar_insights_backend::env_config::log_env_config();
+
     // Initialize shutdown coordinator
     let shutdown_config = ShutdownConfig::from_env();
     tracing::info!(

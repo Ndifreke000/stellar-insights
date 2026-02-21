@@ -44,9 +44,12 @@ docker run --name stellar-postgres \
 ```bash
 cd backend
 cp .env.example .env
+# Edit .env with your configuration (see ENVIRONMENT_SETUP.md)
 cargo run
 ```
 Server starts at `http://localhost:8080`
+
+**⚠️ Security Note:** Never commit `.env` to version control. See [backend/ENVIRONMENT_SETUP.md](./backend/ENVIRONMENT_SETUP.md) for detailed configuration guide.
 
 ### 3. Run Frontend
 ```bash
@@ -186,6 +189,8 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 ## 📖 Documentation
 
+- [Environment Setup](./backend/ENVIRONMENT_SETUP.md) - **START HERE** - Environment configuration guide
+- [Database Pool Configuration](./backend/DATABASE_POOL_CONFIG.md) - Connection pool tuning
 - [RPC.md](./docs/RPC.md) - API endpoints and usage
 - [RPC Data Sources](./docs/RPC_DATA_SOURCES.md) - Stellar RPC integration details
 - [RPC Integration Summary](./docs/RPC_INTEGRATION_SUMMARY.md) - Integration overview
