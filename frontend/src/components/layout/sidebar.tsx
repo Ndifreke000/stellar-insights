@@ -17,6 +17,7 @@ import {
   Droplets,
   Users,
   Database,
+  Calculator,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +31,7 @@ const navItems = [
   { name: "Liquidity", icon: Waves, path: "/liquidity" },
   { name: "Pools", icon: Droplets, path: "/liquidity-pools" },
   { name: "SEP-6", icon: Database, path: "/sep6" },
+  { name: "Calculator", icon: Calculator, path: "/calculator" },
 ];
 
 interface SidebarProps {
@@ -43,7 +45,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
   return (
     <aside
-      className={`fixed top-0 left-0 h-screen glass border-r border-border transition-all duration-500 z-50 ${
+      className={`fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${
         collapsed ? "w-20" : "w-64"
       }`}
     >
@@ -64,7 +66,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex-1 px-4 py-8 space-y-3">
+        <nav className="flex-1 px-4 py-8 space-y-3 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.path;
             const Icon = item.icon;

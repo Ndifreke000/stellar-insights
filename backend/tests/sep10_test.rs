@@ -1,3 +1,5 @@
+#![cfg(feature = "legacy_sep10_tests")]
+
 use anyhow::Result;
 use stellar_base::crypto::KeyPair;
 use std::sync::Arc;

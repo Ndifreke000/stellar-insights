@@ -27,6 +27,7 @@ use utoipa::OpenApi;
         crate::api::price_feed::get_prices,
         crate::api::price_feed::convert_to_usd,
         crate::api::price_feed::get_cache_stats,
+        crate::api::cost_calculator::estimate_costs,
     ),
     components(
         schemas(
@@ -41,12 +42,19 @@ use utoipa::OpenApi;
             crate::api::price_feed::PricesResponse,
             crate::api::price_feed::ConvertResponse,
             crate::api::price_feed::CacheStatsResponse,
+            crate::api::cost_calculator::PaymentRoute,
+            crate::api::cost_calculator::CostCalculationRequest,
+            crate::api::cost_calculator::RouteCostBreakdown,
+            crate::api::cost_calculator::RouteEstimate,
+            crate::api::cost_calculator::CostCalculationResponse,
+            crate::api::cost_calculator::ErrorResponse,
         )
     ),
     tags(
         (name = "Anchors", description = "Anchor management and metrics endpoints"),
         (name = "Corridors", description = "Payment corridor analytics endpoints"),
         (name = "Prices", description = "Real-time asset price feed endpoints"),
+        (name = "Cost Calculator", description = "Cross-border payment cost estimation and route comparison"),
         (name = "RPC", description = "Stellar RPC integration endpoints"),
         (name = "Fee Bumps", description = "Fee bump transaction tracking"),
         (name = "Cache", description = "Cache management and statistics"),

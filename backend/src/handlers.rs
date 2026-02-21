@@ -272,6 +272,12 @@ pub async fn health_check() -> impl IntoResponse {
     }))
 }
 
+/// Database pool metrics endpoint
+pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let metrics = state.db.pool_metrics();
+    Json(metrics)
+}
+
 /// GET /api/corridors - List all corridors
 pub async fn list_corridors(
     State(app_state): State<AppState>,

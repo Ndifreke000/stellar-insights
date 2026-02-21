@@ -1,19 +1,21 @@
-"use client"
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { MetricCard } from '@/components/dashboard/MetricCard';
-import { CorridorHealth } from '@/components/dashboard/CorridorHealth';
-import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
-import { TopAssetsTable } from '@/components/dashboard/TopAssetsTable';
-import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
-import { WebSocketStatus } from '@/components/WebSocketStatus';
-import { useRealtimeCorridors } from '@/hooks/useRealtimeCorridors';
-import { useRealtimeAnchors } from '@/hooks/useRealtimeAnchors';
+import React, { useEffect, useState, useCallback } from "react";
+import { MetricCard } from "@/components/dashboard/MetricCard";
+import { CorridorHealth } from "@/components/dashboard/CorridorHealth";
+import { LiquidityChart } from "@/components/dashboard/LiquidityChart";
+import { TopAssetsTable } from "@/components/dashboard/TopAssetsTable";
+import { SettlementSpeedChart } from "@/components/dashboard/SettlementSpeedChart";
+import { WebSocketStatus } from "@/components/WebSocketStatus";
+import { DataRefreshIndicator } from "@/components/DataRefreshIndicator";
+import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
+import { useRealtimeAnchors } from "@/hooks/useRealtimeAnchors";
+import { useDataRefresh } from "@/hooks/useDataRefresh";
 
 interface CorridorData {
   id: string;
   name: string;
-  status: 'optimal' | 'degraded' | 'down';
+  status: "optimal" | "degraded" | "down";
   uptime: number;
   volume24h: number;
 }
@@ -38,10 +40,26 @@ interface SettlementData {
 
 interface DashboardData {
   kpi: {
-    successRate: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    activeCorridors: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    liquidityDepth: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    settlementSpeed: { value: number; trend: number; trendDirection: 'up' | 'down' };
+    successRate: {
+      value: number;
+      trend: number;
+      trendDirection: "up" | "down";
+    };
+    activeCorridors: {
+      value: number;
+      trend: number;
+      trendDirection: "up" | "down";
+    };
+    liquidityDepth: {
+      value: number;
+      trend: number;
+      trendDirection: "up" | "down";
+    };
+    settlementSpeed: {
+      value: number;
+      trend: number;
+      trendDirection: "up" | "down";
+    };
   };
   corridors: CorridorData[];
   liquidity: LiquidityData[];
@@ -53,84 +71,86 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // Initialize WebSocket connections for real-time updates
+  // ── Data refresh hook (auto-refresh every 30 s + manual trigger) ──────────
+  const fetchDashboard = useCallback(async () => {
+    const response = await fetch("/api/dashboard");
+    if (!response.ok) throw new Error("Failed to fetch dashboard data");
+    const result = await response.json();
+    setData(result);
+  }, []);
+
+  const {
+    lastUpdated,
+    secondsUntilRefresh,
+    isRefreshing,
+    triggerRefresh,
+    markUpdated,
+  } = useDataRefresh({
+    refreshIntervalMs: 30_000,
+    onRefresh: fetchDashboard,
+  });
+
+  // ── WebSocket connections for real-time updates ─────────────────────────
   const {
     isConnected: corridorsConnected,
     isConnecting: corridorsConnecting,
     connectionAttempts: corridorAttempts,
-    corridorUpdates,
-    healthAlerts,
     reconnect: reconnectCorridors,
   } = useRealtimeCorridors({
     enablePaymentStream: true,
     onCorridorUpdate: (update) => {
-      console.log('Received corridor update:', update);
-      setLastUpdate(new Date());
-      // Update the dashboard data with real-time corridor info
-      setData(prevData => {
+      console.log("Received corridor update:", update);
+      markUpdated();
+      setData((prevData) => {
         if (!prevData) return prevData;
-        
-        // Update KPI metrics based on corridor updates
         const updatedData = { ...prevData };
         if (update.success_rate !== undefined) {
-          // Update success rate if this corridor affects the overall rate
           updatedData.kpi.successRate.value = update.success_rate;
         }
-        
         return updatedData;
       });
     },
     onHealthAlert: (alert) => {
-      console.log('Health alert:', alert);
-      // You could show a toast notification here
+      console.log("Health alert:", alert);
     },
   });
 
-  const {
-    isConnected: anchorsConnected,
-    reconnect: reconnectAnchors,
-  } = useRealtimeAnchors({
-    onAnchorUpdate: (update) => {
-      console.log('Received anchor update:', update);
-      setLastUpdate(new Date());
-    },
-  });
+  const { isConnected: anchorsConnected, reconnect: reconnectAnchors } =
+    useRealtimeAnchors({
+      onAnchorUpdate: (update) => {
+        console.log("Received anchor update:", update);
+        markUpdated();
+      },
+    });
 
+  // Initial load on mount
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       try {
-        const response = await fetch('/api/dashboard');
-        if (!response.ok) {
-          throw new Error('Failed to fetch dashboard data');
-        }
-        const result = await response.json();
-        setData(result);
+        await fetchDashboard();
       } catch (err) {
-        const isNetworkError = err instanceof TypeError &&
-          (err.message.includes('Failed to fetch') ||
-            err.message.includes('fetch is not defined') ||
-            err.message.includes('Network request failed'));
-
-        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        const isNetworkError =
+          err instanceof TypeError &&
+          (err.message.includes("Failed to fetch") ||
+            err.message.includes("fetch is not defined") ||
+            err.message.includes("Network request failed"));
+        const errorMessage =
+          err instanceof Error ? err.message : "An error occurred";
         setError(errorMessage);
-
-        if (!isNetworkError) {
-          console.error("Dashboard API error:", err);
-        }
+        if (!isNetworkError) console.error("Dashboard API error:", err);
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchData();
-  }, []);
+    })();
+  }, [fetchDashboard]);
 
   if (loading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
-        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest">Initialising Terminal... // System Handshake</div>
+        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest">
+          Initialising Terminal... // System Handshake
+        </div>
       </div>
     );
   }
@@ -148,11 +168,11 @@ export default function DashboardPage() {
   if (!data) return null;
 
   const formatVolume = (val: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 1
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      notation: "compact",
+      maximumFractionDigits: 1,
     }).format(val);
   };
 
@@ -160,10 +180,14 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
         <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Intelligence Terminal // 01</div>
-          <h2 className="text-4xl font-black tracking-tighter uppercase italic">Network Overview</h2>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+            Intelligence Terminal // 01
+          </div>
+          <h2 className="text-4xl font-black tracking-tighter uppercase italic">
+            Network Overview
+          </h2>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <WebSocketStatus
             isConnected={corridorsConnected && anchorsConnected}
             isConnecting={corridorsConnecting}
@@ -172,17 +196,14 @@ export default function DashboardPage() {
               reconnectCorridors();
               reconnectAnchors();
             }}
-            className="mr-2"
           />
-          <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            Last Update: {lastUpdate.toLocaleTimeString()}
-          </div>
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform"
-          >
-            Refresh Node
-          </button>
+          <DataRefreshIndicator
+            lastUpdated={lastUpdated}
+            secondsUntilRefresh={secondsUntilRefresh}
+            refreshIntervalSec={30}
+            isRefreshing={isRefreshing}
+            onRefresh={triggerRefresh}
+          />
         </div>
       </div>
 
