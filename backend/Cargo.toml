@@ -22,7 +22,7 @@ sha2 = "0.10"
 hex = "0.4"
 hmac = "0.12"
 ndarray = "0.15"
-rand = "0.8"
+rand = "0.10"
 dotenv = "0.15"
 redis = { version = "0.25", features = ["aio", "tokio-comp"] }
 async-lock = "3.0"
