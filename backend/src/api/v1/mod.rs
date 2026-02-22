@@ -60,8 +60,11 @@ pub fn routes(
         .route("/anchors/:id/assets", axum::routing::post(create_anchor_asset))
         .route("/corridors", axum::routing::post(create_corridor))
         .route("/corridors/:id/metrics-from-transactions", put(update_corridor_metrics_from_transactions))
-        .nest("/webhooks", webhooks::routes(pool.clone()))
         .with_state(app_state)
+        .layer(middleware::from_fn(auth_middleware));
+
+    let protected_webhook_routes = Router::new()
+        .nest("/webhooks", webhooks::routes(pool.clone()))
         .layer(middleware::from_fn(auth_middleware));
 
     // 4. RPC routes
@@ -92,6 +95,7 @@ pub fn routes(
         .merge(cached_routes)
         .merge(public_anchor_routes)
         .merge(protected_routes)
+        .merge(protected_webhook_routes)
         .merge(rpc_routes)
         .merge(service_routes)
         .merge(oauth_routes)
@@ -102,5 +106,4 @@ pub fn routes(
                 .layer(cors),
         )
 }
-
 

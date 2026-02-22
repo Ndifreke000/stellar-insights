@@ -123,7 +123,7 @@ pub async fn token(
 
     // Get user from database for username
     let user_row = sqlx::query("SELECT username FROM users WHERE id = ?")
-        .bind(user_id)
+        .bind(&user_id)
         .fetch_optional(&db)
         .await
         .map_err(|e| OAuthApiError::ServerError(e.to_string()))?

@@ -102,6 +102,7 @@ impl CacheManager {
             {
                 Ok(Some(value)) => {
                     self.hits.fetch_add(1, Ordering::Relaxed);
+                    crate::observability::metrics::record_cache_lookup(true);
                     tracing::debug!("Cache hit for key: {}", key);
                     match serde_json::from_str::<T>(&value) {
                         Ok(data) => Ok(Some(data)),
@@ -113,17 +114,20 @@ impl CacheManager {
                 }
                 Ok(None) => {
                     self.misses.fetch_add(1, Ordering::Relaxed);
+                    crate::observability::metrics::record_cache_lookup(false);
                     tracing::debug!("Cache miss for key: {}", key);
                     Ok(None)
                 }
                 Err(e) => {
                     tracing::warn!("Redis GET error for {}: {}", key, e);
                     self.misses.fetch_add(1, Ordering::Relaxed);
+                    crate::observability::metrics::record_cache_lookup(false);
                     Ok(None)
                 }
             }
         } else {
             self.misses.fetch_add(1, Ordering::Relaxed);
+            crate::observability::metrics::record_cache_lookup(false);
             Ok(None)
         }
     }

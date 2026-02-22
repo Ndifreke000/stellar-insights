@@ -129,20 +129,20 @@ impl WebhookService {
         let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
             .unwrap_or_else(|_| secret.clone());
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
-            id,
-            user_id,
-            request.url,
-            event_types_str,
-            filters_str,
-            encrypted_secret,
-            true,
-            now
         )
+        .bind(&id)
+        .bind(user_id)
+        .bind(&request.url)
+        .bind(&event_types_str)
+        .bind(filters_str.as_deref())
+        .bind(&encrypted_secret)
+        .bind(true)
+        .bind(&now)
         .execute(&self.db)
         .await?;
 

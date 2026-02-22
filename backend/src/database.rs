@@ -3,6 +3,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use std::time::Duration;
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::analytics::compute_anchor_metrics;
@@ -187,6 +188,7 @@ impl Database {
     }
 
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
+        let start = Instant::now();
         let anchors = sqlx::query_as::<_, Anchor>(
             r#"
             SELECT * FROM anchors
@@ -199,6 +201,11 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
+        crate::observability::metrics::observe_db_query(
+            "list_anchors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(anchors)
     }
 
@@ -461,6 +468,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<crate::models::corridor::Corridor>> {
+        let start = Instant::now();
         let records = sqlx::query_as::<_, CorridorRecord>(
             r#"
             SELECT * FROM corridors ORDER BY reliability_score DESC LIMIT $1 OFFSET $2
@@ -471,7 +479,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(records
+        let corridors = records
             .into_iter()
             .map(|r| {
                 crate::models::corridor::Corridor::new(
@@ -481,7 +489,13 @@ impl Database {
                     r.destination_asset_issuer,
                 )
             })
-            .collect())
+            .collect::<Vec<_>>();
+        crate::observability::metrics::observe_db_query(
+            "list_corridors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
+        Ok(corridors)
     }
 
     pub async fn get_corridor_by_id(
@@ -656,6 +670,7 @@ impl Database {
     }
 
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
+        let start = Instant::now();
         for payment in payments {
             sqlx::query(
                 r#"
@@ -679,6 +694,11 @@ impl Database {
             .execute(&self.pool)
             .await?;
         }
+        crate::observability::metrics::observe_db_query(
+            "save_payments",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(())
     }
 

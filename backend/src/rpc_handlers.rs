@@ -38,6 +38,7 @@ pub struct ErrorResponse {
 }
 
 /// Health check for Stellar RPC
+#[tracing::instrument(skip(client))]
 pub async fn rpc_health_check(
     State(client): State<Arc<StellarRpcClient>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
@@ -53,6 +54,7 @@ pub async fn rpc_health_check(
 }
 
 /// Get latest ledger information
+#[tracing::instrument(skip(client))]
 pub async fn get_latest_ledger(
     State(client): State<Arc<StellarRpcClient>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
@@ -68,6 +70,7 @@ pub async fn get_latest_ledger(
 }
 
 /// Get recent payments
+#[tracing::instrument(skip(client))]
 pub async fn get_payments(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<PaginationQuery>,
@@ -85,6 +88,7 @@ pub async fn get_payments(
 }
 
 /// Get payments for a specific account
+#[tracing::instrument(skip(client))]
 pub async fn get_account_payments(
     State(client): State<Arc<StellarRpcClient>>,
     Path(account_id): Path<String>,
@@ -105,6 +109,7 @@ pub async fn get_account_payments(
 }
 
 /// Get recent trades
+#[tracing::instrument(skip(client))]
 pub async fn get_trades(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<PaginationQuery>,
@@ -122,6 +127,7 @@ pub async fn get_trades(
 }
 
 /// Get order book for a trading pair
+#[tracing::instrument(skip(client))]
 pub async fn get_order_book(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<OrderBookQuery>,

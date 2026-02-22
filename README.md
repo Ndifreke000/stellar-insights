@@ -201,6 +201,7 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 - [SEP-31](./docs/SEP31.md) - Cross-Border Payments
 - [Cost Calculator](./docs/COST_CALCULATOR.md) - Route-by-route payment cost estimation
 - [Account Merges](./docs/ACCOUNT_MERGES.md) - Account merge detection and analytics
+- [Observability](./docs/OBSERVABILITY.md) - Metrics, tracing, request IDs, and dashboards
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development guidelines
 - [Remaining Issues](./issues/REMAINING-ISSUES-022-090.md) - Development tasks
 

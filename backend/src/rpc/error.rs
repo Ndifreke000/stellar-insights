@@ -36,6 +36,16 @@ impl fmt::Display for RpcError {
 impl std::error::Error for RpcError {}
 
 impl RpcError {
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            RpcError::NetworkError(_)
+                | RpcError::TimeoutError(_)
+                | RpcError::RateLimitError { .. }
+                | RpcError::ServerError { status: 500..=599, .. }
+        )
+    }
+
     pub fn is_transient(&self) -> bool {
         matches!(
             self,

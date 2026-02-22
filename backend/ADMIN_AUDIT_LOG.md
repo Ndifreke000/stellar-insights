@@ -11,7 +11,7 @@ This backend implements a comprehensive, tamper-proof audit log for all admin ac
 - Easy verification: recompute hash chain to detect tampering
 
 ## Schema
-See `backend/migrations/015_create_admin_audit_log.sql` for table definition.
+See `backend/migrations/018_create_admin_audit_log.sql` for table definition.
 
 ## Usage
 - Use `AdminAuditLogger` (see `backend/src/admin_audit_log.rs`) to record admin actions:
@@ -39,6 +39,6 @@ db.admin_audit_logger.log_action(
 ```
 
 ## References
-- Migration: `backend/migrations/015_create_admin_audit_log.sql`
+- Migration: `backend/migrations/018_create_admin_audit_log.sql`
 - Logger: `backend/src/admin_audit_log.rs`
 - Database integration: `backend/src/database.rs`

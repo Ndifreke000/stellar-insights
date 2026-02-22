@@ -3,7 +3,7 @@ use crate::rpc::config::{
     circuit_breaker_config_from_env, initial_backoff_from_env, max_backoff_from_env,
     max_retries_from_env,
 };
-use crate::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::rpc::circuit_breaker::CircuitBreaker;
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
 use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
@@ -11,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -70,7 +70,7 @@ pub struct StellarRpcClient {
     network_config: NetworkConfig,
     mock_mode: bool,
     rate_limiter: RpcRateLimiter,
-    circuit_breaker: Arc<Mutex<CircuitBreaker>>,
+    circuit_breaker: Arc<CircuitBreaker>,
     /// Maximum records per single request (default: 200)
     max_records_per_request: u32,
     /// Maximum total records across all paginated requests (default: 10000)
@@ -386,7 +386,7 @@ impl StellarRpcClient {
 
         let network_config = NetworkConfig::for_network(network);
         let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config)));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, rpc_url.clone()));
 
         // Load pagination config from environment or use defaults
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -431,7 +431,7 @@ impl StellarRpcClient {
             .expect("Failed to build HTTP client");
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
         let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config)));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, network_config.rpc_url.clone()));
 
         // Load pagination config from environment or use defaults
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")

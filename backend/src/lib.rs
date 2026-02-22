@@ -30,6 +30,7 @@ pub mod models;
 pub mod muxed;
 pub mod network;
 pub mod openapi;
+pub mod observability;
 pub mod rate_limit;
 pub mod request_id;
 pub mod services;

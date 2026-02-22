@@ -119,7 +119,7 @@ impl OAuthService {
         )
         .bind(id)
         .bind(user_id)
-        .bind(client_id)
+        .bind(&client_id)
         .bind(encrypted_secret)
         .bind(app_name)
         .execute(&self.db)
@@ -365,4 +365,3 @@ impl OAuthService {
         Ok(())
     }
 }
-

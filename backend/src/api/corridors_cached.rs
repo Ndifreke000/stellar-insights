@@ -310,6 +310,7 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     ),
     tag = "Corridors"
 )]
+#[tracing::instrument(skip(_db, cache, rpc_client, price_feed, params))]
 pub async fn list_corridors(
     State((_db, cache, rpc_client, price_feed)): State<(
         Arc<Database>,
@@ -510,6 +511,8 @@ pub async fn list_corridors(
     )
     .await?;
 
+    crate::observability::metrics::set_corridors_tracked(corridors.len() as i64);
+
     let ttl = cache.config.get_ttl("corridor");
     let response = crate::http_cache::cached_json_response(&headers, &cache_key, &corridors, ttl)?;
     Ok(response)
@@ -533,6 +536,7 @@ pub async fn list_corridors(
     ),
     tag = "Corridors"
 )]
+#[tracing::instrument(skip(_db, _cache, _rpc_client, _price_feed))]
 pub async fn get_corridor_detail(
     State((_db, _cache, _rpc_client, _price_feed)): State<(
         Arc<Database>,

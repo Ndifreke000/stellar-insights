@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::Request,
+    extract::{Request, State},
     middleware::Next,
     response::Response,
 };
@@ -12,7 +12,7 @@ use crate::database::Database;
 
 /// Middleware to track API usage analytics
 pub async fn api_analytics_middleware(
-    db: Arc<Database>,
+    State(db): State<Arc<Database>>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
