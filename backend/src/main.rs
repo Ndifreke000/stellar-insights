@@ -16,6 +16,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
+use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::api::api_keys;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -25,7 +26,6 @@ use stellar_insights_backend::api::liquidity_pools;
 use stellar_insights_backend::api::metrics_cached;
 use stellar_insights_backend::api::oauth;
 use stellar_insights_backend::api::webhooks;
-use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::auth::AuthService;
 use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
@@ -305,9 +305,7 @@ async fn main() -> Result<()> {
 
     // Initialize Governance Service
     let governance_service = Arc::new(
-        stellar_insights_backend::services::governance::GovernanceService::new(
-            Arc::clone(&db),
-        ),
+        stellar_insights_backend::services::governance::GovernanceService::new(Arc::clone(&db)),
     );
     tracing::info!("Governance service initialized");
 
@@ -848,7 +846,7 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build API analytics routes
-    let api_analytics_routes = api_analytics::routes(db.clone())
+    let api_analytics_routes = api_analytics::routes(db.clone());
     // Build governance routes
     let governance_routes = Router::new()
         .nest(

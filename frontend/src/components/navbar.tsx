@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Info, Phone, BookOpen, X, Menu } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { NotificationBell } from "./notifications";
 
 const navLinks = [
   {
@@ -47,8 +48,8 @@ export function Navbar() {
     <>
       <nav
         className={`fixed top-0 right-0 left-0 z-40 transition-all duration-300 ${scrolled
-            ? "navbar-scrolled"
-            : "navbar-default"
+          ? "navbar-scrolled"
+          : "navbar-default"
           }`}
 
         style={{ paddingLeft: "var(--sidebar-offset, 5rem)" }}
@@ -80,9 +81,10 @@ export function Navbar() {
             })}
           </ul>
 
-          {/* Right side: Theme toggle + hamburger (mobile) + brand tag (desktop) */}
+          {/* Right side: Theme toggle + notifications + hamburger (mobile) + brand tag (desktop) */}
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <NotificationBell />
 
             <button
               className="md:hidden navbar-hamburger"

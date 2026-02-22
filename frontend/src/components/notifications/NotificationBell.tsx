@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Settings } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationHistory } from './NotificationHistory';
+import { NotificationCenter } from './NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
 
 export const NotificationBell: React.FC = () => {
@@ -22,7 +22,7 @@ export const NotificationBell: React.FC = () => {
           aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
         >
           <Bell className="h-6 w-6" />
-          
+
           {/* Unread Count Badge */}
           <AnimatePresence>
             {unreadCount > 0 && (
@@ -57,8 +57,8 @@ export const NotificationBell: React.FC = () => {
         </button>
       </div>
 
-      {/* Notification History Modal */}
-      <NotificationHistory
+      {/* Notification Center Modal */}
+      <NotificationCenter
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
       />
