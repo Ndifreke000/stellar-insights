@@ -45,7 +45,7 @@ module "networking" {
 
   vpc_cidr                = var.vpc_cidr
   environment             = var.environment
-  enable_nat_per_az       = true   # Per-AZ NAT for HA
+  enable_nat_per_az       = false  # Single NAT for cost optimization (saves ~$60/month)
   enable_vpc_flow_logs    = true   # Enable for security & compliance
   azs                     = 3      # 3 AZs for full HA
 }
@@ -62,7 +62,7 @@ module "database" {
   db_subnet_ids        = module.networking.private_db_subnet_ids
 
   identifier         = "stellar-insights-${var.environment}"
-  instance_class     = "db.t3.small"
+  instance_class     = "db.t3.micro"   # Right-sized for cost optimization (saves ~$30/month)
   allocated_storage  = 500
   storage_type       = "gp3"
   engine_version     = "14.8"
@@ -148,10 +148,13 @@ module "compute" {
   container_cpu   = 512
   container_memory = 1024
 
+  # Fargate configuration (serverless - cost optimized)
+  launch_type     = "FARGATE"
+  enable_fargate  = true
+
   desired_count = 3
-  min_size      = 3  # Always at least 3 for HA
-  max_size      = 10 # Scale up for traffic spikes
-  instance_type = "t3.small"
+  min_size      = 3  # For Fargate, this controls min task count
+  max_size      = 10 # For Fargate, this controls max task count
 
   subnets         = module.networking.private_app_subnet_ids
   security_groups = [module.networking.security_group_backend_id]
@@ -263,18 +266,20 @@ output "codedeploy_deployment_group_name" {
 }
 
 output "cost_estimate" {
-  description = "Estimated monthly cost for production (HA)"
+  description = "Estimated monthly cost for production (Fargate - cost optimized)"
   value = {
-    alb                = "$20/month"
-    nat_gateways_3az   = "$90/month"  # $30 × 3
-    ecs_t3_small_3x    = "$90/month"
-    ecs_autoscaling    = "$30/month"  # Additional scaling capacity
-    rds_t3_small_multiaz = "$150/month"
-    redis_3_node_multiaz = "$40/month"
-    data_transfer      = "$20/month"
-    cloudwatch_logs    = "$10/month"
-    waf_optional       = "$5/month"
-    total_monthly      = "~$455/month"
+    alb                     = "$20/month"
+    nat_gateway             = "$30/month"
+    fargate_vcpu_hours      = "$25/month"  # ~500 vCPU-hours @ $0.04/vCPU-hour
+    fargate_memory_hours    = "$20/month"  # ~1000 GB-hours @ $0.008/GB-hour
+    fargate_requests        = "$10/month"  # Request charges if applicable
+    rds_t3_micro_multiaz   = "$100/month"
+    redis_3_node_multiaz    = "$40/month"
+    data_transfer           = "$20/month"
+    cloudwatch_logs         = "$10/month"
+    waf_optional            = "$5/month"
+    total_monthly           = "~$280/month"
+    savings_vs_ec2          = "~$175/month (38% savings from Fargate migration)"
   }
 }
 

@@ -20,7 +20,7 @@ output "service_arn" {
 
 output "asg_name" {
   description = "Auto Scaling Group name"
-  value       = aws_autoscaling_group.ecs.name
+  value       = try(aws_autoscaling_group.ecs[0].name, null)
 }
 
 output "log_group_name" {
