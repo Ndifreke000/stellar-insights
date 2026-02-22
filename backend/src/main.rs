@@ -49,6 +49,9 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
+use stellar_insights_backend::alerts::AlertManager;
+use stellar_insights_backend::monitor::CorridorMonitor;
+use stellar_insights_backend::telegram;
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
@@ -191,6 +194,17 @@ async fn main() -> Result<()> {
 
     // Initialize cache invalidation service
     let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
+
+    // Initialize AlertManager
+    let (alert_manager, _initial_rx) = AlertManager::new();
+    let alert_manager = Arc::new(alert_manager);
+
+    // Initialize CorridorMonitor
+    let corridor_monitor = Arc::new(CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
 
     // Initialize RealtimeBroadcaster
     let mut realtime_broadcaster = RealtimeBroadcaster::new(
@@ -443,6 +457,44 @@ async fn main() -> Result<()> {
         }
     });
     background_tasks.push(task);
+
+    // Start CorridorMonitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let shutdown_rx_monitor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_monitor;
+        tokio::select! {
+            _ = monitor_clone.start() => {
+                tracing::info!("CorridorMonitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("CorridorMonitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+
+    // Start Telegram Bot (conditionally, when TELEGRAM_BOT_TOKEN is set)
+    if let Ok(telegram_token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        tracing::info!("Telegram bot token found, starting bot");
+        let tg_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
+        let tg_bot = telegram::TelegramBot::new(
+            &telegram_token,
+            Arc::clone(&db),
+            Arc::clone(&cache),
+            Arc::clone(&rpc_client),
+            tg_subscriptions,
+            &alert_manager,
+        );
+        let shutdown_rx_tg = shutdown_coordinator.subscribe();
+        let task = tokio::spawn(async move {
+            tg_bot.run(shutdown_rx_tg).await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Telegram bot started");
+    } else {
+        tracing::info!("TELEGRAM_BOT_TOKEN not set, Telegram bot disabled");
+    }
 
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");

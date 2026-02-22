@@ -2,6 +2,7 @@ pub mod admin_audit_log;
 pub mod alert_handlers;
 pub mod alerts;
 pub mod analytics;
+pub mod monitor;
 pub mod api;
 pub mod api_analytics_middleware;
 pub mod api_v1_middleware;
@@ -43,6 +44,7 @@ pub mod websocket;
 
 pub mod rpc;
 pub mod rpc_handlers;
+pub mod telegram;
 
 #[cfg(test)]
 mod ml_tests;
