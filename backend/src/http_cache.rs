@@ -4,7 +4,9 @@ use std::sync::{Mutex, OnceLock};
 use axum::{
     body::Body,
     http::{
-        header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED},
+        header::{
+            CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+        },
         HeaderMap, HeaderValue, StatusCode,
     },
     response::Response,
@@ -175,9 +177,15 @@ mod tests {
     #[tokio::test]
     async fn returns_304_when_if_none_match_matches() {
         let headers = HeaderMap::new();
-        let first = cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60)
-            .unwrap();
-        let etag = first.headers().get(ETAG).unwrap().to_str().unwrap().to_string();
+        let first =
+            cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60).unwrap();
+        let etag = first
+            .headers()
+            .get(ETAG)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         let mut conditional_headers = HeaderMap::new();
         conditional_headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
@@ -195,8 +203,8 @@ mod tests {
     #[tokio::test]
     async fn returns_304_when_if_modified_since_matches() {
         let headers = HeaderMap::new();
-        let first = cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60)
-            .unwrap();
+        let first =
+            cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60).unwrap();
         let last_modified = first
             .headers()
             .get(LAST_MODIFIED)

@@ -184,17 +184,77 @@ pub async fn shutdown_database(pool: sqlx::SqlitePool, timeout_duration: Duratio
     }
 }
 
-/// Flush any pending cache operations
+/// Flush Redis cache and close connections gracefully
 ///
-/// This is a placeholder for cache flushing logic. Implement based on your caching strategy.
-pub async fn flush_caches() {
-    info!("Flushing caches");
-    // Add cache flushing logic here when caching is implemented
-    // For example:
-    // - Redis cache flush
-    // - In-memory cache flush
-    // - Write-back cache flush
-    info!("Cache flush completed");
+/// Ensures all pending Redis operations are completed and connections are closed properly.
+pub async fn flush_cache(
+    cache: std::sync::Arc<crate::cache::CacheManager>,
+    timeout_duration: Duration,
+) {
+    info!("Flushing cache and closing Redis connections");
+
+    let flush_future = async {
+        // Log cache statistics before shutdown
+        let stats = cache.get_stats();
+        info!(
+            "Cache statistics - Hits: {}, Misses: {}, Invalidations: {}, Hit Rate: {:.2}%",
+            stats.hits,
+            stats.misses,
+            stats.invalidations,
+            stats.hit_rate()
+        );
+
+        // Close Redis connection gracefully
+        if let Err(e) = cache.close().await {
+            warn!("Error closing cache connections: {}", e);
+        } else {
+            info!("Cache connections closed successfully");
+        }
+    };
+
+    match timeout(timeout_duration, flush_future).await {
+        Ok(_) => info!("Cache flush completed within timeout"),
+        Err(_) => warn!(
+            "Cache flush did not complete within {:?}, proceeding with shutdown",
+            timeout_duration
+        ),
+    }
+}
+
+/// Close WebSocket connections gracefully
+///
+/// Notifies all connected WebSocket clients about the shutdown and closes connections.
+pub async fn shutdown_websockets(
+    ws_state: std::sync::Arc<crate::websocket::WsState>,
+    timeout_duration: Duration,
+) {
+    info!(
+        "Closing {} WebSocket connections",
+        ws_state.connection_count()
+    );
+
+    let close_future = async {
+        // Send shutdown notification to all connected clients
+        ws_state.broadcast(crate::websocket::WsMessage::ServerShutdown {
+            message: "Server is shutting down gracefully".to_string(),
+        });
+
+        // Give clients a moment to receive the message
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Close all connections
+        ws_state.close_all_connections().await;
+
+        info!("All WebSocket connections closed");
+    };
+
+    match timeout(timeout_duration, close_future).await {
+        Ok(_) => info!("WebSocket shutdown completed within timeout"),
+        Err(_) => warn!(
+            "WebSocket shutdown did not complete within {:?}, proceeding with shutdown",
+            timeout_duration
+        ),
+    }
 }
 
 /// Log shutdown statistics and final state

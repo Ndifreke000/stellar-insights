@@ -1,5 +1,4 @@
 /// Webhook event definitions and payloads
-
 use serde::{Deserialize, Serialize};
 
 /// Corridor Health Degradation Event
@@ -8,7 +7,7 @@ pub struct CorridorHealthDegradedEvent {
     pub corridor_key: String,
     pub old_metrics: CorridorMetrics,
     pub new_metrics: CorridorMetrics,
-    pub severity: String, // "warning" | "critical"
+    pub severity: String,     // "warning" | "critical"
     pub changes: Vec<String>, // e.g., ["success_rate_dropped", "latency_increased"]
 }
 
@@ -42,7 +41,7 @@ pub struct CorridorLiquidityDroppedEvent {
     pub liquidity_depth_usd: f64,
     pub threshold: f64,
     pub liquidity_trend: String, // "increasing" | "stable" | "decreasing"
-    pub severity: String, // "warning" | "critical"
+    pub severity: String,        // "warning" | "critical"
 }
 
 /// Corridor Metrics snapshot

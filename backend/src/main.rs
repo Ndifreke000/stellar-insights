@@ -7,6 +7,7 @@ use axum::{
 use dotenv::dotenv;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -32,6 +33,7 @@ use stellar_insights_backend::database::Database;
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::jobs::JobScheduler;
 use stellar_insights_backend::network::NetworkConfig;
 use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
@@ -46,33 +48,31 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
-use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
+use stellar_insights_backend::shutdown::{
+    flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
+    shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
+};
 use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::vault;
 use stellar_insights_backend::websocket::WsState;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Track shutdown start time for logging
-    let _shutdown_start = std::time::Instant::now();
+    let shutdown_start = std::time::Instant::now();
 
     // Load environment variables
     dotenv().ok();
 
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "backend=info,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logging with ELK support
+    stellar_insights_backend::logging::init_logging();
 
     tracing::info!("Starting Stellar Insights Backend");
 
     // Validate environment configuration
     stellar_insights_backend::env_config::validate_env()
         .context("Environment configuration validation failed")?;
-    
+
     // Log sanitized environment configuration
     stellar_insights_backend::env_config::log_env_config();
 
@@ -84,14 +84,14 @@ async fn main() -> Result<()> {
         shutdown_config.background_task_timeout,
         shutdown_config.db_close_timeout
     );
-    let _shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
+    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config.clone()));
 
     // Database connection
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
 
     tracing::info!("Connecting to database: {}", database_url);
-    
+
     // Load pool configuration from environment
     let pool_config = stellar_insights_backend::database::PoolConfig::from_env();
     tracing::info!(
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
         pool_config.idle_timeout_seconds,
         pool_config.max_lifetime_seconds
     );
-    
+
     let pool = pool_config.create_pool(&database_url).await?;
 
     tracing::info!("Running database migrations...");
@@ -215,28 +215,42 @@ async fn main() -> Result<()> {
         Arc::clone(&price_feed),
     );
 
+    // Track background tasks for graceful shutdown
+    let mut background_tasks: Vec<JoinHandle<()>> = Vec::new();
+
+    // Metrics synchronization task
     let ingestion_clone = Arc::clone(&ingestion_service);
     let cache_invalidation_clone = Arc::clone(&cache_invalidation);
-    tokio::spawn(async move {
+    let shutdown_rx1 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
+        let mut shutdown_rx = shutdown_rx1;
         loop {
-            interval.tick().await;
-            if let Err(e) = ingestion_clone.sync_all_metrics().await {
-                tracing::error!("Metrics synchronization failed: {}", e);
-            } else {
-                // Invalidate caches after successful sync
-                if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
-                    tracing::warn!("Failed to invalidate anchor caches: {}", e);
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = ingestion_clone.sync_all_metrics().await {
+                        tracing::error!("Metrics synchronization failed: {}", e);
+                    } else {
+                        // Invalidate caches after successful sync
+                        if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
+                            tracing::warn!("Failed to invalidate anchor caches: {}", e);
+                        }
+                        if let Err(e) = cache_invalidation_clone.invalidate_corridors().await {
+                            tracing::warn!("Failed to invalidate corridor caches: {}", e);
+                        }
+                        if let Err(e) = cache_invalidation_clone.invalidate_metrics().await {
+                            tracing::warn!("Failed to invalidate metrics caches: {}", e);
+                        }
+                    }
                 }
-                if let Err(e) = cache_invalidation_clone.invalidate_corridors().await {
-                    tracing::warn!("Failed to invalidate corridor caches: {}", e);
-                }
-                if let Err(e) = cache_invalidation_clone.invalidate_metrics().await {
-                    tracing::warn!("Failed to invalidate metrics caches: {}", e);
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Metrics synchronization task shutting down");
+                    break;
                 }
             }
         }
     });
+    background_tasks.push(task);
 
     // Initialize Auth Service with its own Redis connection
     let redis_url =
@@ -268,8 +282,9 @@ async fn main() -> Result<()> {
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
-            std::env::var("SEP10_SERVER_PUBLIC_KEY")
-                .unwrap_or_else(|_| "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string()),
+            std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
+                "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string()
+            }),
             network_config.network_passphrase.clone(),
             std::env::var("SEP10_HOME_DOMAIN")
                 .unwrap_or_else(|_| "stellar-insights.local".to_string()),
@@ -286,6 +301,14 @@ async fn main() -> Result<()> {
         ),
     );
     tracing::info!("Verification rewards service initialized");
+
+    // Initialize Governance Service
+    let governance_service = Arc::new(
+        stellar_insights_backend::services::governance::GovernanceService::new(
+            Arc::clone(&db),
+        ),
+    );
+    tracing::info!("Governance service initialized");
 
     // ML Retraining task (commented out)
     /*
@@ -305,74 +328,136 @@ async fn main() -> Result<()> {
 
     // Ledger ingestion task
     let ledger_ingestion_clone = Arc::clone(&ledger_ingestion_service);
-    tokio::spawn(async move {
+    let shutdown_rx2 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
         tracing::info!("Starting ledger ingestion background task");
+        let mut shutdown_rx = shutdown_rx2;
         loop {
-            match ledger_ingestion_clone.run_ingestion(5).await {
-                Ok(count) => {
-                    if count == 0 {
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    } else {
-                        tokio::task::yield_now().await;
+            tokio::select! {
+                result = ledger_ingestion_clone.run_ingestion(5) => {
+                    match result {
+                        Ok(count) => {
+                            if count == 0 {
+                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                            } else {
+                                tokio::task::yield_now().await;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Ledger ingestion failed: {}", e);
+                            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                        }
                     }
                 }
-                Err(e) => {
-                    tracing::error!("Ledger ingestion failed: {}", e);
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Ledger ingestion task shutting down");
+                    break;
                 }
             }
         }
     });
+    background_tasks.push(task);
 
     // Liquidity pool sync background task
     let lp_analyzer_clone = Arc::clone(&lp_analyzer);
-    tokio::spawn(async move {
+    let shutdown_rx3 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
         tracing::info!("Starting liquidity pool sync background task");
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
+        let mut shutdown_rx = shutdown_rx3;
         loop {
-            interval.tick().await;
-            if let Err(e) = lp_analyzer_clone.sync_pools().await {
-                tracing::error!("Liquidity pool sync failed: {}", e);
-            }
-            if let Err(e) = lp_analyzer_clone.take_snapshots().await {
-                tracing::error!("Liquidity pool snapshot failed: {}", e);
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = lp_analyzer_clone.sync_pools().await {
+                        tracing::error!("Liquidity pool sync failed: {}", e);
+                    }
+                    if let Err(e) = lp_analyzer_clone.take_snapshots().await {
+                        tracing::error!("Liquidity pool snapshot failed: {}", e);
+                    }
+                }
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Liquidity pool sync task shutting down");
+                    break;
+                }
             }
         }
     });
+    background_tasks.push(task);
 
     // Trustline stats sync background task
     let trustline_analyzer_clone = Arc::clone(&trustline_analyzer);
-    tokio::spawn(async move {
+    let shutdown_rx4 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
         tracing::info!("Starting trustline stats sync background task");
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(900)); // 15 minutes
+        let mut shutdown_rx = shutdown_rx4;
         loop {
-            interval.tick().await;
-            if let Err(e) = trustline_analyzer_clone.sync_assets().await {
-                tracing::error!("Trustline sync failed: {}", e);
-            }
-            if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
-                tracing::error!("Trustline snapshot failed: {}", e);
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = trustline_analyzer_clone.sync_assets().await {
+                        tracing::error!("Trustline sync failed: {}", e);
+                    }
+                    if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
+                        tracing::error!("Trustline snapshot failed: {}", e);
+                    }
+                }
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Trustline stats sync task shutting down");
+                    break;
+                }
             }
         }
     });
+    background_tasks.push(task);
 
     // Start RealtimeBroadcaster background task
-    tokio::spawn(async move {
+    let shutdown_rx5 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
         tracing::info!("Starting RealtimeBroadcaster background task");
-        realtime_broadcaster.start().await;
-    });
-
-    // Start Webhook Dispatcher background task
-    let webhook_dispatcher = WebhookDispatcher::new(pool.clone());
-    tokio::spawn(async move {
-        if let Err(e) = webhook_dispatcher.run().await {
-            tracing::error!("Webhook dispatcher encountered fatal error: {}", e);
+        let mut shutdown_rx = shutdown_rx5;
+        tokio::select! {
+            _ = realtime_broadcaster.start() => {
+                tracing::info!("RealtimeBroadcaster task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("RealtimeBroadcaster task shutting down");
+            }
         }
     });
+    background_tasks.push(task);
+
+    // Start Webhook Dispatcher background task
+    let shutdown_rx6 = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx6;
+        tokio::select! {
+            result = webhook_dispatcher.run() => {
+                if let Err(e) = result {
+                    tracing::error!("Webhook dispatcher encountered fatal error: {}", e);
+                }
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Webhook dispatcher task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
 
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
+
+    // Start background job scheduler
+    tracing::info!("Starting background job scheduler...");
+    let _job_scheduler = JobScheduler::start(
+        Arc::clone(&db),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+        Arc::clone(&ingestion_service),
+        Arc::clone(&price_feed),
+    )
+    .await;
+    tracing::info!("Background job scheduler started");
 
     // Initialize rate limiter
     let rate_limiter_result = RateLimiter::new().await;
@@ -477,17 +562,7 @@ async fn main() -> Result<()> {
 
     rate_limiter
         .register_endpoint(
-            "/api/verifications".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 60,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/cost-calculator".to_string(),
+            "/api/achievements".to_string(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -759,12 +834,24 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
-    // Build verification rewards routes
-    let verification_routes = Router::new()
+    // Build achievements / quests routes
+    let achievements_routes = Router::new()
         .nest(
-            "/api/verifications",
-            stellar_insights_backend::api::verification_rewards::routes(
-                Arc::clone(&verification_rewards_service),
+            "/api",
+            stellar_insights_backend::api::achievements::routes(),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build governance routes
+    let governance_routes = Router::new()
+        .nest(
+            "/api/governance",
+            stellar_insights_backend::api::governance::routes(
+                governance_service,
                 Arc::clone(&sep10_service),
             ),
         )
@@ -808,13 +895,15 @@ async fn main() -> Result<()> {
         .merge(price_routes)
         .merge(cost_calculator_routes)
         .merge(trustline_routes)
+        .merge(achievements_routes)
+        .merge(governance_routes)
         .merge(network_routes)
         .merge(cache_routes)
         .merge(metrics_routes)
         .merge(verification_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
-        .layer(compression); // Apply compression to all routes
+        .layer(compression);
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
@@ -823,11 +912,60 @@ async fn main() -> Result<()> {
 
     tracing::info!("Server starting on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(
+
+    // Clone resources needed for shutdown
+    let pool_for_shutdown = pool.clone();
+    let cache_for_shutdown = Arc::clone(&cache);
+    let ws_state_for_shutdown = Arc::clone(&ws_state);
+    let shutdown_coordinator_clone = Arc::clone(&shutdown_coordinator);
+
+    // Spawn signal handler task
+    tokio::spawn(async move {
+        wait_for_signal().await;
+        tracing::info!("Shutdown signal received, initiating graceful shutdown");
+        shutdown_coordinator_clone.trigger_shutdown();
+    });
+
+    // Create shutdown signal future
+    let shutdown_signal = async move {
+        let mut rx = shutdown_coordinator.subscribe();
+        let _ = rx.recv().await;
+        tracing::info!("Server received shutdown signal, stopping to accept new connections");
+    };
+
+    // Start server with graceful shutdown
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .await?;
+    .with_graceful_shutdown(shutdown_signal);
+
+    tracing::info!("Server is ready to accept connections");
+
+    // Run the server
+    if let Err(e) = server.await {
+        tracing::error!("Server error: {}", e);
+    }
+
+    tracing::info!("Server stopped accepting new connections, starting cleanup");
+
+    // Graceful shutdown sequence
+    tracing::info!("Step 1/4: Shutting down background tasks");
+    shutdown_background_tasks(background_tasks, shutdown_config.background_task_timeout).await;
+
+    tracing::info!("Step 2/4: Closing WebSocket connections");
+    shutdown_websockets(ws_state_for_shutdown, Duration::from_secs(5)).await;
+
+    tracing::info!("Step 3/4: Flushing cache and closing Redis connections");
+    flush_cache(cache_for_shutdown, shutdown_config.db_close_timeout).await;
+
+    tracing::info!("Step 4/4: Closing database connections");
+    shutdown_database(pool_for_shutdown, shutdown_config.db_close_timeout).await;
+
+    // Log final shutdown summary
+    log_shutdown_summary(shutdown_start);
+
+    tracing::info!("Graceful shutdown complete");
 
     Ok(())
 }

@@ -1,4 +1,5 @@
 pub mod account_merges;
+pub mod achievements;
 pub mod anchors;
 pub mod anchors_cached;
 pub mod api_keys;
@@ -9,6 +10,7 @@ pub mod corridors_cached;
 pub mod cost_calculator;
 // pub mod digest;  // Commented out - depends on email module
 pub mod fee_bump;
+pub mod governance;
 pub mod liquidity_pools;
 pub mod metrics;
 pub mod metrics_cached;
@@ -19,5 +21,7 @@ pub mod price_feed;
 pub mod sep10;
 pub mod sep24_proxy;
 pub mod sep31_proxy;
+pub mod transactions;
 pub mod trustlines;
 pub mod verification_rewards;
+pub mod webhooks;

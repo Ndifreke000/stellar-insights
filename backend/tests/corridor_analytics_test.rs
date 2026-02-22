@@ -1,9 +1,9 @@
+use chrono::{DateTime, Utc};
 use stellar_insights_backend::analytics::corridor::{
     compute_corridor_analytics, compute_corridor_analytics_for_date, get_corridors_by_success_rate,
     get_top_corridors_by_transactions, get_top_corridors_by_volume,
 };
 use stellar_insights_backend::models::corridor::PaymentRecord;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 fn create_test_payment(

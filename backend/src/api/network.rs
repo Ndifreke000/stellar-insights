@@ -35,7 +35,7 @@ pub struct SwitchNetworkResponse {
 /// Get current network information
 pub async fn get_network_info() -> Result<Json<NetworkInfo>, StatusCode> {
     let network_config = NetworkConfig::from_env();
-    
+
     let network_info = NetworkInfo {
         network: network_config.network,
         display_name: network_config.display_name().to_string(),
@@ -84,10 +84,10 @@ pub async fn switch_network(
     // 1. Update environment variables
     // 2. Restart services with new network configuration
     // 3. Clear network-specific caches
-    
+
     // For now, we'll return information about what the switch would do
     let target_config = NetworkConfig::for_network(request.network);
-    
+
     let response = SwitchNetworkResponse {
         success: false, // Set to false since we're not actually switching
         message: format!(
@@ -131,7 +131,7 @@ mod tests {
     async fn test_get_network_info() {
         let result = get_network_info().await;
         assert!(result.is_ok());
-        
+
         let network_info = result.unwrap().0;
         assert!(!network_info.display_name.is_empty());
         assert!(!network_info.rpc_url.is_empty());
@@ -142,7 +142,7 @@ mod tests {
     async fn test_get_available_networks() {
         let result = get_available_networks().await;
         let networks = result.0;
-        
+
         assert_eq!(networks.len(), 2);
         assert!(networks.iter().any(|n| n.is_mainnet));
         assert!(networks.iter().any(|n| n.is_testnet));
@@ -153,10 +153,10 @@ mod tests {
         let request = SwitchNetworkRequest {
             network: StellarNetwork::Testnet,
         };
-        
+
         let result = switch_network(Json(request)).await;
         assert!(result.is_ok());
-        
+
         let response = result.unwrap().0;
         assert!(!response.success); // Should be false since we don't actually switch
         assert!(response.message.contains("restart required"));

@@ -1,0 +1,11 @@
+.env
+.env.local
+*.db
+*.sqlite
+target/
+Cargo.lock
+node_modules/
+.next
+.env.local.backup
+.DS_Store
+*.log

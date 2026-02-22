@@ -17,6 +17,8 @@ pub enum DataKey {
     Snapshots,
     /// Latest epoch number recorded
     LatestEpoch,
+    /// Emergency pause state (true = paused, false = active)
+    Paused,
 }
 
 /// Analytics snapshot data structure
@@ -55,6 +57,9 @@ impl StellarInsightsContract {
 
         // Initialize latest epoch to 0
         env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
+
+        // Initialize contract as not paused
+        env.storage().instance().set(&DataKey::Paused, &false);
     }
 
     /// Submit a cryptographic hash of an analytics snapshot on-chain
@@ -70,6 +75,7 @@ impl StellarInsightsContract {
     /// * `caller` - Address attempting to submit the snapshot
     ///
     /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::UnauthorizedCaller` - If caller is not the admin
     /// * `Error::InvalidEpoch` - If epoch is 0
@@ -83,6 +89,12 @@ impl StellarInsightsContract {
         hash: BytesN<32>,
         caller: Address,
     ) -> Result<u64, Error> {
+        // Check if contract is paused
+        let is_paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         // Verify caller is authenticated
         caller.require_auth();
 
@@ -238,6 +250,74 @@ impl StellarInsightsContract {
             .instance()
             .get(&DataKey::LatestEpoch)
             .unwrap_or(0)
+    }
+
+    /// Emergency pause the contract
+    ///
+    /// Pauses all snapshot submissions. Only the admin can pause the contract.
+    /// Read operations remain available during pause.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to pause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::UnauthorizedCaller` - If caller is not the admin
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        Ok(())
+    }
+
+    /// Unpause the contract
+    ///
+    /// Resumes normal operations. Only the admin can unpause the contract.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to unpause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::UnauthorizedCaller` - If caller is not the admin
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        Ok(())
+    }
+
+    /// Check if contract is paused
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Returns
+    /// * `true` if contract is paused, `false` otherwise
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
 }
 

@@ -7,6 +7,7 @@ import { NotificationProvider } from "../contexts/NotificationContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { UserPreferencesProvider } from "../contexts/UserPreferencesContext";
 import { NotificationSystem } from "../components/notifications/NotificationSystem";
+import { QuestProgressTracker } from "../components/QuestProgressTracker";
 import { Sidebar } from "../components/layout/sidebar";
 import { Navbar } from "../components/navbar";
 import "./globals.css";
@@ -48,13 +49,19 @@ export default function RootLayout({
                       <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" />
                       <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" />
 
-                      <div className="p-4 md:p-8">{children}</div>
-                    </main>
-                  </div>
-                  <NotificationSystem />
-                </NotificationProvider>
-              </WalletProvider>
-            </UserPreferencesProvider>
+                    {/* Background Ambient Glow */}
+                    <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" />
+                    <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" />
+
+                    <div className="p-4 md:p-8">
+                      {children}
+                    </div>
+                  </main>
+                </div>
+                <QuestProgressTracker />
+                <NotificationSystem />
+              </NotificationProvider>
+            </WalletProvider>
           </ThemeProvider>
         </ErrorBoundary>
       </body>

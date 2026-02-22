@@ -1,0 +1,127 @@
+name: Deploy with Vault Secrets
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: backend=info,tower_http=debug
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for GitHub OIDC token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Get Vault Token via GitHub OIDC
+        id: vault-auth
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "${{ secrets.VAULT_ADDR }}/v1/auth/jwt/login" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"role\": \"stellar-github\",
+              \"jwt\": \"${{ secrets.GITHUB_TOKEN }}\"
+            }" | jq -r '.auth.client_token // empty')
+          
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to obtain Vault token"
+            exit 1
+          fi
+          
+          echo "::add-mask::$TOKEN"
+          echo "VAULT_TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "token_obtained=true" >> $GITHUB_OUTPUT
+
+      - name: Read secrets from Vault
+        if: steps.vault-auth.outputs.token_obtained == 'true'
+        id: vault-secrets
+        run: |
+          # Read JWT_SECRET from Vault
+          JWT_SECRET=$(curl -s -X GET \
+            "${{ secrets.VAULT_ADDR }}/v1/data/secret/stellar/jwt_secret" \
+            -H "X-Vault-Token: $VAULT_TOKEN" | jq -r '.data.data.value')
+          
+          echo "::add-mask::$JWT_SECRET"
+          echo "JWT_SECRET=$JWT_SECRET" >> $GITHUB_ENV
+          
+          # Read DATABASE_URL from env (already set in secrets)
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          cargo test --lib --verbose
+        working-directory: backend
+        env:
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Build backend
+        run: cargo build --release
+        working-directory: backend
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        working-directory: backend
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+        working-directory: backend
+
+  vault-integration:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vault CLI
+        run: |
+          wget -q https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_linux_amd64.zip
+          unzip vault_1.15.0_linux_amd64.zip
+          sudo mv vault /usr/local/bin/
+          vault --version
+
+      - name: Get Vault Token
+        id: vault-auth
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "${{ secrets.VAULT_ADDR }}/v1/auth/jwt/login" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"role\": \"stellar-github\",
+              \"jwt\": \"${{ secrets.GITHUB_TOKEN }}\"
+            }" | jq -r '.auth.client_token')
+          
+          echo "::add-mask::$TOKEN"
+          echo "VAULT_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Verify Vault Access
+        run: |
+          vault status -address="${{ secrets.VAULT_ADDR }}"
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+
+      - name: Audit Vault Access
+        run: |
+          echo "Vault integration test completed successfully"
+          echo "Token role: stellar-github"
+          echo "Authenticated via: GitHub OIDC JWT"

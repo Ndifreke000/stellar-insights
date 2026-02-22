@@ -1,0 +1,287 @@
+    Checking stellar-insights-backend v0.1.0 (/Users/mac/Ndifreke000/stellar-insights/backend)
+error[E0432]: unresolved import `crate::models::AnchorMetadata`
+  --> src/api/anchors.rs:12:5
+   |
+12 | use crate::models::AnchorMetadata;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `AnchorMetadata` in `models`
+
+error[E0432]: unresolved import `crate::auth::oauth`
+  --> src/api/oauth.rs:14:18
+   |
+14 | ...uth::oauth::{OAut...
+   |         ^^^^^ could not find `oauth` in `auth`
+
+warning: unused import: `std::sync::Arc`
+  --> src/api/oauth.rs:12:5
+   |
+12 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `get`
+ --> src/api/webhooks.rs:6:23
+  |
+6 | ...elete, get, post},
+  |           ^^^
+
+warning: unused import: `Context`
+ --> src/env_config.rs:7:14
+  |
+7 | ...ow::{Context, Resu...
+  |         ^^^^^^^
+
+warning: unused import: `Serialize`
+ --> src/vault/client.rs:8:26
+  |
+8 | ...ze, Serialize};
+  |        ^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/vault/lease.rs:10:5
+   |
+10 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Instant`
+  --> src/vault/lease.rs:11:27
+   |
+11 | ...ion, Instant};
+   |         ^^^^^^^
+
+warning: unused imports: `error` and `warn`
+  --> src/vault/lease.rs:13:15
+   |
+13 | ...::{error, info, warn};
+   |       ^^^^^        ^^^^
+
+error[E0609]: no field `redis_connection` on type `AppState`
+  --> src/api/anchors.rs:94:23
+   |
+94 | ...te.redis_connection.cl...
+   |       ^^^^^^^^^^^^^^^^ unknown field
+   |
+   = note: available fields are: `db`, `ws_state`, `ingestion`
+
+error[E0282]: type annotations needed
+  --> src/api/oauth.rs:94:5
+   |
+94 | /     service
+95 | |         .store_aut...
+96 | |         .await
+   | |______________^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> src/api/oauth.rs:97:19
+   |
+97 | ...r(|e| OAuthApiError::ServerError(e.to...
+   |       ^                             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+97 |         .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?;
+   |                    ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:120:19
+    |
+120 |       let user_id = service
+    |  ___________________^
+121 | |         .validate_clie...
+122 | |         .await
+    | |______________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:149:24
+    |
+149 |               let auth = service
+    |  ________________________^
+150 | |                 .get_author...
+151 | |                 .await
+    | |______________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:152:27
+    |
+152 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+152 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:160:27
+    |
+160 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+160 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?;
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:164:27
+    |
+164 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+164 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?;
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:167:13
+    |
+167 | /             service
+168 | |                 .store_to...
+169 | |                 .await
+    | |______________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:170:27
+    |
+170 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+170 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?;
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:199:24
+    |
+199 |               let auth = service
+    |  ________________________^
+200 | |                 .get_author...
+201 | |                 .await
+    | |______________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:202:27
+    |
+202 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+202 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:207:27
+    |
+207 | ...r(|e| OAuthApiError::ServerError(e.to...
+    |       ^                             - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+207 |                 .map_err(|e: /* Type */| OAuthApiError::ServerError(e.to_string()))?;
+    |                            ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:233:5
+    |
+233 | /     service
+234 | |         .validate...
+235 | |         .await
+    | |______________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/api/oauth.rs:239:5
+    |
+239 | /     service
+240 | |         .revoke_t...
+241 | |         .await
+    | |______________^ cannot infer type
+
+warning: variable does not need to be mutable
+  --> src/request_signing_middleware.rs:22:5
+   |
+22 |     mut req: Request,
+   |     ----^^^
+   |     |
+   |     help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+error[E0716]: temporary value dropped while borrowed
+   --> src/webhooks/mod.rs:232:13
+    |
+221 | /         sqlx::query!(
+222 | |             r#"
+223 | |             INSERT INTO webhook_events (id, we...
+224 | |             VALUES (?, ?, ?, ?, ?, ?, ?)
+...   |
+232 | |             chrono::Utc::now().to_rfc3339()
+    | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ creates a temporary value which is freed while still in use
+233 | |         )
+    | |_________- temporary value is freed at the end of this statement
+234 |           .execute(&self.db)
+    |            ------- borrow later used by call
+    |
+    = note: consider using a `let` binding to create a longer lived value
+
+error[E0277]: a value of type `Vec<...>` cannot be built from an iterator over elements of type `(..., ..., ..., ...)`
+   --> src/webhooks/mod.rs:258:14
+    |
+258 | ...  .collect())
+    |       ^^^^^^^ value of type `Vec<...>` cannot be built from `std::iter::Iterator<Item=(..., ..., ..., ...)>`
+    |
+help: the trait `FromIterator<(std::option::Option<std::string::String>, std::string::String, std::string::String, std::string::String)>` is not implemented for `Vec<...>`
+      but trait `FromIterator<(std::string::String, std::string::String, std::string::String, std::string::String)>` is implemented for it
+   --> /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/alloc/src/vec/mod.rs:3721:1
+    = help: for that trait implementation, expected `String`, found `Option<String>`
+note: the method call chain might not have had the expected associated types
+   --> src/webhooks/mod.rs:257:14
+    |
+242 |           let events = sqlx::query!(
+    |  ______________________-
+243 | |             r#"
+244 | |             SELECT we.id, we.webhook_id, we.event_type, we.payload
+245 | |             FROM webhook_events we
+...   |
+252 | |         .fetch_all(&self.db)
+253 | |         .await?;
+    | |_______________- this expression has type `Vec<Record>`
+...
+256 |               .into_iter()
+    |                ----------- `Iterator::Item` is `Record` here
+257 |              ...e, e.payload))
+    |              ...^^^^^^^^^^^^^^ `Iterator::Item` changed to `(Option<String>, String, String, String)` here
+note: required by a bound in `std::iter::Iterator::collect`
+   --> /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/iter/traits/iterator.rs:2015:5
+    = note: the full name for the type has been written to '/Users/mac/Ndifreke000/stellar-insights/backend/target/debug/deps/stellar_insights_backend-bfa3029897c8b6f4.long-type-2601172270329724485.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0716]: temporary value dropped while borrowed
+   --> src/webhooks/mod.rs:286:13
+    |
+284 | /         sqlx::query!(
+285 | |             "UPDATE webhooks SET last_fired_at...
+286 | |             chrono::Utc::now().to_rfc3339(),
+    | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ creates a temporary value which is freed while still in use
+287 | |             webhook_id
+288 | |         )
+    | |_________- temporary value is freed at the end of this statement
+289 |           .execute(&self.db)
+    |            ------- borrow later used by call
+    |
+    = note: consider using a `let` binding to create a longer lived value
+
+warning: unused variable: `vault_client`
+  --> src/vault/lease.rs:27:24
+   |
+27 | ...f, vault_client: V...
+   |       ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_vault_client`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0277, E0282, E0432, E0609, E0716.
+For more information about an error, try `rustc --explain E0277`.
+warning: `stellar-insights-backend` (lib) generated 9 warnings
+error: could not compile `stellar-insights-backend` (lib) due to 20 previous errors; 9 warnings emitted

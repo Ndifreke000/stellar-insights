@@ -17,4 +17,6 @@ pub enum Error {
     AdminNotSet = 5,
     /// No snapshot found for the requested epoch
     SnapshotNotFound = 6,
+    /// Contract is paused for emergency maintenance
+    ContractPaused = 7,
 }

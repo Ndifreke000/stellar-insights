@@ -1,13 +1,14 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::broadcast::{broadcast_anchor_update, broadcast_corridor_update};
+use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::Corridor;
 use crate::models::{AnchorDetailResponse, CreateAnchorRequest, CreateCorridorRequest};
 use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
@@ -42,6 +43,12 @@ impl From<anyhow::Error> for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
+        ApiError::InternalError(err.to_string())
+    }
+}
+
+impl From<crate::rpc::RpcError> for ApiError {
+    fn from(err: crate::rpc::RpcError) -> Self {
         ApiError::InternalError(err.to_string())
     }
 }
@@ -97,11 +104,15 @@ pub async fn get_anchor(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<AnchorDetailResponse>> {
-    let anchor_detail = app_state
-        .db
-        .get_anchor_detail(id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Anchor with id {} not found", id)))?;
+    let anchor_detail = app_state.db.get_anchor_detail(id).await?.ok_or_else(|| {
+        let mut details = HashMap::new();
+        details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
+        ApiError::not_found_with_details(
+            "ANCHOR_NOT_FOUND",
+            format!("Anchor with id {} not found", id),
+            details,
+        )
+    })?;
 
     Ok(Json(anchor_detail))
 }
@@ -125,10 +136,16 @@ pub async fn get_anchor_by_account(
         .get_anchor_by_stellar_account(&lookup_key)
         .await?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "Anchor with stellar account {} not found",
-                account_lookup
-            ))
+            let mut details = HashMap::new();
+            details.insert(
+                "stellar_account".to_string(),
+                serde_json::json!(account_lookup),
+            );
+            ApiError::not_found_with_details(
+                "ANCHOR_NOT_FOUND",
+                format!("Anchor with stellar account {} not found", account_lookup),
+                details,
+            )
         })?;
 
     Ok(Json(anchor))
@@ -159,12 +176,16 @@ pub async fn create_anchor(
     Json(req): Json<CreateAnchorRequest>,
 ) -> ApiResult<Json<crate::models::Anchor>> {
     if req.name.is_empty() {
-        return Err(ApiError::BadRequest("Name cannot be empty".to_string()));
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Name cannot be empty",
+        ));
     }
 
     if req.stellar_account.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Stellar account cannot be empty".to_string(),
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Stellar account cannot be empty",
         ));
     }
 
@@ -193,10 +214,13 @@ pub async fn update_anchor_metrics(
 ) -> ApiResult<Json<crate::models::Anchor>> {
     // Verify anchor exists
     if app_state.db.get_anchor_by_id(id).await?.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Anchor with id {} not found",
-            id
-        )));
+        let mut details = HashMap::new();
+        details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
+        return Err(ApiError::not_found_with_details(
+            "ANCHOR_NOT_FOUND",
+            format!("Anchor with id {} not found", id),
+            details,
+        ));
     }
 
     let anchor = app_state
@@ -224,10 +248,13 @@ pub async fn get_anchor_assets(
 ) -> ApiResult<Json<Vec<crate::models::Asset>>> {
     // Verify anchor exists
     if app_state.db.get_anchor_by_id(id).await?.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Anchor with id {} not found",
-            id
-        )));
+        let mut details = HashMap::new();
+        details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
+        return Err(ApiError::not_found_with_details(
+            "ANCHOR_NOT_FOUND",
+            format!("Anchor with id {} not found", id),
+            details,
+        ));
     }
 
     let assets = app_state.db.get_assets_by_anchor(id).await?;
@@ -249,10 +276,13 @@ pub async fn create_anchor_asset(
 ) -> ApiResult<Json<crate::models::Asset>> {
     // Verify anchor exists
     if app_state.db.get_anchor_by_id(id).await?.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Anchor with id {} not found",
-            id
-        )));
+        let mut details = HashMap::new();
+        details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
+        return Err(ApiError::not_found_with_details(
+            "ANCHOR_NOT_FOUND",
+            format!("Anchor with id {} not found", id),
+            details,
+        ));
     }
 
     let asset = app_state
@@ -297,13 +327,15 @@ pub async fn create_corridor(
     Json(req): Json<CreateCorridorRequest>,
 ) -> ApiResult<Json<Corridor>> {
     if req.source_asset_code.is_empty() || req.dest_asset_code.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Asset codes cannot be empty".to_string(),
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Asset codes cannot be empty",
         ));
     }
     if req.source_asset_issuer.is_empty() || req.dest_asset_issuer.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Asset issuers cannot be empty".to_string(),
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Asset issuers cannot be empty",
         ));
     }
     let corridor = app_state.db.create_corridor(req).await?;
@@ -333,10 +365,13 @@ pub async fn update_corridor_metrics_from_transactions(
     Json(req): Json<UpdateCorridorMetricsFromTxns>,
 ) -> ApiResult<Json<Corridor>> {
     if app_state.db.get_corridor_by_id(id).await?.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Corridor with id {} not found",
-            id
-        )));
+        let mut details = HashMap::new();
+        details.insert("corridor_id".to_string(), serde_json::json!(id.to_string()));
+        return Err(ApiError::not_found_with_details(
+            "CORRIDOR_NOT_FOUND",
+            format!("Corridor with id {} not found", id),
+            details,
+        ));
     }
 
     let txs: Vec<CorridorTransaction> = req

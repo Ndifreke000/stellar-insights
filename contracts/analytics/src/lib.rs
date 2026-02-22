@@ -18,6 +18,8 @@ pub enum DataKey {
     Snapshots,
     /// Latest epoch number (instance storage for quick access)
     LatestEpoch,
+    /// Emergency pause state (true = paused, false = active)
+    Paused,
 }
 
 #[contract]
@@ -48,6 +50,9 @@ impl AnalyticsContract {
         // Initialize latest epoch to 0
         storage.set(&DataKey::LatestEpoch, &0u64);
 
+        // Initialize contract as not paused
+        storage.set(&DataKey::Paused, &false);
+
         // Initialize empty snapshots map
         let persistent_storage = env.storage().persistent();
         let empty_snapshots = Map::<u64, SnapshotMetadata>::new(&env);
@@ -65,6 +70,7 @@ impl AnalyticsContract {
     /// * `caller` - Address attempting to submit (must be the authorized admin)
     ///
     /// # Panics
+    /// * If contract is paused for emergency maintenance
     /// * If admin is not set (contract not initialized)
     /// * If caller is not the authorized admin
     /// * If epoch is 0 (invalid)
@@ -73,6 +79,12 @@ impl AnalyticsContract {
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
     pub fn submit_snapshot(env: Env, epoch: u64, hash: BytesN<32>, caller: Address) -> u64 {
+        // Check if contract is paused
+        let is_paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if is_paused {
+            panic!("Contract is paused for emergency maintenance");
+        }
+
         // Require authentication from the caller
         caller.require_auth();
 
@@ -254,6 +266,72 @@ impl AnalyticsContract {
 
         // Update admin address
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    /// Emergency pause the contract
+    ///
+    /// Pauses all snapshot submissions. Only the admin can pause the contract.
+    /// Read operations remain available during pause.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to pause (must be admin)
+    ///
+    /// # Panics
+    /// * If contract is not initialized (admin not set)
+    /// * If caller is not the admin
+    pub fn pause(env: Env, caller: Address) {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin not set");
+
+        if caller != admin {
+            panic!("Unauthorized: only the admin can pause the contract");
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+    }
+
+    /// Unpause the contract
+    ///
+    /// Resumes normal operations. Only the admin can unpause the contract.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to unpause (must be admin)
+    ///
+    /// # Panics
+    /// * If contract is not initialized (admin not set)
+    /// * If caller is not the admin
+    pub fn unpause(env: Env, caller: Address) {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin not set");
+
+        if caller != admin {
+            panic!("Unauthorized: only the admin can unpause the contract");
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Check if contract is paused
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Returns
+    /// * `true` if contract is paused, `false` otherwise
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
 }
 

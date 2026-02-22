@@ -47,7 +47,11 @@ impl CorridorMonitor {
     }
 
     async fn check_corridors(&self) -> anyhow::Result<()> {
-        let payments = self.rpc_client.fetch_payments(200, None).await?;
+        let payments = self
+            .rpc_client
+            .fetch_payments(200, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
         
         let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
         for payment in &payments {
