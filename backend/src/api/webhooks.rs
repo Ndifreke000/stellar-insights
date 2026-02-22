@@ -18,10 +18,56 @@ pub async fn register_webhook(
     auth_user: AuthUser,
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Response, WebhookApiError> {
-    // Validate URL
+    // Validate URL scheme
     if !request.url.starts_with("https://") && !request.url.starts_with("http://") {
         return Err(WebhookApiError::BadRequest(
             "Webhook URL must be valid HTTP(S)".to_string(),
+        ));
+    }
+
+    // SSRF protection: block private/internal URLs (SEC-008)
+    if let Ok(url) = url::Url::parse(&request.url) {
+        if let Some(host) = url.host_str() {
+            let host_lower = host.to_lowercase();
+            // Block localhost and loopback
+            if host_lower == "localhost"
+                || host_lower == "127.0.0.1"
+                || host_lower == "::1"
+                || host_lower == "0.0.0.0"
+                || host_lower.ends_with(".local")
+                || host_lower.ends_with(".internal")
+            {
+                return Err(WebhookApiError::BadRequest(
+                    "Webhook URL must not point to localhost or internal addresses".to_string(),
+                ));
+            }
+            // Block AWS metadata endpoint
+            if host_lower == "169.254.169.254" || host_lower == "metadata.google.internal" {
+                return Err(WebhookApiError::BadRequest(
+                    "Webhook URL must not point to cloud metadata endpoints".to_string(),
+                ));
+            }
+            // Block common private IP ranges
+            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+                let is_private = match ip {
+                    std::net::IpAddr::V4(v4) => {
+                        v4.is_loopback()
+                            || v4.is_private()
+                            || v4.is_link_local()
+                            || v4.octets()[0] == 169 && v4.octets()[1] == 254
+                    }
+                    std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                };
+                if is_private {
+                    return Err(WebhookApiError::BadRequest(
+                        "Webhook URL must not point to private or reserved IP addresses".to_string(),
+                    ));
+                }
+            }
+        }
+    } else {
+        return Err(WebhookApiError::BadRequest(
+            "Webhook URL is not a valid URL".to_string(),
         ));
     }
 

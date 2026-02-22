@@ -62,7 +62,7 @@ module "database" {
   db_subnet_ids        = module.networking.private_db_subnet_ids
 
   identifier         = "stellar-insights-${var.environment}"
-  instance_class     = "db.t3.small"
+  instance_class     = "db.t3.micro"
   allocated_storage  = 100
   storage_type       = "gp3"
   engine_version     = "14.8"
@@ -144,10 +144,13 @@ module "compute" {
   container_cpu   = 512
   container_memory = 1024
 
+  # Fargate configuration (serverless - cost optimized for staging)
+  launch_type     = "FARGATE"
+  enable_fargate  = true
+
   desired_count = 2
   min_size      = 2
   max_size      = 4
-  instance_type = "t3.small"
 
   subnets         = module.networking.private_app_subnet_ids
   security_groups = [module.networking.security_group_backend_id]
@@ -258,16 +261,18 @@ output "codedeploy_deployment_group_name" {
 }
 
 output "cost_estimate" {
-  description = "Estimated monthly cost for staging"
+  description = "Estimated monthly cost for staging (Fargate - cost optimized)"
   value = {
-    alb              = "$20/month"
-    nat_gateway      = "$30/month"
-    ecs_t3_small     = "$60/month"
-    rds_t3_small     = "$60/month"
-    redis_cache      = "$20/month"
-    data_transfer    = "$10/month"
-    cloudwatch_logs  = "$5/month"
-    total_monthly    = "~$205/month"
+    alb                  = "$20/month"
+    nat_gateway          = "$30/month"
+    fargate_vcpu_hours   = "$12/month"  # ~300 vCPU-hours @ $0.04/vCPU-hour
+    fargate_memory_hours = "$8/month"   # ~400 GB-hours @ $0.008/GB-hour
+    rds_t3_micro        = "$30/month"
+    redis_cache          = "$20/month"
+    data_transfer        = "$10/month"
+    cloudwatch_logs      = "$5/month"
+    total_monthly        = "~$125/month"
+    savings_vs_ec2       = "~$80/month (39% savings from Fargate migration)"
   }
 }
 

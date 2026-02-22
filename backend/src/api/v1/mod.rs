@@ -60,7 +60,8 @@ pub fn routes(
         .route("/anchors/:id/assets", axum::routing::post(create_anchor_asset))
         .route("/corridors", axum::routing::post(create_corridor))
         .route("/corridors/:id/metrics-from-transactions", put(update_corridor_metrics_from_transactions))
-        .nest("/webhooks", webhooks::routes(pool.clone()))
+        .nest_service("/webhooks", webhooks::routes(pool.clone()))
+
         .with_state(app_state)
         .layer(middleware::from_fn(auth_middleware));
 

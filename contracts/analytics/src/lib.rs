@@ -20,6 +20,8 @@ pub enum DataKey {
     LatestEpoch,
     /// Emergency pause state (true = paused, false = active)
     Paused,
+    /// Governance contract address (only it can call set_admin_by_governance / set_paused_by_governance)
+    Governance,
 }
 
 #[contract]
@@ -325,6 +327,61 @@ impl AnalyticsContract {
         }
 
         env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Set the governance contract address. Only the admin can set this.
+    /// The governance contract can then update admin or pause state via voting.
+    pub fn set_governance(env: Env, caller: Address, governance: Address) {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized: admin not set");
+
+        if caller != admin {
+            panic!("Unauthorized: only the admin can set governance");
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Governance, &governance);
+    }
+
+    /// Get the current governance contract address (if any).
+    pub fn get_governance(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Governance)
+    }
+
+    /// Set the admin address. Only the governance contract may call this (after a passed proposal).
+    pub fn set_admin_by_governance(env: Env, caller: Address, new_admin: Address) {
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .expect("Governance not set");
+
+        if caller != governance {
+            panic!("Unauthorized: only the governance contract can set admin");
+        }
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    /// Set the paused state. Only the governance contract may call this (after a passed proposal).
+    pub fn set_paused_by_governance(env: Env, caller: Address, paused: bool) {
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .expect("Governance not set");
+
+        if caller != governance {
+            panic!("Unauthorized: only the governance contract can set paused");
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &paused);
     }
 
     /// Check if contract is paused

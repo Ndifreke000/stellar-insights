@@ -71,7 +71,7 @@ impl OAuthService {
     /// Create new OAuth service
     pub fn new(db: SqlitePool) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required for OAuth service");
 
         let jwt_audience = std::env::var("JWT_AUDIENCE").unwrap_or_else(|_| "zapier".to_string());
 
@@ -86,7 +86,7 @@ impl OAuthService {
             .unwrap_or(30);
 
         let encryption_key = std::env::var("ENCRYPTION_KEY")
-            .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+            .expect("ENCRYPTION_KEY environment variable is required for OAuth service");
 
         Self {
             jwt_secret,
@@ -119,11 +119,12 @@ impl OAuthService {
         )
         .bind(id)
         .bind(user_id)
-        .bind(client_id)
+        .bind(client_id.clone())
         .bind(encrypted_secret)
         .bind(app_name)
         .execute(&self.db)
         .await?;
+
 
         Ok((client_id, client_secret))
     }
@@ -355,12 +356,23 @@ impl OAuthService {
         Ok(())
     }
 
-    /// Revoke OAuth token
+    /// Revoke OAuth token by deleting it from the database
     pub async fn revoke_token(&self, access_token: &str) -> Result<()> {
-        // Mark token as revoked (could add revoked_at column to track)
-        // For now, we can implement a revocation list in Redis or similar
-        // Simplified implementation: just log revocation
-        tracing::info!("Token revocation requested for token: {}...", &access_token[..20]);
+        let enc_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt token for lookup: {}", e))?;
+
+        let result = sqlx::query!(
+            r#"DELETE FROM oauth_tokens WHERE access_token = ?"#,
+            enc_token
+        )
+        .execute(&self.db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!("Token revocation requested but token not found in database");
+        } else {
+            tracing::info!("OAuth token revoked successfully");
+        }
 
         Ok(())
     }

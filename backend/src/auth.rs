@@ -16,9 +16,8 @@ use tokio::sync::RwLock;
 const ACCESS_TOKEN_EXPIRY_HOURS: i64 = 1;
 const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
 
-// Demo credentials (hardcoded for simplicity)
-const DEMO_USERNAME: &str = "admin";
-const DEMO_PASSWORD: &str = "password123";
+// WARNING: Demo credentials removed for security. Use database-backed user store.
+// See SEC-001 in SECURITY_AUDIT.md
 
 /// User model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +79,11 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
+
+        if jwt_secret.len() < 32 {
+            panic!("JWT_SECRET must be at least 32 characters for adequate security");
+        }
 
         Self {
             jwt_secret,
@@ -89,16 +92,12 @@ impl AuthService {
     }
 
     /// Authenticate user with credentials
-    pub fn authenticate(&self, username: &str, password: &str) -> Result<User> {
-        // Demo authentication - replace with database lookup in production
-        if username == DEMO_USERNAME && password == DEMO_PASSWORD {
-            Ok(User {
-                id: "demo-user-id-123".to_string(),
-                username: username.to_string(),
-            })
-        } else {
-            Err(anyhow!("Invalid credentials"))
-        }
+    /// TODO: Implement database-backed user store with bcrypt/argon2 password hashing
+    pub fn authenticate(&self, _username: &str, _password: &str) -> Result<User> {
+        // Hardcoded demo credentials removed for security (SEC-001).
+        // This must be replaced with a proper database-backed user store
+        // that uses bcrypt or argon2 for password hashing before production use.
+        Err(anyhow!("Authentication not configured. Implement database-backed user store."))
     }
 
     /// Generate access token
@@ -189,7 +188,7 @@ impl AuthService {
             return Err(anyhow!("Invalid token type"));
         }
 
-        // Check if token exists in Redis
+        // Check if token exists in Redis (fail closed - SEC-007)
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             let key = format!("refresh_token:{}", claims.sub);
@@ -203,7 +202,8 @@ impl AuthService {
                 return Err(anyhow!("Refresh token not found or invalid"));
             }
         } else {
-            tracing::warn!("Redis not available, skipping refresh token validation");
+            tracing::error!("Redis not available - refusing refresh token validation (fail closed)");
+            return Err(anyhow!("Token validation service unavailable"));
         }
 
         Ok(claims)

@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::env;
 
 /// Required environment variables that must be set
-const REQUIRED_VARS: &[&str] = &["DATABASE_URL", "ENCRYPTION_KEY"];
+const REQUIRED_VARS: &[&str] = &["DATABASE_URL", "ENCRYPTION_KEY", "JWT_SECRET"];
 
 /// Environment variables that should be validated if present
 const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
@@ -87,6 +87,13 @@ pub fn log_env_config() {
 
     // CORS
     log_var("CORS_ALLOWED_ORIGINS");
+    
+    // Slack Bot
+    if let Ok(slack_url) = env::var("SLACK_WEBHOOK_URL") {
+        let sanitized = sanitize_url(&slack_url);
+        tracing::info!("  SLACK_WEBHOOK_URL: {}", sanitized);
+    }
+
 
     // Price feed (don't log API key)
     log_var("PRICE_FEED_PROVIDER");
@@ -98,6 +105,11 @@ pub fn log_env_config() {
     log_var("RPC_MAX_RECORDS_PER_REQUEST");
     log_var("RPC_MAX_TOTAL_RECORDS");
     log_var("RPC_PAGINATION_DELAY_MS");
+
+    // Telegram
+    if env::var("TELEGRAM_BOT_TOKEN").is_ok() {
+        tracing::info!("  TELEGRAM_BOT_TOKEN: [REDACTED]");
+    }
 }
 
 /// Helper to log a single environment variable

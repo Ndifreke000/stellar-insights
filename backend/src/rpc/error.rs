@@ -43,6 +43,11 @@ impl RpcError {
         )
     }
 
+    pub fn is_retryable(&self) -> bool {
+        self.is_transient() || matches!(self, RpcError::ServerError { status, .. } if *status >= 500)
+    }
+
+
     pub fn categorize(err: &str) -> Self {
         let lowered = err.to_ascii_lowercase();
         if lowered.contains("timeout") || lowered.contains("timed out") {

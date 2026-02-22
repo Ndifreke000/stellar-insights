@@ -373,7 +373,8 @@ fn test_get_latest_snapshot() {
 }
 
 #[test]
-fn test_latest_epoch_not_updated_for_older_epoch() {
+#[should_panic(expected = "Epoch monotonicity violated")]
+fn test_older_epoch_rejected() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SnapshotContract);
     let client = SnapshotContractClient::new(&env, &contract_id);
@@ -386,11 +387,8 @@ fn test_latest_epoch_not_updated_for_older_epoch() {
     let latest = client.get_latest_snapshot().unwrap();
     assert_eq!(latest.epoch, 10u64);
 
-    // Submit snapshot at earlier epoch (should not update latest)
+    // Submit snapshot at earlier epoch (should panic - rollback attack prevented)
     client.submit_snapshot(&hash2, &5u64);
-    let latest = client.get_latest_snapshot().unwrap();
-    assert_eq!(latest.epoch, 10u64);
-    assert_eq!(latest.hash, hash1);
 }
 
 #[test]

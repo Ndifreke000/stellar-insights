@@ -97,9 +97,10 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
   })
 }
 
-# EC2 Instance Profile Role
+# EC2 Instance Profile Role (only needed for EC2 launch type)
 resource "aws_iam_role" "ecs_instance_role" {
-  name = "stellar-insights-ecs-instance-${var.environment}"
+  count = var.launch_type == "EC2" ? 1 : 0
+  name  = "stellar-insights-ecs-instance-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -120,13 +121,15 @@ resource "aws_iam_role" "ecs_instance_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
-  role       = aws_iam_role.ecs_instance_role.name
+  count  = var.launch_type == "EC2" ? 1 : 0
+  role   = aws_iam_role.ecs_instance_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
 resource "aws_iam_instance_profile" "ecs" {
-  name = "stellar-insights-ecs-instance-profile-${var.environment}"
-  role = aws_iam_role.ecs_instance_role.name
+  count = var.launch_type == "EC2" ? 1 : 0
+  name  = "stellar-insights-ecs-instance-profile-${var.environment}"
+  role  = aws_iam_role.ecs_instance_role[0].name
 }
 
 # ============================================================================
@@ -147,10 +150,11 @@ resource "aws_ecs_cluster" "main" {
 }
 
 # ============================================================================
-# EC2 Launch Template
+# EC2 Launch Template (only needed for EC2 launch type)
 # ============================================================================
 
 data "aws_ami" "ecs_optimized" {
+  count = var.launch_type == "EC2" ? 1 : 0
   most_recent = true
   owners      = ["amazon"]
 
@@ -161,12 +165,13 @@ data "aws_ami" "ecs_optimized" {
 }
 
 resource "aws_launch_template" "ecs" {
+  count = var.launch_type == "EC2" ? 1 : 0
   name_prefix   = "stellar-insights-ecs-"
-  image_id      = data.aws_ami.ecs_optimized.id
+  image_id      = data.aws_ami.ecs_optimized[0].id
   instance_type = var.instance_type
 
   iam_instance_profile {
-    arn = aws_iam_instance_profile.ecs.arn
+    arn = aws_iam_instance_profile.ecs[0].arn
   }
 
   # ECS cluster initialization
@@ -207,10 +212,11 @@ resource "aws_launch_template" "ecs" {
 }
 
 # ============================================================================
-# Auto Scaling Group
+# Auto Scaling Group (only needed for EC2 launch type)
 # ============================================================================
 
 resource "aws_autoscaling_group" "ecs" {
+  count = var.launch_type == "EC2" ? 1 : 0
   name                = "${var.cluster_name}-asg"
   vpc_zone_identifier = var.subnets
   min_size            = var.min_size
@@ -220,7 +226,7 @@ resource "aws_autoscaling_group" "ecs" {
   health_check_grace_period = 300
 
   launch_template {
-    id      = aws_launch_template.ecs.id
+    id      = aws_launch_template.ecs[0].id
     version = "$Latest"
   }
 
@@ -248,7 +254,7 @@ resource "aws_autoscaling_group" "ecs" {
 resource "aws_ecs_task_definition" "app" {
   family                   = "stellar-insights-${var.environment}"
   network_mode             = "awsvpc"
-  requires_compatibilities = ["EC2"]
+  requires_compatibilities = var.launch_type == "FARGATE" ? ["FARGATE"] : ["EC2"]
   cpu                      = var.container_cpu
   memory                   = var.container_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
@@ -326,7 +332,7 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
-  launch_type     = "EC2"
+  launch_type     = var.launch_type
 
   network_configuration {
     subnets          = var.subnets

@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use analytics::AnalyticsContractClient;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, BytesN, Env, String,
@@ -231,4 +232,78 @@ fn test_mark_executed() {
 
     let proposal = client.get_proposal(&1);
     assert_eq!(proposal.status, ProposalStatus::Executed);
+}
+
+#[test]
+fn test_parameter_proposal_set_paused_execution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let analytics_id = env.register_contract(None, analytics::AnalyticsContract);
+    let governance_id = env.register_contract(None, GovernanceContract);
+
+    let gov_client = GovernanceContractClient::new(&env, &governance_id);
+    let analytics_client = AnalyticsContractClient::new(&env, &analytics_id);
+
+    let admin = Address::generate(&env);
+    analytics_client.initialize(&admin);
+    gov_client.initialize(&admin, &2, &1000);
+
+    analytics_client.set_governance(&admin, &governance_id);
+
+    assert!(!analytics_client.is_paused());
+
+    let title = String::from_str(&env, "Pause analytics for maintenance");
+    let proposal_id = gov_client.create_parameter_proposal(
+        &admin,
+        &title,
+        &analytics_id,
+        &ParameterAction::SetPaused(true),
+    );
+    assert_eq!(proposal_id, 1);
+
+    let voter1 = Address::generate(&env);
+    let voter2 = Address::generate(&env);
+    gov_client.vote(&voter1, &1, &VoteChoice::For);
+    gov_client.vote(&voter2, &1, &VoteChoice::For);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 2000;
+    });
+    let status = gov_client.finalize(&1);
+    assert_eq!(status, ProposalStatus::Passed);
+
+    gov_client.mark_executed(&admin, &1);
+
+    assert!(analytics_client.is_paused());
+}
+
+#[test]
+fn test_create_parameter_proposal() {
+    let (env, client, admin) = setup();
+
+    let title = String::from_str(&env, "Set new admin");
+    let target = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    let proposal_id = client.create_parameter_proposal(
+        &admin,
+        &title,
+        &target,
+        &ParameterAction::SetAdmin(new_admin),
+    );
+    assert_eq!(proposal_id, 1);
+
+    let proposal = client.get_proposal(&1);
+    assert_eq!(proposal.id, 1);
+    assert_eq!(proposal.proposer, admin);
+    assert_eq!(proposal.target_contract, target);
+    assert_eq!(proposal.status, ProposalStatus::Active);
+
+    let action = client.get_parameter_action(&1);
+    assert!(action.is_some());
+    match action.unwrap() {
+        ParameterAction::SetAdmin(addr) => assert_eq!(addr, new_admin),
+        _ => panic!("expected SetAdmin"),
+    }
 }

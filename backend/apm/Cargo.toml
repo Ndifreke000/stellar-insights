@@ -1,0 +1,42 @@
+[package]
+name = "stellar-insights-apm"
+version = "0.1.0"
+edition = "2021"
+description = "APM integration for Stellar Insights"
+authors = ["Stellar Insights Team"]
+
+[dependencies]
+# OpenTelemetry core
+opentelemetry = { version = "0.21", features = ["trace"] }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio", "trace"] }
+opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.14", features = ["trace", "metrics", "logs"] }
+opentelemetry-semantic-conventions = "0.13"
+opentelemetry-attribute-utils = "0.7"
+
+# Tracing integration
+tracing = "0.1"
+tracing-opentelemetry = "0.22"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+opentelemetry-prometheus = "0.14"
+prometheus = "0.13"
+
+# HTTP client for APM endpoints
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Configuration
+dotenvy = "0.15"
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.0"

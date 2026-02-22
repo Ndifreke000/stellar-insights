@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
 #[derive(Clone)]
 #[contracttype]
@@ -55,7 +55,7 @@ impl AccessControl {
         caller.require_auth();
         Self::require_role(&env, &caller, Role::Admin);
 
-        if let Some(mut roles) = env
+        if let Some(roles) = env
             .storage()
             .persistent()
             .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
@@ -136,12 +136,12 @@ impl AccessControl {
     }
 
     fn roles_equal(a: &Role, b: &Role) -> bool {
-        match (a, b) {
-            (Role::Admin, Role::Admin) => true,
-            (Role::Operator, Role::Operator) => true,
-            (Role::Viewer, Role::Viewer) => true,
-            _ => false,
-        }
+        matches!(
+            (a, b),
+            (Role::Admin, Role::Admin)
+                | (Role::Operator, Role::Operator)
+                | (Role::Viewer, Role::Viewer)
+        )
     }
 }
 

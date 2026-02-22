@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use chrono::{Utc, Datelike};
+use chrono::{Utc, Datelike, Timelike};
+
 
 use crate::cache::CacheManager;
 use crate::rpc::StellarRpcClient;
@@ -47,7 +48,7 @@ impl DigestScheduler {
         }
     }
 
-    async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
+    pub async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
         let report = self.generate_report(period).await?;
         let html = generate_html_report(&report);
         

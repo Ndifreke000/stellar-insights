@@ -50,9 +50,12 @@ pub async fn request_signing_middleware(
         return Err(SigningError::ReplayDetected);
     }
 
-    // Compute expected signature
+    // Compute expected signature (limit body to 10MB to prevent DoS - SEC-005)
+    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB
     let (parts, body) = req.into_parts();
-    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+    let body_bytes = axum::body::to_bytes(body, MAX_BODY_SIZE)
+        .await
+        .map_err(|_| SigningError::BodyTooLarge)?;
 
     let mut mac = HmacSha256::new_from_slice(signing_secret.as_ref().as_bytes())
         .map_err(|_| SigningError::Internal)?;
@@ -83,6 +86,7 @@ pub enum SigningError {
     InvalidTimestamp,
     ReplayDetected,
     InvalidSignature,
+    BodyTooLarge,
     Internal,
 }
 
@@ -99,6 +103,9 @@ impl IntoResponse for SigningError {
             SigningError::ReplayDetected => (StatusCode::UNAUTHORIZED, "Replay attack detected"),
             SigningError::InvalidSignature => {
                 (StatusCode::UNAUTHORIZED, "Invalid request signature")
+            }
+            SigningError::BodyTooLarge => {
+                (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large")
             }
             SigningError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
         };

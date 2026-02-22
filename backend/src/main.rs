@@ -16,6 +16,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
+use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::api::api_keys;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -25,12 +26,12 @@ use stellar_insights_backend::api::liquidity_pools;
 use stellar_insights_backend::api::metrics_cached;
 use stellar_insights_backend::api::oauth;
 use stellar_insights_backend::api::webhooks;
-use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::auth::AuthService;
 use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
@@ -49,6 +50,9 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
+use stellar_insights_backend::alerts::AlertManager;
+use stellar_insights_backend::monitor::CorridorMonitor;
+use stellar_insights_backend::telegram;
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
@@ -91,7 +95,19 @@ async fn main() -> Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
 
-    tracing::info!("Connecting to database: {}", database_url);
+    // Log sanitized database URL to prevent credential leakage (SEC-016)
+    let sanitized_db_url = if database_url.starts_with("sqlite:") {
+        database_url.clone()
+    } else if let Some(at_pos) = database_url.rfind('@') {
+        if let Some(scheme_end) = database_url.find("://") {
+            format!("{}****@{}", &database_url[..scheme_end + 3], &database_url[at_pos + 1..])
+        } else {
+            "[REDACTED]".to_string()
+        }
+    } else {
+        database_url.clone()
+    };
+    tracing::info!("Connecting to database: {}", sanitized_db_url);
 
     // Load pool configuration from environment
     let pool_config = stellar_insights_backend::database::PoolConfig::from_env();
@@ -191,6 +207,17 @@ async fn main() -> Result<()> {
 
     // Initialize cache invalidation service
     let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
+
+    // Initialize AlertManager
+    let (alert_manager, _initial_rx) = AlertManager::new();
+    let alert_manager = Arc::new(alert_manager);
+
+    // Initialize CorridorMonitor
+    let corridor_monitor = Arc::new(CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
 
     // Initialize RealtimeBroadcaster
     let mut realtime_broadcaster = RealtimeBroadcaster::new(
@@ -305,11 +332,13 @@ async fn main() -> Result<()> {
 
     // Initialize Governance Service
     let governance_service = Arc::new(
-        stellar_insights_backend::services::governance::GovernanceService::new(
-            Arc::clone(&db),
-        ),
+        stellar_insights_backend::services::governance::GovernanceService::new(Arc::clone(&db)),
     );
     tracing::info!("Governance service initialized");
+
+    // Initialize GDPR Service
+    let gdpr_service = Arc::new(GdprService::new(pool.clone()));
+    tracing::info!("GDPR service initialized");
 
     // ML Retraining task (commented out)
     /*
@@ -427,9 +456,47 @@ async fn main() -> Result<()> {
     });
     background_tasks.push(task);
 
+    // Initialize Alert Manager
+    let (alert_manager_raw, alert_rx) = stellar_insights_backend::alerts::AlertManager::new();
+    let alert_manager = Arc::new(alert_manager_raw);
+    tracing::info!("Alert manager initialized");
+
+    // Initialize Corridor Monitor
+    let corridor_monitor = Arc::new(stellar_insights_backend::monitor::CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
+    tracing::info!("Corridor monitor initialized");
+
+    // Initialize Slack Bot Service
+    let slack_webhook_url = std::env::var("SLACK_WEBHOOK_URL").ok();
+    if let Some(url) = slack_webhook_url {
+        let slack_bot = stellar_insights_backend::services::slack_bot::SlackBotService::new(
+            url,
+            alert_manager.subscribe(),
+        );
+        let task = tokio::spawn(async move {
+            slack_bot.start().await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Slack bot service started as background task");
+    } else {
+        tracing::warn!("SLACK_WEBHOOK_URL not set, slack alerts disabled");
+    }
+
+    // Start Corridor Monitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let task = tokio::spawn(async move {
+        monitor_clone.start().await;
+    });
+    background_tasks.push(task);
+    tracing::info!("Corridor monitor task started");
+
     // Start Webhook Dispatcher background task
     let shutdown_rx6 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
+
         let mut shutdown_rx = shutdown_rx6;
         tokio::select! {
             result = webhook_dispatcher.run() => {
@@ -443,6 +510,44 @@ async fn main() -> Result<()> {
         }
     });
     background_tasks.push(task);
+
+    // Start CorridorMonitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let shutdown_rx_monitor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_monitor;
+        tokio::select! {
+            _ = monitor_clone.start() => {
+                tracing::info!("CorridorMonitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("CorridorMonitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+
+    // Start Telegram Bot (conditionally, when TELEGRAM_BOT_TOKEN is set)
+    if let Ok(telegram_token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        tracing::info!("Telegram bot token found, starting bot");
+        let tg_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
+        let tg_bot = telegram::TelegramBot::new(
+            &telegram_token,
+            Arc::clone(&db),
+            Arc::clone(&cache),
+            Arc::clone(&rpc_client),
+            tg_subscriptions,
+            &alert_manager,
+        );
+        let shutdown_rx_tg = shutdown_coordinator.subscribe();
+        let task = tokio::spawn(async move {
+            tg_bot.run(shutdown_rx_tg).await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Telegram bot started");
+    } else {
+        tracing::info!("TELEGRAM_BOT_TOKEN not set, Telegram bot disabled");
+    }
 
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
@@ -620,11 +725,11 @@ async fn main() -> Result<()> {
                 .collect();
 
             if origins.is_empty() {
-                tracing::warn!(
-                    "No valid CORS origins parsed from CORS_ALLOWED_ORIGINS; \
-                     falling back to allow-all. Check your configuration."
+                panic!(
+                    "CORS_ALLOWED_ORIGINS contains no valid origins. \
+                     Set valid origins or use '*' explicitly for development. \
+                     Refusing to fall back to allow-all. (SEC-011)"
                 );
-                base.allow_origin(Any)
             } else {
                 tracing::info!("CORS restricted to {} specific origin(s)", origins.len());
                 base.allow_origin(origins)
@@ -848,7 +953,7 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build API analytics routes
-    let api_analytics_routes = api_analytics::routes(db.clone())
+    let api_analytics_routes = api_analytics::routes(db.clone());
     // Build governance routes
     let governance_routes = Router::new()
         .nest(
@@ -873,6 +978,24 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build GDPR routes
+    let gdpr_routes = Router::new()
+        .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
+        .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
+        .route("/api/gdpr/consents/batch", put(gdpr_handlers::batch_update_consents))
+        .route("/api/gdpr/export", get(gdpr_handlers::get_export_requests))
+        .route("/api/gdpr/export", post(gdpr_handlers::create_export_request))
+        .route("/api/gdpr/export/:id", get(gdpr_handlers::get_export_request))
+        .route("/api/gdpr/export-types", get(gdpr_handlers::get_exportable_types))
+        .route("/api/gdpr/deletion", get(gdpr_handlers::get_deletion_requests))
+        .route("/api/gdpr/deletion", post(gdpr_handlers::create_deletion_request))
+        .route("/api/gdpr/deletion/:id", get(gdpr_handlers::get_deletion_request))
+        .route("/api/gdpr/deletion/:id/cancel", post(gdpr_handlers::cancel_deletion))
+        .route("/api/gdpr/deletion/confirm", post(gdpr_handlers::confirm_deletion))
+        .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
+        .with_state(Arc::clone(&gdpr_service))
+        .layer(cors.clone());
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
@@ -882,6 +1005,13 @@ async fn main() -> Result<()> {
         .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
+
+    let alert_ws_routes = Router::new()
+        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .with_state(Arc::clone(&alert_manager))
+        .layer(cors.clone());
+
+
 
     let app = Router::new()
         .merge(swagger_routes)
@@ -907,6 +1037,8 @@ async fn main() -> Result<()> {
         .merge(verification_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
+        .merge(alert_ws_routes)
+
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

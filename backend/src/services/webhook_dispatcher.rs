@@ -98,7 +98,12 @@ impl WebhookDispatcher {
                     if current_retries < 3 {
                         // Retry later
                         let _ = service
-                            .update_event_status(&event_id, "pending", Some(&e.to_string()), current_retries + 1)
+                            .update_event_status(
+                                &event_id,
+                                "pending",
+                                Some(&e.to_string()),
+                                current_retries + 1,
+                            )
                             .await;
 
                         tracing::warn!(

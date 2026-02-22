@@ -2,6 +2,7 @@ pub mod admin_audit_log;
 pub mod alert_handlers;
 pub mod alerts;
 pub mod analytics;
+pub mod monitor;
 pub mod api;
 pub mod api_analytics_middleware;
 pub mod api_v1_middleware;
@@ -18,6 +19,7 @@ pub mod db;
 pub mod request_signing_middleware;
 pub mod email;
 pub mod error;
+pub mod gdpr;
 pub mod env_config;
 pub mod handlers;
 pub mod logging;
@@ -27,7 +29,9 @@ pub mod jobs;
 pub mod ml;
 pub mod ml_handlers;
 pub mod models;
+pub mod monitor;
 pub mod muxed;
+
 pub mod network;
 pub mod openapi;
 pub mod rate_limit;
@@ -43,6 +47,7 @@ pub mod websocket;
 
 pub mod rpc;
 pub mod rpc_handlers;
+pub mod telegram;
 
 #[cfg(test)]
 mod ml_tests;

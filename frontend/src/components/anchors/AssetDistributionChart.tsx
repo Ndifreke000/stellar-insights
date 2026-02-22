@@ -25,7 +25,8 @@ const COLORS = [
   "#14b8a6", // Teal 500
 ];
 
-const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+const CustomTooltip = (props: any) => {
+  const { active, payload } = props;
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
