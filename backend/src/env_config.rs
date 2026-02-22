@@ -98,6 +98,11 @@ pub fn log_env_config() {
     log_var("RPC_MAX_RECORDS_PER_REQUEST");
     log_var("RPC_MAX_TOTAL_RECORDS");
     log_var("RPC_PAGINATION_DELAY_MS");
+
+    // Telegram
+    if env::var("TELEGRAM_BOT_TOKEN").is_ok() {
+        tracing::info!("  TELEGRAM_BOT_TOKEN: [REDACTED]");
+    }
 }
 
 /// Helper to log a single environment variable
