@@ -55,8 +55,9 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
   return (
     <aside
-      className={`fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${collapsed ? "w-20" : "w-64"
-        }`}
+      className={`hidden md:block fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${
+        collapsed ? "w-20" : "w-64"
+      }`}
     >
       <div className="flex flex-col h-full">
         {/* Logo Section */}
@@ -84,10 +85,11 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
               <Link
                 key={item.path}
                 href={item.path}
-                className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${isActive
-                  ? "bg-accent/10 text-accent border border-accent/20"
-                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
-                  }`}
+                className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${
+                  isActive
+                    ? "bg-accent/10 text-accent border border-accent/20"
+                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
+                }`}
               >
                 <Icon
                   className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
