@@ -13,6 +13,8 @@ pub mod stellar_toml;
 pub mod trustline_analyzer;
 pub mod verification_rewards;
 pub mod webhook_dispatcher;
+pub mod slack_bot;
+
 
 #[cfg(test)]
 mod snapshot_test;

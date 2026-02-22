@@ -119,11 +119,12 @@ impl OAuthService {
         )
         .bind(id)
         .bind(user_id)
-        .bind(client_id)
+        .bind(client_id.clone())
         .bind(encrypted_secret)
         .bind(app_name)
         .execute(&self.db)
         .await?;
+
 
         Ok((client_id, client_secret))
     }

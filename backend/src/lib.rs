@@ -28,7 +28,9 @@ pub mod jobs;
 pub mod ml;
 pub mod ml_handlers;
 pub mod models;
+pub mod monitor;
 pub mod muxed;
+
 pub mod network;
 pub mod openapi;
 pub mod rate_limit;

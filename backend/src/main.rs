@@ -441,9 +441,47 @@ async fn main() -> Result<()> {
     });
     background_tasks.push(task);
 
+    // Initialize Alert Manager
+    let (alert_manager_raw, alert_rx) = stellar_insights_backend::alerts::AlertManager::new();
+    let alert_manager = Arc::new(alert_manager_raw);
+    tracing::info!("Alert manager initialized");
+
+    // Initialize Corridor Monitor
+    let corridor_monitor = Arc::new(stellar_insights_backend::monitor::CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
+    tracing::info!("Corridor monitor initialized");
+
+    // Initialize Slack Bot Service
+    let slack_webhook_url = std::env::var("SLACK_WEBHOOK_URL").ok();
+    if let Some(url) = slack_webhook_url {
+        let slack_bot = stellar_insights_backend::services::slack_bot::SlackBotService::new(
+            url,
+            alert_manager.subscribe(),
+        );
+        let task = tokio::spawn(async move {
+            slack_bot.start().await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Slack bot service started as background task");
+    } else {
+        tracing::warn!("SLACK_WEBHOOK_URL not set, slack alerts disabled");
+    }
+
+    // Start Corridor Monitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let task = tokio::spawn(async move {
+        monitor_clone.start().await;
+    });
+    background_tasks.push(task);
+    tracing::info!("Corridor monitor task started");
+
     // Start Webhook Dispatcher background task
     let shutdown_rx6 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
+
         let mut shutdown_rx = shutdown_rx6;
         tokio::select! {
             result = webhook_dispatcher.run() => {
@@ -935,6 +973,13 @@ async fn main() -> Result<()> {
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
 
+    let alert_ws_routes = Router::new()
+        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .with_state(Arc::clone(&alert_manager))
+        .layer(cors.clone());
+
+
+
     let app = Router::new()
         .merge(swagger_routes)
         .merge(auth_routes)
@@ -959,6 +1004,8 @@ async fn main() -> Result<()> {
         .merge(verification_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
+        .merge(alert_ws_routes)
+
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

@@ -70,8 +70,9 @@ pub struct StellarRpcClient {
     network_config: NetworkConfig,
     mock_mode: bool,
     rate_limiter: RpcRateLimiter,
-    circuit_breaker: Arc<Mutex<CircuitBreaker>>,
+    circuit_breaker: Arc<CircuitBreaker>,
     /// Maximum records per single request (default: 200)
+
     max_records_per_request: u32,
     /// Maximum total records across all paginated requests (default: 10000)
     max_total_records: u32,
@@ -386,7 +387,7 @@ impl StellarRpcClient {
 
         let network_config = NetworkConfig::for_network(network);
         let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config)));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
 
         // Load pagination config from environment or use defaults
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -431,7 +432,7 @@ impl StellarRpcClient {
             .expect("Failed to build HTTP client");
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
         let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config)));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
 
         // Load pagination config from environment or use defaults
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -508,6 +509,7 @@ impl StellarRpcClient {
         };
 
         with_retry(operation, retry_config, self.circuit_breaker.clone()).await
+
     }
 
     /// Check the health of the RPC endpoint
