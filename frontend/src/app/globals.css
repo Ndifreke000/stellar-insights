@@ -11,7 +11,7 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 /* ─── Dark Theme (Default) ─────────────────────────────────────────────── */
@@ -132,7 +132,8 @@ html.theme-transition,
 html.theme-transition *,
 html.theme-transition *::before,
 html.theme-transition *::after {
-  transition: background-color 0.3s ease,
+  transition:
+    background-color 0.3s ease,
     color 0.3s ease,
     border-color 0.3s ease,
     box-shadow 0.3s ease,
@@ -157,7 +158,11 @@ body {
 }
 
 .glass-card {
-  background: linear-gradient(135deg, var(--glass-card-from) 0%, var(--glass-card-to) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--glass-card-from) 0%,
+    var(--glass-card-to) 100%
+  );
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border: 1px solid var(--glass-card-border);
@@ -175,7 +180,6 @@ body {
 
 /* ─── Animations ───────────────────────────────────────────────────────── */
 @keyframes pulse-slow {
-
   0%,
   100% {
     opacity: 1;
@@ -214,6 +218,12 @@ body {
   /* collapsed sidebar = 80px */
 }
 
+@media (max-width: 767px) {
+  :root {
+    --sidebar-offset: 0rem;
+  }
+}
+
 /* ─── Navbar ───────────────────────────────────────────────────────────── */
 .navbar-default {
   background: transparent;
@@ -244,7 +254,6 @@ body {
 }
 
 @keyframes pulse-live {
-
   0%,
   100% {
     opacity: 1;
@@ -284,7 +293,11 @@ body {
   text-transform: uppercase;
   color: var(--muted-foreground);
   border: 1px solid transparent;
-  transition: color 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
   position: relative;
   text-decoration: none;
   white-space: nowrap;
@@ -334,7 +347,9 @@ body {
   color: var(--muted-foreground);
   background: var(--navbar-hamburger-bg);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 
 .navbar-hamburger:hover {
@@ -347,7 +362,8 @@ body {
 .navbar-mobile-panel {
   overflow: hidden;
   max-height: 0;
-  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+  transition:
+    max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.25s ease;
   opacity: 0;
   background: var(--navbar-mobile-panel-bg);
@@ -375,7 +391,10 @@ body {
   border: 1px solid transparent;
   color: var(--muted-foreground);
   text-decoration: none;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
 }
 
 .navbar-mobile-link:hover {
@@ -414,7 +433,11 @@ body {
   color: var(--muted-foreground);
   background: var(--navbar-hamburger-bg);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .theme-toggle-btn:hover {
@@ -443,7 +466,9 @@ body {
   color: var(--foreground);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .contact-input::placeholder {
