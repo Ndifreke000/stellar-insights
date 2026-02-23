@@ -25,6 +25,7 @@ pub mod handlers;
 pub mod logging;
 pub mod http_cache;
 pub mod ingestion;
+pub mod ip_whitelist_middleware;
 pub mod jobs;
 pub mod ml;
 pub mod ml_handlers;

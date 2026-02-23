@@ -44,6 +44,7 @@ sha2 = "0.10"
 hex = "0.4"
 sprometheus = "0.13"
 md5 = "0.7"
+ipnetwork = "0.20"
 
 [dependencies.stellar-insights-apm]
 path = "apm"

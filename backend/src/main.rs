@@ -36,6 +36,7 @@ use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::ip_whitelist_middleware::{ip_whitelist_middleware, IpWhitelistConfig};
 use stellar_insights_backend::jobs::JobScheduler;
 use stellar_insights_backend::network::NetworkConfig;
 use stellar_insights_backend::openapi::ApiDoc;
@@ -700,6 +701,28 @@ async fn main() -> Result<()> {
         )
         .await;
 
+    // Initialize IP whitelist configuration for admin endpoints
+    let ip_whitelist_config = match IpWhitelistConfig::from_env() {
+        Ok(config) => {
+            tracing::info!(
+                "IP whitelist initialized: {} network(s) configured, trust_proxy={}",
+                config.allowed_networks.len(),
+                config.trust_proxy
+            );
+            Arc::new(config)
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize IP whitelist configuration: {}", e);
+            tracing::error!("Admin endpoints will be INACCESSIBLE until ADMIN_IP_WHITELIST is properly configured");
+            // Create a restrictive default that blocks everything
+            Arc::new(IpWhitelistConfig {
+                allowed_networks: Arc::new(vec![]),
+                trust_proxy: false,
+                max_forwarded_ips: 3,
+            })
+        }
+    };
+
     // CORS configuration
     // Read comma-separated allowed origins from env.
     // Use "*" to allow all origins (development only).
@@ -800,7 +823,6 @@ async fn main() -> Result<()> {
     // Build non-cached anchor routes with app state
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/api/db/pool-metrics", get(pool_metrics))
         .route("/api/anchors/:id", get(get_anchor))
         .route(
             "/api/anchors/account/:stellar_account",
@@ -855,8 +877,7 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
-    // Build cache stats and metrics routes
-    let cache_routes = cache_stats::routes(Arc::clone(&cache));
+    // Build metrics routes (public)
     let metrics_routes = metrics_cached::routes(Arc::clone(&cache));
 
     // Build RPC router
@@ -976,8 +997,55 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
-    // Build API analytics routes
-    let api_analytics_routes = api_analytics::routes(db.clone());
+    // Build API analytics routes (ADMIN - IP whitelisted)
+    let api_analytics_routes = Router::new()
+        .merge(api_analytics::routes(db.clone()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
+    // Build cache stats routes (ADMIN - IP whitelisted)
+    let cache_routes = Router::new()
+        .merge(cache_stats::routes(Arc::clone(&cache)))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
+    // Build pool metrics route (ADMIN - IP whitelisted)
+    let admin_db_routes = Router::new()
+        .route("/api/db/pool-metrics", get(pool_metrics))
+        .with_state(app_state.clone())
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
     // Build governance routes
     let governance_routes = Router::new()
         .nest(
@@ -1072,6 +1140,7 @@ async fn main() -> Result<()> {
         .merge(network_routes)
         .merge(api_analytics_routes)
         .merge(cache_routes)
+        .merge(admin_db_routes)
         .merge(metrics_routes)
         .merge(verification_routes)
         .merge(gdpr_routes)
