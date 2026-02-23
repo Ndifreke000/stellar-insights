@@ -78,30 +78,33 @@ export function Navbar() {
   return (
     <>
       <nav
+        aria-label="Main navigation"
         className={`fixed top-0 right-0 left-0 z-40 transition-all duration-300 ${
           scrolled ? "navbar-scrolled" : "navbar-default"
         }`}
         style={{ paddingLeft: "var(--sidebar-offset, 5rem)" }}
       >
         <div className="navbar-inner flex items-center justify-between h-14 px-6">
-          <div className="flex items-center gap-2">
-            <span className="navbar-live-dot" />
+          <div className="flex items-center gap-2" role="status" aria-live="polite">
+            <span className="navbar-live-dot" aria-hidden="true" />
             <span className="navbar-live-text">{t("liveNetwork")}</span>
           </div>
 
-          <ul className="navbar-links hidden md:flex items-center gap-1">
+          <ul className="navbar-links hidden md:flex items-center gap-1" role="menubar">
             {navLinkKeys.map((link) => {
               const isActive = pathname === link.href;
               const Icon = link.icon;
               return (
-                <li key={link.href}>
+                <li key={link.href} role="none">
                   <Link
                     href={link.href}
+                    role="menuitem"
+                    aria-current={isActive ? "page" : undefined}
                     className={`navbar-link ${isActive ? "navbar-link--active" : ""}`}
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
+                    <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
                     <span>{t(link.key)}</span>
-                    {isActive && <span className="navbar-link-indicator" />}
+                    {isActive && <span className="navbar-link-indicator" aria-hidden="true" />}
                   </Link>
                 </li>
               );

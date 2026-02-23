@@ -15,6 +15,7 @@ import { NotificationSystem } from "@/components/notifications/NotificationSyste
 import { QuestProgressTracker } from "@/components/QuestProgressTracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/navbar";
+import { SkipNavigation } from "@/components/SkipNavigation";
 
 type Props = {
   children: React.ReactNode;
@@ -58,16 +59,17 @@ export default async function LocaleLayout({ children, params }: Props) {
           <UserPreferencesProvider>
             <WalletProvider>
               <NotificationProvider>
+                <SkipNavigation />
                 <div className="flex min-h-screen">
                   <Sidebar />
-                  <main className="flex-1 ml-20 lg:ml-64 transition-all duration-300 relative">
+                  <main id="main-content" className="flex-1 ml-20 lg:ml-64 transition-all duration-300 relative">
                     <Navbar />
 
                     {/* Background Ambient Glow */}
-                    <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" />
-                    <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" />
-                    <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" />
-                    <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" />
+                    <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" aria-hidden="true" />
+                    <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" aria-hidden="true" />
+                    <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[120px] -z-10" aria-hidden="true" />
+                    <div className="fixed bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px] -z-10" aria-hidden="true" />
 
                     <div className="p-4 md:p-8">{children}</div>
                   </main>

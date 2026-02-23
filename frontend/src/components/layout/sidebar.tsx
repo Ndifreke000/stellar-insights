@@ -59,6 +59,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
   return (
     <aside
+      aria-label="Sidebar navigation"
       className={`hidden md:block fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${
         collapsed ? "w-20" : "w-64"
       }`}
@@ -66,8 +67,8 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
       <div className="flex flex-col h-full">
         {/* Logo Section */}
         <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center glow-accent shrink-0">
-            <TrendingUp className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center glow-accent shrink-0" aria-hidden="true">
+            <TrendingUp className="w-5 h-5 text-white" aria-hidden="true" />
           </div>
           {!collapsed && (
             <span className="text-xl font-bold tracking-tighter text-foreground whitespace-nowrap overflow-hidden">
@@ -80,7 +81,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex-1 px-4 py-8 space-y-3 overflow-y-auto">
+        <nav aria-label="Primary navigation" className="flex-1 px-4 py-8 space-y-3 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.path;
             const Icon = item.icon;
@@ -89,6 +90,8 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
               <Link
                 key={item.path}
                 href={item.path}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={t(item.key)}
                 className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${
                   isActive
                     ? "bg-accent/10 text-accent border border-accent/20"
@@ -96,6 +99,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
                 }`}
               >
                 <Icon
+                  aria-hidden="true"
                   className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
                 />
                 {!collapsed && (
@@ -104,7 +108,7 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
                   </span>
                 )}
                 {isActive && !collapsed && (
-                  <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                  <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" aria-hidden="true" />
                 )}
               </Link>
             );
@@ -114,9 +118,9 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
         {/* Footer / Settings Section */}
         <div className="p-4 border-t border-border space-y-2">
           {!collapsed && (
-            <div className="px-4 py-2 mb-2">
+            <div className="px-4 py-2 mb-2" role="status" aria-live="polite">
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-green-500 grow-success" />
+                <div className="w-2 h-2 rounded-full bg-green-500 grow-success" aria-hidden="true" />
                 <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-tighter">
                   {t("systemNominal")}
                 </span>
@@ -135,12 +139,14 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
           <button
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-expanded={!collapsed}
             className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-300"
           >
             {collapsed ? (
-              <ChevronRight className="w-5 h-5 shrink-0" />
+              <ChevronRight className="w-5 h-5 shrink-0" aria-hidden="true" />
             ) : (
-              <ChevronLeft className="w-5 h-5 shrink-0" />
+              <ChevronLeft className="w-5 h-5 shrink-0" aria-hidden="true" />
             )}
             {!collapsed && (
               <span className="text-xs font-bold uppercase tracking-widest">

@@ -24,18 +24,18 @@ export default function Home() {
   ];
 
   return (
-    <div className="space-y-24 pb-20">
+    <main className="space-y-24 pb-20">
       {/* Hero Section - Data First */}
-      <section className="relative pt-12">
+      <section aria-labelledby="hero-heading" className="relative pt-12">
         <div className="max-w-5xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 mb-8 animate-pulse-slow">
-            <Activity className="w-4 h-4 text-accent" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 mb-8 animate-pulse-slow" role="status" aria-live="polite">
+            <Activity className="w-4 h-4 text-accent" aria-hidden="true" />
             <span className="text-xs font-semibold text-accent uppercase tracking-wider">
               {t("hero.liveBadge")}
             </span>
           </div>
 
-          <h1 className="text-6xl md:text-7xl font-extrabold tracking-tighter leading-[1.1] mb-8">
+          <h1 id="hero-heading" className="text-6xl md:text-7xl font-extrabold tracking-tighter leading-[1.1] mb-8">
             {t("hero.title")} <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-blue-400">
               {t("hero.titleHighlight")}
