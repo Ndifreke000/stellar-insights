@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::env;
-use std::time::Duration;
 
 use anyhow::Result;
 use opentelemetry::global;
-use opentelemetry::metrics::{Meter, Counter, Histogram, Gauge};
+use opentelemetry::metrics::Meter;
 use opentelemetry::trace::{Tracer, Span};
-use opentelemetry::{KeyValue, Context};
-use tracing::{info, warn, error};
+use opentelemetry::KeyValue;
+use tracing::{info, warn};
 
 /// APM configuration
 #[derive(Debug, Clone)]
@@ -135,7 +134,6 @@ impl ApmManager {
         use opentelemetry_otlp::WithExportConfig;
         use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
         use opentelemetry_sdk::Resource;
-        use tracing_opentelemetry::OpenTelemetrySpanExt;
         use tracing_subscriber::layer::SubscriberExt;
         use tracing_subscriber::util::SubscriberInitExt;
 
@@ -223,8 +221,7 @@ impl ApmManager {
 
     /// Create a custom span with attributes
     pub fn create_span(&self, name: &str, attributes: Vec<(String, String)>) -> Span {
-        use opentelemetry::trace::{Tracer, SpanKind};
-        use tracing_opentelemetry::OpenTelemetrySpanExt;
+        use opentelemetry::trace::Tracer;
 
         let tracer = global::tracer("stellar-insights");
         let mut span = tracer.start(name);
@@ -250,8 +247,6 @@ impl ApmManager {
 
     /// Record an error with context
     pub fn record_error(&self, error: &anyhow::Error, context: HashMap<String, String>) {
-        use opentelemetry::trace::{Status, Code};
-        
         let current_span = tracing::Span::current();
         current_span.record("error.message", error.to_string());
         current_span.record("error.type", std::any::type_name::<anyhow::Error>());
@@ -355,25 +350,6 @@ impl NoOpGauge {
     
     fn record(&self, _value: u64, _attributes: &[KeyValue]) {
         // No-op
-    }
-}
-
-// Trait implementations for no-op metrics
-impl Counter<u64> for NoOpCounter {
-    fn add(&self, value: u64, attributes: &[KeyValue]) {
-        self.add(value, attributes);
-    }
-}
-
-impl Histogram<f64> for NoOpHistogram {
-    fn record(&self, value: f64, attributes: &[KeyValue]) {
-        self.record(value, attributes);
-    }
-}
-
-impl Gauge<u64> for NoOpGauge {
-    fn record(&self, value: u64, attributes: &[KeyValue]) {
-        self.record(value, attributes);
     }
 }
 

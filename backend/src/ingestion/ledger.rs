@@ -103,9 +103,9 @@ impl LedgerIngestionService {
                         // Uses helper methods to support both old and new Horizon formats
                         let extracted = ExtractedPayment {
                             ledger_sequence: ledger.sequence,
-                            transaction_hash: payment.transaction_hash,
+                            transaction_hash: payment.transaction_hash.clone(),
                             operation_type: "payment".to_string(), // Horizon 'payments' endpoint returns payments
-                            source_account: payment.source_account,
+                            source_account: payment.source_account.clone(),
                             destination: payment.get_destination().unwrap_or_default(),
                             asset_code: payment.get_asset_code(),
                             asset_issuer: payment.get_asset_issuer(),

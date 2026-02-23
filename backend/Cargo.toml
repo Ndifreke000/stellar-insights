@@ -27,7 +27,7 @@ tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 reqwest = { version = "0.13", features = ["json"] }
@@ -45,12 +45,28 @@ dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
 toml = "0.8"
-sprometheus = "0.13"
+prometheus = "0.13"
 md5 = "0.7"
 ipnetwork = "0.20"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+rand = "0.8"
+urlencoding = "2.1"
+futures = "0.3"
+utoipa = { version = "4.0", features = ["axum_extras"] }
+url = "2.5"
+aes-gcm = "0.10"
+base64 = "0.22"
+lettre = "0.11"
+jsonwebtoken = "9.2"
+hmac = "0.12"
+data-encoding = "2.5"
+async-lock = "3.3"
+dashmap = "5.5"
+lazy_static = "1.4"
 
 [dependencies.stellar-insights-apm]
 path = "apm"
+optional = true
 
 [dev-dependencies]
 urlencoding = "2.1"

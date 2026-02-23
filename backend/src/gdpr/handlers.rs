@@ -1,6 +1,6 @@
 // GDPR API Handlers - HTTP endpoints for GDPR compliance
 
-use crate::error::AppError;
+use crate::error::ApiError;
 use crate::gdpr::models::*;
 use crate::gdpr::service::GdprService;
 use actix_web::{web, HttpRequest, Responder};
