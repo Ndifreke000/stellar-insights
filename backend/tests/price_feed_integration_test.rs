@@ -17,7 +17,7 @@ async fn test_price_feed_client_creation() {
 #[tokio::test]
 async fn test_asset_mapping_contains_xlm() {
     let mapping = default_asset_mapping();
-    
+
     // Verify XLM mappings exist
     assert!(mapping.contains_key("XLM:native"));
     assert!(mapping.contains_key("native"));
@@ -27,7 +27,7 @@ async fn test_asset_mapping_contains_xlm() {
 #[tokio::test]
 async fn test_asset_mapping_contains_usdc() {
     let mapping = default_asset_mapping();
-    
+
     // Verify USDC mapping exists
     let usdc_key = "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
     assert!(mapping.contains_key(usdc_key));
@@ -57,7 +57,7 @@ async fn test_config_from_env() {
     std::env::set_var("PRICE_FEED_REQUEST_TIMEOUT_SECONDS", "15");
 
     let config = PriceFeedConfig::from_env();
-    
+
     assert_eq!(config.provider, "coingecko");
     assert_eq!(config.cache_ttl_seconds, 600);
     assert_eq!(config.request_timeout_seconds, 15);
@@ -71,14 +71,15 @@ async fn test_config_from_env() {
 #[tokio::test]
 async fn test_multiple_asset_mappings() {
     let mapping = default_asset_mapping();
-    
+
     // Verify multiple assets are mapped
     assert!(mapping.len() >= 8, "Should have at least 8 asset mappings");
-    
+
     // Check for various asset types
     assert!(mapping.contains_key("XLM:native")); // Native
     assert!(mapping.contains_key("USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN")); // Stablecoin
-    assert!(mapping.contains_key("EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2")); // Euro stablecoin
+    assert!(mapping.contains_key("EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"));
+    // Euro stablecoin
 }
 
 // Note: The following tests require actual API calls and should only be run with network access
@@ -134,7 +135,7 @@ async fn test_batch_price_fetch_live() {
     ];
 
     let prices = client.get_prices(&assets).await;
-    
+
     if !prices.is_empty() {
         println!("Fetched {} prices", prices.len());
         for (asset, price) in prices {

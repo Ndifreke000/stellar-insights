@@ -1,8 +1,17 @@
 use crate::network::{NetworkConfig, StellarNetwork};
-use anyhow::{Context, Result};
+use crate::rpc::config::{
+    circuit_breaker_config_from_env, initial_backoff_from_env, max_backoff_from_env,
+    max_retries_from_env,
+};
+use crate::rpc::circuit_breaker::CircuitBreaker;
+use crate::rpc::error::{with_retry, RetryConfig, RpcError};
+use crate::rpc::metrics;
+use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
+use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -60,6 +69,21 @@ pub struct StellarRpcClient {
     horizon_url: String,
     network_config: NetworkConfig,
     mock_mode: bool,
+    rate_limiter: RpcRateLimiter,
+    circuit_breaker: Arc<CircuitBreaker>,
+    /// Maximum records per single request (default: 200)
+
+    max_records_per_request: u32,
+    /// Maximum total records across all paginated requests (default: 10000)
+    max_total_records: u32,
+    /// Delay between pagination requests in milliseconds (default: 100)
+    pagination_delay_ms: u64,
+    /// Maximum retries for RPC calls
+    max_retries: u32,
+    /// Initial backoff duration
+    initial_backoff: Duration,
+    /// Maximum backoff duration
+    max_backoff: Duration,
 }
 
 // ============================================================================
@@ -300,6 +324,43 @@ pub struct HorizonLiquidityPool {
 }
 
 // ============================================================================
+// Helpers: map HTTP response to RpcError
+// ============================================================================
+
+fn status_to_rpc_error(
+    status: reqwest::StatusCode,
+    body: String,
+    retry_after_secs: Option<u64>,
+) -> RpcError {
+    if status.as_u16() == 429 {
+        return RpcError::RateLimitError {
+            retry_after: retry_after_secs.map(Duration::from_secs),
+        };
+    }
+    if (500..=599).contains(&status.as_u16()) {
+        return RpcError::ServerError {
+            status: status.as_u16(),
+            message: body,
+        };
+    }
+    RpcError::ServerError {
+        status: status.as_u16(),
+        message: body,
+    }
+}
+
+async fn map_response_error(response: reqwest::Response) -> RpcError {
+    let status = response.status();
+    let retry_after = response
+        .headers()
+        .get("Retry-After")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+    status_to_rpc_error(status, body, retry_after)
+}
+
+// ============================================================================
 // Implementation
 // ============================================================================
 
@@ -315,7 +376,8 @@ impl StellarRpcClient {
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to build HTTP client");
-
+        let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
+        
         // Determine network based on URLs
         let network = if horizon_url.contains("testnet") {
             StellarNetwork::Testnet
@@ -324,6 +386,24 @@ impl StellarRpcClient {
         };
 
         let network_config = NetworkConfig::for_network(network);
+        let cb_config = circuit_breaker_config_from_env();
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+
+        // Load pagination config from environment or use defaults
+        let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+
+        let max_total_records = std::env::var("RPC_MAX_TOTAL_RECORDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10000);
+
+        let pagination_delay_ms = std::env::var("RPC_PAGINATION_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
 
         Self {
             client,
@@ -331,17 +411,44 @@ impl StellarRpcClient {
             horizon_url,
             network_config,
             mock_mode,
+            rate_limiter,
+            circuit_breaker,
+            max_records_per_request,
+            max_total_records,
+            pagination_delay_ms,
+            max_retries: max_retries_from_env(),
+            initial_backoff: initial_backoff_from_env(),
+            max_backoff: max_backoff_from_env(),
         }
     }
 
     /// Create a new client with network configuration
     pub fn new_with_network(network: StellarNetwork, mock_mode: bool) -> Self {
         let network_config = NetworkConfig::for_network(network);
-        
+
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to build HTTP client");
+        let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
+        let cb_config = circuit_breaker_config_from_env();
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+
+        // Load pagination config from environment or use defaults
+        let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+
+        let max_total_records = std::env::var("RPC_MAX_TOTAL_RECORDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10000);
+
+        let pagination_delay_ms = std::env::var("RPC_PAGINATION_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
 
         Self {
             client,
@@ -349,6 +456,14 @@ impl StellarRpcClient {
             horizon_url: network_config.horizon_url.clone(),
             network_config,
             mock_mode,
+            rate_limiter,
+            circuit_breaker,
+            max_records_per_request,
+            max_total_records,
+            pagination_delay_ms,
+            max_retries: max_retries_from_env(),
+            initial_backoff: initial_backoff_from_env(),
+            max_backoff: max_backoff_from_env(),
         }
     }
 
@@ -377,14 +492,43 @@ impl StellarRpcClient {
         self.network_config.is_testnet()
     }
 
+    /// Snapshot current outbound RPC/Horizon rate limiter metrics.
+    pub fn rate_limit_metrics(&self) -> RpcRateLimitMetrics {
+        self.rate_limiter.metrics()
+    }
+
+    async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, RpcError>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<T, RpcError>>,
+    {
+        let retry_config = RetryConfig {
+            max_attempts: self.max_retries + 1,
+            base_delay_ms: self.initial_backoff.as_millis() as u64,
+            max_delay_ms: self.max_backoff.as_millis() as u64,
+        };
+
+        with_retry(operation, retry_config, self.circuit_breaker.clone()).await
+
+    }
+
     /// Check the health of the RPC endpoint
-    pub async fn check_health(&self) -> Result<HealthResponse> {
+    pub async fn check_health(&self) -> Result<HealthResponse, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_health_response());
         }
 
         info!("Checking RPC health at {}", self.rpc_url);
 
+        let result = self.execute_with_retry(|| self.check_health_internal()).await;
+
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn check_health_internal(&self) -> Result<HealthResponse, RpcError> {
         let payload = json!({
             "jsonrpc": "2.0",
             "method": "getHealth",
@@ -392,48 +536,62 @@ impl StellarRpcClient {
         });
 
         let response = self
-            .retry_request(|| async { self.client.post(&self.rpc_url).json(&payload).send().await })
+            .client
+            .post(&self.rpc_url)
+            .json(&payload)
+            .send()
             .await
-            .context("Failed to check RPC health")?;
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
 
         let json_response: JsonRpcResponse<HealthResponse> = response
             .json()
             .await
-            .context("Failed to parse health response")?;
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
 
         if let Some(error) = json_response.error {
-            anyhow::bail!("RPC error: {} (code: {})", error.message, error.code);
+            return Err(RpcError::ServerError {
+                status: 500,
+                message: format!("RPC error: {} (code: {})", error.message, error.code),
+            });
         }
 
-        json_response.result.context("No result in health response")
+        json_response
+            .result
+            .ok_or_else(|| RpcError::ParseError("No result in health response".to_string()))
     }
 
     /// Fetch latest ledger information
-    pub async fn fetch_latest_ledger(&self) -> Result<LedgerInfo> {
+    pub async fn fetch_latest_ledger(&self) -> Result<LedgerInfo, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_ledger_info());
         }
 
-        info!("Fetching latest ledger from Horizon API");
+        let result = self.execute_with_retry(|| self.fetch_latest_ledger_internal()).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch latest ledger")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<LedgerInfo> = response
             .json()
             .await
-            .context("Failed to parse ledger response")?;
-
-        let ledger = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        horizon_response
             .embedded
             .and_then(|e| e.records.into_iter().next())
-            .context("No ledger data found")?;
-
-        Ok(ledger)
+            .ok_or_else(|| RpcError::ParseError("No ledger data found".to_string()))
     }
 
     /// I'm fetching ledgers via RPC getLedgers for sequential ingestion (issue #2)
@@ -442,7 +600,7 @@ impl StellarRpcClient {
         start_ledger: Option<u64>,
         limit: u32,
         cursor: Option<&str>,
-    ) -> Result<GetLedgersResult> {
+    ) -> Result<GetLedgersResult, RpcError> {
         if self.mock_mode {
             let start = if let Some(c) = cursor {
                 c.parse::<u64>()
@@ -455,12 +613,22 @@ impl StellarRpcClient {
             return Ok(Self::mock_get_ledgers(start, limit));
         }
 
-        info!("Fetching ledgers via RPC getLedgers");
+        let result = self.execute_with_retry(|| self.fetch_ledgers_internal(start_ledger, limit, cursor)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_ledgers_internal(
+        &self,
+        start_ledger: Option<u64>,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<GetLedgersResult, RpcError> {
         let mut params = serde_json::Map::new();
         params.insert("pagination".to_string(), json!({ "limit": limit }));
-
-        // I must use either startLedger or cursor, not both
         if let Some(c) = cursor {
             params
                 .get_mut("pagination")
@@ -471,95 +639,111 @@ impl StellarRpcClient {
         } else if let Some(start) = start_ledger {
             params.insert("startLedger".to_string(), json!(start));
         }
-
         let payload = json!({
             "jsonrpc": "2.0",
             "method": "getLedgers",
             "id": 1,
             "params": params
         });
-
         let response = self
-            .retry_request(|| async { self.client.post(&self.rpc_url).json(&payload).send().await })
+            .client
+            .post(&self.rpc_url)
+            .json(&payload)
+            .send()
             .await
-            .context("Failed to fetch ledgers")?;
-
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let json_response: JsonRpcResponse<GetLedgersResult> = response
             .json()
             .await
-            .context("Failed to parse getLedgers response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         if let Some(error) = json_response.error {
-            anyhow::bail!("RPC error: {} (code: {})", error.message, error.code);
+            return Err(RpcError::ServerError {
+                status: 500,
+                message: format!("RPC error: {} (code: {})", error.message, error.code),
+            });
         }
-
         json_response
             .result
-            .context("No result in getLedgers response")
+            .ok_or_else(|| RpcError::ParseError("No result in getLedgers response".to_string()))
     }
 
     /// Fetch recent payments
-    pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>> {
+    pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
         }
 
         info!("Fetching {} payments from Horizon API", limit);
 
+        let result = self.execute_with_retry(|| self.fetch_payments_internal(limit, cursor)).await;
+
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_payments_internal(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Payment>, RpcError> {
         let mut url = format!("{}/payments?order=desc&limit={}", self.horizon_url, limit);
-
-        if let Some(cursor) = cursor {
-            url.push_str(&format!("&cursor={}", cursor));
+        if let Some(c) = cursor {
+            url.push_str(&format!("&cursor={}", c));
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch payments")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<Payment> = response
             .json()
             .await
-            .context("Failed to parse payments response")?;
-
-        let payments = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
-
-        Ok(payments)
+            .unwrap_or_default())
     }
 
     /// Fetch recent trades
-    pub async fn fetch_trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>> {
+    pub async fn fetch_trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_trades(limit));
         }
 
-        info!("Fetching {} trades from Horizon API", limit);
+        let result = self.execute_with_retry(|| self.fetch_trades_internal(limit, cursor)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_trades_internal(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Trade>, RpcError> {
         let mut url = format!("{}/trades?order=desc&limit={}", self.horizon_url, limit);
-
-        if let Some(cursor) = cursor {
-            url.push_str(&format!("&cursor={}", cursor));
+        if let Some(c) = cursor {
+            url.push_str(&format!("&cursor={}", c));
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch trades")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<Trade> = response
             .json()
             .await
-            .context("Failed to parse trades response")?;
-
-        let trades = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
-
-        Ok(trades)
+            .unwrap_or_default())
     }
 
     /// Fetch order book for a trading pair
@@ -568,54 +752,67 @@ impl StellarRpcClient {
         selling_asset: &Asset,
         buying_asset: &Asset,
         limit: u32,
-    ) -> Result<OrderBook> {
+    ) -> Result<OrderBook, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_order_book(selling_asset, buying_asset));
         }
 
-        info!("Fetching order book from Horizon API");
+        let result = self.execute_with_retry(|| self.fetch_order_book_internal(selling_asset, buying_asset, limit)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_order_book_internal(
+        &self,
+        selling_asset: &Asset,
+        buying_asset: &Asset,
+        limit: u32,
+    ) -> Result<OrderBook, RpcError> {
         let selling_params = Self::asset_to_query_params("selling", selling_asset);
         let buying_params = Self::asset_to_query_params("buying", buying_asset);
-
         let url = format!(
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch order book")?;
-
-        let order_book: OrderBook = response
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
+        response
             .json()
             .await
-            .context("Failed to parse order book response")?;
-
-        Ok(order_book)
+            .map_err(|e| RpcError::ParseError(e.to_string()))
     }
 
-    pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>> {
+    pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(5));
         }
 
-        let url = format!(
-            "{}/ledgers/{}/payments?limit=200",
-            self.horizon_url, sequence
-        );
+        let result = self.execute_with_retry(|| self.fetch_payments_for_ledger_internal(sequence)).await;
 
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch ledger payments")?;
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
 
+    async fn fetch_payments_for_ledger_internal(
+        &self,
+        sequence: u64,
+    ) -> Result<Vec<Payment>, RpcError> {
+        let url = format!("{}/ledgers/{}/payments?limit=200", self.horizon_url, sequence);
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<Payment> = response
             .json()
             .await
-            .context("Failed to parse ledger payments response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -626,26 +823,35 @@ impl StellarRpcClient {
     pub async fn fetch_transactions_for_ledger(
         &self,
         sequence: u64,
-    ) -> Result<Vec<HorizonTransaction>> {
+    ) -> Result<Vec<HorizonTransaction>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_transactions(5, sequence));
         }
 
+        let result = self.execute_with_retry(|| self.fetch_transactions_for_ledger_internal(sequence)).await;
+
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_transactions_for_ledger_internal(
+        &self,
+        sequence: u64,
+    ) -> Result<Vec<HorizonTransaction>, RpcError> {
         let url = format!(
             "{}/ledgers/{}/transactions?limit=200&include_failed=true",
             self.horizon_url, sequence
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch ledger transactions")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<HorizonTransaction> = response
             .json()
             .await
-            .context("Failed to parse ledger transactions response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -656,26 +862,32 @@ impl StellarRpcClient {
     pub async fn fetch_operations_for_ledger(
         &self,
         sequence: u64,
-    ) -> Result<Vec<HorizonOperation>> {
+    ) -> Result<Vec<HorizonOperation>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_operations_for_ledger(sequence));
         }
 
-        let url = format!(
-            "{}/ledgers/{}/operations?limit=200",
-            self.horizon_url, sequence
-        );
+        let result = self.execute_with_retry(|| self.fetch_operations_for_ledger_internal(sequence)).await;
 
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch ledger operations")?;
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
 
+    async fn fetch_operations_for_ledger_internal(
+        &self,
+        sequence: u64,
+    ) -> Result<Vec<HorizonOperation>, RpcError> {
+        let url = format!("{}/ledgers/{}/operations?limit=200", self.horizon_url, sequence);
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<HorizonOperation> = response
             .json()
             .await
-            .context("Failed to parse ledger operations response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -683,26 +895,38 @@ impl StellarRpcClient {
     }
 
     /// Fetch effects for a specific operation
-    pub async fn fetch_operation_effects(&self, operation_id: &str) -> Result<Vec<HorizonEffect>> {
+    pub async fn fetch_operation_effects(
+        &self,
+        operation_id: &str,
+    ) -> Result<Vec<HorizonEffect>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_effects_for_operation(operation_id));
         }
 
+        let result = self.execute_with_retry(|| self.fetch_operation_effects_internal(operation_id)).await;
+
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_operation_effects_internal(
+        &self,
+        operation_id: &str,
+    ) -> Result<Vec<HorizonEffect>, RpcError> {
         let url = format!(
             "{}/operations/{}/effects?limit=200",
             self.horizon_url, operation_id
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch operation effects")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<HorizonEffect> = response
             .json()
             .await
-            .context("Failed to parse operation effects response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -714,37 +938,275 @@ impl StellarRpcClient {
         &self,
         account_id: &str,
         limit: u32,
-    ) -> Result<Vec<Payment>> {
+    ) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
         }
 
-        info!(
-            "Fetching {} payments for account {} from Horizon API",
-            limit, account_id
-        );
+        let result = self.execute_with_retry(|| self.fetch_account_payments_internal(account_id, limit)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_account_payments_internal(
+        &self,
+        account_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Payment>, RpcError> {
         let url = format!(
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch account payments")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<Payment> = response
             .json()
             .await
-            .context("Failed to parse payments response")?;
-
-        let payments = horizon_response
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
             .embedded
             .map(|e| e.records)
-            .unwrap_or_default();
+            .unwrap_or_default())
+    }
 
-        Ok(payments)
+    // ============================================================================
+    // Paginated Fetch Methods
+    // ============================================================================
+
+    /// Fetch all payments with automatic pagination up to max_total_records
+    ///
+    /// # Arguments
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched payments up to the limit
+    pub async fn fetch_all_payments(&self, max_records: Option<u32>) -> Result<Vec<Payment>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_payments(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_payments = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of payments (max: {}, per_request: {})",
+            max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            let payments = self
+                .fetch_payments(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch payments page")?;
+
+            if payments.is_empty() {
+                info!("No more payments available, stopping pagination");
+                break;
+            }
+
+            fetched += payments.len() as u32;
+
+            // Extract cursor from last payment for next page
+            if let Some(last_payment) = payments.last() {
+                cursor = Some(last_payment.paging_token.clone());
+            }
+
+            all_payments.extend(payments);
+
+            info!(
+                "Fetched {} payments so far ({}/{})",
+                all_payments.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total payments",
+            all_payments.len()
+        );
+        Ok(all_payments)
+    }
+
+    /// Fetch all trades with automatic pagination up to max_total_records
+    ///
+    /// # Arguments
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched trades up to the limit
+    pub async fn fetch_all_trades(&self, max_records: Option<u32>) -> Result<Vec<Trade>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_trades(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_trades = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of trades (max: {}, per_request: {})",
+            max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            // Note: Trade struct doesn't have paging_token, we'll use id as cursor
+            let trades = self
+                .fetch_trades(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch trades page")?;
+
+            if trades.is_empty() {
+                info!("No more trades available, stopping pagination");
+                break;
+            }
+
+            fetched += trades.len() as u32;
+
+            // Extract cursor from last trade for next page
+            // Horizon uses the id field as cursor for trades
+            if let Some(last_trade) = trades.last() {
+                cursor = Some(last_trade.id.clone());
+            }
+
+            all_trades.extend(trades);
+
+            info!(
+                "Fetched {} trades so far ({}/{})",
+                all_trades.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total trades",
+            all_trades.len()
+        );
+        Ok(all_trades)
+    }
+
+    /// Fetch all payments for a specific account with automatic pagination
+    ///
+    /// # Arguments
+    /// * `account_id` - The Stellar account ID
+    /// * `max_records` - Optional maximum number of records to fetch (uses config default if None)
+    ///
+    /// # Returns
+    /// Vector of all fetched payments for the account up to the limit
+    pub async fn fetch_all_account_payments(
+        &self,
+        account_id: &str,
+        max_records: Option<u32>,
+    ) -> Result<Vec<Payment>> {
+        if self.mock_mode {
+            let limit = max_records.unwrap_or(self.max_total_records);
+            return Ok(Self::mock_payments(limit));
+        }
+
+        let max_records = max_records.unwrap_or(self.max_total_records);
+        let mut all_payments = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut fetched = 0;
+
+        info!(
+            "Starting paginated fetch of payments for account {} (max: {}, per_request: {})",
+            account_id, max_records, self.max_records_per_request
+        );
+
+        while fetched < max_records {
+            let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
+
+            let mut url = format!(
+                "{}/accounts/{}/payments?order=desc&limit={}",
+                self.horizon_url, account_id, limit
+            );
+
+            if let Some(ref cursor_val) = cursor {
+                url.push_str(&format!("&cursor={}", cursor_val));
+            }
+
+            let response = self
+                .retry_request(|| async { self.client.get(&url).send().await })
+                .await
+                .context("Failed to fetch account payments page")?;
+
+            let horizon_response: HorizonResponse<Payment> = response
+                .json()
+                .await
+                .context("Failed to parse payments response")?;
+
+            let payments = horizon_response
+                .embedded
+                .map(|e| e.records)
+                .unwrap_or_default();
+
+            if payments.is_empty() {
+                info!("No more payments available for account, stopping pagination");
+                break;
+            }
+
+            fetched += payments.len() as u32;
+
+            // Extract cursor from last payment for next page
+            if let Some(last_payment) = payments.last() {
+                cursor = Some(last_payment.paging_token.clone());
+            }
+
+            all_payments.extend(payments);
+
+            info!(
+                "Fetched {} payments for account so far ({}/{})",
+                all_payments.len(),
+                fetched,
+                max_records
+            );
+
+            // Rate limiting delay between requests
+            if fetched < max_records && cursor.is_some() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.pagination_delay_ms))
+                    .await;
+            } else {
+                break;
+            }
+        }
+
+        info!(
+            "Completed pagination: fetched {} total payments for account {}",
+            all_payments.len(),
+            account_id
+        );
+        Ok(all_payments)
     }
 
     // ============================================================================
@@ -774,70 +1236,76 @@ impl StellarRpcClient {
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
     {
-        let mut attempt = 0;
-        let mut backoff_ms = INITIAL_BACKOFF_MS;
+        let retry_config = RetryConfig {
+            max_attempts: MAX_RETRIES + 1,
+            base_delay_ms: INITIAL_BACKOFF_MS,
+            max_delay_ms: INITIAL_BACKOFF_MS * BACKOFF_MULTIPLIER.pow(MAX_RETRIES),
+        };
 
-        loop {
-            let start_time = Instant::now();
+        with_retry(
+            || async {
+                let queue_permit = self.rate_limiter.acquire().await.map_err(|_| {
+                    RpcError::RateLimitError { retry_after: None }
+                })?;
 
-            match request_fn().await {
-                Ok(response) => {
-                    let elapsed = start_time.elapsed().as_millis();
+                let start_time = Instant::now();
+                let response = request_fn()
+                    .await
+                    .map_err(|e| RpcError::categorize(&e.to_string()))?;
+                let elapsed = start_time.elapsed().as_millis();
+                let status = response.status();
+                let headers = response.headers().clone();
 
-                    if response.status().is_success() {
-                        debug!("Request succeeded in {} ms", elapsed);
-                        return Ok(response);
-                    } else {
-                        let status = response.status();
-                        let error_text = response
-                            .text()
-                            .await
-                            .unwrap_or_else(|_| "Unknown error".to_string());
+                drop(queue_permit);
+                self.rate_limiter.observe_headers(&headers).await;
 
-                        warn!(
-                            "Request failed with status {} in {} ms: {}",
-                            status, elapsed, error_text
-                        );
-
-                        if attempt >= MAX_RETRIES {
-                            anyhow::bail!(
-                                "Request failed after {} retries. Status: {}, Error: {}",
-                                MAX_RETRIES,
-                                status,
-                                error_text
-                            );
-                        }
-                    }
+                if status.is_success() {
+                    debug!("Request succeeded in {} ms", elapsed);
+                    return Ok(response);
                 }
-                Err(err) => {
-                    let elapsed = start_time.elapsed().as_millis();
-                    warn!(
-                        "Request error after {} ms (attempt {}/{}): {}",
-                        elapsed,
-                        attempt + 1,
-                        MAX_RETRIES + 1,
-                        err
-                    );
 
-                    if attempt >= MAX_RETRIES {
-                        return Err(err)
-                            .context(format!("Request failed after {} retries", MAX_RETRIES));
-                    }
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    self.rate_limiter.on_rate_limited(&headers).await;
                 }
-            }
 
-            attempt += 1;
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                warn!(
+                    "Request failed with status {} in {} ms: {}",
+                    status, elapsed, error_text
+                );
 
-            info!(
-                "Retrying request in {} ms (attempt {}/{})",
-                backoff_ms,
-                attempt + 1,
-                MAX_RETRIES + 1
-            );
-
-            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            backoff_ms *= BACKOFF_MULTIPLIER;
-        }
+                let msg = format!("HTTP {}: {}", status, error_text);
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    let retry_after = headers
+                        .get("Retry-After")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .map(Duration::from_secs);
+                    Err(RpcError::RateLimitError { retry_after })
+                } else if status == reqwest::StatusCode::REQUEST_TIMEOUT
+                    || status == reqwest::StatusCode::GATEWAY_TIMEOUT
+                {
+                    Err(RpcError::TimeoutError(msg))
+                } else if status.as_u16() >= 500 {
+                    Err(RpcError::NetworkError(msg))
+                } else {
+                    Err(RpcError::ServerError {
+                        status: status.as_u16(),
+                        message: msg,
+                    })
+                }
+            },
+            retry_config,
+            self.circuit_breaker.clone(),
+        )
+        .await
+        .map_err(|e| {
+            info!("Request failed after retry/circuit-breaker checks: {}", e);
+            anyhow!("Request failed: {}", e)
+        })
     }
 
     // ============================================================================
@@ -1198,32 +1666,39 @@ impl StellarRpcClient {
         &self,
         limit: u32,
         cursor: Option<&str>,
-    ) -> Result<Vec<HorizonLiquidityPool>> {
+    ) -> Result<Vec<HorizonLiquidityPool>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_liquidity_pools(limit));
         }
 
-        info!("Fetching {} liquidity pools from Horizon API", limit);
+        let result = self.execute_with_retry(|| self.fetch_liquidity_pools_internal(limit, cursor)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_liquidity_pools_internal(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<HorizonLiquidityPool>, RpcError> {
         let mut url = format!(
             "{}/liquidity_pools?order=desc&limit={}",
             self.horizon_url, limit
         );
-
-        if let Some(cursor) = cursor {
-            url.push_str(&format!("&cursor={}", cursor));
+        if let Some(c) = cursor {
+            url.push_str(&format!("&cursor={}", c));
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch liquidity pools")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<HorizonLiquidityPool> = response
             .json()
             .await
-            .context("Failed to parse liquidity pools response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -1231,7 +1706,10 @@ impl StellarRpcClient {
     }
 
     /// Fetch a single liquidity pool by ID
-    pub async fn fetch_liquidity_pool(&self, pool_id: &str) -> Result<HorizonLiquidityPool> {
+    pub async fn fetch_liquidity_pool(
+        &self,
+        pool_id: &str,
+    ) -> Result<HorizonLiquidityPool, RpcError> {
         if self.mock_mode {
             let pools = Self::mock_liquidity_pools(1);
             let mut pool = pools.into_iter().next().unwrap();
@@ -1239,49 +1717,64 @@ impl StellarRpcClient {
             return Ok(pool);
         }
 
-        info!("Fetching liquidity pool {} from Horizon API", pool_id);
+        let result = self.execute_with_retry(|| self.fetch_liquidity_pool_internal(pool_id)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_liquidity_pool_internal(
+        &self,
+        pool_id: &str,
+    ) -> Result<HorizonLiquidityPool, RpcError> {
         let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch liquidity pool")?;
-
-        let pool: HorizonLiquidityPool = response
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
+        response
             .json()
             .await
-            .context("Failed to parse liquidity pool response")?;
-
-        Ok(pool)
+            .map_err(|e| RpcError::ParseError(e.to_string()))
     }
 
     /// Fetch trades for a specific liquidity pool
-    pub async fn fetch_pool_trades(&self, pool_id: &str, limit: u32) -> Result<Vec<Trade>> {
+    pub async fn fetch_pool_trades(
+        &self,
+        pool_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_trades(limit));
         }
 
-        info!(
-            "Fetching {} trades for pool {} from Horizon API",
-            limit, pool_id
-        );
+        let result = self.execute_with_retry(|| self.fetch_pool_trades_internal(pool_id, limit)).await;
 
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_pool_trades_internal(
+        &self,
+        pool_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Trade>, RpcError> {
         let url = format!(
             "{}/liquidity_pools/{}/trades?order=desc&limit={}",
             self.horizon_url, pool_id, limit
         );
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch pool trades")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<Trade> = response
             .json()
             .await
-            .context("Failed to parse pool trades response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -1289,29 +1782,42 @@ impl StellarRpcClient {
     }
 
     /// Fetch assets from Horizon API, sorted by rating
-    pub async fn fetch_assets(&self, limit: u32, rating_sort: bool) -> Result<Vec<HorizonAsset>> {
+    pub async fn fetch_assets(
+        &self,
+        limit: u32,
+        rating_sort: bool,
+    ) -> Result<Vec<HorizonAsset>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_assets(limit));
         }
 
-        info!("Fetching {} assets from Horizon API", limit);
+        let result = self.execute_with_retry(|| self.fetch_assets_internal(limit, rating_sort)).await;
+
+        result.map_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+            e
+        })
+    }
+
+    async fn fetch_assets_internal(
+        &self,
+        limit: u32,
+        rating_sort: bool,
+    ) -> Result<Vec<HorizonAsset>, RpcError> {
         let mut url = format!("{}/assets?limit={}", self.horizon_url, limit);
         if rating_sort {
             url.push_str("&order=desc&sort=rating");
         } else {
             url.push_str("&order=desc");
         }
-
-        let response = self
-            .retry_request(|| async { self.client.get(&url).send().await })
-            .await
-            .context("Failed to fetch assets")?;
-
+        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
         let horizon_response: HorizonResponse<HorizonAsset> = response
             .json()
             .await
-            .context("Failed to parse assets response")?;
-
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         Ok(horizon_response
             .embedded
             .map(|e| e.records)
@@ -1592,5 +2098,72 @@ mod tests {
 
         assert!(result.ledgers.is_empty());
         assert_eq!(result.latest_ledger, MOCK_LATEST_LEDGER);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_config_defaults() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Verify default pagination config is loaded
+        assert_eq!(client.max_records_per_request, 200);
+        assert_eq!(client.max_total_records, 10000);
+        assert_eq!(client.pagination_delay_ms, 100);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_payments_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Test with custom limit
+        let payments = client.fetch_all_payments(Some(50)).await.unwrap();
+        assert_eq!(payments.len(), 50);
+
+        // Test with default limit (should use max_total_records)
+        let payments = client.fetch_all_payments(None).await.unwrap();
+        assert_eq!(payments.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_trades_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Test with custom limit
+        let trades = client.fetch_all_trades(Some(30)).await.unwrap();
+        assert_eq!(trades.len(), 30);
+
+        // Test with default limit
+        let trades = client.fetch_all_trades(None).await.unwrap();
+        assert_eq!(trades.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_account_payments_mock() {
+        let client = StellarRpcClient::new_with_defaults(true);
+        let account_id = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
+        // Test with custom limit
+        let payments = client
+            .fetch_all_account_payments(account_id, Some(100))
+            .await
+            .unwrap();
+        assert_eq!(payments.len(), 100);
+
+        // Test with default limit
+        let payments = client
+            .fetch_all_account_payments(account_id, None)
+            .await
+            .unwrap();
+        assert_eq!(payments.len(), client.max_total_records as usize);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_respects_max_records() {
+        let client = StellarRpcClient::new_with_defaults(true);
+
+        // Request more than available, should stop when no more data
+        let payments = client.fetch_all_payments(Some(500)).await.unwrap();
+
+        // In mock mode, we should get exactly what we asked for
+        assert_eq!(payments.len(), 500);
     }
 }

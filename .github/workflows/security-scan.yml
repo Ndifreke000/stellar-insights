@@ -1,0 +1,109 @@
+name: "Security: Trivy + tfsec"
+
+on:
+  pull_request:
+    branches: [ "main", "staging" ]
+  schedule:
+    - cron: '0 3 * * *' # nightly at 03:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  trivy-scan:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy (filesystem)
+        uses: aquasecurity/trivy-action@v0.9.1
+        with:
+          scan-type: filesystem
+          format: json
+          output: trivy-report.json
+
+      - name: Upload Trivy artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: trivy-report
+          path: trivy-report.json
+
+  tfsec-scan:
+    name: tfsec Terraform scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1
+        with:
+          format: json
+          output: tfsec-report.json
+
+      - name: Upload tfsec artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: tfsec-report
+          path: tfsec-report.json
+
+  report:
+    name: Create issue & notify
+    needs: [trivy-scan, tfsec-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Trivy artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: trivy-report
+
+      - name: Download tfsec artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: tfsec-report
+
+      - name: Summarize results
+        id: summarize
+        run: |
+          TRIVY_COUNT=0
+          TFSec_COUNT=0
+          if [ -f trivy-report.json ]; then
+            TRIVY_COUNT=$(jq '.Results[]?.Vulnerabilities | length' trivy-report.json 2>/dev/null | awk '{s+=$1} END{print s+0}')
+          fi
+          if [ -f tfsec-report.json ]; then
+            TFSec_COUNT=$(jq '.[] | length' tfsec-report.json 2>/dev/null | wc -l || true)
+          fi
+          echo "trivy_count=$TRIVY_COUNT" >> $GITHUB_OUTPUT
+          echo "tfsec_count=$TFSec_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub issue for findings
+        if: needs.report.outputs.trivy_count != '0' || needs.report.outputs.tfsec_count != '0'
+        uses: peter-evans/create-issue@v4
+        with:
+          title: "[Security] Vulnerability findings from automated scans"
+          body: |
+            Automated security scans (Trivy, tfsec) found potential issues.
+
+            - Trivy findings: ${{ steps.summarize.outputs.trivy_count }}
+            - tfsec findings: ${{ steps.summarize.outputs.tfsec_count }}
+
+            Artifacts attached to this workflow contain detailed JSON reports.
+
+            Please triage and assign to the relevant owner.
+
+      - name: Send email notification (optional)
+        if: ${{ secrets.MAIL_HOST != '' && (steps.summarize.outputs.trivy_count != '0' || steps.summarize.outputs.tfsec_count != '0') }}
+        uses: dawidd6/action-send-mail@v9
+        with:
+          server_address: ${{ secrets.MAIL_HOST }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Security] Automated scan found issues in repo"
+          body: |
+            Automated security scans found findings.
+
+            Trivy: ${{ steps.summarize.outputs.trivy_count }}
+            tfsec: ${{ steps.summarize.outputs.tfsec_count }}
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_FROM }}

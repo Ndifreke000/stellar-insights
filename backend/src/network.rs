@@ -24,7 +24,10 @@ impl std::str::FromStr for StellarNetwork {
         match s.to_lowercase().as_str() {
             "mainnet" => Ok(StellarNetwork::Mainnet),
             "testnet" => Ok(StellarNetwork::Testnet),
-            _ => Err(format!("Invalid network: {}. Must be 'mainnet' or 'testnet'", s)),
+            _ => Err(format!(
+                "Invalid network: {}. Must be 'mainnet' or 'testnet'",
+                s
+            )),
         }
     }
 }
@@ -40,14 +43,16 @@ pub struct NetworkConfig {
 impl NetworkConfig {
     /// Create network configuration from environment variables
     pub fn from_env() -> Self {
-        let network_str = std::env::var("STELLAR_NETWORK")
-            .unwrap_or_else(|_| "mainnet".to_string());
-        
-        let network = network_str.parse::<StellarNetwork>()
-            .unwrap_or_else(|_| {
-                tracing::warn!("Invalid STELLAR_NETWORK value '{}', defaulting to mainnet", network_str);
-                StellarNetwork::Mainnet
-            });
+        let network_str =
+            std::env::var("STELLAR_NETWORK").unwrap_or_else(|_| "mainnet".to_string());
+
+        let network = network_str.parse::<StellarNetwork>().unwrap_or_else(|_| {
+            tracing::warn!(
+                "Invalid STELLAR_NETWORK value '{}', defaulting to mainnet",
+                network_str
+            );
+            StellarNetwork::Mainnet
+        });
 
         Self::for_network(network)
     }
@@ -117,11 +122,23 @@ mod tests {
 
     #[test]
     fn test_network_from_str() {
-        assert_eq!("mainnet".parse::<StellarNetwork>().unwrap(), StellarNetwork::Mainnet);
-        assert_eq!("testnet".parse::<StellarNetwork>().unwrap(), StellarNetwork::Testnet);
-        assert_eq!("MAINNET".parse::<StellarNetwork>().unwrap(), StellarNetwork::Mainnet);
-        assert_eq!("TESTNET".parse::<StellarNetwork>().unwrap(), StellarNetwork::Testnet);
-        
+        assert_eq!(
+            "mainnet".parse::<StellarNetwork>().unwrap(),
+            StellarNetwork::Mainnet
+        );
+        assert_eq!(
+            "testnet".parse::<StellarNetwork>().unwrap(),
+            StellarNetwork::Testnet
+        );
+        assert_eq!(
+            "MAINNET".parse::<StellarNetwork>().unwrap(),
+            StellarNetwork::Mainnet
+        );
+        assert_eq!(
+            "TESTNET".parse::<StellarNetwork>().unwrap(),
+            StellarNetwork::Testnet
+        );
+
         assert!("invalid".parse::<StellarNetwork>().is_err());
     }
 

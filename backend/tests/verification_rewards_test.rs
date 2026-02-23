@@ -14,20 +14,23 @@ async fn setup_test_db() -> Result<SqlitePool> {
 }
 
 async fn create_test_user(pool: &SqlitePool, user_id: &str) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO users (id, username) VALUES (?, ?)"
-    )
-    .bind(user_id)
-    .bind(format!("user_{}", user_id))
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO users (id, username) VALUES (?, ?)")
+        .bind(user_id)
+        .bind(format!("user_{}", user_id))
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
-async fn create_test_snapshot(pool: &SqlitePool, snapshot_id: &str, hash: &str, epoch: i64) -> Result<()> {
+async fn create_test_snapshot(
+    pool: &SqlitePool,
+    snapshot_id: &str,
+    hash: &str,
+    epoch: i64,
+) -> Result<()> {
     sqlx::query(
         "INSERT INTO snapshots (id, entity_id, entity_type, data, hash, epoch, timestamp) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(snapshot_id)
     .bind("test-entity")
@@ -183,7 +186,11 @@ async fn test_daily_limit() -> Result<()> {
         if i < 50 {
             assert!(result.is_ok(), "Verification {} should succeed", i);
         } else {
-            assert!(result.is_err(), "Verification {} should fail (daily limit)", i);
+            assert!(
+                result.is_err(),
+                "Verification {} should fail (daily limit)",
+                i
+            );
         }
     }
 

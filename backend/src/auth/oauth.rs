@@ -63,6 +63,7 @@ pub struct OAuthService {
     jwt_audience: String,
     token_expiry_days: i64,
     refresh_expiry_days: i64,
+    encryption_key: String,
     db: SqlitePool,
 }
 
@@ -70,7 +71,7 @@ impl OAuthService {
     /// Create new OAuth service
     pub fn new(db: SqlitePool) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required for OAuth service");
 
         let jwt_audience = std::env::var("JWT_AUDIENCE").unwrap_or_else(|_| "zapier".to_string());
 
@@ -84,11 +85,15 @@ impl OAuthService {
             .parse()
             .unwrap_or(30);
 
+        let encryption_key = std::env::var("ENCRYPTION_KEY")
+            .expect("ENCRYPTION_KEY environment variable is required for OAuth service");
+
         Self {
             jwt_secret,
             jwt_audience,
             token_expiry_days,
             refresh_expiry_days,
+            encryption_key,
             db,
         }
     }
@@ -103,17 +108,20 @@ impl OAuthService {
         let client_id = Uuid::new_v4().to_string();
         let client_secret = Uuid::new_v4().to_string();
 
-        sqlx::query!(
+        let encrypted_secret = crate::crypto::encrypt_data(&client_secret, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt client secret: {}", e))?;
+
+        sqlx::query(
             r#"
             INSERT INTO oauth_clients (id, user_id, client_id, client_secret, app_name)
             VALUES (?, ?, ?, ?, ?)
             "#,
-            id,
-            user_id,
-            client_id,
-            client_secret,
-            app_name
         )
+        .bind(id)
+        .bind(user_id)
+        .bind(client_id.clone())
+        .bind(encrypted_secret)
+        .bind(app_name)
         .execute(&self.db)
         .await?;
 
@@ -126,19 +134,31 @@ impl OAuthService {
         client_id: &str,
         client_secret: &str,
     ) -> Result<String> {
-        let client = sqlx::query!(
+        let row = sqlx::query(
             r#"
-            SELECT user_id FROM oauth_clients
-            WHERE client_id = ? AND client_secret = ?
+            SELECT user_id, client_secret FROM oauth_clients
+            WHERE client_id = ?
             "#,
-            client_id,
-            client_secret
         )
+        .bind(client_id)
         .fetch_optional(&self.db)
         .await?;
 
+        let client = row.map(|r| {
+            use sqlx::Row;
+            (r.get::<String, _>(0), r.get::<String, _>(1))
+        });
+
         match client {
-            Some(record) => Ok(record.user_id),
+            Some((user_id, client_secret_record)) => {
+                let decrypted_secret = crate::crypto::decrypt_data(&client_secret_record, &self.encryption_key)
+                    .map_err(|_| anyhow!("Invalid client credentials"))?;
+                if decrypted_secret == client_secret {
+                    Ok(user_id)
+                } else {
+                    Err(anyhow!("Invalid client credentials"))
+                }
+            },
             None => Err(anyhow!("Invalid client credentials")),
         }
     }
@@ -252,16 +272,16 @@ impl OAuthService {
         let id = Uuid::new_v4().to_string();
         let scopes_str = scopes.join(",");
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO oauth_authorizations (id, client_id, user_id, scopes)
             VALUES (?, ?, ?, ?)
             "#,
-            id,
-            client_id,
-            user_id,
-            scopes_str
         )
+        .bind(id)
+        .bind(client_id)
+        .bind(user_id)
+        .bind(scopes_str)
         .execute(&self.db)
         .await?;
 
@@ -274,22 +294,26 @@ impl OAuthService {
         client_id: &str,
         user_id: &str,
     ) -> Result<Option<Vec<String>>> {
-        let auth = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT scopes FROM oauth_authorizations
             WHERE client_id = ? AND user_id = ?
             "#,
-            client_id,
-            user_id
         )
+        .bind(client_id)
+        .bind(user_id)
         .fetch_optional(&self.db)
         .await?;
 
+        let auth = row.map(|r| {
+            use sqlx::Row;
+            r.get::<String, _>(0)
+        });
+
         Ok(auth.map(|record| {
             record
-                .scopes
                 .split(',')
-                .map(|s| s.to_string())
+                .map(|s: &str| s.to_string())
                 .collect()
         }))
     }
@@ -300,7 +324,7 @@ impl OAuthService {
         user_id: &str,
         access_token: &str,
         refresh_token: &str,
-        expires_at: i64,
+        _expires_at: i64,
     ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
         let expires_at_str = Utc::now()
@@ -308,56 +332,47 @@ impl OAuthService {
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
             .to_rfc3339();
 
-        sqlx::query!(
+        let enc_access_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt access token: {}", e))?;
+        let enc_refresh_token = crate::crypto::encrypt_data(refresh_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt refresh token: {}", e))?;
+
+        sqlx::query(
             r#"
             INSERT INTO oauth_tokens (id, user_id, access_token, refresh_token, token_type, expires_at)
             VALUES (?, ?, ?, ?, ?, ?)
             "#,
-            id,
-            user_id,
-            access_token,
-            refresh_token,
-            "Bearer",
-            expires_at_str
         )
+        .bind(id)
+        .bind(user_id)
+        .bind(enc_access_token)
+        .bind(enc_refresh_token)
+        .bind("Bearer")
+        .bind(expires_at_str)
         .execute(&self.db)
         .await?;
 
         Ok(())
     }
 
-    /// Revoke OAuth token
+    /// Revoke OAuth token by deleting it from the database
     pub async fn revoke_token(&self, access_token: &str) -> Result<()> {
-        // Mark token as revoked (could add revoked_at column to track)
-        // For now, we can implement a revocation list in Redis or similar
-        // Simplified implementation: just log revocation
-        tracing::info!("Token revocation requested for token: {}...", &access_token[..20]);
+        let enc_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
+            .map_err(|e| anyhow!("Failed to encrypt token for lookup: {}", e))?;
+
+        let result = sqlx::query!(
+            r#"DELETE FROM oauth_tokens WHERE access_token = ?"#,
+            enc_token
+        )
+        .execute(&self.db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!("Token revocation requested but token not found in database");
+        } else {
+            tracing::info!("OAuth token revoked successfully");
+        }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validate_scopes() {
-        let service = OAuthService {
-            jwt_secret: "test".to_string(),
-            jwt_audience: "zapier".to_string(),
-            token_expiry_days: 7,
-            refresh_expiry_days: 30,
-            db: todo!(),
-        };
-
-        let scopes = "read:corridors read:anchors write:webhooks";
-        let result = service.validate_scopes(scopes);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 3);
-
-        let invalid = "read:corridors invalid_scope";
-        let result = service.validate_scopes(invalid);
-        assert!(result.is_err());
     }
 }

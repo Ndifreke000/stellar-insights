@@ -8,9 +8,7 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::auth::sep10_simple::{
-    ChallengeRequest, Sep10Service, VerificationRequest,
-};
+use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
 
 /// GET /api/sep10/info - Get SEP-10 server information
 pub async fn get_info(
@@ -80,15 +78,18 @@ pub enum Sep10ApiError {
 impl IntoResponse for Sep10ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Sep10ApiError::ChallengeGenerationFailed(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Challenge generation failed: {}", msg))
-            }
-            Sep10ApiError::VerificationFailed(msg) => {
-                (StatusCode::UNAUTHORIZED, format!("Verification failed: {}", msg))
-            }
-            Sep10ApiError::LogoutFailed(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Logout failed: {}", msg))
-            }
+            Sep10ApiError::ChallengeGenerationFailed(msg) => (
+                StatusCode::BAD_REQUEST,
+                format!("Challenge generation failed: {}", msg),
+            ),
+            Sep10ApiError::VerificationFailed(msg) => (
+                StatusCode::UNAUTHORIZED,
+                format!("Verification failed: {}", msg),
+            ),
+            Sep10ApiError::LogoutFailed(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Logout failed: {}", msg),
+            ),
         };
 
         let body = json!({

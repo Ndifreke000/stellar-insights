@@ -1,10 +1,15 @@
+use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use std::time::Duration;
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::analytics::compute_anchor_metrics;
+use crate::models::api_key::{
+    generate_api_key, hash_api_key, ApiKey, ApiKeyInfo, CreateApiKeyRequest, CreateApiKeyResponse,
+};
 use crate::models::{
     Anchor, AnchorDetailResponse, AnchorMetricsHistory, Asset, CorridorRecord, CreateAnchorRequest,
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
@@ -69,7 +74,7 @@ impl PoolConfig {
             .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
             .connect(database_url)
             .await?;
-        
+
         Ok(pool)
     }
 }
@@ -108,11 +113,13 @@ pub struct PoolMetrics {
 
 pub struct Database {
     pool: SqlitePool,
+    pub admin_audit_logger: AdminAuditLogger,
 }
 
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let admin_audit_logger = AdminAuditLogger::new(pool.clone());
+        Self { pool, admin_audit_logger }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -181,6 +188,7 @@ impl Database {
     }
 
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
+        let start = Instant::now();
         let anchors = sqlx::query_as::<_, Anchor>(
             r#"
             SELECT * FROM anchors
@@ -193,6 +201,11 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
+        crate::observability::metrics::observe_db_query(
+            "list_anchors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(anchors)
     }
 
@@ -455,6 +468,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<crate::models::corridor::Corridor>> {
+        let start = Instant::now();
         let records = sqlx::query_as::<_, CorridorRecord>(
             r#"
             SELECT * FROM corridors ORDER BY reliability_score DESC LIMIT $1 OFFSET $2
@@ -465,7 +479,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(records
+        let corridors = records
             .into_iter()
             .map(|r| {
                 crate::models::corridor::Corridor::new(
@@ -475,7 +489,13 @@ impl Database {
                     r.destination_asset_issuer,
                 )
             })
-            .collect())
+            .collect::<Vec<_>>();
+        crate::observability::metrics::observe_db_query(
+            "list_corridors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
+        Ok(corridors)
     }
 
     pub async fn get_corridor_by_id(
@@ -650,6 +670,7 @@ impl Database {
     }
 
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
+        let start = Instant::now();
         for payment in payments {
             sqlx::query(
                 r#"
@@ -673,6 +694,11 @@ impl Database {
             .execute(&self.pool)
             .await?;
         }
+        crate::observability::metrics::observe_db_query(
+            "save_payments",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(())
     }
 
@@ -843,10 +869,13 @@ impl Database {
             .collect();
 
         Ok(MuxedAccountAnalytics {
-            total_muxed_payments,
-            unique_muxed_addresses,
-            top_muxed_by_activity,
-            base_accounts_with_muxed,
+            total_muxed_accounts: None,
+            active_accounts: None,
+            top_accounts: None,
+            total_muxed_payments: Some(total_muxed_payments),
+            unique_muxed_addresses: Some(unique_muxed_addresses),
+            top_muxed_by_activity: Some(top_muxed_by_activity),
+            base_accounts_with_muxed: Some(base_accounts_with_muxed),
         })
     }
 
@@ -920,7 +949,7 @@ impl Database {
         signature: &str,
     ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
-        
+
         sqlx::query(
             r#"
             INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
@@ -937,11 +966,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn update_transaction_status(
-        &self,
-        id: &str,
-        status: &str,
-    ) -> Result<()> {
+    pub async fn update_transaction_status(&self, id: &str, status: &str) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE pending_transactions
@@ -957,4 +982,154 @@ impl Database {
         Ok(())
     }
 
+    // API Key operations
+
+    pub async fn create_api_key(
+        &self,
+        wallet_address: &str,
+        req: CreateApiKeyRequest,
+    ) -> Result<CreateApiKeyResponse> {
+        let id = Uuid::new_v4().to_string();
+        let (plain_key, prefix, key_hash) = generate_api_key();
+        let scopes = req.scopes.unwrap_or_else(|| "read".to_string());
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
+            "#,
+        )
+        .bind(&id)
+        .bind(&req.name)
+        .bind(&prefix)
+        .bind(&key_hash)
+        .bind(wallet_address)
+        .bind(&scopes)
+        .bind(&now)
+        .bind(&req.expires_at)
+        .execute(&self.pool)
+        .await?;
+
+        let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+            .bind(&id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(CreateApiKeyResponse {
+            key: ApiKeyInfo::from(key),
+            plain_key,
+        })
+    }
+
+    pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
+        let keys = sqlx::query_as::<_, ApiKey>(
+            r#"
+            SELECT * FROM api_keys
+            WHERE wallet_address = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(wallet_address)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(keys.into_iter().map(ApiKeyInfo::from).collect())
+    }
+
+    pub async fn get_api_key_by_id(
+        &self,
+        id: &str,
+        wallet_address: &str,
+    ) -> Result<Option<ApiKeyInfo>> {
+        let key = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE id = $1 AND wallet_address = $2",
+        )
+        .bind(id)
+        .bind(wallet_address)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(key.map(ApiKeyInfo::from))
+    }
+
+    pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
+        let key_hash = hash_api_key(plain_key);
+
+        let key = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE key_hash = $1 AND status = 'active'",
+        )
+        .bind(&key_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(ref k) = key {
+            if let Some(ref expires_at) = k.expires_at {
+                if let Ok(exp) = DateTime::parse_from_rfc3339(expires_at) {
+                    if exp < Utc::now() {
+                        return Ok(None);
+                    }
+                }
+            }
+
+            sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
+                .bind(Utc::now().to_rfc3339())
+                .bind(&k.id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        Ok(key)
+    }
+
+    pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE api_keys
+            SET status = 'revoked', revoked_at = $1
+            WHERE id = $2 AND wallet_address = $3 AND status = 'active'
+            "#,
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn rotate_api_key(
+        &self,
+        id: &str,
+        wallet_address: &str,
+    ) -> Result<Option<CreateApiKeyResponse>> {
+        let old_key = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE id = $1 AND wallet_address = $2 AND status = 'active'",
+        )
+        .bind(id)
+        .bind(wallet_address)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let old_key = match old_key {
+            Some(k) => k,
+            None => return Ok(None),
+        };
+
+        self.revoke_api_key(id, wallet_address).await?;
+
+        let new_key = self
+            .create_api_key(
+                wallet_address,
+                CreateApiKeyRequest {
+                    name: old_key.name,
+                    scopes: Some(old_key.scopes),
+                    expires_at: old_key.expires_at,
+                },
+            )
+            .await?;
+
+        Ok(Some(new_key))
+    }
 }

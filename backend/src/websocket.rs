@@ -45,7 +45,7 @@ impl WsState {
     /// Broadcast a message to clients subscribed to a specific channel
     pub async fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
         let mut target_connections = Vec::new();
-        
+
         // Find connections subscribed to this channel
         for entry in self.subscriptions.iter() {
             let (connection_id, channels) = entry.pair();
@@ -58,7 +58,10 @@ impl WsState {
         for connection_id in target_connections {
             if let Some(sender) = self.connections.get(&connection_id) {
                 if let Err(e) = sender.send(message.clone()).await {
-                    warn!("Failed to send message to connection {}: {}", connection_id, e);
+                    warn!(
+                        "Failed to send message to connection {}: {}",
+                        connection_id, e
+                    );
                 }
             }
         }
@@ -66,13 +69,17 @@ impl WsState {
 
     /// Subscribe a connection to channels
     pub fn subscribe_connection(&self, connection_id: Uuid, channels: Vec<String>) {
-        let mut subscription_set = self.subscriptions
+        let mut subscription_set = self
+            .subscriptions
             .entry(connection_id)
             .or_insert_with(HashSet::new);
-        
+
         for channel in channels {
             subscription_set.insert(channel.clone());
-            info!("Connection {} subscribed to channel: {}", connection_id, channel);
+            info!(
+                "Connection {} subscribed to channel: {}",
+                connection_id, channel
+            );
         }
     }
 
@@ -81,7 +88,10 @@ impl WsState {
         if let Some(mut subscription_set) = self.subscriptions.get_mut(&connection_id) {
             for channel in channels {
                 subscription_set.remove(&channel);
-                info!("Connection {} unsubscribed from channel: {}", connection_id, channel);
+                info!(
+                    "Connection {} unsubscribed from channel: {}",
+                    connection_id, channel
+                );
             }
         }
     }
@@ -163,25 +173,41 @@ pub enum WsMessage {
         timestamp: String,
     },
     /// Subscription management
-    Subscribe { channels: Vec<String> },
-    Unsubscribe { channels: Vec<String> },
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
     /// Subscription confirmation
-    SubscriptionConfirm { 
+    SubscriptionConfirm {
         channels: Vec<String>,
         status: String,
     },
     /// Heartbeat/Ping message
-    Ping { timestamp: i64 },
+    Ping {
+        timestamp: i64,
+    },
     /// Pong response
-    Pong { timestamp: i64 },
+    Pong {
+        timestamp: i64,
+    },
     /// Connection established
-    Connected { connection_id: String },
+    Connected {
+        connection_id: String,
+    },
     /// Connection status update
-    ConnectionStatus { status: String },
-    /// Server shutdown notification
-    ServerShutdown { message: String },
+    ConnectionStatus {
+        status: String,
+    },
     /// Error message
-    Error { message: String },
+    Error {
+        message: String,
+    },
+    /// Server is shutting down
+    ServerShutdown {
+        message: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -240,6 +266,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
 
     // Register the connection
     state.connections.insert(connection_id, tx);
+    crate::observability::metrics::set_active_connections(state.connection_count() as i64);
 
     // Subscribe to broadcast messages
     let mut broadcast_rx = state.tx.subscribe();
@@ -277,8 +304,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                                     }
                                 }
                                 WsMessage::Subscribe { channels } => {
-                                    info!("Connection {} subscribing to channels: {:?}", connection_id, channels);
-                                    state_clone.subscribe_connection(connection_id, channels.clone());
+                                    info!(
+                                        "Connection {} subscribing to channels: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .subscribe_connection(connection_id, channels.clone());
                                     let confirm = WsMessage::SubscriptionConfirm {
                                         channels: channels.clone(),
                                         status: "subscribed".to_string(),
@@ -289,8 +320,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                                     }
                                 }
                                 WsMessage::Unsubscribe { channels } => {
-                                    info!("Connection {} unsubscribing from channels: {:?}", connection_id, channels);
-                                    state_clone.unsubscribe_connection(connection_id, channels.clone());
+                                    info!(
+                                        "Connection {} unsubscribing from channels: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .unsubscribe_connection(connection_id, channels.clone());
                                     let confirm = WsMessage::SubscriptionConfirm {
                                         channels: channels.clone(),
                                         status: "unsubscribed".to_string(),
@@ -381,6 +416,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
 
     // Clean up connection
     state.cleanup_connection(connection_id);
+    crate::observability::metrics::set_active_connections(state.connection_count() as i64);
     info!(
         "WebSocket connection {} closed. Active connections: {}",
         connection_id,

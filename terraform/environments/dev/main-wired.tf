@@ -114,10 +114,13 @@ module "compute" {
   container_cpu   = 256
   container_memory = 512
 
+  # Fargate configuration (serverless - cost optimized for dev)
+  launch_type     = "FARGATE"
+  enable_fargate  = true
+
   desired_count = 1
   min_size      = 1
   max_size      = 2
-  instance_type = "t3.micro"
 
   subnets         = module.networking.private_app_subnet_ids
   security_groups = [module.networking.security_group_backend_id]
@@ -162,6 +165,7 @@ module "monitoring" {
   alarm_email      = var.alarm_email
   enable_dashboard = false
   enable_alarms    = false
+  enable_cost_alerts = false  # Disabled for dev to save cost
 
   environment = var.environment
 }
@@ -207,16 +211,18 @@ output "vault_secret_paths" {
 }
 
 output "cost_estimate" {
-  description = "Estimated monthly cost (includes only AWS services)"
+  description = "Estimated monthly cost (Fargate - cost optimized)"
   value = {
-    description = "Full dev environment including NAT, ALB, ECS, Redis, CloudWatch"
-    alb           = "$20/month"
-    nat_gateway   = "$30/month"
-    ecs_t3_micro  = "$7/month"
-    redis_cache   = "$5/month"
-    data_transfer = "$5/month"
-    cloudwatch    = "<$1/month"
-    total_monthly = "~$68/month"
+    description = "Full dev environment including NAT, ALB, ECS Fargate, Redis, CloudWatch"
+    alb              = "$20/month"
+    nat_gateway      = "$30/month"
+    fargate_vcpu_hours = "$3/month"    # ~70 vCPU-hours @ $0.04/vCPU-hour
+    fargate_memory_hours = "$2/month"  # ~200 GB-hours @ $0.008/GB-hour
+    redis_cache      = "$5/month"
+    data_transfer   = "$5/month"
+    cloudwatch      = "<$1/month"
+    total_monthly   = "~$65/month"
+    savings_vs_ec2  = "~$3/month (negligible for dev)"
   }
 }
 

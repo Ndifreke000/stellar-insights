@@ -95,9 +95,7 @@ impl IntoResponse for Sep10AuthError {
             Sep10AuthError::MissingToken => {
                 (StatusCode::UNAUTHORIZED, "Missing authentication token")
             }
-            Sep10AuthError::InvalidToken => {
-                (StatusCode::UNAUTHORIZED, "Invalid or expired token")
-            }
+            Sep10AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
         };
 
         let body = json!({

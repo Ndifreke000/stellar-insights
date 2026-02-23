@@ -48,29 +48,34 @@ export function SuccessRateCompareChart({ corridors }: CompareChartsProps) {
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.1} />
-          <XAxis 
-            dataKey="timestamp" 
-            tick={{ fontSize: 11 }} 
-            axisLine={false}
-            tickLine={false}
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="#334155"
+            opacity={0.1}
           />
-          <YAxis 
-            domain={[0, 100]} 
+          <XAxis
+            dataKey="timestamp"
             tick={{ fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: '#1e293b', 
-              border: 'none', 
-              borderRadius: '8px',
-              color: '#f8fafc'
-            }}
-            itemStyle={{ fontSize: '12px' }}
+          <YAxis
+            domain={[0, 100]}
+            tick={{ fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
           />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1e293b",
+              border: "none",
+              borderRadius: "8px",
+              color: "#f8fafc",
+            }}
+            itemStyle={{ fontSize: "12px" }}
+          />
+          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
           {corridors.map((c, i) => (
             <Line
               key={c.corridor.id}
@@ -91,7 +96,9 @@ export function SuccessRateCompareChart({ corridors }: CompareChartsProps) {
 
 export function VolumeCompareChart({ corridors }: CompareChartsProps) {
   const allTimestamps = Array.from(
-    new Set(corridors.flatMap((c) => c.historical_volume.map((d) => d.timestamp))),
+    new Set(
+      corridors.flatMap((c) => c.historical_volume.map((d) => d.timestamp)),
+    ),
   ).sort();
 
   const chartData = allTimestamps.map((ts) => {
@@ -112,29 +119,37 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.1} />
-          <XAxis 
-            dataKey="timestamp" 
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="#334155"
+            opacity={0.1}
+          />
+          <XAxis
+            dataKey="timestamp"
             tick={{ fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
-          <YAxis 
+          <YAxis
             tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
             tick={{ fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip 
-            formatter={(value: number) => [`$${value.toLocaleString()}`, "Volume"]}
-            contentStyle={{ 
-              backgroundColor: '#1e293b', 
-              border: 'none', 
-              borderRadius: '8px',
-              color: '#f8fafc'
+          <Tooltip
+            formatter={(value?: number) => {
+              if (typeof value !== "number") return ["-", "Volume"];
+              return [`$${value.toLocaleString()}`, "Volume"];
+            }}
+            contentStyle={{
+              backgroundColor: "#1e293b",
+              border: "none",
+              borderRadius: "8px",
+              color: "#f8fafc",
             }}
           />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
           {corridors.map((c, i) => (
             <Bar
               key={c.corridor.id}
@@ -153,9 +168,7 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
 export function SlippageCompareChart({ corridors }: CompareChartsProps) {
   const allTimestamps = Array.from(
     new Set(
-      corridors.flatMap((c) =>
-        c.historical_slippage.map((d) => d.timestamp),
-      ),
+      corridors.flatMap((c) => c.historical_slippage.map((d) => d.timestamp)),
     ),
   ).sort();
 
@@ -177,28 +190,32 @@ export function SlippageCompareChart({ corridors }: CompareChartsProps) {
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.1} />
-          <XAxis 
-            dataKey="timestamp" 
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="#334155"
+            opacity={0.1}
+          />
+          <XAxis
+            dataKey="timestamp"
             tick={{ fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
-          <YAxis 
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip 
-            formatter={(value: number) => [`${value.toFixed(2)} bps`, "Slippage"]}
-            contentStyle={{ 
-              backgroundColor: '#1e293b', 
-              border: 'none', 
-              borderRadius: '8px',
-              color: '#f8fafc'
+          <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip
+            formatter={(value?: number) => {
+              if (typeof value !== "number") return ["-", "Slippage"];
+              return [`${value.toFixed(2)} bps`, "Slippage"];
+            }}
+            contentStyle={{
+              backgroundColor: "#1e293b",
+              border: "none",
+              borderRadius: "8px",
+              color: "#f8fafc",
             }}
           />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
           {corridors.map((c, i) => (
             <Line
               key={c.corridor.id}

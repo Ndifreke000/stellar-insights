@@ -10,7 +10,7 @@ import {
   Maximize2,
   Activity,
 } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 
 interface CorridorHeatmapProps {
   corridors: CorridorMetrics[];

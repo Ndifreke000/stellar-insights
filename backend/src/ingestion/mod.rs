@@ -51,7 +51,7 @@ impl DataIngestionService {
             .rpc_client
             .fetch_account_payments(account_id, 100)
             .await
-            .context("Failed to fetch payments")?;
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         if payments.is_empty() {
             return Ok(());
@@ -116,7 +116,11 @@ impl DataIngestionService {
 
     /// Get current network health status
     pub async fn get_network_health(&self) -> Result<NetworkHealth> {
-        let health = self.rpc_client.check_health().await?;
+        let health = self
+            .rpc_client
+            .check_health()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         Ok(NetworkHealth {
             status: health.status,
@@ -152,7 +156,11 @@ impl DataIngestionService {
         let last_ingested = cursor_row.map(|r| r.0 as u64).unwrap_or(0);
 
         // We get network state
-        let health = self.rpc_client.check_health().await?;
+        let health = self
+            .rpc_client
+            .check_health()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         Ok(IngestionStatus {
             last_ingested_ledger: last_ingested,

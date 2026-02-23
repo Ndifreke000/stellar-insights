@@ -1,14 +1,22 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub mod api_key;
 pub mod corridor;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortBy {
-    #[default]
+    #[serde(rename = "success_rate")]
     SuccessRate,
+    #[serde(rename = "volume")]
     Volume,
+}
+
+impl Default for SortBy {
+    fn default() -> Self {
+        SortBy::SuccessRate
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -96,10 +104,18 @@ impl AnchorStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnchorWithAssets {
-    #[serde(flatten)]
-    pub anchor: Anchor,
-    pub assets: Vec<Asset>,
+pub struct CreateAnchorRequest {
+    pub name: String,
+    pub stellar_account: String,
+    pub home_domain: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCorridorRequest {
+    pub source_asset_code: String,
+    pub source_asset_issuer: String,
+    pub dest_asset_code: String,
+    pub dest_asset_issuer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +123,13 @@ pub struct AnchorDetailResponse {
     pub anchor: Anchor,
     pub assets: Vec<Asset>,
     pub metrics_history: Vec<AnchorMetricsHistory>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnchorWithAssets {
+    #[serde(flatten)]
+    pub anchor: Anchor,
+    pub assets: Vec<Asset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -143,22 +166,6 @@ pub struct SnapshotRecord {
     pub epoch: Option<i64>,
     pub timestamp: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAnchorRequest {
-    pub name: String,
-    pub stellar_account: String,
-    pub home_domain: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateCorridorRequest {
-    pub name: Option<String>,
-    pub source_asset_code: String,
-    pub source_asset_issuer: String,
-    pub dest_asset_code: String,
-    pub dest_asset_issuer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -299,10 +306,20 @@ pub struct LiquidityPoolStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MuxedAccountAnalytics {
-    pub total_muxed_payments: i64,
-    pub unique_muxed_addresses: i64,
-    pub top_muxed_by_activity: Vec<MuxedAccountUsage>,
-    pub base_accounts_with_muxed: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_muxed_accounts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_accounts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_accounts: Option<Vec<MuxedAccountUsage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_muxed_payments: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_muxed_addresses: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_muxed_by_activity: Option<Vec<MuxedAccountUsage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_accounts_with_muxed: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,4 +394,38 @@ pub struct TrustlineMetrics {
     pub total_assets_tracked: i64,
     pub total_trustlines_across_network: i64,
     pub active_assets: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ApiUsageStat {
+    pub id: String,
+    pub endpoint: String,
+    pub method: String,
+    pub status_code: i32,
+    pub response_time_ms: i32,
+    pub user_id: Option<String>,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiAnalyticsOverview {
+    pub total_requests: i64,
+    pub avg_response_time_ms: f64,
+    pub error_rate: f64,
+    pub top_endpoints: Vec<EndpointStat>,
+    pub status_distribution: Vec<StatusStat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct EndpointStat {
+    pub endpoint: String,
+    pub method: String,
+    pub count: i64,
+    pub avg_response_time_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct StatusStat {
+    pub status_code: i32,
+    pub count: i64,
 }

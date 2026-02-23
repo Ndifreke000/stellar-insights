@@ -5,47 +5,19 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::cache::{keys, CacheManager};
 use crate::cache_middleware::CacheAware;
 use crate::database::Database;
-use crate::rpc::StellarRpcClient;
+use crate::error::ApiResult;
+use crate::rpc::{
+    circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
+    error::{with_retry, RetryConfig, RpcError},
+    StellarRpcClient,
+};
 use crate::services::price_feed::PriceFeedClient;
-
-pub type ApiResult<T> = Result<T, ApiError>;
-
-#[derive(Debug)]
-pub enum ApiError {
-    NotFound(String),
-    BadRequest(String),
-    InternalError(String),
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-        };
-
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    fn from(err: anyhow::Error) -> Self {
-        ApiError::InternalError(err.to_string())
-    }
-}
-
-impl From<sqlx::Error> for ApiError {
-    fn from(err: sqlx::Error) -> Self {
-        ApiError::InternalError(err.to_string())
-    }
-}
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -62,6 +34,18 @@ pub struct ListAnchorsQuery {
 
 fn default_limit() -> i64 {
     50
+}
+
+fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
+    static CIRCUIT_BREAKER: OnceLock<Arc<CircuitBreaker>> = OnceLock::new();
+    CIRCUIT_BREAKER
+        .get_or_init(|| {
+            Arc::new(CircuitBreaker::new(
+                CircuitBreakerConfig::default(),
+                "horizon",
+            ))
+        })
+        .clone()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
@@ -140,6 +124,7 @@ pub async fn get_anchors(
     let response = <()>::get_or_fetch(&cache, &cache_key, cache.config.get_ttl("anchor"), async {
         // Get anchor metadata from database (names, accounts, etc.)
         let anchors = db.list_anchors(params.limit, params.offset).await?;
+        let circuit_breaker = rpc_circuit_breaker();
 
         let mut anchor_responses = Vec::new();
 
@@ -150,18 +135,36 @@ pub async fn get_anchors(
             let assets = db.get_assets_by_anchor(anchor_id).await?;
 
             // **RPC DATA**: Fetch real-time payment data for this anchor
+            let payments = with_retry(
+                || async {
+                    rpc_client
+                        .fetch_account_payments(&anchor.stellar_account, 200)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to fetch payments for anchor {}: {}",
+                    anchor.stellar_account,
+                    e
+                )
+            })?;
+            // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
             let payments = match rpc_client
-                .fetch_account_payments(&anchor.stellar_account, 200)
+                .fetch_all_account_payments(&anchor.stellar_account, Some(500))
                 .await
             {
-                Ok(payments) => payments,
+                Ok(p) => p,
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to fetch payments for anchor {}: {}. Using cached data.",
+                        "Failed to fetch payments for anchor {}: {}",
                         anchor.stellar_account,
                         e
                     );
-                    // Fallback to database values if RPC fails
                     vec![]
                 }
             };
@@ -176,7 +179,6 @@ pub async fn get_anchors(
                     let failed = 0;
                     (total, successful, failed)
                 } else {
-                    // Fallback to database values
                     (
                         anchor.total_transactions,
                         anchor.successful_transactions,

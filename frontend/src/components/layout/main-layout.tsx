@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
 import { BottomNav } from "./bottom-nav";
+import { SkipNavigation } from "../SkipNavigation";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -21,19 +22,29 @@ export function MainLayout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
-      <Header onMenuToggle={handleMenuToggle} sidebarOpen={sidebarOpen} />
-      <Sidebar open={sidebarOpen} onClose={handleSidebarClose} />
+    <>
+      {/* Skip Navigation Links */}
+      <SkipNavigation />
 
-      {/* Main Content */}
-      <main className="pt-16 lg:pl-64 pb-16 lg:pb-0">
-        <div className="min-h-[calc(100vh-128px)] lg:min-h-[calc(100vh-64px)]">
-          {children}
-        </div>
-      </main>
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+        <Header onMenuToggle={handleMenuToggle} sidebarOpen={sidebarOpen} />
+        <Sidebar open={sidebarOpen} onClose={handleSidebarClose} />
 
-      {/* Bottom Navigation for Mobile */}
-      <BottomNav />
-    </div>
+        {/* Main Content with proper landmark */}
+        <main 
+          id="main-content" 
+          className="pt-16 lg:pl-64 pb-16 lg:pb-0"
+          role="main"
+          aria-label="Main content"
+        >
+          <div className="min-h-[calc(100vh-128px)] lg:min-h-[calc(100vh-64px)]">
+            {children}
+          </div>
+        </main>
+
+        {/* Bottom Navigation for Mobile */}
+        <BottomNav />
+      </div>
+    </>
   );
 }

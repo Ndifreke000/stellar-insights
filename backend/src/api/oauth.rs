@@ -9,16 +9,15 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
-use crate::auth::oauth::{OAuthError, OAuthService, TokenResponse, AVAILABLE_SCOPES};
+use crate::auth::oauth::{OAuthService, TokenResponse};
 use crate::auth_middleware::AuthUser;
 
 /// OAuth Token Request (for /api/oauth/token)
 #[derive(Debug, Deserialize)]
 pub struct OAuthTokenRequest {
-    pub grant_type: String, // "authorization_code" or "refresh_token"
-    pub code: Option<String>, // for authorization_code
+    pub grant_type: String,            // "authorization_code" or "refresh_token"
+    pub code: Option<String>,          // for authorization_code
     pub refresh_token: Option<String>, // for refresh_token
     pub client_id: String,
     pub client_secret: String,
@@ -85,9 +84,9 @@ pub async fn authorize(
     let service = OAuthService::new(db);
 
     // Validate scopes
-    service.validate_scopes(&request.scope).map_err(|e| {
-        OAuthApiError::InvalidScope(format!("Invalid scopes: {}", e))
-    })?;
+    service
+        .validate_scopes(&request.scope)
+        .map_err(|e| OAuthApiError::InvalidScope(format!("Invalid scopes: {}", e)))?;
 
     // Store authorization
     let scopes = service.validate_scopes(&request.scope)?;
@@ -123,21 +122,23 @@ pub async fn token(
         .map_err(|_| OAuthApiError::InvalidClient)?;
 
     // Get user from database for username
-    let user = sqlx::query!(
-        "SELECT username FROM users WHERE id = ?",
-        user_id
-    )
-    .fetch_optional(&db)
-    .await
-    .map_err(|e| OAuthApiError::ServerError(e.to_string()))?
-    .ok_or_else(|| OAuthApiError::InvalidClient)?;
-
-    let username = user.username;
+    let user_row = sqlx::query("SELECT username FROM users WHERE id = ?")
+        .bind(user_id.clone())
+        .fetch_optional(&db)
+        .await
+        .map_err(|e| OAuthApiError::ServerError(e.to_string()))?
+        .ok_or_else(|| OAuthApiError::InvalidClient)?;
+    let username: String = {
+        use sqlx::Row;
+        user_row.get(0)
+    };
 
     match request.grant_type.as_str() {
         "authorization_code" => {
             let code = request.code.ok_or_else(|| {
-                OAuthApiError::InvalidRequest("code is required for authorization_code grant".to_string())
+                OAuthApiError::InvalidRequest(
+                    "code is required for authorization_code grant".to_string(),
+                )
             })?;
 
             // In a real implementation, you would:
@@ -151,7 +152,9 @@ pub async fn token(
                 .await
                 .map_err(|e| OAuthApiError::ServerError(e.to_string()))?
                 .ok_or_else(|| {
-                    OAuthApiError::InvalidRequest("No authorization found for this client".to_string())
+                    OAuthApiError::InvalidRequest(
+                        "No authorization found for this client".to_string(),
+                    )
                 })?;
 
             // Generate tokens
@@ -165,7 +168,12 @@ pub async fn token(
 
             // Store tokens
             service
-                .store_token(&user_id, &access_token, &refresh_token, chrono::Utc::now().timestamp())
+                .store_token(
+                    &user_id,
+                    &access_token,
+                    &refresh_token,
+                    chrono::Utc::now().timestamp(),
+                )
                 .await
                 .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
 
@@ -183,7 +191,9 @@ pub async fn token(
         }
         "refresh_token" => {
             let refresh_token = request.refresh_token.ok_or_else(|| {
-                OAuthApiError::InvalidRequest("refresh_token is required for refresh_token grant".to_string())
+                OAuthApiError::InvalidRequest(
+                    "refresh_token is required for refresh_token grant".to_string(),
+                )
             })?;
 
             // Validate refresh token
@@ -239,9 +249,13 @@ pub async fn revoke(
     service
         .revoke_token(&request.access_token)
         .await
-        .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+        .map_err(|e: anyhow::Error| OAuthApiError::ServerError(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(json!({"message": "Token revoked successfully"}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Token revoked successfully"})),
+    )
+        .into_response())
 }
 
 /// GET /api/oauth/apps - List OAuth apps for authenticated user
@@ -249,28 +263,35 @@ pub async fn list_apps(
     State(db): State<SqlitePool>,
     auth_user: AuthUser,
 ) -> Result<Response, OAuthApiError> {
-    let apps = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT client_id, app_name, created_at FROM oauth_clients
         WHERE user_id = ?
         ORDER BY created_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&db)
     .await
-    .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| OAuthApiError::ServerError(e.to_string()))?;
 
-    let app_list: Vec<OAuthAppInfo> = apps
+    let app_list: Vec<OAuthAppInfo> = rows
         .into_iter()
-        .map(|row| OAuthAppInfo {
-            client_id: row.client_id,
-            app_name: row.app_name,
-            created_at: row.created_at,
+        .map(|row| {
+            use sqlx::Row;
+            OAuthAppInfo {
+                client_id: row.get(0),
+                app_name: row.get(1),
+                created_at: row.get(2),
+            }
         })
         .collect();
 
-    Ok((StatusCode::OK, Json(ListOAuthAppsResponse { apps: app_list })).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(ListOAuthAppsResponse { apps: app_list }),
+    )
+        .into_response())
 }
 
 /// OAuth API Error types
@@ -287,36 +308,20 @@ pub enum OAuthApiError {
 impl IntoResponse for OAuthApiError {
     fn into_response(self) -> Response {
         let (status_code, error, description) = match self {
-            OAuthApiError::InvalidRequest(msg) => (
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                Some(msg),
-            ),
-            OAuthApiError::InvalidClient => (
-                StatusCode::UNAUTHORIZED,
-                "invalid_client",
-                None,
-            ),
-            OAuthApiError::InvalidScope(msg) => (
-                StatusCode::BAD_REQUEST,
-                "invalid_scope",
-                Some(msg),
-            ),
-            OAuthApiError::InvalidGrant => (
-                StatusCode::UNAUTHORIZED,
-                "invalid_grant",
-                None,
-            ),
-            OAuthApiError::UnsupportedGrantType => (
-                StatusCode::BAD_REQUEST,
-                "unsupported_grant_type",
-                None,
-            ),
-            OAuthApiError::ServerError(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                Some(msg),
-            ),
+            OAuthApiError::InvalidRequest(msg) => {
+                (StatusCode::BAD_REQUEST, "invalid_request", Some(msg))
+            }
+            OAuthApiError::InvalidClient => (StatusCode::UNAUTHORIZED, "invalid_client", None),
+            OAuthApiError::InvalidScope(msg) => {
+                (StatusCode::BAD_REQUEST, "invalid_scope", Some(msg))
+            }
+            OAuthApiError::InvalidGrant => (StatusCode::UNAUTHORIZED, "invalid_grant", None),
+            OAuthApiError::UnsupportedGrantType => {
+                (StatusCode::BAD_REQUEST, "unsupported_grant_type", None)
+            }
+            OAuthApiError::ServerError(msg) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "server_error", Some(msg))
+            }
         };
 
         let body = Json(OAuthTokenErrorResponse {

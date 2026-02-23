@@ -1,7 +1,7 @@
 "use client"
 
 import React, { Component, ErrorInfo, ReactNode } from "react"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 
 interface Props {

@@ -73,7 +73,7 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
 
     // Add request ID to response headers
     let (mut parts, body) = response.into_parts();
-    
+
     if let Ok(header_value) = HeaderValue::from_str(&request_id) {
         parts.headers.insert("X-Request-ID", header_value);
     }
@@ -85,9 +85,7 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
 ///
 /// Returns None if no request ID is found (shouldn't happen if middleware is applied)
 pub fn get_request_id(req: &Request<Body>) -> Option<String> {
-    req.extensions()
-        .get::<RequestId>()
-        .map(|id| id.0.clone())
+    req.extensions().get::<RequestId>().map(|id| id.0.clone())
 }
 
 /// Error response with request ID
@@ -113,15 +111,23 @@ pub fn error_with_request_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        middleware,
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
 
     #[test]
     fn test_request_id_creation() {
         let id1 = RequestId::new();
         let id2 = RequestId::new();
-        
+
         // IDs should be different
         assert_ne!(id1.0, id2.0);
-        
+
         // IDs should be valid UUIDs (36 characters with hyphens)
         assert_eq!(id1.0.len(), 36);
         assert_eq!(id2.0.len(), 36);
@@ -151,5 +157,52 @@ mod tests {
     fn test_request_id_default() {
         let id = RequestId::default();
         assert_eq!(id.0.len(), 36);
+    }
+
+    #[tokio::test]
+    async fn middleware_sets_response_request_id() {
+        let app = Router::new()
+            .route("/health", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(request_id_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("X-Request-ID").is_some());
+    }
+
+    #[tokio::test]
+    async fn middleware_preserves_upstream_request_id() {
+        let app = Router::new()
+            .route("/health", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(request_id_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header("X-Request-ID", "upstream-request-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Request-ID")
+                .and_then(|h| h.to_str().ok()),
+            Some("upstream-request-id")
+        );
     }
 }

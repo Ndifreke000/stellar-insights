@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Request, Extension},
+    extract::{Extension, Request},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -18,6 +18,18 @@ pub struct JwtSecret(pub Arc<str>);
 pub struct AuthUser {
     pub user_id: String,
     pub username: String,
+}
+
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts.extensions.get::<AuthUser>().cloned().ok_or(AuthError::MissingToken)
+    }
 }
 
 /// Auth middleware - validates JWT from Authorization header

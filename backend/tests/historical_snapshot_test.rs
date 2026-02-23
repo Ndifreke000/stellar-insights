@@ -1,6 +1,6 @@
+use sqlx::SqlitePool;
 use stellar_insights_backend::database::Database;
 use stellar_insights_backend::models::SnapshotRecord;
-use sqlx::SqlitePool;
 
 #[tokio::test]
 async fn test_snapshot_storage_with_hash_and_epoch() {
@@ -58,25 +58,27 @@ async fn test_snapshot_storage_with_hash_and_epoch() {
     assert_eq!(retrieved.entity_id, "analytics");
 
     // Test 3: Create multiple snapshots at different epochs
-    let _: SnapshotRecord = db.create_snapshot(
-        "analytics",
-        "global",
-        snapshot_data.clone(),
-        Some("hash200".to_string()),
-        Some(200),
-    )
-    .await
-    .unwrap();
+    let _: SnapshotRecord = db
+        .create_snapshot(
+            "analytics",
+            "global",
+            snapshot_data.clone(),
+            Some("hash200".to_string()),
+            Some(200),
+        )
+        .await
+        .unwrap();
 
-    let _: SnapshotRecord = db.create_snapshot(
-        "analytics",
-        "global",
-        snapshot_data.clone(),
-        Some("hash150".to_string()),
-        Some(150),
-    )
-    .await
-    .unwrap();
+    let _: SnapshotRecord = db
+        .create_snapshot(
+            "analytics",
+            "global",
+            snapshot_data.clone(),
+            Some("hash150".to_string()),
+            Some(150),
+        )
+        .await
+        .unwrap();
 
     // Test 4: List snapshots (should be ordered by epoch DESC)
     let snapshots: Vec<SnapshotRecord> = db.list_snapshots(10, 0).await.unwrap();

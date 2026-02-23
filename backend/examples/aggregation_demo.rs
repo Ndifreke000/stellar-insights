@@ -1,8 +1,8 @@
 use anyhow::Result;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::services::aggregation::{AggregationConfig, AggregationService};
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::services::aggregation::{AggregationConfig, AggregationService};
 use tracing::{info, Level};
 use tracing_subscriber;
 

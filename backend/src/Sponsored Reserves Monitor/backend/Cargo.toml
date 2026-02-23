@@ -1,0 +1,24 @@
+[package]
+name = "stellar-reserves-monitor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+futures = "0.3"
+rust_decimal = { version = "1.33", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+dotenv = "0.15"
+reqwest = { version = "0.11", features = ["json"] }
+stellar-sdk = "20"
+
+[dev-dependencies]
+mockall = "0.12"

@@ -1,6 +1,6 @@
 use axum::{extract::Query, Json};
-use serde::{Deserialize, Serialize};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct PredictionQuery {
@@ -18,9 +18,7 @@ pub struct PredictionResponse {
 }
 
 /// POST /api/predict/success - Predict payment success
-pub async fn predict_success(
-    Query(_params): Query<PredictionQuery>,
-) -> Json<PredictionResponse> {
+pub async fn predict_success(Query(_params): Query<PredictionQuery>) -> Json<PredictionResponse> {
     // Mock implementation
     let mut rng = rand::thread_rng();
     let probability = rng.gen_range(0.8..0.98);

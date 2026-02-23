@@ -1,0 +1,26 @@
+name: Clippy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    
+    - name: Backend Clippy
+      working-directory: ./backend
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Contracts Clippy
+      working-directory: ./contracts
+      run: cargo clippy --all-targets --all-features -- -D warnings

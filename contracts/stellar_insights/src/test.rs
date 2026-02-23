@@ -176,6 +176,32 @@ fn test_invalid_epoch_zero_fails() {
 }
 
 #[test]
+fn test_older_epoch_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Submit epoch 10 first
+    let hash_new = create_test_hash(&env, 10);
+    client.submit_snapshot(&10u64, &hash_new, &admin);
+    assert_eq!(client.get_latest_epoch(), 10);
+
+    // Submit earlier epoch 5 - should fail with EpochMonotonicityViolated
+    let hash_old = create_test_hash(&env, 5);
+    let result = client.try_submit_snapshot(&5u64, &hash_old, &admin);
+
+    assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
+
+    // Epoch 5 should not be stored
+    assert!(client.try_get_snapshot(&5u64).is_err());
+}
+
+#[test]
 fn test_snapshot_submitted_event() {
     let env = Env::default();
     env.mock_all_auths();
@@ -362,17 +388,17 @@ fn test_non_sequential_epochs() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    // Submit in non-sequential order
-    client.submit_snapshot(&100, &create_test_hash(&env, 100), &admin);
+    // Submit with gaps (monotonic order: 50, 100, 200)
     client.submit_snapshot(&50, &create_test_hash(&env, 50), &admin);
+    client.submit_snapshot(&100, &create_test_hash(&env, 100), &admin);
     client.submit_snapshot(&200, &create_test_hash(&env, 200), &admin);
 
     // Latest epoch should be 200
     assert_eq!(client.get_latest_epoch(), 200);
 
     // All should be retrievable
-    assert!(client.try_get_snapshot(&100).is_ok());
     assert!(client.try_get_snapshot(&50).is_ok());
+    assert!(client.try_get_snapshot(&100).is_ok());
     assert!(client.try_get_snapshot(&200).is_ok());
 }
 

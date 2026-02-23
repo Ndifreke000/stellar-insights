@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use chrono::{Utc, Datelike};
+use chrono::{Datelike, Timelike, Utc};
 
 use crate::cache::CacheManager;
 use crate::rpc::StellarRpcClient;
@@ -30,14 +30,14 @@ impl DigestScheduler {
         loop {
             ticker.tick().await;
             let now = Utc::now();
-            
+
             // Weekly: Monday at 9 AM
             if now.weekday().num_days_from_monday() == 0 && now.hour() == 9 {
                 if let Err(e) = self.send_digest("Weekly").await {
                     tracing::error!("Failed to send weekly digest: {}", e);
                 }
             }
-            
+
             // Monthly: 1st of month at 9 AM
             if now.day() == 1 && now.hour() == 9 {
                 if let Err(e) = self.send_digest("Monthly").await {
@@ -47,10 +47,10 @@ impl DigestScheduler {
         }
     }
 
-    async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
+    pub async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
         let report = self.generate_report(period).await?;
         let html = generate_html_report(&report);
-        
+
         for recipient in &self.recipients {
             self.email_service.send_html(
                 recipient,
@@ -58,14 +58,18 @@ impl DigestScheduler {
                 &html
             )?;
         }
-        
+
         tracing::info!("Sent {} digest to {} recipients", period, self.recipients.len());
         Ok(())
     }
 
     async fn generate_report(&self, period: &str) -> anyhow::Result<DigestReport> {
-        let payments = self.rpc_client.fetch_payments(500, None).await?;
-        
+        let payments = self
+            .rpc_client
+            .fetch_payments(500, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
         let mut corridor_map = std::collections::HashMap::new();
         for payment in &payments {
             let key = format!(

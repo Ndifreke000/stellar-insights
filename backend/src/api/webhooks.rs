@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, post},
     Json, Router,
 };
 use serde_json::json;
@@ -18,10 +18,56 @@ pub async fn register_webhook(
     auth_user: AuthUser,
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Response, WebhookApiError> {
-    // Validate URL
+    // Validate URL scheme
     if !request.url.starts_with("https://") && !request.url.starts_with("http://") {
         return Err(WebhookApiError::BadRequest(
             "Webhook URL must be valid HTTP(S)".to_string(),
+        ));
+    }
+
+    // SSRF protection: block private/internal URLs (SEC-008)
+    if let Ok(url) = url::Url::parse(&request.url) {
+        if let Some(host) = url.host_str() {
+            let host_lower = host.to_lowercase();
+            // Block localhost and loopback
+            if host_lower == "localhost"
+                || host_lower == "127.0.0.1"
+                || host_lower == "::1"
+                || host_lower == "0.0.0.0"
+                || host_lower.ends_with(".local")
+                || host_lower.ends_with(".internal")
+            {
+                return Err(WebhookApiError::BadRequest(
+                    "Webhook URL must not point to localhost or internal addresses".to_string(),
+                ));
+            }
+            // Block AWS metadata endpoint
+            if host_lower == "169.254.169.254" || host_lower == "metadata.google.internal" {
+                return Err(WebhookApiError::BadRequest(
+                    "Webhook URL must not point to cloud metadata endpoints".to_string(),
+                ));
+            }
+            // Block common private IP ranges
+            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+                let is_private = match ip {
+                    std::net::IpAddr::V4(v4) => {
+                        v4.is_loopback()
+                            || v4.is_private()
+                            || v4.is_link_local()
+                            || v4.octets()[0] == 169 && v4.octets()[1] == 254
+                    }
+                    std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                };
+                if is_private {
+                    return Err(WebhookApiError::BadRequest(
+                        "Webhook URL must not point to private or reserved IP addresses".to_string(),
+                    ));
+                }
+            }
+        }
+    } else {
+        return Err(WebhookApiError::BadRequest(
+            "Webhook URL is not a valid URL".to_string(),
         ));
     }
 
@@ -58,7 +104,10 @@ pub async fn list_webhooks(
             id: w.id,
             url: w.url,
             event_types: w.event_types.split(',').map(|s| s.to_string()).collect(),
-            filters: w.filters.as_ref().and_then(|f| serde_json::from_str(f).ok()),
+            filters: w
+                .filters
+                .as_ref()
+                .and_then(|f| serde_json::from_str(f).ok()),
             is_active: w.is_active,
             created_at: w.created_at,
         })
@@ -80,12 +129,14 @@ pub async fn delete_webhook(
         .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
 
     if !deleted {
-        return Err(WebhookApiError::NotFound(
-            "Webhook not found".to_string(),
-        ));
+        return Err(WebhookApiError::NotFound("Webhook not found".to_string()));
     }
 
-    Ok((StatusCode::OK, Json(json!({"message": "Webhook deleted successfully"}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Webhook deleted successfully"})),
+    )
+        .into_response())
 }
 
 /// POST /api/webhooks/:id/test - Send test payload to webhook
@@ -125,7 +176,11 @@ pub async fn test_webhook(
         test_payload
     );
 
-    Ok((StatusCode::OK, Json(json!({"message": "Test webhook prepared", "payload": test_payload}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Test webhook prepared", "payload": test_payload})),
+    )
+        .into_response())
 }
 
 /// Webhook API Error types

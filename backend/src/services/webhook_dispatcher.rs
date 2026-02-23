@@ -5,7 +5,6 @@ use anyhow::Result;
 use reqwest::Client;
 use sqlx::SqlitePool;
 use std::time::Duration;
-use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::webhooks::{WebhookService, WebhookSignature, WebhookEventEnvelope};
@@ -99,7 +98,12 @@ impl WebhookDispatcher {
                     if current_retries < 3 {
                         // Retry later
                         let _ = service
-                            .update_event_status(&event_id, "pending", Some(&e.to_string()), current_retries + 1)
+                            .update_event_status(
+                                &event_id,
+                                "pending",
+                                Some(&e.to_string()),
+                                current_retries + 1,
+                            )
                             .await;
 
                         tracing::warn!(
@@ -181,11 +185,12 @@ impl WebhookDispatcher {
 
     /// Get current retry count for an event
     async fn get_event_retries(&self, event_id: &str) -> Result<i32> {
-        let record = sqlx::query!("SELECT retries FROM webhook_events WHERE id = ?", event_id)
+        let retries: Option<i64> = sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+            .bind(event_id)
             .fetch_optional(&self.db)
             .await?;
 
-        Ok(record.map(|r| r.retries).unwrap_or(0))
+        Ok(retries.unwrap_or(0) as i32)
     }
 }
 

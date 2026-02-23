@@ -47,6 +47,22 @@ export interface AnalyticsMetrics {
   active_corridors: number;
 }
 
+export interface ApiUsageOverview {
+  total_requests: number;
+  avg_response_time_ms: number;
+  error_rate: number;
+  top_endpoints: {
+    endpoint: string;
+    method: string;
+    count: number;
+    avg_response_time_ms: number;
+  }[];
+  status_distribution: {
+    status_code: number;
+    count: number;
+  }[];
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export async function fetchAnalyticsMetrics(): Promise<AnalyticsMetrics> {
@@ -65,19 +81,69 @@ export async function fetchAnalyticsMetrics(): Promise<AnalyticsMetrics> {
     return response.json();
   } catch (error) {
     // Check if this is a network error (backend not running)
-    const isNetworkError = error instanceof TypeError && 
-      (error.message.includes('Failed to fetch') || 
-       error.message.includes('fetch is not defined') ||
-       error.message.includes('Network request failed'));
+    const isNetworkError = error instanceof TypeError &&
+      (error.message.includes('Failed to fetch') ||
+        error.message.includes('fetch is not defined') ||
+        error.message.includes('Network request failed'));
 
     // Only log non-network errors to avoid noise when backend is not running
     if (!isNetworkError) {
       console.error("Failed to fetch analytics metrics:", error);
     }
-    
+
     // Return mock data as fallback - this is expected when backend isn't running
     return getMockAnalyticsData();
   }
+}
+
+export async function fetchApiUsageOverview(): Promise<ApiUsageOverview> {
+  try {
+    const response = await fetch(`${API_BASE}/api/admin/analytics/overview`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    const isNetworkError = error instanceof TypeError &&
+      (error.message.includes('Failed to fetch') ||
+        error.message.includes('fetch is not defined') ||
+        error.message.includes('Network request failed'));
+
+    if (!isNetworkError) {
+      console.error("Failed to fetch API usage overview:", error);
+    }
+
+    return getMockApiUsageOverview();
+  }
+}
+
+export function getMockApiUsageOverview(): ApiUsageOverview {
+  return {
+    total_requests: 15420,
+    avg_response_time_ms: 42.5,
+    error_rate: 1.2,
+    top_endpoints: [
+      { endpoint: "/api/anchors", method: "GET", count: 5400, avg_response_time_ms: 120.4 },
+      { endpoint: "/api/corridors", method: "GET", count: 3200, avg_response_time_ms: 85.2 },
+      { endpoint: "/api/prices", method: "GET", count: 2800, avg_response_time_ms: 45.1 },
+      { endpoint: "/api/rpc/payments", method: "GET", count: 1500, avg_response_time_ms: 210.6 },
+      { endpoint: "/health", method: "GET", count: 1200, avg_response_time_ms: 5.4 },
+    ],
+    status_distribution: [
+      { status_code: 200, count: 14800 },
+      { status_code: 201, count: 420 },
+      { status_code: 404, count: 120 },
+      { status_code: 500, count: 50 },
+      { status_code: 401, count: 30 },
+    ],
+  };
 }
 
 export function getMockAnalyticsData(): AnalyticsMetrics {
