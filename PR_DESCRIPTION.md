@@ -1,223 +1,196 @@
-## Description
+## 🎯 Overview
 
-Implements SEP-10 (Stellar Web Authentication) to enable secure wallet-based authentication using Stellar accounts without passwords.
+This PR implements a comprehensive, accessible, and cross-platform keyboard shortcuts system for the Stellar Insights frontend application.
 
-Closes #233
+## ✨ Features
 
-## Overview
+### Core Functionality
+- ✅ **Cross-platform support** - Automatic detection and handling for macOS, Windows, and Linux
+- ✅ **Accessible** - Full keyboard navigation, ARIA attributes, and screen reader support
+- ✅ **Customizable** - Users can customize any shortcut with real-time conflict detection
+- ✅ **Persistent** - Settings saved to localStorage and synced across sessions
+- ✅ **Non-intrusive** - Respects input fields and doesn't conflict with native browser shortcuts
+- ✅ **Help overlay** - Built-in keyboard shortcuts reference (press `Shift+?`)
+- ✅ **Type-safe** - Full TypeScript support with comprehensive types
 
-This PR adds complete SEP-10 authentication support, allowing users to authenticate using their Stellar wallets (Freighter, Albedo, xBull, Rabet) instead of traditional passwords.
+### Default Shortcuts
 
-## Backend Changes
+#### System
+- `Shift+?` - Show keyboard shortcuts help
 
-### Core Implementation
-- **SEP-10 Service** (`backend/src/auth/sep10_simple.rs`)
-  - Challenge generation with unique nonces
-  - Challenge verification and signature validation
-  - Session management with Redis
-  - Replay protection
-  - Time-bound challenges (5 minutes validity)
-  - 7-day session expiry
+#### Navigation
+- `Alt+D` (Ctrl+D on Mac) - Go to Dashboard
+- `Alt+C` (Ctrl+C on Mac) - Go to Corridors
+- `Alt+A` (Ctrl+A on Mac) - Go to Anchors
+- `Alt+Y` (Ctrl+Y on Mac) - Go to Analytics
 
-### API Endpoints (`backend/src/api/sep10.rs`)
-- `GET /api/sep10/info` - Server information
-- `POST /api/sep10/auth` - Request challenge transaction
-- `POST /api/sep10/verify` - Verify signed challenge
-- `POST /api/sep10/logout` - Invalidate session
+#### Search
+- `Ctrl+K` (Cmd+K on Mac) - Open search
 
-### Middleware (`backend/src/auth/sep10_middleware.rs`)
-- Token validation for protected routes
-- User extraction from authenticated sessions
+#### UI Actions
+- `Ctrl+B` (Cmd+B on Mac) - Toggle sidebar
+- `Ctrl+Shift+D` (Cmd+Shift+D on Mac) - Toggle theme
+- `Ctrl+Shift+N` (Cmd+Shift+N on Mac) - Open notifications
 
-### Tests (`backend/tests/sep10_test.rs`)
-- Challenge generation tests
-- Validation tests
-- Error handling tests
+#### Actions
+- `Ctrl+Shift+R` (Cmd+Shift+R on Mac) - Refresh data
 
-## Frontend Changes
+#### Accessibility
+- `Alt+M` (Ctrl+M on Mac) - Skip to main content
 
-### Authentication Service (`frontend/src/services/sep10Auth.ts`)
-- Complete SEP-10 authentication flow
-- Multi-wallet support (Freighter, Albedo, xBull, Rabet)
-- Challenge request and signing
-- Verification handling
-- Client-side validation
+## 📁 Files Added
 
-### Enhanced Wallet Context (`frontend/src/components/lib/wallet-context.tsx`)
-- Wallet connection management
-- SEP-10 authentication state
-- Session persistence with localStorage
-- Token expiry handling
-- Multi-device support
+### Core System (7 files)
+- `frontend/src/types/keyboard-shortcuts.ts` - TypeScript type definitions
+- `frontend/src/lib/keyboard-shortcuts/utils.ts` - Platform detection, key matching, formatting
+- `frontend/src/lib/keyboard-shortcuts/registry.ts` - Central shortcut registry
+- `frontend/src/lib/keyboard-shortcuts/default-shortcuts.ts` - Default shortcuts configuration
+- `frontend/src/lib/keyboard-shortcuts/index.ts` - Public API exports
+- `frontend/src/contexts/KeyboardShortcutsContext.tsx` - React context and provider
+- `frontend/src/hooks/useShortcut.ts` - Convenient hooks for components
 
-### Updated UI (`frontend/src/components/wallet-connect.tsx`)
-- Visual authentication status indicator
-- Authenticate button
-- Logout functionality
-- Improved user experience
+### UI Components (4 files)
+- `frontend/src/components/keyboard-shortcuts/ShortcutHelpOverlay.tsx` - Help dialog
+- `frontend/src/components/keyboard-shortcuts/ShortcutCustomizer.tsx` - Settings UI
+- `frontend/src/components/keyboard-shortcuts/ShortcutsInitializer.tsx` - Default shortcuts registration
+- `frontend/src/components/keyboard-shortcuts/ShortcutExample.tsx` - Example component
 
-### Demo Page (`frontend/src/app/sep10-demo/page.tsx`)
-- Interactive demonstration
-- Step-by-step authentication flow
-- Testing interface
-- Educational content
+### Tests (5 files)
+- `frontend/src/__tests__/setup.ts` - Test setup with mocks
+- `frontend/src/__tests__/keyboard-shortcuts/utils.test.ts` - Utility function tests
+- `frontend/src/__tests__/keyboard-shortcuts/registry.test.ts` - Registry tests
+- `frontend/src/__tests__/keyboard-shortcuts/KeyboardShortcutsContext.test.tsx` - Context tests
+- `frontend/src/__tests__/keyboard-shortcuts/ShortcutHelpOverlay.test.tsx` - Component tests
 
-### Tests (`frontend/src/services/__tests__/sep10Auth.test.ts`)
-- Service method tests
-- Wallet integration tests
-- Error handling tests
+### Documentation (4 files)
+- `frontend/KEYBOARD_SHORTCUTS.md` - Comprehensive guide
+- `frontend/KEYBOARD_SHORTCUTS_MIGRATION.md` - Migration guide
+- `frontend/KEYBOARD_SHORTCUTS_QUICK_REFERENCE.md` - Quick reference
+- `KEYBOARD_SHORTCUTS_IMPLEMENTATION.md` - Implementation summary
 
-## Documentation
+### Configuration (1 file)
+- `frontend/vitest.config.ts` - Vitest configuration
 
-Comprehensive documentation added:
-- **SEP10_AUTHENTICATION.md** - Complete technical documentation
-- **SEP10_SETUP.md** - Quick setup guide
-- **SEP10_MIGRATION_GUIDE.md** - Migration from password auth
-- **SEP10_IMPLEMENTATION_SUMMARY.md** - Implementation overview
-- **SEP10_CHECKLIST.md** - Deployment checklist
-- **SEP10_QUICK_REFERENCE.md** - Developer quick reference
+### Updated Files (3 files)
+- `frontend/src/app/[locale]/layout.tsx` - Integrated providers
+- `frontend/src/app/[locale]/settings/page.tsx` - Added customizer
+- `frontend/package.json` - Added test scripts and dependencies
 
-## Key Features
+## 🎨 UI/UX
 
-✅ **Secure Authentication**
-- Cryptographic signature verification
-- Replay protection with nonce consumption
-- Time-bound challenges and sessions
-- Domain binding and validation
+### Help Overlay
+- Clean, modern design with backdrop blur
+- Shortcuts grouped by category
+- Platform-specific key display (⌘K on Mac, Ctrl+K on Windows)
+- Focus trap with proper restoration
+- Escape key or click outside to close
 
-✅ **Multi-Wallet Support**
-- Freighter (most popular)
-- Albedo (web-based)
-- xBull (mobile & desktop)
-- Rabet (browser extension)
+### Customizer (Settings Page)
+- Click on any shortcut to record a new binding
+- Real-time conflict detection
+- Enable/disable individual shortcuts
+- Reset to defaults
+- Visual feedback and error messages
 
-✅ **User Experience**
-- One-click authentication
-- No passwords required
-- Visual authentication status
-- Persistent sessions (7 days)
-- Multi-device support
+## ♿ Accessibility
 
-✅ **Developer Experience**
-- Clean API design
-- Comprehensive documentation
-- Example implementations
-- Test coverage
-- Easy integration
+### WCAG Compliance
+- ✅ Full keyboard navigation
+- ✅ Focus management with focus trap
+- ✅ ARIA attributes (role, aria-modal, aria-label, etc.)
+- ✅ Screen reader support with semantic HTML
+- ✅ Proper heading hierarchy
+- ✅ Skip to content functionality
 
-✅ **Production Ready**
-- Comprehensive error handling
-- Security best practices
-- Performance optimized
-- Standards compliant (SEP-10)
+### Input Field Handling
+- Shortcuts automatically disabled when focus is in:
+  - `<input>` elements
+  - `<textarea>` elements
+  - `<select>` elements
+  - Elements with `contenteditable="true"`
 
-## Security Features
+## 🧪 Testing
 
-- **Replay Protection**: Unique nonces consumed after verification
-- **Time Bounds**: 5-minute challenge validity, 7-day sessions
-- **Domain Validation**: Home domain verification
-- **Secure Sessions**: Redis-backed session storage
-- **Token Security**: Cryptographically secure tokens
+- **40+ unit and integration tests**
+- Test coverage for utils, registry, context, and components
+- Vitest configuration with jsdom environment
+- Mock setup for localStorage and matchMedia
 
-## Compatibility
-
-- ✅ Non-breaking changes
-- ✅ Coexists with existing password authentication
-- ✅ Separate endpoints (`/api/sep10/*` vs `/api/auth/*`)
-- ✅ Separate middleware
-- ✅ Shared Redis infrastructure
-
-## Testing
-
-### Backend
+Run tests:
 ```bash
-cd backend
-cargo test sep10
+npm test keyboard-shortcuts
 ```
 
-### Frontend
-```bash
-cd frontend
-npm test sep10Auth
+## 📚 Documentation
+
+Comprehensive documentation includes:
+1. **Main Guide** - Complete feature overview, API reference, best practices
+2. **Migration Guide** - Step-by-step migration from manual event handlers
+3. **Quick Reference** - Cheat sheet for developers
+4. **Implementation Summary** - Technical details and architecture
+
+## 🔧 Usage Example
+
+```tsx
+import { useShortcut } from '@/hooks/useShortcut';
+
+function MyComponent() {
+  useShortcut({
+    id: 'save-document',
+    name: 'Save Document',
+    description: 'Save the current document',
+    category: 'actions',
+    defaultBinding: { 
+      key: 's', 
+      modifiers: ['ctrl'],
+      mac: { key: 's', modifiers: ['meta'] }
+    },
+    handler: handleSave,
+  });
+
+  return <div>...</div>;
+}
 ```
 
-### Manual Testing
-1. Start Redis: `redis-server`
-2. Start backend: `cd backend && cargo run`
-3. Start frontend: `cd frontend && npm run dev`
-4. Visit: `http://localhost:3000/sep10-demo`
+## 🚀 Performance
 
-## Configuration Required
+- Single global event listener (no performance degradation)
+- Efficient key matching algorithm
+- Memoized context values
+- Automatic cleanup on unmount
+- No memory leaks
 
-### Backend Environment Variables
-```bash
-SEP10_SERVER_PUBLIC_KEY=GXXXXXX...
-STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
-SEP10_HOME_DOMAIN=localhost
-REDIS_URL=redis://localhost:6379
-```
+## ✅ Checklist
 
-### Frontend Environment Variables
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080
-```
+- [x] Cross-platform support (Mac, Windows, Linux)
+- [x] Accessible with ARIA attributes
+- [x] Non-intrusive (respects input fields)
+- [x] Customizable with visual editor
+- [x] Persistent storage (localStorage)
+- [x] Conflict detection (shortcuts and browser)
+- [x] Help overlay with focus management
+- [x] Comprehensive test suite (40+ tests)
+- [x] Full documentation (4 guides)
+- [x] No regressions in existing tests
+- [x] TypeScript type safety
 
-## Migration Path
+## 🔗 Related Issue
 
-For existing applications:
-1. Deploy SEP-10 alongside existing auth
-2. Allow users to link Stellar accounts
-3. Gradually migrate routes
-4. Eventually deprecate password auth (optional)
+Closes #296
 
-See `SEP10_MIGRATION_GUIDE.md` for detailed migration strategy.
+## 📸 Screenshots
 
-## Standards Compliance
+Users can now:
+1. Press `Shift+?` to see all available shortcuts
+2. Navigate to Settings → Keyboard Shortcuts to customize
+3. Use keyboard shortcuts throughout the app for faster navigation
 
-Follows [SEP-10 specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md):
-- Challenge transaction structure
-- Time bounds validation
-- Signature verification
-- Replay protection
-- Domain binding
+## 🎓 For Reviewers
 
-## Files Changed
+Key files to review:
+1. `frontend/src/contexts/KeyboardShortcutsContext.tsx` - Main context implementation
+2. `frontend/src/lib/keyboard-shortcuts/utils.ts` - Core utility functions
+3. `frontend/src/components/keyboard-shortcuts/ShortcutHelpOverlay.tsx` - Help UI
+4. `frontend/KEYBOARD_SHORTCUTS.md` - Documentation
 
-### Backend
-- `backend/src/auth/sep10_simple.rs` (new)
-- `backend/src/auth/sep10_middleware.rs` (new)
-- `backend/src/api/sep10.rs` (new)
-- `backend/src/auth.rs` (modified)
-- `backend/src/api/mod.rs` (modified)
-- `backend/Cargo.toml` (modified)
-- `backend/tests/sep10_test.rs` (new)
-
-### Frontend
-- `frontend/src/services/sep10Auth.ts` (new)
-- `frontend/src/components/lib/wallet-context.tsx` (modified)
-- `frontend/src/components/wallet-connect.tsx` (modified)
-- `frontend/src/app/sep10-demo/page.tsx` (new)
-- `frontend/src/services/__tests__/sep10Auth.test.ts` (new)
-
-### Documentation
-- `backend/SEP10_AUTHENTICATION.md` (new)
-- `SEP10_SETUP.md` (new)
-- `SEP10_MIGRATION_GUIDE.md` (new)
-- `SEP10_IMPLEMENTATION_SUMMARY.md` (new)
-- `SEP10_CHECKLIST.md` (new)
-- `SEP10_QUICK_REFERENCE.md` (new)
-
-## Next Steps
-
-After merging:
-1. Configure environment variables
-2. Test with real Stellar wallets
-3. Deploy to staging
-4. Gather user feedback
-5. Plan production rollout
-
-## References
-
-- [SEP-10 Specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md)
-- [Stellar Developer Docs](https://developers.stellar.org)
-- Issue #233
+The system is production-ready with no breaking changes to existing functionality.
