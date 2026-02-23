@@ -37,6 +37,7 @@ pub mod network;
 pub mod openapi;
 pub mod observability;
 pub mod rate_limit;
+pub mod replay;
 pub mod request_id;
 pub mod services;
 pub mod shutdown;

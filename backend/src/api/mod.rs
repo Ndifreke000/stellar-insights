@@ -18,6 +18,7 @@ pub mod network;
 pub mod oauth;
 pub mod prediction;
 pub mod price_feed;
+pub mod replay_handlers;
 pub mod sep10;
 pub mod sep24_proxy;
 pub mod sep31_proxy;
