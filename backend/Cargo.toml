@@ -2,6 +2,7 @@
 name = "stellar-insights-backend"
 version = "0.1.0"
 edition = "2021"
+default-run = "stellar-insights-backend"
 
 # Clippy linting configuration
 [lints.clippy]
@@ -33,6 +34,7 @@ tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compres
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
+log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 reqwest = { version = "0.13", features = ["json"] }
@@ -41,6 +43,7 @@ async-trait = "0.1"
 thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-log = "0.2"
 tracing-appender = "0.2"
 tracing-logstash = "0.2"
 opentelemetry = { version = "0.20", features = ["trace", "rt-tokio"] }
@@ -69,6 +72,12 @@ toml = "0.8"
 prometheus = "0.13"
 md5 = "0.7"
 ipnetwork = "0.20"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+rand = "0.8"
+urlencoding = "2.1"
+futures = "0.3"
+utoipa = { version = "4.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "4", features = ["axum"] }
 url = "2.5"
 aes-gcm = "0.10"
 lettre = "0.11"

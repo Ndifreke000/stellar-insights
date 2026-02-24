@@ -1,7 +1,9 @@
 use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+use sqlx::{ConnectOptions, SqlitePool};
+use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use uuid::Uuid;
@@ -37,6 +39,70 @@ impl Default for PoolConfig {
     }
 }
 
+/// SQL query logging configuration
+#[derive(Debug, Clone)]
+pub struct SqlLogConfig {
+    /// Log level for statements (trace, debug, info, warn, error, off)
+    pub level: log::LevelFilter,
+    /// In development: log all queries. In production: log only slow queries.
+    pub log_all_in_dev: bool,
+    /// Slow query threshold (ms); only used when log_all_in_dev is false.
+    pub slow_query_threshold_ms: u64,
+}
+
+impl Default for SqlLogConfig {
+    fn default() -> Self {
+        Self {
+            level: log::LevelFilter::Debug,
+            log_all_in_dev: true,
+            slow_query_threshold_ms: 100,
+        }
+    }
+}
+
+impl SqlLogConfig {
+    /// Load from environment:
+    /// - RUST_ENV or ENVIRONMENT: "development" => log all queries, else log only slow
+    /// - DB_LOG_LEVEL: trace | debug | info | warn | error | off (default: debug in dev, info in prod)
+    /// - DB_SLOW_QUERY_MS: threshold in ms for slow query logging in production (default: 100)
+    pub fn from_env() -> Self {
+        let env_mode = std::env::var("RUST_ENV")
+            .or_else(|_| std::env::var("ENVIRONMENT"))
+            .unwrap_or_else(|_| "development".to_string());
+        let is_dev = env_mode.to_lowercase() == "development" || env_mode.to_lowercase() == "dev";
+
+        let level = parse_db_log_level(is_dev);
+        let slow_query_threshold_ms = std::env::var("DB_SLOW_QUERY_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100);
+
+        Self {
+            level,
+            log_all_in_dev: is_dev,
+            slow_query_threshold_ms,
+        }
+    }
+}
+
+fn parse_db_log_level(is_dev: bool) -> log::LevelFilter {
+    let default = if is_dev {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+    let s = std::env::var("DB_LOG_LEVEL").unwrap_or_else(|_| String::new());
+    match s.to_uppercase().as_str() {
+        "TRACE" => log::LevelFilter::Trace,
+        "DEBUG" => log::LevelFilter::Debug,
+        "INFO" => log::LevelFilter::Info,
+        "WARN" | "WARNING" => log::LevelFilter::Warn,
+        "ERROR" => log::LevelFilter::Error,
+        "OFF" | "NONE" => log::LevelFilter::Off,
+        _ => default,
+    }
+}
+
 impl PoolConfig {
     /// Load pool configuration from environment variables
     pub fn from_env() -> Self {
@@ -64,15 +130,42 @@ impl PoolConfig {
         }
     }
 
-    /// Create a configured SQLite pool with these settings
+    /// Create a configured SQLite pool with these settings.
+    /// Uses WAL journal mode and configurable SQL query logging (all in dev, slow-only in prod).
     pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let sql_log = SqlLogConfig::from_env();
+
+        let mut opts: SqliteConnectOptions = database_url
+            .parse()
+            .map_err(|e: sqlx::Error| anyhow::anyhow!("Invalid DATABASE_URL: {}", e))?;
+
+        opts = opts.journal_mode(SqliteJournalMode::Wal);
+
+        if sql_log.level != log::LevelFilter::Off {
+            if sql_log.log_all_in_dev {
+                opts = opts.log_statements(sql_log.level);
+                tracing::info!(
+                    "SQL query logging: all queries at level {:?} (development)",
+                    sql_log.level
+                );
+            } else {
+                let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
+                opts = opts.log_slow_statements(sql_log.level, threshold);
+                tracing::info!(
+                    "SQL query logging: slow queries only (> {} ms) at level {:?} (production)",
+                    sql_log.slow_query_threshold_ms,
+                    sql_log.level
+                );
+            }
+        }
+
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
             .acquire_timeout(Duration::from_secs(self.connect_timeout_seconds))
             .idle_timeout(Some(Duration::from_secs(self.idle_timeout_seconds)))
             .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
-            .connect(database_url)
+            .connect_with(opts)
             .await?;
 
         Ok(pool)

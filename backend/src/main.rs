@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -1181,17 +1181,7 @@ async fn main() -> Result<()> {
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,
-        )))
-        .layer(cors.clone());
-
-    // Build asset verification routes
-    let asset_verification_routes = Router::new()
-        .nest("/api/assets", asset_verification::routes(pool.clone()))
-        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
-            rate_limiter.clone(),
-            rate_limit_middleware,
-        )))
-        .layer(cors.clone());
+        )));
 
     // Build GDPR routes (temporarily disabled)
     /*

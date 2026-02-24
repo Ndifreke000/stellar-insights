@@ -25,6 +25,9 @@ fn init_otel_tracer(service_name: &str) -> Result<sdktrace::Tracer> {
 }
 
 pub fn init_tracing(service_name: &str) -> Result<()> {
+    // Bridge log crate (e.g. sqlx statement logging) to tracing
+    let _ = tracing_log::LogTracer::init();
+
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "backend=info,tower_http=info".into());
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
