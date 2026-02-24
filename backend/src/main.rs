@@ -33,7 +33,7 @@ use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
-use stellar_insights_backend::gdpr::{handlers as gdpr_handlers, GdprService};
+// use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
@@ -325,6 +325,24 @@ async fn main() -> Result<()> {
 
     // Initialize SEP-10 Service for Stellar authentication
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
+    
+    // Get and validate SEP-10 server public key (required for security)
+    let sep10_server_key = std::env::var("SEP10_SERVER_PUBLIC_KEY")
+        .context("SEP10_SERVER_PUBLIC_KEY environment variable is required for authentication")?;
+    
+    // Additional validation: ensure it's not the placeholder value
+    if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
+        anyhow::bail!(
+            "SEP10_SERVER_PUBLIC_KEY is set to placeholder value. \
+             Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
+        );
+    }
+    
+    tracing::info!(
+        "SEP-10 authentication enabled with server key: {}...",
+        &sep10_server_key[..8]
+    );
+    
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
             std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
@@ -335,9 +353,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "stellar-insights.local".to_string()),
             sep10_redis_connection,
         )
-        .expect("Failed to initialize SEP-10 service"),
+        .context("Failed to initialize SEP-10 service")?,
     );
-    tracing::info!("SEP-10 service initialized");
+    tracing::info!("SEP-10 service initialized successfully");
 
     // Initialize Verification Rewards Service
     let verification_rewards_service = Arc::new(
@@ -354,8 +372,8 @@ async fn main() -> Result<()> {
     tracing::info!("Governance service initialized");
 
     // Initialize GDPR Service
-    let gdpr_service = Arc::new(GdprService::new(pool.clone()));
-    tracing::info!("GDPR service initialized");
+    // let gdpr_service = Arc::new(GdprService::new(pool.clone()));
+    // tracing::info!("GDPR service initialized");
 
     // ML Retraining task (commented out)
     /*
@@ -1089,7 +1107,8 @@ async fn main() -> Result<()> {
             rate_limit_middleware,
         )));
 
-    // Build GDPR routes
+    // Build GDPR routes (temporarily disabled)
+    /*
     let gdpr_routes = Router::new()
         .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
         .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
@@ -1133,6 +1152,7 @@ async fn main() -> Result<()> {
         .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
         .with_state(Arc::clone(&gdpr_service))
         .layer(cors.clone());
+    */
 
     // Merge routers
     let swagger_routes =
@@ -1176,7 +1196,7 @@ async fn main() -> Result<()> {
         .merge(admin_db_routes)
         .merge(metrics_routes)
         .merge(verification_routes)
-        .merge(gdpr_routes)
+        // .merge(gdpr_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
         .merge(alert_ws_routes)

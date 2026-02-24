@@ -203,7 +203,7 @@ impl StateBuilder {
         self.state.verifications.insert(
             key,
             VerificationState {
-                verifier,
+                verifier: verifier.clone(),
                 epoch,
                 verified_at: event.timestamp,
             },

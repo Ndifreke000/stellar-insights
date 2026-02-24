@@ -899,8 +899,10 @@ impl StellarRpcClient {
         buying_asset: &Asset,
         limit: u32,
     ) -> Result<OrderBook, RpcError> {
-        let selling_params = Self::asset_to_query_params("selling", selling_asset);
-        let buying_params = Self::asset_to_query_params("buying", buying_asset);
+        let selling_params = Self::asset_to_query_params("selling", selling_asset)
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        let buying_params = Self::asset_to_query_params("buying", buying_asset)
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
         let url = format!(
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
@@ -1388,19 +1390,23 @@ impl StellarRpcClient {
     // ============================================================================
 
     /// Convert asset to query parameters for Horizon API
-    fn asset_to_query_params(prefix: &str, asset: &Asset) -> String {
+    fn asset_to_query_params(prefix: &str, asset: &Asset) -> Result<String> {
         if asset.asset_type == "native" {
-            format!("{}_asset_type=native", prefix)
+            Ok(format!("{}_asset_type=native", prefix))
         } else {
-            format!(
+            let asset_code = asset.asset_code.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Asset code missing for non-native asset type: {}", asset.asset_type))?;
+            let asset_issuer = asset.asset_issuer.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Asset issuer missing for non-native asset type: {}", asset.asset_type))?;
+            Ok(format!(
                 "{}_asset_type={}&{}_asset_code={}&{}_asset_issuer={}",
                 prefix,
                 asset.asset_type,
                 prefix,
-                asset.asset_code.as_ref().unwrap(),
+                asset_code,
                 prefix,
-                asset.asset_issuer.as_ref().unwrap()
-            )
+                asset_issuer
+            ))
         }
     }
 

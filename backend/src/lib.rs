@@ -19,7 +19,8 @@ pub mod db;
 pub mod email;
 pub mod env_config;
 pub mod error;
-pub mod gdpr;
+// pub mod gdpr;
+pub mod env_config;
 pub mod handlers;
 pub mod http_cache;
 pub mod ingestion;
@@ -29,7 +30,6 @@ pub mod logging;
 pub mod ml;
 pub mod ml_handlers;
 pub mod models;
-pub mod monitor;
 pub mod muxed;
 pub mod request_signing_middleware;
 

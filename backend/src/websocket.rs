@@ -449,7 +449,7 @@ mod tests {
             hash: "abc123".to_string(),
         };
 
-        let json = serde_json::to_string(&msg).unwrap();
+        let json = serde_json::to_string(&msg).expect("Failed to serialize WsMessage in test");
         assert!(json.contains("snapshot_update"));
         assert!(json.contains("test-id"));
     }

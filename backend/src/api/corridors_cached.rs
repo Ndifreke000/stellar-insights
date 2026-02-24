@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
@@ -759,7 +760,14 @@ pub async fn get_corridor_detail(
     .await
     .map_err(|e| {
         tracing::error!("Failed to fetch payments from RPC: {}", e);
+<<<<<<< fix/cache-invalidation-redis-scan
         ApiError::internal_server_error("RPC_FETCH_ERROR", "Failed to fetch payment data from RPC")
+=======
+        ApiError::internal(
+            "RPC_FETCH_ERROR",
+            "Failed to fetch payment data from RPC",
+        )
+>>>>>>> main
     })?;
 
     // Filter payments for this specific corridor
@@ -911,7 +919,7 @@ pub async fn get_corridor_detail(
         .set(
             &cache_key,
             &response,
-            std::time::Duration::from_secs(300), // 5 minutes
+            300, // 5 minutes
         )
         .await;
 

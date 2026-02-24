@@ -54,7 +54,13 @@ impl CommandHandler {
     }
 
     async fn handle_status(&self) -> String {
-        let anchors = self.db.list_anchors(1000, 0).await.unwrap_or_default();
+        let anchors = match self.db.list_anchors(1000, 0).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("Failed to fetch anchors for status: {}", e);
+                vec![]
+            }
+        };
         let anchor_count = anchors.len();
 
         let corridor_count = match self.rpc_client.fetch_payments(200, None).await {

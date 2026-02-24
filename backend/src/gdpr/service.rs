@@ -1,6 +1,6 @@
 // GDPR Service - Business logic for GDPR compliance
 
-use crate::error::AppError;
+use crate::error::ApiError;
 use crate::gdpr::models::*;
 use chrono::{Duration, Utc};
 use sqlx::{Pool, Sqlite};
