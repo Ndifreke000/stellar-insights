@@ -8,20 +8,18 @@ fn init_otel_tracer(service_name: &str) -> Result<sdktrace::Tracer> {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4317".to_string());
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(endpoint),
-        )
-        .with_trace_config(
-            sdktrace::config().with_resource(Resource::new(vec![KeyValue::new(
-                "service.name",
-                service_name.to_string(),
-            )])),
-        )
-        .install_batch(opentelemetry::runtime::Tokio)?;
+    let tracer =
+        opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(endpoint),
+            )
+            .with_trace_config(sdktrace::config().with_resource(Resource::new(vec![
+                KeyValue::new("service.name", service_name.to_string()),
+            ])))
+            .install_batch(opentelemetry::runtime::Tokio)?;
 
     Ok(tracer)
 }

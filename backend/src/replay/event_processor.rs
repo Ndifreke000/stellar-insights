@@ -396,12 +396,11 @@ impl EventProcessor for SnapshotEventProcessor {
     }
 
     async fn is_processed(&self, event: &ContractEvent) -> Result<bool> {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)",
-        )
-        .bind(&event.unique_id())
-        .fetch_one(&self.pool)
-        .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)")
+                .bind(&event.unique_id())
+                .fetch_one(&self.pool)
+                .await?;
 
         Ok(exists)
     }

@@ -1,3 +1,3 @@
 pub mod scheduler;
 
-pub use scheduler::{JobScheduler, JobConfig};
+pub use scheduler::{JobConfig, JobScheduler};

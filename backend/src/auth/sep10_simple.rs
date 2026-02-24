@@ -279,7 +279,9 @@ impl Sep10Service {
                 .map_err(|e| anyhow!("Failed to consume challenge: {}", e))?;
         } else {
             // Fail closed: refuse to validate without Redis (SEC-007)
-            tracing::error!("Redis unavailable - refusing SEP-10 challenge validation (fail closed)");
+            tracing::error!(
+                "Redis unavailable - refusing SEP-10 challenge validation (fail closed)"
+            );
             return Err(anyhow!("Challenge validation service unavailable"));
         }
         Ok(())

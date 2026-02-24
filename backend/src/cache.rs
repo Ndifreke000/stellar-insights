@@ -195,37 +195,64 @@ impl CacheManager {
     }
 
     /// Delete multiple cache keys matching a pattern
-    pub async fn delete_pattern(&self, pattern: &str) -> anyhow::Result<()> {
+    /// Uses SCAN instead of KEYS to avoid blocking Redis
+    pub async fn delete_pattern(&self, pattern: &str) -> anyhow::Result<usize> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match redis::cmd("KEYS")
-                .arg(pattern)
-                .query_async::<_, Vec<String>>(&mut conn)
-                .await
-            {
-                Ok(keys) => {
-                    for key in keys {
-                        let _ = redis::cmd("DEL")
-                            .arg(&key)
-                            .query_async::<_, ()>(&mut conn)
-                            .await;
-                        self.invalidations.fetch_add(1, Ordering::Relaxed);
+            let mut cursor: u64 = 0;
+            let mut deleted_count: usize = 0;
+
+            loop {
+                let (new_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg(pattern)
+                    .arg("COUNT")
+                    .arg(100)
+                    .query_async(&mut conn)
+                    .await?;
+
+                if !keys.is_empty() {
+                    let mut pipe = redis::pipe();
+                    pipe.atomic();
+
+                    // non-blocking delete
+                    for key in &keys {
+                        pipe.cmd("UNLINK").arg(key);
                     }
-                    tracing::debug!("Cache invalidated for pattern: {}", pattern);
-                    Ok(())
+
+                    pipe.query_async::<_, ()>(&mut conn).await?;
+
+                    self.invalidations
+                        .fetch_add(keys.len() as u64, Ordering::Relaxed);
+
+                    deleted_count += keys.len();
                 }
-                Err(e) => {
-                    tracing::warn!("Redis KEYS error for pattern {}: {}", pattern, e);
-                    Ok(())
+
+                cursor = new_cursor;
+
+                if cursor == 0 {
+                    break;
                 }
+
+                // cooperative async scheduling
+                tokio::task::yield_now().await;
             }
+
+            tracing::info!(
+                "Deleted {} keys matching pattern: {}",
+                deleted_count,
+                pattern
+            );
+
+            Ok(deleted_count)
         } else {
-            Ok(())
+            Ok(0)
         }
     }
 
     /// Invalidate cache keys matching a pattern (alias for delete_pattern)
-    pub async fn invalidate_pattern(&self, pattern: &str) -> anyhow::Result<()> {
+    pub async fn invalidate_pattern(&self, pattern: &str) -> anyhow::Result<usize> {
         self.delete_pattern(pattern).await
     }
 
@@ -256,10 +283,7 @@ impl CacheManager {
         let mut conn_guard = self.redis_connection.write().await;
         if let Some(mut conn) = conn_guard.take() {
             // Ensure all pending operations are flushed
-            match redis::cmd("PING")
-                .query_async::<_, String>(&mut conn)
-                .await
-            {
+            match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
                 Ok(_) => tracing::debug!("Redis connection verified before close"),
                 Err(e) => tracing::warn!("Redis PING failed before close: {}", e),
             }

@@ -118,11 +118,11 @@ impl WsState {
     /// Close all WebSocket connections gracefully
     pub async fn close_all_connections(&self) {
         let connection_ids: Vec<Uuid> = self.connections.iter().map(|entry| *entry.key()).collect();
-        
+
         for connection_id in connection_ids {
             self.cleanup_connection(connection_id);
         }
-        
+
         info!("All WebSocket connections have been closed");
     }
 }

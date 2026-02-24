@@ -1,6 +1,5 @@
 /// OAuth 2.0 module for Zapier integration
 /// Handles authorization code flow, token generation, and scope validation
-
 use anyhow::{anyhow, Result};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
@@ -11,14 +10,14 @@ use uuid::Uuid;
 /// OAuth Claims - extended JWT with additional Zapier fields
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OAuthClaims {
-    pub sub: String,           // User ID
-    pub username: String,      // Username
-    pub client_id: String,     // OAuth client ID
-    pub scopes: Vec<String>,   // Granted scopes
-    pub exp: i64,              // Expiry timestamp
-    pub iat: i64,              // Issued at timestamp
-    pub aud: String,           // Audience (must be "zapier")
-    pub token_type: String,    // "access" or "refresh"
+    pub sub: String,         // User ID
+    pub username: String,    // Username
+    pub client_id: String,   // OAuth client ID
+    pub scopes: Vec<String>, // Granted scopes
+    pub exp: i64,            // Expiry timestamp
+    pub iat: i64,            // Issued at timestamp
+    pub aud: String,         // Audience (must be "zapier")
+    pub token_type: String,  // "access" or "refresh"
 }
 
 /// OAuth authorization code (short-lived, for exchanging to tokens)
@@ -151,14 +150,15 @@ impl OAuthService {
 
         match client {
             Some((user_id, client_secret_record)) => {
-                let decrypted_secret = crate::crypto::decrypt_data(&client_secret_record, &self.encryption_key)
-                    .map_err(|_| anyhow!("Invalid client credentials"))?;
+                let decrypted_secret =
+                    crate::crypto::decrypt_data(&client_secret_record, &self.encryption_key)
+                        .map_err(|_| anyhow!("Invalid client credentials"))?;
                 if decrypted_secret == client_secret {
                     Ok(user_id)
                 } else {
                     Err(anyhow!("Invalid client credentials"))
                 }
-            },
+            }
             None => Err(anyhow!("Invalid client credentials")),
         }
     }
@@ -310,12 +310,7 @@ impl OAuthService {
             r.get::<String, _>(0)
         });
 
-        Ok(auth.map(|record| {
-            record
-                .split(',')
-                .map(|s: &str| s.to_string())
-                .collect()
-        }))
+        Ok(auth.map(|record| record.split(',').map(|s: &str| s.to_string()).collect()))
     }
 
     /// Store OAuth token in database

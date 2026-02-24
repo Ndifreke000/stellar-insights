@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 use crate::alerts::AlertManager;
@@ -52,7 +52,7 @@ impl CorridorMonitor {
             .fetch_payments(200, None)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        
+
         let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
         for payment in &payments {
             let key = format!(
@@ -60,7 +60,10 @@ impl CorridorMonitor {
                 payment.get_asset_code().as_deref().unwrap_or("XLM"),
                 payment.get_asset_issuer().as_deref().unwrap_or("native")
             );
-            corridor_map.entry(key).or_insert_with(Vec::new).push(payment);
+            corridor_map
+                .entry(key)
+                .or_insert_with(Vec::new)
+                .push(payment);
         }
 
         let mut prev_state = self.previous_state.write().await;
@@ -68,7 +71,8 @@ impl CorridorMonitor {
         for (corridor_id, payments) in corridor_map {
             let success_rate = 100.0;
             let latency = 400.0 + (success_rate * 2.0);
-            let liquidity: f64 = payments.iter()
+            let liquidity: f64 = payments
+                .iter()
                 .filter_map(|p| p.get_amount().parse::<f64>().ok())
                 .sum();
 
@@ -84,11 +88,14 @@ impl CorridorMonitor {
                 );
             }
 
-            prev_state.insert(corridor_id, CorridorState {
-                success_rate,
-                latency,
-                liquidity,
-            });
+            prev_state.insert(
+                corridor_id,
+                CorridorState {
+                    success_rate,
+                    latency,
+                    liquidity,
+                },
+            );
         }
 
         Ok(())

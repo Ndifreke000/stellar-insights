@@ -1,9 +1,9 @@
 use crate::network::{NetworkConfig, StellarNetwork};
+use crate::rpc::circuit_breaker::CircuitBreaker;
 use crate::rpc::config::{
     circuit_breaker_config_from_env, initial_backoff_from_env, max_backoff_from_env,
     max_retries_from_env,
 };
-use crate::rpc::circuit_breaker::CircuitBreaker;
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
 use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
@@ -72,7 +72,6 @@ pub struct StellarRpcClient {
     rate_limiter: RpcRateLimiter,
     circuit_breaker: Arc<CircuitBreaker>,
     /// Maximum records per single request (default: 200)
-
     max_records_per_request: u32,
     /// Maximum total records across all paginated requests (default: 10000)
     max_total_records: u32,
@@ -446,7 +445,10 @@ async fn map_response_error(response: reqwest::Response) -> RpcError {
         .get("Retry-After")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
-    let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Unknown error".to_string());
     status_to_rpc_error(status, body, retry_after)
 }
 
@@ -467,7 +469,7 @@ impl StellarRpcClient {
             .build()
             .expect("Failed to build HTTP client");
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
-        
+
         // Determine network based on URLs
         let network = if horizon_url.contains("testnet") {
             StellarNetwork::Testnet
@@ -599,7 +601,6 @@ impl StellarRpcClient {
         };
 
         with_retry(operation, retry_config, self.circuit_breaker.clone()).await
-
     }
 
     /// Check the health of the RPC endpoint
@@ -610,7 +611,9 @@ impl StellarRpcClient {
 
         info!("Checking RPC health at {}", self.rpc_url);
 
-        let result = self.execute_with_retry(|| self.check_health_internal()).await;
+        let result = self
+            .execute_with_retry(|| self.check_health_internal())
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -660,7 +663,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_ledger_info());
         }
 
-        let result = self.execute_with_retry(|| self.fetch_latest_ledger_internal()).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_latest_ledger_internal())
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -670,7 +675,12 @@ impl StellarRpcClient {
 
     async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -703,7 +713,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_get_ledgers(start, limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_ledgers_internal(start_ledger, limit, cursor)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_ledgers_internal(start_ledger, limit, cursor))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -761,14 +773,20 @@ impl StellarRpcClient {
     }
 
     /// Fetch recent payments
-    pub async fn fetch_payments(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Payment>, RpcError> {
+    pub async fn fetch_payments(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_payments(limit));
         }
 
         info!("Fetching {} payments from Horizon API", limit);
 
-        let result = self.execute_with_retry(|| self.fetch_payments_internal(limit, cursor)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_payments_internal(limit, cursor))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -785,7 +803,12 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             url.push_str(&format!("&cursor={}", c));
         }
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -800,12 +823,18 @@ impl StellarRpcClient {
     }
 
     /// Fetch recent trades
-    pub async fn fetch_trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>, RpcError> {
+    pub async fn fetch_trades(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
             return Ok(Self::mock_trades(limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_trades_internal(limit, cursor)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_trades_internal(limit, cursor))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -822,7 +851,12 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             url.push_str(&format!("&cursor={}", c));
         }
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -847,7 +881,11 @@ impl StellarRpcClient {
             return Ok(Self::mock_order_book(selling_asset, buying_asset));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_order_book_internal(selling_asset, buying_asset, limit)).await;
+        let result = self
+            .execute_with_retry(|| {
+                self.fetch_order_book_internal(selling_asset, buying_asset, limit)
+            })
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -869,7 +907,12 @@ impl StellarRpcClient {
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -884,7 +927,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_payments(5));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_payments_for_ledger_internal(sequence)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_payments_for_ledger_internal(sequence))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -896,8 +941,16 @@ impl StellarRpcClient {
         &self,
         sequence: u64,
     ) -> Result<Vec<Payment>, RpcError> {
-        let url = format!("{}/ledgers/{}/payments?limit=200", self.horizon_url, sequence);
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let url = format!(
+            "{}/ledgers/{}/payments?limit=200",
+            self.horizon_url, sequence
+        );
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -920,7 +973,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_transactions(5, sequence));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_transactions_for_ledger_internal(sequence)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_transactions_for_ledger_internal(sequence))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -936,7 +991,12 @@ impl StellarRpcClient {
             "{}/ledgers/{}/transactions?limit=200&include_failed=true",
             self.horizon_url, sequence
         );
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -959,7 +1019,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_operations_for_ledger(sequence));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_operations_for_ledger_internal(sequence)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_operations_for_ledger_internal(sequence))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -971,8 +1033,16 @@ impl StellarRpcClient {
         &self,
         sequence: u64,
     ) -> Result<Vec<HorizonOperation>, RpcError> {
-        let url = format!("{}/ledgers/{}/operations?limit=200", self.horizon_url, sequence);
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let url = format!(
+            "{}/ledgers/{}/operations?limit=200",
+            self.horizon_url, sequence
+        );
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -995,7 +1065,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_effects_for_operation(operation_id));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_operation_effects_internal(operation_id)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_operation_effects_internal(operation_id))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1011,7 +1083,12 @@ impl StellarRpcClient {
             "{}/operations/{}/effects?limit=200",
             self.horizon_url, operation_id
         );
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -1035,7 +1112,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_payments(limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_account_payments_internal(account_id, limit)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_account_payments_internal(account_id, limit))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1052,7 +1131,12 @@ impl StellarRpcClient {
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -1340,9 +1424,11 @@ impl StellarRpcClient {
 
         with_retry(
             || async {
-                let queue_permit = self.rate_limiter.acquire().await.map_err(|_| {
-                    RpcError::RateLimitError { retry_after: None }
-                })?;
+                let queue_permit = self
+                    .rate_limiter
+                    .acquire()
+                    .await
+                    .map_err(|_| RpcError::RateLimitError { retry_after: None })?;
 
                 let start_time = Instant::now();
                 let response = request_fn()
@@ -1473,14 +1559,10 @@ impl StellarRpcClient {
                 // tests exercise both the legacy and new code paths.
                 let use_new_format = i % 2 == 0;
 
-                let dest_account = format!(
-                    "GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}",
-                    i
-                );
-                let src_account = format!(
-                    "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{:03}",
-                    i
-                );
+                let dest_account =
+                    format!("GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{:03}", i);
+                let src_account =
+                    format!("GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{:03}", i);
                 let asset_type_str = if is_native_dest {
                     "native".to_string()
                 } else if i % 2 == 0 {
@@ -1518,8 +1600,16 @@ impl StellarRpcClient {
                         dest_account.clone()
                     },
                     asset_type: asset_type_str.clone(),
-                    asset_code: if use_new_format { None } else { asset_code_val.clone() },
-                    asset_issuer: if use_new_format { None } else { asset_issuer_val.clone() },
+                    asset_code: if use_new_format {
+                        None
+                    } else {
+                        asset_code_val.clone()
+                    },
+                    asset_issuer: if use_new_format {
+                        None
+                    } else {
+                        asset_issuer_val.clone()
+                    },
                     amount: if use_new_format {
                         String::new()
                     } else {
@@ -1796,7 +1886,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_liquidity_pools(limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_liquidity_pools_internal(limit, cursor)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_liquidity_pools_internal(limit, cursor))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1816,7 +1908,12 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             url.push_str(&format!("&cursor={}", c));
         }
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -1842,7 +1939,9 @@ impl StellarRpcClient {
             return Ok(pool);
         }
 
-        let result = self.execute_with_retry(|| self.fetch_liquidity_pool_internal(pool_id)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_liquidity_pool_internal(pool_id))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1855,7 +1954,12 @@ impl StellarRpcClient {
         pool_id: &str,
     ) -> Result<HorizonLiquidityPool, RpcError> {
         let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -1875,7 +1979,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_trades(limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_pool_trades_internal(pool_id, limit)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_pool_trades_internal(pool_id, limit))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1892,7 +1998,12 @@ impl StellarRpcClient {
             "{}/liquidity_pools/{}/trades?order=desc&limit={}",
             self.horizon_url, pool_id, limit
         );
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -1916,7 +2027,9 @@ impl StellarRpcClient {
             return Ok(Self::mock_assets(limit));
         }
 
-        let result = self.execute_with_retry(|| self.fetch_assets_internal(limit, rating_sort)).await;
+        let result = self
+            .execute_with_retry(|| self.fetch_assets_internal(limit, rating_sort))
+            .await;
 
         result.map_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1935,7 +2048,12 @@ impl StellarRpcClient {
         } else {
             url.push_str("&order=desc");
         }
-        let response = self.client.get(&url).send().await.map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
@@ -2349,7 +2467,9 @@ mod tests {
             asset_balance_changes: Some(vec![AssetBalanceChange {
                 asset_type: "credit_alphanum4".into(),
                 asset_code: Some("USDC".into()),
-                asset_issuer: Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".into()),
+                asset_issuer: Some(
+                    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".into(),
+                ),
                 change_type: "transfer".into(),
                 from: Some("GSRC".into()),
                 to: Some("GDEST_NEW".into()),

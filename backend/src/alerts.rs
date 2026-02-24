@@ -29,12 +29,24 @@ impl AlertManager {
         (Self { tx }, rx)
     }
 
-    pub fn check_and_alert(&self, corridor_id: &str, old_success: f64, new_success: f64, old_latency: f64, new_latency: f64, old_liquidity: f64, new_liquidity: f64) {
+    pub fn check_and_alert(
+        &self,
+        corridor_id: &str,
+        old_success: f64,
+        new_success: f64,
+        old_latency: f64,
+        new_latency: f64,
+        old_liquidity: f64,
+        new_liquidity: f64,
+    ) {
         if new_success < old_success - 10.0 {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::SuccessRateDrop,
                 corridor_id: corridor_id.to_string(),
-                message: format!("Success rate dropped from {:.1}% to {:.1}%", old_success, new_success),
+                message: format!(
+                    "Success rate dropped from {:.1}% to {:.1}%",
+                    old_success, new_success
+                ),
                 old_value: old_success,
                 new_value: new_success,
                 timestamp: chrono::Utc::now().to_rfc3339(),
@@ -45,7 +57,10 @@ impl AlertManager {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::LatencyIncrease,
                 corridor_id: corridor_id.to_string(),
-                message: format!("Latency increased from {:.0}ms to {:.0}ms", old_latency, new_latency),
+                message: format!(
+                    "Latency increased from {:.0}ms to {:.0}ms",
+                    old_latency, new_latency
+                ),
                 old_value: old_latency,
                 new_value: new_latency,
                 timestamp: chrono::Utc::now().to_rfc3339(),
@@ -56,7 +71,10 @@ impl AlertManager {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::LiquidityDecrease,
                 corridor_id: corridor_id.to_string(),
-                message: format!("Liquidity decreased from ${:.0} to ${:.0}", old_liquidity, new_liquidity),
+                message: format!(
+                    "Liquidity decreased from ${:.0} to ${:.0}",
+                    old_liquidity, new_liquidity
+                ),
                 old_value: old_liquidity,
                 new_value: new_liquidity,
                 timestamp: chrono::Utc::now().to_rfc3339(),

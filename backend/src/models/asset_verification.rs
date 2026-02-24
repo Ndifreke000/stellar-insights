@@ -35,17 +35,17 @@ pub struct VerifiedAsset {
     pub asset_issuer: String,
     pub verification_status: String,
     pub reputation_score: f64,
-    
+
     // Verification sources
     pub stellar_expert_verified: bool,
     pub stellar_toml_verified: bool,
     pub anchor_registry_verified: bool,
-    
+
     // Metrics
     pub trustline_count: i64,
     pub transaction_count: i64,
     pub total_volume_usd: f64,
-    
+
     // TOML data
     pub toml_home_domain: Option<String>,
     pub toml_name: Option<String>,
@@ -53,15 +53,15 @@ pub struct VerifiedAsset {
     pub toml_org_name: Option<String>,
     pub toml_org_url: Option<String>,
     pub toml_logo_url: Option<String>,
-    
+
     // Community reports
     pub suspicious_reports_count: i64,
     pub last_suspicious_report_at: Option<DateTime<Utc>>,
-    
+
     // Verification metadata
     pub last_verified_at: Option<DateTime<Utc>>,
     pub verification_notes: Option<String>,
-    
+
     // Timestamps
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

@@ -22,16 +22,19 @@ async fn handle_alert_socket(socket: WebSocket, alert_manager: Arc<AlertManager>
     let mut send_task = tokio::spawn(async move {
         while let Ok(alert) = rx.recv().await {
             if let Ok(msg) = serde_json::to_string(&alert) {
-                if sender.send(axum::extract::ws::Message::Text(msg)).await.is_err() {
+                if sender
+                    .send(axum::extract::ws::Message::Text(msg))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
         }
     });
 
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(_)) = receiver.next().await {}
-    });
+    let mut recv_task =
+        tokio::spawn(async move { while let Some(Ok(_)) = receiver.next().await {} });
 
     tokio::select! {
         _ = &mut send_task => recv_task.abort(),

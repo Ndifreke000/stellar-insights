@@ -109,8 +109,9 @@ pub struct WebhookService {
 
 impl WebhookService {
     pub fn new(db: SqlitePool) -> Self {
-        let encryption_key = std::env::var("ENCRYPTION_KEY")
-            .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+        let encryption_key = std::env::var("ENCRYPTION_KEY").unwrap_or_else(|_| {
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
+        });
         Self { db, encryption_key }
     }
 
@@ -241,21 +242,24 @@ impl WebhookService {
              FROM webhook_events we
              WHERE we.status = 'pending' AND we.retries < 3
              ORDER BY we.created_at ASC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(query_limit)
         .fetch_all(&self.db)
         .await?;
 
-        let events: Vec<(String, String, String, String)> = rows.into_iter().map(|row| {
-            use sqlx::Row;
-            (
-                row.get::<String, _>(0),
-                row.get::<String, _>(1),
-                row.get::<String, _>(2),
-                row.get::<String, _>(3),
-            )
-        }).collect();
+        let events: Vec<(String, String, String, String)> = rows
+            .into_iter()
+            .map(|row| {
+                use sqlx::Row;
+                (
+                    row.get::<String, _>(0),
+                    row.get::<String, _>(1),
+                    row.get::<String, _>(2),
+                    row.get::<String, _>(3),
+                )
+            })
+            .collect();
 
         Ok(events)
     }
@@ -268,13 +272,15 @@ impl WebhookService {
         error: Option<&str>,
         retries: i32,
     ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?")
-            .bind(status)
-            .bind(error)
-            .bind(retries)
-            .bind(event_id)
-            .execute(&self.db)
-            .await?;
+        sqlx::query(
+            "UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?",
+        )
+        .bind(status)
+        .bind(error)
+        .bind(retries)
+        .bind(event_id)
+        .execute(&self.db)
+        .await?;
 
         Ok(())
     }

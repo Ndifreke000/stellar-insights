@@ -119,7 +119,10 @@ pub struct Database {
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
-        Self { pool, admin_audit_logger }
+        Self {
+            pool,
+            admin_audit_logger,
+        }
     }
 
     pub fn pool(&self) -> &SqlitePool {

@@ -84,12 +84,22 @@ fn snapshot_counters(map: &Mutex<HashMap<String, u64>>) -> Vec<(String, u64)> {
         .unwrap_or_default()
 }
 
-fn snapshot_durations(map: &Mutex<HashMap<String, DurationSeries>>) -> Vec<(String, DurationSeries)> {
+fn snapshot_durations(
+    map: &Mutex<HashMap<String, DurationSeries>>,
+) -> Vec<(String, DurationSeries)> {
     map.lock()
         .map(|guard| {
             guard
                 .iter()
-                .map(|(k, v)| (k.clone(), DurationSeries { count: v.count, sum: v.sum }))
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        DurationSeries {
+                            count: v.count,
+                            sum: v.sum,
+                        },
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -141,8 +151,14 @@ pub async fn metrics_handler() -> Response {
     out.push_str("# TYPE rpc_call_duration_seconds summary\n");
     for (key, series) in snapshot_durations(&metrics.rpc_call_duration_seconds) {
         let labels = key_to_prom_labels(&key);
-        out.push_str(&format!("rpc_call_duration_seconds_count{} {}\n", labels, series.count));
-        out.push_str(&format!("rpc_call_duration_seconds_sum{} {}\n", labels, series.sum));
+        out.push_str(&format!(
+            "rpc_call_duration_seconds_count{} {}\n",
+            labels, series.count
+        ));
+        out.push_str(&format!(
+            "rpc_call_duration_seconds_sum{} {}\n",
+            labels, series.sum
+        ));
     }
 
     out.push_str("# HELP cache_operations_total Cache operations by result\n");
@@ -169,8 +185,14 @@ pub async fn metrics_handler() -> Response {
     out.push_str("# TYPE db_query_duration_seconds summary\n");
     for (key, series) in snapshot_durations(&metrics.db_query_duration_seconds) {
         let labels = key_to_prom_labels(&key);
-        out.push_str(&format!("db_query_duration_seconds_count{} {}\n", labels, series.count));
-        out.push_str(&format!("db_query_duration_seconds_sum{} {}\n", labels, series.sum));
+        out.push_str(&format!(
+            "db_query_duration_seconds_count{} {}\n",
+            labels, series.count
+        ));
+        out.push_str(&format!(
+            "db_query_duration_seconds_sum{} {}\n",
+            labels, series.sum
+        ));
     }
 
     out.push_str("# HELP background_jobs_total Background jobs by name and status\n");
@@ -262,7 +284,10 @@ pub fn record_cache_lookup(hit: bool) {
 }
 
 pub fn record_error(error_type: &str) {
-    inc_counter(&state().errors_total, make_key(&[("error_type", error_type)]));
+    inc_counter(
+        &state().errors_total,
+        make_key(&[("error_type", error_type)]),
+    );
 }
 
 pub fn set_active_connections(count: i64) {
@@ -341,6 +366,8 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(text.contains("http_requests_total{method=\"GET\",endpoint=\"/ping\",status=\"200\"}"));
+        assert!(
+            text.contains("http_requests_total{method=\"GET\",endpoint=\"/ping\",status=\"200\"}")
+        );
     }
 }

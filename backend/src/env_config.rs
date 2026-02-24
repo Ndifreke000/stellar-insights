@@ -87,13 +87,12 @@ pub fn log_env_config() {
 
     // CORS
     log_var("CORS_ALLOWED_ORIGINS");
-    
+
     // Slack Bot
     if let Ok(slack_url) = env::var("SLACK_WEBHOOK_URL") {
         let sanitized = sanitize_url(&slack_url);
         tracing::info!("  SLACK_WEBHOOK_URL: {}", sanitized);
     }
-
 
     // Price feed (don't log API key)
     log_var("PRICE_FEED_PROVIDER");

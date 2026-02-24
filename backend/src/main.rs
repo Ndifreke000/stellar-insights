@@ -14,6 +14,7 @@ use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use stellar_insights_backend::alerts::AlertManager;
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::api_analytics;
@@ -36,11 +37,14 @@ use stellar_insights_backend::database::Database;
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::ip_whitelist_middleware::{ip_whitelist_middleware, IpWhitelistConfig};
+use stellar_insights_backend::ip_whitelist_middleware::{
+    ip_whitelist_middleware, IpWhitelistConfig,
+};
 use stellar_insights_backend::jobs::JobScheduler;
+use stellar_insights_backend::monitor::CorridorMonitor;
 use stellar_insights_backend::network::NetworkConfig;
-use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
+use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
 use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
@@ -54,14 +58,12 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
-use stellar_insights_backend::alerts::AlertManager;
-use stellar_insights_backend::monitor::CorridorMonitor;
-use stellar_insights_backend::telegram;
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
 };
 use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::telegram;
 use stellar_insights_backend::vault;
 use stellar_insights_backend::websocket::WsState;
 
@@ -105,7 +107,11 @@ async fn main() -> Result<()> {
         database_url.clone()
     } else if let Some(at_pos) = database_url.rfind('@') {
         if let Some(scheme_end) = database_url.find("://") {
-            format!("{}****@{}", &database_url[..scheme_end + 3], &database_url[at_pos + 1..])
+            format!(
+                "{}****@{}",
+                &database_url[..scheme_end + 3],
+                &database_url[at_pos + 1..]
+            )
         } else {
             "[REDACTED]".to_string()
         }
@@ -539,7 +545,6 @@ async fn main() -> Result<()> {
     // Start Webhook Dispatcher background task
     let shutdown_rx6 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
-
         let mut shutdown_rx = shutdown_rx6;
         tokio::select! {
             result = webhook_dispatcher.run() => {
@@ -1100,23 +1105,50 @@ async fn main() -> Result<()> {
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,
-        )))
+        )));
 
     // Build GDPR routes (temporarily disabled)
     /*
     let gdpr_routes = Router::new()
         .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
         .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
-        .route("/api/gdpr/consents/batch", put(gdpr_handlers::batch_update_consents))
+        .route(
+            "/api/gdpr/consents/batch",
+            put(gdpr_handlers::batch_update_consents),
+        )
         .route("/api/gdpr/export", get(gdpr_handlers::get_export_requests))
-        .route("/api/gdpr/export", post(gdpr_handlers::create_export_request))
-        .route("/api/gdpr/export/:id", get(gdpr_handlers::get_export_request))
-        .route("/api/gdpr/export-types", get(gdpr_handlers::get_exportable_types))
-        .route("/api/gdpr/deletion", get(gdpr_handlers::get_deletion_requests))
-        .route("/api/gdpr/deletion", post(gdpr_handlers::create_deletion_request))
-        .route("/api/gdpr/deletion/:id", get(gdpr_handlers::get_deletion_request))
-        .route("/api/gdpr/deletion/:id/cancel", post(gdpr_handlers::cancel_deletion))
-        .route("/api/gdpr/deletion/confirm", post(gdpr_handlers::confirm_deletion))
+        .route(
+            "/api/gdpr/export",
+            post(gdpr_handlers::create_export_request),
+        )
+        .route(
+            "/api/gdpr/export/:id",
+            get(gdpr_handlers::get_export_request),
+        )
+        .route(
+            "/api/gdpr/export-types",
+            get(gdpr_handlers::get_exportable_types),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            get(gdpr_handlers::get_deletion_requests),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            post(gdpr_handlers::create_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id",
+            get(gdpr_handlers::get_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id/cancel",
+            post(gdpr_handlers::cancel_deletion),
+        )
+        .route(
+            "/api/gdpr/deletion/confirm",
+            post(gdpr_handlers::confirm_deletion),
+        )
         .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
         .with_state(Arc::clone(&gdpr_service))
         .layer(cors.clone());
@@ -1133,11 +1165,12 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     let alert_ws_routes = Router::new()
-        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .route(
+            "/ws/alerts",
+            get(stellar_insights_backend::alert_handlers::alert_websocket_handler),
+        )
         .with_state(Arc::clone(&alert_manager))
         .layer(cors.clone());
-
-
 
     let app = Router::new()
         .route("/metrics", get(obs_metrics::metrics_handler))
@@ -1167,7 +1200,6 @@ async fn main() -> Result<()> {
         .merge(api_key_routes)
         .merge(ws_routes)
         .merge(alert_ws_routes)
-
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

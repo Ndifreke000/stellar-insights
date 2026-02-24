@@ -318,7 +318,7 @@ impl SnapshotService {
 
     /// Verify that the submission was successful by querying the contract
     /// Verify that a snapshot submission was successful by checking on-chain
-    /// 
+    ///
     /// Note: The submission parameter is intentionally unused as we verify directly
     /// from the contract rather than trusting the submission result.
     async fn verify_submission_success(

@@ -137,7 +137,10 @@ impl StateBuilder {
     }
 
     /// Apply snapshot submission event
-    async fn apply_snapshot_submission(&mut self, event: &ContractEvent) -> Result<ProcessingResult> {
+    async fn apply_snapshot_submission(
+        &mut self,
+        event: &ContractEvent,
+    ) -> Result<ProcessingResult> {
         let epoch = event
             .data
             .get("epoch")
@@ -172,7 +175,10 @@ impl StateBuilder {
     }
 
     /// Apply snapshot verification event
-    async fn apply_snapshot_verification(&mut self, event: &ContractEvent) -> Result<ProcessingResult> {
+    async fn apply_snapshot_verification(
+        &mut self,
+        event: &ContractEvent,
+    ) -> Result<ProcessingResult> {
         let epoch = event
             .data
             .get("epoch")
@@ -203,7 +209,10 @@ impl StateBuilder {
             },
         );
 
-        info!("Applied snapshot verification for epoch {} by {}", epoch, verifier);
+        info!(
+            "Applied snapshot verification for epoch {} by {}",
+            epoch, verifier
+        );
         Ok(ProcessingResult::success())
     }
 
@@ -238,12 +247,11 @@ impl StateBuilder {
     pub async fn load_state(&mut self, ledger: u64) -> Result<bool> {
         debug!("Loading state at ledger {}", ledger);
 
-        let row: Option<(String, String)> = sqlx::query_as(
-            "SELECT state_json, state_hash FROM replay_state WHERE ledger = $1",
-        )
-        .bind(ledger as i64)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT state_json, state_hash FROM replay_state WHERE ledger = $1")
+                .bind(ledger as i64)
+                .fetch_optional(&self.pool)
+                .await?;
 
         match row {
             Some((state_json, state_hash)) => {
