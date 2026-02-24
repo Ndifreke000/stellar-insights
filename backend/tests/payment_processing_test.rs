@@ -25,7 +25,10 @@ async fn test_payment_ingestion_pipeline_end_to_end() {
         .fetch_one(db.pool())
         .await
         .unwrap();
-    assert!(stored_count > 0, "expected ingested payments to be persisted");
+    assert!(
+        stored_count > 0,
+        "expected ingested payments to be persisted"
+    );
 
     // 2) Verify ingestion cursor is advanced after successful ingestion
     let cursor = db.get_ingestion_cursor("payment_ingestion").await.unwrap();
@@ -45,7 +48,10 @@ async fn test_payment_ingestion_pipeline_end_to_end() {
     // 4) Verify aggregated corridor metrics were created
     let start = Utc::now() - Duration::days(3650);
     let end = Utc::now() + Duration::days(3650);
-    let metrics = db.fetch_hourly_metrics_by_timerange(start, end).await.unwrap();
+    let metrics = db
+        .fetch_hourly_metrics_by_timerange(start, end)
+        .await
+        .unwrap();
     assert!(
         !metrics.is_empty(),
         "expected hourly corridor metrics after aggregation"

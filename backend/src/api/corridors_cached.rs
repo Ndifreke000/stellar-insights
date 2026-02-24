@@ -195,11 +195,10 @@ pub struct CorridorDetailResponse {
     pub related_corridors: Option<Vec<CorridorResponse>>,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 /// Query parameters for listing corridors with filtering and pagination.
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(default)]
+#[into_params(parameter_in = Query)]
 pub struct ListCorridorsQuery {
     /// Maximum number of results to return (default: 50)
     #[serde(default = "default_limit")]

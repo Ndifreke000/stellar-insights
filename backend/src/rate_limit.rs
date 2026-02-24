@@ -14,8 +14,6 @@ use crate::models::api_key::hash_api_key;
 
 /// Rate limit configuration for an endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Rate limit configuration for an endpoint
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitConfig {
     pub requests_per_minute: u32,
     pub whitelist_ips: Vec<String>,
@@ -35,17 +33,15 @@ pub struct ClientRateLimits {
 }
 
 impl Default for RateLimitConfig {
-    impl Default for RateLimitConfig {
-        fn default() -> Self {
-            Self {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-                client_limits: Some(ClientRateLimits {
-                    authenticated: 200,
-                    premium: 1000,
-                    anonymous: 60,
-                }),
-            }
+    fn default() -> Self {
+        Self {
+            requests_per_minute: 100,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 200,
+                premium: 1000,
+                anonymous: 60,
+            }),
         }
     }
 }
@@ -149,7 +145,9 @@ impl RateLimiter {
                         // Validate API key against database if available
                         if let Some(pool) = &self.db_pool {
                             let key_hash = hash_api_key(token);
-                            if let Ok(Some(api_key)) = self.get_api_key_by_hash(pool, &key_hash).await {
+                            if let Ok(Some(api_key)) =
+                                self.get_api_key_by_hash(pool, &key_hash).await
+                            {
                                 // Update last_used_at timestamp
                                 let _ = self.update_api_key_last_used(pool, &api_key.id).await;
                                 return ClientIdentifier::ApiKey(api_key.id);
@@ -301,7 +299,8 @@ impl RateLimiter {
     /// Check rate limit for an IP/endpoint combination (legacy method)
     pub async fn check_rate_limit(&self, ip: &str, endpoint: &str) -> (bool, RateLimitInfo) {
         let client = ClientIdentifier::IpAddress(ip.to_string());
-        self.check_rate_limit_for_client(&client, endpoint, ip).await
+        self.check_rate_limit_for_client(&client, endpoint, ip)
+            .await
     }
 
     /// Check rate limit in Redis
@@ -415,14 +414,16 @@ pub async fn rate_limit_middleware(
     // Extract client identifier from request
     let client = limiter.extract_client_identifier(&req).await;
 
-    let (allowed, info) = limiter.check_rate_limit_for_client(&client, &path, &ip).await;
+    let (allowed, info) = limiter
+        .check_rate_limit_for_client(&client, &path, &ip)
+        .await;
 
     if !allowed {
         return RateLimitError { info }.into_response();
     }
 
     let mut response = next.run(req).await;
-    
+
     // Add rate limit headers
     response
         .headers_mut()
@@ -435,11 +436,13 @@ pub async fn rate_limit_middleware(
         "RateLimit-Reset",
         info.reset_after.to_string().parse().unwrap(),
     );
-    
+
     // Optionally add client identifier for debugging (sanitized)
     if let Some(client_id) = &info.client_id {
         if let Ok(header_value) = client_id.parse() {
-            response.headers_mut().insert("X-RateLimit-Client", header_value);
+            response
+                .headers_mut()
+                .insert("X-RateLimit-Client", header_value);
         }
     }
 

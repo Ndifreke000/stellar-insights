@@ -1,11 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub mod alerts;
 pub mod api_key;
 pub mod asset_verification;
 pub mod corridor;
-pub mod alerts;
-
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]

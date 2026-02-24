@@ -132,10 +132,7 @@ impl AssetVerifier {
     }
 
     /// Check and parse stellar.toml file
-    async fn check_stellar_toml(
-        &self,
-        asset_issuer: &str,
-    ) -> (bool, Option<StellarTomlData>) {
+    async fn check_stellar_toml(&self, asset_issuer: &str) -> (bool, Option<StellarTomlData>) {
         // First, try to get the home domain from the issuer account
         let home_domain = match self.get_home_domain_from_account(asset_issuer).await {
             Ok(Some(domain)) => domain,
@@ -154,16 +151,14 @@ impl AssetVerifier {
 
         for attempt in 1..=MAX_RETRIES {
             match self.http_client.get(&toml_url).send().await {
-                Ok(response) if response.status().is_success() => {
-                    match response.text().await {
-                        Ok(toml_content) => {
-                            return self.parse_stellar_toml(&toml_content, &home_domain);
-                        }
-                        Err(e) => {
-                            warn!("Failed to read TOML content: {}", e);
-                        }
+                Ok(response) if response.status().is_success() => match response.text().await {
+                    Ok(toml_content) => {
+                        return self.parse_stellar_toml(&toml_content, &home_domain);
                     }
-                }
+                    Err(e) => {
+                        warn!("Failed to read TOML content: {}", e);
+                    }
+                },
                 Ok(response) => {
                     warn!(
                         "TOML fetch returned status {}: attempt {}/{}",
@@ -254,11 +249,7 @@ impl AssetVerifier {
     }
 
     /// Get on-chain metrics from database or Horizon
-    async fn get_on_chain_metrics(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> (i64, i64, f64) {
+    async fn get_on_chain_metrics(&self, asset_code: &str, asset_issuer: &str) -> (i64, i64, f64) {
         // Try to get from database first
         if let Ok(Some(metrics)) = self.get_metrics_from_db(asset_code, asset_issuer).await {
             return metrics;
@@ -339,7 +330,7 @@ impl AssetVerifier {
 
     /// Calculate reputation score based on verification results
     pub fn calculate_reputation_score(&self, result: &VerificationResult) -> f64 {
-        let mut score = 0.0;
+        let mut score: f64 = 0.0;
 
         // Stellar Expert verification (30 points)
         if result.stellar_expert_verified {

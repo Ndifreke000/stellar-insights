@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     auth::Claims,
     database::Database,
-    error::{ApiError, Result},
+    error::{ApiError, ApiResult},
     models::alerts::{CreateAlertRuleRequest, SnoozeAlertRequest, UpdateAlertRuleRequest},
     state::AppState,
 };
@@ -29,10 +29,7 @@ pub fn router() -> Router<AppState> {
 
 // Rule Handlers
 
-async fn list_rules(
-    State(state): State<AppState>,
-    claims: Claims,
-) -> Result<impl IntoResponse> {
+async fn list_rules(State(state): State<AppState>, claims: Claims) -> ApiResult<impl IntoResponse> {
     let rules = state.db.get_alert_rules_for_user(&claims.sub).await?;
     Ok(Json(rules))
 }
@@ -41,7 +38,7 @@ async fn create_rule(
     State(state): State<AppState>,
     claims: Claims,
     Json(payload): Json<CreateAlertRuleRequest>,
-) -> Result<impl IntoResponse> {
+) -> ApiResult<impl IntoResponse> {
     let rule = state.db.create_alert_rule(&claims.sub, payload).await?;
     Ok((StatusCode::CREATED, Json(rule)))
 }
@@ -52,7 +49,10 @@ async fn update_rule(
     Path(id): Path<String>,
     Json(payload): Json<UpdateAlertRuleRequest>,
 ) -> Result<impl IntoResponse> {
-    let rule = state.db.update_alert_rule(&id, &claims.sub, payload).await?;
+    let rule = state
+        .db
+        .update_alert_rule(&id, &claims.sub, payload)
+        .await?;
     Ok(Json(rule))
 }
 
@@ -67,12 +67,12 @@ async fn delete_rule(
 
 // History Handlers
 
-async fn list_history(
-    State(state): State<AppState>,
-    claims: Claims,
-) -> Result<impl IntoResponse> {
+async fn list_history(State(state): State<AppState>, claims: Claims) -> ApiResult<impl IntoResponse> {
     // default limit
-    let history = state.db.get_alert_history_for_user(&claims.sub, 100).await?;
+    let history = state
+        .db
+        .get_alert_history_for_user(&claims.sub, 100)
+        .await?;
     Ok(Json(history))
 }
 
@@ -101,6 +101,9 @@ async fn snooze_rule_from_history(
     Json(payload): Json<SnoozeAlertRequest>,
 ) -> Result<impl IntoResponse> {
     // Id passed here is the rule's ID since we are snoozing the rule
-    let rule = state.db.snooze_alert_rule(&id, &claims.sub, payload).await?;
+    let rule = state
+        .db
+        .snooze_alert_rule(&id, &claims.sub, payload)
+        .await?;
     Ok(Json(rule))
 }

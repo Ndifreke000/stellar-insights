@@ -56,9 +56,7 @@ impl AssetRevalidationJob {
             self.config.interval_hours, self.config.batch_size, self.config.max_age_days
         );
 
-        let mut ticker = interval(TokioDuration::from_secs(
-            self.config.interval_hours * 3600,
-        ));
+        let mut ticker = interval(TokioDuration::from_secs(self.config.interval_hours * 3600));
 
         loop {
             ticker.tick().await;

@@ -235,7 +235,7 @@ impl Database {
     }
 
     // Anchor operations
-    
+
     /// Creates a new anchor in the database.
     ///
     /// # Arguments
@@ -498,7 +498,7 @@ impl Database {
     }
 
     // Asset operations
-    
+
     /// Creates a new asset or updates existing asset's anchor association.
     ///
     /// Uses UPSERT logic: if an asset with the same code and issuer exists,

@@ -519,8 +519,9 @@ impl StellarRpcClient {
             .unwrap_or(DEFAULT_MAX_TOTAL_RECORDS)
             .min(ABSOLUTE_MAX_TOTAL_RECORDS);
 
-        if std::env::var("RPC_MAX_TOTAL_RECORDS").is_ok() 
-            && max_total_records > ABSOLUTE_MAX_TOTAL_RECORDS {
+        if std::env::var("RPC_MAX_TOTAL_RECORDS").is_ok()
+            && max_total_records > ABSOLUTE_MAX_TOTAL_RECORDS
+        {
             warn!(
                 "RPC_MAX_TOTAL_RECORDS ({}) exceeds maximum ({}), capping to {} (DoS protection)",
                 std::env::var("RPC_MAX_TOTAL_RECORDS").unwrap_or_default(),
@@ -535,8 +536,9 @@ impl StellarRpcClient {
             .unwrap_or(DEFAULT_PAGINATION_DELAY_MS)
             .max(MIN_PAGINATION_DELAY_MS);
 
-        if std::env::var("RPC_PAGINATION_DELAY_MS").is_ok() 
-            && pagination_delay_ms < MIN_PAGINATION_DELAY_MS {
+        if std::env::var("RPC_PAGINATION_DELAY_MS").is_ok()
+            && pagination_delay_ms < MIN_PAGINATION_DELAY_MS
+        {
             warn!(
                 "RPC_PAGINATION_DELAY_MS ({}) is below minimum ({}), using minimum",
                 std::env::var("RPC_PAGINATION_DELAY_MS").unwrap_or_default(),
@@ -1218,11 +1220,15 @@ impl StellarRpcClient {
     /// Vector of all fetched payments up to the limit
     pub async fn fetch_all_payments(&self, max_records: Option<u32>) -> Result<Vec<Payment>> {
         if self.mock_mode {
-            let limit = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+            let limit = max_records
+                .unwrap_or(self.max_total_records)
+                .min(ABSOLUTE_MAX_TOTAL_RECORDS);
             return Ok(Self::mock_payments(limit));
         }
 
-        let max_records = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+        let max_records = max_records
+            .unwrap_or(self.max_total_records)
+            .min(ABSOLUTE_MAX_TOTAL_RECORDS);
         let mut all_payments = Vec::new();
         let mut cursor: Option<String> = None;
         let mut fetched = 0;
@@ -1286,11 +1292,15 @@ impl StellarRpcClient {
     /// Vector of all fetched trades up to the limit
     pub async fn fetch_all_trades(&self, max_records: Option<u32>) -> Result<Vec<Trade>> {
         if self.mock_mode {
-            let limit = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+            let limit = max_records
+                .unwrap_or(self.max_total_records)
+                .min(ABSOLUTE_MAX_TOTAL_RECORDS);
             return Ok(Self::mock_trades(limit));
         }
 
-        let max_records = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+        let max_records = max_records
+            .unwrap_or(self.max_total_records)
+            .min(ABSOLUTE_MAX_TOTAL_RECORDS);
         let mut all_trades = Vec::new();
         let mut cursor: Option<String> = None;
         let mut fetched = 0;
@@ -1361,11 +1371,15 @@ impl StellarRpcClient {
         max_records: Option<u32>,
     ) -> Result<Vec<Payment>> {
         if self.mock_mode {
-            let limit = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+            let limit = max_records
+                .unwrap_or(self.max_total_records)
+                .min(ABSOLUTE_MAX_TOTAL_RECORDS);
             return Ok(Self::mock_payments(limit));
         }
 
-        let max_records = max_records.unwrap_or(self.max_total_records).min(ABSOLUTE_MAX_TOTAL_RECORDS);
+        let max_records = max_records
+            .unwrap_or(self.max_total_records)
+            .min(ABSOLUTE_MAX_TOTAL_RECORDS);
         let mut all_payments = Vec::new();
         let mut cursor: Option<String> = None;
         let mut fetched = 0;
@@ -2406,7 +2420,10 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Verify default pagination config is loaded with security limits
-        assert_eq!(client.max_records_per_request, DEFAULT_MAX_RECORDS_PER_REQUEST);
+        assert_eq!(
+            client.max_records_per_request,
+            DEFAULT_MAX_RECORDS_PER_REQUEST
+        );
         assert_eq!(client.max_total_records, DEFAULT_MAX_TOTAL_RECORDS);
         assert_eq!(client.pagination_delay_ms, DEFAULT_PAGINATION_DELAY_MS);
     }
