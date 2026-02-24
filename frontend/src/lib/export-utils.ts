@@ -1,10 +1,11 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
+import { ExportableData, ExportColumn, DateRange } from "@/types/export";
 
 export function generateCSV(
-  data: any[],
-  columns: { id: string; label: string }[],
+  data: ExportableData[],
+  columns: ExportColumn[],
 ) {
   const headers = columns.map((c) => c.label).join(",");
   const rows = data.map((row) =>
@@ -38,12 +39,12 @@ export function generateCSV(
 }
 
 export function generateJSON(
-  data: any[],
-  columns: { id: string; label: string }[],
+  data: ExportableData[],
+  columns: ExportColumn[],
 ) {
   // Filter data to only include selected columns
   const filteredData = data.map((row) => {
-    const newRow: any = {};
+    const newRow: ExportableData = {};
     columns.forEach((col) => {
       newRow[col.id] = row[col.id]; // keep raw values for JSON
     });
@@ -68,9 +69,9 @@ export function generateJSON(
 }
 
 export function generatePDF(
-  data: any[],
-  columns: { id: string; label: string }[],
-  dateRange: { start: Date | null; end: Date | null },
+  data: ExportableData[],
+  columns: ExportColumn[],
+  dateRange: DateRange,
 ) {
   const doc = new jsPDF();
 

@@ -1,10 +1,11 @@
 import React from "react";
 import { MetricOption } from "./MetricSelector";
 import { format } from "date-fns";
+import { ExportableData } from "@/types/export";
 
 interface ExportPreviewProps {
   metrics: MetricOption[];
-  data: any[];
+  data: ExportableData[];
 }
 
 export function ExportPreview({ metrics, data }: ExportPreviewProps) {

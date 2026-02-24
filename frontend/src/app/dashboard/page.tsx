@@ -6,19 +6,9 @@ import { CorridorHealth } from '@/components/dashboard/CorridorHealth';
 import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
 import { TopAssetsTable } from '@/components/dashboard/TopAssetsTable';
 import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
+import { DashboardData } from '@/types/dashboard';
 
-interface DashboardData {
-  kpi: {
-    successRate: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    activeCorridors: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    liquidityDepth: { value: number; trend: number; trendDirection: 'up' | 'down' };
-    settlementSpeed: { value: number; trend: number; trendDirection: 'up' | 'down' };
-  };
-  corridors: any[];
-  liquidity: any[];
-  assets: any[];
-  settlement: any[];
-}
+
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);

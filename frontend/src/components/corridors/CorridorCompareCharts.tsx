@@ -14,6 +14,7 @@ import {
   Bar,
 } from "recharts";
 import { CorridorDetailData } from "@/lib/api";
+import { ChartDataPoint } from "@/types/corridor-charts";
 
 interface CompareChartsProps {
   corridors: CorridorDetailData[];
@@ -30,8 +31,8 @@ export function SuccessRateCompareChart({ corridors }: CompareChartsProps) {
     ),
   ).sort();
 
-  const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+  const chartData: ChartDataPoint[] = allTimestamps.map((ts) => {
+    const dataPoint: ChartDataPoint = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_success_rate.find((d) => d.timestamp === ts);
       if (point) {
@@ -94,8 +95,8 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
     new Set(corridors.flatMap((c) => c.historical_volume.map((d) => d.timestamp))),
   ).sort();
 
-  const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+  const chartData: ChartDataPoint[] = allTimestamps.map((ts) => {
+    const dataPoint: ChartDataPoint = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_volume.find((d) => d.timestamp === ts);
       if (point) {
@@ -159,8 +160,8 @@ export function SlippageCompareChart({ corridors }: CompareChartsProps) {
     ),
   ).sort();
 
-  const chartData = allTimestamps.map((ts) => {
-    const dataPoint: any = { timestamp: ts };
+  const chartData: ChartDataPoint[] = allTimestamps.map((ts) => {
+    const dataPoint: ChartDataPoint = { timestamp: ts };
     corridors.forEach((c) => {
       const point = c.historical_slippage.find((d) => d.timestamp === ts);
       if (point) {
