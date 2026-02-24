@@ -12,42 +12,32 @@ use utoipa::{IntoParams, ToSchema};
 use crate::services::price_feed::PriceFeedClient;
 
 #[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct GetPriceQuery {
     /// Stellar asset identifier (e.g., "XLM:native", "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN")
-    #[param(example = "XLM:native")]
     pub asset: String,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct GetPricesQuery {
     /// Comma-separated list of Stellar asset identifiers
-    #[param(example = "XLM:native,USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN")]
     pub assets: String,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct ConvertQuery {
     /// Stellar asset identifier
-    #[param(example = "XLM:native")]
     pub asset: String,
     /// Amount to convert
-    #[param(example = 100.0)]
     pub amount: f64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PriceResponse {
     /// Stellar asset identifier
-    #[schema(example = "XLM:native")]
     pub asset: String,
     /// Price in USD
-    #[schema(example = 0.12)]
     pub price_usd: f64,
     /// Timestamp of the response
-    #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
 }
 
@@ -56,39 +46,30 @@ pub struct PricesResponse {
     /// Map of asset to price in USD
     pub prices: std::collections::HashMap<String, f64>,
     /// Timestamp of the response
-    #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConvertResponse {
     /// Stellar asset identifier
-    #[schema(example = "XLM:native")]
     pub asset: String,
     /// Original amount
-    #[schema(example = 100.0)]
     pub amount: f64,
     /// Converted amount in USD
-    #[schema(example = 12.0)]
     pub amount_usd: f64,
     /// Price used for conversion
-    #[schema(example = 0.12)]
     pub price_usd: f64,
     /// Timestamp of the response
-    #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CacheStatsResponse {
     /// Total number of cached prices
-    #[schema(example = 10)]
     pub total_cached: usize,
     /// Number of fresh (non-expired) cached prices
-    #[schema(example = 8)]
     pub fresh_cached: usize,
     /// Timestamp of the response
-    #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
 }
 

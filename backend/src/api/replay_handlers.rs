@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 use crate::{
-    error::AppError,
+    error::ApiError,
     replay::{
         checkpoint::CheckpointManager,
         config::{ReplayConfig, ReplayMode, ReplayRange},
@@ -67,7 +67,7 @@ pub struct ListReplaysQuery {
 pub async fn start_replay(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StartReplayRequest>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Starting replay with request: {:?}", req);
 
     // Parse replay mode
@@ -135,7 +135,7 @@ pub async fn start_replay(
         processor,
         state_builder,
     )
-    .map_err(|e| AppError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
     // Start replay in background
     let engine_clone = Arc::new(engine);
@@ -164,7 +164,7 @@ pub async fn start_replay(
 pub async fn get_replay_status(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Getting replay status for session: {}", session_id);
 
     let replay_storage = ReplayStorage::new(state.db.pool().clone());
@@ -172,8 +172,8 @@ pub async fn get_replay_status(
     let metadata = replay_storage
         .load_metadata(&session_id)
         .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?
-        .ok_or_else(|| AppError::NotFound("Replay session not found".to_string()))?;
+        .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?
+        .ok_or_else(|| ApiError::not_found("NOT_FOUND", "Replay session not found".to_string()))?;
 
     Ok(Json(metadata))
 }
@@ -182,7 +182,7 @@ pub async fn get_replay_status(
 pub async fn list_replays(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListReplaysQuery>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Listing replay sessions");
 
     let replay_storage = ReplayStorage::new(state.db.pool().clone());
@@ -190,7 +190,7 @@ pub async fn list_replays(
     let sessions = replay_storage
         .list_sessions(query.limit)
         .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
     Ok(Json(sessions))
 }
@@ -199,7 +199,7 @@ pub async fn list_replays(
 pub async fn list_checkpoints(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Listing checkpoints for session: {}", session_id);
 
     let checkpoint_manager = CheckpointManager::new(state.db.pool().clone());
@@ -207,7 +207,7 @@ pub async fn list_checkpoints(
     let checkpoints = checkpoint_manager
         .list_for_session(&session_id)
         .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
     Ok(Json(checkpoints))
 }
@@ -216,7 +216,7 @@ pub async fn list_checkpoints(
 pub async fn delete_replay(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Deleting replay session: {}", session_id);
 
     let replay_storage = ReplayStorage::new(state.db.pool().clone());
@@ -224,7 +224,7 @@ pub async fn delete_replay(
     replay_storage
         .delete_session(&session_id)
         .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
     Ok((
         StatusCode::OK,
@@ -240,7 +240,7 @@ pub async fn delete_replay(
 pub async fn cleanup_checkpoints(
     State(state): State<Arc<AppState>>,
     Query(days): Query<i64>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, ApiError> {
     info!("Cleaning up checkpoints older than {} days", days);
 
     let checkpoint_manager = CheckpointManager::new(state.db.pool().clone());
@@ -248,7 +248,7 @@ pub async fn cleanup_checkpoints(
     let deleted = checkpoint_manager
         .cleanup_old(days)
         .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
     Ok(Json(serde_json::json!({
         "deleted": deleted,

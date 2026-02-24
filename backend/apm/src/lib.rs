@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use opentelemetry::global;
-use opentelemetry::metrics::{Meter, Counter, Histogram, Gauge};
+use opentelemetry::metrics::{Meter, Counter, Histogram, UpDownCounter};
 use opentelemetry::trace::{Tracer, Span};
-use opentelemetry::{KeyValue, Context};
-use tracing::{info, warn, error};
+use opentelemetry::{KeyValue};
+use tracing::{info, warn};
 
 /// APM configuration
 #[derive(Debug, Clone)]
@@ -58,13 +58,15 @@ impl Default for ApmConfig {
     }
 }
 
-impl From<String> for ApmPlatform {
-    fn from(s: String) -> Self {
-        match s.to_lowercase().as_str() {
+impl std::str::FromStr for ApmPlatform {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "newrelic" | "new_relic" => ApmPlatform::NewRelic,
             "datadog" | "data_dog" => ApmPlatform::Datadog,
             _ => ApmPlatform::OpenTelemetry,
-        }
+        })
     }
 }
 
@@ -84,13 +86,13 @@ pub struct ApmMetrics {
     pub http_response_size: Histogram<u64>,
     
     // Database metrics
-    pub db_connections_active: Gauge<u64>,
+    pub db_connections_active: UpDownCounter<i64>,
     pub db_query_duration: Histogram<f64>,
     pub db_queries_total: Counter<u64>,
     
     // Business metrics
     pub stellar_requests_total: Counter<u64>,
-    pub active_users: Gauge<u64>,
+    pub active_users: UpDownCounter<i64>,
     pub data_ingestion_rate: Counter<u64>,
     
     // Error metrics
@@ -101,10 +103,11 @@ pub struct ApmMetrics {
 impl ApmManager {
     pub fn new(config: ApmConfig) -> Result<Self> {
         if !config.enabled {
+            let meter = global::meter("stellar-insights");
             return Ok(Self {
                 config,
-                meter: global::meter("stellar-insights"),
-                metrics: ApmMetrics::empty(),
+                meter: meter.clone(),
+                metrics: ApmMetrics::new(&meter),
             });
         }
 
@@ -135,7 +138,6 @@ impl ApmManager {
         use opentelemetry_otlp::WithExportConfig;
         use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
         use opentelemetry_sdk::Resource;
-        use tracing_opentelemetry::OpenTelemetrySpanExt;
         use tracing_subscriber::layer::SubscriberExt;
         use tracing_subscriber::util::SubscriberInitExt;
 
@@ -148,7 +150,7 @@ impl ApmManager {
             .with_exporter(exporter)
             .with_trace_config(
                 trace::config()
-                    .with_sampler(Sampler::TraceIdRatio(config.sample_rate))
+                    .with_sampler(Sampler::TraceIdRatioBased(config.sample_rate))
                     .with_id_generator(RandomIdGenerator::default())
                     .with_resource(Resource::new(vec![
                         KeyValue::new("service.name", config.service_name.clone()),
@@ -222,16 +224,15 @@ impl ApmManager {
     }
 
     /// Create a custom span with attributes
-    pub fn create_span(&self, name: &str, attributes: Vec<(String, String)>) -> Span {
-        use opentelemetry::trace::{Tracer, SpanKind};
-        use tracing_opentelemetry::OpenTelemetrySpanExt;
+    pub fn create_span(&self, name: &str, attributes: Vec<(String, String)>) -> impl Span {
+        use opentelemetry::trace::Tracer;
 
         let tracer = global::tracer("stellar-insights");
-        let mut span = tracer.start(name);
+        let mut span = tracer.start(name.to_string());
         
         // Add attributes
         for (key, value) in attributes {
-            span = span.with_attributes(vec![KeyValue::new(key, value)]);
+            span.set_attribute(KeyValue::new(key, value));
         }
         
         span
@@ -239,7 +240,7 @@ impl ApmManager {
 
     /// Record a custom metric
     pub fn record_custom_metric(&self, name: &str, value: f64, attributes: Vec<(String, String)>) {
-        let counter = self.meter.u64_counter(name).init();
+        let counter = self.meter.u64_counter(name.to_string()).init();
         let attrs: Vec<KeyValue> = attributes
             .into_iter()
             .map(|(k, v)| KeyValue::new(k, v))
@@ -250,14 +251,14 @@ impl ApmManager {
 
     /// Record an error with context
     pub fn record_error(&self, error: &anyhow::Error, context: HashMap<String, String>) {
-        use opentelemetry::trace::{Status, Code};
+        use opentelemetry::trace::Status;
         
         let current_span = tracing::Span::current();
         current_span.record("error.message", error.to_string());
         current_span.record("error.type", std::any::type_name::<anyhow::Error>());
         
         for (key, value) in context {
-            current_span.record(&key, value);
+            current_span.record(key.as_str(), value);
         }
         
         self.metrics.error_total.add(
@@ -289,13 +290,13 @@ impl ApmMetrics {
             http_response_size: meter.u64_histogram("http_response_size_bytes").init(),
             
             // Database metrics
-            db_connections_active: meter.u64_gauge("db_connections_active").init(),
+            db_connections_active: meter.i64_up_down_counter("db_connections_active").init(),
             db_query_duration: meter.f64_histogram("db_query_duration_seconds").init(),
             db_queries_total: meter.u64_counter("db_queries_total").init(),
             
             // Business metrics
             stellar_requests_total: meter.u64_counter("stellar_requests_total").init(),
-            active_users: meter.u64_gauge("active_users").init(),
+            active_users: meter.i64_up_down_counter("active_users").init(),
             data_ingestion_rate: meter.u64_counter("data_ingestion_rate").init(),
             
             // Error metrics
@@ -303,80 +304,7 @@ impl ApmMetrics {
             panic_total: meter.u64_counter("panic_total").init(),
         }
     }
-
-    fn empty() -> Self {
-        // Create no-op metrics for when APM is disabled
-        Self {
-            http_requests_total: NoOpCounter::new(),
-            http_request_duration: NoOpHistogram::new(),
-            http_request_size: NoOpHistogram::new(),
-            http_response_size: NoOpHistogram::new(),
-            db_connections_active: NoOpGauge::new(),
-            db_query_duration: NoOpHistogram::new(),
-            db_queries_total: NoOpCounter::new(),
-            stellar_requests_total: NoOpCounter::new(),
-            active_users: NoOpGauge::new(),
-            data_ingestion_rate: NoOpCounter::new(),
-            error_total: NoOpCounter::new(),
-            panic_total: NoOpCounter::new(),
-        }
-    }
 }
-
-// No-op metric implementations for when APM is disabled
-struct NoOpCounter;
-struct NoOpHistogram;
-struct NoOpGauge;
-
-impl NoOpCounter {
-    fn new() -> Self {
-        Self
-    }
-    
-    fn add(&self, _value: u64, _attributes: &[KeyValue]) {
-        // No-op
-    }
-}
-
-impl NoOpHistogram {
-    fn new() -> Self {
-        Self
-    }
-    
-    fn record(&self, _value: f64, _attributes: &[KeyValue]) {
-        // No-op
-    }
-}
-
-impl NoOpGauge {
-    fn new() -> Self {
-        Self
-    }
-    
-    fn record(&self, _value: u64, _attributes: &[KeyValue]) {
-        // No-op
-    }
-}
-
-// Trait implementations for no-op metrics
-impl Counter<u64> for NoOpCounter {
-    fn add(&self, value: u64, attributes: &[KeyValue]) {
-        self.add(value, attributes);
-    }
-}
-
-impl Histogram<f64> for NoOpHistogram {
-    fn record(&self, value: f64, attributes: &[KeyValue]) {
-        self.record(value, attributes);
-    }
-}
-
-impl Gauge<u64> for NoOpGauge {
-    fn record(&self, value: u64, attributes: &[KeyValue]) {
-        self.record(value, attributes);
-    }
-}
-
 /// Macro for easy instrumentation
 #[macro_export]
 macro_rules! instrument_span {

@@ -1,6 +1,6 @@
 // GDPR Service - Business logic for GDPR compliance
 
-use crate::error::AppError;
+use crate::error::ApiError;
 use crate::gdpr::models::*;
 use chrono::{Duration, Utc};
 use sqlx::{Pool, Sqlite};
@@ -18,14 +18,14 @@ impl GdprService {
     }
 
     /// Get all consents for a user
-    pub async fn get_user_consents(&self, user_id: &str) -> Result<Vec<ConsentResponse>, AppError> {
+    pub async fn get_user_consents(&self, user_id: &str) -> Result<Vec<ConsentResponse>, ApiError> {
         let consents = sqlx::query_as::<_, UserConsent>(
             "SELECT * FROM user_consents WHERE user_id = ? ORDER BY consent_type"
         )
         .bind(user_id)
         .fetch_all(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         let mut responses = Vec::new();
         for consent in consents {
@@ -39,9 +39,9 @@ impl GdprService {
         }
 
         // Include all consent types even if not set (default false)
-        let existing_types: Vec<&str> = responses.iter().map(|c| c.consent_type.as_str()).collect();
+        let existing_types: Vec<String> = responses.iter().map(|c| c.consent_type.clone()).collect();
         for consent_type in ConsentType::all() {
-            if !existing_types.contains(&consent_type) {
+            if !existing_types.contains(&consent_type.to_string()) {
                 responses.push(ConsentResponse {
                     consent_type: consent_type.to_string(),
                     consent_given: false,
@@ -62,7 +62,7 @@ impl GdprService {
         request: UpdateConsentRequest,
         ip_address: Option<String>,
         user_agent: Option<String>,
-    ) -> Result<ConsentResponse, AppError> {
+    ) -> Result<ConsentResponse, ApiError> {
         let consent_type = request.consent_type.clone();
         let old_consent_given = sqlx::query_as::<_, UserConsent>(
             "SELECT * FROM user_consents WHERE user_id = ? AND consent_type = ?"
@@ -71,7 +71,7 @@ impl GdprService {
         .bind(&request.consent_type)
         .fetch_optional(&self.db)
         .await
-        .map_err(AppError::Database)?
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?
         .map(|c| c.consent_given);
 
         let now = Utc::now().to_rfc3339();
@@ -102,7 +102,7 @@ impl GdprService {
         .bind(&now)
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         // Log the consent change in audit log
         sqlx::query(
@@ -120,7 +120,7 @@ impl GdprService {
         .bind(&now)
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(ConsentResponse {
             consent_type,
@@ -138,7 +138,7 @@ impl GdprService {
         requests: Vec<UpdateConsentRequest>,
         ip_address: Option<String>,
         user_agent: Option<String>,
-    ) -> Result<Vec<ConsentResponse>, AppError> {
+    ) -> Result<Vec<ConsentResponse>, ApiError> {
         let mut responses = Vec::new();
         for request in requests {
             let response = self
@@ -154,7 +154,7 @@ impl GdprService {
         &self,
         user_id: &str,
         request: CreateExportRequest,
-    ) -> Result<ExportRequestResponse, AppError> {
+    ) -> Result<ExportRequestResponse, ApiError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         let data_types = request.data_types.join(",");
@@ -183,7 +183,7 @@ impl GdprService {
         .bind(&download_token)
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(ExportRequestResponse {
             id,
@@ -199,7 +199,7 @@ impl GdprService {
         &self,
         user_id: &str,
         request_id: &str,
-    ) -> Result<ExportRequestResponse, AppError> {
+    ) -> Result<ExportRequestResponse, ApiError> {
         let request = sqlx::query_as::<_, DataExportRequest>(
             "SELECT * FROM data_export_requests WHERE id = ? AND user_id = ?"
         )
@@ -207,8 +207,8 @@ impl GdprService {
         .bind(user_id)
         .fetch_optional(&self.db)
         .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Export request not found".to_string()))?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?
+        .ok_or(ApiError::not_found("NOT_FOUND", "Export request not found".to_string()))?;
 
         let download_url = if request.status == "completed" && request.download_token.is_some() {
             Some(format!("/api/gdpr/download/{}", request.download_token.unwrap()))
@@ -229,14 +229,14 @@ impl GdprService {
     pub async fn get_user_export_requests(
         &self,
         user_id: &str,
-    ) -> Result<Vec<ExportRequestResponse>, AppError> {
+    ) -> Result<Vec<ExportRequestResponse>, ApiError> {
         let requests = sqlx::query_as::<_, DataExportRequest>(
             "SELECT * FROM data_export_requests WHERE user_id = ? ORDER BY requested_at DESC"
         )
         .bind(user_id)
         .fetch_all(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         let mut responses = Vec::new();
         for request in requests {
@@ -263,7 +263,7 @@ impl GdprService {
         &self,
         user_id: &str,
         request: CreateDeletionRequest,
-    ) -> Result<DeletionRequestResponse, AppError> {
+    ) -> Result<DeletionRequestResponse, ApiError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         
@@ -287,7 +287,7 @@ impl GdprService {
         .bind(&confirmation_token)
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(DeletionRequestResponse {
             id,
@@ -303,7 +303,7 @@ impl GdprService {
     pub async fn confirm_deletion(
         &self,
         confirmation_token: &str,
-    ) -> Result<DeletionRequestResponse, AppError> {
+    ) -> Result<DeletionRequestResponse, ApiError> {
         let now = Utc::now().to_rfc3339();
         
         // Schedule deletion for 24 hours from now
@@ -321,10 +321,10 @@ impl GdprService {
         .bind("pending")
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Deletion request not found or already processed".to_string()));
+            return Err(ApiError::not_found("NOT_FOUND", "Deletion request not found or already processed".to_string()));
         }
 
         let request = sqlx::query_as::<_, DataDeletionRequest>(
@@ -333,7 +333,7 @@ impl GdprService {
         .bind(confirmation_token)
         .fetch_one(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(DeletionRequestResponse {
             id: request.id,
@@ -350,7 +350,7 @@ impl GdprService {
         &self,
         user_id: &str,
         request_id: &str,
-    ) -> Result<DeletionRequestResponse, AppError> {
+    ) -> Result<DeletionRequestResponse, ApiError> {
         let now = Utc::now().to_rfc3339();
 
         let result = sqlx::query(
@@ -364,10 +364,10 @@ impl GdprService {
         .bind("scheduled")
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Deletion request not found or cannot be cancelled".to_string()));
+            return Err(ApiError::not_found("NOT_FOUND", "Deletion request not found or cannot be cancelled".to_string()));
         }
 
         let request = sqlx::query_as::<_, DataDeletionRequest>(
@@ -376,7 +376,7 @@ impl GdprService {
         .bind(request_id)
         .fetch_one(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(DeletionRequestResponse {
             id: request.id,
@@ -393,7 +393,7 @@ impl GdprService {
         &self,
         user_id: &str,
         request_id: &str,
-    ) -> Result<DeletionRequestResponse, AppError> {
+    ) -> Result<DeletionRequestResponse, ApiError> {
         let request = sqlx::query_as::<_, DataDeletionRequest>(
             "SELECT * FROM data_deletion_requests WHERE id = ? AND user_id = ?"
         )
@@ -401,8 +401,8 @@ impl GdprService {
         .bind(user_id)
         .fetch_optional(&self.db)
         .await
-        .map_err(AppError::Database)?
-        .ok_or(AppError::NotFound("Deletion request not found".to_string()))?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?
+        .ok_or(ApiError::not_found("NOT_FOUND", "Deletion request not found".to_string()))?;
 
         Ok(DeletionRequestResponse {
             id: request.id,
@@ -418,14 +418,14 @@ impl GdprService {
     pub async fn get_user_deletion_requests(
         &self,
         user_id: &str,
-    ) -> Result<Vec<DeletionRequestResponse>, AppError> {
+    ) -> Result<Vec<DeletionRequestResponse>, ApiError> {
         let requests = sqlx::query_as::<_, DataDeletionRequest>(
             "SELECT * FROM data_deletion_requests WHERE user_id = ? ORDER BY requested_at DESC"
         )
         .bind(user_id)
         .fetch_all(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         let mut responses = Vec::new();
         for request in requests {
@@ -443,7 +443,7 @@ impl GdprService {
     }
 
     /// Get GDPR summary for a user
-    pub async fn get_gdpr_summary(&self, user_id: &str) -> Result<GdprSummary, AppError> {
+    pub async fn get_gdpr_summary(&self, user_id: &str) -> Result<GdprSummary, ApiError> {
         let consents = self.get_user_consents(user_id).await?;
 
         let pending_exports: i32 = sqlx::query_scalar(
@@ -454,7 +454,7 @@ impl GdprService {
         .bind("processing")
         .fetch_one(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         let pending_deletions: i32 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM data_deletion_requests WHERE user_id = ? AND status IN (?, ?)"
@@ -464,7 +464,7 @@ impl GdprService {
         .bind("scheduled")
         .fetch_one(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         let processing_count: i32 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM data_processing_log WHERE user_id = ?"
@@ -472,7 +472,7 @@ impl GdprService {
         .bind(user_id)
         .fetch_one(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(GdprSummary {
             user_id: user_id.to_string(),
@@ -535,7 +535,7 @@ impl GdprService {
         data_category: &str,
         purpose: Option<String>,
         legal_basis: Option<String>,
-    ) -> Result<(), AppError> {
+    ) -> Result<(), ApiError> {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
@@ -551,7 +551,7 @@ impl GdprService {
         .bind(&now)
         .execute(&self.db)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(|e| ApiError::internal("DATABASE_ERROR", e.to_string()))?;
 
         Ok(())
     }

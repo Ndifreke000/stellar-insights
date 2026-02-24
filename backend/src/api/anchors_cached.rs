@@ -20,15 +20,12 @@ use crate::rpc::{
 use crate::services::price_feed::PriceFeedClient;
 
 #[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct ListAnchorsQuery {
     /// Maximum number of results to return (default: 50)
     #[serde(default = "default_limit")]
-    #[param(example = 50)]
     pub limit: i64,
     /// Pagination offset (default: 0)
     #[serde(default)]
-    #[param(example = 0)]
     pub offset: i64,
 }
 
@@ -51,34 +48,24 @@ fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct AnchorMetricsResponse {
     /// Unique identifier for the anchor
-    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: String,
     /// Name of the anchor
-    #[schema(example = "MoneyGram Access")]
     pub name: String,
     /// Stellar account address
-    #[schema(example = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN")]
     pub stellar_account: String,
     /// Reliability score (0-100)
-    #[schema(example = 99.5)]
     pub reliability_score: f64,
     /// Number of assets supported
-    #[schema(example = 5)]
     pub asset_coverage: usize,
     /// Failure rate percentage
-    #[schema(example = 0.5)]
     pub failure_rate: f64,
     /// Total number of transactions
-    #[schema(example = 10000)]
     pub total_transactions: i64,
     /// Number of successful transactions
-    #[schema(example = 9950)]
     pub successful_transactions: i64,
     /// Number of failed transactions
-    #[schema(example = 50)]
     pub failed_transactions: i64,
     /// Health status (green, yellow, red)
-    #[schema(example = "green")]
     pub status: String,
 }
 
@@ -87,7 +74,6 @@ pub struct AnchorsResponse {
     /// List of anchors with their metrics
     pub anchors: Vec<AnchorMetricsResponse>,
     /// Total number of anchors
-    #[schema(example = 25)]
     pub total: usize,
 }
 

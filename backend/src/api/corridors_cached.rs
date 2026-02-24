@@ -92,91 +92,66 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CorridorResponse {
     /// Unique identifier for the corridor
-    #[schema(example = "USDC:native->XLM:native")]
     pub id: String,
     /// Source asset code
-    #[schema(example = "USDC")]
     pub source_asset: String,
     /// Destination asset code
-    #[schema(example = "XLM")]
     pub destination_asset: String,
     /// Success rate percentage
-    #[schema(example = 99.8)]
     pub success_rate: f64,
     /// Total payment attempts
-    #[schema(example = 5000)]
     pub total_attempts: i64,
     /// Number of successful payments
-    #[schema(example = 4990)]
     pub successful_payments: i64,
     /// Number of failed payments
-    #[schema(example = 10)]
     pub failed_payments: i64,
     /// Average latency in milliseconds
-    #[schema(example = 450.5)]
     pub average_latency_ms: f64,
     /// Median latency in milliseconds
-    #[schema(example = 380.0)]
     pub median_latency_ms: f64,
     /// 95th percentile latency in milliseconds
-    #[schema(example = 850.0)]
     pub p95_latency_ms: f64,
     /// 99th percentile latency in milliseconds
-    #[schema(example = 1200.0)]
     pub p99_latency_ms: f64,
     /// Liquidity depth in USD
-    #[schema(example = 1500000.0)]
     pub liquidity_depth_usd: f64,
     /// 24-hour trading volume in USD
-    #[schema(example = 150000.0)]
     pub liquidity_volume_24h_usd: f64,
     /// Liquidity trend (increasing, stable, decreasing)
-    #[schema(example = "stable")]
     pub liquidity_trend: String,
     /// Overall health score (0-100)
-    #[schema(example = 95.5)]
     pub health_score: f64,
     /// Last update timestamp
-    #[schema(example = "2024-01-15T10:30:00Z")]
     pub last_updated: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SuccessRateDataPoint {
     /// Timestamp of the data point
-    #[schema(example = "2024-01-15T10:00:00Z")]
     pub timestamp: String,
     /// Success rate percentage at this time
-    #[schema(example = 99.5)]
     pub success_rate: f64,
     /// Number of attempts at this time
-    #[schema(example = 150)]
     pub attempts: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LatencyDataPoint {
     /// Latency bucket in milliseconds
-    #[schema(example = 500)]
     pub latency_bucket_ms: i32,
     /// Number of transactions in this bucket
-    #[schema(example = 250)]
     pub count: i64,
     /// Percentage of total transactions
-    #[schema(example = 25.5)]
     pub percentage: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LiquidityDataPoint {
     /// Timestamp of the data point
-    #[schema(example = "2024-01-15T10:00:00Z")]
     pub timestamp: String,
     /// Liquidity in USD at this time
-    #[schema(example = 1500000.0)]
     pub liquidity_usd: f64,
     /// 24-hour volume in USD
-    #[schema(example = 150000.0)]
     pub volume_24h_usd: f64,
 }
 
@@ -195,36 +170,27 @@ pub struct CorridorDetailResponse {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct ListCorridorsQuery {
     /// Maximum number of results to return (default: 50)
     #[serde(default = "default_limit")]
-    #[param(example = 50)]
     pub limit: i64,
     /// Pagination offset (default: 0)
     #[serde(default)]
-    #[param(example = 0)]
     pub offset: i64,
     /// Sort by field (success_rate or volume)
     #[serde(default)]
     pub sort_by: SortBy,
     /// Minimum success rate filter
-    #[param(example = 95.0)]
     pub success_rate_min: Option<f64>,
     /// Maximum success rate filter
-    #[param(example = 100.0)]
     pub success_rate_max: Option<f64>,
     /// Minimum volume filter (USD)
-    #[param(example = 100000.0)]
     pub volume_min: Option<f64>,
     /// Maximum volume filter (USD)
-    #[param(example = 10000000.0)]
     pub volume_max: Option<f64>,
     /// Filter by asset code
-    #[param(example = "USDC")]
     pub asset_code: Option<String>,
     /// Time period for metrics (24h, 7d, 30d)
-    #[param(example = "24h")]
     pub time_period: Option<String>,
 }
 
@@ -566,6 +532,7 @@ fn calculate_latency_distribution(
     corridor_payments: &[&crate::rpc::Payment],
     _total_payments: i64,
 ) -> Vec<LatencyDataPoint> {
+    use std::collections::HashMap;
     // Define latency buckets in milliseconds
     let buckets = vec![100, 250, 500, 1000, 2000];
     let mut distribution: HashMap<i32, i64> = HashMap::new();
@@ -759,7 +726,7 @@ pub async fn get_corridor_detail(
     .await
     .map_err(|e| {
         tracing::error!("Failed to fetch payments from RPC: {}", e);
-        ApiError::internal_server_error(
+        ApiError::internal(
             "RPC_FETCH_ERROR",
             "Failed to fetch payment data from RPC",
         )
@@ -914,7 +881,7 @@ pub async fn get_corridor_detail(
         .set(
             &cache_key,
             &response,
-            std::time::Duration::from_secs(300), // 5 minutes
+            300, // 5 minutes
         )
         .await;
 

@@ -1102,6 +1102,11 @@ async fn main() -> Result<()> {
         .with_state(Arc::clone(&gdpr_service))
         .layer(cors.clone());
 
+    // Build Export routes
+    let export_routes = Router::new()
+        .nest("/api/export", stellar_insights_backend::api::export::routes(app_state.clone()))
+        .layer(cors.clone());
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
@@ -1144,6 +1149,7 @@ async fn main() -> Result<()> {
         .merge(metrics_routes)
         .merge(verification_routes)
         .merge(gdpr_routes)
+        .merge(export_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
         .merge(alert_ws_routes)

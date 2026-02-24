@@ -48,13 +48,9 @@ impl PaymentRoute {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CostCalculationRequest {
-    #[schema(example = "USDC")]
     pub source_currency: String,
-    #[schema(example = "NGN")]
     pub destination_currency: String,
-    #[schema(example = 1000.0)]
     pub source_amount: f64,
-    #[schema(example = 1550000.0)]
     pub destination_amount: Option<f64>,
     pub routes: Option<Vec<PaymentRoute>>,
 }

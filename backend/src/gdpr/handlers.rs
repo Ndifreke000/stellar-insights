@@ -1,6 +1,6 @@
 // GDPR API Handlers - HTTP endpoints for GDPR compliance
 
-use crate::error::AppError;
+use crate::error::ApiError;
 use crate::gdpr::models::*;
 use crate::gdpr::service::GdprService;
 use actix_web::{web, HttpRequest, Responder};
@@ -10,7 +10,7 @@ use serde_json::json;
 pub async fn get_consents(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     // Extract user ID from request (assumes auth middleware sets this)
     let user_id = req
         .headers()
@@ -27,7 +27,7 @@ pub async fn update_consent(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     body: web::Json<UpdateConsentRequest>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -57,7 +57,7 @@ pub async fn batch_update_consents(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     body: web::Json<BatchUpdateConsentsRequest>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -76,7 +76,7 @@ pub async fn batch_update_consents(
         .map(|s| s.to_string());
 
     let responses = gdpr_service
-        .batch_update_consents(user_id, body.consents, ip_address, user_agent)
+        .batch_update_consents(user_id, body.into_inner().consents, ip_address, user_agent)
         .await?;
 
     Ok(web::Json(responses))
@@ -87,7 +87,7 @@ pub async fn create_export_request(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     body: web::Json<CreateExportRequest>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -106,7 +106,7 @@ pub async fn get_export_request(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     path: web::Path<String>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -125,7 +125,7 @@ pub async fn get_export_request(
 pub async fn get_export_requests(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -141,7 +141,7 @@ pub async fn create_deletion_request(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     body: web::Json<CreateDeletionRequest>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -159,7 +159,7 @@ pub async fn create_deletion_request(
 pub async fn confirm_deletion(
     gdpr_service: web::Data<GdprService>,
     body: web::Json<ConfirmDeletionRequest>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let response = gdpr_service
         .confirm_deletion(&body.confirmation_token)
         .await?;
@@ -172,7 +172,7 @@ pub async fn cancel_deletion(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     path: web::Path<String>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -192,7 +192,7 @@ pub async fn get_deletion_request(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
     path: web::Path<String>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -211,7 +211,7 @@ pub async fn get_deletion_request(
 pub async fn get_deletion_requests(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -226,7 +226,7 @@ pub async fn get_deletion_requests(
 pub async fn get_gdpr_summary(
     req: HttpRequest,
     gdpr_service: web::Data<GdprService>,
-) -> Result<impl Responder, AppError> {
+) -> Result<impl Responder, ApiError> {
     let user_id = req
         .headers()
         .get("x-user-id")
@@ -238,7 +238,7 @@ pub async fn get_gdpr_summary(
 }
 
 /// Get available exportable data types
-pub async fn get_exportable_types() -> Result<impl Responder, AppError> {
+pub async fn get_exportable_types() -> Result<impl Responder, ApiError> {
     let types = GdprService::get_exportable_data_types();
     Ok(web::Json(types))
 }

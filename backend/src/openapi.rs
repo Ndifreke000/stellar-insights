@@ -1,6 +1,7 @@
 use utoipa::OpenApi;
 
-#[derive(OpenApi)]
+// #[derive(OpenApi)]
+/*
 #[openapi(
     info(
         title = "Stellar Insights API",
@@ -61,4 +62,5 @@ use utoipa::OpenApi;
         (name = "Metrics", description = "System metrics and monitoring")
     )
 )]
+*/
 pub struct ApiDoc;

@@ -2,7 +2,7 @@ use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::Response,
 };
-use futures::{SinkExt, StreamExt};
+use futures_util::{sink::SinkExt, stream::StreamExt};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 

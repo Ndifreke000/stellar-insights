@@ -360,10 +360,10 @@ impl OAuthService {
         let enc_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
             .map_err(|e| anyhow!("Failed to encrypt token for lookup: {}", e))?;
 
-        let result = sqlx::query!(
-            r#"DELETE FROM oauth_tokens WHERE access_token = ?"#,
-            enc_token
+        let result: sqlx::sqlite::SqliteQueryResult = sqlx::query(
+            r#"DELETE FROM oauth_tokens WHERE access_token = ?"#
         )
+        .bind(enc_token)
         .execute(&self.db)
         .await?;
 
