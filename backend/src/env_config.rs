@@ -167,14 +167,16 @@ fn validate_stellar_public_key(value: &str) -> bool {
     if !value.starts_with('G') || value.len() != 56 {
         return false;
     }
-    
+
     // Check if it's not the placeholder value
     if value == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         return false;
     }
-    
+
     // Validate base32 characters (A-Z, 2-7)
-    value.chars().all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
+    value
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
 }
 
 #[cfg(test)]

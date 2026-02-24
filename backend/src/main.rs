@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use async_graphql::http::{playground_source, GraphiQLSource};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
 use axum::{
-    routing::{get, post, put},
     http::Method,
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
 use dotenv::dotenv;
@@ -14,16 +17,13 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use async_graphql::http::{GraphiQLSource, playground_source};
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::response::{Html, IntoResponse};
-use axum::extract::State;
 
 use stellar_insights_backend::alerts::AlertManager;
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::api::api_keys;
+use stellar_insights_backend::api::asset_verification;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
 use stellar_insights_backend::api::cost_calculator;
@@ -38,8 +38,7 @@ use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
-use stellar_insights_backend::graphql::{build_schema, AppSchema};
-use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
+// use stellar_insights_backend::graphql::{build_schema, AppSchema};
 // use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
@@ -52,7 +51,7 @@ use stellar_insights_backend::monitor::CorridorMonitor;
 use stellar_insights_backend::network::NetworkConfig;
 use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
 use stellar_insights_backend::openapi::ApiDoc;
-use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use stellar_insights_backend::rate_limit::{rate_limit_middleware, ClientRateLimits, RateLimitConfig, RateLimiter};
 use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
@@ -332,11 +331,11 @@ async fn main() -> Result<()> {
 
     // Initialize SEP-10 Service for Stellar authentication
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
-    
+
     // Get and validate SEP-10 server public key (required for security)
     let sep10_server_key = std::env::var("SEP10_SERVER_PUBLIC_KEY")
         .context("SEP10_SERVER_PUBLIC_KEY environment variable is required for authentication")?;
-    
+
     // Additional validation: ensure it's not the placeholder value
     if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         anyhow::bail!(
@@ -344,12 +343,12 @@ async fn main() -> Result<()> {
              Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
         );
     }
-    
+
     tracing::info!(
         "SEP-10 authentication enabled with server key: {}...",
         &sep10_server_key[..8]
     );
-    
+
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
             std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
@@ -620,20 +619,38 @@ async fn main() -> Result<()> {
     .await;
     tracing::info!("Background job scheduler started");
 
-    // Initialize rate limiter (gracefully falls back to memory-only if Redis unavailable)
-    let rate_limiter = Arc::new(
-        RateLimiter::new()
-            .await
-            .expect("Rate limiter initialization should never fail - it has built-in fallback to memory-only mode")
-    );
+    // Initialize rate limiter with database support for API key validation
+    let rate_limiter_result = RateLimiter::new_with_db(Some(pool.clone())).await;
+    let rate_limiter = match rate_limiter_result {
+        Ok(limiter) => {
+            tracing::info!("Rate limiter initialized successfully with database support");
+            Arc::new(limiter)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to initialize Redis rate limiter, creating with memory fallback: {}",
+                e
+            );
+            Arc::new(
+                RateLimiter::new_with_db(Some(pool.clone()))
+                    .await
+                    .unwrap_or_else(|_| panic!("Failed to create rate limiter: critical error")),
+            )
+        }
+    };
 
-    // Configure rate limits for endpoints
+    // Configure rate limits for endpoints with per-client tiers
     rate_limiter
         .register_endpoint(
             "/health".to_string(),
             RateLimitConfig {
                 requests_per_minute: 1000,
                 whitelist_ips: vec!["127.0.0.1".to_string()],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 1000,
+                    premium: 5000,
+                    anonymous: 1000,
+                }),
             },
         )
         .await;
@@ -644,6 +661,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -654,6 +676,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -664,6 +691,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -674,6 +706,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -684,6 +721,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -694,6 +736,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 1500,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -704,6 +751,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -714,6 +766,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -1003,29 +1060,30 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build GraphQL schema
-    let graphql_schema = build_schema(Arc::new(pool.clone()));
-    tracing::info!("GraphQL schema initialized");
+    // let graphql_schema = build_schema(Arc::new(pool.clone()));
+    // tracing::info!("GraphQL schema initialized");
 
     // GraphQL handler
-    async fn graphql_handler(
-        State(schema): State<AppSchema>,
-        req: GraphQLRequest,
-    ) -> GraphQLResponse {
-        schema.execute(req.into_inner()).await.into()
-    }
+    // async fn graphql_handler(
+    //     State(schema): State<AppSchema>,
+    //     req: GraphQLRequest,
+    // ) -> GraphQLResponse {
+    //     schema.execute(req.into_inner()).await.into()
+    // }
 
     // GraphQL Playground handler
-    async fn graphql_playground() -> impl IntoResponse {
-        Html(playground_source(
-            async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
-        ))
-    }
+    // async fn graphql_playground() -> impl IntoResponse {
+    //     Html(playground_source(
+    //         async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
+    //     ))
+    // }
 
     // Build GraphQL routes
-    let graphql_routes = Router::new()
-        .route("/graphql", post(graphql_handler))
-        .route("/graphql/playground", get(graphql_playground))
-        .with_state(graphql_schema)
+    // let graphql_routes = Router::new()
+    //     .route("/graphql", post(graphql_handler))
+    //     .route("/graphql/playground", get(graphql_playground))
+    //     .with_state(graphql_schema);
+
     // Build achievements / quests routes
     let achievements_routes = Router::new()
         .nest(
@@ -1123,7 +1181,17 @@ async fn main() -> Result<()> {
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,
-        )));
+        )))
+        .layer(cors.clone());
+
+    // Build asset verification routes
+    let asset_verification_routes = Router::new()
+        .nest("/api/assets", asset_verification::routes(pool.clone()))
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
 
     // Build GDPR routes (temporarily disabled)
     /*
@@ -1212,10 +1280,10 @@ async fn main() -> Result<()> {
         .merge(api_analytics_routes)
         .merge(cache_routes)
         .merge(metrics_routes)
-        .merge(graphql_routes); // Add GraphQL routes
+        // .merge(graphql_routes) // Add GraphQL routes
         .merge(admin_db_routes)
-        .merge(metrics_routes)
         .merge(verification_routes)
+        .merge(asset_verification_routes)
         // .merge(gdpr_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
@@ -1235,7 +1303,10 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
 
     tracing::info!("Server starting on {}", addr);
-    tracing::info!("GraphQL Playground available at http://{}/graphql/playground", addr);
+    tracing::info!(
+        "GraphQL Playground available at http://{}/graphql/playground",
+        addr
+    );
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     // Clone resources needed for shutdown
@@ -1263,22 +1334,6 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .await?;
-
-    Ok(())
-}
-
-// Build trustline routes
-let trustline_routes = Router::new()
-    .nest(
-        "/api/trustlines",
-        stellar_insights_backend::api::trustlines::routes(Arc::clone(&trustline_analyzer)),
-    )
-    .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
-        rate_limiter.clone(),
-        rate_limit_middleware,
-    )))
-    .layer(cors.clone());
     .with_graceful_shutdown(shutdown_signal);
 
     tracing::info!("Server is ready to accept connections");

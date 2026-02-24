@@ -760,14 +760,7 @@ pub async fn get_corridor_detail(
     .await
     .map_err(|e| {
         tracing::error!("Failed to fetch payments from RPC: {}", e);
-<<<<<<< fix/cache-invalidation-redis-scan
-        ApiError::internal_server_error("RPC_FETCH_ERROR", "Failed to fetch payment data from RPC")
-=======
-        ApiError::internal(
-            "RPC_FETCH_ERROR",
-            "Failed to fetch payment data from RPC",
-        )
->>>>>>> main
+        ApiError::internal("RPC_FETCH_ERROR", "Failed to fetch payment data from RPC")
     })?;
 
     // Filter payments for this specific corridor
@@ -917,9 +910,7 @@ pub async fn get_corridor_detail(
     // Cache the response with 5-minute TTL
     let _ = cache
         .set(
-            &cache_key,
-            &response,
-            300, // 5 minutes
+            &cache_key, &response, 300, // 5 minutes
         )
         .await;
 
@@ -963,6 +954,7 @@ mod tests {
             source_amount: None,
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();
@@ -991,6 +983,7 @@ mod tests {
             source_amount: None,
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();
@@ -1019,6 +1012,7 @@ mod tests {
             source_amount: Some("105.0".to_string()),
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();
@@ -1047,6 +1041,7 @@ mod tests {
             source_amount: Some("150.0".to_string()),
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();
@@ -1075,6 +1070,7 @@ mod tests {
             source_amount: Some("500.0".to_string()),
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();
@@ -1104,6 +1100,7 @@ mod tests {
             source_amount: None,
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
+            asset_balance_changes: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment).unwrap();

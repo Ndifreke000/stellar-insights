@@ -355,12 +355,11 @@ impl OAuthService {
         let enc_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
             .map_err(|e| anyhow!("Failed to encrypt token for lookup: {}", e))?;
 
-        let result = sqlx::query!(
-            r#"DELETE FROM oauth_tokens WHERE access_token = ?"#,
-            enc_token
-        )
-        .execute(&self.db)
-        .await?;
+        let result: sqlx::sqlite::SqliteQueryResult =
+            sqlx::query("DELETE FROM oauth_tokens WHERE access_token = ?")
+                .bind(enc_token)
+                .execute(&self.db)
+                .await?;
 
         if result.rows_affected() == 0 {
             tracing::warn!("Token revocation requested but token not found in database");

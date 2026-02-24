@@ -124,7 +124,7 @@ pub async fn get_anchors(
     let response = <()>::get_or_fetch(&cache, &cache_key, cache.config.get_ttl("anchor"), async {
         // Get anchor metadata from database (names, accounts, etc.)
         let anchors = db.list_anchors(params.limit, params.offset).await?;
-        
+
         if anchors.is_empty() {
             return Ok(AnchorsResponse {
                 anchors: vec![],
@@ -137,8 +137,11 @@ pub async fn get_anchors(
             .iter()
             .map(|a| uuid::Uuid::parse_str(&a.id).unwrap_or_else(|_| uuid::Uuid::nil()))
             .collect();
-        
-        let asset_map = db.get_assets_by_anchors(&anchor_ids).await.unwrap_or_default();
+
+        let asset_map = db
+            .get_assets_by_anchors(&anchor_ids)
+            .await
+            .unwrap_or_default();
 
         let circuit_breaker = rpc_circuit_breaker();
         let mut anchor_responses = Vec::new();
@@ -148,10 +151,7 @@ pub async fn get_anchors(
             let anchor_id = uuid::Uuid::parse_str(&anchor.id).unwrap_or_else(|_| uuid::Uuid::nil());
 
             // Get pre-fetched assets (no additional query needed)
-            let assets = asset_map
-                .get(&anchor.id)
-                .cloned()
-                .unwrap_or_default();
+            let assets = asset_map.get(&anchor.id).cloned().unwrap_or_default();
 
             // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
             let payments = match rpc_client

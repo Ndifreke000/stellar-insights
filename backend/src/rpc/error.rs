@@ -37,20 +37,8 @@ impl std::error::Error for RpcError {}
 
 impl RpcError {
     pub fn is_retryable(&self) -> bool {
-<<<<<<< fix/cache-invalidation-redis-scan
-        matches!(
-            self,
-            RpcError::NetworkError(_)
-                | RpcError::TimeoutError(_)
-                | RpcError::RateLimitError { .. }
-                | RpcError::ServerError {
-                    status: 500..=599,
-                    ..
-                }
-        )
-=======
-        self.is_transient() || matches!(self, RpcError::ServerError { status, .. } if *status >= 500)
->>>>>>> main
+        self.is_transient()
+            || matches!(self, RpcError::ServerError { status, .. } if *status >= 500)
     }
 
     pub fn is_transient(&self) -> bool {
@@ -60,14 +48,6 @@ impl RpcError {
         )
     }
 
-<<<<<<< fix/cache-invalidation-redis-scan
-    pub fn is_retryable(&self) -> bool {
-        self.is_transient()
-            || matches!(self, RpcError::ServerError { status, .. } if *status >= 500)
-    }
-
-=======
->>>>>>> main
     pub fn categorize(err: &str) -> Self {
         let lowered = err.to_ascii_lowercase();
         if lowered.contains("timeout") || lowered.contains("timed out") {

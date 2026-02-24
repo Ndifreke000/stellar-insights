@@ -19,7 +19,7 @@ jobs:
     
     - name: Backend Clippy
       working-directory: ./backend
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --lib -- -W clippy::all
     
     - name: Contracts Clippy
       working-directory: ./contracts

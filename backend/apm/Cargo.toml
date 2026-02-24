@@ -12,11 +12,8 @@ opentelemetry_sdk = { version = "0.21", features = ["rt-tokio", "trace"] }
 opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.14", features = ["trace", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.13"
-<<<<<<< fix/cache-invalidation-redis-scan
 
-=======
->>>>>>> main
-
+main
 # Tracing integration
 tracing = "0.1"
 tracing-opentelemetry = "0.22"

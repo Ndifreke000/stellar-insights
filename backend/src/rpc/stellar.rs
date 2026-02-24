@@ -1394,18 +1394,21 @@ impl StellarRpcClient {
         if asset.asset_type == "native" {
             Ok(format!("{}_asset_type=native", prefix))
         } else {
-            let asset_code = asset.asset_code.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Asset code missing for non-native asset type: {}", asset.asset_type))?;
-            let asset_issuer = asset.asset_issuer.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Asset issuer missing for non-native asset type: {}", asset.asset_type))?;
+            let asset_code = asset.asset_code.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Asset code missing for non-native asset type: {}",
+                    asset.asset_type
+                )
+            })?;
+            let asset_issuer = asset.asset_issuer.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Asset issuer missing for non-native asset type: {}",
+                    asset.asset_type
+                )
+            })?;
             Ok(format!(
                 "{}_asset_type={}&{}_asset_code={}&{}_asset_issuer={}",
-                prefix,
-                asset.asset_type,
-                prefix,
-                asset_code,
-                prefix,
-                asset_issuer
+                prefix, asset.asset_type, prefix, asset_code, prefix, asset_issuer
             ))
         }
     }

@@ -20,7 +20,6 @@ pub mod email;
 pub mod env_config;
 pub mod error;
 // pub mod gdpr;
-pub mod env_config;
 pub mod handlers;
 pub mod http_cache;
 pub mod ingestion;
@@ -51,8 +50,6 @@ pub mod websocket;
 pub mod rpc;
 pub mod rpc_handlers;
 pub mod telegram;
-
-pub mod request_id;
 
 #[cfg(test)]
 mod ml_tests;

@@ -325,20 +325,32 @@ impl Database {
         }
 
         let anchor_id_strs: Vec<String> = anchor_ids.iter().map(|id| id.to_string()).collect();
-        let assets = sqlx::query_as::<_, Asset>(
-            r#"
-            SELECT * FROM assets 
-            WHERE anchor_id = ANY($1)
-            ORDER BY anchor_id, asset_code ASC
-            "#,
-        )
-        .bind(&anchor_id_strs)
-        .fetch_all(&self.pool)
-        .await?;
+        let placeholders = anchor_id_strs
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
 
-        let mut result: std::collections::HashMap<String, Vec<Asset>> = std::collections::HashMap::new();
+        let query_str = format!(
+            "SELECT * FROM assets WHERE anchor_id IN ({}) ORDER BY anchor_id, asset_code ASC",
+            placeholders
+        );
+
+        let mut query = sqlx::query_as::<_, Asset>(&query_str);
+        for id in &anchor_id_strs {
+            query = query.bind(id);
+        }
+
+        let assets = query.fetch_all(&self.pool).await?;
+
+        let mut result: std::collections::HashMap<String, Vec<Asset>> =
+            std::collections::HashMap::new();
         for asset in assets {
-            result.entry(asset.anchor_id.clone()).or_insert_with(Vec::new).push(asset);
+            result
+                .entry(asset.anchor_id.clone())
+                .or_insert_with(Vec::new)
+                .push(asset);
         }
 
         Ok(result)
