@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:a11y": "vitest --run src/**/*.a11y.test.tsx", 
     "test:ui": "vitest --ui",
+    "test:contrast": "node scripts/validate-colors.js",
     "benchmark": "node benchmarks/api.bench.mjs",
     "benchmark:save-baseline": "SAVE_BASELINE=true node benchmarks/api.bench.mjs",
     "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
