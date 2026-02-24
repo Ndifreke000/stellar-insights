@@ -38,6 +38,7 @@ use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::elk_health;
 // use stellar_insights_backend::graphql::{build_schema, AppSchema};
 // use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
@@ -1252,6 +1253,8 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/metrics", get(obs_metrics::metrics_handler))
+        .route("/api/elk/health", get(elk_health::elk_health_check))
+        .route("/api/elk/metrics", get(elk_health::logging_metrics))
         .merge(swagger_routes)
         .merge(auth_routes)
         .merge(oauth_routes)
