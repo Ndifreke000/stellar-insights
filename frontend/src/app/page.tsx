@@ -29,7 +29,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Navigation */}
-      <nav className="fixed w-full top-0 z-50 bg-background/80 backdrop-blur-sm border-b border-gray-500">
+      <nav className="fixed w-full top-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export default function Home() {
                   >
                     Access Dashboard <ArrowRight className="w-5 h-5" />
                   </Link>
-                  <button className="px-8 py-4 bg-blue-9000 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
+                  <button className="px-8 py-4 bg-muted text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     View Documentation
                   </button>
                 </>
@@ -228,7 +228,7 @@ export default function Home() {
                     {isConnecting ? "Connecting..." : "Connect Wallet to Start"}
                     {!isConnecting && <ArrowRight className="w-5 h-5" />}
                   </button>
-                  <button className="px-8 py-4 bg-gray-400 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
+                  <button className="px-8 py-4 bg-muted text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     Watch Demo
                   </button>
                 </>
@@ -241,7 +241,7 @@ export default function Home() {
       {/* Problem Section */}
       <section
         id="problem"
-        className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-700/30"
+        className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30"
       >
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
@@ -283,7 +283,7 @@ export default function Home() {
             ].map((item, i) => (
               <div
                 key={i}
-                className="p-6 rounded-xl bg-card border border-gray-500 hover:border-blue-500/50 transition group"
+                className="p-6 rounded-xl bg-card border border-border hover:border-primary/50 transition group"
               >
                 <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-500 mb-4 group-hover:bg-primary/20 transition">
                   {item.icon}
@@ -371,7 +371,7 @@ export default function Home() {
       {/* Features */}
       <section
         id="features"
-        className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-700/30"
+        className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30"
       >
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
@@ -406,7 +406,7 @@ export default function Home() {
             ].map((item, i) => (
               <div
                 key={i}
-                className="p-6 rounded-lg bg-card border border-gray-500 hover:border-blue-500/50 transition cursor-pointer"
+                className="p-6 rounded-lg bg-card border border-border hover:border-primary/50 transition cursor-pointer"
               >
                 <h3 className="font-semibold text-lg mb-2">{item.role}</h3>
                 <p className="text-sm text-muted-foreground">{item.benefit}</p>
@@ -437,7 +437,7 @@ export default function Home() {
                   <button className="px-8 py-3 bg-blue-500 text-primary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     Go to Dashboard
                   </button>
-                  <button className="px-8 py-3 bg-gray-500 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
+                  <button className="px-8 py-3 bg-muted text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     View API Docs
                   </button>
                 </>
@@ -451,7 +451,7 @@ export default function Home() {
                     <Wallet className="w-4 h-4" />
                     {isConnecting ? "Connecting..." : "Connect Wallet"}
                   </button>
-                  <button className="px-8 py-3 bg-gray-700 text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
+                  <button className="px-8 py-3 bg-muted text-secondary-foreground rounded-full font-semibold hover:opacity-90 transition">
                     Schedule a Demo
                   </button>
                 </>
@@ -478,7 +478,7 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4 text-gray-500">Product</h4>
+              <h4 className="font-semibold mb-4 text-muted-foreground">Product</h4>
               <ul className="space-y-2 text-sm">
                 <li>
                   <a
@@ -508,7 +508,7 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4 text-gray-500">Company</h4>
+              <h4 className="font-semibold mb-4 text-muted-foreground">Company</h4>
               <ul className="space-y-2 text-sm">
                 <li>
                   <a
@@ -538,7 +538,7 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4 text-gray-500">Legal</h4>
+              <h4 className="font-semibold mb-4 text-muted-foreground">Legal</h4>
               <ul className="space-y-2 text-sm">
                 <li>
                   <a
