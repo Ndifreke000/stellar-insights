@@ -17,15 +17,15 @@
     "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
   },
   "dependencies": {
-    "@prisma/client": "^7.3.0",
+    "@prisma/client": "^6.19.2",
     "@stellar/stellar-sdk": "^14.5.0",
     "d3-force-3d": "^3.0.6",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.29.2",
-    "jspdf": "^4.0.0",
+    "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.562.0",
-    "next": "16.1.4",
+    "next": "16.1.6",
     "next-intl": "^4.8.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -43,16 +43,16 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autocannon": "^8.0.0",
     "axe-core": "^4.10.2",
-    "eslint": "^9",
+    "eslint": "^10.0.2",
     "eslint-config-next": "16.1.6",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "jest-axe": "^9.0.0",
     "jsdom": "^28.1.0",
-    "prisma": "^7.3.0",
+    "prisma": "^6.19.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.18",
-    "vitest-axe": "^1.0.0"
+    "vitest-axe": "^1.0.0-pre.5"
   },
   "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
 }
