@@ -16,6 +16,7 @@ pub mod cache_middleware;
 pub mod crypto;
 pub mod database;
 pub mod db;
+pub mod elk_health;
 pub mod email;
 pub mod env_config;
 pub mod error;
