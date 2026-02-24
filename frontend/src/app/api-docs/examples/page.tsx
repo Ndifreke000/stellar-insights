@@ -356,7 +356,7 @@ const CodeExamples = () => {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Code Examples</h1>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-muted-foreground dark:text-gray-300">
           Ready-to-use code examples in multiple programming languages
         </p>
       </div>
@@ -462,9 +462,9 @@ const CodeExamples = () => {
       {filteredExamples.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center">
-            <Code2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <Code2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">No Examples Found</h3>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-muted-foreground dark:text-muted-foreground">
               Try selecting a different category or language
             </p>
           </CardContent>
@@ -489,19 +489,19 @@ const CodeExamples = () => {
             </div>
             <div>
               <h4 className="font-medium mb-2">Authentication</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 No API key required for public endpoints
               </p>
             </div>
             <div>
               <h4 className="font-medium mb-2">Response Format</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 All responses are in JSON format
               </p>
             </div>
             <div>
               <h4 className="font-medium mb-2">Rate Limiting</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 100 requests per minute per IP
               </p>
             </div>

@@ -91,13 +91,13 @@ export default function ExportPage() {
             href="/analytics"
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <ArrowLeft className="w-5 h-5 text-muted-foreground dark:text-muted-foreground" />
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               Export Data
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground dark:text-muted-foreground">
               Download custom reports
             </p>
           </div>
@@ -151,7 +151,7 @@ export default function ExportPage() {
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
-                <button className="flex items-center justify-center gap-2 w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition">
+                <button className="flex items-center justify-center gap-2 w-full py-2 text-sm text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200 transition">
                   <Mail className="w-4 h-4" />
                   Email Report
                 </button>

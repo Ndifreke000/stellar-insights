@@ -13,13 +13,13 @@ interface CorridorHealthCardProps {
 export function CorridorHealthCard({ corridors }: CorridorHealthCardProps) {
   return (
     <div className="col-span-1 bg-white rounded shadow p-4">
-      <h2 className="text-sm text-gray-500">Active Corridor Health</h2>
+      <h2 className="text-sm text-muted-foreground">Active Corridor Health</h2>
       <ul className="mt-3 space-y-3">
         {corridors.map((c) => (
           <li key={c.id} className="flex items-center justify-between">
             <div>
               <div className="font-medium">{c.id}</div>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-muted-foreground">
                 Success: {(c.successRate * 100).toFixed(2)}%
               </div>
             </div>

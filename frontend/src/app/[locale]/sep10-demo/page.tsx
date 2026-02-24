@@ -71,7 +71,7 @@ export default function Sep10DemoPage() {
             </h1>
           </div>
 
-          <p className="text-gray-600 dark:text-gray-300 mb-8">
+          <p className="text-muted-foreground dark:text-gray-300 mb-8">
             This demo showcases Stellar Web Authentication (SEP-10) - a secure,
             password-free authentication method using your Stellar wallet.
           </p>
@@ -86,21 +86,21 @@ export default function Sep10DemoPage() {
                 {isConnected ? (
                   <>
                     <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="text-sm text-muted-foreground dark:text-gray-300">
                       Connected
                     </span>
                   </>
                 ) : (
                   <>
                     <XCircle className="w-5 h-5 text-red-500" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="text-sm text-muted-foreground dark:text-gray-300">
                       Not Connected
                     </span>
                   </>
                 )}
               </div>
               {address && (
-                <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-2 break-all">
+                <p className="text-xs font-mono text-muted-foreground dark:text-muted-foreground mt-2 break-all">
                   {address}
                 </p>
               )}
@@ -114,21 +114,21 @@ export default function Sep10DemoPage() {
                 {isAuthenticated ? (
                   <>
                     <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="text-sm text-muted-foreground dark:text-gray-300">
                       Authenticated
                     </span>
                   </>
                 ) : (
                   <>
                     <XCircle className="w-5 h-5 text-red-500" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="text-sm text-muted-foreground dark:text-gray-300">
                       Not Authenticated
                     </span>
                   </>
                 )}
               </div>
               {authToken && (
-                <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-2 truncate">
+                <p className="text-xs font-mono text-muted-foreground dark:text-muted-foreground mt-2 truncate">
                   Token: {authToken.substring(0, 20)}...
                 </p>
               )}
@@ -201,7 +201,7 @@ export default function Sep10DemoPage() {
                   <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
                     {testResult.success ? 'Success' : 'Error'}
                   </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <p className="text-sm text-muted-foreground dark:text-gray-300">
                     {testResult.message}
                   </p>
                 </div>
@@ -214,7 +214,7 @@ export default function Sep10DemoPage() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
               How SEP-10 Works
             </h2>
-            <ol className="space-y-3 text-gray-600 dark:text-gray-300">
+            <ol className="space-y-3 text-muted-foreground dark:text-gray-300">
               <li className="flex gap-3">
                 <span className="font-bold text-blue-600">1.</span>
                 <span>
@@ -258,7 +258,7 @@ export default function Sep10DemoPage() {
             <h3 className="font-bold text-gray-900 dark:text-white mb-3">
               Benefits of SEP-10
             </h3>
-            <ul className="space-y-2 text-gray-600 dark:text-gray-300">
+            <ul className="space-y-2 text-muted-foreground dark:text-gray-300">
               <li className="flex items-start gap-2">
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <span>No passwords to remember or manage</span>

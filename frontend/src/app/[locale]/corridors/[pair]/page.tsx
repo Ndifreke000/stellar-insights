@@ -148,7 +148,7 @@ export default function CorridorDetailPage() {
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           <button
             onClick={() => router.push("/corridors")}
-            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6"
+            className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6"
           >
             <ArrowLeft className="w-5 h-5" />
             Back to Corridors
@@ -183,22 +183,22 @@ export default function CorridorDetailPage() {
     <MainLayout>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         {/* Breadcrumbs */}
-        <nav className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-6 overflow-x-auto whitespace-nowrap pb-2">
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground dark:text-muted-foreground mb-6 overflow-x-auto whitespace-nowrap pb-2">
           <Link
             href="/dashboard"
-            className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-link-primary transition-colors"
           >
             <Home className="w-4 h-4" />
             Dashboard
           </Link>
-          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           <Link
             href="/corridors"
-            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="hover:text-blue-600 dark:hover:text-link-primary transition-colors"
           >
             Corridors
           </Link>
-          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           <span className="font-semibold text-gray-900 dark:text-white">
             {corridor.source_asset} → {corridor.destination_asset}
           </span>
@@ -208,7 +208,7 @@ export default function CorridorDetailPage() {
         <div className="mb-8">
           <button
             onClick={() => router.push("/corridors")}
-            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-4 group"
+            className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-4 group"
           >
             <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
             Back to Corridors
@@ -218,7 +218,7 @@ export default function CorridorDetailPage() {
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
                 {corridor.source_asset} → {corridor.destination_asset}
               </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm font-mono">
+              <p className="text-muted-foreground dark:text-muted-foreground mt-1 text-sm font-mono">
                 Pair: {corridorPair}
               </p>
             </div>
@@ -235,7 +235,7 @@ export default function CorridorDetailPage() {
                   <div className={`text-3xl font-bold ${healthColor}`}>
                     {corridor.health_score.toFixed(1)}
                   </div>
-                  <p className="text-gray-600 dark:text-gray-400 text-xs font-medium uppercase tracking-wider">
+                  <p className="text-muted-foreground dark:text-muted-foreground text-xs font-medium uppercase tracking-wider">
                     Health Score
                   </p>
                 </div>
@@ -294,7 +294,7 @@ export default function CorridorDetailPage() {
                         ${payment.amount.toFixed(2)}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       {new Date(payment.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
@@ -309,7 +309,7 @@ export default function CorridorDetailPage() {
           {/* Success Rate */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">
+              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
                 Success Rate
               </span>
               <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -317,7 +317,7 @@ export default function CorridorDetailPage() {
             <div className="text-3xl font-bold text-green-500">
               {corridor.success_rate.toFixed(1)}%
             </div>
-            <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+            <p className="text-muted-foreground dark:text-muted-foreground text-xs mt-2">
               {corridor.successful_payments} of {corridor.total_attempts}
             </p>
           </div>
@@ -325,7 +325,7 @@ export default function CorridorDetailPage() {
           {/* Average Latency */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">
+              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
                 Avg Latency
               </span>
               <Clock className="w-5 h-5 text-blue-500" />
@@ -334,7 +334,7 @@ export default function CorridorDetailPage() {
               {corridor.average_latency_ms.toFixed(0)}
               <span className="text-xl">ms</span>
             </div>
-            <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+            <p className="text-muted-foreground dark:text-muted-foreground text-xs mt-2">
               Med: {corridor.median_latency_ms}ms | P99:{" "}
               {corridor.p99_latency_ms}ms
             </p>
@@ -343,7 +343,7 @@ export default function CorridorDetailPage() {
           {/* Liquidity Depth */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">
+              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
                 Liquidity Depth
               </span>
               <Droplets className="w-5 h-5 text-purple-500" />
@@ -353,7 +353,7 @@ export default function CorridorDetailPage() {
             </div>
             <div className="flex items-center gap-2 mt-2">
               {trendIcon}
-              <p className="text-gray-600 dark:text-gray-400 text-xs capitalize">
+              <p className="text-muted-foreground dark:text-muted-foreground text-xs capitalize">
                 {corridor.liquidity_trend}
               </p>
             </div>
@@ -362,7 +362,7 @@ export default function CorridorDetailPage() {
           {/* 24h Volume */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">
+              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
                 24h Volume
               </span>
               <Zap className="w-5 h-5 text-amber-500" />
@@ -370,7 +370,7 @@ export default function CorridorDetailPage() {
             <div className="text-3xl font-bold text-amber-500">
               ${(corridor.liquidity_volume_24h_usd / 1000000).toFixed(2)}M
             </div>
-            <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+            <p className="text-muted-foreground dark:text-muted-foreground text-xs mt-2">
               {new Date(corridor.last_updated).toLocaleTimeString()}
             </p>
           </div>
@@ -423,7 +423,7 @@ export default function CorridorDetailPage() {
                       <h3 className="font-semibold text-gray-900 dark:text-white">
                         {related.source_asset} → {related.destination_asset}
                       </h3>
-                      <p className="text-gray-600 dark:text-gray-400 text-xs truncate">
+                      <p className="text-muted-foreground dark:text-muted-foreground text-xs truncate">
                         {related.id}
                       </p>
                     </div>
@@ -433,7 +433,7 @@ export default function CorridorDetailPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                      <p className="text-gray-600 dark:text-gray-400 text-xs">
+                      <p className="text-muted-foreground dark:text-muted-foreground text-xs">
                         Health
                       </p>
                       <p className="font-semibold text-gray-900 dark:text-white">
@@ -441,7 +441,7 @@ export default function CorridorDetailPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-600 dark:text-gray-400 text-xs">
+                      <p className="text-muted-foreground dark:text-muted-foreground text-xs">
                         Liquidity
                       </p>
                       <p className="font-semibold text-gray-900 dark:text-white">
@@ -456,7 +456,7 @@ export default function CorridorDetailPage() {
         )}
 
         {/* Footer Info */}
-        <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-400 text-sm">
+        <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-muted-foreground dark:text-muted-foreground text-sm">
           <p>
             Last updated: {lastUpdate.toLocaleString()}
           </p>

@@ -111,7 +111,7 @@ export function CorridorComparisonTable({
     if (position < 0.3) {
       return <TrendingDown className="w-4 h-4 text-red-500" />;
     }
-    return <Minus className="w-4 h-4 text-gray-400" />;
+    return <Minus className="w-4 h-4 text-muted-foreground" />;
   };
 
   // Get cell background color based on performance
@@ -165,13 +165,13 @@ export function CorridorComparisonTable({
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-slate-900">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-slate-900 z-10">
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-slate-900 z-10">
                 Corridor
               </th>
               {METRICS.map((metric) => (
                 <th
                   key={metric.key}
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-3 text-left text-xs font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort(metric.key)}
                 >
                   <div className="flex items-center gap-2">
@@ -199,7 +199,7 @@ export function CorridorComparisonTable({
                     <div className="font-semibold">
                       {corridor.source_asset} → {corridor.destination_asset}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                    <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono">
                       {corridor.id}
                     </div>
                   </div>
@@ -234,7 +234,7 @@ export function CorridorComparisonTable({
 
       {/* Legend */}
       <div className="px-4 py-3 bg-gray-50 dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700">
-        <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground dark:text-muted-foreground">
           <div className="flex items-center gap-1">
             <Trophy className="w-3 h-3 text-yellow-500" />
             <span>Best Performance</span>

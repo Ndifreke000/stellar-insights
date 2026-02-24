@@ -157,7 +157,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="w-4 h-4 text-gray-400" />;
+      return <ArrowUpDown className="w-4 h-4 text-muted-foreground" />;
     }
     return sortOrder === "asc" ? (
       <ArrowUp className="w-4 h-4 text-blue-500" />
@@ -181,8 +181,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
   if (anchors.length === 0) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-12 text-center">
-        <Anchor className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600 dark:text-gray-400">No anchors available</p>
+        <Anchor className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground dark:text-muted-foreground">No anchors available</p>
       </div>
     );
   }
@@ -196,19 +196,19 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
             <tr>
               <th
                 onClick={() => handleSort("name")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   Anchor / Address
                   {getSortIcon("name")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                 Status
               </th>
               <th
                 onClick={() => handleSort("reliability_score")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   Reliability Score
@@ -217,26 +217,26 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               </th>
               <th
                 onClick={() => handleSort("failure_rate")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   Failure Rate
                   {getSortIcon("failure_rate")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                 Success Rate
               </th>
               <th
                 onClick={() => handleSort("total_transactions")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   Transactions
                   {getSortIcon("total_transactions")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                 7-Day Trend
               </th>
             </tr>
@@ -258,13 +258,13 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
-                        <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        <Anchor className="w-5 h-5 text-blue-600 dark:text-link-primary" />
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {anchor.name}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                        <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                           {truncateAddress(anchor.stellar_account)}
                         </div>
                       </div>
@@ -306,7 +306,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                     <div className="text-sm text-gray-900 dark:text-white">
                       {successRate.toFixed(1)}%
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-muted-foreground dark:text-muted-foreground">
                       {formatNumber(anchor.successful_transactions)}/
                       {formatNumber(anchor.total_transactions)}
                     </div>
@@ -366,13 +366,13 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center flex-1 min-w-0 mr-3">
                   <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
-                    <Anchor className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <Anchor className="w-5 h-5 text-blue-600 dark:text-link-primary" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                       {anchor.name}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                    <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                       {truncateAddress(anchor.stellar_account)}
                     </div>
                   </div>
@@ -388,7 +388,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               {/* Metrics Grid */}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                     Reliability Score
                   </div>
                   <div className="flex items-center gap-2">
@@ -410,7 +410,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                     Failure Rate
                   </div>
                   <div className="text-sm font-semibold text-red-600 dark:text-red-400">
@@ -418,7 +418,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                     Success Rate
                   </div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -426,7 +426,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                     Total Transactions
                   </div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -438,8 +438,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               {/* Trend */}
               <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-slate-700">
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">7-day trend</span>
+                  <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground dark:text-muted-foreground">7-day trend</span>
                   <div className="w-20 h-6">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={historicalData}>
@@ -460,7 +460,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                     </ResponsiveContainer>
                   </div>
                 </div>
-                <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <ExternalLink className="w-4 h-4 text-blue-600 dark:text-link-primary" />
               </div>
             </div>
           );

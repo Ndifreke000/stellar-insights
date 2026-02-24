@@ -97,7 +97,7 @@ export function WebSocketDemo() {
               </p>
             )}
             {reconnectCount > 0 && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                 Reconnect attempts: {reconnectCount}
               </p>
             )}
@@ -137,13 +137,13 @@ export function WebSocketDemo() {
         <div className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-3">Snapshot Updates</h3>
           {snapshots.length === 0 ? (
-            <p className="text-gray-500 text-sm">No snapshots yet</p>
+            <p className="text-muted-foreground text-sm">No snapshots yet</p>
           ) : (
             <ul className="space-y-2">
               {snapshots.map((snapshot, i) => (
                 <li key={i} className="text-sm border-l-2 border-blue-500 pl-2">
                   <div className="font-medium">{snapshot.title}</div>
-                  <div className="text-gray-600 dark:text-gray-400 text-xs">
+                  <div className="text-muted-foreground dark:text-muted-foreground text-xs">
                     ID: {snapshot.id} - {snapshot.time}
                   </div>
                 </li>
@@ -156,13 +156,13 @@ export function WebSocketDemo() {
         <div className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-3">Corridor Updates</h3>
           {corridors.length === 0 ? (
-            <p className="text-gray-500 text-sm">No corridors yet</p>
+            <p className="text-muted-foreground text-sm">No corridors yet</p>
           ) : (
             <ul className="space-y-2">
               {corridors.map((corridor, i) => (
                 <li key={i} className="text-sm border-l-2 border-green-500 pl-2">
                   <div className="font-medium">{corridor.key}</div>
-                  <div className="text-gray-600 dark:text-gray-400 text-xs">
+                  <div className="text-muted-foreground dark:text-muted-foreground text-xs">
                     {corridor.title} - {corridor.time}
                   </div>
                 </li>
@@ -175,13 +175,13 @@ export function WebSocketDemo() {
         <div className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-3">Anchor Updates</h3>
           {anchors.length === 0 ? (
-            <p className="text-gray-500 text-sm">No anchors yet</p>
+            <p className="text-muted-foreground text-sm">No anchors yet</p>
           ) : (
             <ul className="space-y-2">
               {anchors.map((anchor, i) => (
                 <li key={i} className="text-sm border-l-2 border-purple-500 pl-2">
                   <div className="font-medium">{anchor.name}</div>
-                  <div className="text-gray-600 dark:text-gray-400 text-xs">
+                  <div className="text-muted-foreground dark:text-muted-foreground text-xs">
                     {anchor.title} - {anchor.time}
                   </div>
                 </li>
@@ -195,7 +195,7 @@ export function WebSocketDemo() {
       <div className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-3">Recent Messages</h3>
         {messages.length === 0 ? (
-          <p className="text-gray-500 text-sm">No messages yet</p>
+          <p className="text-muted-foreground text-sm">No messages yet</p>
         ) : (
           <div className="space-y-2">
             {messages.map((message, i) => (
@@ -203,7 +203,7 @@ export function WebSocketDemo() {
                 key={i}
                 className="p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm font-mono"
               >
-                <div className="font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                <div className="font-semibold text-blue-600 dark:text-link-primary mb-1">
                   {message.type}
                 </div>
                 <pre className="text-xs overflow-auto">

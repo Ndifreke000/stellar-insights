@@ -24,13 +24,13 @@ const APIDocumentationPortal = () => {
         <div className="text-center mb-16">
           <div className="flex justify-center mb-6">
             <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
-              <BookOpen className="h-12 w-12 text-blue-600 dark:text-blue-400" />
+              <BookOpen className="h-12 w-12 text-blue-600 dark:text-link-primary" />
             </div>
           </div>
           <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-6">
             Stellar Insights API
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto mb-8">
+          <p className="text-xl text-muted-foreground dark:text-gray-300 max-w-3xl mx-auto mb-8">
             Comprehensive REST API for Stellar network analytics. Access payment reliability metrics, 
             corridor health scores, anchor performance data, and real-time network insights.
           </p>
@@ -52,28 +52,28 @@ const APIDocumentationPortal = () => {
             <CardContent className="p-6 text-center">
               <Database className="h-8 w-8 text-blue-600 mx-auto mb-2" />
               <div className="text-2xl font-bold">15+</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">API Endpoints</div>
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground">API Endpoints</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-6 text-center">
               <Network className="h-8 w-8 text-green-600 mx-auto mb-2" />
               <div className="text-2xl font-bold">Real-time</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Stellar Data</div>
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground">Stellar Data</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-6 text-center">
               <Zap className="h-8 w-8 text-purple-600 mx-auto mb-2" />
               <div className="text-2xl font-bold">&lt;100ms</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Response Time</div>
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground">Response Time</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-6 text-center">
               <CheckCircle className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
               <div className="text-2xl font-bold">99.9%</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Uptime</div>
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground">Uptime</div>
             </CardContent>
           </Card>
         </div>
@@ -105,7 +105,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/corridors
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         List all payment corridors with success rates and volume metrics
                       </p>
                     </div>
@@ -113,7 +113,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/corridors/{'{asset_pair}'}
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Get detailed metrics for a specific asset pair corridor
                       </p>
                     </div>
@@ -146,7 +146,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/anchors
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         List all anchors with reliability metrics
                       </p>
                     </div>
@@ -154,7 +154,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/anchors/{'{id}'}/assets
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Get asset portfolio for a specific anchor
                       </p>
                     </div>
@@ -186,7 +186,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/rpc/ledger/latest
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Get the latest Stellar ledger information
                       </p>
                     </div>
@@ -194,7 +194,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/rpc/payments
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Fetch recent payment transactions
                       </p>
                     </div>
@@ -226,7 +226,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/analytics/health
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Overall network health metrics
                       </p>
                     </div>
@@ -234,7 +234,7 @@ const APIDocumentationPortal = () => {
                       <code className="text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded block mb-2">
                         GET /api/analytics/trends
                       </code>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                         Historical trends and patterns
                       </p>
                     </div>
@@ -265,7 +265,7 @@ const APIDocumentationPortal = () => {
                 </div>
                 <div>
                   <h4 className="font-medium">Get API Access</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     No API key required for public endpoints
                   </p>
                 </div>
@@ -276,7 +276,7 @@ const APIDocumentationPortal = () => {
                 </div>
                 <div>
                   <h4 className="font-medium">Make Your First Request</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Try our corridors endpoint to see payment reliability data
                   </p>
                 </div>
@@ -287,7 +287,7 @@ const APIDocumentationPortal = () => {
                 </div>
                 <div>
                   <h4 className="font-medium">Integrate</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Use our code examples to integrate into your application
                   </p>
                 </div>

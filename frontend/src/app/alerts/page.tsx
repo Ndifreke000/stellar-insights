@@ -105,7 +105,7 @@ export default function AlertsPage() {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Alerts Overview</h1>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-sm text-muted-foreground dark:text-muted-foreground">
                         Manage your custom threshold alerts and review triggered events.
                     </p>
                 </div>
@@ -144,9 +144,9 @@ export default function AlertsPage() {
                         </div>
 
                         {loading ? (
-                            <div className="p-8 justify-center flex items-center text-gray-500">Loading rules...</div>
+                            <div className="p-8 justify-center flex items-center text-muted-foreground">Loading rules...</div>
                         ) : rules.length === 0 ? (
-                            <div className="p-8 text-center text-gray-500">
+                            <div className="p-8 text-center text-muted-foreground">
                                 You have not created any alert rules yet.
                             </div>
                         ) : (
@@ -159,7 +159,7 @@ export default function AlertsPage() {
                                                     {rule.is_active ? (
                                                         <Bell className="h-5 w-5 text-blue-500 mr-3" />
                                                     ) : (
-                                                        <BellOff className="h-5 w-5 text-gray-400 mr-3" />
+                                                        <BellOff className="h-5 w-5 text-muted-foreground mr-3" />
                                                     )}
                                                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
                                                         {rule.metric_type.replace(/_/g, " ")} {rule.condition} {rule.threshold}
@@ -170,7 +170,7 @@ export default function AlertsPage() {
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400 space-x-4">
+                                                <div className="mt-2 flex items-center text-sm text-muted-foreground dark:text-muted-foreground space-x-4">
                                                     <span>
                                                         Channels:{" "}
                                                         {[
@@ -205,13 +205,13 @@ export default function AlertsPage() {
                                                         setIsFormOpen(true);
                                                         window.scrollTo({ top: 0, behavior: "smooth" });
                                                     }}
-                                                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md dark:hover:bg-blue-900/30"
+                                                    className="p-2 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 rounded-md dark:hover:bg-blue-900/30"
                                                 >
                                                     <Edit2 className="w-4 h-4" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteRule(rule.id)}
-                                                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md dark:hover:bg-red-900/30"
+                                                    className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md dark:hover:bg-red-900/30"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -233,9 +233,9 @@ export default function AlertsPage() {
 
                         <div className="flex-1 overflow-y-auto max-h-[600px] p-4">
                             {loading ? (
-                                <div className="text-center py-8 text-gray-500">Loading history...</div>
+                                <div className="text-center py-8 text-muted-foreground">Loading history...</div>
                             ) : history.filter(h => !h.is_dismissed).length === 0 ? (
-                                <div className="text-center py-8 text-gray-500 flex flex-col items-center">
+                                <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
                                     <BellOff className="w-12 h-12 text-gray-300 mb-3" />
                                     <p>No recent alerts.</p>
                                 </div>
@@ -250,21 +250,21 @@ export default function AlertsPage() {
                                                 }`}
                                         >
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                                <span className="text-xs font-medium text-muted-foreground dark:text-muted-foreground">
                                                     {new Date(alert.triggered_at).toLocaleString()}
                                                 </span>
                                                 <div className="flex space-x-1">
                                                     <button
                                                         onClick={() => handleSnooze(alert.rule_id)}
                                                         title="Snooze this rule for 1 hour"
-                                                        className="p-1 text-gray-400 hover:text-amber-600 rounded"
+                                                        className="p-1 text-muted-foreground hover:text-amber-600 rounded"
                                                     >
                                                         <Clock className="w-4 h-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleDismissHistory(alert.id)}
                                                         title="Dismiss Alert"
-                                                        className="p-1 text-gray-400 hover:text-gray-700 rounded"
+                                                        className="p-1 text-muted-foreground hover:text-gray-700 rounded"
                                                     >
                                                         <XCircle className="w-4 h-4" />
                                                     </button>
@@ -274,7 +274,7 @@ export default function AlertsPage() {
                                                 {alert.message}
                                             </p>
                                             {alert.corridor_id && (
-                                                <p className="text-xs text-gray-500 mt-2 font-mono">
+                                                <p className="text-xs text-muted-foreground mt-2 font-mono">
                                                     {alert.corridor_id}
                                                 </p>
                                             )}

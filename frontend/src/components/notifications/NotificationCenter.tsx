@@ -207,7 +207,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
           <div className="border-b border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <Bell className="h-6 w-6 text-gray-600 dark:text-gray-400" />
+                <Bell className="h-6 w-6 text-muted-foreground dark:text-muted-foreground" />
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                   Notification Center
                 </h1>
@@ -232,7 +232,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   activeTab === 'notifications'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    : 'text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 <div className="flex items-center space-x-2">
@@ -245,7 +245,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   activeTab === 'analytics'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    : 'text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 <div className="flex items-center space-x-2">
@@ -266,7 +266,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                   <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center space-x-4 mb-4">
                       <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <input
                           type="text"
                           placeholder="Search notifications..."
@@ -295,14 +295,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleExport('json')}
-                          className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                          className="p-2 text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                           title="Export as JSON"
                         >
                           <Download className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleExport('csv')}
-                          className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                          className="p-2 text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                           title="Export as CSV"
                         >
                           <Download className="h-4 w-4" />
@@ -423,7 +423,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                           onChange={handleSelectAll}
                           className="rounded"
                         />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Select all</span>
+                        <span className="text-sm text-muted-foreground dark:text-muted-foreground">Select all</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <button
@@ -446,7 +446,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                   {/* Notifications List */}
                   <div className="p-6">
                     {Object.keys(groupedNotifications).length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+                      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground dark:text-muted-foreground">
                         <BellOff className="h-12 w-12 mb-4" />
                         <p className="text-lg font-medium">No notifications</p>
                         <p className="text-sm">You&apos;re all caught up!</p>
@@ -455,7 +455,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                       <div className="space-y-6">
                         {Object.entries(groupedNotifications).map(([groupKey, groupNotifications]) => (
                           <div key={groupKey}>
-                            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                            <h3 className="text-sm font-medium text-muted-foreground dark:text-muted-foreground mb-3 flex items-center">
                               <Calendar className="h-4 w-4 mr-2" />
                               {groupKey}
                             </h3>
@@ -509,18 +509,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                                               }}
                                               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
                                             >
-                                              <Trash2 className="h-3 w-3 text-gray-400" />
+                                              <Trash2 className="h-3 w-3 text-muted-foreground" />
                                             </button>
                                           </div>
                                         </div>
                                         <p className={`text-sm mt-1 ${
                                           notification.read 
-                                            ? 'text-gray-500 dark:text-gray-400' 
+                                            ? 'text-muted-foreground dark:text-muted-foreground' 
                                             : 'text-gray-700 dark:text-gray-300'
                                         }`}>
                                           {notification.message}
                                         </p>
-                                        <p className="text-xs text-gray-400 mt-2">
+                                        <p className="text-xs text-muted-foreground mt-2">
                                           {formatTime(new Date(notification.timestamp))}
                                         </p>
                                       </div>
@@ -554,7 +554,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Notifications</p>
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">Total Notifications</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{analytics.totalNotifications}</p>
             </div>
             <Bell className="h-8 w-8 text-blue-500" />
@@ -564,7 +564,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Unread</p>
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">Unread</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{analytics.unreadCount}</p>
             </div>
             <AlertCircle className="h-8 w-8 text-red-500" />
@@ -574,7 +574,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Read Rate</p>
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">Read Rate</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {analytics.totalNotifications > 0 
                   ? Math.round(((analytics.totalNotifications - analytics.unreadCount) / analytics.totalNotifications) * 100)
@@ -588,7 +588,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Avg Response Time</p>
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">Avg Response Time</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {analytics.averageResponseTime ? `${Math.round(analytics.averageResponseTime)}m` : 'N/A'}
               </p>
@@ -619,7 +619,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 w-8">{count}</span>
+                    <span className="text-sm text-muted-foreground dark:text-muted-foreground w-8">{count}</span>
                   </div>
                 </div>
               );
@@ -648,7 +648,7 @@ const AnalyticsTab: React.FC<{ analytics: NotificationAnalytics }> = ({ analytic
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 w-8">{count}</span>
+                    <span className="text-sm text-muted-foreground dark:text-muted-foreground w-8">{count}</span>
                   </div>
                 </div>
               );

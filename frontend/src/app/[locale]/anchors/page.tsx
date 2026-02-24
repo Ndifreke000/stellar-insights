@@ -64,7 +64,7 @@ const handleSort = (column: "reliability" | "transactions" | "failure_rate", cur
 // Sort indicator component
 const SortIndicator = ({ column, currentSort, direction }: { column: string, currentSort: string, direction: "asc" | "desc" }) => {
   if (currentSort !== column) {
-    return <ChevronsUpDown className="w-4 h-4 text-gray-400" />;
+    return <ChevronsUpDown className="w-4 h-4 text-muted-foreground" />;
   }
   return direction === "asc" ? 
     <ChevronUp className="w-4 h-4 text-blue-500" /> : 
@@ -186,7 +186,7 @@ const AnchorsPageContent = () => {
             <AnchorIcon className="w-8 h-8 text-blue-500" />
             Anchor Analytics
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-muted-foreground dark:text-muted-foreground">
             Monitor anchor reliability, asset coverage, and transaction success rates
           </p>
         </div>
@@ -207,7 +207,7 @@ const AnchorsPageContent = () => {
 
         <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex-1 relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-2.5 w-5 h-5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search anchors by name or account..."
@@ -251,7 +251,7 @@ const AnchorsPageContent = () => {
           </div>
         </div>
         {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 mb-4">
+          <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2 mb-4">
             💡 Click on any row to view anchor details • Click column headers to sort
           </p>
         )}
@@ -262,14 +262,14 @@ const AnchorsPageContent = () => {
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-slate-700">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                         Anchor
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                         Health Status
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
                         onClick={() => handleSort("reliability", sortBy, sortOrder, setSortBy, setSortOrder)}
                       >
                         <div className="flex items-center gap-1">
@@ -278,7 +278,7 @@ const AnchorsPageContent = () => {
                         </div>
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
                         onClick={() => handleSort("failure_rate", sortBy, sortOrder, setSortBy, setSortOrder)}
                       >
                         <div className="flex items-center gap-1">
@@ -286,11 +286,11 @@ const AnchorsPageContent = () => {
                           <SortIndicator column="failure_rate" currentSort={sortBy} direction={sortOrder} />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                         Asset Coverage
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
+                        className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
                         onClick={() => handleSort("transactions", sortBy, sortOrder, setSortBy, setSortOrder)}
                       >
                         <div className="flex items-center gap-1">
@@ -298,10 +298,10 @@ const AnchorsPageContent = () => {
                           <SortIndicator column="transactions" currentSort={sortBy} direction={sortOrder} />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                         30-Day Trend
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -331,7 +331,7 @@ const AnchorsPageContent = () => {
                                 <div className="text-sm font-medium text-gray-900 dark:text-white">
                                   {anchor.name}
                                 </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono">
                                   {truncateAddress(anchor.stellar_account)}
                                 </div>
                               </div>
@@ -370,7 +370,7 @@ const AnchorsPageContent = () => {
                             <div className="text-sm text-gray-900 dark:text-white">
                               {successRate.toFixed(1)}%
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="text-xs text-muted-foreground dark:text-muted-foreground">
                               {formatNumber(anchor.successful_transactions)}/
                               {formatNumber(anchor.total_transactions)}
                             </div>
@@ -412,7 +412,7 @@ const AnchorsPageContent = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <Link
                               href={`/anchors/${anchor.stellar_account}`}
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
+                              className="text-blue-600 dark:text-link-primary hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1"
                               onClick={(e) => e.stopPropagation()}
                             >
                               View Details
@@ -452,7 +452,7 @@ const AnchorsPageContent = () => {
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
                               {anchor.name}
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono">
                               {truncateAddress(anchor.stellar_account)}
                             </div>
                           </div>
@@ -467,7 +467,7 @@ const AnchorsPageContent = () => {
 
                       <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                             Reliability
                           </div>
                           <div className="flex items-center">
@@ -491,7 +491,7 @@ const AnchorsPageContent = () => {
                           </div>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                             Success Rate
                           </div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -499,7 +499,7 @@ const AnchorsPageContent = () => {
                           </div>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                             Assets
                           </div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -507,7 +507,7 @@ const AnchorsPageContent = () => {
                           </div>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                             Transactions
                           </div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -518,8 +518,8 @@ const AnchorsPageContent = () => {
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <BarChart3 className="w-4 h-4 text-gray-400" />
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                          <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground dark:text-muted-foreground">
                             30-day trend
                           </span>
                           <div className="w-16 h-6">
@@ -544,7 +544,7 @@ const AnchorsPageContent = () => {
                         </div>
                         <Link
                           href={`/anchors/${anchor.stellar_account}`}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
+                          className="text-blue-600 dark:text-link-primary hover:text-blue-900 dark:hover:text-blue-300 inline-flex items-center gap-1 text-sm"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Details
@@ -573,7 +573,7 @@ const AnchorsPageContent = () => {
         {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground mb-1">
                 Total Anchors
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -581,7 +581,7 @@ const AnchorsPageContent = () => {
               </div>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground mb-1">
                 Avg Reliability
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -595,7 +595,7 @@ const AnchorsPageContent = () => {
               </div>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground mb-1">
                 Total Transactions
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -605,7 +605,7 @@ const AnchorsPageContent = () => {
               </div>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <div className="text-sm text-muted-foreground dark:text-muted-foreground mb-1">
                 Healthy Anchors
               </div>
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -618,8 +618,8 @@ const AnchorsPageContent = () => {
         {/* Empty State (when no error but also no data) */}
         {!loading && !error && sortedAndFilteredAnchors.length === 0 && anchors.length > 0 && (
           <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-12 text-center">
-            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 dark:text-gray-400">
+            <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground dark:text-muted-foreground">
               No anchors found matching &quot;{searchTerm}&quot;
             </p>
           </div>
@@ -635,8 +635,8 @@ const AnchorsPage = () => {
       <MainLayout>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
-            <AnchorIcon className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-pulse" />
-            <p className="text-gray-600 dark:text-gray-400">Loading anchors...</p>
+            <AnchorIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
+            <p className="text-muted-foreground dark:text-muted-foreground">Loading anchors...</p>
           </div>
         </div>
       </MainLayout>

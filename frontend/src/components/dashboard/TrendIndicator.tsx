@@ -20,7 +20,7 @@ export function TrendIndicator({ trend }: TrendIndicatorProps) {
   // "Good" result = Green. "Bad" result = Red.
   // We pass `isGood` to explicitely say "this trend is positive/desirable".
 
-  let colorClass = "text-gray-500";
+  let colorClass = "text-muted-foreground";
   let Icon = Minus;
 
   if (direction === "up") {
@@ -33,7 +33,7 @@ export function TrendIndicator({ trend }: TrendIndicatorProps) {
 
   if (direction === "neutral") {
     return (
-      <div className="flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+      <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground bg-gray-100 px-2 py-1 rounded-full">
         <Minus className="w-3 h-3" />
         <span>0%</span>
       </div>

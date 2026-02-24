@@ -224,7 +224,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
   if (corridors.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-slate-800 rounded-lg">
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className="text-muted-foreground dark:text-muted-foreground">
           No corridor data available
         </p>
       </div>
@@ -288,7 +288,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
             <div className="w-6 h-3 sm:w-8 sm:h-4 bg-green-400"></div>
             <div className="w-6 h-3 sm:w-8 sm:h-4 bg-green-500 rounded-r"></div>
           </div>
-          <div className="flex gap-2 text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">
+          <div className="flex gap-2 text-[10px] sm:text-xs text-muted-foreground dark:text-muted-foreground">
             <span>Poor</span>
             <span>Good</span>
           </div>
@@ -407,7 +407,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
                 >
                   Health: {tooltipData.healthScore.toFixed(1)}
                 </div>
-                <div className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">
+                <div className="text-[10px] sm:text-xs text-muted-foreground dark:text-muted-foreground">
                   {tooltipData.corridorData.id}
                 </div>
               </div>
@@ -417,7 +417,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
             <div className="space-y-1.5 sm:space-y-2">
               {/* Success Rate */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground dark:text-muted-foreground">
                   <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="text-xs sm:text-sm">Success Rate</span>
                 </div>
@@ -428,18 +428,18 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
 
               {/* Latency */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground dark:text-muted-foreground">
                   <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="text-xs sm:text-sm">Avg Latency</span>
                 </div>
-                <span className="font-semibold text-blue-600 dark:text-blue-400 text-xs sm:text-sm">
+                <span className="font-semibold text-blue-600 dark:text-link-primary text-xs sm:text-sm">
                   {tooltipData.corridorData.average_latency_ms.toFixed(0)}ms
                 </span>
               </div>
 
               {/* Liquidity Depth */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground dark:text-muted-foreground">
                   <Droplets className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="text-xs sm:text-sm">Liquidity</span>
                 </div>
@@ -450,7 +450,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
 
               {/* 24h Volume */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground dark:text-muted-foreground">
                   <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="text-xs sm:text-sm">24h Volume</span>
                 </div>
@@ -463,7 +463,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
 
               {/* Payment Stats */}
               <div className="pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t border-gray-200 dark:border-slate-700">
-                <div className="flex justify-between text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mb-1">
+                <div className="flex justify-between text-[10px] sm:text-xs text-muted-foreground dark:text-muted-foreground mb-1">
                   <span>
                     {tooltipData.corridorData.successful_payments.toLocaleString()}{" "}
                     successful

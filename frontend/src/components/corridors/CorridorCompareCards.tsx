@@ -42,7 +42,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                         {/* Success Rate */}
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Success Rate</p>
+                                <p className="text-xs text-muted-foreground dark:text-muted-foreground">Success Rate</p>
                                 <div className="flex items-center gap-1">
                                     {corridor.success_rate >= 90 ? (
                                         <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -59,7 +59,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                         {/* Volume & Liquidity */}
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">24h Volume</p>
+                                <p className="text-xs text-muted-foreground dark:text-muted-foreground">24h Volume</p>
                                 <div className="flex items-center gap-1 text-amber-500">
                                     <Zap className="w-3 h-3" />
                                     <span className="font-bold">
@@ -68,7 +68,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                                 </div>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Liquidity</p>
+                                <p className="text-xs text-muted-foreground dark:text-muted-foreground">Liquidity</p>
                                 <div className="flex items-center gap-1 text-purple-500">
                                     <Droplets className="w-3 h-3" />
                                     <span className="font-bold">
@@ -81,7 +81,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                         {/* Latency */}
                         <div className="pt-4 border-t border-gray-100 dark:border-slate-700">
                             <div className="flex justify-between items-center text-sm">
-                                <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                <span className="text-muted-foreground dark:text-muted-foreground flex items-center gap-1">
                                     <Clock className="w-4 h-4" /> Avg Latency
                                 </span>
                                 <span className="font-semibold text-gray-900 dark:text-white">
@@ -89,7 +89,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                                 </span>
                             </div>
                             <div className="flex justify-between items-center text-sm mt-1">
-                                <span className="text-gray-500 dark:text-gray-400">Avg Slippage</span>
+                                <span className="text-muted-foreground dark:text-muted-foreground">Avg Slippage</span>
                                 <span className="font-semibold text-red-500">
                                     {corridor.average_slippage_bps.toFixed(2)} bps
                                 </span>

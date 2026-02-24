@@ -105,11 +105,11 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
       scheduled:
         "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
       processing:
-        "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+        "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-link-primary",
       completed:
         "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
       cancelled:
-        "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+        "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-muted-foreground",
       failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     };
 
@@ -141,7 +141,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
           >
             <svg
               className="w-6 h-6"
@@ -194,8 +194,8 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
           onClick={() => setActiveTab("new")}
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === "new"
-              ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              ? "border-b-2 border-blue-600 text-blue-600 dark:text-link-primary"
+              : "text-muted-foreground dark:text-muted-foreground hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           Request Deletion
@@ -204,8 +204,8 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
           onClick={() => setActiveTab("history")}
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === "history"
-              ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              ? "border-b-2 border-blue-600 text-blue-600 dark:text-link-primary"
+              : "text-muted-foreground dark:text-muted-foreground hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           Request History
@@ -228,7 +228,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
 
       {activeTab === "new" && !showConfirmation && (
         <div>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-muted-foreground dark:text-muted-foreground mb-6">
             You can request to delete all your personal data, or select specific
             data types to delete. This action cannot be undone.
           </p>
@@ -246,7 +246,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
                 <p className="font-medium text-gray-900 dark:text-white">
                   Delete All My Data
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                   Permanently delete all personal data associated with your
                   account
                 </p>
@@ -265,7 +265,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
                 <p className="font-medium text-gray-900 dark:text-white">
                   Delete Specific Data
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                   Choose which specific data types to delete (coming soon)
                 </p>
               </div>
@@ -321,7 +321,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
             Confirm Data Deletion
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-muted-foreground dark:text-muted-foreground mb-6">
             Are you absolutely sure you want to delete your data? This action is
             irreversible.
           </p>
@@ -347,7 +347,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
       {activeTab === "history" && (
         <div>
           {deletionRequests.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+            <p className="text-center text-muted-foreground dark:text-muted-foreground py-8">
               No deletion requests yet.
             </p>
           ) : (
@@ -361,7 +361,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
                     <p className="text-sm text-gray-900 dark:text-white">
                       Request #{request.id.slice(0, 8)}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
                       Created: {new Date(request.requested_at).toLocaleString()}
                     </p>
                     {request.scheduled_deletion_at && (
@@ -379,7 +379,7 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
                       request.status === "scheduled") && (
                       <button
                         onClick={() => handleCancelRequest(request.id)}
-                        className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                        className="px-3 py-1 text-sm text-muted-foreground dark:text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
                       >
                         Cancel
                       </button>

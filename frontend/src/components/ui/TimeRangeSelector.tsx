@@ -86,7 +86,7 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
       {preset === "custom" && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">
+            <label className="block text-xs text-muted-foreground mb-1">
               Start Date
             </label>
             <input
@@ -100,7 +100,7 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">End Date</label>
+            <label className="block text-xs text-muted-foreground mb-1">End Date</label>
             <input
               type="date"
               className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
