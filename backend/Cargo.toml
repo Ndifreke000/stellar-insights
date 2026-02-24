@@ -18,6 +18,11 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
+# Panic prevention lints - enforce proper error handling
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
 [features]
 legacy_sep10_tests = []
 
@@ -47,6 +52,22 @@ tracing-opentelemetry = "0.21"
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
+ndarray = "0.15"
+rand = "0.8"
+dotenv = "0.15"
+redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager"] }
+async-lock = "3.3"
+futures = "0.3"
+tokio-tungstenite = "0.21"
+dashmap = "5.5"
+stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
+base64 = "0.22"
+jsonwebtoken = "9.2"
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+urlencoding = "2.1"
+async-graphql = { version = "7.0", features = ["chrono", "uuid"] }
+async-graphql-axum = "7.0"
 toml = "0.8"
 prometheus = "0.13"
 md5 = "0.7"
@@ -59,19 +80,16 @@ utoipa = { version = "4.0", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "4", features = ["axum"] }
 url = "2.5"
 aes-gcm = "0.10"
-base64 = "0.22"
 lettre = "0.11"
-jsonwebtoken = "9.2"
 hmac = "0.12"
 data-encoding = "2.5"
-async-lock = "3.3"
-dashmap = "5.5"
 lazy_static = "1.4"
 
-[dependencies.stellar-insights-apm]
-path = "apm"
-optional = true
+# [dependencies.stellar-insights-apm]
+# path = "apm"
+# optional = true
 
 [dev-dependencies]
 urlencoding = "2.1"
 tempfile = "3.0"
+

@@ -101,10 +101,7 @@ impl CircuitBreaker {
 
     async fn on_success(&self) {
         let mut state = self.state.lock().await;
-        let current = std::mem::replace(
-            &mut *state,
-            CircuitState::Closed { failure_count: 0 },
-        );
+        let current = std::mem::replace(&mut *state, CircuitState::Closed { failure_count: 0 });
         *state = match current {
             CircuitState::HalfOpen { success_count } => {
                 if success_count + 1 >= self.config.success_threshold {
@@ -125,10 +122,7 @@ impl CircuitBreaker {
 
     async fn on_failure(&self) {
         let mut state = self.state.lock().await;
-        let current = std::mem::replace(
-            &mut *state,
-            CircuitState::Closed { failure_count: 0 },
-        );
+        let current = std::mem::replace(&mut *state, CircuitState::Closed { failure_count: 0 });
         *state = match current {
             CircuitState::Closed { failure_count } => {
                 if failure_count + 1 >= self.config.failure_threshold {
@@ -173,10 +167,20 @@ mod tests {
 
         // Two retryable failures -> open
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
 
         let r = cb.call(|| async { Ok(()) }).await;
@@ -212,10 +216,20 @@ mod tests {
 
         // Open the circuit
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb.call(|| async { Ok(()) }).await;
         assert!(matches!(

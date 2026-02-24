@@ -1,7 +1,7 @@
 // pub mod sep10;  // Commented out - uses stellar-xdr types that require stellar-base
+pub mod oauth;
 pub mod sep10_middleware;
 pub mod sep10_simple;
-pub mod oauth;
 
 use anyhow::{anyhow, Result};
 use chrono::{Duration, Utc};
@@ -97,7 +97,9 @@ impl AuthService {
         // Hardcoded demo credentials removed for security (SEC-001).
         // This must be replaced with a proper database-backed user store
         // that uses bcrypt or argon2 for password hashing before production use.
-        Err(anyhow!("Authentication not configured. Implement database-backed user store."))
+        Err(anyhow!(
+            "Authentication not configured. Implement database-backed user store."
+        ))
     }
 
     /// Generate access token
@@ -202,7 +204,9 @@ impl AuthService {
                 return Err(anyhow!("Refresh token not found or invalid"));
             }
         } else {
-            tracing::error!("Redis not available - refusing refresh token validation (fail closed)");
+            tracing::error!(
+                "Redis not available - refusing refresh token validation (fail closed)"
+            );
             return Err(anyhow!("Token validation service unavailable"));
         }
 

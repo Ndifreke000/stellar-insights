@@ -2,7 +2,9 @@ use crate::alerts::{Alert, AlertType};
 
 /// Escape special characters for Telegram MarkdownV2.
 pub fn escape_markdown(text: &str) -> String {
-    let special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+    let special = [
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!',
+    ];
     let mut escaped = String::with_capacity(text.len() * 2);
     for ch in text.chars() {
         if special.contains(&ch) {
@@ -15,9 +17,9 @@ pub fn escape_markdown(text: &str) -> String {
 
 pub fn format_alert(alert: &Alert) -> String {
     let emoji = match alert.alert_type {
-        AlertType::SuccessRateDrop => "\u{1F534}",    // red circle
-        AlertType::LatencyIncrease => "\u{1F7E1}",    // yellow circle
-        AlertType::LiquidityDecrease => "\u{1F7E0}",  // orange circle
+        AlertType::SuccessRateDrop => "\u{1F534}",   // red circle
+        AlertType::LatencyIncrease => "\u{1F7E1}",   // yellow circle
+        AlertType::LiquidityDecrease => "\u{1F7E0}", // orange circle
     };
 
     let type_label = match alert.alert_type {
@@ -43,11 +45,7 @@ pub fn format_alert(alert: &Alert) -> String {
     )
 }
 
-pub fn format_status(
-    corridor_count: usize,
-    anchor_count: usize,
-    active_alerts: usize,
-) -> String {
+pub fn format_status(corridor_count: usize, anchor_count: usize, active_alerts: usize) -> String {
     let title = escape_markdown("System Status");
     format!(
         "*{title}*\n\n\

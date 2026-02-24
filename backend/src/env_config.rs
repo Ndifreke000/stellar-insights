@@ -87,13 +87,12 @@ pub fn log_env_config() {
 
     // CORS
     log_var("CORS_ALLOWED_ORIGINS");
-    
+
     // Slack Bot
     if let Ok(slack_url) = env::var("SLACK_WEBHOOK_URL") {
         let sanitized = sanitize_url(&slack_url);
         tracing::info!("  SLACK_WEBHOOK_URL: {}", sanitized);
     }
-
 
     // Price feed (don't log API key)
     log_var("PRICE_FEED_PROVIDER");
@@ -168,14 +167,16 @@ fn validate_stellar_public_key(value: &str) -> bool {
     if !value.starts_with('G') || value.len() != 56 {
         return false;
     }
-    
+
     // Check if it's not the placeholder value
     if value == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         return false;
     }
-    
+
     // Validate base32 characters (A-Z, 2-7)
-    value.chars().all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
+    value
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
 }
 
 #[cfg(test)]

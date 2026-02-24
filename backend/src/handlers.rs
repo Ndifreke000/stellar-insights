@@ -14,7 +14,6 @@ use crate::models::{AnchorDetailResponse, CreateAnchorRequest, CreateCorridorReq
 use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
 use crate::state::AppState;
 
-
 #[derive(Debug, Deserialize)]
 pub struct ListAnchorsQuery {
     #[serde(default = "default_limit")]
@@ -268,7 +267,6 @@ pub async fn health_check() -> impl IntoResponse {
         }
     }))
 }
-
 
 /// Database pool metrics endpoint
 pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {

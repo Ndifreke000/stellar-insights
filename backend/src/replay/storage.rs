@@ -92,16 +92,19 @@ impl EventStorage {
             query.push_str(&format!(" LIMIT {}", lim));
         }
 
-        let mut query_builder = sqlx::query_as::<_, (
-            String,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            DateTime<Utc>,
-            String,
-        )>(&query)
+        let mut query_builder = sqlx::query_as::<
+            _,
+            (
+                String,
+                i64,
+                String,
+                String,
+                String,
+                String,
+                DateTime<Utc>,
+                String,
+            ),
+        >(&query)
         .bind(start_ledger as i64)
         .bind(end_ledger as i64);
 
@@ -209,17 +212,23 @@ impl ReplayStorage {
 
     /// Load replay metadata
     pub async fn load_metadata(&self, session_id: &str) -> Result<Option<ReplayMetadata>> {
-        let row: Option<(String, String, String, DateTime<Utc>, Option<DateTime<Utc>>, String)> =
-            sqlx::query_as(
-                r#"
+        let row: Option<(
+            String,
+            String,
+            String,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            String,
+        )> = sqlx::query_as(
+            r#"
                 SELECT session_id, config, status, started_at, ended_at, checkpoint
                 FROM replay_sessions
                 WHERE session_id = $1
                 "#,
-            )
-            .bind(session_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
 
         match row {
             Some((session_id, config_json, status_json, started_at, ended_at, checkpoint_json)) => {
@@ -254,8 +263,14 @@ impl ReplayStorage {
             limit_clause
         );
 
-        let rows: Vec<(String, String, String, DateTime<Utc>, Option<DateTime<Utc>>, String)> =
-            sqlx::query_as(&query).fetch_all(&self.pool).await?;
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            String,
+        )> = sqlx::query_as(&query).fetch_all(&self.pool).await?;
 
         let sessions = rows
             .into_iter()

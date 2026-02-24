@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
+use async_graphql::http::{playground_source, GraphiQLSource};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
 use axum::{
     http::Method,
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
 use dotenvy::dotenv;
@@ -14,10 +18,12 @@ use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use stellar_insights_backend::alerts::AlertManager;
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::api::api_keys;
+use stellar_insights_backend::api::asset_verification;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
 use stellar_insights_backend::api::cost_calculator;
@@ -32,16 +38,20 @@ use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
+// use stellar_insights_backend::graphql::{build_schema, AppSchema};
 // use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::ip_whitelist_middleware::{ip_whitelist_middleware, IpWhitelistConfig};
+use stellar_insights_backend::ip_whitelist_middleware::{
+    ip_whitelist_middleware, IpWhitelistConfig,
+};
 use stellar_insights_backend::jobs::JobScheduler;
+use stellar_insights_backend::monitor::CorridorMonitor;
 use stellar_insights_backend::network::NetworkConfig;
-use stellar_insights_backend::openapi::ApiDoc;
 use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
-use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use stellar_insights_backend::openapi::ApiDoc;
+use stellar_insights_backend::rate_limit::{rate_limit_middleware, ClientRateLimits, RateLimitConfig, RateLimiter};
 use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
@@ -54,14 +64,12 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
-use stellar_insights_backend::alerts::AlertManager;
-use stellar_insights_backend::monitor::CorridorMonitor;
-use stellar_insights_backend::telegram;
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
 };
 use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::telegram;
 use stellar_insights_backend::vault;
 use stellar_insights_backend::websocket::WsState;
 
@@ -105,7 +113,11 @@ async fn main() -> Result<()> {
         database_url.clone()
     } else if let Some(at_pos) = database_url.rfind('@') {
         if let Some(scheme_end) = database_url.find("://") {
-            format!("{}****@{}", &database_url[..scheme_end + 3], &database_url[at_pos + 1..])
+            format!(
+                "{}****@{}",
+                &database_url[..scheme_end + 3],
+                &database_url[at_pos + 1..]
+            )
         } else {
             "[REDACTED]".to_string()
         }
@@ -319,11 +331,11 @@ async fn main() -> Result<()> {
 
     // Initialize SEP-10 Service for Stellar authentication
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
-    
+
     // Get and validate SEP-10 server public key (required for security)
     let sep10_server_key = std::env::var("SEP10_SERVER_PUBLIC_KEY")
         .context("SEP10_SERVER_PUBLIC_KEY environment variable is required for authentication")?;
-    
+
     // Additional validation: ensure it's not the placeholder value
     if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         anyhow::bail!(
@@ -331,12 +343,12 @@ async fn main() -> Result<()> {
              Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
         );
     }
-    
+
     tracing::info!(
         "SEP-10 authentication enabled with server key: {}...",
         &sep10_server_key[..8]
     );
-    
+
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
             std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
@@ -539,7 +551,6 @@ async fn main() -> Result<()> {
     // Start Webhook Dispatcher background task
     let shutdown_rx6 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
-
         let mut shutdown_rx = shutdown_rx6;
         tokio::select! {
             result = webhook_dispatcher.run() => {
@@ -608,11 +619,11 @@ async fn main() -> Result<()> {
     .await;
     tracing::info!("Background job scheduler started");
 
-    // Initialize rate limiter
-    let rate_limiter_result = RateLimiter::new().await;
+    // Initialize rate limiter with database support for API key validation
+    let rate_limiter_result = RateLimiter::new_with_db(Some(pool.clone())).await;
     let rate_limiter = match rate_limiter_result {
         Ok(limiter) => {
-            tracing::info!("Rate limiter initialized successfully");
+            tracing::info!("Rate limiter initialized successfully with database support");
             Arc::new(limiter)
         }
         Err(e) => {
@@ -621,20 +632,25 @@ async fn main() -> Result<()> {
                 e
             );
             Arc::new(
-                RateLimiter::new()
+                RateLimiter::new_with_db(Some(pool.clone()))
                     .await
                     .unwrap_or_else(|_| panic!("Failed to create rate limiter: critical error")),
             )
         }
     };
 
-    // Configure rate limits for endpoints
+    // Configure rate limits for endpoints with per-client tiers
     rate_limiter
         .register_endpoint(
             "/health".to_string(),
             RateLimitConfig {
                 requests_per_minute: 1000,
                 whitelist_ips: vec!["127.0.0.1".to_string()],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 1000,
+                    premium: 5000,
+                    anonymous: 1000,
+                }),
             },
         )
         .await;
@@ -645,6 +661,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -655,6 +676,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -665,6 +691,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -675,6 +706,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -685,6 +721,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -695,6 +736,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 1500,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -705,6 +751,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -715,6 +766,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -1003,6 +1059,31 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build GraphQL schema
+    // let graphql_schema = build_schema(Arc::new(pool.clone()));
+    // tracing::info!("GraphQL schema initialized");
+
+    // GraphQL handler
+    // async fn graphql_handler(
+    //     State(schema): State<AppSchema>,
+    //     req: GraphQLRequest,
+    // ) -> GraphQLResponse {
+    //     schema.execute(req.into_inner()).await.into()
+    // }
+
+    // GraphQL Playground handler
+    // async fn graphql_playground() -> impl IntoResponse {
+    //     Html(playground_source(
+    //         async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
+    //     ))
+    // }
+
+    // Build GraphQL routes
+    // let graphql_routes = Router::new()
+    //     .route("/graphql", post(graphql_handler))
+    //     .route("/graphql/playground", get(graphql_playground))
+    //     .with_state(graphql_schema);
+
     // Build achievements / quests routes
     let achievements_routes = Router::new()
         .nest(
@@ -1107,16 +1188,43 @@ async fn main() -> Result<()> {
     let gdpr_routes = Router::new()
         .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
         .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
-        .route("/api/gdpr/consents/batch", put(gdpr_handlers::batch_update_consents))
+        .route(
+            "/api/gdpr/consents/batch",
+            put(gdpr_handlers::batch_update_consents),
+        )
         .route("/api/gdpr/export", get(gdpr_handlers::get_export_requests))
-        .route("/api/gdpr/export", post(gdpr_handlers::create_export_request))
-        .route("/api/gdpr/export/:id", get(gdpr_handlers::get_export_request))
-        .route("/api/gdpr/export-types", get(gdpr_handlers::get_exportable_types))
-        .route("/api/gdpr/deletion", get(gdpr_handlers::get_deletion_requests))
-        .route("/api/gdpr/deletion", post(gdpr_handlers::create_deletion_request))
-        .route("/api/gdpr/deletion/:id", get(gdpr_handlers::get_deletion_request))
-        .route("/api/gdpr/deletion/:id/cancel", post(gdpr_handlers::cancel_deletion))
-        .route("/api/gdpr/deletion/confirm", post(gdpr_handlers::confirm_deletion))
+        .route(
+            "/api/gdpr/export",
+            post(gdpr_handlers::create_export_request),
+        )
+        .route(
+            "/api/gdpr/export/:id",
+            get(gdpr_handlers::get_export_request),
+        )
+        .route(
+            "/api/gdpr/export-types",
+            get(gdpr_handlers::get_exportable_types),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            get(gdpr_handlers::get_deletion_requests),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            post(gdpr_handlers::create_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id",
+            get(gdpr_handlers::get_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id/cancel",
+            post(gdpr_handlers::cancel_deletion),
+        )
+        .route(
+            "/api/gdpr/deletion/confirm",
+            post(gdpr_handlers::confirm_deletion),
+        )
         .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
         .with_state(Arc::clone(&gdpr_service))
         .layer(cors.clone());
@@ -1133,11 +1241,12 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     let alert_ws_routes = Router::new()
-        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .route(
+            "/ws/alerts",
+            get(stellar_insights_backend::alert_handlers::alert_websocket_handler),
+        )
         .with_state(Arc::clone(&alert_manager))
         .layer(cors.clone());
-
-
 
     let app = Router::new()
         .route("/metrics", get(obs_metrics::metrics_handler))
@@ -1160,14 +1269,15 @@ async fn main() -> Result<()> {
         .merge(network_routes)
         .merge(api_analytics_routes)
         .merge(cache_routes)
-        .merge(admin_db_routes)
         .merge(metrics_routes)
+        // .merge(graphql_routes) // Add GraphQL routes
+        .merge(admin_db_routes)
         .merge(verification_routes)
+        .merge(asset_verification_routes)
         // .merge(gdpr_routes)
         .merge(api_key_routes)
         .merge(ws_routes)
         .merge(alert_ws_routes)
-
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
@@ -1183,6 +1293,10 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
 
     tracing::info!("Server starting on {}", addr);
+    tracing::info!(
+        "GraphQL Playground available at http://{}/graphql/playground",
+        addr
+    );
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     // Clone resources needed for shutdown

@@ -20,7 +20,7 @@ impl GdprService {
     /// Get all consents for a user
     pub async fn get_user_consents(&self, user_id: &str) -> Result<Vec<ConsentResponse>, AppError> {
         let consents = sqlx::query_as::<_, UserConsent>(
-            "SELECT * FROM user_consents WHERE user_id = ? ORDER BY consent_type"
+            "SELECT * FROM user_consents WHERE user_id = ? ORDER BY consent_type",
         )
         .bind(user_id)
         .fetch_all(&self.db)
@@ -65,7 +65,7 @@ impl GdprService {
     ) -> Result<ConsentResponse, AppError> {
         let consent_type = request.consent_type.clone();
         let old_consent_given = sqlx::query_as::<_, UserConsent>(
-            "SELECT * FROM user_consents WHERE user_id = ? AND consent_type = ?"
+            "SELECT * FROM user_consents WHERE user_id = ? AND consent_type = ?",
         )
         .bind(user_id)
         .bind(&request.consent_type)
@@ -126,8 +126,16 @@ impl GdprService {
             consent_type,
             consent_given: request.consent_given,
             consent_version,
-            granted_at: if request.consent_given { Some(now.clone()) } else { None },
-            revoked_at: if !request.consent_given { Some(now) } else { None },
+            granted_at: if request.consent_given {
+                Some(now.clone())
+            } else {
+                None
+            },
+            revoked_at: if !request.consent_given {
+                Some(now)
+            } else {
+                None
+            },
         })
     }
 
@@ -159,7 +167,7 @@ impl GdprService {
         let now = Utc::now().to_rfc3339();
         let data_types = request.data_types.join(",");
         let export_format = request.export_format.unwrap_or_else(|| "json".to_string());
-        
+
         // Export links expire after 7 days
         let expires_at = Utc::now()
             .checked_add_signed(Duration::days(7))
@@ -201,7 +209,7 @@ impl GdprService {
         request_id: &str,
     ) -> Result<ExportRequestResponse, AppError> {
         let request = sqlx::query_as::<_, DataExportRequest>(
-            "SELECT * FROM data_export_requests WHERE id = ? AND user_id = ?"
+            "SELECT * FROM data_export_requests WHERE id = ? AND user_id = ?",
         )
         .bind(request_id)
         .bind(user_id)
@@ -211,7 +219,10 @@ impl GdprService {
         .ok_or(AppError::NotFound("Export request not found".to_string()))?;
 
         let download_url = if request.status == "completed" && request.download_token.is_some() {
-            Some(format!("/api/gdpr/download/{}", request.download_token.unwrap()))
+            Some(format!(
+                "/api/gdpr/download/{}",
+                request.download_token.unwrap()
+            ))
         } else {
             None
         };
@@ -231,7 +242,7 @@ impl GdprService {
         user_id: &str,
     ) -> Result<Vec<ExportRequestResponse>, AppError> {
         let requests = sqlx::query_as::<_, DataExportRequest>(
-            "SELECT * FROM data_export_requests WHERE user_id = ? ORDER BY requested_at DESC"
+            "SELECT * FROM data_export_requests WHERE user_id = ? ORDER BY requested_at DESC",
         )
         .bind(user_id)
         .fetch_all(&self.db)
@@ -240,8 +251,12 @@ impl GdprService {
 
         let mut responses = Vec::new();
         for request in requests {
-            let download_url = if request.status == "completed" && request.download_token.is_some() {
-                Some(format!("/api/gdpr/download/{}", request.download_token.unwrap()))
+            let download_url = if request.status == "completed" && request.download_token.is_some()
+            {
+                Some(format!(
+                    "/api/gdpr/download/{}",
+                    request.download_token.unwrap()
+                ))
             } else {
                 None
             };
@@ -266,10 +281,10 @@ impl GdprService {
     ) -> Result<DeletionRequestResponse, AppError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        
+
         // Generate confirmation token
         let confirmation_token = Uuid::new_v4().to_string();
-        
+
         let delete_all_data = request.delete_all_data.unwrap_or(true);
         let data_types = request.data_types.map(|d| d.join(","));
 
@@ -305,7 +320,7 @@ impl GdprService {
         confirmation_token: &str,
     ) -> Result<DeletionRequestResponse, AppError> {
         let now = Utc::now().to_rfc3339();
-        
+
         // Schedule deletion for 24 hours from now
         let scheduled_deletion = Utc::now()
             .checked_add_signed(Duration::hours(24))
@@ -324,11 +339,13 @@ impl GdprService {
         .map_err(AppError::Database)?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Deletion request not found or already processed".to_string()));
+            return Err(AppError::NotFound(
+                "Deletion request not found or already processed".to_string(),
+            ));
         }
 
         let request = sqlx::query_as::<_, DataDeletionRequest>(
-            "SELECT * FROM data_deletion_requests WHERE confirmation_token = ?"
+            "SELECT * FROM data_deletion_requests WHERE confirmation_token = ?",
         )
         .bind(confirmation_token)
         .fetch_one(&self.db)
@@ -367,11 +384,13 @@ impl GdprService {
         .map_err(AppError::Database)?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Deletion request not found or cannot be cancelled".to_string()));
+            return Err(AppError::NotFound(
+                "Deletion request not found or cannot be cancelled".to_string(),
+            ));
         }
 
         let request = sqlx::query_as::<_, DataDeletionRequest>(
-            "SELECT * FROM data_deletion_requests WHERE id = ?"
+            "SELECT * FROM data_deletion_requests WHERE id = ?",
         )
         .bind(request_id)
         .fetch_one(&self.db)
@@ -395,7 +414,7 @@ impl GdprService {
         request_id: &str,
     ) -> Result<DeletionRequestResponse, AppError> {
         let request = sqlx::query_as::<_, DataDeletionRequest>(
-            "SELECT * FROM data_deletion_requests WHERE id = ? AND user_id = ?"
+            "SELECT * FROM data_deletion_requests WHERE id = ? AND user_id = ?",
         )
         .bind(request_id)
         .bind(user_id)
@@ -420,7 +439,7 @@ impl GdprService {
         user_id: &str,
     ) -> Result<Vec<DeletionRequestResponse>, AppError> {
         let requests = sqlx::query_as::<_, DataDeletionRequest>(
-            "SELECT * FROM data_deletion_requests WHERE user_id = ? ORDER BY requested_at DESC"
+            "SELECT * FROM data_deletion_requests WHERE user_id = ? ORDER BY requested_at DESC",
         )
         .bind(user_id)
         .fetch_all(&self.db)
@@ -447,7 +466,7 @@ impl GdprService {
         let consents = self.get_user_consents(user_id).await?;
 
         let pending_exports: i32 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM data_export_requests WHERE user_id = ? AND status IN (?, ?)"
+            "SELECT COUNT(*) FROM data_export_requests WHERE user_id = ? AND status IN (?, ?)",
         )
         .bind(user_id)
         .bind("pending")
@@ -457,7 +476,7 @@ impl GdprService {
         .map_err(AppError::Database)?;
 
         let pending_deletions: i32 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM data_deletion_requests WHERE user_id = ? AND status IN (?, ?)"
+            "SELECT COUNT(*) FROM data_deletion_requests WHERE user_id = ? AND status IN (?, ?)",
         )
         .bind(user_id)
         .bind("pending")
@@ -466,13 +485,12 @@ impl GdprService {
         .await
         .map_err(AppError::Database)?;
 
-        let processing_count: i32 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM data_processing_log WHERE user_id = ?"
-        )
-        .bind(user_id)
-        .fetch_one(&self.db)
-        .await
-        .map_err(AppError::Database)?;
+        let processing_count: i32 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM data_processing_log WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_one(&self.db)
+                .await
+                .map_err(AppError::Database)?;
 
         Ok(GdprSummary {
             user_id: user_id.to_string(),
@@ -490,7 +508,8 @@ impl GdprService {
                 DataTypeInfo {
                     id: "profile".to_string(),
                     name: "Profile Information".to_string(),
-                    description: "Your account profile data including username and preferences".to_string(),
+                    description: "Your account profile data including username and preferences"
+                        .to_string(),
                     category: "account".to_string(),
                 },
                 DataTypeInfo {

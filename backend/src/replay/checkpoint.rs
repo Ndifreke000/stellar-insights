@@ -122,27 +122,19 @@ impl CheckpointManager {
     pub async fn load(&self, checkpoint_id: &str) -> Result<Option<Checkpoint>> {
         debug!("Loading checkpoint {}", checkpoint_id);
 
-        let row: Option<(
-            String,
-            String,
-            i64,
-            i64,
-            i64,
-            String,
-            String,
-            DateTime<Utc>,
-        )> = sqlx::query_as(
-            r#"
+        let row: Option<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
+            sqlx::query_as(
+                r#"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
             WHERE id = $1
             "#,
-        )
-        .bind(checkpoint_id)
-        .fetch_optional(&self.pool)
-        .await
-        .context("Failed to load checkpoint")?;
+            )
+            .bind(checkpoint_id)
+            .fetch_optional(&self.pool)
+            .await
+            .context("Failed to load checkpoint")?;
 
         match row {
             Some((
@@ -177,17 +169,9 @@ impl CheckpointManager {
     pub async fn get_latest(&self, session_id: &str) -> Result<Option<Checkpoint>> {
         debug!("Getting latest checkpoint for session {}", session_id);
 
-        let row: Option<(
-            String,
-            String,
-            i64,
-            i64,
-            i64,
-            String,
-            String,
-            DateTime<Utc>,
-        )> = sqlx::query_as(
-            r#"
+        let row: Option<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
+            sqlx::query_as(
+                r#"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
@@ -195,11 +179,11 @@ impl CheckpointManager {
             ORDER BY created_at DESC
             LIMIT 1
             "#,
-        )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await
-        .context("Failed to get latest checkpoint")?;
+            )
+            .bind(session_id)
+            .fetch_optional(&self.pool)
+            .await
+            .context("Failed to get latest checkpoint")?;
 
         match row {
             Some((
@@ -234,28 +218,20 @@ impl CheckpointManager {
     pub async fn list_for_session(&self, session_id: &str) -> Result<Vec<Checkpoint>> {
         debug!("Listing checkpoints for session {}", session_id);
 
-        let rows: Vec<(
-            String,
-            String,
-            i64,
-            i64,
-            i64,
-            String,
-            String,
-            DateTime<Utc>,
-        )> = sqlx::query_as(
-            r#"
+        let rows: Vec<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
+            sqlx::query_as(
+                r#"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
             WHERE session_id = $1
             ORDER BY created_at DESC
             "#,
-        )
-        .bind(session_id)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to list checkpoints")?;
+            )
+            .bind(session_id)
+            .fetch_all(&self.pool)
+            .await
+            .context("Failed to list checkpoints")?;
 
         let checkpoints = rows
             .into_iter()

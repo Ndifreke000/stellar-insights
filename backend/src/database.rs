@@ -212,7 +212,10 @@ pub struct Database {
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
-        Self { pool, admin_audit_logger }
+        Self {
+            pool,
+            admin_audit_logger,
+        }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -404,6 +407,46 @@ impl Database {
         .await?;
 
         Ok(assets)
+    }
+
+    pub async fn get_assets_by_anchors(
+        &self,
+        anchor_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<String, Vec<Asset>>> {
+        if anchor_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let anchor_id_strs: Vec<String> = anchor_ids.iter().map(|id| id.to_string()).collect();
+        let placeholders = anchor_id_strs
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let query_str = format!(
+            "SELECT * FROM assets WHERE anchor_id IN ({}) ORDER BY anchor_id, asset_code ASC",
+            placeholders
+        );
+
+        let mut query = sqlx::query_as::<_, Asset>(&query_str);
+        for id in &anchor_id_strs {
+            query = query.bind(id);
+        }
+
+        let assets = query.fetch_all(&self.pool).await?;
+
+        let mut result: std::collections::HashMap<String, Vec<Asset>> =
+            std::collections::HashMap::new();
+        for asset in assets {
+            result
+                .entry(asset.anchor_id.clone())
+                .or_insert_with(Vec::new)
+                .push(asset);
+        }
+
+        Ok(result)
     }
 
     pub async fn count_assets_by_anchor(&self, anchor_id: Uuid) -> Result<i64> {

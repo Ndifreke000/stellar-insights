@@ -85,10 +85,7 @@ impl TelegramClient {
         }
     }
 
-    pub async fn get_updates(
-        &self,
-        offset: Option<i64>,
-    ) -> anyhow::Result<Vec<Update>> {
+    pub async fn get_updates(&self, offset: Option<i64>) -> anyhow::Result<Vec<Update>> {
         let body = GetUpdatesRequest {
             offset,
             timeout: 30,

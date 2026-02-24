@@ -54,17 +54,20 @@ impl CommandHandler {
     }
 
     async fn handle_status(&self) -> String {
-        let anchors = self.db.list_anchors(1000, 0).await.unwrap_or_default();
+        let anchors = match self.db.list_anchors(1000, 0).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("Failed to fetch anchors for status: {}", e);
+                vec![]
+            }
+        };
         let anchor_count = anchors.len();
 
         let corridor_count = match self.rpc_client.fetch_payments(200, None).await {
             Ok(payments) => {
                 let mut corridors = std::collections::HashSet::new();
                 for p in &payments {
-                    let key = format!(
-                        "{}->XLM",
-                        p.asset_code.as_deref().unwrap_or("XLM")
-                    );
+                    let key = format!("{}->XLM", p.asset_code.as_deref().unwrap_or("XLM"));
                     corridors.insert(key);
                 }
                 corridors.len()
@@ -119,7 +122,9 @@ impl CommandHandler {
     async fn handle_corridor_detail(&self, args: &str) -> String {
         let key = args.trim();
         if key.is_empty() {
-            return formatter::escape_markdown("Usage: /corridor <corridor_key>\nExample: /corridor USDC:GA5Z->XLM:native");
+            return formatter::escape_markdown(
+                "Usage: /corridor <corridor_key>\nExample: /corridor USDC:GA5Z->XLM:native",
+            );
         }
 
         let payments = match self.rpc_client.fetch_payments(200, None).await {
@@ -165,10 +170,7 @@ impl CommandHandler {
         let anchors = match self.db.list_anchors(50, 0).await {
             Ok(a) => a,
             Err(e) => {
-                return formatter::escape_markdown(&format!(
-                    "Failed to fetch anchors: {}",
-                    e
-                ));
+                return formatter::escape_markdown(&format!("Failed to fetch anchors: {}", e));
             }
         };
 
@@ -234,12 +236,10 @@ impl CommandHandler {
 
     async fn handle_unsubscribe(&self, chat_id: i64) -> String {
         match self.subscriptions.unsubscribe(chat_id).await {
-            Ok(true) => {
-                formatter::escape_markdown("Unsubscribed from alerts. You will no longer receive notifications.")
-            }
-            Ok(false) => {
-                formatter::escape_markdown("You are not currently subscribed to alerts.")
-            }
+            Ok(true) => formatter::escape_markdown(
+                "Unsubscribed from alerts. You will no longer receive notifications.",
+            ),
+            Ok(false) => formatter::escape_markdown("You are not currently subscribed to alerts."),
             Err(e) => formatter::escape_markdown(&format!("Failed to unsubscribe: {}", e)),
         }
     }

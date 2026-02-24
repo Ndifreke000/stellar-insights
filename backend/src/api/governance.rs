@@ -32,10 +32,7 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
         .route("/proposals/:id", get(get_proposal))
         .route("/proposals/:id/votes", get(get_votes))
         .route("/proposals/:id/comments", get(get_comments))
-        .route(
-            "/proposals/:id/has-voted/:address",
-            get(has_voted),
-        )
+        .route("/proposals/:id/has-voted/:address", get(has_voted))
         .with_state(service)
 }
 
@@ -213,10 +210,7 @@ async fn add_comment(
     sep10_user: axum::Extension<Sep10User>,
     Json(request): Json<AddCommentRequest>,
 ) -> Result<Response, GovernanceError> {
-    info!(
-        "Add comment to proposal {} from {}",
-        id, sep10_user.account
-    );
+    info!("Add comment to proposal {} from {}", id, sep10_user.account);
 
     let response = service
         .add_comment(&id, &sep10_user.account, request)

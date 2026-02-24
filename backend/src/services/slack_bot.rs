@@ -1,7 +1,7 @@
+use crate::alerts::{Alert, AlertType};
 use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
 use tokio::sync::broadcast;
-use crate::alerts::{Alert, AlertType};
 
 /// Slack Bot Service for sending alerts to Slack channels
 pub struct SlackBotService {
@@ -45,8 +45,8 @@ impl SlackBotService {
         };
 
         let color = match alert.alert_type {
-            AlertType::SuccessRateDrop => "#E01E5A", // Red
-            AlertType::LatencyIncrease => "#ECB22E", // Yellow
+            AlertType::SuccessRateDrop => "#E01E5A",   // Red
+            AlertType::LatencyIncrease => "#ECB22E",   // Yellow
             AlertType::LiquidityDecrease => "#E8912D", // Orange
         };
 
@@ -85,7 +85,8 @@ impl SlackBotService {
             ]
         });
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&self.webhook_url)
             .json(&payload)
             .send()
@@ -104,4 +105,3 @@ impl SlackBotService {
         Ok(())
     }
 }
-

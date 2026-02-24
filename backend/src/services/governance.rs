@@ -89,7 +89,9 @@ impl GovernanceService {
     ) -> Result<ProposalResponse> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        let proposal_type = request.proposal_type.unwrap_or_else(|| "contract_upgrade".to_string());
+        let proposal_type = request
+            .proposal_type
+            .unwrap_or_else(|| "contract_upgrade".to_string());
 
         sqlx::query(
             r#"
@@ -194,13 +196,12 @@ impl GovernanceService {
             .await
             .context("Failed to list proposals")?;
 
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM governance_proposals WHERE status = ?",
-            )
-            .bind(status)
-            .fetch_one(self.db.pool())
-            .await
-            .context("Failed to count proposals")?;
+            let total: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM governance_proposals WHERE status = ?")
+                    .bind(status)
+                    .fetch_one(self.db.pool())
+                    .await
+                    .context("Failed to count proposals")?;
 
             (rows, total)
         } else {
@@ -223,11 +224,10 @@ impl GovernanceService {
             .await
             .context("Failed to list proposals")?;
 
-            let total: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM governance_proposals")
-                    .fetch_one(self.db.pool())
-                    .await
-                    .context("Failed to count proposals")?;
+            let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM governance_proposals")
+                .fetch_one(self.db.pool())
+                .await
+                .context("Failed to count proposals")?;
 
             (rows, total)
         };
@@ -268,13 +268,12 @@ impl GovernanceService {
         request: CastVoteRequest,
     ) -> Result<VoteResponse> {
         // Verify proposal is active
-        let status: String = sqlx::query_scalar(
-            "SELECT status FROM governance_proposals WHERE id = ?",
-        )
-        .bind(proposal_id)
-        .fetch_one(self.db.pool())
-        .await
-        .context("Proposal not found")?;
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM governance_proposals WHERE id = ?")
+                .bind(proposal_id)
+                .fetch_one(self.db.pool())
+                .await
+                .context("Proposal not found")?;
 
         if status != "active" {
             return Err(anyhow!("Proposal is not active for voting"));
@@ -365,13 +364,11 @@ impl GovernanceService {
         request: AddCommentRequest,
     ) -> Result<CommentResponse> {
         // Verify proposal exists
-        let _: String = sqlx::query_scalar(
-            "SELECT id FROM governance_proposals WHERE id = ?",
-        )
-        .bind(proposal_id)
-        .fetch_one(self.db.pool())
-        .await
-        .context("Proposal not found")?;
+        let _: String = sqlx::query_scalar("SELECT id FROM governance_proposals WHERE id = ?")
+            .bind(proposal_id)
+            .fetch_one(self.db.pool())
+            .await
+            .context("Proposal not found")?;
 
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
@@ -439,15 +436,14 @@ impl GovernanceService {
     pub async fn update_status(&self, proposal_id: &str, status: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
 
-        let result = sqlx::query(
-            "UPDATE governance_proposals SET status = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(status)
-        .bind(&now)
-        .bind(proposal_id)
-        .execute(self.db.pool())
-        .await
-        .context("Failed to update proposal status")?;
+        let result =
+            sqlx::query("UPDATE governance_proposals SET status = ?, updated_at = ? WHERE id = ?")
+                .bind(status)
+                .bind(&now)
+                .bind(proposal_id)
+                .execute(self.db.pool())
+                .await
+                .context("Failed to update proposal status")?;
 
         if result.rows_affected() == 0 {
             return Err(anyhow!("Proposal not found"));

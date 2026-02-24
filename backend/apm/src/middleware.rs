@@ -1,17 +1,17 @@
-use std::time::Instant;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{StatusCode, HeaderMap},
+    http::{HeaderMap, StatusCode},
     middleware::Next,
     response::Response,
 };
 use opentelemetry::global;
-use opentelemetry::trace::{Span, Tracer, SpanKind};
-use opentelemetry::{KeyValue, Context};
-use tracing::{info, warn, error};
+use opentelemetry::trace::{Span, SpanKind, Tracer};
+use opentelemetry::{Context, KeyValue};
+use tracing::{error, info, warn};
 
 use crate::ApmManager;
 
@@ -125,7 +125,10 @@ impl ApmMiddleware {
         // Add attributes to span
         span.set_attributes(vec![
             KeyValue::new("http.status_code", status_code_value.to_string()),
-            KeyValue::new("http.status_text", status_code.canonical_reason().unwrap_or("unknown")),
+            KeyValue::new(
+                "http.status_text",
+                status_code.canonical_reason().unwrap_or("unknown"),
+            ),
             KeyValue::new("http.response_time_ms", duration.as_millis() as i64),
         ]);
 
@@ -243,10 +246,13 @@ impl ApmMiddleware {
                     "Database operation failed"
                 );
                 span.set_status(opentelemetry::trace::Status::error(e.to_string()));
-                apm.record_error(e, std::collections::HashMap::from([
-                    ("operation".to_string(), operation.to_string()),
-                    ("table".to_string(), table.unwrap_or("unknown").to_string()),
-                ]));
+                apm.record_error(
+                    e,
+                    std::collections::HashMap::from([
+                        ("operation".to_string(), operation.to_string()),
+                        ("table".to_string(), table.unwrap_or("unknown").to_string()),
+                    ]),
+                );
             }
         }
 
@@ -319,10 +325,13 @@ impl ApmMiddleware {
                     "Stellar RPC operation failed"
                 );
                 span.set_status(opentelemetry::trace::Status::error(e.to_string()));
-                apm.record_error(e, std::collections::HashMap::from([
-                    ("operation".to_string(), operation.to_string()),
-                    ("endpoint".to_string(), endpoint.to_string()),
-                ]));
+                apm.record_error(
+                    e,
+                    std::collections::HashMap::from([
+                        ("operation".to_string(), operation.to_string()),
+                        ("endpoint".to_string(), endpoint.to_string()),
+                    ]),
+                );
             }
         }
 
@@ -385,10 +394,13 @@ impl ApmMiddleware {
                     "Background job failed"
                 );
                 span.set_status(opentelemetry::trace::Status::error(e.to_string()));
-                apm.record_error(e, std::collections::HashMap::from([
-                    ("job_name".to_string(), job_name.to_string()),
-                    ("job_type".to_string(), job_type.to_string()),
-                ]));
+                apm.record_error(
+                    e,
+                    std::collections::HashMap::from([
+                        ("job_name".to_string(), job_name.to_string()),
+                        ("job_type".to_string(), job_type.to_string()),
+                    ]),
+                );
             }
         }
 
@@ -412,11 +424,9 @@ fn extract_trace_context(headers: &HeaderMap) -> Option<String> {
 
 /// Get host name for tracing
 fn get_host_name() -> String {
-    std::env::var("HOSTNAME")
-        .unwrap_or_else(|_| {
-            std::env::var("COMPUTERNAME")
-                .unwrap_or_else(|_| "localhost".to_string())
-        })
+    std::env::var("HOSTNAME").unwrap_or_else(|_| {
+        std::env::var("COMPUTERNAME").unwrap_or_else(|_| "localhost".to_string())
+    })
 }
 
 /// Helper trait for adding APM context to requests
@@ -484,7 +494,7 @@ mod tests {
     async fn test_http_request_tracking() {
         let config = crate::ApmConfig::default();
         let apm = Arc::new(crate::ApmManager::new(config).unwrap());
-        
+
         let app = Router::new()
             .layer(axum::middleware::from_fn_with_state(
                 apm.clone(),

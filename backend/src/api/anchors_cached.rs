@@ -124,35 +124,35 @@ pub async fn get_anchors(
     let response = <()>::get_or_fetch(&cache, &cache_key, cache.config.get_ttl("anchor"), async {
         // Get anchor metadata from database (names, accounts, etc.)
         let anchors = db.list_anchors(params.limit, params.offset).await?;
-        let circuit_breaker = rpc_circuit_breaker();
 
+        if anchors.is_empty() {
+            return Ok(AnchorsResponse {
+                anchors: vec![],
+                total: 0,
+            });
+        }
+
+        // OPTIMIZATION: Batch fetch all assets for these anchors (1 query instead of N)
+        let anchor_ids: Vec<uuid::Uuid> = anchors
+            .iter()
+            .map(|a| uuid::Uuid::parse_str(&a.id).unwrap_or_else(|_| uuid::Uuid::nil()))
+            .collect();
+
+        let asset_map = db
+            .get_assets_by_anchors(&anchor_ids)
+            .await
+            .unwrap_or_default();
+
+        let circuit_breaker = rpc_circuit_breaker();
         let mut anchor_responses = Vec::new();
 
+        // Process anchors with pre-fetched data
         for anchor in anchors {
             let anchor_id = uuid::Uuid::parse_str(&anchor.id).unwrap_or_else(|_| uuid::Uuid::nil());
 
-            // Get asset count from database (metadata)
-            let assets = db.get_assets_by_anchor(anchor_id).await?;
+            // Get pre-fetched assets (no additional query needed)
+            let assets = asset_map.get(&anchor.id).cloned().unwrap_or_default();
 
-            // **RPC DATA**: Fetch real-time payment data for this anchor
-            let payments = with_retry(
-                || async {
-                    rpc_client
-                        .fetch_account_payments(&anchor.stellar_account, 200)
-                        .await
-                        .map_err(|e| RpcError::categorize(&e.to_string()))
-                },
-                RetryConfig::default(),
-                circuit_breaker.clone(),
-            )
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to fetch payments for anchor {}: {}",
-                    anchor.stellar_account,
-                    e
-                )
-            })?;
             // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
             let payments = match rpc_client
                 .fetch_all_account_payments(&anchor.stellar_account, Some(500))

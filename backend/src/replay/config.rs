@@ -112,10 +112,7 @@ impl ReplayConfig {
         match &self.range {
             ReplayRange::FromTo { start, end } => {
                 if start > end {
-                    return Err(format!(
-                        "Invalid range: start ({}) > end ({})",
-                        start, end
-                    ));
+                    return Err(format!("Invalid range: start ({}) > end ({})", start, end));
                 }
             }
             ReplayRange::FromCheckpoint { checkpoint_id } => {

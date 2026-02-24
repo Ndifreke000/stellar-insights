@@ -39,7 +39,16 @@ impl AdminAuditLogger {
         // The original format string for `data` was correct in terms of placeholder count.
         // If "Fix placeholders in audit log" implies changing how `details` is serialized,
         // `details.to_string()` is a common way to include JSON in a string hash.
-        let data = format!("{}|{}|{}|{}|{}|{}|{}", id, timestamp, action, resource, user_id, status, details.to_string());
+        let data = format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            id,
+            timestamp,
+            action,
+            resource,
+            user_id,
+            status,
+            details.to_string()
+        );
         let hash_input = match prev_hash {
             Some(h) => format!("{}|{}", h, data),
             None => data.clone(),

@@ -104,9 +104,7 @@ impl IntoResponse for SigningError {
             SigningError::InvalidSignature => {
                 (StatusCode::UNAUTHORIZED, "Invalid request signature")
             }
-            SigningError::BodyTooLarge => {
-                (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large")
-            }
+            SigningError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large"),
             SigningError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
         };
         let body = json!({"error": message});

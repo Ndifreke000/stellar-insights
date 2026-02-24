@@ -249,7 +249,13 @@ impl RealtimeBroadcaster {
     }
 
     /// Broadcast new payment to all subscribed clients
-    pub async fn broadcast_payment(&self, corridor_key: String, amount: f64, successful: bool, timestamp: String) {
+    pub async fn broadcast_payment(
+        &self,
+        corridor_key: String,
+        amount: f64,
+        successful: bool,
+        timestamp: String,
+    ) {
         let channel = format!("corridor:{}", corridor_key);
         let message = BroadcastMessage::NewPayment {
             corridor_key: corridor_key.clone(),

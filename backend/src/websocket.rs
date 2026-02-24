@@ -118,11 +118,11 @@ impl WsState {
     /// Close all WebSocket connections gracefully
     pub async fn close_all_connections(&self) {
         let connection_ids: Vec<Uuid> = self.connections.iter().map(|entry| *entry.key()).collect();
-        
+
         for connection_id in connection_ids {
             self.cleanup_connection(connection_id);
         }
-        
+
         info!("All WebSocket connections have been closed");
     }
 }
@@ -449,7 +449,7 @@ mod tests {
             hash: "abc123".to_string(),
         };
 
-        let json = serde_json::to_string(&msg).unwrap();
+        let json = serde_json::to_string(&msg).expect("Failed to serialize WsMessage in test");
         assert!(json.contains("snapshot_update"));
         assert!(json.contains("test-id"));
     }

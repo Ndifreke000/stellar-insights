@@ -333,7 +333,8 @@ mod tests {
 
     #[test]
     fn retry_after_parses_http_date_format() {
-        let retry_at = chrono::DateTime::<chrono::Utc>::from(SystemTime::now() + Duration::from_secs(2));
+        let retry_at =
+            chrono::DateTime::<chrono::Utc>::from(SystemTime::now() + Duration::from_secs(2));
         let mut headers = HeaderMap::new();
         headers.insert(
             "retry-after",

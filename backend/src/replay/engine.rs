@@ -82,10 +82,7 @@ impl ReplayEngine {
         // Determine start and end ledgers
         let (start_ledger, end_ledger) = self.determine_ledger_range().await?;
 
-        info!(
-            "Replay range: ledger {} to {}",
-            start_ledger, end_ledger
-        );
+        info!("Replay range: ledger {} to {}", start_ledger, end_ledger);
 
         // Update status to in progress
         metadata.status = ReplayStatus::InProgress {
@@ -100,7 +97,10 @@ impl ReplayEngine {
 
         // Execute replay
         let start_time = Instant::now();
-        match self.execute_replay(start_ledger, end_ledger, &mut metadata).await {
+        match self
+            .execute_replay(start_ledger, end_ledger, &mut metadata)
+            .await
+        {
             Ok((processed, failed)) => {
                 let duration = start_time.elapsed().as_secs();
                 metadata.status = ReplayStatus::Completed {
@@ -146,10 +146,7 @@ impl ReplayEngine {
         let mut total_failed = 0u64;
 
         // Create processing context
-        let context = ProcessingContext::for_replay(
-            self.session_id.clone(),
-            self.config.dry_run,
-        );
+        let context = ProcessingContext::for_replay(self.session_id.clone(), self.config.dry_run);
 
         while current_ledger <= end_ledger {
             // Fetch batch of events
@@ -157,9 +154,7 @@ impl ReplayEngine {
 
             info!(
                 "Processing ledgers {} to {} (batch size: {})",
-                current_ledger,
-                batch_end,
-                self.config.batch_size
+                current_ledger, batch_end, self.config.batch_size
             );
 
             let events = self
@@ -191,11 +186,7 @@ impl ReplayEngine {
                             }
                         } else {
                             total_failed += 1;
-                            warn!(
-                                "Event {} failed: {:?}",
-                                event.unique_id(),
-                                result.error
-                            );
+                            warn!("Event {} failed: {:?}", event.unique_id(), result.error);
                         }
                     }
                     Err(e) => {
@@ -280,11 +271,7 @@ impl ReplayEngine {
 
     /// Determine the ledger range for replay
     async fn determine_ledger_range(&self) -> Result<(u64, u64)> {
-        let latest_ledger = self
-            .event_storage
-            .get_latest_ledger()
-            .await?
-            .unwrap_or(0);
+        let latest_ledger = self.event_storage.get_latest_ledger().await?.unwrap_or(0);
 
         let checkpoint_ledger = if let Some(checkpoint_id) = self.get_checkpoint_id() {
             self.checkpoint_manager
