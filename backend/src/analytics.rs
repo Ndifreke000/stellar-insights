@@ -27,7 +27,23 @@ pub struct AnchorReliabilityScore {
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-/// Compute anchor reliability metrics based on transaction data
+/// Computes anchor reliability metrics from transaction outcomes and settlement speed.
+///
+/// # Formula
+///
+/// The current MVP reliability score is a weighted sum of:
+///
+/// - `success_rate` (70%): `successful_transactions / total_transactions * 100`
+/// - `settlement_time_score` (30%): normalized by `calculate_settlement_time_score`
+///
+/// ```text
+/// reliability_score = (0.7 * success_rate) + (0.3 * settlement_time_score)
+/// ```
+///
+/// # Notes
+///
+/// - Returns a zeroed metric payload with `Red` status when `total_transactions == 0`.
+/// - Success/failure rates are rounded to 2 decimals for stable API output and UI rendering.
 pub fn compute_anchor_metrics(
     total_transactions: i64,
     successful_transactions: i64,
@@ -54,9 +70,8 @@ pub fn compute_anchor_metrics(
     let success_rate = (success_rate * 100.0).round() / 100.0;
     let failure_rate = (failure_rate * 100.0).round() / 100.0;
 
-    // Compute reliability score (0-100)
-    // Formula: (success_rate * 0.5) + (settlement_time_score * 0.25) + (volume_consistency * 0.25)
-    // For MVP, we'll use a simplified formula focused on success rate and settlement time
+    // Reliability emphasizes execution correctness while still accounting for user experience
+    // impact from slow settlements.
     let settlement_time_score = calculate_settlement_time_score(avg_settlement_time_ms);
     let reliability_score = (success_rate * 0.7) + (settlement_time_score * 0.3);
 
@@ -74,8 +89,14 @@ pub fn compute_anchor_metrics(
     }
 }
 
-/// Calculate settlement time score (0-100)
-/// Lower settlement time = higher score
+/// Converts average settlement time into a `0..=100` quality score.
+///
+/// # Normalization Model
+///
+/// - `<= 1s` receives `100` (best-case user experience)
+/// - `>= 10s` receives `0` (unacceptably slow)
+/// - values between those bounds are linearly interpolated
+/// - `None` returns a neutral `50` to avoid over-penalizing sparse telemetry
 fn calculate_settlement_time_score(avg_settlement_time_ms: Option<i32>) -> f64 {
     const MAX_SETTLEMENT_TIME_MS: f64 = 10000.0; // 10 seconds
     const MIN_SETTLEMENT_TIME_MS: f64 = 1000.0; // 1 second
@@ -97,12 +118,29 @@ pub fn count_assets_per_anchor(assets: &[String]) -> usize {
     assets.len()
 }
 
-/// Compute comprehensive anchor reliability score based on asset performance metrics
+/// Computes a composite anchor score from asset-level quality, volume, and diversity.
 ///
-/// This function aggregates multiple dimensions of anchor performance:
-/// - Asset performance (weighted success rate)
-/// - Volume (logarithmically scaled)
-/// - Asset diversity
+/// # Algorithm Overview
+///
+/// 1. Compute total volume and volume-weighted success rate across assets.
+/// 2. Convert volume to a logarithmic score to prevent large anchors from dominating solely
+///    due to raw notional size.
+/// 3. Score asset diversity with a cap at 10 assets.
+/// 4. Combine components into a final score.
+///
+/// # Composite Formula
+///
+/// ```text
+/// composite_score = (0.6 * asset_performance_score)
+///                + (0.3 * volume_score)
+///                + (0.1 * asset_diversity_score)
+/// ```
+///
+/// # Weight Rationale
+///
+/// - 60% performance: execution quality is primary.
+/// - 30% volume: liquidity/market confidence matters but should not dominate.
+/// - 10% diversity: broader issuance adds resilience but is secondary.
 ///
 /// # Arguments
 /// * `asset_performances` - Slice of asset performance metrics for the anchor
@@ -156,7 +194,7 @@ pub fn compute_anchor_reliability_score(
     let asset_performance_score = weighted_success_rate;
 
     // 3. Calculate volume_score (0-100)
-    // Logarithmic scale to handle wide range of volumes
+    // Use log scaling to compress multi-order-of-magnitude volume differences.
     let volume_score = if network_max_volume > 0.0 {
         let log_volume = (total_volume_usd + 1.0).log10();
         let log_max = (network_max_volume + 1.0).log10();

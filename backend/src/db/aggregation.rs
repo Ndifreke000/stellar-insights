@@ -81,7 +81,26 @@ impl AggregationDb {
         Ok(payment_records)
     }
 
-    /// Upsert hourly corridor metric
+    /// Upserts a single hourly corridor metric row into `corridor_metrics_hourly`.
+    ///
+    /// # Merge Strategy
+    ///
+    /// The table uses `(corridor_key, hour_bucket)` as a logical uniqueness boundary.
+    /// When a row already exists for that boundary, we merge new observations into the
+    /// existing aggregate using metric-specific rules:
+    ///
+    /// - Transaction counters are additive (`+ excluded.*`) so repeated batch runs can
+    ///   accumulate all events observed for the hour.
+    /// - `success_rate` is recomputed from merged counters instead of averaged from prior
+    ///   percentages to avoid compounded rounding errors.
+    /// - `volume_usd` is additive because it represents total notional throughput.
+    /// - Slippage, settlement latency, and liquidity are blended via arithmetic mean as
+    ///   lightweight approximations when full per-payment distributions are unavailable.
+    ///
+    /// # Why This Matters
+    ///
+    /// Aggregation jobs can retry or process overlapping windows. This upsert policy keeps
+    /// hourly metrics deterministic and prevents duplicate inserts for the same corridor/hour.
     pub async fn upsert_hourly_corridor_metric(
         &self,
         metric: &HourlyCorridorMetrics,
@@ -110,11 +129,14 @@ impl AggregationDb {
                 updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(corridor_key, hour_bucket) DO UPDATE SET
+                -- Counters are cumulative across retries/batches for the same hour bucket.
                 total_transactions = total_transactions + excluded.total_transactions,
                 successful_transactions = successful_transactions + excluded.successful_transactions,
                 failed_transactions = failed_transactions + excluded.failed_transactions,
+                -- Recompute from merged counts rather than averaging percentages.
                 success_rate = (successful_transactions * 100.0) / NULLIF(total_transactions, 0),
                 volume_usd = volume_usd + excluded.volume_usd,
+                -- Blend point estimates when raw distributions are not retained.
                 avg_slippage_bps = (avg_slippage_bps + excluded.avg_slippage_bps) / 2.0,
                 avg_settlement_latency_ms = COALESCE(
                     (avg_settlement_latency_ms + excluded.avg_settlement_latency_ms) / 2,
@@ -236,7 +258,16 @@ impl AggregationDb {
         Ok(())
     }
 
-    /// Update aggregation job status
+    /// Update aggregation job status.
+    ///
+    /// The function dynamically selects which lifecycle timestamp to mutate based on the
+    /// target status:
+    /// - `running` -> `start_time`
+    /// - `completed` / `failed` -> `end_time`
+    /// - any other transitional status -> `updated_at`
+    ///
+    /// This keeps one API surface for status transitions while preserving timing metadata
+    /// needed for latency/retry observability.
     pub async fn update_aggregation_job_status(
         &self,
         job_id: &str,
