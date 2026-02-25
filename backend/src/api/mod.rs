@@ -13,6 +13,7 @@ pub mod corridors_cached;
 pub mod cost_calculator;
 // pub mod digest;  // Commented out - depends on email module
 pub mod api_analytics;
+pub mod contract_events;
 pub mod fee_bump;
 pub mod governance;
 pub mod liquidity_pools;

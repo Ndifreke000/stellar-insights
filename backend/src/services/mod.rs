@@ -1,8 +1,11 @@
 pub mod account_merge_detector;
 pub mod aggregation;
+pub mod alert_service;
 pub mod analytics;
 pub mod asset_verifier;
 pub mod contract;
+pub mod contract_listener;
+pub mod event_indexer;
 pub mod fee_bump_tracker;
 pub mod governance;
 pub mod indexing;

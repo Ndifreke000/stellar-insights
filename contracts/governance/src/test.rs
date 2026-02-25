@@ -290,7 +290,7 @@ fn test_create_parameter_proposal() {
         &admin,
         &title,
         &target,
-        &ParameterAction::SetAdmin(new_admin),
+        &ParameterAction::SetAdmin(new_admin.clone()),
     );
     assert_eq!(proposal_id, 1);
 
