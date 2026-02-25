@@ -7,12 +7,15 @@ pub enum AlertType {
     SuccessRateDrop,
     LatencyIncrease,
     LiquidityDecrease,
+    AnchorStatusChange,
+    AnchorMetricChange,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alert {
     pub alert_type: AlertType,
-    pub corridor_id: String,
+    pub corridor_id: Option<String>,
+    pub anchor_id: Option<String>,
     pub message: String,
     pub old_value: f64,
     pub new_value: f64,
@@ -42,7 +45,8 @@ impl AlertManager {
         if new_success < old_success - 10.0 {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::SuccessRateDrop,
-                corridor_id: corridor_id.to_string(),
+                corridor_id: Some(corridor_id.to_string()),
+                anchor_id: None,
                 message: format!(
                     "Success rate dropped from {:.1}% to {:.1}%",
                     old_success, new_success
@@ -56,7 +60,8 @@ impl AlertManager {
         if new_latency > old_latency * 1.5 {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::LatencyIncrease,
-                corridor_id: corridor_id.to_string(),
+                corridor_id: Some(corridor_id.to_string()),
+                anchor_id: None,
                 message: format!(
                     "Latency increased from {:.0}ms to {:.0}ms",
                     old_latency, new_latency
@@ -70,7 +75,8 @@ impl AlertManager {
         if new_liquidity < old_liquidity * 0.7 {
             let _ = self.tx.send(Alert {
                 alert_type: AlertType::LiquidityDecrease,
-                corridor_id: corridor_id.to_string(),
+                corridor_id: Some(corridor_id.to_string()),
+                anchor_id: None,
                 message: format!(
                     "Liquidity decreased from ${:.0} to ${:.0}",
                     old_liquidity, new_liquidity
@@ -84,5 +90,24 @@ impl AlertManager {
 
     pub fn subscribe(&self) -> broadcast::Receiver<Alert> {
         self.tx.subscribe()
+    }
+
+    pub fn send_anchor_alert(
+        &self,
+        alert_type: AlertType,
+        anchor_id: &str,
+        message: String,
+        old_value: f64,
+        new_value: f64,
+    ) {
+        let _ = self.tx.send(Alert {
+            alert_type,
+            corridor_id: None,
+            anchor_id: Some(anchor_id.to_string()),
+            message,
+            old_value,
+            new_value,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        });
     }
 }

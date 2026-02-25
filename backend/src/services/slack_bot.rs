@@ -38,48 +38,57 @@ impl SlackBotService {
 
     /// Send a single alert to Slack
     async fn send_alert_to_slack(&self, alert: &Alert) -> Result<()> {
-        let title = match alert.alert_type {
-            AlertType::SuccessRateDrop => "🔴 Success Rate Drop",
-            AlertType::LatencyIncrease => "🟡 Latency Increase",
-            AlertType::LiquidityDecrease => "🟠 Liquidity Decrease",
+        let (title, color, emoji) = match alert.alert_type {
+            AlertType::SuccessRateDrop => ("Success Rate Drop", "#E01E5A", "🔴"),
+            AlertType::LatencyIncrease => ("Latency Increase", "#ECB22E", "🟡"),
+            AlertType::LiquidityDecrease => ("Liquidity Decrease", "#E8912D", "🟠"),
+            AlertType::AnchorStatusChange => ("Anchor Status Change", "#36A64F", "🔵"),
+            AlertType::AnchorMetricChange => ("Anchor Metric Change", "#2EB67D", "📊"),
         };
 
-        let color = match alert.alert_type {
-            AlertType::SuccessRateDrop => "#E01E5A",   // Red
-            AlertType::LatencyIncrease => "#ECB22E",   // Yellow
-            AlertType::LiquidityDecrease => "#E8912D", // Orange
-        };
+        let mut fields = vec![
+            serde_json::json!({
+                "title": "Timestamp",
+                "value": alert.timestamp,
+                "short": true
+            }),
+            serde_json::json!({
+                "title": "Previous Value",
+                "value": format!("{:.2}", alert.old_value),
+                "short": true
+            }),
+            serde_json::json!({
+                "title": "New Value",
+                "value": format!("{:.2}", alert.new_value),
+                "short": true
+            }),
+        ];
+
+        if let Some(ref corridor_id) = alert.corridor_id {
+            fields.insert(0, serde_json::json!({
+                "title": "Corridor",
+                "value": corridor_id,
+                "short": true
+            }));
+        }
+
+        if let Some(ref anchor_id) = alert.anchor_id {
+            fields.insert(0, serde_json::json!({
+                "title": "Anchor",
+                "value": anchor_id,
+                "short": true
+            }));
+        }
 
         let payload = serde_json::json!({
             "attachments": [
                 {
-                    "fallback": format!("{}: {}", title, alert.message),
+                    "fallback": format!("{} {}: {}", emoji, title, alert.message),
                     "color": color,
-                    "title": title,
+                    "title": format!("{} {}", emoji, title),
                     "text": alert.message,
-                    "fields": [
-                        {
-                            "title": "Corridor",
-                            "value": alert.corridor_id,
-                            "short": true
-                        },
-                        {
-                            "title": "Timestamp",
-                            "value": alert.timestamp,
-                            "short": true
-                        },
-                        {
-                            "title": "Previous Value",
-                            "value": format!("{:.2}", alert.old_value),
-                            "short": true
-                        },
-                        {
-                            "title": "New Value",
-                            "value": format!("{:.2}", alert.new_value),
-                            "short": true
-                        }
-                    ],
-                    "footer": "Stellar Insights Backend",
+                    "fields": fields,
+                    "footer": "Stellar Insights",
                     "ts": chrono::Utc::now().timestamp()
                 }
             ]
@@ -93,7 +102,6 @@ impl SlackBotService {
             .await
             .context("Failed to send request to Slack webhook")?;
 
-        // Store the status code before consuming the response body
         let status: StatusCode = response.status();
 
         if !status.is_success() {
