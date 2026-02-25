@@ -1237,7 +1237,7 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         let status = "pending";
 
-        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+        let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
             INSERT INTO pending_transactions (id, source_account, xdr, required_signatures, status)
             VALUES ($1, $2, $3, $4, $5)
@@ -1252,14 +1252,14 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(tx)
+        Ok(pending_transaction)
     }
 
     pub async fn get_pending_transaction(
         &self,
         id: &str,
     ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
-        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+        let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
             SELECT * FROM pending_transactions WHERE id = $1
             "#,
@@ -1268,7 +1268,7 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(transaction) = tx {
+        if let Some(transaction) = pending_transaction {
             let signatures = sqlx::query_as::<_, crate::models::Signature>(
                 r#"
                 SELECT * FROM transaction_signatures WHERE transaction_id = $1

@@ -1,14 +1,13 @@
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use tracing_logstash::Layer as LogstashLayer;
 use std::net::SocketAddr;
+use tracing_logstash::Layer as LogstashLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Initialize logging with Logstash integration
 pub fn init_logging() -> anyhow::Result<()> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let logstash_host = std::env::var("LOGSTASH_HOST")
-        .unwrap_or_else(|_| "localhost:5000".to_string());
+    let logstash_host =
+        std::env::var("LOGSTASH_HOST").unwrap_or_else(|_| "localhost:5000".to_string());
 
     // Parse Logstash address
     let logstash_addr: SocketAddr = logstash_host

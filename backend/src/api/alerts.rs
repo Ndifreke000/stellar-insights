@@ -67,7 +67,10 @@ async fn delete_rule(
 
 // History Handlers
 
-async fn list_history(State(state): State<AppState>, claims: Claims) -> ApiResult<impl IntoResponse> {
+async fn list_history(
+    State(state): State<AppState>,
+    claims: Claims,
+) -> ApiResult<impl IntoResponse> {
     // default limit
     let history = state
         .db

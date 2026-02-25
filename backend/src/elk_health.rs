@@ -22,14 +22,12 @@ pub async fn elk_health_check() -> impl IntoResponse {
     let logstash_health = check_logstash().await;
     let kibana_health = check_kibana().await;
 
-    let overall_status = if elasticsearch_health.reachable
-        && logstash_health.reachable
-        && kibana_health.reachable
-    {
-        "healthy"
-    } else {
-        "degraded"
-    };
+    let overall_status =
+        if elasticsearch_health.reachable && logstash_health.reachable && kibana_health.reachable {
+            "healthy"
+        } else {
+            "degraded"
+        };
 
     let response = ElkHealthResponse {
         status: overall_status.to_string(),
@@ -48,8 +46,9 @@ pub async fn elk_health_check() -> impl IntoResponse {
 }
 
 async fn check_elasticsearch() -> ComponentHealth {
-    let url = std::env::var("ELASTICSEARCH_URL").unwrap_or_else(|_| "http://localhost:9200".to_string());
-    
+    let url =
+        std::env::var("ELASTICSEARCH_URL").unwrap_or_else(|_| "http://localhost:9200".to_string());
+
     match reqwest::get(format!("{}/_cluster/health", url)).await {
         Ok(response) if response.status().is_success() => {
             let details = response.json::<serde_json::Value>().await.ok();
@@ -74,7 +73,7 @@ async fn check_elasticsearch() -> ComponentHealth {
 
 async fn check_logstash() -> ComponentHealth {
     let url = std::env::var("LOGSTASH_URL").unwrap_or_else(|_| "http://localhost:9600".to_string());
-    
+
     match reqwest::get(format!("{}/_node/stats", url)).await {
         Ok(response) if response.status().is_success() => {
             let details = response.json::<serde_json::Value>().await.ok();
@@ -94,7 +93,7 @@ async fn check_logstash() -> ComponentHealth {
 
 async fn check_kibana() -> ComponentHealth {
     let url = std::env::var("KIBANA_URL").unwrap_or_else(|_| "http://localhost:5601".to_string());
-    
+
     match reqwest::get(format!("{}/api/status", url)).await {
         Ok(response) if response.status().is_success() => {
             let details = response.json::<serde_json::Value>().await.ok();

@@ -2,9 +2,9 @@ use anyhow::Result;
 use opentelemetry::sdk::{trace as sdktrace, Resource};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use std::net::TcpStream;
 use std::io::Write;
+use std::net::TcpStream;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn init_otel_tracer(service_name: &str) -> Result<sdktrace::Tracer> {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -36,8 +36,8 @@ fn init_logstash_writer(service_name: &str) -> Option<tracing_logstash::Layer> {
         return None;
     }
 
-    let logstash_host = std::env::var("LOGSTASH_HOST")
-        .unwrap_or_else(|_| "localhost:5000".to_string());
+    let logstash_host =
+        std::env::var("LOGSTASH_HOST").unwrap_or_else(|_| "localhost:5000".to_string());
 
     match TcpStream::connect(&logstash_host) {
         Ok(stream) => {

@@ -195,7 +195,7 @@ async fn main() -> Result<()> {
     ));
 
     // Initialize Liquidity Pool Analyzer
-    let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
+    let liquidity_pool_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
         pool.clone(),
         Arc::clone(&rpc_client),
     ));
@@ -435,7 +435,7 @@ async fn main() -> Result<()> {
     background_tasks.push(task);
 
     // Liquidity pool sync background task
-    let lp_analyzer_clone = Arc::clone(&lp_analyzer);
+    let liquidity_pool_analyzer_clone = Arc::clone(&liquidity_pool_analyzer);
     let shutdown_rx3 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
         tracing::info!("Starting liquidity pool sync background task");
@@ -444,13 +444,13 @@ async fn main() -> Result<()> {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    if let Err(e) = lp_analyzer_clone.sync_pools().await {
+                    if let Err(e) = liquidity_pool_analyzer_clone.sync_pools().await {
                         tracing::error!("Liquidity pool sync failed: {}", e);
                         obs_metrics::record_background_job("liquidity_pool_sync", "error");
                     } else {
                         obs_metrics::record_background_job("liquidity_pool_sync", "success");
                     }
-                    if let Err(e) = lp_analyzer_clone.take_snapshots().await {
+                    if let Err(e) = liquidity_pool_analyzer_clone.take_snapshots().await {
                         tracing::error!("Liquidity pool snapshot failed: {}", e);
                         obs_metrics::record_background_job("liquidity_pool_snapshot", "error");
                     } else {
@@ -587,18 +587,18 @@ async fn main() -> Result<()> {
     // Start Telegram Bot (conditionally, when TELEGRAM_BOT_TOKEN is set)
     if let Ok(telegram_token) = std::env::var("TELEGRAM_BOT_TOKEN") {
         tracing::info!("Telegram bot token found, starting bot");
-        let tg_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
-        let tg_bot = telegram::TelegramBot::new(
+        let telegram_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
+        let telegram_bot = telegram::TelegramBot::new(
             &telegram_token,
             Arc::clone(&db),
             Arc::clone(&cache),
             Arc::clone(&rpc_client),
-            tg_subscriptions,
+            telegram_subscriptions,
             &alert_manager,
         );
         let shutdown_rx_tg = shutdown_coordinator.subscribe();
         let task = tokio::spawn(async move {
-            tg_bot.run(shutdown_rx_tg).await;
+            telegram_bot.run(shutdown_rx_tg).await;
         });
         background_tasks.push(task);
         tracing::info!("Telegram bot started");
@@ -1003,10 +1003,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build liquidity pool routes
-    let lp_routes = Router::new()
+    let liquidity_pool_routes = Router::new()
         .nest(
             "/api/liquidity-pools",
-            liquidity_pools::routes(Arc::clone(&lp_analyzer)),
+            liquidity_pools::routes(Arc::clone(&liquidity_pool_analyzer)),
         )
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
@@ -1238,7 +1238,7 @@ async fn main() -> Result<()> {
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
 
     // Build WebSocket routes
-    let ws_routes = Router::new()
+    let websocket_routes = Router::new()
         .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
@@ -1265,7 +1265,7 @@ async fn main() -> Result<()> {
         .merge(rpc_routes)
         .merge(fee_bump_routes)
         .merge(account_merge_routes)
-        .merge(lp_routes)
+        .merge(liquidity_pool_routes)
         .merge(price_routes)
         .merge(cost_calculator_routes)
         .merge(trustline_routes)
@@ -1281,7 +1281,7 @@ async fn main() -> Result<()> {
         .merge(asset_verification_routes)
         // .merge(gdpr_routes)
         .merge(api_key_routes)
-        .merge(ws_routes)
+        .merge(websocket_routes)
         .merge(alert_ws_routes)
         .layer(middleware::from_fn_with_state(
             db.clone(),
