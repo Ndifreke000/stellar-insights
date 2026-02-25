@@ -59,6 +59,7 @@ use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+use stellar_insights_backend::services::anchor_monitor::AnchorMonitor;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use stellar_insights_backend::services::price_feed::{
@@ -544,6 +545,23 @@ async fn main() -> Result<()> {
     } else {
         tracing::warn!("SLACK_WEBHOOK_URL not set, slack alerts disabled");
     }
+
+    // Initialize Anchor Monitor
+    let anchor_monitor = AnchorMonitor::new(Arc::clone(&db), Arc::clone(&alert_manager));
+    let shutdown_rx_anchor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_anchor;
+        tokio::select! {
+            _ = anchor_monitor.start() => {
+                tracing::info!("Anchor monitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Anchor monitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+    tracing::info!("Anchor monitor started as background task");
 
     // Start Corridor Monitor background task
     let monitor_clone = Arc::clone(&corridor_monitor);
