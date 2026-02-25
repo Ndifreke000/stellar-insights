@@ -137,10 +137,3 @@ impl IntoResponse for ApiKeyError {
     }
 }
 
-pub fn routes(db: Arc<Database>) -> Router {
-    Router::new()
-        .route("/", get(list_api_keys).post(create_api_key))
-        .route("/:id", get(get_api_key).delete(revoke_api_key))
-        .route("/:id/rotate", post(rotate_api_key))
-        .with_state(db)
-}
