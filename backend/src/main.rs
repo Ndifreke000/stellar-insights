@@ -84,8 +84,9 @@ async fn main() -> Result<()> {
     // Load environment variables
     dotenv().ok();
 
-    // Initialize tracing + optional OpenTelemetry exporter
-    obs_tracing::init_tracing("stellar-insights-backend")?;
+    // Initialize tracing + optional OpenTelemetry exporter.
+    // Hold the guard for process lifetime so rotating file logs are flushed.
+    let _log_guard = obs_tracing::init_tracing("stellar-insights-backend")?;
     obs_metrics::init_metrics();
 
     tracing::info!("Starting Stellar Insights Backend");

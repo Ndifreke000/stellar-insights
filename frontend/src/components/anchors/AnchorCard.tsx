@@ -48,6 +48,7 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
               src={anchor.metadata.organization_logo}
               alt={`${displayName} logo`}
               fill
+              sizes="64px"
               className="object-contain p-2"
               onError={(e) => {
                 // Fallback to icon if image fails to load
