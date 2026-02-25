@@ -4,6 +4,7 @@ pub mod alerts;
 pub mod anchors;
 pub mod anchors_cached;
 pub mod api_keys;
+pub mod asset_verification;
 
 pub mod auth;
 pub mod cache_stats;

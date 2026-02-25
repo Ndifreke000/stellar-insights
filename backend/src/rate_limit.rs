@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ConnectInfo, Request},
+    extract::{ConnectInfo, Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -396,7 +396,7 @@ impl IntoResponse for RateLimitError {
 
 /// Middleware for rate limiting
 pub async fn rate_limit_middleware(
-    limiter: Arc<RateLimiter>,
+    State(limiter): State<Arc<RateLimiter>>,
     req: Request,
     next: Next,
 ) -> Response {

@@ -328,9 +328,10 @@ async fn main() -> Result<()> {
         tracing::warn!("Invalid Redis URL for auth service");
         None
     };
-    let auth_service = Arc::new(AuthService::new(Arc::new(tokio::sync::RwLock::new(
-        auth_redis_connection.clone(),
-    ))));
+    let auth_service = Arc::new(AuthService::new(
+        Arc::new(tokio::sync::RwLock::new(auth_redis_connection.clone())),
+        pool.clone(),
+    ));
     tracing::info!("Auth service initialized");
 
     // Initialize SEP-10 Service for Stellar authentication
@@ -1182,6 +1183,14 @@ async fn main() -> Result<()> {
                 Arc::clone(&sep10_service),
             ),
         )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )));
+
+    // Build asset verification routes
+    let asset_verification_routes = Router::new()
+        .nest("/api/assets", asset_verification::routes(pool.clone()))
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,
