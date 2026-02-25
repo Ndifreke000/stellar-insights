@@ -1279,6 +1279,13 @@ async fn main() -> Result<()> {
         .with_state(Arc::clone(&alert_manager))
         .layer(cors.clone());
 
+    let export_routes = Router::new()
+        .route("/api/export/corridors", get(stellar_insights_backend::api::export::export_corridors))
+        .route("/api/export/anchors", get(stellar_insights_backend::api::export::export_anchors))
+        .route("/api/export/payments", get(stellar_insights_backend::api::export::export_payments))
+        .with_state(app_state.clone())
+        .layer(cors.clone());
+
     let app = Router::new()
         .route("/metrics", get(obs_metrics::metrics_handler))
         .route("/api/elk/health", get(elk_health::elk_health_check))
@@ -1311,6 +1318,8 @@ async fn main() -> Result<()> {
         .merge(api_key_routes)
         .merge(websocket_routes)
         .merge(alert_ws_routes)
+        .merge(export_routes)
+
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

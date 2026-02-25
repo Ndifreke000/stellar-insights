@@ -80,6 +80,9 @@ lettre = "0.11"
 hmac = "0.12"
 data-encoding = "2.5"
 lazy_static = "1.4"
+csv = "1.4"
+rust_xlsxwriter = { version = "0.83", features = ["chrono", "serde"] }
+
 
 # [dependencies.stellar-insights-apm]
 # path = "apm"

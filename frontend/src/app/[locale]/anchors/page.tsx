@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
-import { Search, Anchor as AnchorIcon, ExternalLink, BarChart3, ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle, AlertCircle, Activity, TrendingUp, TrendingDown } from "lucide-react";
+import { Search, Anchor as AnchorIcon, ExternalLink, BarChart3, ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle, AlertCircle, Activity, TrendingUp, TrendingDown, Download } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { useRouter } from "@/i18n/navigation";
 import { ResponsiveContainer, LineChart, Line } from "recharts";
@@ -10,6 +10,7 @@ import { AnchorMetrics, fetchAnchors } from "@/lib/api";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { formatAddressShort } from "@/lib/address";
+import { ExportDialog } from "@/components/ExportDialog";
 
 const truncateAddress = (address: string) =>
   formatAddressShort(address, 6, 4);
@@ -79,6 +80,7 @@ const AnchorsPageContent = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"reliability" | "transactions" | "failure_rate">("reliability");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // Fetch anchors from the backend
   useEffect(() => {
@@ -248,8 +250,16 @@ const AnchorsPageContent = () => {
                 <TrendingUp className="w-4 h-4" />
               )}
             </button>
+            <button
+              onClick={() => setIsExportOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
           </div>
         </div>
+
         {!loading && !error && sortedAndFilteredAnchors.length > 0 && (
           <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2 mb-4">
             💡 Click on any row to view anchor details • Click column headers to sort
@@ -625,6 +635,12 @@ const AnchorsPageContent = () => {
           </div>
         )}
       </div>
+      <ExportDialog 
+        isOpen={isExportOpen} 
+        onClose={() => setIsExportOpen(false)} 
+        type="anchors" 
+        title="Stellar Anchors"
+      />
     </MainLayout>
   );
 };
