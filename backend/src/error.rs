@@ -7,6 +7,31 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Domain-specific errors for business logic and validation rules.
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum DomainError {
+    #[error("Corridor not found: {0}")]
+    CorridorNotFound(String),
+
+    #[error("Anchor not found: {0}")]
+    AnchorNotFound(String),
+
+    #[error("Invalid asset format: {0}")]
+    InvalidAsset(String),
+
+    #[error("Invalid time range: {start} to {end}")]
+    InvalidTimeRange { start: String, end: String },
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+
+    #[error("Unsupported currency or asset: {0}")]
+    UnsupportedCurrency(String),
+
+    #[error("Calculation error: {0}")]
+    CalculationError(String),
+}
+
 /// Structured error response format
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
@@ -235,6 +260,49 @@ impl From<sqlx::Error> for ApiError {
         Self::InternalError {
             code,
             message,
+            details: None,
+            source: Some(err.to_string()),
+        }
+    }
+}
+
+/// Convert domain errors into API errors with stable error codes.
+impl From<DomainError> for ApiError {
+    fn from(err: DomainError) -> Self {
+        match err {
+            DomainError::CorridorNotFound(id) => Self::NotFound {
+                code: "CORRIDOR_NOT_FOUND".to_string(),
+                message: format!("Corridor not found: {id}"),
+                details: None,
+            },
+            DomainError::AnchorNotFound(id) => Self::NotFound {
+                code: "ANCHOR_NOT_FOUND".to_string(),
+                message: format!("Anchor not found: {id}"),
+                details: None,
+            },
+            DomainError::InvalidAsset(msg)
+            | DomainError::InvalidConfiguration(msg)
+            | DomainError::UnsupportedCurrency(msg)
+            | DomainError::CalculationError(msg) => Self::BadRequest {
+                code: "DOMAIN_VALIDATION_ERROR".to_string(),
+                message: msg,
+                details: None,
+            },
+            DomainError::InvalidTimeRange { start, end } => Self::BadRequest {
+                code: "INVALID_TIME_RANGE".to_string(),
+                message: format!("Invalid time range: {start} to {end}"),
+                details: None,
+            },
+        }
+    }
+}
+
+/// Convert RPC errors into API errors so handlers can use `?` consistently.
+impl From<crate::rpc::error::RpcError> for ApiError {
+    fn from(err: crate::rpc::error::RpcError) -> Self {
+        Self::InternalError {
+            code: "RPC_ERROR".to_string(),
+            message: "External service error".to_string(),
             details: None,
             source: Some(err.to_string()),
         }

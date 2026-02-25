@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::DomainError;
+
 use super::EventFilter;
 
 /// Configuration for a replay operation
@@ -92,32 +94,45 @@ impl ReplayConfig {
     }
 
     /// Validate configuration
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), DomainError> {
         if self.batch_size == 0 {
-            return Err("Batch size must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Batch size must be greater than 0".to_string(),
+            ));
         }
 
         if self.max_workers == 0 {
-            return Err("Max workers must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Max workers must be greater than 0".to_string(),
+            ));
         }
 
         if self.checkpoint_interval == 0 {
-            return Err("Checkpoint interval must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Checkpoint interval must be greater than 0".to_string(),
+            ));
         }
 
         if self.event_timeout_secs == 0 {
-            return Err("Event timeout must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Event timeout must be greater than 0".to_string(),
+            ));
         }
 
         match &self.range {
             ReplayRange::FromTo { start, end } => {
                 if start > end {
-                    return Err(format!("Invalid range: start ({}) > end ({})", start, end));
+                    return Err(DomainError::InvalidTimeRange {
+                        start: start.to_string(),
+                        end: end.to_string(),
+                    });
                 }
             }
             ReplayRange::FromCheckpoint { checkpoint_id } => {
                 if checkpoint_id.is_empty() {
-                    return Err("Checkpoint ID cannot be empty".to_string());
+                    return Err(DomainError::InvalidConfiguration(
+                        "Checkpoint ID cannot be empty".to_string(),
+                    ));
                 }
             }
             _ => {}

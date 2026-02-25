@@ -41,7 +41,9 @@ impl ReplayEngine {
         state_builder: Arc<RwLock<StateBuilder>>,
     ) -> Result<Self> {
         // Validate configuration
-        config.validate().map_err(|e| ReplayError::ConfigError(e))?;
+        config
+            .validate()
+            .map_err(|e| ReplayError::ConfigError(e.to_string()))?;
 
         let session_id = uuid::Uuid::new_v4().to_string();
 
