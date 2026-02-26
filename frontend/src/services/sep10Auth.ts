@@ -5,6 +5,7 @@ import {
   TransactionBuilder,
   Operation,
 } from '@stellar/stellar-sdk';
+import { logger } from '@/lib/logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -100,7 +101,7 @@ export class Sep10AuthService {
         );
         return signedXdr;
       } catch (error) {
-        console.error('Freighter signing failed:', error);
+        logger.error('Freighter wallet signing failed', error as Error);
       }
     }
 
@@ -114,7 +115,7 @@ export class Sep10AuthService {
         });
         return result.signed_envelope_xdr;
       } catch (error) {
-        console.error('Albedo signing failed:', error);
+        logger.error('Albedo wallet signing failed', error as Error);
       }
     }
 
@@ -129,7 +130,7 @@ export class Sep10AuthService {
         });
         return result;
       } catch (error) {
-        console.error('xBull signing failed:', error);
+        logger.error('xBull wallet signing failed', error as Error);
       }
     }
 
@@ -142,7 +143,7 @@ export class Sep10AuthService {
         );
         return result.xdr;
       } catch (error) {
-        console.error('Rabet signing failed:', error);
+        logger.error('Rabet wallet signing failed', error as Error);
       }
     }
 
@@ -247,19 +248,19 @@ export class Sep10AuthService {
 
       // Check source account is server
       if (transaction.source !== serverPublicKey) {
-        console.error('Invalid source account');
+        logger.warn('Invalid source account in challenge transaction');
         return false;
       }
 
       // Check sequence number is 0
       if (transaction.sequence !== '0') {
-        console.error('Invalid sequence number');
+        logger.warn('Invalid sequence number in challenge transaction');
         return false;
       }
 
       // Check time bounds exist
       if (!transaction.timeBounds) {
-        console.error('Missing time bounds');
+        logger.warn('Missing time bounds in challenge transaction');
         return false;
       }
 
@@ -269,38 +270,38 @@ export class Sep10AuthService {
         now < parseInt(transaction.timeBounds.minTime) ||
         now > parseInt(transaction.timeBounds.maxTime)
       ) {
-        console.error('Transaction expired or not yet valid');
+        logger.warn('Challenge transaction expired or not yet valid');
         return false;
       }
 
       // Check first operation is ManageData
       if (transaction.operations.length === 0) {
-        console.error('No operations found');
+        logger.warn('No operations found in challenge transaction');
         return false;
       }
 
       const firstOp = transaction.operations[0];
       if (firstOp.type !== 'manageData') {
-        console.error('First operation must be ManageData');
+        logger.warn('First operation must be ManageData in challenge transaction');
         return false;
       }
 
       // Check operation source is client
       const manageDataOp = firstOp as Operation.ManageData;
       if (manageDataOp.source !== clientPublicKey) {
-        console.error('Invalid operation source');
+        logger.warn('Invalid operation source in challenge transaction');
         return false;
       }
 
       // Check data name contains home domain
       if (!manageDataOp.name.includes(homeDomain)) {
-        console.error('Invalid data name');
+        logger.warn('Invalid data name in challenge transaction');
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Challenge validation error:', error);
+      logger.error('Challenge validation error', error as Error);
       return false;
     }
   }
