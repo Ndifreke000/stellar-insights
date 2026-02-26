@@ -6,12 +6,14 @@ use crate::alerts::AlertManager;
 use crate::api::corridors_cached::CorridorResponse;
 use crate::cache::CacheManager;
 use crate::rpc::StellarRpcClient;
+use crate::webhooks::events::CorridorMetrics;
 
 pub struct CorridorMonitor {
     alert_manager: Arc<AlertManager>,
     cache: Arc<CacheManager>,
     rpc_client: Arc<StellarRpcClient>,
     previous_state: tokio::sync::RwLock<HashMap<String, CorridorState>>,
+    webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
 }
 
 #[derive(Clone)]
@@ -32,6 +34,22 @@ impl CorridorMonitor {
             cache,
             rpc_client,
             previous_state: tokio::sync::RwLock::new(HashMap::new()),
+            webhook_event_service: None,
+        }
+    }
+
+    pub fn new_with_webhooks(
+        alert_manager: Arc<AlertManager>,
+        cache: Arc<CacheManager>,
+        rpc_client: Arc<StellarRpcClient>,
+        webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
+    ) -> Self {
+        Self {
+            alert_manager,
+            cache,
+            rpc_client,
+            previous_state: tokio::sync::RwLock::new(HashMap::new()),
+            webhook_event_service: Some(webhook_event_service),
         }
     }
 
@@ -86,6 +104,88 @@ impl CorridorMonitor {
                     old_state.liquidity,
                     liquidity,
                 );
+
+                // Trigger webhook events for corridor changes
+                if let Some(webhook_service) = &self.webhook_event_service {
+                    let old_metrics = CorridorMetrics {
+                        success_rate: old_state.success_rate / 100.0,
+                        avg_latency_ms: old_state.latency,
+                        p95_latency_ms: old_state.latency * 1.5,
+                        p99_latency_ms: old_state.latency * 2.0,
+                        liquidity_depth_usd: old_state.liquidity,
+                        liquidity_volume_24h_usd: old_state.liquidity * 10.0,
+                        total_attempts: 100,
+                        successful_payments: (old_state.success_rate / 100.0 * 100.0) as i64,
+                        failed_payments: (100.0 - old_state.success_rate) as i64,
+                    };
+
+                    let new_metrics = CorridorMetrics {
+                        success_rate: success_rate / 100.0,
+                        avg_latency_ms: latency,
+                        p95_latency_ms: latency * 1.5,
+                        p99_latency_ms: latency * 2.0,
+                        liquidity_depth_usd: liquidity,
+                        liquidity_volume_24h_usd: liquidity * 10.0,
+                        total_attempts: 100,
+                        successful_payments: (success_rate / 100.0 * 100.0) as i64,
+                        failed_payments: (100.0 - success_rate) as i64,
+                    };
+
+                    // Check for corridor health degradation
+                    use crate::webhooks::events::{check_corridor_degradation, determine_severity};
+                    let (degraded, changes) =
+                        check_corridor_degradation(&old_metrics, &new_metrics);
+
+                    if degraded {
+                        let severity = determine_severity(&old_metrics, &new_metrics);
+                        let webhook_service = webhook_service.clone();
+                        let corridor_id_clone = corridor_id.clone();
+                        let changes_clone = changes.clone();
+                        let severity_clone = severity.clone();
+
+                        tokio::spawn(async move {
+                            if let Err(e) = webhook_service
+                                .trigger_corridor_health_degraded(
+                                    &corridor_id_clone,
+                                    &old_metrics,
+                                    &new_metrics,
+                                    &severity_clone,
+                                    changes_clone,
+                                )
+                                .await
+                            {
+                                tracing::error!("Failed to trigger corridor health webhook: {}", e);
+                            }
+                        });
+                    }
+
+                    // Check for liquidity drops
+                    if old_state.liquidity > 0.0
+                        && (old_state.liquidity - liquidity) / old_state.liquidity > 0.30
+                    {
+                        let webhook_service = webhook_service.clone();
+                        let corridor_id_clone = corridor_id.clone();
+                        let threshold = old_state.liquidity * 0.7; // 30% drop threshold
+
+                        tokio::spawn(async move {
+                            if let Err(e) = webhook_service
+                                .trigger_corridor_liquidity_dropped(
+                                    &corridor_id_clone,
+                                    liquidity,
+                                    threshold,
+                                    "decreasing",
+                                    "warning",
+                                )
+                                .await
+                            {
+                                tracing::error!(
+                                    "Failed to trigger corridor liquidity webhook: {}",
+                                    e
+                                );
+                            }
+                        });
+                    }
+                }
             }
 
             prev_state.insert(

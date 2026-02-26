@@ -68,6 +68,7 @@ use stellar_insights_backend::services::price_feed::{
 use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
+use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
@@ -214,12 +215,13 @@ async fn main() -> Result<()> {
         Arc::clone(&rpc_client),
     ));
 
-    // Initialize Ledger Ingestion Service
-    let ledger_ingestion_service = Arc::new(LedgerIngestionService::new(
+    // Initialize Ledger Ingestion Service with webhook support
+    let ledger_ingestion_service = Arc::new(LedgerIngestionService::new_with_webhooks(
         Arc::clone(&rpc_client),
         Arc::clone(&fee_bump_tracker),
         Arc::clone(&account_merge_detector),
         pool.clone(),
+        webhook_event_service.clone(),
     ));
 
     // Initialize Redis cache
@@ -230,15 +232,21 @@ async fn main() -> Result<()> {
     // Initialize cache invalidation service
     let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
 
-    // Initialize AlertManager
-    let (alert_manager, _initial_rx) = AlertManager::new();
+    // Initialize Webhook Event Service
+    let webhook_event_service = Arc::new(WebhookEventService::new(pool.clone()));
+    tracing::info!("Webhook event service initialized");
+
+    // Initialize AlertManager with webhook support
+    let (alert_manager, _initial_rx) =
+        AlertManager::new_with_webhooks(webhook_event_service.clone());
     let alert_manager = Arc::new(alert_manager);
 
-    // Initialize CorridorMonitor
-    let corridor_monitor = Arc::new(CorridorMonitor::new(
+    // Initialize CorridorMonitor with webhook support
+    let corridor_monitor = Arc::new(CorridorMonitor::new_with_webhooks(
         Arc::clone(&alert_manager),
         Arc::clone(&cache),
         Arc::clone(&rpc_client),
+        webhook_event_service.clone(),
     ));
 
     // Initialize RealtimeBroadcaster
@@ -1280,9 +1288,18 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     let export_routes = Router::new()
-        .route("/api/export/corridors", get(stellar_insights_backend::api::export::export_corridors))
-        .route("/api/export/anchors", get(stellar_insights_backend::api::export::export_anchors))
-        .route("/api/export/payments", get(stellar_insights_backend::api::export::export_payments))
+        .route(
+            "/api/export/corridors",
+            get(stellar_insights_backend::api::export::export_corridors),
+        )
+        .route(
+            "/api/export/anchors",
+            get(stellar_insights_backend::api::export::export_anchors),
+        )
+        .route(
+            "/api/export/payments",
+            get(stellar_insights_backend::api::export::export_payments),
+        )
         .with_state(app_state.clone())
         .layer(cors.clone());
 
@@ -1319,7 +1336,6 @@ async fn main() -> Result<()> {
         .merge(websocket_routes)
         .merge(alert_ws_routes)
         .merge(export_routes)
-
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

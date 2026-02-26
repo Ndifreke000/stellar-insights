@@ -5,11 +5,11 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
-use crate::webhooks::{
-    WebhookEventType, WebhookService, CorridorHealthDegradedEvent, 
-    AnchorStatusChangedEvent, PaymentCreatedEvent, CorridorLiquidityDroppedEvent,
-    CorridorMetrics
+use crate::webhooks::events::{
+    AnchorStatusChangedEvent, CorridorHealthDegradedEvent, CorridorLiquidityDroppedEvent,
+    CorridorMetrics, PaymentCreatedEvent,
 };
+use crate::webhooks::{WebhookEventType, WebhookService};
 
 /// Webhook Event Service - triggers events for registered webhooks
 pub struct WebhookEventService {
@@ -41,7 +41,8 @@ impl WebhookEventService {
         };
 
         let payload = json!(event);
-        self.trigger_event(WebhookEventType::CorridorHealthDegraded, payload).await
+        self.trigger_event(WebhookEventType::CorridorHealthDegraded, payload)
+            .await
     }
 
     /// Trigger anchor status change event
@@ -64,7 +65,8 @@ impl WebhookEventService {
         };
 
         let payload = json!(event);
-        self.trigger_event(WebhookEventType::AnchorStatusChanged, payload).await
+        self.trigger_event(WebhookEventType::AnchorStatusChanged, payload)
+            .await
     }
 
     /// Trigger payment created event
@@ -89,7 +91,8 @@ impl WebhookEventService {
         };
 
         let payload = json!(event);
-        self.trigger_event(WebhookEventType::PaymentCreated, payload).await
+        self.trigger_event(WebhookEventType::PaymentCreated, payload)
+            .await
     }
 
     /// Trigger corridor liquidity dropped event
@@ -110,16 +113,21 @@ impl WebhookEventService {
         };
 
         let payload = json!(event);
-        self.trigger_event(WebhookEventType::CorridorLiquidityDropped, payload).await
+        self.trigger_event(WebhookEventType::CorridorLiquidityDropped, payload)
+            .await
     }
 
     /// Generic method to trigger an event for all matching webhooks
-    async fn trigger_event(&self, event_type: WebhookEventType, payload: serde_json::Value) -> Result<()> {
+    async fn trigger_event(
+        &self,
+        event_type: WebhookEventType,
+        payload: serde_json::Value,
+    ) -> Result<()> {
         let event_type_str = event_type.as_str();
-        
+
         // Get all active webhooks that subscribe to this event type
         let webhooks = self.get_webhooks_for_event(&event_type_str).await?;
-        
+
         for webhook in webhooks {
             // Apply filters if any
             if let Some(filters) = &webhook.filters {
@@ -131,7 +139,8 @@ impl WebhookEventService {
             }
 
             // Create webhook event for delivery
-            let _ = self.webhook_service
+            let _ = self
+                .webhook_service
                 .create_webhook_event(&webhook.id, event_type_str, payload.clone())
                 .await;
 
@@ -146,7 +155,10 @@ impl WebhookEventService {
     }
 
     /// Get all active webhooks that subscribe to a specific event type
-    async fn get_webhooks_for_event(&self, event_type: &str) -> Result<Vec<crate::webhooks::Webhook>> {
+    async fn get_webhooks_for_event(
+        &self,
+        event_type: &str,
+    ) -> Result<Vec<crate::webhooks::Webhook>> {
         // For now, we'll get all active webhooks and filter in memory
         // In a production system, you might want to optimize this with a better query
         let all_webhooks = sqlx::query_as::<_, crate::webhooks::Webhook>(
@@ -158,9 +170,7 @@ impl WebhookEventService {
 
         let matching_webhooks: Vec<crate::webhooks::Webhook> = all_webhooks
             .into_iter()
-            .filter(|w| {
-                w.event_types.split(',').any(|et| et.trim() == event_type)
-            })
+            .filter(|w| w.event_types.split(',').any(|et| et.trim() == event_type))
             .collect();
 
         Ok(matching_webhooks)
@@ -191,10 +201,11 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn test_filter_application() {
-        let service = WebhookEventService::new(sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap());
-        
+    #[tokio::test]
+    async fn test_filter_application() {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let service = WebhookEventService::new(pool);
+
         let payload = json!({
             "corridor_key": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN->XLM:native",
             "severity": "warning"
@@ -212,4 +223,9 @@ mod tests {
 
         assert!(!service.apply_filters(&payload, &mismatched_filters));
     }
+}
+
+#[cfg(test)]
+mod webhook_integration_tests {
+    include!("webhook_event_service_tests.rs");
 }
