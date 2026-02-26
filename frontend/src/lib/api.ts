@@ -4,6 +4,7 @@
  */
 import { monitoring } from "./monitoring";
 import { isStellarAccountAddress } from "./address";
+import { logger } from "@/lib/logger";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
@@ -12,7 +13,7 @@ export const API_BASE_URL =
  * Network-related types and functions
  */
 export interface NetworkInfo {
-  network: 'mainnet' | 'testnet';
+  network: "mainnet" | "testnet";
   display_name: string;
   rpc_url: string;
   horizon_url: string;
@@ -23,7 +24,7 @@ export interface NetworkInfo {
 }
 
 export interface SwitchNetworkRequest {
-  network: 'mainnet' | 'testnet';
+  network: "mainnet" | "testnet";
 }
 
 export interface SwitchNetworkResponse {
@@ -31,9 +32,6 @@ export interface SwitchNetworkResponse {
   message: string;
   network_info: NetworkInfo;
 }
-
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
 
 /**
  * Custom error class for API responses
@@ -119,7 +117,7 @@ async function fetchApi<T>(
 
     // Only log non-network errors to avoid noise when backend is not running
     if (!isNetworkError) {
-      console.error(`API Request Error [${url}]:`, error);
+      logger.error(`API Request Error [${url}]:`, error);
     }
 
     throw new ApiError(0, message);
@@ -437,7 +435,7 @@ export async function getAnchorDetail(
   const trimmed = address?.trim() ?? "";
   if (isStellarAccountAddress(trimmed)) {
     return api.get<AnchorDetailData>(
-      `/anchors/account/${encodeURIComponent(trimmed)}`
+      `/anchors/account/${encodeURIComponent(trimmed)}`,
     );
   }
   return api.get<AnchorDetailData>(`/anchors/${trimmed}`);
@@ -559,7 +557,7 @@ export async function fetchAnchors(
     const data: AnchorsResponse = await response.json();
     return data;
   } catch (error) {
-    console.error("Error fetching anchors:", error);
+    logger.error("Error fetching anchors:", error);
     throw error;
   }
 }
@@ -618,14 +616,12 @@ export interface MuxedAccountAnalytics {
  * Fetch muxed account usage analytics from the backend
  */
 export async function getMuxedAnalytics(
-  limit?: number
+  limit?: number,
 ): Promise<MuxedAccountAnalytics> {
   const params = new URLSearchParams();
   if (limit != null) params.set("limit", String(limit));
   const q = params.toString();
-  return api.get<MuxedAccountAnalytics>(
-    `/analytics/muxed${q ? `?${q}` : ""}`
-  );
+  return api.get<MuxedAccountAnalytics>(`/analytics/muxed${q ? `?${q}` : ""}`);
 }
 
 /**
@@ -736,7 +732,7 @@ export async function getPaymentPrediction(
     };
   } catch {
     // Fall back to mock data if backend is unavailable
-    console.info("Using mock prediction data (backend unavailable)");
+    logger.info("Using mock prediction data (backend unavailable)");
     return generateMockPrediction(request);
   }
 }
@@ -749,19 +745,21 @@ export async function getPaymentPrediction(
  * Get current network information
  */
 export async function getCurrentNetwork(): Promise<NetworkInfo> {
-  return api.get<NetworkInfo>('/network/info');
+  return api.get<NetworkInfo>("/network/info");
 }
 
 /**
  * Get all available networks
  */
 export async function getAvailableNetworks(): Promise<NetworkInfo[]> {
-  return api.get<NetworkInfo[]>('/network/available');
+  return api.get<NetworkInfo[]>("/network/available");
 }
 
 /**
  * Switch to a different network
  */
-export async function switchNetwork(network: 'mainnet' | 'testnet'): Promise<SwitchNetworkResponse> {
-  return api.post<SwitchNetworkResponse>('/network/switch', { network });
+export async function switchNetwork(
+  network: "mainnet" | "testnet",
+): Promise<SwitchNetworkResponse> {
+  return api.post<SwitchNetworkResponse>("/network/switch", { network });
 }

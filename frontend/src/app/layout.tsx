@@ -61,7 +61,8 @@ export default function RootLayout({
                 <QuestProgressTracker />
                 <NotificationSystem />
               </NotificationProvider>
-            </WalletProvider>
+              </WalletProvider>
+              </UserPreferencesProvider>
           </ThemeProvider>
         </ErrorBoundary>
       </body>

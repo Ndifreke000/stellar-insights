@@ -1,5 +1,5 @@
 "use client";
-
+import { logger } from "@/lib/logger";
 import React, { useEffect, useState, useMemo, Suspense } from "react";
 import {
   TrendingUp,
@@ -125,7 +125,7 @@ function CorridorsPageContent() {
           setCorridors(mockCorridors);
         }
       } catch (err) {
-        console.error("Error fetching corridors:", err);
+        logger.error("Error fetching corridors:", err);
       } finally {
         setLoading(false);
       }

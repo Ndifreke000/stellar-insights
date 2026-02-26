@@ -1,5 +1,5 @@
 "use client";
-
+import { logger } from "@/lib/logger";
 import React, { useEffect, useState, use, Suspense } from "react";
 import { getAnchorDetail, AnchorDetailData } from "@/lib/api";
 import { getAddressValidationError } from "@/lib/address";
@@ -38,7 +38,7 @@ function AnchorDetailPageContent({
         setData(result);
         setError(null);
       } catch (err) {
-        console.error("Failed to fetch anchor details:", err);
+        logger.error("Failed to fetch anchor details:", err);
         setError("Failed to load anchor data. Please try again later.");
       } finally {
         setLoading(false);

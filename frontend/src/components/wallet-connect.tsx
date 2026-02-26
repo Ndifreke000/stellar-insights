@@ -1,8 +1,9 @@
-'use client'
+"use client";
+import { logger } from "@/lib/logger";
 
-import { useWallet } from '../components/lib/wallet-context'
-import { LogOut, Wallet, Shield, CheckCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useWallet } from "../components/lib/wallet-context";
+import { LogOut, Wallet, Shield, CheckCircle } from "lucide-react";
+import { useState } from "react";
 
 export function WalletButton() {
   const {
@@ -14,39 +15,39 @@ export function WalletButton() {
     disconnectWallet,
     authenticateWithSep10,
     logout,
-  } = useWallet()
-  const [showMenu, setShowMenu] = useState(false)
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  } = useWallet();
+  const [showMenu, setShowMenu] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const handleConnect = async () => {
     try {
-      await connectWallet()
+      await connectWallet();
     } catch (error) {
-      console.error('Failed to connect wallet:', error)
+      logger.error("Failed to connect wallet:", error);
     }
-  }
+  };
 
   const handleAuthenticate = async () => {
-    setIsAuthenticating(true)
+    setIsAuthenticating(true);
     try {
-      await authenticateWithSep10()
-      setShowMenu(false)
+      await authenticateWithSep10();
+      setShowMenu(false);
     } catch (error) {
-      console.error('Failed to authenticate:', error)
-      alert('Authentication failed. Please try again.')
+      logger.error("Failed to authenticate:", error);
+      alert("Authentication failed. Please try again.");
     } finally {
-      setIsAuthenticating(false)
+      setIsAuthenticating(false);
     }
-  }
+  };
 
   const handleLogout = async () => {
     try {
-      await logout()
-      setShowMenu(false)
+      await logout();
+      setShowMenu(false);
     } catch (error) {
-      console.error('Failed to logout:', error)
+      logger.error("Failed to logout:", error);
     }
-  }
+  };
 
   if (isConnected && address) {
     return (
@@ -55,8 +56,8 @@ export function WalletButton() {
           onClick={() => setShowMenu(!showMenu)}
           className={`px-4 py-2 rounded-full font-medium hover:opacity-90 transition flex items-center gap-2 ${
             isAuthenticated
-              ? 'bg-green-500 text-white'
-              : 'bg-blue-500 text-white'
+              ? "bg-green-500 text-white"
+              : "bg-blue-500 text-white"
           }`}
         >
           {isAuthenticated ? (
@@ -68,7 +69,7 @@ export function WalletButton() {
             {address.slice(0, 6)}...{address.slice(-4)}
           </span>
           <span className="sm:hidden">
-            {isAuthenticated ? 'Authenticated' : 'Wallet'}
+            {isAuthenticated ? "Authenticated" : "Wallet"}
           </span>
         </button>
 
@@ -91,7 +92,9 @@ export function WalletButton() {
                 className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition disabled:opacity-50"
               >
                 <Shield className="w-4 h-4" />
-                {isAuthenticating ? 'Authenticating...' : 'Authenticate (SEP-10)'}
+                {isAuthenticating
+                  ? "Authenticating..."
+                  : "Authenticate (SEP-10)"}
               </button>
             )}
 
@@ -107,8 +110,8 @@ export function WalletButton() {
 
             <button
               onClick={() => {
-                disconnectWallet()
-                setShowMenu(false)
+                disconnectWallet();
+                setShowMenu(false);
               }}
               className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition border-t border-gray-200 dark:border-gray-700"
             >
@@ -118,7 +121,7 @@ export function WalletButton() {
           </div>
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -128,7 +131,7 @@ export function WalletButton() {
       className="px-6 py-2 bg-blue-500 text-white rounded-full font-medium hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
     >
       <Wallet className="w-4 h-4" />
-      {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+      {isConnecting ? "Connecting..." : "Connect Wallet"}
     </button>
-  )
+  );
 }

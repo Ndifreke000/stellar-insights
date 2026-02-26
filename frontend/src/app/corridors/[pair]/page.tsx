@@ -21,6 +21,7 @@ import {
   CorridorDetailData,
   CorridorMetrics,
 } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import {
   SuccessRateChart,
   LatencyDistributionChart,
@@ -57,30 +58,33 @@ export default function CorridorDetailPage() {
     corridorKeys: corridorPair ? [corridorPair] : [],
     enablePaymentStream: true,
     onCorridorUpdate: (update) => {
-      console.log('Received real-time corridor update:', update);
+      logger.debug("Received real-time corridor update:", update);
       setLastUpdate(new Date());
-      
+
       // Update the corridor data with real-time information
-      setData(prevData => {
+      setData((prevData) => {
         if (!prevData || update.corridor_key !== corridorPair) return prevData;
-        
+
         const updatedData = { ...prevData };
         updatedData.corridor = {
           ...updatedData.corridor,
-          success_rate: update.success_rate || updatedData.corridor.success_rate,
-          health_score: update.health_score || updatedData.corridor.health_score,
-          last_updated: update.last_updated || updatedData.corridor.last_updated,
+          success_rate:
+            update.success_rate || updatedData.corridor.success_rate,
+          health_score:
+            update.health_score || updatedData.corridor.health_score,
+          last_updated:
+            update.last_updated || updatedData.corridor.last_updated,
         };
-        
+
         return updatedData;
       });
     },
     onHealthAlert: (alert) => {
-      console.log('Health alert for corridor:', alert);
+      logger.debug("Health alert for corridor:", alert);
       // You could show a toast notification here
     },
     onNewPayment: (payment) => {
-      console.log('New payment in corridor:', payment);
+      logger.debug("New payment in corridor:", payment);
       // Update payment-related metrics
     },
   });
@@ -94,14 +98,14 @@ export default function CorridorDetailPage() {
           const result = await getCorridorDetail(corridorPair);
           setData(result);
         } catch {
-          console.log("API not available, using mock data");
+          logger.debug("API not available, using mock data");
           // Fallback to mock data
           const mockData = generateMockCorridorData(corridorPair);
           setData(mockData);
         }
       } catch (err) {
         setError("Failed to load corridor data");
-        console.error(err);
+        logger.error(err as string);
       } finally {
         setLoading(false);
       }
@@ -255,10 +259,13 @@ export default function CorridorDetailPage() {
                 <div
                   key={index}
                   className={`p-3 rounded-lg border ${
-                    alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' :
-                    alert.severity === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
-                    alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' :
-                    'bg-blue-50 border-blue-200 text-blue-800'
+                    alert.severity === "critical"
+                      ? "bg-red-50 border-red-200 text-red-800"
+                      : alert.severity === "error"
+                        ? "bg-red-50 border-red-200 text-red-700"
+                        : alert.severity === "warning"
+                          ? "bg-yellow-50 border-yellow-200 text-yellow-800"
+                          : "bg-blue-50 border-blue-200 text-blue-800"
                   }`}
                 >
                   <div className="flex justify-between items-start">
@@ -288,7 +295,9 @@ export default function CorridorDetailPage() {
                     className="flex justify-between items-center p-3 border-b border-gray-100 dark:border-slate-700 last:border-b-0"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${payment.successful ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <div
+                        className={`w-2 h-2 rounded-full ${payment.successful ? "bg-green-500" : "bg-red-500"}`}
+                      />
                       <span className="text-sm font-mono">
                         ${payment.amount.toFixed(2)}
                       </span>
@@ -456,11 +465,10 @@ export default function CorridorDetailPage() {
 
         {/* Footer Info */}
         <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-400 text-sm">
-          <p>
-            Last updated: {lastUpdate.toLocaleString()}
-          </p>
+          <p>Last updated: {lastUpdate.toLocaleString()}</p>
           <p className="mt-2 text-xs">
-            Charts update every 5 minutes with 30-day historical data. Real-time updates via WebSocket.
+            Charts update every 5 minutes with 30-day historical data. Real-time
+            updates via WebSocket.
           </p>
         </div>
       </div>

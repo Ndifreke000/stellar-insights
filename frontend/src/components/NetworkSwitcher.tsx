@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 export interface NetworkInfo {
   network: 'mainnet' | 'testnet';
@@ -47,7 +48,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         }
       } catch (err) {
         setError('Failed to load network information');
-        console.error('Network info fetch error:', err);
+        logger.error('Network info fetch error:', err as string);
       } finally {
         setLoading(false);
       }
@@ -96,7 +97,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
       }
     } catch (err) {
       setError('Failed to switch network');
-      console.error('Network switch error:', err);
+      logger.error('Network switch error:', err);
     } finally {
       setShowWarning(false);
       setPendingNetwork(null);
