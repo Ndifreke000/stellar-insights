@@ -10,11 +10,32 @@ import {
 } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
-import { LiquidityChart } from "@/components/charts/LiquidityChart";
-import { TVLChart } from "@/components/charts/TVLChart";
-import { SettlementLatencyChart } from "@/components/charts/SettlementLatencyChart";
-import { TopCorridors } from "@/components/charts/TopCorridors";
-import { LiquidityHeatmap } from "@/components/charts/LiquidityHeatmap";
+import dynamic from "next/dynamic";
+
+const ChartSkeleton = () => (
+  <div className="h-64 w-full rounded-xl bg-white/5 animate-pulse" />
+);
+
+const LiquidityChart = dynamic(
+  () => import("@/components/charts/LiquidityChart").then((m) => ({ default: m.LiquidityChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const TVLChart = dynamic(
+  () => import("@/components/charts/TVLChart").then((m) => ({ default: m.TVLChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const SettlementLatencyChart = dynamic(
+  () => import("@/components/charts/SettlementLatencyChart").then((m) => ({ default: m.SettlementLatencyChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const TopCorridors = dynamic(
+  () => import("@/components/charts/TopCorridors").then((m) => ({ default: m.TopCorridors })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const LiquidityHeatmap = dynamic(
+  () => import("@/components/charts/LiquidityHeatmap").then((m) => ({ default: m.LiquidityHeatmap })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { MuxedAccountCard } from "@/components/analytics/MuxedAccountCard";

@@ -1,5 +1,3 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 
 type ExportRow = Record<string, string | number | boolean | null | undefined>;
@@ -72,11 +70,16 @@ export function generateJSON(
   }
 }
 
-export function generatePDF(
+export async function generatePDF(
   data: ExportRow[],
   columns: { id: string; label: string }[],
   dateRange: { start: Date | null; end: Date | null },
 ) {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
   const doc = new jsPDF();
 
   // Header
