@@ -1,14 +1,12 @@
 /// Webhook Dispatcher Service
 /// Processes webhook events and sends them to registered webhooks with retry logic
-
 use anyhow::Result;
 use reqwest::Client;
 use sqlx::SqlitePool;
 use std::time::Duration;
-use tokio::time::sleep;
 use uuid::Uuid;
 
-use crate::webhooks::{WebhookService, WebhookSignature, WebhookEventEnvelope};
+use crate::webhooks::{WebhookEventEnvelope, WebhookService, WebhookSignature};
 
 /// Webhook dispatcher - sends events to webhooks asynchronously
 pub struct WebhookDispatcher {
@@ -91,15 +89,17 @@ impl WebhookDispatcher {
                 }
                 Err(e) => {
                     // Determine retry count from event
-                    let current_retries = self
-                        .get_event_retries(&event_id)
-                        .await
-                        .unwrap_or(0);
+                    let current_retries = self.get_event_retries(&event_id).await.unwrap_or(0);
 
                     if current_retries < 3 {
                         // Retry later
                         let _ = service
-                            .update_event_status(&event_id, "pending", Some(&e.to_string()), current_retries + 1)
+                            .update_event_status(
+                                &event_id,
+                                "pending",
+                                Some(&e.to_string()),
+                                current_retries + 1,
+                            )
                             .await;
 
                         tracing::warn!(
@@ -181,11 +181,13 @@ impl WebhookDispatcher {
 
     /// Get current retry count for an event
     async fn get_event_retries(&self, event_id: &str) -> Result<i32> {
-        let record = sqlx::query!("SELECT retries FROM webhook_events WHERE id = ?", event_id)
-            .fetch_optional(&self.db)
-            .await?;
+        let retries: Option<i64> =
+            sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+                .bind(event_id)
+                .fetch_optional(&self.db)
+                .await?;
 
-        Ok(record.map(|r| r.retries).unwrap_or(0))
+        Ok(retries.unwrap_or(0) as i32)
     }
 }
 

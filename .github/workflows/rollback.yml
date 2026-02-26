@@ -1,0 +1,159 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Set environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_app=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_group=stellar-insights-${ENV}-dg" >> "$GITHUB_OUTPUT"
+          echo "task_family=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "container_name=stellar-insights" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/terraform-executor
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check for in-progress deployment
+        id: check
+        run: |
+          DEPLOYMENT_ID=$(aws deploy list-deployments \
+            --application-name "${{ steps.env.outputs.codedeploy_app }}" \
+            --deployment-group-name "${{ steps.env.outputs.codedeploy_group }}" \
+            --include-only-statuses "InProgress" "Queued" \
+            --query 'deployments[0]' \
+            --output text 2>/dev/null || echo "None")
+
+          echo "active_deployment=${DEPLOYMENT_ID}" >> "$GITHUB_OUTPUT"
+
+          if [ "$DEPLOYMENT_ID" != "None" ] && [ -n "$DEPLOYMENT_ID" ]; then
+            echo "Found active deployment: ${DEPLOYMENT_ID}"
+            echo "has_active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No active deployment found"
+            echo "has_active=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop active deployment (triggers auto-rollback)
+        if: steps.check.outputs.has_active == 'true'
+        run: |
+          echo "Stopping deployment ${{ steps.check.outputs.active_deployment }}..."
+          aws deploy stop-deployment \
+            --deployment-id "${{ steps.check.outputs.active_deployment }}" \
+            --auto-rollback-enabled
+          echo "Deployment stopped — auto-rollback triggered"
+
+      - name: Rollback to previous task definition
+        if: steps.check.outputs.has_active == 'false'
+        id: rollback
+        run: |
+          # Get the current (broken) revision
+          CURRENT_REV=$(aws ecs describe-services \
+            --cluster "stellar-insights-${{ steps.env.outputs.environment }}" \
+            --services "stellar-insights-service" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          CURRENT_NUM=$(echo "$CURRENT_REV" | grep -o '[0-9]*$')
+          PREV_NUM=$((CURRENT_NUM - 1))
+
+          if [ "$PREV_NUM" -lt 1 ]; then
+            echo "::error::No previous task definition revision to roll back to"
+            exit 1
+          fi
+
+          PREV_TASK_DEF="${{ steps.env.outputs.task_family }}:${PREV_NUM}"
+          echo "Rolling back from revision ${CURRENT_NUM} to ${PREV_NUM}"
+
+          # Get full ARN of previous task def
+          PREV_ARN=$(aws ecs describe-task-definition \
+            --task-definition "$PREV_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          APPSPEC=$(cat <<'APPSPEC_EOF'
+          {
+            "version": 0.0,
+            "Resources": [{
+              "TargetService": {
+                "Type": "AWS::ECS::Service",
+                "Properties": {
+                  "TaskDefinition": "TASK_DEF_PLACEHOLDER",
+                  "LoadBalancerInfo": {
+                    "ContainerName": "CONTAINER_PLACEHOLDER",
+                    "ContainerPort": 8080
+                  }
+                }
+              }
+            }]
+          }
+          APPSPEC_EOF
+          )
+
+          APPSPEC=$(echo "$APPSPEC" | jq -c \
+            --arg TD "$PREV_ARN" \
+            --arg CN "${{ steps.env.outputs.container_name }}" \
+            '.Resources[0].TargetService.Properties.TaskDefinition = $TD |
+             .Resources[0].TargetService.Properties.LoadBalancerInfo.ContainerName = $CN')
+
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name "${{ steps.env.outputs.codedeploy_app }}" \
+            --deployment-group-name "${{ steps.env.outputs.codedeploy_group }}" \
+            --revision "revisionType=AppSpecContent,appSpecContent={content='${APPSPEC}'}" \
+            --description "Rollback to revision ${PREV_NUM} by ${{ github.actor }}" \
+            --query 'deploymentId' \
+            --output text)
+
+          echo "deployment_id=${DEPLOYMENT_ID}" >> "$GITHUB_OUTPUT"
+          echo "Created rollback deployment: ${DEPLOYMENT_ID}"
+
+      - name: Wait for rollback deployment
+        if: steps.rollback.outputs.deployment_id != ''
+        run: |
+          echo "Waiting for rollback deployment ${{ steps.rollback.outputs.deployment_id }}..."
+          aws deploy wait deployment-successful \
+            --deployment-id "${{ steps.rollback.outputs.deployment_id }}"
+          echo "Rollback completed successfully!"
+
+      - name: Rollback summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Rollback Summary
+
+          | Field | Value |
+          |-------|-------|
+          | **Environment** | \`${{ steps.env.outputs.environment }}\` |
+          | **Had Active Deployment** | \`${{ steps.check.outputs.has_active }}\` |
+          | **Active Deployment Stopped** | \`${{ steps.check.outputs.active_deployment }}\` |
+          | **Rollback Deployment** | \`${{ steps.rollback.outputs.deployment_id || 'N/A (auto-rollback)' }}\` |
+          | **Actor** | @${{ github.actor }} |
+          EOF

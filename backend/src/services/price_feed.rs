@@ -359,6 +359,14 @@ impl PriceFeedClient {
             .count();
         (total, fresh)
     }
+
+    /// Warm cache by fetching prices for common assets
+    pub async fn warm_cache(&self) -> Result<()> {
+        let common_assets: Vec<String> = self.asset_mapping.keys().cloned().collect();
+        info!("Warming price cache for {} assets", common_assets.len());
+        let _ = self.get_prices(&common_assets).await;
+        Ok(())
+    }
 }
 
 /// Default asset mapping for common Stellar assets

@@ -72,7 +72,34 @@ impl Schema {
             hash TEXT,
             epoch INTEGER,
             timestamp TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            verification_status TEXT DEFAULT 'pending',
+            verified_at TEXT
+        );
+    "#;
+
+    pub const CREATE_CONTRACT_EVENTS: &'static str = r#"
+        CREATE TABLE IF NOT EXISTS contract_events (
+            id TEXT PRIMARY KEY,
+            contract_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            epoch INTEGER,
+            hash TEXT,
+            timestamp INTEGER,
+            ledger INTEGER NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            verification_status TEXT DEFAULT 'pending',
+            verified_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
+    "#;
+
+    pub const CREATE_CONTRACT_EVENTS_INDEXES: &'static str = r#"
+        CREATE INDEX IF NOT EXISTS idx_contract_events_created_at ON contract_events(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_contract_events_ledger ON contract_events(ledger DESC);
+        CREATE INDEX IF NOT EXISTS idx_contract_events_epoch ON contract_events(epoch DESC);
+        CREATE INDEX IF NOT EXISTS idx_contract_events_contract_id ON contract_events(contract_id);
+        CREATE INDEX IF NOT EXISTS idx_contract_events_verification_status ON contract_events(verification_status);
+        CREATE INDEX IF NOT EXISTS idx_contract_events_event_type ON contract_events(event_type);
     "#;
 }

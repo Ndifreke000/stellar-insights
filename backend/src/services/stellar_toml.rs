@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_RESPONSE_SIZE: usize = 1024 * 1024;
 
 /// Stellar.toml metadata according to SEP-1
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StellarToml {
     // Organization Information
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,7 +81,7 @@ pub struct StellarToml {
     pub fetched_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CurrencyInfo {
     pub code: String,
 
@@ -128,7 +128,7 @@ pub struct CurrencyInfo {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Principal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -146,7 +146,7 @@ pub struct Principal {
     pub github: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Documentation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_name: Option<String>,
@@ -261,7 +261,7 @@ impl StellarTomlClient {
     // Private methods
 
     /// Validate domain to prevent SSRF
-    fn validate_domain(&self, domain: &str) -> Result<()> {
+    pub fn validate_domain(&self, domain: &str) -> Result<()> {
         // Check for empty domain
         if domain.is_empty() {
             return Err(anyhow!("Domain cannot be empty"));
@@ -367,7 +367,7 @@ impl StellarTomlClient {
     }
 
     /// Parse TOML content
-    fn parse_toml(&self, content: &str, domain: &str) -> Result<StellarToml> {
+    pub fn parse_toml(&self, content: &str, domain: &str) -> Result<StellarToml> {
         // Parse TOML
         let parsed: toml::Value =
             toml::from_str(content).map_err(|e| anyhow!("Failed to parse TOML: {}", e))?;

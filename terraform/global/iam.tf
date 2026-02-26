@@ -193,6 +193,14 @@ resource "aws_iam_role_policy" "terraform_infrastructure" {
           "acm:DeleteCertificate"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "CodeDeploy"
+        Effect = "Allow"
+        Action = [
+          "codedeploy:*"
+        ]
+        Resource = "*"
       }
     ]
   })

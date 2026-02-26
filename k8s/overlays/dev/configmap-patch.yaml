@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stellar-insights-config
+data:
+  stellar-network: "testnet"
+  stellar-rpc-url-testnet: "https://soroban-testnet.stellar.org"
+  stellar-horizon-url-testnet: "https://horizon-testnet.stellar.org"
+  rust-log: "debug"
+  cors-allowed-origins: "http://localhost:3000,http://localhost:8080"

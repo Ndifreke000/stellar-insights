@@ -14,6 +14,7 @@ pub struct LedgerIngestionService {
     fee_bump_tracker: Arc<FeeBumpTrackerService>,
     account_merge_detector: Arc<AccountMergeDetector>,
     pool: SqlitePool,
+    webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
 }
 
 /// Represents a payment operation extracted from a ledger
@@ -41,6 +42,23 @@ impl LedgerIngestionService {
             fee_bump_tracker,
             account_merge_detector,
             pool,
+            webhook_event_service: None,
+        }
+    }
+
+    pub fn new_with_webhooks(
+        rpc_client: Arc<StellarRpcClient>,
+        fee_bump_tracker: Arc<FeeBumpTrackerService>,
+        account_merge_detector: Arc<AccountMergeDetector>,
+        pool: SqlitePool,
+        webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
+    ) -> Self {
+        Self {
+            rpc_client,
+            fee_bump_tracker,
+            account_merge_detector,
+            pool,
+            webhook_event_service: Some(webhook_event_service),
         }
     }
 
@@ -100,15 +118,16 @@ impl LedgerIngestionService {
                 Ok(payments) => {
                     for payment in payments {
                         // Convert RPC Payment to ExtractedPayment
+                        // Uses helper methods to support both old and new Horizon formats
                         let extracted = ExtractedPayment {
                             ledger_sequence: ledger.sequence,
-                            transaction_hash: payment.transaction_hash,
+                            transaction_hash: payment.transaction_hash.clone(),
                             operation_type: "payment".to_string(), // Horizon 'payments' endpoint returns payments
-                            source_account: payment.source_account,
-                            destination: payment.destination,
-                            asset_code: payment.asset_code,
-                            asset_issuer: payment.asset_issuer,
-                            amount: payment.amount,
+                            source_account: payment.source_account.clone(),
+                            destination: payment.get_destination().unwrap_or_default(),
+                            asset_code: payment.get_asset_code(),
+                            asset_issuer: payment.get_asset_issuer(),
+                            amount: payment.get_amount(),
                         };
 
                         if let Err(e) = self.persist_payment(&extracted).await {
@@ -224,6 +243,41 @@ impl LedgerIngestionService {
         .bind(&payment.amount)
         .execute(&self.pool)
         .await?;
+
+        // Trigger webhook event for payment creation
+        if let Some(webhook_service) = &self.webhook_event_service {
+            if payment.operation_type == "payment" {
+                let asset_code = payment.asset_code.as_deref().unwrap_or("XLM");
+                let asset_issuer = payment.asset_issuer.as_deref().unwrap_or("native");
+                let amount = payment.amount.parse::<f64>().unwrap_or(0.0);
+
+                let webhook_service = webhook_service.clone();
+                let payment_id =
+                    format!("{}-{}", payment.transaction_hash, payment.ledger_sequence);
+                let source = payment.source_account.clone();
+                let destination = payment.destination.clone();
+                let asset_code = asset_code.to_string();
+                let asset_issuer = asset_issuer.to_string();
+                let timestamp = Utc::now().to_rfc3339();
+
+                tokio::spawn(async move {
+                    if let Err(e) = webhook_service
+                        .trigger_payment_created(
+                            &payment_id,
+                            &source,
+                            &destination,
+                            &asset_code,
+                            &asset_issuer,
+                            amount,
+                            &timestamp,
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to trigger payment created webhook: {}", e);
+                    }
+                });
+            }
+        }
 
         Ok(())
     }

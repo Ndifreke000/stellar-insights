@@ -9,9 +9,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
-use crate::auth::oauth::{OAuthError, OAuthService, TokenResponse, AVAILABLE_SCOPES};
+use crate::auth::oauth::{OAuthService, TokenResponse};
 use crate::auth_middleware::AuthUser;
 
 /// OAuth Token Request (for /api/oauth/token)
@@ -123,13 +122,16 @@ pub async fn token(
         .map_err(|_| OAuthApiError::InvalidClient)?;
 
     // Get user from database for username
-    let user = sqlx::query!("SELECT username FROM users WHERE id = ?", user_id)
+    let user_row = sqlx::query("SELECT username FROM users WHERE id = ?")
+        .bind(user_id.clone())
         .fetch_optional(&db)
         .await
         .map_err(|e| OAuthApiError::ServerError(e.to_string()))?
         .ok_or_else(|| OAuthApiError::InvalidClient)?;
-
-    let username = user.username;
+    let username: String = {
+        use sqlx::Row;
+        user_row.get(0)
+    };
 
     match request.grant_type.as_str() {
         "authorization_code" => {
@@ -247,7 +249,7 @@ pub async fn revoke(
     service
         .revoke_token(&request.access_token)
         .await
-        .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+        .map_err(|e: anyhow::Error| OAuthApiError::ServerError(e.to_string()))?;
 
     Ok((
         StatusCode::OK,
@@ -261,24 +263,27 @@ pub async fn list_apps(
     State(db): State<SqlitePool>,
     auth_user: AuthUser,
 ) -> Result<Response, OAuthApiError> {
-    let apps = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT client_id, app_name, created_at FROM oauth_clients
         WHERE user_id = ?
         ORDER BY created_at DESC
         "#,
-        auth_user.user_id
     )
+    .bind(auth_user.user_id)
     .fetch_all(&db)
     .await
-    .map_err(|e| OAuthApiError::ServerError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| OAuthApiError::ServerError(e.to_string()))?;
 
-    let app_list: Vec<OAuthAppInfo> = apps
+    let app_list: Vec<OAuthAppInfo> = rows
         .into_iter()
-        .map(|row| OAuthAppInfo {
-            client_id: row.client_id,
-            app_name: row.app_name,
-            created_at: row.created_at,
+        .map(|row| {
+            use sqlx::Row;
+            OAuthAppInfo {
+                client_id: row.get(0),
+                app_name: row.get(1),
+                created_at: row.get(2),
+            }
         })
         .collect();
 

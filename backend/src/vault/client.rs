@@ -1,9 +1,3 @@
-/// VaultClient provides secure access to secrets stored in HashiCorp Vault
-///
-/// Supports:
-/// - Static secrets from KV v2 secrets engine
-/// - Dynamic database credentials with automatic renewal
-/// - Lease tracking and background renewal
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -69,7 +63,6 @@ impl VaultClient {
             .build()
             .map_err(|e| VaultError::ClientError(e.to_string()))?;
 
-        // Test connection to Vault
         let client = VaultClient {
             http_client,
             config,
@@ -96,13 +89,6 @@ impl VaultClient {
     }
 
     /// Read a static secret from KV v2
-    ///
-    /// # Arguments
-    /// * `path` - Secret path (e.g., "stellar/jwt_secret")
-    /// * `field` - Specific field to extract (e.g., "value"), None returns all fields
-    ///
-    /// # Returns
-    /// Secret value as String
     pub async fn read_secret(&self, path: &str, field: Option<&str>) -> Result<String, VaultError> {
         let url = format!(
             "{}/v1/data/{}",
@@ -136,7 +122,6 @@ impl VaultClient {
                 .map(|s| s.to_string())
                 .ok_or_else(|| VaultError::FieldNotFound(field_name.to_string()))
         } else {
-            // Return first available value if no field specified
             secret
                 .data
                 .data
@@ -149,12 +134,6 @@ impl VaultClient {
     }
 
     /// Request dynamic PostgreSQL database credentials
-    ///
-    /// # Arguments
-    /// * `role` - Database role (e.g., "stellar-app") must exist in Vault
-    ///
-    /// # Returns
-    /// (username, password) tuple with 1-hour TTL
     pub async fn get_database_credentials(
         &self,
         role: &str,
@@ -183,13 +162,11 @@ impl VaultClient {
             .as_str()
             .ok_or(VaultError::ParseError("Missing username".to_string()))?
             .to_string();
-
         let password = data["password"]
             .as_str()
             .ok_or(VaultError::ParseError("Missing password".to_string()))?
             .to_string();
 
-        // Store lease for renewal
         let mut leases = self.lease_manager.write().await;
         leases.insert(
             secret.lease_id.clone(),
@@ -212,9 +189,7 @@ impl VaultClient {
     pub async fn renew_lease(&self, lease_id: &str) -> Result<(), VaultError> {
         let url = format!("{}/v1/sys/leases/renew", self.config.vault_addr);
 
-        let body = serde_json::json!({
-            "lease_id": lease_id,
-        });
+        let body = serde_json::json!({ "lease_id": lease_id });
 
         let resp = self
             .http_client
@@ -232,13 +207,11 @@ impl VaultClient {
         }
     }
 
-    /// Revoke a lease (e.g., when shutting down)
+    /// Revoke a lease
     pub async fn revoke_lease(&self, lease_id: &str) -> Result<(), VaultError> {
         let url = format!("{}/v1/sys/leases/revoke", self.config.vault_addr);
 
-        let body = serde_json::json!({
-            "lease_id": lease_id,
-        });
+        let body = serde_json::json!({ "lease_id": lease_id });
 
         let resp = self
             .http_client
@@ -250,7 +223,6 @@ impl VaultClient {
             .map_err(|e| VaultError::RequestError(e.to_string()))?;
 
         if resp.status().is_success() {
-            // Remove from tracking
             let mut leases = self.lease_manager.write().await;
             leases.remove(lease_id);
             Ok(())

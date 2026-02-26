@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::email::scheduler::DigestScheduler;
-use crate::handlers::ApiResult;
+use crate::error::ApiResult;
 
 #[derive(Deserialize)]
 pub struct SendDigestRequest {

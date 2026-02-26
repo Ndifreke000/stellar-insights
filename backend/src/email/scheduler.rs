@@ -1,11 +1,11 @@
+use chrono::{Datelike, Timelike, Utc};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use chrono::{Utc, Datelike};
 
 use crate::cache::CacheManager;
-use crate::rpc::StellarRpcClient;
+use crate::email::report::{generate_html_report, AnchorSummary, CorridorSummary, DigestReport};
 use crate::email::service::EmailService;
-use crate::email::report::{DigestReport, CorridorSummary, AnchorSummary, generate_html_report};
+use crate::rpc::StellarRpcClient;
 
 pub struct DigestScheduler {
     email_service: Arc<EmailService>,
@@ -21,7 +21,12 @@ impl DigestScheduler {
         rpc_client: Arc<StellarRpcClient>,
         recipients: Vec<String>,
     ) -> Self {
-        Self { email_service, cache, rpc_client, recipients }
+        Self {
+            email_service,
+            cache,
+            rpc_client,
+            recipients,
+        }
     }
 
     pub async fn start(self: Arc<Self>) {
@@ -30,14 +35,14 @@ impl DigestScheduler {
         loop {
             ticker.tick().await;
             let now = Utc::now();
-            
+
             // Weekly: Monday at 9 AM
             if now.weekday().num_days_from_monday() == 0 && now.hour() == 9 {
                 if let Err(e) = self.send_digest("Weekly").await {
                     tracing::error!("Failed to send weekly digest: {}", e);
                 }
             }
-            
+
             // Monthly: 1st of month at 9 AM
             if now.day() == 1 && now.hour() == 9 {
                 if let Err(e) = self.send_digest("Monthly").await {
@@ -47,39 +52,52 @@ impl DigestScheduler {
         }
     }
 
-    async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
+    pub async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
         let report = self.generate_report(period).await?;
         let html = generate_html_report(&report);
-        
+
         for recipient in &self.recipients {
             self.email_service.send_html(
                 recipient,
                 &format!("Stellar Insights - {} Performance Report", period),
-                &html
+                &html,
             )?;
         }
-        
-        tracing::info!("Sent {} digest to {} recipients", period, self.recipients.len());
+
+        tracing::info!(
+            "Sent {} digest to {} recipients",
+            period,
+            self.recipients.len()
+        );
         Ok(())
     }
 
     async fn generate_report(&self, period: &str) -> anyhow::Result<DigestReport> {
-        let payments = self.rpc_client.fetch_payments(500, None).await?;
-        
+        let payments = self
+            .rpc_client
+            .fetch_payments(500, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
         let mut corridor_map = std::collections::HashMap::new();
         for payment in &payments {
             let key = format!(
                 "{}:{}->XLM:native",
-                payment.asset_code.as_deref().unwrap_or("XLM"),
-                payment.asset_issuer.as_deref().unwrap_or("native")
+                payment.get_asset_code().as_deref().unwrap_or("XLM"),
+                payment.get_asset_issuer().as_deref().unwrap_or("native")
             );
-            corridor_map.entry(key).or_insert_with(Vec::new).push(payment);
+            corridor_map
+                .entry(key)
+                .or_insert_with(Vec::new)
+                .push(payment);
         }
 
-        let mut corridors: Vec<CorridorSummary> = corridor_map.iter()
+        let mut corridors: Vec<CorridorSummary> = corridor_map
+            .iter()
             .map(|(id, payments)| {
-                let volume: f64 = payments.iter()
-                    .filter_map(|p| p.amount.parse::<f64>().ok())
+                let volume: f64 = payments
+                    .iter()
+                    .filter_map(|p| p.get_amount().parse::<f64>().ok())
                     .sum();
                 CorridorSummary {
                     id: id.clone(),
@@ -95,19 +113,18 @@ impl DigestScheduler {
         corridors.truncate(10);
 
         let total_volume: f64 = corridors.iter().map(|c| c.volume_usd).sum();
-        let avg_success_rate = corridors.iter().map(|c| c.success_rate).sum::<f64>() / corridors.len() as f64;
+        let avg_success_rate =
+            corridors.iter().map(|c| c.success_rate).sum::<f64>() / corridors.len() as f64;
 
         Ok(DigestReport {
             period: period.to_string(),
             top_corridors: corridors,
-            top_anchors: vec![
-                AnchorSummary {
-                    name: "Circle USDC".to_string(),
-                    success_rate: 99.5,
-                    total_transactions: 15420,
-                    volume_usd: 2_500_000.0,
-                }
-            ],
+            top_anchors: vec![AnchorSummary {
+                name: "Circle USDC".to_string(),
+                success_rate: 99.5,
+                total_transactions: 15420,
+                volume_usd: 2_500_000.0,
+            }],
             total_volume,
             avg_success_rate,
         })

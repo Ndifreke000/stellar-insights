@@ -114,6 +114,17 @@ impl WsState {
         self.connections.remove(&connection_id);
         self.subscriptions.remove(&connection_id);
     }
+
+    /// Close all WebSocket connections gracefully
+    pub async fn close_all_connections(&self) {
+        let connection_ids: Vec<Uuid> = self.connections.iter().map(|entry| *entry.key()).collect();
+
+        for connection_id in connection_ids {
+            self.cleanup_connection(connection_id);
+        }
+
+        info!("All WebSocket connections have been closed");
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +204,10 @@ pub enum WsMessage {
     Error {
         message: String,
     },
+    /// Server is shutting down
+    ServerShutdown {
+        message: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,6 +266,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
 
     // Register the connection
     state.connections.insert(connection_id, tx);
+    crate::observability::metrics::set_active_connections(state.connection_count() as i64);
 
     // Subscribe to broadcast messages
     let mut broadcast_rx = state.tx.subscribe();
@@ -400,6 +416,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
 
     // Clean up connection
     state.cleanup_connection(connection_id);
+    crate::observability::metrics::set_active_connections(state.connection_count() as i64);
     info!(
         "WebSocket connection {} closed. Active connections: {}",
         connection_id,
@@ -432,7 +449,7 @@ mod tests {
             hash: "abc123".to_string(),
         };
 
-        let json = serde_json::to_string(&msg).unwrap();
+        let json = serde_json::to_string(&msg).expect("Failed to serialize WsMessage in test");
         assert!(json.contains("snapshot_update"));
         assert!(json.contains("test-id"));
     }

@@ -201,3 +201,20 @@ variable "project" {
   type        = string
   default     = "stellar-insights"
 }
+
+variable "enable_blue_green" {
+  description = "Enable blue-green deployment with CodeDeploy"
+  type        = bool
+  default     = false
+}
+
+variable "test_listener_port" {
+  description = "Port for test traffic listener (blue-green pre-validation)"
+  type        = number
+  default     = 8443
+
+  validation {
+    condition     = var.test_listener_port >= 1 && var.test_listener_port <= 65535
+    error_message = "Test listener port must be between 1 and 65535"
+  }
+}

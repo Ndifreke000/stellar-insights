@@ -102,3 +102,62 @@ output "dashboard_url" {
     null
   )
 }
+
+# ============================================================================
+# AWS Budget for Cost Alerts
+# ============================================================================
+
+resource "aws_budgets_budget" "monthly" {
+  count = var.enable_cost_alerts ? 1 : 0
+  name  = "stellar-insights-monthly-${var.environment}"
+
+  budget_type = "COST"
+  limit_amount = var.budget_limit
+  limit_unit = "USD"
+  time_period_start = "2024-01-01"
+  time_unit = "MONTHLY"
+
+  # Cost filters
+  cost_filter {
+    name = "Environment"
+    values = [var.environment]
+  }
+
+  notification {
+    comparison_operator = "GREATER_THAN"
+    threshold = 80
+    notification_type = "FORECASTED"
+    subscriber_sns_topic_arn = try(aws_sns_topic.alarms[0].arn, null)
+  }
+
+  notification {
+    comparison_operator = "GREATER_THAN"
+    threshold = 100
+    notification_type = "ACTUAL"
+    subscriber_sns_topic_arn = try(aws_sns_topic.alarms[0].arn, null)
+  }
+}
+
+resource "aws_budgets_budget" "annual" {
+  count = var.enable_cost_alerts ? 1 : 0
+  name  = "stellar-insights-annual-${var.environment}"
+
+  budget_type = "COST"
+  limit_amount = var.budget_limit * 12
+  limit_unit = "USD"
+  time_period_start = "2024-01-01"
+  time_unit = "YEARLY"
+
+  # Cost filters
+  cost_filter {
+    name = "Environment"
+    values = [var.environment]
+  }
+
+  notification {
+    comparison_operator = "GREATER_THAN"
+    threshold = 90
+    notification_type = "FORECASTED"
+    subscriber_sns_topic_arn = try(aws_sns_topic.alarms[0].arn, null)
+  }
+}

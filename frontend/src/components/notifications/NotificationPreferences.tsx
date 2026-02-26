@@ -100,7 +100,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
         <div className="border-b border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Settings className="h-6 w-6 text-gray-600 dark:text-gray-400" />
+              <Settings className="h-6 w-6 text-muted-foreground dark:text-muted-foreground" />
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 Notification Preferences
               </h2>
@@ -128,7 +128,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Enable Notifications
                   </label>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Turn on/off all notifications
                   </p>
                 </div>
@@ -151,7 +151,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Desktop Notifications
                   </label>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Show notifications outside the browser
                   </p>
                 </div>
@@ -174,7 +174,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Auto Hide
                   </label>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Automatically dismiss notifications
                   </p>
                 </div>
@@ -205,7 +205,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                     onChange={(e) => handlePreferenceChange('autoHideDelay', parseInt(e.target.value) * 1000)}
                     className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
                   />
-                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground dark:text-muted-foreground mt-1">
                     <span>1s</span>
                     <span>{localPreferences.autoHideDelay / 1000}s</span>
                     <span>30s</span>
@@ -227,7 +227,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Enable Sound
                   </label>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                     Play sound for notifications
                   </p>
                 </div>
@@ -268,7 +268,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                       onChange={(e) => handleSoundChange('volume', parseFloat(e.target.value))}
                       className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
                     />
-                    <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <div className="flex justify-between text-xs text-muted-foreground dark:text-muted-foreground mt-1">
                       <span>0%</span>
                       <span>{Math.round(localPreferences.sound.volume * 100)}%</span>
                       <span>100%</span>
@@ -308,7 +308,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
                       {category}
                     </label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                       {category === 'payments' && 'Failed payment notifications'}
                       {category === 'liquidity' && 'Low liquidity alerts'}
                       {category === 'snapshots' && 'New snapshot notifications'}
@@ -339,7 +339,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
             <button
               onClick={handleReset}
               disabled={!hasChanges}
-              className="flex items-center px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center px-4 py-2 text-sm text-muted-foreground dark:text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
               Reset Changes
@@ -347,7 +347,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
             <div className="flex space-x-3">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground dark:text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
               >
                 Cancel
               </button>

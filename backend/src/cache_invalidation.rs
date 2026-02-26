@@ -14,30 +14,40 @@ impl CacheInvalidationService {
     /// Invalidate all anchor-related caches
     pub async fn invalidate_anchors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating anchor caches");
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate specific anchor caches
     pub async fn invalidate_anchor(&self, anchor_id: &str) -> anyhow::Result<()> {
-        tracing::info!("Invalidating cache for anchor: {}", anchor_id);
+        tracing::info!(
+            anchor_id = crate::logging::redaction::redact_user_id(anchor_id),
+            "Invalidating cache for anchor"
+        );
         self.cache.delete(&keys::anchor_detail(anchor_id)).await?;
         self.cache.delete(&keys::anchor_assets(anchor_id)).await?;
         // Also invalidate the list caches since they contain this anchor
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate anchor by account
     pub async fn invalidate_anchor_by_account(&self, account: &str) -> anyhow::Result<()> {
-        tracing::info!("Invalidating cache for anchor account: {}", account);
+        tracing::info!(
+            account = crate::logging::redaction::redact_account(account),
+            "Invalidating cache for anchor account"
+        );
         self.cache.delete(&keys::anchor_by_account(account)).await?;
         // Also invalidate list caches
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate all corridor-related caches
     pub async fn invalidate_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating corridor caches");
-        self.cache.delete_pattern(&keys::corridor_pattern()).await
+        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate specific corridor cache
@@ -47,13 +57,17 @@ impl CacheInvalidationService {
             .delete(&keys::corridor_detail(corridor_key))
             .await?;
         // Also invalidate the list caches since they contain this corridor
-        self.cache.delete_pattern(&keys::corridor_pattern()).await
+        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate dashboard caches
     pub async fn invalidate_dashboard(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating dashboard caches");
-        self.cache.delete_pattern(&keys::dashboard_pattern()).await
+        self.cache
+            .delete_pattern(&keys::dashboard_pattern())
+            .await?;
+        Ok(())
     }
 
     /// Invalidate metrics caches

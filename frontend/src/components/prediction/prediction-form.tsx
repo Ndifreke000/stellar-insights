@@ -151,7 +151,7 @@ function ConfidenceBar({ interval }: { interval: [number, number] }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-between text-xs text-gray-400">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>0%</span>
         <span className="flex items-center gap-1">
           <Info className="w-3 h-3" />
@@ -213,7 +213,7 @@ function RouteCard({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <div className="p-1.5 bg-blue-500/20 rounded-lg">
-            <ArrowRightLeft className="w-4 h-4 text-blue-400" />
+            <ArrowRightLeft className="w-4 h-4 text-link-primary" />
           </div>
           <span className="text-sm font-medium text-gray-200">
             {route.source_asset}
@@ -228,7 +228,7 @@ function RouteCard({
           {(route.estimated_success_rate * 100).toFixed(1)}%
         </span>
       </div>
-      <p className="text-xs text-gray-400">{route.description}</p>
+      <p className="text-xs text-muted-foreground">{route.description}</p>
     </motion.div>
   );
 }
@@ -471,7 +471,7 @@ const PredictionForm = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center h-64 text-gray-500"
+                  className="flex flex-col items-center justify-center h-64 text-muted-foreground"
                 >
                   <TrendingUp className="w-12 h-12 mb-4 opacity-30" />
                   <p className="text-center">
@@ -529,7 +529,7 @@ const PredictionForm = () => {
                   {/* Alternative Routes */}
                   {prediction.alternative_routes.length > 0 && (
                     <div className="space-y-3">
-                      <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                         Better Routes Available
                       </h3>
                       {prediction.alternative_routes.map((route, index) => (
@@ -539,7 +539,7 @@ const PredictionForm = () => {
                   )}
 
                   {/* Model Info */}
-                  <div className="pt-4 border-t border-gray-700/50 text-xs text-gray-500 text-center">
+                  <div className="pt-4 border-t border-gray-700/50 text-xs text-muted-foreground text-center">
                     Model version: {prediction.model_version}
                   </div>
                 </motion.div>

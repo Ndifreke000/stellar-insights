@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stellar-insights-frontend
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: frontend
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: stellar-insights
+    component: frontend

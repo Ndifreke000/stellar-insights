@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -10,12 +11,15 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TVLDataPoint } from '@/lib/analytics-api';
+import { ChartExportButton } from './ChartExportButton';
 
 interface TVLChartProps {
   data: TVLDataPoint[];
 }
 
 export function TVLChart({ data }: TVLChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  
   const chartData = data.map((point) => ({
     timestamp: new Date(point.timestamp).toLocaleDateString('en-US', {
       month: 'short',
@@ -38,14 +42,19 @@ export function TVLChart({ data }: TVLChartProps) {
   const avgTVL = chartData.reduce((sum, d) => sum + d.tvl_usd, 0) / chartData.length;
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-border/50">
-      <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Network Capital // 03.B</div>
-      <h2 className="text-xl font-black tracking-tighter uppercase italic mb-2">
-        Total Value Locked
-      </h2>
-      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-6">
-        Aggregated TVL across verified anchors
-      </p>
+    <div ref={chartRef} className="glass-card rounded-2xl p-6 border border-border/50">
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1">
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Network Capital // 03.B</div>
+          <h2 className="text-xl font-black tracking-tighter uppercase italic mb-2">
+            Total Value Locked
+          </h2>
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-6">
+            Aggregated TVL across verified anchors
+          </p>
+        </div>
+        <ChartExportButton chartRef={chartRef} chartName="Total Value Locked" />
+      </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4 mb-8">

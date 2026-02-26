@@ -84,9 +84,27 @@ variable "max_size" {
   }
 }
 
-variable "instance_type" {
-  description = "EC2 instance type (t3.micro, t3.small, t3.medium, t3.large)"
+variable "launch_type" {
+  description = "ECS launch type (EC2 or FARGATE)"
   type        = string
+  default     = "FARGATE"
+
+  validation {
+    condition     = contains(["EC2", "FARGATE"], var.launch_type)
+    error_message = "Launch type must be either EC2 or FARGATE"
+  }
+}
+
+variable "enable_fargate" {
+  description = "Enable Fargate launch type (true for serverless, false for EC2)"
+  type        = bool
+  default     = true
+}
+
+variable "instance_type" {
+  description = "EC2 instance type (t3.micro, t3.small, t3.medium, t3.large) - only used if launch_type is EC2"
+  type        = string
+  default     = "t3.small"
 
   validation {
     condition     = can(regex("^t3\\.(micro|small|medium|large)$", var.instance_type))
@@ -213,4 +231,10 @@ variable "cpu_target_percentage" {
     condition     = var.cpu_target_percentage >= 20 && var.cpu_target_percentage <= 90
     error_message = "CPU target must be between 20 and 90 percent"
   }
+}
+
+variable "enable_blue_green" {
+  description = "Enable blue-green deployment with CodeDeploy"
+  type        = bool
+  default     = false
 }

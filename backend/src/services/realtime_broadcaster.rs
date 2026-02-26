@@ -1,7 +1,7 @@
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::models::corridor::CorridorMetrics;
-use crate::models::{AnchorMetrics, PaymentRecord};
+use crate::models::{AnchorMetrics, AnchorStatus, PaymentRecord};
 use crate::rpc::StellarRpcClient;
 use crate::websocket::{WsMessage, WsState};
 use dashmap::DashMap;
@@ -17,9 +17,9 @@ pub struct RealtimeBroadcaster {
     ws_state: Arc<WsState>,
     /// Database for fetching data
     db: Arc<Database>,
-    /// RPC client for fetching data
+    /// RPC client for fetching data (reserved for future real-time data fetching)
     _rpc_client: Arc<StellarRpcClient>,
-    /// Cache manager for data access
+    /// Cache manager for data access (reserved for future caching optimizations)
     _cache: Arc<CacheManager>,
     /// Per-connection subscriptions
     subscriptions: Arc<DashMap<Uuid, HashSet<String>>>,
@@ -49,7 +49,10 @@ pub enum BroadcastMessage {
         channel: String,
     },
     NewPayment {
-        payment: PaymentRecord,
+        corridor_key: String,
+        amount: f64,
+        successful: bool,
+        timestamp: String,
         channel: String,
     },
     HealthAlert {
@@ -246,11 +249,19 @@ impl RealtimeBroadcaster {
     }
 
     /// Broadcast new payment to all subscribed clients
-    pub async fn broadcast_payment(&self, payment: PaymentRecord) {
-        let corridor = payment.get_corridor();
-        let channel = format!("corridor:{}", corridor.to_string_key());
+    pub async fn broadcast_payment(
+        &self,
+        corridor_key: String,
+        amount: f64,
+        successful: bool,
+        timestamp: String,
+    ) {
+        let channel = format!("corridor:{}", corridor_key);
         let message = BroadcastMessage::NewPayment {
-            payment,
+            corridor_key: corridor_key.clone(),
+            amount,
+            successful,
+            timestamp,
             channel: channel.clone(),
         };
 
@@ -386,20 +397,22 @@ impl WsMessage {
                 anchor_id: "unknown".to_string(),
                 name: "unknown".to_string(),
                 reliability_score: anchor.reliability_score,
-                status: anchor.status.as_str().to_string(),
+                status: AnchorStatus::from_metrics(anchor.success_rate, anchor.failure_rate)
+                    .as_str()
+                    .to_string(),
             },
-            BroadcastMessage::NewPayment { payment, .. } => {
-                let corridor = payment.get_corridor();
-                WsMessage::NewPayment {
-                    corridor_id: corridor.to_string_key(),
-                    amount: payment.amount,
-                    successful: payment.successful,
-                    timestamp: payment
-                        .timestamp
-                        .map(|value| value.to_rfc3339())
-                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                }
-            }
+            BroadcastMessage::NewPayment {
+                corridor_key,
+                amount,
+                successful,
+                timestamp,
+                ..
+            } => WsMessage::NewPayment {
+                corridor_id: corridor_key,
+                amount,
+                successful,
+                timestamp,
+            },
             BroadcastMessage::HealthAlert {
                 corridor_id,
                 severity,

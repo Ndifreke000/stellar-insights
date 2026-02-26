@@ -19,7 +19,6 @@ impl WebhookSignature {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
-
         format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
     }
 
@@ -48,8 +47,8 @@ pub struct Webhook {
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {
     pub url: String,
-    pub event_types: Vec<String>, // e.g., ["corridor.health_degraded", "anchor.status_changed"]
-    pub filters: Option<serde_json::Value>, // Optional filters
+    pub event_types: Vec<String>,
+    pub filters: Option<serde_json::Value>,
 }
 
 /// Webhook creation response
@@ -63,7 +62,7 @@ pub struct WebhookResponse {
     pub created_at: String,
 }
 
-/// Webhook event envelope (what gets sent to webhook URL)
+/// Webhook event envelope
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEventEnvelope {
     pub id: String, // Delivery ID for idempotency
@@ -104,12 +103,16 @@ impl WebhookEventType {
 
 /// Webhook service - manages webhook operations
 pub struct WebhookService {
-    db: SqlitePool,
+    pub db: SqlitePool,
+    encryption_key: String,
 }
 
 impl WebhookService {
     pub fn new(db: SqlitePool) -> Self {
-        Self { db }
+        let encryption_key = std::env::var("ENCRYPTION_KEY").unwrap_or_else(|_| {
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
+        });
+        Self { db, encryption_key }
     }
 
     /// Register a new webhook
@@ -124,20 +127,23 @@ impl WebhookService {
         let filters_str = request.filters.as_ref().map(|f| f.to_string());
         let now = chrono::Utc::now().to_rfc3339();
 
-        sqlx::query!(
+        let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
+            .unwrap_or_else(|_| secret.clone());
+
+        sqlx::query(
             r#"
             INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
-            id,
-            user_id,
-            request.url,
-            event_types_str,
-            filters_str,
-            secret,
-            true,
-            now
         )
+        .bind(&id)
+        .bind(user_id)
+        .bind(&request.url)
+        .bind(&event_types_str)
+        .bind(filters_str.as_deref())
+        .bind(&encrypted_secret)
+        .bind(true)
+        .bind(&now)
         .execute(&self.db)
         .await?;
 
@@ -153,37 +159,45 @@ impl WebhookService {
 
     /// Get webhook by ID
     pub async fn get_webhook(&self, webhook_id: &str) -> anyhow::Result<Option<Webhook>> {
-        let webhook = sqlx::query_as::<_, Webhook>(
+        let mut webhook = sqlx::query_as::<_, Webhook>(
             "SELECT id, user_id, url, event_types, filters, secret, is_active, created_at, last_fired_at FROM webhooks WHERE id = ?"
         )
         .bind(webhook_id)
         .fetch_optional(&self.db)
         .await?;
 
+        if let Some(ref mut w) = webhook {
+            w.secret = crate::crypto::decrypt_data(&w.secret, &self.encryption_key)
+                .unwrap_or_else(|_| w.secret.clone());
+        }
+
         Ok(webhook)
     }
 
     /// List webhooks for a user
     pub async fn list_webhooks(&self, user_id: &str) -> anyhow::Result<Vec<Webhook>> {
-        let webhooks = sqlx::query_as::<_, Webhook>(
+        let mut webhooks = sqlx::query_as::<_, Webhook>(
             "SELECT id, user_id, url, event_types, filters, secret, is_active, created_at, last_fired_at FROM webhooks WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC"
         )
         .bind(user_id)
         .fetch_all(&self.db)
         .await?;
 
+        for w in &mut webhooks {
+            w.secret = crate::crypto::decrypt_data(&w.secret, &self.encryption_key)
+                .unwrap_or_else(|_| w.secret.clone());
+        }
+
         Ok(webhooks)
     }
 
     /// Delete/deactivate webhook
     pub async fn delete_webhook(&self, webhook_id: &str, user_id: &str) -> anyhow::Result<bool> {
-        let result = sqlx::query!(
-            "UPDATE webhooks SET is_active = 0 WHERE id = ? AND user_id = ?",
-            webhook_id,
-            user_id
-        )
-        .execute(&self.db)
-        .await?;
+        let result = sqlx::query("UPDATE webhooks SET is_active = 0 WHERE id = ? AND user_id = ?")
+            .bind(webhook_id)
+            .bind(user_id)
+            .execute(&self.db)
+            .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -197,20 +211,19 @@ impl WebhookService {
     ) -> anyhow::Result<String> {
         let id = Uuid::new_v4().to_string();
         let payload_str = payload.to_string();
+        let now = chrono::Utc::now().to_rfc3339();
 
-        sqlx::query!(
-            r#"
-            INSERT INTO webhook_events (id, webhook_id, event_type, payload, status, retries, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            "#,
-            id,
-            webhook_id,
-            event_type,
-            payload_str,
-            "pending",
-            0,
-            chrono::Utc::now().to_rfc3339()
+        sqlx::query(
+            "INSERT INTO webhook_events (id, webhook_id, event_type, payload, status, retries, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
+        .bind(id.clone())
+        .bind(webhook_id)
+        .bind(event_type)
+        .bind(payload_str)
+        .bind("pending")
+        .bind(0)
+        .bind(now)
         .execute(&self.db)
         .await?;
 
@@ -222,23 +235,33 @@ impl WebhookService {
         &self,
         limit: usize,
     ) -> anyhow::Result<Vec<(String, String, String, String)>> {
-        let events = sqlx::query!(
-            r#"
-            SELECT we.id, we.webhook_id, we.event_type, we.payload
-            FROM webhook_events we
-            WHERE we.status = 'pending' AND we.retries < 3
-            ORDER BY we.created_at ASC
-            LIMIT ?
-            "#,
-            limit as i64
+        let query_limit = limit as i64;
+
+        let rows = sqlx::query(
+            "SELECT we.id, we.webhook_id, we.event_type, we.payload
+             FROM webhook_events we
+             WHERE we.status = 'pending' AND we.retries < 3
+             ORDER BY we.created_at ASC
+             LIMIT ?",
         )
+        .bind(query_limit)
         .fetch_all(&self.db)
         .await?;
 
-        Ok(events
+        let events: Vec<(String, String, String, String)> = rows
             .into_iter()
-            .map(|e| (e.id, e.webhook_id, e.event_type, e.payload))
-            .collect())
+            .map(|row| {
+                use sqlx::Row;
+                (
+                    row.get::<String, _>(0),
+                    row.get::<String, _>(1),
+                    row.get::<String, _>(2),
+                    row.get::<String, _>(3),
+                )
+            })
+            .collect();
+
+        Ok(events)
     }
 
     /// Update webhook event status
@@ -249,13 +272,13 @@ impl WebhookService {
         error: Option<&str>,
         retries: i32,
     ) -> anyhow::Result<()> {
-        sqlx::query!(
+        sqlx::query(
             "UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?",
-            status,
-            error,
-            retries,
-            event_id
         )
+        .bind(status)
+        .bind(error)
+        .bind(retries)
+        .bind(event_id)
         .execute(&self.db)
         .await?;
 
@@ -264,13 +287,12 @@ impl WebhookService {
 
     /// Update webhook's last_fired_at timestamp
     pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
-        sqlx::query!(
-            "UPDATE webhooks SET last_fired_at = ? WHERE id = ?",
-            chrono::Utc::now().to_rfc3339(),
-            webhook_id
-        )
-        .execute(&self.db)
-        .await?;
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE webhooks SET last_fired_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(webhook_id)
+            .execute(&self.db)
+            .await?;
 
         Ok(())
     }

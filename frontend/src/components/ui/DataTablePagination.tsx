@@ -2,8 +2,6 @@ import React from 'react';
 import {
     ChevronLeft,
     ChevronRight,
-    ChevronsLeft,
-    ChevronsRight
 } from 'lucide-react';
 
 interface PaginationProps {
@@ -81,7 +79,7 @@ export function DataTablePagination({
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="First Page"
                     >
-                        <ChevronsLeft className="w-5 h-5" />
+                        <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
                         onClick={() => onPageChange(currentPage - 1)}
@@ -110,7 +108,7 @@ export function DataTablePagination({
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="Last Page"
                     >
-                        <ChevronsRight className="w-5 h-5" />
+                        <ChevronRight className="w-5 h-5" />
                     </button>
                 </div>
             </div>

@@ -1,13 +1,16 @@
 // pub mod sep10;  // Commented out - uses stellar-xdr types that require stellar-base
+pub mod oauth;
 pub mod sep10_middleware;
 pub mod sep10_simple;
 
 use anyhow::{anyhow, Result};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -15,9 +18,8 @@ use tokio::sync::RwLock;
 const ACCESS_TOKEN_EXPIRY_HOURS: i64 = 1;
 const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
 
-// Demo credentials (hardcoded for simplicity)
-const DEMO_USERNAME: &str = "admin";
-const DEMO_PASSWORD: &str = "password123";
+// WARNING: Demo credentials removed for security. Use database-backed user store.
+// See SEC-001 in SECURITY_AUDIT.md
 
 /// User model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,30 +76,59 @@ pub struct Claims {
 pub struct AuthService {
     jwt_secret: String,
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+    db_pool: SqlitePool,
 }
 
 impl AuthService {
-    pub fn new(redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>) -> Self {
+    pub fn new(
+        redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+        db_pool: SqlitePool,
+    ) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
+
+        if jwt_secret.len() < 32 {
+            panic!("JWT_SECRET must be at least 32 characters for adequate security");
+        }
 
         Self {
             jwt_secret,
             redis_connection,
+            db_pool,
         }
     }
 
-    /// Authenticate user with credentials
-    pub fn authenticate(&self, username: &str, password: &str) -> Result<User> {
-        // Demo authentication - replace with database lookup in production
-        if username == DEMO_USERNAME && password == DEMO_PASSWORD {
-            Ok(User {
-                id: "demo-user-id-123".to_string(),
-                username: username.to_string(),
-            })
-        } else {
-            Err(anyhow!("Invalid credentials"))
+    /// Authenticate user with credentials against the database.
+    /// Passwords are verified using argon2 — never stored or compared in plaintext.
+    pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
+        #[derive(sqlx::FromRow)]
+        struct UserRecord {
+            id: String,
+            username: String,
+            password_hash: String,
         }
+
+        let record = sqlx::query_as::<_, UserRecord>(
+            "SELECT id, username, password_hash FROM users WHERE username = $1",
+        )
+        .bind(username)
+        .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| anyhow!("Database error during authentication: {}", e))?;
+
+        let record = record.ok_or_else(|| anyhow!("Invalid username or password"))?;
+
+        let parsed_hash = PasswordHash::new(&record.password_hash)
+            .map_err(|e| anyhow!("Failed to parse password hash: {}", e))?;
+
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|_| anyhow!("Invalid username or password"))?;
+
+        Ok(User {
+            id: record.id,
+            username: record.username,
+        })
     }
 
     /// Generate access token
@@ -170,7 +201,10 @@ impl AuthService {
                 .await
                 .map_err(|e| anyhow!("Failed to store refresh token: {}", e))?;
 
-            tracing::debug!("Stored refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Stored refresh token for user"
+            );
         } else {
             tracing::warn!("Redis not available, refresh token not stored");
         }
@@ -188,7 +222,7 @@ impl AuthService {
             return Err(anyhow!("Invalid token type"));
         }
 
-        // Check if token exists in Redis
+        // Check if token exists in Redis (fail closed - SEC-007)
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             let key = format!("refresh_token:{}", claims.sub);
@@ -202,7 +236,10 @@ impl AuthService {
                 return Err(anyhow!("Refresh token not found or invalid"));
             }
         } else {
-            tracing::warn!("Redis not available, skipping refresh token validation");
+            tracing::error!(
+                "Redis not available - refusing refresh token validation (fail closed)"
+            );
+            return Err(anyhow!("Token validation service unavailable"));
         }
 
         Ok(claims)
@@ -218,7 +255,10 @@ impl AuthService {
                 .await
                 .map_err(|e| anyhow!("Failed to invalidate refresh token: {}", e))?;
 
-            tracing::debug!("Invalidated refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Invalidated refresh token for user"
+            );
         }
 
         Ok(())
@@ -227,7 +267,9 @@ impl AuthService {
     /// Login flow
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse> {
         // Authenticate user
-        let user = self.authenticate(&request.username, &request.password)?;
+        let user = self
+            .authenticate(&request.username, &request.password)
+            .await?;
 
         // Generate tokens
         let access_token = self.generate_access_token(&user)?;

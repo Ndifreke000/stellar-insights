@@ -73,7 +73,7 @@ impl SimpleMLModel {
 
 pub struct MLService {
     model: SimpleMLModel,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for future ML model training from database
     db: Database,
 }
 

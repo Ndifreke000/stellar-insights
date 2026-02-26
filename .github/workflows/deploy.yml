@@ -1,0 +1,169 @@
+name: Deploy Backend (Blue-Green)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: stellar-insights-backend
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
+          echo "cluster=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "service=stellar-insights-service" >> "$GITHUB_OUTPUT"
+          echo "task_family=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "container_name=stellar-insights" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_app=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_group=stellar-insights-${ENV}-dg" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/terraform-executor
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Get current task definition
+        id: current-task-def
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ steps.env.outputs.task_family }}" \
+            --query 'taskDefinition' \
+            --output json > current-task-def.json
+
+      - name: Update task definition with new image
+        id: new-task-def
+        run: |
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+
+          # Update the image in the container definition and strip fields that can't be re-registered
+          jq --arg IMAGE "$IMAGE" --arg CONTAINER "${{ steps.env.outputs.container_name }}" \
+            '.containerDefinitions |= map(if .name == $CONTAINER then .image = $IMAGE else . end) |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            current-task-def.json > new-task-def.json
+
+          # Register new task definition
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "task_definition_arn=${NEW_ARN}" >> "$GITHUB_OUTPUT"
+          echo "Registered new task definition: ${NEW_ARN}"
+
+      - name: Create CodeDeploy deployment
+        id: deploy
+        run: |
+          APPSPEC=$(cat <<'APPSPEC_EOF'
+          {
+            "version": 0.0,
+            "Resources": [{
+              "TargetService": {
+                "Type": "AWS::ECS::Service",
+                "Properties": {
+                  "TaskDefinition": "TASK_DEF_PLACEHOLDER",
+                  "LoadBalancerInfo": {
+                    "ContainerName": "CONTAINER_PLACEHOLDER",
+                    "ContainerPort": 8080
+                  }
+                }
+              }
+            }]
+          }
+          APPSPEC_EOF
+          )
+
+          APPSPEC=$(echo "$APPSPEC" | jq -c \
+            --arg TD "${{ steps.new-task-def.outputs.task_definition_arn }}" \
+            --arg CN "${{ steps.env.outputs.container_name }}" \
+            '.Resources[0].TargetService.Properties.TaskDefinition = $TD |
+             .Resources[0].TargetService.Properties.LoadBalancerInfo.ContainerName = $CN')
+
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name "${{ steps.env.outputs.codedeploy_app }}" \
+            --deployment-group-name "${{ steps.env.outputs.codedeploy_group }}" \
+            --revision "revisionType=AppSpecContent,appSpecContent={content='${APPSPEC}'}" \
+            --description "SHA: ${{ github.sha }} | Actor: ${{ github.actor }}" \
+            --query 'deploymentId' \
+            --output text)
+
+          echo "deployment_id=${DEPLOYMENT_ID}" >> "$GITHUB_OUTPUT"
+          echo "Created deployment: ${DEPLOYMENT_ID}"
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for deployment ${{ steps.deploy.outputs.deployment_id }}..."
+          aws deploy wait deployment-successful \
+            --deployment-id "${{ steps.deploy.outputs.deployment_id }}"
+          echo "Deployment completed successfully!"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          DEPLOY_INFO=$(aws deploy get-deployment \
+            --deployment-id "${{ steps.deploy.outputs.deployment_id }}" \
+            --query 'deploymentInfo' \
+            --output json 2>/dev/null || echo '{}')
+
+          STATUS=$(echo "$DEPLOY_INFO" | jq -r '.status // "UNKNOWN"')
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Deployment Summary
+
+          | Field | Value |
+          |-------|-------|
+          | **Environment** | \`${{ steps.env.outputs.environment }}\` |
+          | **Deployment ID** | \`${{ steps.deploy.outputs.deployment_id }}\` |
+          | **Status** | \`${STATUS}\` |
+          | **Image Tag** | \`${{ github.sha }}\` |
+          | **Task Definition** | \`${{ steps.new-task-def.outputs.task_definition_arn }}\` |
+          | **Actor** | @${{ github.actor }} |
+          EOF

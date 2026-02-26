@@ -108,10 +108,11 @@ export function PoolPerformanceChart({
               }}
               itemStyle={{ color: config.color, fontWeight: "bold" }}
               labelStyle={{ color: "#94a3b8", marginBottom: "4px" }}
-              formatter={(value: number) => [
-                formatValue(value),
-                config.label.toUpperCase(),
-              ]}
+              formatter={(value?: number) => {
+                if (typeof value !== "number")
+                  return ["-", config.label.toUpperCase()];
+                return [formatValue(value), config.label.toUpperCase()];
+              }}
             />
             <Legend
               iconType="circle"

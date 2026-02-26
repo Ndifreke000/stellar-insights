@@ -22,6 +22,14 @@ resource "aws_security_group" "alb" {
     description = "Allow HTTPS"
   }
 
+  ingress {
+    from_port   = 8443
+    to_port     = 8443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "Allow test listener traffic (blue-green) from VPC only"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

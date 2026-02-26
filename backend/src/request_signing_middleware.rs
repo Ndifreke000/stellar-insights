@@ -24,7 +24,7 @@ pub struct SignatureVerifiedUser {
 /// Middleware to verify request signature
 pub async fn request_signing_middleware(
     SigningSecret(signing_secret): SigningSecret,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Result<Response, SigningError> {
     // Extract signature header
@@ -32,11 +32,13 @@ pub async fn request_signing_middleware(
         .headers()
         .get("X-Signature")
         .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string())
         .ok_or(SigningError::MissingSignature)?;
     let timestamp = req
         .headers()
         .get("X-Timestamp")
         .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string())
         .ok_or(SigningError::MissingTimestamp)?;
 
     // Prevent replay: check timestamp is recent (within 5 min)
@@ -48,17 +50,25 @@ pub async fn request_signing_middleware(
         return Err(SigningError::ReplayDetected);
     }
 
-    // Compute expected signature
-    let body = req.body().to_bytes().await.unwrap_or_default();
+    // Compute expected signature (limit body to 10MB to prevent DoS - SEC-005)
+    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB
+    let (parts, body) = req.into_parts();
+    let body_bytes = axum::body::to_bytes(body, MAX_BODY_SIZE)
+        .await
+        .map_err(|_| SigningError::BodyTooLarge)?;
+
     let mut mac = HmacSha256::new_from_slice(signing_secret.as_ref().as_bytes())
         .map_err(|_| SigningError::Internal)?;
     mac.update(timestamp.as_bytes());
-    mac.update(&body);
+    mac.update(&body_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
 
     if signature != expected {
         return Err(SigningError::InvalidSignature);
     }
+
+    // Reconstruct request
+    let mut req = Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
     // Attach verified user (stub, integrate with auth as needed)
     req.extensions_mut().insert(SignatureVerifiedUser {
@@ -76,6 +86,7 @@ pub enum SigningError {
     InvalidTimestamp,
     ReplayDetected,
     InvalidSignature,
+    BodyTooLarge,
     Internal,
 }
 
@@ -93,6 +104,7 @@ impl IntoResponse for SigningError {
             SigningError::InvalidSignature => {
                 (StatusCode::UNAUTHORIZED, "Invalid request signature")
             }
+            SigningError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large"),
             SigningError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
         };
         let body = json!({"error": message});

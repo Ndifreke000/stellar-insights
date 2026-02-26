@@ -48,10 +48,12 @@ struct JsonRpcRequest {
 }
 
 /// RPC response structure
+/// Note: All fields required for JSON deserialization from Stellar RPC
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct JsonRpcResponse<T> {
+    #[allow(dead_code)] // Required for JSON deserialization
     jsonrpc: String,
+    #[allow(dead_code)] // Required for JSON deserialization
     id: u64,
     #[serde(default)]
     result: Option<T>,
@@ -60,12 +62,14 @@ struct JsonRpcResponse<T> {
 }
 
 /// RPC error details
+/// Note: All fields required for JSON deserialization from Stellar RPC
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 struct RpcError {
+    #[allow(dead_code)] // Required for JSON deserialization
     code: i32,
     message: String,
     #[serde(default)]
+    #[allow(dead_code)] // Required for JSON deserialization
     data: Option<serde_json::Value>,
 }
 

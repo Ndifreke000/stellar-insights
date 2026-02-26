@@ -8,8 +8,11 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 export type CorridorsSortBy = "health_score" | "success_rate" | "liquidity";
 export type CorridorsViewMode = "grid" | "heatmap";
 export type CorridorsTimePeriod = "7d" | "30d" | "90d" | "";
+export type Locale = "en" | "es" | "zh";
 
 export interface UserPreferences {
+  /** Preferred locale for UI (en, es, zh) */
+  locale: Locale;
   /** Whether the sidebar is collapsed to icon-only mode */
   sidebarCollapsed: boolean;
   /** Corridors page: card/heatmap view */
@@ -23,6 +26,7 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
+  locale: "en",
   sidebarCollapsed: false,
   corridorsViewMode: "grid",
   corridorsSortBy: "health_score",

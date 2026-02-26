@@ -1,13 +1,14 @@
 "use client"
 
 import React, { Component, ErrorInfo, ReactNode } from "react"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 import { logger } from "@/lib/logger"
 
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
 
 interface State {
@@ -33,6 +34,9 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     logger.error("ErrorBoundary caught an error:", error)
     this.setState({ error, errorInfo })
+    
+    // Call optional error callback
+    this.props.onError?.(error, errorInfo)
   }
 
   handleReset = () => {
@@ -54,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                   Something went wrong
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">
+                <p className="text-muted-foreground dark:text-muted-foreground mt-1">
                   An unexpected error occurred. Don&apos;t worry, we&apos;re on it!
                 </p>
               </div>
@@ -70,10 +74,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 </p>
                 {this.state.errorInfo && (
                   <details className="mt-2">
-                    <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">
+                    <summary className="text-xs text-muted-foreground dark:text-muted-foreground cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">
                       Stack Trace
                     </summary>
-                    <pre className="mt-2 text-xs text-gray-600 dark:text-gray-400 overflow-auto max-h-48 p-2 bg-gray-100 dark:bg-slate-800 rounded">
+                    <pre className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground overflow-auto max-h-48 p-2 bg-gray-100 dark:bg-slate-800 rounded">
                       {this.state.errorInfo.componentStack}
                     </pre>
                   </details>
@@ -99,7 +103,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground dark:text-muted-foreground">
                 If this problem persists, please contact support or refresh the page.
               </p>
             </div>
