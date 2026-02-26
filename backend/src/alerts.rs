@@ -24,12 +24,32 @@ pub struct Alert {
 
 pub struct AlertManager {
     tx: broadcast::Sender<Alert>,
+    webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
 }
 
 impl AlertManager {
     pub fn new() -> (Self, broadcast::Receiver<Alert>) {
         let (tx, rx) = broadcast::channel(100);
-        (Self { tx }, rx)
+        (
+            Self {
+                tx,
+                webhook_event_service: None,
+            },
+            rx,
+        )
+    }
+
+    pub fn new_with_webhooks(
+        webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
+    ) -> (Self, broadcast::Receiver<Alert>) {
+        let (tx, rx) = broadcast::channel(100);
+        (
+            Self {
+                tx,
+                webhook_event_service: Some(webhook_event_service),
+            },
+            rx,
+        )
     }
 
     pub fn check_and_alert(
@@ -100,14 +120,48 @@ impl AlertManager {
         old_value: f64,
         new_value: f64,
     ) {
-        let _ = self.tx.send(Alert {
-            alert_type,
+        let alert = Alert {
+            alert_type: alert_type.clone(),
             corridor_id: None,
             anchor_id: Some(anchor_id.to_string()),
-            message,
+            message: message.clone(),
             old_value,
             new_value,
             timestamp: chrono::Utc::now().to_rfc3339(),
-        });
+        };
+
+        let _ = self.tx.send(alert);
+
+        // Trigger webhook event for anchor status change
+        if let Some(webhook_service) = &self.webhook_event_service {
+            let old_status = if old_value > 90.0 {
+                "healthy"
+            } else {
+                "degraded"
+            };
+            let new_status = if new_value > 90.0 {
+                "healthy"
+            } else {
+                "degraded"
+            };
+
+            tokio::spawn({
+                let webhook_service = webhook_service.clone();
+                let anchor_id = anchor_id.to_string();
+                let message_clone = message.clone();
+                async move {
+                    if let Err(e) = webhook_service
+                        .trigger_anchor_status_changed(
+                            &anchor_id, &anchor_id, // Using anchor_id as name for now
+                            old_status, new_status, new_value,
+                            0, // failed_txn_count - would need to be tracked separately
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to trigger anchor status webhook: {}", e);
+                    }
+                }
+            });
+        }
     }
 }

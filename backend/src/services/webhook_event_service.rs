@@ -5,10 +5,14 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
+use crate::webhooks::events::{
+    AnchorStatusChangedEvent, CorridorHealthDegradedEvent, CorridorLiquidityDroppedEvent,
+    CorridorMetrics, PaymentCreatedEvent,
 use crate::webhooks::{
     AnchorStatusChangedEvent, CorridorHealthDegradedEvent, CorridorLiquidityDroppedEvent,
     CorridorMetrics, PaymentCreatedEvent, WebhookEventType, WebhookService,
 };
+use crate::webhooks::{WebhookEventType, WebhookService};
 
 /// Webhook Event Service - triggers events for registered webhooks
 pub struct WebhookEventService {
@@ -200,6 +204,10 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[tokio::test]
+    async fn test_filter_application() {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let service = WebhookEventService::new(pool);
     #[test]
     fn test_filter_application() {
         let service =
@@ -222,4 +230,9 @@ mod tests {
 
         assert!(!service.apply_filters(&payload, &mismatched_filters));
     }
+}
+
+#[cfg(test)]
+mod webhook_integration_tests {
+    include!("webhook_event_service_tests.rs");
 }

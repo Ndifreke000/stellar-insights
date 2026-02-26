@@ -103,7 +103,7 @@ impl WebhookEventType {
 
 /// Webhook service - manages webhook operations
 pub struct WebhookService {
-    db: SqlitePool,
+    pub db: SqlitePool,
     encryption_key: String,
 }
 
