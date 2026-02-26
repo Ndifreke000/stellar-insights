@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@/i18n/navigation";
@@ -21,6 +22,7 @@ import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
+import { ExportDialog } from "@/components/ExportDialog";
 import {
   useUserPreferences,
   type CorridorsTimePeriod,
@@ -30,6 +32,8 @@ function CorridorsPageContent() {
   const { prefs, setPrefs } = useUserPreferences();
 
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
   // Persisted preferences
   const viewMode = prefs.corridorsViewMode;
   const setViewMode = (v: typeof viewMode) =>
@@ -179,8 +183,22 @@ function CorridorsPageContent() {
           >
             {filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
+          <button
+            onClick={() => setIsExportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-white transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)] hover:shadow-accent/30"
+          >
+            <Download className="w-3 h-3" />
+            Export Data
+          </button>
         </div>
       </div>
+
+      <ExportDialog 
+        isOpen={isExportOpen} 
+        onClose={() => setIsExportOpen(false)} 
+        type="corridors" 
+        title="Payment Corridors"
+      />
 
       {/* Search and Filter */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

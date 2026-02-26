@@ -34,6 +34,7 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@axe-core/cli": "^4.11.1",
     "@axe-core/react": "^4.10.2",
     "@next/bundle-analyzer": "^16.1.6",
     "@tailwindcss/postcss": "^4",

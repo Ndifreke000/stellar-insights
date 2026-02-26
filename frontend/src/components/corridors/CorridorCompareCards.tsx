@@ -29,7 +29,11 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
     };
 
     return (
-        <div className={`grid grid-cols-1 md:grid-cols-${corridors.length} gap-6 mb-8`}>
+        <div 
+            className={`grid grid-cols-1 md:grid-cols-${corridors.length} gap-6 mb-8`}
+            role="region"
+            aria-label="Corridor comparison cards"
+        >
             {corridors.map((corridor) => (
                 <article
                     key={corridor.id}
@@ -41,12 +45,14 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                             id={`corridor-${corridor.id}-title`}
                             className="text-xl font-bold text-gray-900 dark:text-white truncate"
                         >
+                            <span className="sr-only">Corridor: </span>
                             {corridor.source_asset} <ArrowRight className="inline w-4 h-4 mx-1" aria-hidden="true" /> {corridor.destination_asset}
                         </h3>
                         <div 
                             className={`px-2 py-1 rounded text-xs font-bold ${getHealthColor(corridor.health_score)}`}
                             role="status"
-                            aria-label={`Health score: ${corridor.health_score}, ${getHealthLabel(corridor.health_score)}`}
+                            aria-live="polite"
+                            aria-label={`Health score is ${corridor.health_score} percent, which is considered ${getHealthLabel(corridor.health_score)}`}
                         >
                             {corridor.health_score} Score
                         </div>
@@ -56,8 +62,8 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                         {/* Success Rate */}
                         <div className="flex justify-between items-end">
                             <div>
-                                <p className="text-xs text-muted-foreground dark:text-muted-foreground">Success Rate</p>
-                                <div className="flex items-center gap-1">
+                                <p className="text-xs text-muted-foreground dark:text-muted-foreground" id={`success-label-${corridor.id}`}>Success Rate</p>
+                                <div className="flex items-center gap-1" aria-labelledby={`success-label-${corridor.id}`}>
                                     {corridor.success_rate >= 90 ? (
                                         <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
                                     ) : (
@@ -65,7 +71,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                                     )}
                                     <span 
                                         className="text-2xl font-bold text-gray-900 dark:text-white"
-                                        aria-label={`Success rate: ${corridor.success_rate.toFixed(1)}%`}
+                                        aria-label={`${corridor.success_rate.toFixed(1)} percent`}
                                     >
                                         {corridor.success_rate.toFixed(1)}%
                                     </span>
@@ -84,7 +90,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                                     aria-labelledby={`volume-${corridor.id}`}
                                 >
                                     <Zap className="w-3 h-3" aria-hidden="true" />
-                                    <span className="font-bold">
+                                    <span className="font-bold" aria-label={`Total 24 hour volume: ${(corridor.liquidity_volume_24h_usd / 1000).toFixed(0)} thousand dollars`}>
                                         ${(corridor.liquidity_volume_24h_usd / 1000).toFixed(0)}k
                                     </span>
                                 </div>
@@ -98,7 +104,7 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                                     aria-labelledby={`liquidity-${corridor.id}`}
                                 >
                                     <Droplets className="w-3 h-3" aria-hidden="true" />
-                                    <span className="font-bold">
+                                    <span className="font-bold" aria-label={`Total liquidity depth: ${(corridor.liquidity_depth_usd / 1000000).toFixed(1)} million dollars`}>
                                         ${(corridor.liquidity_depth_usd / 1000000).toFixed(1)}M
                                     </span>
                                 </div>
@@ -108,21 +114,23 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
                         {/* Latency */}
                         <div className="pt-4 border-t border-gray-100 dark:border-slate-700">
                             <div className="flex justify-between items-center text-sm">
-                                <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1" id={`latency-label-${corridor.id}`}>
                                     <Clock className="w-4 h-4" aria-hidden="true" /> Avg Latency
                                 </span>
                                 <span 
                                     className="font-semibold text-gray-900 dark:text-white"
-                                    aria-label={`Average latency: ${corridor.average_latency_ms.toFixed(0)} milliseconds`}
+                                    aria-labelledby={`latency-label-${corridor.id}`}
+                                    aria-label={`${corridor.average_latency_ms.toFixed(0)} milliseconds`}
                                 >
                                     {corridor.average_latency_ms.toFixed(0)}ms
                                 </span>
                             </div>
                             <div className="flex justify-between items-center text-sm mt-1">
-                                <span className="text-gray-500 dark:text-gray-400">Avg Slippage</span>
+                                <span className="text-gray-500 dark:text-gray-400" id={`slippage-label-${corridor.id}`}>Avg Slippage</span>
                                 <span 
                                     className="font-semibold text-red-500"
-                                    aria-label={`Average slippage: ${corridor.average_slippage_bps.toFixed(2)} basis points`}
+                                    aria-labelledby={`slippage-label-${corridor.id}`}
+                                    aria-label={`${corridor.average_slippage_bps.toFixed(2)} basis points`}
                                 >
                                     {corridor.average_slippage_bps.toFixed(2)} bps
                                 </span>
@@ -136,13 +144,10 @@ export function CorridorCompareCards({ corridors }: CompareCardsProps) {
 }
 
 export function BestTimeToTransact({ corridors }: { corridors: CorridorMetrics[] }) {
-    // Mocking 'Best time' based on a stable window
-    // In a real app, this would use hourly data
     const recommendations = corridors.map(c => {
         let hour = "08:00 UTC";
         let reason = "Lowest historical slippage";
 
-        // Randomize mock a bit for variety
         if (c.success_rate < 90) {
             hour = "14:00 UTC";
             reason = "Peak network stability";
@@ -165,8 +170,9 @@ export function BestTimeToTransact({ corridors }: { corridors: CorridorMetrics[]
                         key={rec.id} 
                         className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20"
                         role="listitem"
+                        aria-label={`Recommendation for ${rec.id}`}
                     >
-                        <p className="text-blue-100 text-xs font-semibold mb-1">{rec.id}</p>
+                        <p className="text-blue-100 text-xs font-semibold mb-1" aria-hidden="true">{rec.id}</p>
                         <p className="text-2xl font-bold mb-1" aria-label={`Recommended time: ${rec.hour}`}>
                             {rec.hour}
                         </p>

@@ -39,6 +39,7 @@ const LiquidityHeatmap = dynamic(
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { MuxedAccountCard } from "@/components/analytics/MuxedAccountCard";
+import { OnChainVerification } from "@/components/OnChainVerification";
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
@@ -164,7 +165,7 @@ export default function AnalyticsPage() {
         />
         <MetricCard
           label="Aggregated Liquidity"
-          value={metrics ? formatCurrency(metrics.top_corridors.reduce((sum, c) => sum + c.liquidity_depth_usd, 0)) : "$0"}
+          value={metrics ? formatCurrency(metrics.top_corridors.reduce((sum: number, c: any) => sum + c.liquidity_depth_usd, 0)) : "$0"}
           subLabel="Available Capital"
         />
       </div>
@@ -194,6 +195,7 @@ export default function AnalyticsPage() {
             )}
           </div>
           <MuxedAccountCard />
+          <OnChainVerification />
         </div>
       </div>
     </div>

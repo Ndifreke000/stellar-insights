@@ -59,6 +59,7 @@ use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+use stellar_insights_backend::services::anchor_monitor::AnchorMonitor;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use stellar_insights_backend::services::price_feed::{
@@ -544,6 +545,23 @@ async fn main() -> Result<()> {
     } else {
         tracing::warn!("SLACK_WEBHOOK_URL not set, slack alerts disabled");
     }
+
+    // Initialize Anchor Monitor
+    let anchor_monitor = AnchorMonitor::new(Arc::clone(&db), Arc::clone(&alert_manager));
+    let shutdown_rx_anchor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_anchor;
+        tokio::select! {
+            _ = anchor_monitor.start() => {
+                tracing::info!("Anchor monitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Anchor monitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+    tracing::info!("Anchor monitor started as background task");
 
     // Start Corridor Monitor background task
     let monitor_clone = Arc::clone(&corridor_monitor);
@@ -1261,6 +1279,13 @@ async fn main() -> Result<()> {
         .with_state(Arc::clone(&alert_manager))
         .layer(cors.clone());
 
+    let export_routes = Router::new()
+        .route("/api/export/corridors", get(stellar_insights_backend::api::export::export_corridors))
+        .route("/api/export/anchors", get(stellar_insights_backend::api::export::export_anchors))
+        .route("/api/export/payments", get(stellar_insights_backend::api::export::export_payments))
+        .with_state(app_state.clone())
+        .layer(cors.clone());
+
     let app = Router::new()
         .route("/metrics", get(obs_metrics::metrics_handler))
         .route("/api/elk/health", get(elk_health::elk_health_check))
@@ -1293,6 +1318,8 @@ async fn main() -> Result<()> {
         .merge(api_key_routes)
         .merge(websocket_routes)
         .merge(alert_ws_routes)
+        .merge(export_routes)
+
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
