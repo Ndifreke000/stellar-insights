@@ -1,11 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-
-enum ConnectionState {
-  DISCONNECTED = 'DISCONNECTED',
-  CONNECTING = 'CONNECTING',
-  CONNECTED = 'CONNECTED',
-  RECONNECTING = 'RECONNECTING',
-}
+import { useEffect, useRef, useState, useCallback } from "react";
+import { logger } from "@/lib/logger";
 
 export interface WsMessage {
   type: string;
@@ -34,7 +28,7 @@ export interface UseWebSocketReturn {
 
 export function useWebSocket(
   url: string,
-  options: UseWebSocketOptions = {}
+  options: UseWebSocketOptions = {},
 ): UseWebSocketReturn {
   const {
     reconnectInterval = 3000,
@@ -71,14 +65,13 @@ export function useWebSocket(
 
     isConnectingRef.current = true;
     setIsConnecting(true);
-    setConnectionState(ConnectionState.CONNECTING);
-    
+
     try {
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        logger.debug("WebSocket connected");
         setIsConnected(true);
         setIsConnecting(false);
         setConnectionState(ConnectionState.CONNECTED);
@@ -88,7 +81,7 @@ export function useWebSocket(
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        logger.debug("WebSocket disconnected");
         setIsConnected(false);
         setIsConnecting(false);
         isConnectingRef.current = false;
@@ -99,32 +92,18 @@ export function useWebSocket(
           shouldReconnectRef.current &&
           connectionAttempts < maxReconnectAttempts
         ) {
-          setConnectionState(ConnectionState.RECONNECTING);
-          setConnectionAttempts(prev => prev + 1);
-          
-          // Clear existing reconnect timeout
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = null;
-          }
-          
-          // Exponential backoff with jitter
-          const baseDelay = reconnectInterval;
-          const exponentialDelay = baseDelay * Math.pow(1.5, connectionAttempts);
-          const jitter = Math.random() * 1000;
-          const delay = Math.min(exponentialDelay + jitter, 30000); // Max 30s
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            isConnectingRef.current = false;
-            connect();
-          }, delay);
-        } else {
-          setConnectionState(ConnectionState.DISCONNECTED);
+          setConnectionAttempts((prev) => prev + 1);
+          reconnectTimeoutRef.current = setTimeout(
+            () => {
+              connect();
+            },
+            reconnectInterval * Math.pow(1.5, connectionAttempts),
+          ); // Exponential backoff
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        logger.error("WebSocket error:", error);
         setIsConnecting(false);
         isConnectingRef.current = false;
         setConnectionState(ConnectionState.DISCONNECTED);
@@ -137,22 +116,29 @@ export function useWebSocket(
           setLastMessage(message);
           onMessage?.(message);
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          logger.error("Failed to parse WebSocket message:", error);
         }
       };
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
+      logger.error("Failed to create WebSocket connection:", error);
       setIsConnecting(false);
       isConnectingRef.current = false;
       setConnectionState(ConnectionState.DISCONNECTED);
     }
-  }, [url, connectionAttempts, maxReconnectAttempts, reconnectInterval, onOpen, onClose, onError, onMessage]);
+  }, [
+    url,
+    connectionAttempts,
+    maxReconnectAttempts,
+    reconnectInterval,
+    onOpen,
+    onClose,
+    onError,
+    onMessage,
+  ]);
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
-    isConnectingRef.current = false;
-    
-    // Clear reconnect timeout
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -172,23 +158,29 @@ export function useWebSocket(
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket is not connected. Cannot send message:', message);
+      logger.warn("WebSocket is not connected. Cannot send message:", message);
     }
   }, []);
 
-  const subscribe = useCallback((channels: string[]) => {
-    send({
-      type: 'subscribe',
-      channels,
-    });
-  }, [send]);
+  const subscribe = useCallback(
+    (channels: string[]) => {
+      send({
+        type: "subscribe",
+        channels,
+      });
+    },
+    [send],
+  );
 
-  const unsubscribe = useCallback((channels: string[]) => {
-    send({
-      type: 'unsubscribe',
-      channels,
-    });
-  }, [send]);
+  const unsubscribe = useCallback(
+    (channels: string[]) => {
+      send({
+        type: "unsubscribe",
+        channels,
+      });
+    },
+    [send],
+  );
 
   const reconnect = useCallback(() => {
     // Disconnect first

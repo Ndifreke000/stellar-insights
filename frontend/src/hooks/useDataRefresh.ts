@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { logger } from "@/lib/logger";
 
 export interface UseDataRefreshOptions {
   /** Auto-refresh interval in milliseconds. Defaults to 30 000 ms. */
@@ -75,7 +76,7 @@ export function useDataRefresh({
           await onRefresh();
           setLastUpdated(new Date());
         } catch (err) {
-          console.error("[useDataRefresh] Auto-refresh failed:", err);
+          logger.error("[useDataRefresh] Auto-refresh failed:", err);
         } finally {
           setIsRefreshing(false);
         }
@@ -100,7 +101,7 @@ export function useDataRefresh({
         await onRefresh();
         setLastUpdated(new Date());
       } catch (err) {
-        console.error("[useDataRefresh] Mount refresh failed:", err);
+        logger.error("[useDataRefresh] Mount refresh failed:", err);
       } finally {
         setIsRefreshing(false);
       }
@@ -116,7 +117,7 @@ export function useDataRefresh({
       if (onRefresh) await onRefresh();
       setLastUpdated(new Date());
     } catch (err) {
-      console.error("[useDataRefresh] Manual refresh failed:", err);
+      logger.error("[useDataRefresh] Manual refresh failed:", err);
     } finally {
       setIsRefreshing(false);
     }
