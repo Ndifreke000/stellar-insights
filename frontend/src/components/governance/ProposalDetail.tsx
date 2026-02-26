@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, CheckCircle, XCircle, MinusCircle, Send } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { useWallet } from "@/components/lib/wallet-context";
 import { VoteBreakdown } from "./VoteBreakdown";
 import {

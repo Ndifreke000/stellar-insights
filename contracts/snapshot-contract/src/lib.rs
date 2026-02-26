@@ -183,7 +183,10 @@ impl SnapshotContract {
             panic!("Invalid WASM hash size");
         }
 
-        let hash_bytes: BytesN<32> = new_wasm_hash.clone().try_into().unwrap();
+        let hash_bytes: BytesN<32> = match new_wasm_hash.clone().try_into() {
+            Ok(h) => h,
+            Err(_) => panic!("Failed to convert hash bytes to fixed-size array"),
+        };
         env.deployer().update_current_contract_wasm(hash_bytes);
 
         let mut metadata: ContractMetadata = env

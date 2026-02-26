@@ -60,7 +60,8 @@ pub async fn register_webhook(
                 };
                 if is_private {
                     return Err(WebhookApiError::BadRequest(
-                        "Webhook URL must not point to private or reserved IP addresses".to_string(),
+                        "Webhook URL must not point to private or reserved IP addresses"
+                            .to_string(),
                     ));
                 }
             }

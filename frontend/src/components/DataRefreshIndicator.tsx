@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations, useLocale } from "next-intl";
 
 export interface DataRefreshIndicatorProps {
   /** Timestamp of the last successful data update. */
@@ -28,13 +29,15 @@ export function DataRefreshIndicator({
   onRefresh,
   className = "",
 }: DataRefreshIndicatorProps) {
+  const t = useTranslations("dashboard");
+  const locale = useLocale();
   // Progress fraction: 0 = just refreshed (full ring), 1 = about to refresh (empty)
   const progress =
     refreshIntervalSec > 0 ? 1 - secondsUntilRefresh / refreshIntervalSec : 0;
   const strokeDashoffset = CIRCUMFERENCE * progress;
 
   const formattedTime = lastUpdated
-    ? lastUpdated.toLocaleTimeString([], {
+    ? lastUpdated.toLocaleTimeString(locale, {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
@@ -51,11 +54,11 @@ export function DataRefreshIndicator({
         className="px-3 py-1.5 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground whitespace-nowrap"
         title={
           lastUpdated
-            ? `Last updated: ${lastUpdated.toLocaleString()}`
-            : "No data yet"
+            ? `${t("lastUpdated")}: ${lastUpdated.toLocaleString(locale)}`
+            : t("noDataYet")
         }
       >
-        Last Update:{" "}
+        {t("lastUpdate")}:{" "}
         <span className="text-foreground font-semibold">{formattedTime}</span>
       </div>
 
@@ -99,10 +102,10 @@ export function DataRefreshIndicator({
         </svg>
 
         {isRefreshing ? (
-          <span className="text-accent animate-pulse">Refreshing…</span>
+          <span className="text-accent animate-pulse">{t("refreshing")}</span>
         ) : (
           <>
-            Next refresh in{" "}
+            {t("nextRefreshIn")}{" "}
             <span className="text-foreground font-semibold tabular-nums">
               {secondsUntilRefresh}s
             </span>
@@ -115,7 +118,7 @@ export function DataRefreshIndicator({
         onClick={onRefresh}
         disabled={isRefreshing}
         aria-label="Manually refresh data"
-        title="Refresh now"
+        title={t("refreshNow")}
         className={[
           "flex items-center gap-1.5 px-4 py-1.5",
           "bg-accent text-accent-foreground rounded-lg",
@@ -141,7 +144,7 @@ export function DataRefreshIndicator({
           <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
           <path d="M3 21v-5h5" />
         </svg>
-        {isRefreshing ? "Refreshing" : "Refresh"}
+        {isRefreshing ? t("refreshing") : t("refresh")}
       </button>
     </div>
   );

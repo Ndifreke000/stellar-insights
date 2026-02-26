@@ -128,8 +128,6 @@ pub async fn token(
         .await
         .map_err(|e| OAuthApiError::ServerError(e.to_string()))?
         .ok_or_else(|| OAuthApiError::InvalidClient)?;
-
-
     let username: String = {
         use sqlx::Row;
         user_row.get(0)

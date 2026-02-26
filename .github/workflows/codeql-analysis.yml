@@ -25,18 +25,20 @@ jobs:
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
       with:
-        languages: javascript,go,python,java,rust
+        languages: javascript,rust
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci --legacy-peer-deps
+
+    - name: Build Rust backend
+      working-directory: backend
+      run: cargo build --workspace --all-features
 
     - name: Run CodeQL analysis
       uses: github/codeql-action/analyze@v4
-      with:
-        output: results/sarif/codeql.sarif
-
-    - name: Upload SARIF
-      if: always()
-      uses: github/codeql-action/upload-sarif@v4
-      with:
-        sarif_file: results/sarif/codeql.sarif

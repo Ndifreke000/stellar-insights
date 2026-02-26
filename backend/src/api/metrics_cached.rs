@@ -8,8 +8,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::cache::helpers::cached_query;
 use crate::cache::{keys, CacheManager};
-use crate::cache_middleware::CacheAware;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MetricsOverview {
@@ -27,11 +27,11 @@ pub async fn metrics_overview(
 ) -> Response {
     let cache_key = keys::metrics_overview();
 
-    let overview = <()>::get_or_fetch(
+    let overview = cached_query(
         &cache,
         &cache_key,
         cache.config.get_ttl("dashboard"),
-        async {
+        || async {
             // Placeholder: Replace with real data aggregation logic
             Ok(MetricsOverview {
                 total_volume: 1234567.89,

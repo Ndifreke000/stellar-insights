@@ -54,17 +54,20 @@ impl CommandHandler {
     }
 
     async fn handle_status(&self) -> String {
-        let anchors = self.db.list_anchors(1000, 0).await.unwrap_or_default();
+        let anchors = match self.db.list_anchors(1000, 0).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("Failed to fetch anchors for status: {}", e);
+                vec![]
+            }
+        };
         let anchor_count = anchors.len();
 
         let corridor_count = match self.rpc_client.fetch_payments(200, None).await {
             Ok(payments) => {
                 let mut corridors = std::collections::HashSet::new();
                 for p in &payments {
-                    let key = format!(
-                        "{}->XLM",
-                        p.asset_code.as_deref().unwrap_or("XLM")
-                    );
+                    let key = format!("{}->XLM", p.asset_code.as_deref().unwrap_or("XLM"));
                     corridors.insert(key);
                 }
                 corridors.len()
@@ -92,10 +95,10 @@ impl CommandHandler {
         for payment in &payments {
             let key = format!(
                 "{}:{}->XLM:native",
-                payment.asset_code.as_deref().unwrap_or("XLM"),
-                payment.asset_issuer.as_deref().unwrap_or("native")
+                payment.get_asset_code().as_deref().unwrap_or("XLM"),
+                payment.get_asset_issuer().as_deref().unwrap_or("native")
             );
-            let amount: f64 = payment.amount.parse().unwrap_or(0.0);
+            let amount: f64 = payment.get_amount().parse().unwrap_or(0.0);
             let entry = corridor_map.entry(key).or_insert((0, 0.0));
             entry.0 += 1;
             entry.1 += amount;
@@ -119,7 +122,9 @@ impl CommandHandler {
     async fn handle_corridor_detail(&self, args: &str) -> String {
         let key = args.trim();
         if key.is_empty() {
-            return formatter::escape_markdown("Usage: /corridor <corridor_key>\nExample: /corridor USDC:GA5Z->XLM:native");
+            return formatter::escape_markdown(
+                "Usage: /corridor <corridor_key>\nExample: /corridor USDC:GA5Z->XLM:native",
+            );
         }
 
         let payments = match self.rpc_client.fetch_payments(200, None).await {
@@ -138,12 +143,12 @@ impl CommandHandler {
         for payment in &payments {
             let corridor_key = format!(
                 "{}:{}->XLM:native",
-                payment.asset_code.as_deref().unwrap_or("XLM"),
-                payment.asset_issuer.as_deref().unwrap_or("native")
+                payment.get_asset_code().as_deref().unwrap_or("XLM"),
+                payment.get_asset_issuer().as_deref().unwrap_or("native")
             );
             if corridor_key == key {
                 count += 1;
-                volume += payment.amount.parse::<f64>().unwrap_or(0.0);
+                volume += payment.get_amount().parse::<f64>().unwrap_or(0.0);
             }
         }
 
@@ -165,10 +170,7 @@ impl CommandHandler {
         let anchors = match self.db.list_anchors(50, 0).await {
             Ok(a) => a,
             Err(e) => {
-                return formatter::escape_markdown(&format!(
-                    "Failed to fetch anchors: {}",
-                    e
-                ));
+                return formatter::escape_markdown(&format!("Failed to fetch anchors: {}", e));
             }
         };
 
@@ -234,12 +236,10 @@ impl CommandHandler {
 
     async fn handle_unsubscribe(&self, chat_id: i64) -> String {
         match self.subscriptions.unsubscribe(chat_id).await {
-            Ok(true) => {
-                formatter::escape_markdown("Unsubscribed from alerts. You will no longer receive notifications.")
-            }
-            Ok(false) => {
-                formatter::escape_markdown("You are not currently subscribed to alerts.")
-            }
+            Ok(true) => formatter::escape_markdown(
+                "Unsubscribed from alerts. You will no longer receive notifications.",
+            ),
+            Ok(false) => formatter::escape_markdown("You are not currently subscribed to alerts."),
             Err(e) => formatter::escape_markdown(&format!("Failed to unsubscribe: {}", e)),
         }
     }

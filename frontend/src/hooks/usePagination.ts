@@ -1,4 +1,5 @@
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from '@/i18n/navigation';
 import { useCallback, useMemo } from 'react';
 
 export function usePagination(totalItems: number, defaultPageSize = 10) {

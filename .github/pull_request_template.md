@@ -1,30 +1,34 @@
 ## Description
 <!-- Provide a brief description of the changes -->
-Adds account-merge ingestion and API support in the backend, includes tests and docs, and fixes frontend dashboard/backend connectivity issues (including `8081` backend fallback and sidebar runtime error fix).
+Fixes backend compile breakages and hardens Stellar RPC/Horizon deserialization so testnet response format differences do not fail parsing.
 
 ## Type of Change
 <!-- Mark the relevant option with an "x" -->
 
 - [x] 🐛 Bug fix (non-breaking change which fixes an issue)
-- [x] ✨ New feature (non-breaking change which adds functionality)
+- [ ] ✨ New feature (non-breaking change which adds functionality)
 - [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [x] 📝 Documentation update
-- [x] 🎨 Style/UI update
-- [ ] ♻️ Code refactoring
+- [ ] 📝 Documentation update
+- [ ] 🎨 Style/UI update
+- [x] ♻️ Code refactoring
 - [ ] ⚡ Performance improvement
-- [x] ✅ Test update
+- [ ] ✅ Test update
 
 ## Related Issue
 <!-- Link to the issue this PR addresses -->
-https://github.com/Ndifreke000/stellar-insights/issues/227
-Closes #227
+https://github.com/Ndifreke000/stellar-insights/issues/214
+Closes #214
 
 ## Changes Made
 <!-- List the specific changes made in this PR -->
 
-- Added account merge detector service, ingestion wiring, persistence migration, and `/api/account-merges` endpoints.
-- Added backend tests for account merge persistence/query behavior and updated backend docs/README coverage.
-- Fixed frontend runtime issues (`Database` icon import) and made dashboard API route automatically resolve backend URL across env + `8080/8081` fallbacks.
+- Fixed backend compile blockers across model and service alignment.
+- Removed duplicate `get_muxed_analytics` function definition to avoid duplicate symbol/build errors.
+- Updated realtime broadcaster code paths to match current model/database signatures.
+- Hardened `backend/src/rpc/stellar.rs` deserialization:
+  - accepts string-or-number for numeric fields
+  - adds defaults for optional/missing fields in Horizon payloads
+  - prevents testnet parse failures for ledger/payment/trade/liquidity-pool responses
 
 ## Testing
 <!-- Describe the tests you ran and how to reproduce them -->
@@ -32,24 +36,23 @@ Closes #227
 ### Backend
 ```bash
 cd backend
-cargo test -q --test account_merge_test
-cargo test -q
+cargo check -q
+cargo test -q rpc::stellar::tests::test_mock_fetch_payments
 ```
 
 ### Frontend
 ```bash
-cd frontend
-npm run -s lint
+Not run (backend-only changes)
 ```
 
 ### Contracts
 ```bash
-cd contracts
-cargo test
+Not run (backend-only changes)
 ```
 
 ## Screenshots
 <!-- If applicable, add screenshots to help explain your changes -->
+N/A
 
 ## Checklist
 <!-- Mark completed items with an "x" -->
@@ -57,10 +60,11 @@ cargo test
 - [x] My code follows the project's style guidelines
 - [x] I have performed a self-review of my code
 - [ ] I have commented my code, particularly in hard-to-understand areas
-- [x] I have made corresponding changes to the documentation
+- [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
-- [x] I have added tests that prove my fix is effective or that my feature works
+- [ ] I have added tests that prove my fix is effective or that my feature works
 - [x] New and existing unit tests pass locally with my changes
 - [ ] Any dependent changes have been merged and published
 
 ## Additional Notes
+- This PR is backend-only and focused on stability/compatibility for RPC/Horizon payload handling.

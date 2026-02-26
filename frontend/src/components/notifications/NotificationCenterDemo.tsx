@@ -173,14 +173,14 @@ export const NotificationCenterDemo: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                   Notification Center Demo
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-muted-foreground dark:text-muted-foreground">
                   Test the real-time notification system
                 </p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
               <div className="text-right">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Current Notifications</p>
+                <p className="text-sm text-muted-foreground dark:text-muted-foreground">Current Notifications</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
               </div>
             </div>
@@ -191,7 +191,7 @@ export const NotificationCenterDemo: React.FC = () => {
         <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Total</span>
+              <span className="text-sm text-muted-foreground dark:text-muted-foreground">Total</span>
               <span className="text-lg font-bold text-gray-900 dark:text-white">{stats.total}</span>
             </div>
           </div>
@@ -291,11 +291,11 @@ export const NotificationCenterDemo: React.FC = () => {
                         <h4 className="text-sm font-medium text-gray-900 dark:text-white">
                           {notification.title}
                         </h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                           {notification.message}
                         </p>
                         <div className="flex items-center space-x-2 mt-2">
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">
                             {new Date(notification.timestamp).toLocaleTimeString()}
                           </span>
                           <span className={`text-xs px-2 py-1 rounded-full ${
@@ -321,7 +321,7 @@ export const NotificationCenterDemo: React.FC = () => {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
             How to Use
           </h3>
-          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+          <div className="space-y-2 text-sm text-muted-foreground dark:text-muted-foreground">
             <p>• Click the notification bell in the navbar to open the notification center</p>
             <p>• Use the demo buttons above to generate sample notifications</p>
             <p>• Test filtering, searching, and batch operations in the notification center</p>

@@ -1,5 +1,8 @@
-import { MotionValue, motion, useSpring, useTransform } from "framer-motion";
+"use client";
+
+import { motion, useSpring, useTransform } from "framer-motion";
 import { useEffect } from "react";
+import { useLocale } from "next-intl";
 
 const fontSize = 30;
 const padding = 15;
@@ -14,10 +17,11 @@ export function AnimatedNumber({
   value,
   format = "number",
 }: AnimatedNumberProps) {
+  const locale = useLocale();
   const spring = useSpring(value, { mass: 0.8, stiffness: 75, damping: 15 });
   const display = useTransform(spring, (current) => {
     if (format === "currency") {
-      return new Intl.NumberFormat("en-US", {
+      return new Intl.NumberFormat(locale, {
         style: "currency",
         currency: "USD",
         maximumFractionDigits: 0,
@@ -29,7 +33,7 @@ export function AnimatedNumber({
     if (format === "time") {
       return `${current.toFixed(0)} ms`;
     }
-    return Math.round(current).toLocaleString();
+    return Math.round(current).toLocaleString(locale);
   });
 
   useEffect(() => {

@@ -112,7 +112,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
     return (
       <div className={`flex items-center space-x-2 ${className}`}>
         <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse" />
-        <span className="text-sm text-gray-500">Loading...</span>
+        <span className="text-sm text-muted-foreground">Loading...</span>
       </div>
     );
   }
@@ -140,13 +140,13 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
           <span className="text-sm font-medium text-gray-900 dark:text-white">
             {currentNetwork.display_name}
           </span>
-          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {isOpen && (
           <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
             <div className="p-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-2">
+              <div className="text-xs font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider mb-2 px-2">
                 Available Networks
               </div>
               {availableNetworks.map((network) => (
@@ -167,7 +167,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
                       {network.display_name}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    <div className="text-xs text-muted-foreground dark:text-muted-foreground truncate">
                       {network.horizon_url}
                     </div>
                   </div>
@@ -179,7 +179,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
             </div>
             
             <div className="border-t border-gray-200 dark:border-gray-700 p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
+              <div className="text-xs text-muted-foreground dark:text-muted-foreground">
                 <div className="flex items-center space-x-1 mb-1">
                   <span className="font-medium">Current:</span>
                   <span>{currentNetwork.display_name}</span>
@@ -213,7 +213,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
             </div>
             
             <div className="mb-6">
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
+              <p className="text-muted-foreground dark:text-gray-300 mb-4">
                 You are about to switch from{' '}
                 <span className="font-medium">{currentNetwork.display_name}</span> to{' '}
                 <span className="font-medium">{pendingNetwork.display_name}</span>.

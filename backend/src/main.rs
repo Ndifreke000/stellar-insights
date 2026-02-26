@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+<<<<<<< HEAD
 
 use async_graphql::http::{playground_source, GraphiQLSource};
 
@@ -8,14 +9,24 @@ use axum::extract::State;
 
 use axum::response::{Html, IntoResponse};
 
+=======
+use async_graphql::http::{playground_source, GraphiQLSource};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use axum::{
     http::Method,
     routing::{get, post, put},
     Router,
 };
+<<<<<<< HEAD
 
 use dotenvy::dotenv;
 
+=======
+use dotenvy::dotenv;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use std::sync::Arc;
 
 use std::time::Duration;
@@ -25,15 +36,22 @@ use tokio::task::JoinHandle;
 use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
 
 use tower_http::cors::{Any, CorsLayer};
+<<<<<<< HEAD
 
 use tower_http::trace::TraceLayer;
 
+=======
+use tower_http::trace::TraceLayer;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use utoipa::OpenApi;
 
 use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::alerts::AlertManager;
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::api::account_merges;
 
 use stellar_insights_backend::api::anchors_cached::get_anchors;
@@ -41,9 +59,13 @@ use stellar_insights_backend::api::anchors_cached::get_anchors;
 use stellar_insights_backend::api::api_analytics;
 
 use stellar_insights_backend::api::api_keys;
+<<<<<<< HEAD
 
 use stellar_insights_backend::api::asset_verification;
 
+=======
+use stellar_insights_backend::api::asset_verification;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::api::cache_stats;
 
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
@@ -57,9 +79,13 @@ use stellar_insights_backend::api::liquidity_pools;
 use stellar_insights_backend::api::metrics_cached;
 
 use stellar_insights_backend::api::oauth;
+<<<<<<< HEAD
 
 use stellar_insights_backend::api::verification_rewards;
 
+=======
+use stellar_insights_backend::api::verification_rewards;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::api::webhooks;
 
 use stellar_insights_backend::auth::AuthService;
@@ -71,6 +97,7 @@ use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 
 use stellar_insights_backend::database::Database;
+<<<<<<< HEAD
 
 use stellar_insights_backend::elk_health;
 
@@ -78,11 +105,17 @@ use stellar_insights_backend::elk_health;
 
 // use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 
+=======
+use stellar_insights_backend::elk_health;
+// use stellar_insights_backend::graphql::{build_schema, AppSchema};
+// use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::handlers::*;
 
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 
 use stellar_insights_backend::ingestion::DataIngestionService;
+<<<<<<< HEAD
 
 use stellar_insights_backend::ip_whitelist_middleware::{
     ip_whitelist_middleware, IpWhitelistConfig,
@@ -104,14 +137,32 @@ use stellar_insights_backend::rate_limit::{
 
 use stellar_insights_backend::request_id::request_id_middleware;
 
+=======
+use stellar_insights_backend::ip_whitelist_middleware::{
+    ip_whitelist_middleware, IpWhitelistConfig,
+};
+use stellar_insights_backend::jobs::JobScheduler;
+use stellar_insights_backend::monitor::CorridorMonitor;
+use stellar_insights_backend::network::NetworkConfig;
+use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
+use stellar_insights_backend::openapi::ApiDoc;
+use stellar_insights_backend::rate_limit::{
+    rate_limit_middleware, ClientRateLimits, RateLimitConfig, RateLimiter,
+};
+use stellar_insights_backend::request_id::request_id_middleware;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::rpc::StellarRpcClient;
 
 use stellar_insights_backend::rpc_handlers;
 
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+<<<<<<< HEAD
 
 use stellar_insights_backend::services::anchor_monitor::AnchorMonitor;
 
+=======
+use stellar_insights_backend::services::anchor_monitor::AnchorMonitor;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
@@ -125,18 +176,25 @@ use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaste
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 
 use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
+<<<<<<< HEAD
 
 use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::shutdown::{
     flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
 };
 
 use stellar_insights_backend::state::AppState;
+<<<<<<< HEAD
 
 use stellar_insights_backend::telegram;
 
+=======
+use stellar_insights_backend::telegram;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
 use stellar_insights_backend::vault;
 
 use stellar_insights_backend::websocket::WsState;
@@ -153,11 +211,16 @@ async fn main() -> Result<()> {
     dotenv().ok();
 
     // Initialize tracing + optional OpenTelemetry exporter.
+<<<<<<< HEAD
 
     // Hold the guard for process lifetime so rotating file logs are flushed.
 
     let _log_guard = obs_tracing::init_tracing("stellar-insights-backend")?;
 
+=======
+    // Hold the guard for process lifetime so rotating file logs are flushed.
+    let _log_guard = obs_tracing::init_tracing("stellar-insights-backend")?;
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     obs_metrics::init_metrics();
 
     tracing::info!("Starting Stellar Insights Backend");
@@ -287,7 +350,10 @@ async fn main() -> Result<()> {
     ));
 
     // Initialize Liquidity Pool Analyzer
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let liquidity_pool_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
         pool.clone(),
         Arc::clone(&rpc_client),
@@ -365,9 +431,13 @@ async fn main() -> Result<()> {
     tracing::info!("RealtimeBroadcaster initialized");
 
     // Initialize Webhook Dispatcher
+<<<<<<< HEAD
 
     let webhook_dispatcher = WebhookDispatcher::new(pool.clone());
 
+=======
+    let webhook_dispatcher = WebhookDispatcher::new(pool.clone());
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     tracing::info!("Webhook dispatcher initialized");
 
     // Create app state for handlers that need it
@@ -412,6 +482,7 @@ async fn main() -> Result<()> {
                     if let Err(e) = ingestion_clone.sync_all_metrics().await {
 
                         tracing::error!("Metrics synchronization failed: {}", e);
+<<<<<<< HEAD
 
                         obs_metrics::record_background_job("metrics_sync", "error");
 
@@ -419,6 +490,11 @@ async fn main() -> Result<()> {
 
                         obs_metrics::record_background_job("metrics_sync", "success");
 
+=======
+                        obs_metrics::record_background_job("metrics_sync", "error");
+                    } else {
+                        obs_metrics::record_background_job("metrics_sync", "success");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                         // Invalidate caches after successful sync
 
                         if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
@@ -484,12 +560,18 @@ async fn main() -> Result<()> {
 
         None
     };
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let auth_service = Arc::new(AuthService::new(
         Arc::new(tokio::sync::RwLock::new(auth_redis_connection.clone())),
         pool.clone(),
     ));
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     tracing::info!("Auth service initialized");
 
     // Initialize SEP-10 Service for Stellar authentication
@@ -497,11 +579,15 @@ async fn main() -> Result<()> {
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
 
     // Get and validate SEP-10 server public key (required for security)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let sep10_server_key = std::env::var("SEP10_SERVER_PUBLIC_KEY")
         .context("SEP10_SERVER_PUBLIC_KEY environment variable is required for authentication")?;
 
     // Additional validation: ensure it's not the placeholder value
+<<<<<<< HEAD
 
     if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         anyhow::bail!(
@@ -510,6 +596,12 @@ async fn main() -> Result<()> {
 
              Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
 
+=======
+    if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
+        anyhow::bail!(
+            "SEP10_SERVER_PUBLIC_KEY is set to placeholder value. \
+             Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
         );
     }
 
@@ -530,7 +622,10 @@ async fn main() -> Result<()> {
         )
         .context("Failed to initialize SEP-10 service")?,
     );
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     tracing::info!("SEP-10 service initialized successfully");
 
     // Initialize Verification Rewards Service
@@ -552,9 +647,13 @@ async fn main() -> Result<()> {
     tracing::info!("Governance service initialized");
 
     // Initialize GDPR Service
+<<<<<<< HEAD
 
     // let gdpr_service = Arc::new(GdprService::new(pool.clone()));
 
+=======
+    // let gdpr_service = Arc::new(GdprService::new(pool.clone()));
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     // tracing::info!("GDPR service initialized");
 
     // ML Retraining task (commented out)
@@ -606,9 +705,13 @@ async fn main() -> Result<()> {
                     match result {
 
                         Ok(count) => {
+<<<<<<< HEAD
 
                             obs_metrics::record_background_job("ledger_ingestion", "success");
 
+=======
+                            obs_metrics::record_background_job("ledger_ingestion", "success");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                             if count == 0 {
 
                                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -624,9 +727,13 @@ async fn main() -> Result<()> {
                         Err(e) => {
 
                             tracing::error!("Ledger ingestion failed: {}", e);
+<<<<<<< HEAD
 
                             obs_metrics::record_background_job("ledger_ingestion", "error");
 
+=======
+                            obs_metrics::record_background_job("ledger_ingestion", "error");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
                         }
@@ -650,9 +757,13 @@ async fn main() -> Result<()> {
     background_tasks.push(task);
 
     // Liquidity pool sync background task
+<<<<<<< HEAD
 
     let liquidity_pool_analyzer_clone = Arc::clone(&liquidity_pool_analyzer);
 
+=======
+    let liquidity_pool_analyzer_clone = Arc::clone(&liquidity_pool_analyzer);
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let shutdown_rx3 = shutdown_coordinator.subscribe();
 
     let task = tokio::spawn(async move {
@@ -666,6 +777,7 @@ async fn main() -> Result<()> {
             tokio::select! {
 
                 _ = interval.tick() => {
+<<<<<<< HEAD
 
                     if let Err(e) = liquidity_pool_analyzer_clone.sync_pools().await {
 
@@ -689,6 +801,19 @@ async fn main() -> Result<()> {
 
                         obs_metrics::record_background_job("liquidity_pool_snapshot", "success");
 
+=======
+                    if let Err(e) = liquidity_pool_analyzer_clone.sync_pools().await {
+                        tracing::error!("Liquidity pool sync failed: {}", e);
+                        obs_metrics::record_background_job("liquidity_pool_sync", "error");
+                    } else {
+                        obs_metrics::record_background_job("liquidity_pool_sync", "success");
+                    }
+                    if let Err(e) = liquidity_pool_analyzer_clone.take_snapshots().await {
+                        tracing::error!("Liquidity pool snapshot failed: {}", e);
+                        obs_metrics::record_background_job("liquidity_pool_snapshot", "error");
+                    } else {
+                        obs_metrics::record_background_job("liquidity_pool_snapshot", "success");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     }
 
                 }
@@ -728,6 +853,7 @@ async fn main() -> Result<()> {
                     if let Err(e) = trustline_analyzer_clone.sync_assets().await {
 
                         tracing::error!("Trustline sync failed: {}", e);
+<<<<<<< HEAD
 
                         obs_metrics::record_background_job("trustline_sync", "error");
 
@@ -735,11 +861,17 @@ async fn main() -> Result<()> {
 
                         obs_metrics::record_background_job("trustline_sync", "success");
 
+=======
+                        obs_metrics::record_background_job("trustline_sync", "error");
+                    } else {
+                        obs_metrics::record_background_job("trustline_sync", "success");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     }
 
                     if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
 
                         tracing::error!("Trustline snapshot failed: {}", e);
+<<<<<<< HEAD
 
                         obs_metrics::record_background_job("trustline_snapshot", "error");
 
@@ -747,6 +879,11 @@ async fn main() -> Result<()> {
 
                         obs_metrics::record_background_job("trustline_snapshot", "success");
 
+=======
+                        obs_metrics::record_background_job("trustline_snapshot", "error");
+                    } else {
+                        obs_metrics::record_background_job("trustline_snapshot", "success");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     }
 
                 }
@@ -833,6 +970,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize Anchor Monitor
+<<<<<<< HEAD
 
     let anchor_monitor = AnchorMonitor::new(Arc::clone(&db), Arc::clone(&alert_manager));
 
@@ -860,6 +998,22 @@ async fn main() -> Result<()> {
 
     background_tasks.push(task);
 
+=======
+    let anchor_monitor = AnchorMonitor::new(Arc::clone(&db), Arc::clone(&alert_manager));
+    let shutdown_rx_anchor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_anchor;
+        tokio::select! {
+            _ = anchor_monitor.start() => {
+                tracing::info!("Anchor monitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Anchor monitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     tracing::info!("Anchor monitor started as background task");
 
     // Start Corridor Monitor background task
@@ -875,9 +1029,13 @@ async fn main() -> Result<()> {
     tracing::info!("Corridor monitor task started");
 
     // Start Webhook Dispatcher background task
+<<<<<<< HEAD
 
     let shutdown_rx6 = shutdown_coordinator.subscribe();
 
+=======
+    let shutdown_rx6 = shutdown_coordinator.subscribe();
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let task = tokio::spawn(async move {
         let mut shutdown_rx = shutdown_rx6;
 
@@ -936,9 +1094,13 @@ async fn main() -> Result<()> {
 
     if let Ok(telegram_token) = std::env::var("TELEGRAM_BOT_TOKEN") {
         tracing::info!("Telegram bot token found, starting bot");
+<<<<<<< HEAD
 
         let telegram_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
 
+=======
+        let telegram_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
         let telegram_bot = telegram::TelegramBot::new(
             &telegram_token,
             Arc::clone(&db),
@@ -983,6 +1145,7 @@ async fn main() -> Result<()> {
     tracing::info!("Background job scheduler started");
 
     // Initialize rate limiter with database support for API key validation
+<<<<<<< HEAD
 
     let rate_limiter_result = RateLimiter::new_with_db(Some(pool.clone())).await;
 
@@ -990,6 +1153,12 @@ async fn main() -> Result<()> {
         Ok(limiter) => {
             tracing::info!("Rate limiter initialized successfully with database support");
 
+=======
+    let rate_limiter_result = RateLimiter::new_with_db(Some(pool.clone())).await;
+    let rate_limiter = match rate_limiter_result {
+        Ok(limiter) => {
+            tracing::info!("Rate limiter initialized successfully with database support");
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
             Arc::new(limiter)
         }
 
@@ -1008,7 +1177,10 @@ async fn main() -> Result<()> {
     };
 
     // Configure rate limits for endpoints with per-client tiers
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     rate_limiter
         .register_endpoint(
             "/health".to_string(),
@@ -1016,12 +1188,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 1000,
 
                 whitelist_ips: vec!["127.0.0.1".to_string()],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 1000,
 
                     premium: 5000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 1000,
+                    premium: 5000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 1000,
                 }),
             },
@@ -1035,12 +1213,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 200,
 
                     premium: 1000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1054,12 +1238,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 200,
 
                     premium: 1000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1073,12 +1263,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 300,
 
                     premium: 2000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 50,
                 }),
             },
@@ -1092,12 +1288,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 300,
 
                     premium: 2000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 50,
                 }),
             },
@@ -1111,12 +1313,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 200,
 
                     premium: 1000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1130,12 +1338,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 300,
 
                     premium: 1500,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 1500,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1149,12 +1363,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 200,
 
                     premium: 1000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1168,12 +1388,18 @@ async fn main() -> Result<()> {
                 requests_per_minute: 100,
 
                 whitelist_ips: vec![],
+<<<<<<< HEAD
 
                 client_limits: Some(ClientRateLimits {
                     authenticated: 200,
 
                     premium: 1000,
 
+=======
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                     anonymous: 60,
                 }),
             },
@@ -1181,7 +1407,10 @@ async fn main() -> Result<()> {
         .await;
 
     // Initialize IP whitelist configuration for admin endpoints
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let ip_whitelist_config = match IpWhitelistConfig::from_env() {
         Ok(config) => {
             tracing::info!(
@@ -1189,6 +1418,7 @@ async fn main() -> Result<()> {
                 config.allowed_networks.len(),
                 config.trust_proxy
             );
+<<<<<<< HEAD
 
             Arc::new(config)
         }
@@ -1205,6 +1435,17 @@ async fn main() -> Result<()> {
 
                 trust_proxy: false,
 
+=======
+            Arc::new(config)
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize IP whitelist configuration: {}", e);
+            tracing::error!("Admin endpoints will be INACCESSIBLE until ADMIN_IP_WHITELIST is properly configured");
+            // Create a restrictive default that blocks everything
+            Arc::new(IpWhitelistConfig {
+                allowed_networks: Arc::new(vec![]),
+                trust_proxy: false,
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
                 max_forwarded_ips: 3,
             })
         }
@@ -1385,7 +1626,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build metrics routes (public)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let metrics_routes = metrics_cached::routes(Arc::clone(&cache));
 
     // Build RPC router
@@ -1437,7 +1681,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build liquidity pool routes
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let liquidity_pool_routes = Router::new()
         .nest(
             "/api/liquidity-pools",
@@ -1502,6 +1749,7 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build GraphQL schema
+<<<<<<< HEAD
 
     // let graphql_schema = build_schema(Arc::new(pool.clone()));
 
@@ -1541,6 +1789,30 @@ async fn main() -> Result<()> {
 
     //     .route("/graphql/playground", get(graphql_playground))
 
+=======
+    // let graphql_schema = build_schema(Arc::new(pool.clone()));
+    // tracing::info!("GraphQL schema initialized");
+
+    // GraphQL handler
+    // async fn graphql_handler(
+    //     State(schema): State<AppSchema>,
+    //     req: GraphQLRequest,
+    // ) -> GraphQLResponse {
+    //     schema.execute(req.into_inner()).await.into()
+    // }
+
+    // GraphQL Playground handler
+    // async fn graphql_playground() -> impl IntoResponse {
+    //     Html(playground_source(
+    //         async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
+    //     ))
+    // }
+
+    // Build GraphQL routes
+    // let graphql_routes = Router::new()
+    //     .route("/graphql", post(graphql_handler))
+    //     .route("/graphql/playground", get(graphql_playground))
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     //     .with_state(graphql_schema);
 
     // Build achievements / quests routes
@@ -1557,7 +1829,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build API analytics routes (ADMIN - IP whitelisted)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let api_analytics_routes = Router::new()
         .merge(api_analytics::routes(db.clone()))
         .layer(
@@ -1574,7 +1849,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build cache stats routes (ADMIN - IP whitelisted)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let cache_routes = Router::new()
         .merge(cache_stats::routes(Arc::clone(&cache)))
         .layer(
@@ -1591,7 +1869,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build pool metrics route (ADMIN - IP whitelisted)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let admin_db_routes = Router::new()
         .route("/api/db/pool-metrics", get(pool_metrics))
         .with_state(app_state.clone())
@@ -1635,7 +1916,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build verification rewards routes
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let verification_routes = Router::new()
         .nest(
             "/api/verifications",
@@ -1650,7 +1934,10 @@ async fn main() -> Result<()> {
         )));
 
     // Build asset verification routes
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let asset_verification_routes = Router::new()
         .nest("/api/assets", asset_verification::routes(pool.clone()))
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
@@ -1659,6 +1946,7 @@ async fn main() -> Result<()> {
         )));
 
     // Build GDPR routes (temporarily disabled)
+<<<<<<< HEAD
 
     /*
 
@@ -1748,6 +2036,52 @@ async fn main() -> Result<()> {
 
         .layer(cors.clone());
 
+=======
+    /*
+    let gdpr_routes = Router::new()
+        .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
+        .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
+        .route(
+            "/api/gdpr/consents/batch",
+            put(gdpr_handlers::batch_update_consents),
+        )
+        .route("/api/gdpr/export", get(gdpr_handlers::get_export_requests))
+        .route(
+            "/api/gdpr/export",
+            post(gdpr_handlers::create_export_request),
+        )
+        .route(
+            "/api/gdpr/export/:id",
+            get(gdpr_handlers::get_export_request),
+        )
+        .route(
+            "/api/gdpr/export-types",
+            get(gdpr_handlers::get_exportable_types),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            get(gdpr_handlers::get_deletion_requests),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            post(gdpr_handlers::create_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id",
+            get(gdpr_handlers::get_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id/cancel",
+            post(gdpr_handlers::cancel_deletion),
+        )
+        .route(
+            "/api/gdpr/deletion/confirm",
+            post(gdpr_handlers::confirm_deletion),
+        )
+        .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
+        .with_state(Arc::clone(&gdpr_service))
+        .layer(cors.clone());
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     */
 
     // Merge routers
@@ -1756,7 +2090,10 @@ async fn main() -> Result<()> {
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
 
     // Build WebSocket routes
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let websocket_routes = Router::new()
         .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
         .with_state(Arc::clone(&ws_state))
@@ -1771,6 +2108,7 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     let export_routes = Router::new()
+<<<<<<< HEAD
         .route(
             "/api/export/corridors",
             get(stellar_insights_backend::api::export::export_corridors),
@@ -1783,6 +2121,11 @@ async fn main() -> Result<()> {
             "/api/export/payments",
             get(stellar_insights_backend::api::export::export_payments),
         )
+=======
+        .route("/api/export/corridors", get(stellar_insights_backend::api::export::export_corridors))
+        .route("/api/export/anchors", get(stellar_insights_backend::api::export::export_anchors))
+        .route("/api/export/payments", get(stellar_insights_backend::api::export::export_payments))
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
         .with_state(app_state.clone())
         .layer(cors.clone());
 
@@ -1819,6 +2162,10 @@ async fn main() -> Result<()> {
         .merge(websocket_routes)
         .merge(alert_ws_routes)
         .merge(export_routes)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
@@ -1837,12 +2184,18 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
 
     tracing::info!("Server starting on {}", addr);
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     tracing::info!(
         "GraphQL Playground available at http://{}/graphql/playground",
         addr
     );
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5630a9d3cf4113ec5464afdf990cdd56ef5f7bcc
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     // Clone resources needed for shutdown

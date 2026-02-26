@@ -27,8 +27,15 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts.extensions.get::<AuthUser>().cloned().ok_or(AuthError::MissingToken)
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthUser>()
+            .cloned()
+            .ok_or(AuthError::MissingToken)
     }
 }
 

@@ -29,7 +29,7 @@ const ICON_STYLES: Record<NotificationType, string> = {
   success: 'text-green-500 dark:text-green-400',
   error: 'text-red-500 dark:text-red-400',
   warning: 'text-yellow-500 dark:text-yellow-400',
-  info: 'text-blue-500 dark:text-blue-400',
+  info: 'text-blue-500 dark:text-link-primary',
 };
 
 const PRIORITY_STYLES: Record<string, string> = {

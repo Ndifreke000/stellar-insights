@@ -42,7 +42,7 @@ pub async fn create_transaction(
     State(state): State<AppState>,
     Json(req): Json<CreateTransactionRequest>,
 ) -> Result<Json<PendingTransaction>, (StatusCode, String)> {
-    let tx = state
+    let pending_transaction = state
         .db
         .create_pending_transaction(&req.source_account, &req.xdr, req.required_signatures)
         .await
@@ -54,14 +54,14 @@ pub async fn create_transaction(
             )
         })?;
 
-    Ok(Json(tx))
+    Ok(Json(pending_transaction))
 }
 
 pub async fn get_transaction(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<PendingTransactionWithSignatures>, (StatusCode, String)> {
-    let tx = state.db.get_pending_transaction(&id).await.map_err(|e| {
+    let pending_transaction = state.db.get_pending_transaction(&id).await.map_err(|e| {
         tracing::error!("Failed to get transaction: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -69,8 +69,8 @@ pub async fn get_transaction(
         )
     })?;
 
-    if let Some(tx) = tx {
-        Ok(Json(tx))
+    if let Some(transaction_with_signatures) = pending_transaction {
+        Ok(Json(transaction_with_signatures))
     } else {
         Err((StatusCode::NOT_FOUND, "Transaction not found".to_string()))
     }

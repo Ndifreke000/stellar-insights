@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -10,12 +11,15 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { LiquidityDataPoint } from '@/lib/analytics-api';
+import { ChartExportButton } from './ChartExportButton';
 
 interface LiquidityChartProps {
   data: LiquidityDataPoint[];
 }
 
 export function LiquidityChart({ data }: LiquidityChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  
   // Group data by corridor for better visualization
   const corridorData = new Map<
     string,
@@ -60,14 +64,19 @@ export function LiquidityChart({ data }: LiquidityChartProps) {
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-border/50">
-      <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Market Velocity // 05.A</div>
-      <h2 className="text-xl font-black tracking-tighter uppercase italic mb-2">
-        Liquidity Over Time
-      </h2>
-      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-8">
-        Global Depth Index across verified corridors
-      </p>
+    <div ref={chartRef} className="glass-card rounded-2xl p-6 border border-border/50">
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1">
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Market Velocity // 05.A</div>
+          <h2 className="text-xl font-black tracking-tighter uppercase italic mb-2">
+            Liquidity Over Time
+          </h2>
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-8">
+            Global Depth Index across verified corridors
+          </p>
+        </div>
+        <ChartExportButton chartRef={chartRef} chartName="Liquidity Over Time" />
+      </div>
 
       <div className="h-[350px] w-full">
         <ResponsiveContainer width="100%" height="100%">

@@ -1,14 +1,16 @@
 // pub mod sep10;  // Commented out - uses stellar-xdr types that require stellar-base
+pub mod oauth;
 pub mod sep10_middleware;
 pub mod sep10_simple;
-pub mod oauth;
 
 use anyhow::{anyhow, Result};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -74,10 +76,14 @@ pub struct Claims {
 pub struct AuthService {
     jwt_secret: String,
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+    db_pool: SqlitePool,
 }
 
 impl AuthService {
-    pub fn new(redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>) -> Self {
+    pub fn new(
+        redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+        db_pool: SqlitePool,
+    ) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
             .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
 
@@ -88,16 +94,41 @@ impl AuthService {
         Self {
             jwt_secret,
             redis_connection,
+            db_pool,
         }
     }
 
-    /// Authenticate user with credentials
-    /// TODO: Implement database-backed user store with bcrypt/argon2 password hashing
-    pub fn authenticate(&self, _username: &str, _password: &str) -> Result<User> {
-        // Hardcoded demo credentials removed for security (SEC-001).
-        // This must be replaced with a proper database-backed user store
-        // that uses bcrypt or argon2 for password hashing before production use.
-        Err(anyhow!("Authentication not configured. Implement database-backed user store."))
+    /// Authenticate user with credentials against the database.
+    /// Passwords are verified using argon2 — never stored or compared in plaintext.
+    pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
+        #[derive(sqlx::FromRow)]
+        struct UserRecord {
+            id: String,
+            username: String,
+            password_hash: String,
+        }
+
+        let record = sqlx::query_as::<_, UserRecord>(
+            "SELECT id, username, password_hash FROM users WHERE username = $1",
+        )
+        .bind(username)
+        .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| anyhow!("Database error during authentication: {}", e))?;
+
+        let record = record.ok_or_else(|| anyhow!("Invalid username or password"))?;
+
+        let parsed_hash = PasswordHash::new(&record.password_hash)
+            .map_err(|e| anyhow!("Failed to parse password hash: {}", e))?;
+
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|_| anyhow!("Invalid username or password"))?;
+
+        Ok(User {
+            id: record.id,
+            username: record.username,
+        })
     }
 
     /// Generate access token
@@ -202,7 +233,9 @@ impl AuthService {
                 return Err(anyhow!("Refresh token not found or invalid"));
             }
         } else {
-            tracing::error!("Redis not available - refusing refresh token validation (fail closed)");
+            tracing::error!(
+                "Redis not available - refusing refresh token validation (fail closed)"
+            );
             return Err(anyhow!("Token validation service unavailable"));
         }
 
@@ -228,7 +261,9 @@ impl AuthService {
     /// Login flow
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse> {
         // Authenticate user
-        let user = self.authenticate(&request.username, &request.password)?;
+        let user = self
+            .authenticate(&request.username, &request.password)
+            .await?;
 
         // Generate tokens
         let access_token = self.generate_access_token(&user)?;

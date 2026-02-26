@@ -14,7 +14,8 @@ impl CacheInvalidationService {
     /// Invalidate all anchor-related caches
     pub async fn invalidate_anchors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating anchor caches");
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate specific anchor caches
@@ -23,7 +24,8 @@ impl CacheInvalidationService {
         self.cache.delete(&keys::anchor_detail(anchor_id)).await?;
         self.cache.delete(&keys::anchor_assets(anchor_id)).await?;
         // Also invalidate the list caches since they contain this anchor
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate anchor by account
@@ -31,13 +33,15 @@ impl CacheInvalidationService {
         tracing::info!("Invalidating cache for anchor account: {}", account);
         self.cache.delete(&keys::anchor_by_account(account)).await?;
         // Also invalidate list caches
-        self.cache.delete_pattern(&keys::anchor_pattern()).await
+        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate all corridor-related caches
     pub async fn invalidate_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating corridor caches");
-        self.cache.delete_pattern(&keys::corridor_pattern()).await
+        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate specific corridor cache
@@ -47,13 +51,17 @@ impl CacheInvalidationService {
             .delete(&keys::corridor_detail(corridor_key))
             .await?;
         // Also invalidate the list caches since they contain this corridor
-        self.cache.delete_pattern(&keys::corridor_pattern()).await
+        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        Ok(())
     }
 
     /// Invalidate dashboard caches
     pub async fn invalidate_dashboard(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating dashboard caches");
-        self.cache.delete_pattern(&keys::dashboard_pattern()).await
+        self.cache
+            .delete_pattern(&keys::dashboard_pattern())
+            .await?;
+        Ok(())
     }
 
     /// Invalidate metrics caches

@@ -63,7 +63,7 @@ export const WalletConnectionDemo: React.FC = () => {
               {isConnected ? (
                 <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
               ) : (
-                <XCircle className="h-5 w-5 text-gray-400" />
+                <XCircle className="h-5 w-5 text-muted-foreground" />
               )}
             </div>
             <div>
@@ -71,7 +71,7 @@ export const WalletConnectionDemo: React.FC = () => {
                 {isConnected ? 'Connected' : 'Disconnected'}
               </p>
               {isConnected && displayAddress && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                   {displayAddress}
                 </p>
               )}
@@ -142,7 +142,7 @@ export const WalletConnectionDemo: React.FC = () => {
             </div>
             <div className="flex items-center justify-center p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
               <div className="flex items-center gap-2">
-                <XCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <XCircle className="h-4 w-4 text-blue-600 dark:text-link-primary" />
                 <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">Disconnected</span>
               </div>
             </div>

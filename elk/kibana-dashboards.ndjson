@@ -1,0 +1,49 @@
+{
+  "version": "8.11.0",
+  "objects": [
+    {
+      "id": "stellar-insights-overview",
+      "type": "dashboard",
+      "attributes": {
+        "title": "Stellar Insights - Overview Dashboard",
+        "description": "Main dashboard for Stellar Insights application monitoring",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":8,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":8,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":8,\"w\":48,\"h\":12,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{},\"panelRefName\":\"panel_3\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":20,\"w\":24,\"h\":10,\"i\":\"4\"},\"panelIndex\":\"4\",\"embeddableConfig\":{},\"panelRefName\":\"panel_4\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":20,\"w\":24,\"h\":10,\"i\":\"5\"},\"panelIndex\":\"5\",\"embeddableConfig\":{},\"panelRefName\":\"panel_5\"}]",
+        "timeRestore": true,
+        "timeFrom": "now-24h",
+        "timeTo": "now",
+        "refreshInterval": {
+          "pause": false,
+          "value": 30000
+        }
+      }
+    },
+    {
+      "id": "stellar-insights-errors",
+      "type": "dashboard",
+      "attributes": {
+        "title": "Stellar Insights - Error Analysis",
+        "description": "Dashboard for tracking and analyzing application errors",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":48,\"h\":12,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":12,\"w\":24,\"h\":12,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":12,\"w\":24,\"h\":12,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{},\"panelRefName\":\"panel_3\"}]",
+        "timeRestore": true,
+        "timeFrom": "now-7d",
+        "timeTo": "now"
+      }
+    },
+    {
+      "id": "stellar-insights-performance",
+      "type": "dashboard",
+      "attributes": {
+        "title": "Stellar Insights - Performance Metrics",
+        "description": "Dashboard for monitoring application performance and response times",
+        "panelsJSON": "[{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":12,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":12,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{},\"panelRefName\":\"panel_2\"},{\"version\":\"8.11.0\",\"gridData\":{\"x\":0,\"y\":12,\"w\":48,\"h\":12,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{},\"panelRefName\":\"panel_3\"}]",
+        "timeRestore": true,
+        "timeFrom": "now-1h",
+        "timeTo": "now",
+        "refreshInterval": {
+          "pause": false,
+          "value": 10000
+        }
+      }
+    }
+  ]
+}
