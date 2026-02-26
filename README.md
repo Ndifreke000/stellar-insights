@@ -9,6 +9,12 @@
 ![Contracts CI](https://github.com/Ndifreke000/stellar-insights/workflows/Smart%20Contracts%20CI/badge.svg)
 ![Full Stack CI](https://github.com/Ndifreke000/stellar-insights/workflows/Full%20Stack%20CI/badge.svg)
 
+
+
+
+
+
+
 ---
 
 ## 📋 Overview
