@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { Clock, Users } from "lucide-react";
 import type { Proposal, ProposalStatus } from "@/types/governance";
 

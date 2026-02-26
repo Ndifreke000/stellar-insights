@@ -9,7 +9,6 @@ use tower::util::ServiceExt;
 
 #[sqlx::test]
 async fn test_account_merge_detector_process_and_stats(pool: SqlitePool) {
-
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = AccountMergeDetector::new(pool.clone(), rpc_client);
 
@@ -43,7 +42,6 @@ async fn test_account_merge_detector_process_and_stats(pool: SqlitePool) {
 
 #[sqlx::test]
 async fn test_account_merge_detector_is_idempotent(pool: SqlitePool) {
-
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = AccountMergeDetector::new(pool.clone(), rpc_client);
 
@@ -66,7 +64,6 @@ async fn test_account_merge_detector_is_idempotent(pool: SqlitePool) {
 
 #[sqlx::test]
 async fn test_account_merge_routes(pool: SqlitePool) {
-
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = Arc::new(AccountMergeDetector::new(pool.clone(), rpc_client));
 

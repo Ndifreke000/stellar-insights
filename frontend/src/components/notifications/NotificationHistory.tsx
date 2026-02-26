@@ -168,7 +168,7 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
           <div className="border-b border-gray-200 dark:border-gray-700 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Bell className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                <Bell className="h-5 w-5 text-muted-foreground dark:text-muted-foreground" />
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                   Notifications
                 </h2>
@@ -190,7 +190,7 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
             <div className="mt-4 space-y-3">
               {/* Search */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search notifications..."
@@ -258,7 +258,7 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
           {/* Notifications List */}
           <div className="flex-1 overflow-y-auto">
             {Object.keys(groupedNotifications).length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground dark:text-muted-foreground">
                 <BellOff className="h-12 w-12 mb-4" />
                 <p className="text-lg font-medium">No notifications</p>
                 <p className="text-sm">You&apos;re all caught up!</p>
@@ -267,7 +267,7 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
               <div className="p-4 space-y-6">
                 {Object.entries(groupedNotifications).map(([groupKey, groupNotifications]) => (
                   <div key={groupKey}>
-                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                    <h3 className="text-sm font-medium text-muted-foreground dark:text-muted-foreground mb-3 flex items-center">
                       <Calendar className="h-4 w-4 mr-2" />
                       {groupKey}
                     </h3>
@@ -312,18 +312,18 @@ export const NotificationHistory: React.FC<NotificationHistoryProps> = ({ isOpen
                                       }}
                                       className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
                                     >
-                                      <Trash2 className="h-3 w-3 text-gray-400" />
+                                      <Trash2 className="h-3 w-3 text-muted-foreground" />
                                     </button>
                                   </div>
                                 </div>
                                 <p className={`text-sm mt-1 ${
                                   notification.read 
-                                    ? 'text-gray-500 dark:text-gray-400' 
+                                    ? 'text-muted-foreground dark:text-muted-foreground' 
                                     : 'text-gray-700 dark:text-gray-300'
                                 }`}>
                                   {notification.message}
                                 </p>
-                                <p className="text-xs text-gray-400 mt-2">
+                                <p className="text-xs text-muted-foreground mt-2">
                                   {formatTime(new Date(notification.timestamp))}
                                 </p>
                               </div>

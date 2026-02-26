@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: redis
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: stellar-insights
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: stellar-insights
+        component: redis
+    spec:
+      serviceAccountName: stellar-insights-redis
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        
+        # Health checks
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Resource management
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        
+        # Volume mounts
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: tmp
+          mountPath: /tmp
+      
+      volumes:
+      - name: redis-data
+        emptyDir: {}
+      - name: redis-config
+        configMap:
+          name: redis-config
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: redis
+data:
+  redis.conf: |
+    # Network
+    bind 0.0.0.0
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+    
+    # General
+    daemonize no
+    supervised no
+    pidfile /tmp/redis.pid
+    loglevel notice
+    logfile ""
+    databases 16
+    
+    # Snapshotting
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    
+    # Replication
+    replica-serve-stale-data yes
+    replica-read-only yes
+    
+    # Security
+    protected-mode yes
+    
+    # Memory management
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    
+    # Append only file
+    appendonly no
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stellar-insights-redis
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: redis

@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
 };
 
 const HASH_SIZE: u32 = 32;
@@ -28,6 +28,7 @@ pub enum DataKey {
     Metadata,
     Admin,
     Stopped,
+    Paused,
 }
 
 #[contract]
@@ -182,7 +183,10 @@ impl SnapshotContract {
             panic!("Invalid WASM hash size");
         }
 
-        let hash_bytes: BytesN<32> = new_wasm_hash.clone().try_into().unwrap();
+        let hash_bytes: BytesN<32> = match new_wasm_hash.clone().try_into() {
+            Ok(h) => h,
+            Err(_) => panic!("Failed to convert hash bytes to fixed-size array"),
+        };
         env.deployer().update_current_contract_wasm(hash_bytes);
 
         let mut metadata: ContractMetadata = env
@@ -241,6 +245,7 @@ impl SnapshotContract {
     /// * If hash is not exactly 32 bytes
     /// * If epoch is 0
     /// * If a snapshot already exists for this epoch
+    /// * If epoch <= latest (monotonicity violated: out-of-order or duplicate)
     ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
@@ -269,6 +274,21 @@ impl SnapshotContract {
             panic!("Invalid epoch: must be greater than 0");
         }
 
+        // Enforce monotonic epoch increase to prevent rollback attacks
+        let current_latest: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
+        if let Some(latest) = current_latest {
+            if epoch <= latest {
+                if epoch == latest {
+                    panic!("Snapshot for epoch {} already exists", epoch);
+                } else {
+                    panic!(
+                        "Epoch monotonicity violated: epoch {} must be strictly greater than latest {}",
+                        epoch, latest
+                    );
+                }
+            }
+        }
+
         let timestamp = env.ledger().timestamp();
 
         let snapshot = Snapshot {
@@ -293,12 +313,9 @@ impl SnapshotContract {
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
 
-        let current_latest: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
-        if current_latest.is_none() || epoch > current_latest.unwrap() {
-            env.storage()
-                .persistent()
-                .set(&DataKey::LatestEpoch, &epoch);
-        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::LatestEpoch, &epoch);
 
         env.events()
             .publish((symbol_short!("SNAP_SUB"),), (hash, epoch, timestamp));
@@ -450,17 +467,6 @@ impl SnapshotContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
-
-    /// Get the current admin address
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    ///
-    /// # Returns
-    /// * The admin address if set, None otherwise
-    pub fn get_admin(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::Admin)
-    }
 }
 
 #[cfg(test)]
@@ -569,7 +575,8 @@ mod test {
         let admin = Address::generate(&env);
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         client.initialize(&admin);
 
@@ -594,7 +601,8 @@ mod test {
         let admin = Address::generate(&env);
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         client.initialize(&admin);
 
@@ -606,7 +614,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash = bytes!(
             &env,
@@ -625,7 +634,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash = bytes!(
             &env,
@@ -653,7 +663,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let short_hash = bytes!(&env, 0x1234);
         client.submit_snapshot(&short_hash, &1);
@@ -665,7 +676,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash = bytes!(
             &env,
@@ -680,7 +692,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash1 = bytes!(
             &env,
@@ -696,11 +709,37 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "Epoch monotonicity violated")]
+    fn test_older_epoch_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
+
+        let hash1 = bytes!(
+            &env,
+            0x1111111111111111111111111111111111111111111111111111111111111111
+        );
+        let hash2 = bytes!(
+            &env,
+            0x2222222222222222222222222222222222222222222222222222222222222222
+        );
+
+        client.submit_snapshot(&hash1, &10);
+        let latest = client.latest_snapshot().unwrap();
+        assert_eq!(latest.epoch, 10);
+
+        client.submit_snapshot(&hash2, &5);
+    }
+
+    #[test]
     fn test_multiple_snapshots() {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash1 = bytes!(
             &env,
@@ -725,7 +764,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         client.submit_snapshot(
             &bytes!(
@@ -765,7 +805,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         assert_eq!(client.latest_snapshot(), None);
     }
@@ -775,7 +816,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash = bytes!(
             &env,
@@ -791,7 +833,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         client.submit_snapshot(
             &bytes!(
@@ -810,7 +853,8 @@ mod test {
     #[test]
     fn test_version_without_init() {
         let env = Env::default();
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         assert_eq!(client.version(), CONTRACT_VERSION);
     }
@@ -821,7 +865,8 @@ mod test {
         let admin = Address::generate(&env);
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         client.initialize(&admin);
 
@@ -846,7 +891,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash1 = bytes!(
             &env,
@@ -870,7 +916,8 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
 
-        let client = SnapshotContractClient::new(&env, &env.register(SnapshotContract, ()));
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let hash1 = bytes!(
             &env,

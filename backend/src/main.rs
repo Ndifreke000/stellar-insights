@@ -1,22 +1,29 @@
 use anyhow::{Context, Result};
+use async_graphql::http::{playground_source, GraphiQLSource};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
 use axum::{
     http::Method,
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use stellar_insights_backend::alerts::AlertManager;
 use stellar_insights_backend::api::account_merges;
 use stellar_insights_backend::api::anchors_cached::get_anchors;
+use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::api::api_keys;
+use stellar_insights_backend::api::asset_verification;
 use stellar_insights_backend::api::cache_stats;
 use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
 use stellar_insights_backend::api::cost_calculator;
@@ -24,23 +31,35 @@ use stellar_insights_backend::api::fee_bump;
 use stellar_insights_backend::api::liquidity_pools;
 use stellar_insights_backend::api::metrics_cached;
 use stellar_insights_backend::api::oauth;
+use stellar_insights_backend::api::verification_rewards;
 use stellar_insights_backend::api::webhooks;
-use stellar_insights_backend::api::api_analytics;
 use stellar_insights_backend::auth::AuthService;
 use stellar_insights_backend::auth_middleware::auth_middleware;
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::elk_health;
+// use stellar_insights_backend::graphql::{build_schema, AppSchema};
+// use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
 use stellar_insights_backend::handlers::*;
 use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
 use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::ip_whitelist_middleware::{
+    ip_whitelist_middleware, IpWhitelistConfig,
+};
 use stellar_insights_backend::jobs::JobScheduler;
+use stellar_insights_backend::monitor::CorridorMonitor;
 use stellar_insights_backend::network::NetworkConfig;
+use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
 use stellar_insights_backend::openapi::ApiDoc;
-use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use stellar_insights_backend::rate_limit::{
+    rate_limit_middleware, ClientRateLimits, RateLimitConfig, RateLimiter,
+};
+use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::rpc_handlers;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+use stellar_insights_backend::services::anchor_monitor::AnchorMonitor;
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use stellar_insights_backend::services::price_feed::{
@@ -54,6 +73,7 @@ use stellar_insights_backend::shutdown::{
     shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
 };
 use stellar_insights_backend::state::AppState;
+use stellar_insights_backend::telegram;
 use stellar_insights_backend::vault;
 use stellar_insights_backend::websocket::WsState;
 
@@ -65,8 +85,10 @@ async fn main() -> Result<()> {
     // Load environment variables
     dotenv().ok();
 
-    // Initialize logging with ELK support
-    stellar_insights_backend::logging::init_logging();
+    // Initialize tracing + optional OpenTelemetry exporter.
+    // Hold the guard for process lifetime so rotating file logs are flushed.
+    let _log_guard = obs_tracing::init_tracing("stellar-insights-backend")?;
+    obs_metrics::init_metrics();
 
     tracing::info!("Starting Stellar Insights Backend");
 
@@ -91,7 +113,23 @@ async fn main() -> Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
 
-    tracing::info!("Connecting to database: {}", database_url);
+    // Log sanitized database URL to prevent credential leakage (SEC-016)
+    let sanitized_db_url = if database_url.starts_with("sqlite:") {
+        database_url.clone()
+    } else if let Some(at_pos) = database_url.rfind('@') {
+        if let Some(scheme_end) = database_url.find("://") {
+            format!(
+                "{}****@{}",
+                &database_url[..scheme_end + 3],
+                &database_url[at_pos + 1..]
+            )
+        } else {
+            "[REDACTED]".to_string()
+        }
+    } else {
+        database_url.clone()
+    };
+    tracing::info!("Connecting to database: {}", sanitized_db_url);
 
     // Load pool configuration from environment
     let pool_config = stellar_insights_backend::database::PoolConfig::from_env();
@@ -159,7 +197,7 @@ async fn main() -> Result<()> {
     ));
 
     // Initialize Liquidity Pool Analyzer
-    let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
+    let liquidity_pool_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
         pool.clone(),
         Arc::clone(&rpc_client),
     ));
@@ -192,6 +230,17 @@ async fn main() -> Result<()> {
     // Initialize cache invalidation service
     let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
 
+    // Initialize AlertManager
+    let (alert_manager, _initial_rx) = AlertManager::new();
+    let alert_manager = Arc::new(alert_manager);
+
+    // Initialize CorridorMonitor
+    let corridor_monitor = Arc::new(CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
+
     // Initialize RealtimeBroadcaster
     let mut realtime_broadcaster = RealtimeBroadcaster::new(
         Arc::clone(&ws_state),
@@ -200,6 +249,10 @@ async fn main() -> Result<()> {
         Arc::clone(&cache),
     );
     tracing::info!("RealtimeBroadcaster initialized");
+
+    // Initialize Webhook Dispatcher
+    let webhook_dispatcher = WebhookDispatcher::new(pool.clone());
+    tracing::info!("Webhook dispatcher initialized");
 
     // Create app state for handlers that need it
     let app_state = AppState::new(
@@ -231,7 +284,9 @@ async fn main() -> Result<()> {
                 _ = interval.tick() => {
                     if let Err(e) = ingestion_clone.sync_all_metrics().await {
                         tracing::error!("Metrics synchronization failed: {}", e);
+                        obs_metrics::record_background_job("metrics_sync", "error");
                     } else {
+                        obs_metrics::record_background_job("metrics_sync", "success");
                         // Invalidate caches after successful sync
                         if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
                             tracing::warn!("Failed to invalidate anchor caches: {}", e);
@@ -274,13 +329,32 @@ async fn main() -> Result<()> {
         tracing::warn!("Invalid Redis URL for auth service");
         None
     };
-    let auth_service = Arc::new(AuthService::new(Arc::new(tokio::sync::RwLock::new(
-        auth_redis_connection.clone(),
-    ))));
+    let auth_service = Arc::new(AuthService::new(
+        Arc::new(tokio::sync::RwLock::new(auth_redis_connection.clone())),
+        pool.clone(),
+    ));
     tracing::info!("Auth service initialized");
 
     // Initialize SEP-10 Service for Stellar authentication
     let sep10_redis_connection = Arc::new(tokio::sync::RwLock::new(auth_redis_connection));
+
+    // Get and validate SEP-10 server public key (required for security)
+    let sep10_server_key = std::env::var("SEP10_SERVER_PUBLIC_KEY")
+        .context("SEP10_SERVER_PUBLIC_KEY environment variable is required for authentication")?;
+
+    // Additional validation: ensure it's not the placeholder value
+    if sep10_server_key == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
+        anyhow::bail!(
+            "SEP10_SERVER_PUBLIC_KEY is set to placeholder value. \
+             Please generate a valid Stellar keypair using: stellar keys generate --network testnet"
+        );
+    }
+
+    tracing::info!(
+        "SEP-10 authentication enabled with server key: {}...",
+        &sep10_server_key[..8]
+    );
+
     let sep10_service = Arc::new(
         stellar_insights_backend::auth::sep10_simple::Sep10Service::new(
             std::env::var("SEP10_SERVER_PUBLIC_KEY").unwrap_or_else(|_| {
@@ -291,9 +365,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "stellar-insights.local".to_string()),
             sep10_redis_connection,
         )
-        .expect("Failed to initialize SEP-10 service"),
+        .context("Failed to initialize SEP-10 service")?,
     );
-    tracing::info!("SEP-10 service initialized");
+    tracing::info!("SEP-10 service initialized successfully");
 
     // Initialize Verification Rewards Service
     let verification_rewards_service = Arc::new(
@@ -305,11 +379,13 @@ async fn main() -> Result<()> {
 
     // Initialize Governance Service
     let governance_service = Arc::new(
-        stellar_insights_backend::services::governance::GovernanceService::new(
-            Arc::clone(&db),
-        ),
+        stellar_insights_backend::services::governance::GovernanceService::new(Arc::clone(&db)),
     );
     tracing::info!("Governance service initialized");
+
+    // Initialize GDPR Service
+    // let gdpr_service = Arc::new(GdprService::new(pool.clone()));
+    // tracing::info!("GDPR service initialized");
 
     // ML Retraining task (commented out)
     /*
@@ -338,6 +414,7 @@ async fn main() -> Result<()> {
                 result = ledger_ingestion_clone.run_ingestion(5) => {
                     match result {
                         Ok(count) => {
+                            obs_metrics::record_background_job("ledger_ingestion", "success");
                             if count == 0 {
                                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                             } else {
@@ -346,6 +423,7 @@ async fn main() -> Result<()> {
                         }
                         Err(e) => {
                             tracing::error!("Ledger ingestion failed: {}", e);
+                            obs_metrics::record_background_job("ledger_ingestion", "error");
                             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                         }
                     }
@@ -360,7 +438,7 @@ async fn main() -> Result<()> {
     background_tasks.push(task);
 
     // Liquidity pool sync background task
-    let lp_analyzer_clone = Arc::clone(&lp_analyzer);
+    let liquidity_pool_analyzer_clone = Arc::clone(&liquidity_pool_analyzer);
     let shutdown_rx3 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
         tracing::info!("Starting liquidity pool sync background task");
@@ -369,11 +447,17 @@ async fn main() -> Result<()> {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    if let Err(e) = lp_analyzer_clone.sync_pools().await {
+                    if let Err(e) = liquidity_pool_analyzer_clone.sync_pools().await {
                         tracing::error!("Liquidity pool sync failed: {}", e);
+                        obs_metrics::record_background_job("liquidity_pool_sync", "error");
+                    } else {
+                        obs_metrics::record_background_job("liquidity_pool_sync", "success");
                     }
-                    if let Err(e) = lp_analyzer_clone.take_snapshots().await {
+                    if let Err(e) = liquidity_pool_analyzer_clone.take_snapshots().await {
                         tracing::error!("Liquidity pool snapshot failed: {}", e);
+                        obs_metrics::record_background_job("liquidity_pool_snapshot", "error");
+                    } else {
+                        obs_metrics::record_background_job("liquidity_pool_snapshot", "success");
                     }
                 }
                 _ = shutdown_rx.recv() => {
@@ -397,9 +481,15 @@ async fn main() -> Result<()> {
                 _ = interval.tick() => {
                     if let Err(e) = trustline_analyzer_clone.sync_assets().await {
                         tracing::error!("Trustline sync failed: {}", e);
+                        obs_metrics::record_background_job("trustline_sync", "error");
+                    } else {
+                        obs_metrics::record_background_job("trustline_sync", "success");
                     }
                     if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
                         tracing::error!("Trustline snapshot failed: {}", e);
+                        obs_metrics::record_background_job("trustline_snapshot", "error");
+                    } else {
+                        obs_metrics::record_background_job("trustline_snapshot", "success");
                     }
                 }
                 _ = shutdown_rx.recv() => {
@@ -427,6 +517,60 @@ async fn main() -> Result<()> {
     });
     background_tasks.push(task);
 
+    // Initialize Alert Manager
+    let (alert_manager_raw, alert_rx) = stellar_insights_backend::alerts::AlertManager::new();
+    let alert_manager = Arc::new(alert_manager_raw);
+    tracing::info!("Alert manager initialized");
+
+    // Initialize Corridor Monitor
+    let corridor_monitor = Arc::new(stellar_insights_backend::monitor::CorridorMonitor::new(
+        Arc::clone(&alert_manager),
+        Arc::clone(&cache),
+        Arc::clone(&rpc_client),
+    ));
+    tracing::info!("Corridor monitor initialized");
+
+    // Initialize Slack Bot Service
+    let slack_webhook_url = std::env::var("SLACK_WEBHOOK_URL").ok();
+    if let Some(url) = slack_webhook_url {
+        let slack_bot = stellar_insights_backend::services::slack_bot::SlackBotService::new(
+            url,
+            alert_manager.subscribe(),
+        );
+        let task = tokio::spawn(async move {
+            slack_bot.start().await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Slack bot service started as background task");
+    } else {
+        tracing::warn!("SLACK_WEBHOOK_URL not set, slack alerts disabled");
+    }
+
+    // Initialize Anchor Monitor
+    let anchor_monitor = AnchorMonitor::new(Arc::clone(&db), Arc::clone(&alert_manager));
+    let shutdown_rx_anchor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_anchor;
+        tokio::select! {
+            _ = anchor_monitor.start() => {
+                tracing::info!("Anchor monitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Anchor monitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+    tracing::info!("Anchor monitor started as background task");
+
+    // Start Corridor Monitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let task = tokio::spawn(async move {
+        monitor_clone.start().await;
+    });
+    background_tasks.push(task);
+    tracing::info!("Corridor monitor task started");
+
     // Start Webhook Dispatcher background task
     let shutdown_rx6 = shutdown_coordinator.subscribe();
     let task = tokio::spawn(async move {
@@ -444,6 +588,44 @@ async fn main() -> Result<()> {
     });
     background_tasks.push(task);
 
+    // Start CorridorMonitor background task
+    let monitor_clone = Arc::clone(&corridor_monitor);
+    let shutdown_rx_monitor = shutdown_coordinator.subscribe();
+    let task = tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx_monitor;
+        tokio::select! {
+            _ = monitor_clone.start() => {
+                tracing::info!("CorridorMonitor task completed");
+            }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("CorridorMonitor task shutting down");
+            }
+        }
+    });
+    background_tasks.push(task);
+
+    // Start Telegram Bot (conditionally, when TELEGRAM_BOT_TOKEN is set)
+    if let Ok(telegram_token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        tracing::info!("Telegram bot token found, starting bot");
+        let telegram_subscriptions = Arc::new(telegram::SubscriptionService::new(pool.clone()));
+        let telegram_bot = telegram::TelegramBot::new(
+            &telegram_token,
+            Arc::clone(&db),
+            Arc::clone(&cache),
+            Arc::clone(&rpc_client),
+            telegram_subscriptions,
+            &alert_manager,
+        );
+        let shutdown_rx_tg = shutdown_coordinator.subscribe();
+        let task = tokio::spawn(async move {
+            telegram_bot.run(shutdown_rx_tg).await;
+        });
+        background_tasks.push(task);
+        tracing::info!("Telegram bot started");
+    } else {
+        tracing::info!("TELEGRAM_BOT_TOKEN not set, Telegram bot disabled");
+    }
+
     // Run initial sync (skip on network errors)
     tracing::info!("Running initial metrics synchronization...");
     let _ = ingestion_service.sync_all_metrics().await;
@@ -460,11 +642,11 @@ async fn main() -> Result<()> {
     .await;
     tracing::info!("Background job scheduler started");
 
-    // Initialize rate limiter
-    let rate_limiter_result = RateLimiter::new().await;
+    // Initialize rate limiter with database support for API key validation
+    let rate_limiter_result = RateLimiter::new_with_db(Some(pool.clone())).await;
     let rate_limiter = match rate_limiter_result {
         Ok(limiter) => {
-            tracing::info!("Rate limiter initialized successfully");
+            tracing::info!("Rate limiter initialized successfully with database support");
             Arc::new(limiter)
         }
         Err(e) => {
@@ -473,20 +655,25 @@ async fn main() -> Result<()> {
                 e
             );
             Arc::new(
-                RateLimiter::new()
+                RateLimiter::new_with_db(Some(pool.clone()))
                     .await
                     .unwrap_or_else(|_| panic!("Failed to create rate limiter: critical error")),
             )
         }
     };
 
-    // Configure rate limits for endpoints
+    // Configure rate limits for endpoints with per-client tiers
     rate_limiter
         .register_endpoint(
             "/health".to_string(),
             RateLimitConfig {
                 requests_per_minute: 1000,
                 whitelist_ips: vec!["127.0.0.1".to_string()],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 1000,
+                    premium: 5000,
+                    anonymous: 1000,
+                }),
             },
         )
         .await;
@@ -497,6 +684,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -507,6 +699,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -517,6 +714,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -527,6 +729,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 2000,
+                    anonymous: 50,
+                }),
             },
         )
         .await;
@@ -537,6 +744,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -547,6 +759,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 300,
+                    premium: 1500,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -557,6 +774,11 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
@@ -567,9 +789,36 @@ async fn main() -> Result<()> {
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 1000,
+                    anonymous: 60,
+                }),
             },
         )
         .await;
+
+    // Initialize IP whitelist configuration for admin endpoints
+    let ip_whitelist_config = match IpWhitelistConfig::from_env() {
+        Ok(config) => {
+            tracing::info!(
+                "IP whitelist initialized: {} network(s) configured, trust_proxy={}",
+                config.allowed_networks.len(),
+                config.trust_proxy
+            );
+            Arc::new(config)
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize IP whitelist configuration: {}", e);
+            tracing::error!("Admin endpoints will be INACCESSIBLE until ADMIN_IP_WHITELIST is properly configured");
+            // Create a restrictive default that blocks everything
+            Arc::new(IpWhitelistConfig {
+                allowed_networks: Arc::new(vec![]),
+                trust_proxy: false,
+                max_forwarded_ips: 3,
+            })
+        }
+    };
 
     // CORS configuration
     // Read comma-separated allowed origins from env.
@@ -620,11 +869,11 @@ async fn main() -> Result<()> {
                 .collect();
 
             if origins.is_empty() {
-                tracing::warn!(
-                    "No valid CORS origins parsed from CORS_ALLOWED_ORIGINS; \
-                     falling back to allow-all. Check your configuration."
+                panic!(
+                    "CORS_ALLOWED_ORIGINS contains no valid origins. \
+                     Set valid origins or use '*' explicitly for development. \
+                     Refusing to fall back to allow-all. (SEC-011)"
                 );
-                base.allow_origin(Any)
             } else {
                 tracing::info!("CORS restricted to {} specific origin(s)", origins.len());
                 base.allow_origin(origins)
@@ -671,7 +920,6 @@ async fn main() -> Result<()> {
     // Build non-cached anchor routes with app state
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/api/db/pool-metrics", get(pool_metrics))
         .route("/api/anchors/:id", get(get_anchor))
         .route(
             "/api/anchors/account/:stellar_account",
@@ -726,8 +974,7 @@ async fn main() -> Result<()> {
         )
         .layer(cors.clone());
 
-    // Build cache stats and metrics routes
-    let cache_routes = cache_stats::routes(Arc::clone(&cache));
+    // Build metrics routes (public)
     let metrics_routes = metrics_cached::routes(Arc::clone(&cache));
 
     // Build RPC router
@@ -776,10 +1023,10 @@ async fn main() -> Result<()> {
         .layer(cors.clone());
 
     // Build liquidity pool routes
-    let lp_routes = Router::new()
+    let liquidity_pool_routes = Router::new()
         .nest(
             "/api/liquidity-pools",
-            liquidity_pools::routes(Arc::clone(&lp_analyzer)),
+            liquidity_pools::routes(Arc::clone(&liquidity_pool_analyzer)),
         )
         .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
@@ -835,6 +1082,31 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build GraphQL schema
+    // let graphql_schema = build_schema(Arc::new(pool.clone()));
+    // tracing::info!("GraphQL schema initialized");
+
+    // GraphQL handler
+    // async fn graphql_handler(
+    //     State(schema): State<AppSchema>,
+    //     req: GraphQLRequest,
+    // ) -> GraphQLResponse {
+    //     schema.execute(req.into_inner()).await.into()
+    // }
+
+    // GraphQL Playground handler
+    // async fn graphql_playground() -> impl IntoResponse {
+    //     Html(playground_source(
+    //         async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
+    //     ))
+    // }
+
+    // Build GraphQL routes
+    // let graphql_routes = Router::new()
+    //     .route("/graphql", post(graphql_handler))
+    //     .route("/graphql/playground", get(graphql_playground))
+    //     .with_state(graphql_schema);
+
     // Build achievements / quests routes
     let achievements_routes = Router::new()
         .nest(
@@ -847,8 +1119,55 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
-    // Build API analytics routes
-    let api_analytics_routes = api_analytics::routes(db.clone())
+    // Build API analytics routes (ADMIN - IP whitelisted)
+    let api_analytics_routes = Router::new()
+        .merge(api_analytics::routes(db.clone()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
+    // Build cache stats routes (ADMIN - IP whitelisted)
+    let cache_routes = Router::new()
+        .merge(cache_stats::routes(Arc::clone(&cache)))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
+    // Build pool metrics route (ADMIN - IP whitelisted)
+    let admin_db_routes = Router::new()
+        .route("/api/db/pool-metrics", get(pool_metrics))
+        .with_state(app_state.clone())
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    ip_whitelist_config.clone(),
+                    ip_whitelist_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
     // Build governance routes
     let governance_routes = Router::new()
         .nest(
@@ -873,17 +1192,104 @@ async fn main() -> Result<()> {
         )))
         .layer(cors.clone());
 
+    // Build verification rewards routes
+    let verification_routes = Router::new()
+        .nest(
+            "/api/verifications",
+            verification_rewards::routes(
+                Arc::clone(&verification_rewards_service),
+                Arc::clone(&sep10_service),
+            ),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )));
+
+    // Build asset verification routes
+    let asset_verification_routes = Router::new()
+        .nest("/api/assets", asset_verification::routes(pool.clone()))
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )));
+
+    // Build GDPR routes (temporarily disabled)
+    /*
+    let gdpr_routes = Router::new()
+        .route("/api/gdpr/consents", get(gdpr_handlers::get_consents))
+        .route("/api/gdpr/consents", put(gdpr_handlers::update_consent))
+        .route(
+            "/api/gdpr/consents/batch",
+            put(gdpr_handlers::batch_update_consents),
+        )
+        .route("/api/gdpr/export", get(gdpr_handlers::get_export_requests))
+        .route(
+            "/api/gdpr/export",
+            post(gdpr_handlers::create_export_request),
+        )
+        .route(
+            "/api/gdpr/export/:id",
+            get(gdpr_handlers::get_export_request),
+        )
+        .route(
+            "/api/gdpr/export-types",
+            get(gdpr_handlers::get_exportable_types),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            get(gdpr_handlers::get_deletion_requests),
+        )
+        .route(
+            "/api/gdpr/deletion",
+            post(gdpr_handlers::create_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id",
+            get(gdpr_handlers::get_deletion_request),
+        )
+        .route(
+            "/api/gdpr/deletion/:id/cancel",
+            post(gdpr_handlers::cancel_deletion),
+        )
+        .route(
+            "/api/gdpr/deletion/confirm",
+            post(gdpr_handlers::confirm_deletion),
+        )
+        .route("/api/gdpr/summary", get(gdpr_handlers::get_gdpr_summary))
+        .with_state(Arc::clone(&gdpr_service))
+        .layer(cors.clone());
+    */
+
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
 
     // Build WebSocket routes
-    let ws_routes = Router::new()
+    let websocket_routes = Router::new()
         .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
 
+    let alert_ws_routes = Router::new()
+        .route(
+            "/ws/alerts",
+            get(stellar_insights_backend::alert_handlers::alert_websocket_handler),
+        )
+        .with_state(Arc::clone(&alert_manager))
+        .layer(cors.clone());
+
+    let export_routes = Router::new()
+        .route("/api/export/corridors", get(stellar_insights_backend::api::export::export_corridors))
+        .route("/api/export/anchors", get(stellar_insights_backend::api::export::export_anchors))
+        .route("/api/export/payments", get(stellar_insights_backend::api::export::export_payments))
+        .with_state(app_state.clone())
+        .layer(cors.clone());
+
     let app = Router::new()
+        .route("/metrics", get(obs_metrics::metrics_handler))
+        .route("/api/elk/health", get(elk_health::elk_health_check))
+        .route("/api/elk/metrics", get(elk_health::logging_metrics))
         .merge(swagger_routes)
         .merge(auth_routes)
         .merge(oauth_routes)
@@ -894,7 +1300,7 @@ async fn main() -> Result<()> {
         .merge(rpc_routes)
         .merge(fee_bump_routes)
         .merge(account_merge_routes)
-        .merge(lp_routes)
+        .merge(liquidity_pool_routes)
         .merge(price_routes)
         .merge(cost_calculator_routes)
         .merge(trustline_routes)
@@ -904,14 +1310,24 @@ async fn main() -> Result<()> {
         .merge(api_analytics_routes)
         .merge(cache_routes)
         .merge(metrics_routes)
+        // .merge(graphql_routes) // Add GraphQL routes
+        .merge(admin_db_routes)
         .merge(verification_routes)
+        .merge(asset_verification_routes)
+        // .merge(gdpr_routes)
         .merge(api_key_routes)
-        .merge(ws_routes)
+        .merge(websocket_routes)
+        .merge(alert_ws_routes)
+        .merge(export_routes)
+
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
         ))
-        .layer(compression);
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
+        .layer(middleware::from_fn(request_id_middleware))
+        .layer(compression); // Apply compression to all routes
 
     // Start server
     let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
@@ -919,6 +1335,10 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
 
     tracing::info!("Server starting on {}", addr);
+    tracing::info!(
+        "GraphQL Playground available at http://{}/graphql/playground",
+        addr
+    );
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     // Clone resources needed for shutdown
@@ -974,6 +1394,8 @@ async fn main() -> Result<()> {
     log_shutdown_summary(shutdown_start);
 
     tracing::info!("Graceful shutdown complete");
+
+    obs_tracing::shutdown_tracing();
 
     Ok(())
 }

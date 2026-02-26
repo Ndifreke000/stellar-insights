@@ -1,0 +1,413 @@
+    Checking stellar-insights-backend v0.1.0 (/home/emeka/Documents/jj/stellar-insights/backend)
+error: set `DATABASE_URL` to use query macros online, or run `cargo sqlx prepare` to update the query cache
+   --> src/webhooks/mod.rs:132:9
+    |
+132 | /         sqlx...
+133 | |             r#"
+134 | |             ...
+135 | |             ...
+...   |
+144 | |             now
+145 | |         )
+    | |_________^
+    |
+    = note: this error originates in the macro `$crate::sqlx_macros::expand_query` which comes from the expansion of the macro `sqlx::query` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused import: `tokio::sync::broadcast`
+ --> src/alert_handlers.rs:7:5
+  |
+7 | use tokio::sync::broadcast;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Alert`
+ --> src/alert_handlers.rs:9:21
+  |
+9 | ...::{Alert, A...
+  |       ^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> src/alerts.rs:2:5
+  |
+2 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `crate::models::Anchor`
+ --> src/api/anchors.rs:1:5
+  |
+1 | use crate::models::Anchor;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::services::stellar_toml::StellarTomlClient`
+ --> src/api/anchors.rs:2:5
+  |
+2 | use c...omlClient;
+  |     ^...^^^^^^^^^
+
+warning: unused import: `crate::state::AppState`
+ --> src/api/anchors.rs:3:5
+  |
+3 | use crate::state::AppState;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `IntoResponse`, `Json`, and `StatusCode`
+ --> src/api/anchors_cached.rs:3:23
+  |
+3 |     http::{HeaderMap, StatusCode},
+  |                       ^^^^^^^^^^
+4 |     response::{IntoResponse, Respon...
+  |                ^^^^^^^^^^^^
+5 |     Json,
+  |     ^^^^
+
+warning: unused import: `Mutex`
+ --> src/api/anchors_cached.rs:8:22
+  |
+8 | ...c, Mutex, O...
+  |       ^^^^^
+
+warning: unused import: `Mutex`
+ --> src/api/corridors_cached.rs:8:22
+  |
+8 | ...c, Mutex, O...
+  |       ^^^^^
+
+warning: unused import: `anyhow::anyhow`
+  --> src/api/corridors_cached.rs:11:5
+   |
+11 | use anyhow::anyhow;
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `Serialize`
+ --> src/api/transactions.rs:7:26
+  |
+7 | ...e, Serialize};
+  |       ^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> src/api/transactions.rs:8:5
+  |
+8 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `Signature` and `database::Database`
+  --> src/api/transactions.rs:12:5
+   |
+12 |     database::Database,
+   |     ^^^^^^^^^^^^^^^^^^
+13 |     models::{PendingTransaction, PendingTransactionWithSignatures, Signature, T...
+   |                                                                    ^^^^^^^^^
+
+warning: unused import: `response::Response`
+ --> src/api/api_analytics.rs:3:5
+  |
+3 |     response::Response,
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::net::TcpStream`
+ --> src/logging.rs:1:5
+  |
+1 | use std::net::TcpStream;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Context`
+ --> src/ingestion/mod.rs:4:14
+  |
+4 | ...::{Context, R...
+  |       ^^^^^^^
+
+warning: unused import: `crate::api::corridors_cached::CorridorResponse`
+ --> src/monitor.rs:6:5
+  |
+6 | use c...rResponse;
+  |     ^...^^^^^^^^^
+
+warning: unused import: `PaymentRecord`
+ --> src/services/realtime_broadcaster.rs:4:50
+  |
+4 | ...s, PaymentRecord};
+  |       ^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> src/services/slack_bot.rs:3:5
+  |
+3 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `Serialize`
+ --> src/vault/client.rs:1:26
+  |
+1 | ...e, Serialize};
+  |       ^^^^^^^^^
+
+warning: unused import: `Mutex`
+ --> src/rpc/error.rs:2:22
+  |
+2 | ...c, Mutex};
+  |       ^^^^^
+
+warning: unused import: `Instant`
+ --> src/rpc/error.rs:3:27
+  |
+3 | ...n, Instant};
+  |       ^^^^^^^
+
+warning: unused import: `CircuitBreakerConfig`
+ --> src/rpc/stellar.rs:6:51
+  |
+6 | ...r, CircuitBreakerConfig};
+  |       ^^^^^^^^^^^^^^^^^^^^
+
+error[E0624]: method `send_digest` is private
+  --> src/api/digest.rs:25:21
+   |
+25 | ...er.send_digest(&r...
+   |       ^^^^^^^^^^^ private method
+   |
+  ::: src/email/scheduler.rs:50:5
+   |
+50 |     ...Result<()> {
+   |     ...---------- private method defined here
+
+error[E0382]: borrow of moved value: `user_id`
+    --> src/api/oauth.rs:152:56
+     |
+ 119 | ...et user_id = service
+     |       ------- move occurs because `user_id` has type `String`, which does not implement the `Copy` trait
+...
+ 126 | ...   .bind(user_id)
+     |             ------- value moved here
+...
+ 152 | ...           .get_authorization(&request.client_id, &user_id)
+     |                                                      ^^^^^^^^ value borrowed here after move
+     |
+     = note: borrow occurs due to deref coercion to `str`
+note: deref defined here
+    --> /home/emeka/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/string.rs:2792:5
+     |
+2792 |     type Target = ...
+     |     ^^^^^^^^^^^
+     = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-11779453411698311564.txt'
+     = note: consider using `--verbose` to print the full type name to the console
+help: consider borrowing `user_id`
+     |
+ 126 |         .bind(&user_id)
+     |               +
+
+error[E0382]: use of moved value: `client_id`
+   --> src/auth/oauth.rs:128:13
+    |
+108 | ...et client_id = Uu...
+    |       --------- move occurs because `client_id` has type `String`, which does not implement the `Copy` trait
+...
+122 | ...bind(client_id)
+    |         --------- value moved here
+...
+128 | ...k((client_id, cli...
+    |       ^^^^^^^^^ value used here after move
+    |
+    = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-11779453411698311564.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider borrowing `client_id`
+    |
+122 |         .bind(&client_id)
+    |               +
+
+error[E0599]: no method named `hour` found for struct `DateTime<...>` in the current scope
+   --> src/email/scheduler.rs:35:65
+    |
+ 35 | ...ow.hour() ...
+    |       ^^^^
+    |
+   ::: /home/emeka/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.43/src/traits.rs:285:8
+    |
+285 | ...fn hour(&s...
+    |       ---- the method is available for `chrono::DateTime<Utc>` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+    = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-5717388979213887288.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: trait `Timelike` which provides `hour` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use chrono::Timelike;
+    |
+help: there is a method `hour12` with a similar name
+    |
+ 35 |             if now.weekday().num_days_from_monday() == 0 && now.hour12() == 9 {
+    |                                                                     ++
+
+error[E0599]: no method named `hour` found for struct `DateTime<...>` in the current scope
+   --> src/email/scheduler.rs:42:38
+    |
+ 42 | ...ow.hour() ...
+    |       ^^^^
+    |
+   ::: /home/emeka/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.43/src/traits.rs:285:8
+    |
+285 | ...fn hour(&s...
+    |       ---- the method is available for `chrono::DateTime<Utc>` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+    = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-5717388979213887288.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: trait `Timelike` which provides `hour` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use chrono::Timelike;
+    |
+help: there is a method `hour12` with a similar name
+    |
+ 42 |             if now.day() == 1 && now.hour12() == 9 {
+    |                                          ++
+
+error[E0308]: mismatched types
+   --> src/rpc/stellar.rs:510:45
+    |
+510 | ...   with_retry(operation, retry_config, self.circuit_breaker.clone()).a...
+    |       ----------                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Arc<CircuitBreaker>`, found `Arc<Mutex<CircuitBreaker>>`
+    |       |
+    |       arguments to this function are incorrect
+    |
+    = note: expected struct `Arc<CircuitBreaker>`
+               found struct `Arc<std::sync::Mutex<CircuitBreaker>>`
+note: function defined here
+   --> src/rpc/error.rs:98:14
+    |
+ 98 | pub async fn with_retry<F, Fut, T>(
+    |              ^^^^^^^^^^
+...
+101 |    ...uitBreaker>,
+    |    ...-----------
+
+error[E0382]: borrow of moved value: `response`
+   --> src/services/slack_bot.rs:98:69
+    |
+ 89 | ...et response = self.http_client
+    |       -------- move occurs because `response` has type `Response`, which does not implement the `Copy` trait
+...
+ 97 | ...   let error_text = response.text().await.unwrap_or_default();
+    |                                 ------ `response` moved due to this method call
+ 98 | ...   anyhow::bail!("Slack API returned error status {}: {}", response.st...
+    |                                                               ^^^^^^^^ value borrowed here after move
+    |
+note: `reqwest::Response::text` takes ownership of the receiver `self`, which moves `response`
+   --> /home/emeka/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-0.13.2/src/async_impl/response.rs:163:23
+    |
+163 | ...xt(self) -...
+    |       ^^^^
+    = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-6131772160320255712.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0599]: no method named `is_retryable` found for reference `&RpcError` in the current scope
+  --> src/rpc/circuit_breaker.rs:75:25
+   |
+75 | ... e.is_retryable() ...
+   |       ^^^^^^^^^^^^ method not found in `&RpcError`
+   |
+   = note: the full name for the type has been written to '/home/emeka/Documents/jj/stellar-insights/backend/target/debug/deps/stellar_insights_backend-1c98e76f97bd85b3.long-type-18293376799668758481.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+
+error[E0308]: mismatched types
+    --> src/rpc/stellar.rs:1300:13
+     |
+1243 | ...   with_retry(
+     |       ---------- arguments to this function are incorrect
+...
+1300 | ...       ...er.clone(),
+     |           ...^^^^^^^^^^ expected `Arc<CircuitBreaker>`, found `Arc<Mutex<CircuitBreaker>>`
+     |
+     = note: expected struct `Arc<CircuitBreaker>`
+                found struct `Arc<std::sync::Mutex<CircuitBreaker>>`
+note: function defined here
+    --> src/rpc/error.rs:98:14
+     |
+  98 | pub async fn with_retry<F, Fut, T>(
+     |              ^^^^^^^^^^
+...
+ 101 |   ...cuitBreaker>,
+     |   ...------------
+
+error[E0308]: mismatched types
+   --> src/api/v1/mod.rs:63:28
+    |
+ 63 | ...  .nest("/webhooks", we...clone()))
+    |       ----              ^^...^^^^^^^^ expected `Router<AppState>`, found `Router`
+    |       |
+    |       arguments to this method are incorrect
+    |
+    = note: expected struct `Router<AppState>`
+               found struct `Router<()>`
+note: method defined here
+   --> /home/emeka/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.7.9/src/routing/mod.rs:195:12
+    |
+195 | ...fn nest(se...
+    |       ^^^^
+
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+   --> src/rpc/stellar.rs:389:51
+    |
+389 | ...ew(CircuitBreaker::new(cb_config)));
+    |       ^^^^^^^^^^^^^^^^^^^----------- argument #2 is missing
+    |
+note: associated function defined here
+   --> src/rpc/circuit_breaker.rs:49:12
+    |
+ 49 | ...fn new(config: CircuitBreakerConfig, endpoint: impl Into<String>) -...
+    |       ^^^                               ---------------------------
+help: provide the argument
+    |
+389 |         let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config, /* endpoint */)));
+    |                                                                                ++++++++++++++++
+
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+   --> src/rpc/stellar.rs:434:51
+    |
+434 | ...ew(CircuitBreaker::new(cb_config)));
+    |       ^^^^^^^^^^^^^^^^^^^----------- argument #2 is missing
+    |
+note: associated function defined here
+   --> src/rpc/circuit_breaker.rs:49:12
+    |
+ 49 | ...fn new(config: CircuitBreakerConfig, endpoint: impl Into<String>) -...
+    |       ^^^                               ---------------------------
+help: provide the argument
+    |
+434 |         let circuit_breaker = Arc::new(Mutex::new(CircuitBreaker::new(cb_config, /* endpoint */)));
+    |                                                                                ++++++++++++++++
+
+warning: unused variable: `payments`
+   --> src/api/anchors_cached.rs:138:17
+    |
+138 | ...et payments = ...
+    |       ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payments`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `payments`
+   --> src/api/corridors_cached.rs:333:17
+    |
+333 | ...et payments = ...
+    |       ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payments`
+
+warning: unused variable: `code`
+   --> src/api/oauth.rs:139:17
+    |
+139 | ...et code = ...
+    |       ^^^^ help: if this is intentional, prefix it with an underscore: `_code`
+
+warning: unused variable: `db`
+   --> src/jobs/scheduler.rs:100:17
+    |
+100 | ...et db = ...
+    |       ^^ help: if this is intentional, prefix it with an underscore: `_db`
+
+warning: unused variable: `rpc`
+   --> src/jobs/scheduler.rs:102:17
+    |
+102 | ...et rpc = ...
+    |       ^^^ help: if this is intentional, prefix it with an underscore: `_rpc`
+
+Some errors have detailed explanations: E0061, E0308, E0382, E0599, E0624.
+For more information about an error, try `rustc --explain E0061`.
+warning: `stellar-insights-backend` (lib) generated 28 warnings
+error: could not compile `stellar-insights-backend` (lib) due to 13 previous errors; 28 warnings emitted

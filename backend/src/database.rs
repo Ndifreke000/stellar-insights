@@ -1,8 +1,11 @@
 use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+use sqlx::{ConnectOptions, SqlitePool};
+use std::str::FromStr;
 use std::time::Duration;
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::analytics::compute_anchor_metrics;
@@ -36,6 +39,70 @@ impl Default for PoolConfig {
     }
 }
 
+/// SQL query logging configuration
+#[derive(Debug, Clone)]
+pub struct SqlLogConfig {
+    /// Log level for statements (trace, debug, info, warn, error, off)
+    pub level: log::LevelFilter,
+    /// In development: log all queries. In production: log only slow queries.
+    pub log_all_in_dev: bool,
+    /// Slow query threshold (ms); only used when log_all_in_dev is false.
+    pub slow_query_threshold_ms: u64,
+}
+
+impl Default for SqlLogConfig {
+    fn default() -> Self {
+        Self {
+            level: log::LevelFilter::Debug,
+            log_all_in_dev: true,
+            slow_query_threshold_ms: 100,
+        }
+    }
+}
+
+impl SqlLogConfig {
+    /// Load from environment:
+    /// - RUST_ENV or ENVIRONMENT: "development" => log all queries, else log only slow
+    /// - DB_LOG_LEVEL: trace | debug | info | warn | error | off (default: debug in dev, info in prod)
+    /// - DB_SLOW_QUERY_MS: threshold in ms for slow query logging in production (default: 100)
+    pub fn from_env() -> Self {
+        let env_mode = std::env::var("RUST_ENV")
+            .or_else(|_| std::env::var("ENVIRONMENT"))
+            .unwrap_or_else(|_| "development".to_string());
+        let is_dev = env_mode.to_lowercase() == "development" || env_mode.to_lowercase() == "dev";
+
+        let level = parse_db_log_level(is_dev);
+        let slow_query_threshold_ms = std::env::var("DB_SLOW_QUERY_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100);
+
+        Self {
+            level,
+            log_all_in_dev: is_dev,
+            slow_query_threshold_ms,
+        }
+    }
+}
+
+fn parse_db_log_level(is_dev: bool) -> log::LevelFilter {
+    let default = if is_dev {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+    let s = std::env::var("DB_LOG_LEVEL").unwrap_or_else(|_| String::new());
+    match s.to_uppercase().as_str() {
+        "TRACE" => log::LevelFilter::Trace,
+        "DEBUG" => log::LevelFilter::Debug,
+        "INFO" => log::LevelFilter::Info,
+        "WARN" | "WARNING" => log::LevelFilter::Warn,
+        "ERROR" => log::LevelFilter::Error,
+        "OFF" | "NONE" => log::LevelFilter::Off,
+        _ => default,
+    }
+}
+
 impl PoolConfig {
     /// Load pool configuration from environment variables
     pub fn from_env() -> Self {
@@ -63,15 +130,42 @@ impl PoolConfig {
         }
     }
 
-    /// Create a configured SQLite pool with these settings
+    /// Create a configured SQLite pool with these settings.
+    /// Uses WAL journal mode and configurable SQL query logging (all in dev, slow-only in prod).
     pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let sql_log = SqlLogConfig::from_env();
+
+        let mut opts: SqliteConnectOptions = database_url
+            .parse()
+            .map_err(|e: sqlx::Error| anyhow::anyhow!("Invalid DATABASE_URL: {}", e))?;
+
+        opts = opts.journal_mode(SqliteJournalMode::Wal);
+
+        if sql_log.level != log::LevelFilter::Off {
+            if sql_log.log_all_in_dev {
+                opts = opts.log_statements(sql_log.level);
+                tracing::info!(
+                    "SQL query logging: all queries at level {:?} (development)",
+                    sql_log.level
+                );
+            } else {
+                let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
+                opts = opts.log_slow_statements(sql_log.level, threshold);
+                tracing::info!(
+                    "SQL query logging: slow queries only (> {} ms) at level {:?} (production)",
+                    sql_log.slow_query_threshold_ms,
+                    sql_log.level
+                );
+            }
+        }
+
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
             .acquire_timeout(Duration::from_secs(self.connect_timeout_seconds))
             .idle_timeout(Some(Duration::from_secs(self.idle_timeout_seconds)))
             .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
-            .connect(database_url)
+            .connect_with(opts)
             .await?;
 
         Ok(pool)
@@ -118,7 +212,10 @@ pub struct Database {
 impl Database {
     pub fn new(pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
-        Self { pool, admin_audit_logger }
+        Self {
+            pool,
+            admin_audit_logger,
+        }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -138,6 +235,28 @@ impl Database {
     }
 
     // Anchor operations
+
+    /// Creates a new anchor in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `req` - Anchor creation request containing name, stellar_account, and home_domain
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Anchor)` - Newly created anchor with generated UUID
+    /// * `Err(_)` - Database insertion failed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let req = CreateAnchorRequest {
+    ///     name: "Example Anchor".to_string(),
+    ///     stellar_account: "GBRPYHIL...".to_string(),
+    ///     home_domain: Some("example.com".to_string()),
+    /// };
+    /// let anchor = db.create_anchor(req).await?;
+    /// ```
     pub async fn create_anchor(&self, req: CreateAnchorRequest) -> Result<Anchor> {
         let id = Uuid::new_v4().to_string();
         let anchor = sqlx::query_as::<_, Anchor>(
@@ -157,6 +276,33 @@ impl Database {
         Ok(anchor)
     }
 
+    /// Retrieves an anchor by its unique identifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The UUID of the anchor to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(Anchor))` - Anchor found and returned
+    /// * `Ok(None)` - No anchor exists with the given ID
+    /// * `Err(_)` - Database query failed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let anchor_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
+    /// let anchor = db.get_anchor_by_id(anchor_id).await?;
+    ///
+    /// match anchor {
+    ///     Some(a) => println!("Found anchor: {}", a.name),
+    ///     None => println!("Anchor not found"),
+    /// }
+    /// ```
+    ///
+    /// # Performance
+    ///
+    /// Indexed query on primary key, typically <1ms.
     pub async fn get_anchor_by_id(&self, id: Uuid) -> Result<Option<Anchor>> {
         let anchor = sqlx::query_as::<_, Anchor>(
             r#"
@@ -170,6 +316,24 @@ impl Database {
         Ok(anchor)
     }
 
+    /// Retrieves an anchor by its Stellar account address.
+    ///
+    /// # Arguments
+    ///
+    /// * `stellar_account` - The Stellar public key (G-address) of the anchor
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(Anchor))` - Anchor found with this account
+    /// * `Ok(None)` - No anchor exists with this account
+    /// * `Err(_)` - Database query failed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let account = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
+    /// let anchor = db.get_anchor_by_stellar_account(account).await?;
+    /// ```
     pub async fn get_anchor_by_stellar_account(
         &self,
         stellar_account: &str,
@@ -186,7 +350,32 @@ impl Database {
         Ok(anchor)
     }
 
+    /// Lists all anchors with pagination, sorted by reliability score.
+    ///
+    /// # Arguments
+    ///
+    /// * `limit` - Maximum number of anchors to return
+    /// * `offset` - Number of anchors to skip (for pagination)
+    ///
+    /// # Returns
+    ///
+    /// Vector of anchors sorted by reliability_score DESC, then updated_at DESC.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Get first page (10 anchors)
+    /// let anchors = db.list_anchors(10, 0).await?;
+    ///
+    /// // Get second page
+    /// let anchors = db.list_anchors(10, 10).await?;
+    /// ```
+    ///
+    /// # Performance
+    ///
+    /// Query is indexed and metrics are recorded. Typical response time <10ms for limit ≤ 100.
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
+        let start = Instant::now();
         let anchors = sqlx::query_as::<_, Anchor>(
             r#"
             SELECT * FROM anchors
@@ -199,9 +388,53 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
+        crate::observability::metrics::observe_db_query(
+            "list_anchors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(anchors)
     }
 
+    /// Updates anchor metrics and records history.
+    ///
+    /// Computes reliability score and status from transaction metrics, updates the anchor,
+    /// and records a history entry for trend analysis.
+    ///
+    /// # Arguments
+    ///
+    /// * `anchor_id` - UUID of the anchor to update
+    /// * `total_transactions` - Total number of transactions processed
+    /// * `successful_transactions` - Number of successful transactions
+    /// * `failed_transactions` - Number of failed transactions
+    /// * `avg_settlement_time_ms` - Average settlement time in milliseconds (optional)
+    /// * `volume_usd` - Total volume in USD (optional, preserves existing if None)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Anchor)` - Updated anchor with new metrics
+    /// * `Err(_)` - Database update failed or anchor not found
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let updated = db.update_anchor_metrics(
+    ///     anchor_id,
+    ///     1000,  // total
+    ///     980,   // successful
+    ///     20,    // failed
+    ///     Some(2500),  // avg settlement time
+    ///     Some(1_000_000.0),  // volume
+    /// ).await?;
+    ///
+    /// println!("New reliability score: {}", updated.reliability_score);
+    /// ```
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates anchor's `updated_at` timestamp
+    /// - Records entry in `anchor_metrics_history` table
+    /// - Computes and updates reliability_score and status
     pub async fn update_anchor_metrics(
         &self,
         anchor_id: Uuid,
@@ -265,6 +498,37 @@ impl Database {
     }
 
     // Asset operations
+
+    /// Creates a new asset or updates existing asset's anchor association.
+    ///
+    /// Uses UPSERT logic: if an asset with the same code and issuer exists,
+    /// updates its anchor_id and timestamp. Otherwise, creates a new asset.
+    ///
+    /// # Arguments
+    ///
+    /// * `anchor_id` - UUID of the anchor issuing this asset
+    /// * `asset_code` - Asset code (e.g., "USDC", "XLM")
+    /// * `asset_issuer` - Stellar public key of the asset issuer
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Asset)` - Created or updated asset
+    /// * `Err(_)` - Database operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let asset = db.create_asset(
+    ///     anchor_id,
+    ///     "USDC".to_string(),
+    ///     "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+    /// ).await?;
+    /// ```
+    ///
+    /// # Side Effects
+    ///
+    /// - Updates `updated_at` timestamp on conflict
+    /// - May reassign asset to different anchor if already exists
     pub async fn create_asset(
         &self,
         anchor_id: Uuid,
@@ -292,6 +556,25 @@ impl Database {
         Ok(asset)
     }
 
+    /// Retrieves all assets issued by a specific anchor.
+    ///
+    /// # Arguments
+    ///
+    /// * `anchor_id` - UUID of the anchor
+    ///
+    /// # Returns
+    ///
+    /// Vector of assets sorted alphabetically by asset_code.
+    /// Returns empty vector if anchor has no assets.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let assets = db.get_assets_by_anchor(anchor_id).await?;
+    /// for asset in assets {
+    ///     println!("{}: {}", asset.asset_code, asset.asset_issuer);
+    /// }
+    /// ```
     pub async fn get_assets_by_anchor(&self, anchor_id: Uuid) -> Result<Vec<Asset>> {
         let assets = sqlx::query_as::<_, Asset>(
             r#"
@@ -304,6 +587,75 @@ impl Database {
         .await?;
 
         Ok(assets)
+    }
+
+    /// Retrieves assets for multiple anchors in a single query.
+    ///
+    /// Returns a HashMap mapping anchor_id to their list of assets.
+    /// More efficient than calling `get_assets_by_anchor` multiple times.
+    ///
+    /// # Arguments
+    ///
+    /// * `anchor_ids` - Slice of anchor UUIDs to fetch assets for
+    ///
+    /// # Returns
+    ///
+    /// HashMap where keys are anchor_id strings and values are vectors of assets.
+    /// Anchors with no assets are not included in the map.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let anchor_ids = vec![anchor1_id, anchor2_id, anchor3_id];
+    /// let assets_map = db.get_assets_by_anchors(&anchor_ids).await?;
+    ///
+    /// for (anchor_id, assets) in assets_map {
+    ///     println!("Anchor {} has {} assets", anchor_id, assets.len());
+    /// }
+    /// ```
+    ///
+    /// # Performance
+    ///
+    /// Uses dynamic SQL with IN clause. Efficient for batch operations.
+    /// Returns empty HashMap if anchor_ids is empty.
+    pub async fn get_assets_by_anchors(
+        &self,
+        anchor_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<String, Vec<Asset>>> {
+        if anchor_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let anchor_id_strs: Vec<String> = anchor_ids.iter().map(|id| id.to_string()).collect();
+        let placeholders = anchor_id_strs
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let query_str = format!(
+            "SELECT * FROM assets WHERE anchor_id IN ({}) ORDER BY anchor_id, asset_code ASC",
+            placeholders
+        );
+
+        let mut query = sqlx::query_as::<_, Asset>(&query_str);
+        for id in &anchor_id_strs {
+            query = query.bind(id);
+        }
+
+        let assets = query.fetch_all(&self.pool).await?;
+
+        let mut result: std::collections::HashMap<String, Vec<Asset>> =
+            std::collections::HashMap::new();
+        for asset in assets {
+            result
+                .entry(asset.anchor_id.clone())
+                .or_insert_with(Vec::new)
+                .push(asset);
+        }
+
+        Ok(result)
     }
 
     pub async fn count_assets_by_anchor(&self, anchor_id: Uuid) -> Result<i64> {
@@ -461,6 +813,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<crate::models::corridor::Corridor>> {
+        let start = Instant::now();
         let records = sqlx::query_as::<_, CorridorRecord>(
             r#"
             SELECT * FROM corridors ORDER BY reliability_score DESC LIMIT $1 OFFSET $2
@@ -471,7 +824,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(records
+        let corridors = records
             .into_iter()
             .map(|r| {
                 crate::models::corridor::Corridor::new(
@@ -481,7 +834,13 @@ impl Database {
                     r.destination_asset_issuer,
                 )
             })
-            .collect())
+            .collect::<Vec<_>>();
+        crate::observability::metrics::observe_db_query(
+            "list_corridors",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
+        Ok(corridors)
     }
 
     pub async fn get_corridor_by_id(
@@ -656,6 +1015,7 @@ impl Database {
     }
 
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
+        let start = Instant::now();
         for payment in payments {
             sqlx::query(
                 r#"
@@ -679,6 +1039,11 @@ impl Database {
             .execute(&self.pool)
             .await?;
         }
+        crate::observability::metrics::observe_db_query(
+            "save_payments",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
         Ok(())
     }
 
@@ -872,7 +1237,7 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         let status = "pending";
 
-        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+        let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
             INSERT INTO pending_transactions (id, source_account, xdr, required_signatures, status)
             VALUES ($1, $2, $3, $4, $5)
@@ -887,14 +1252,14 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(tx)
+        Ok(pending_transaction)
     }
 
     pub async fn get_pending_transaction(
         &self,
         id: &str,
     ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
-        let tx = sqlx::query_as::<_, crate::models::PendingTransaction>(
+        let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
             r#"
             SELECT * FROM pending_transactions WHERE id = $1
             "#,
@@ -903,7 +1268,7 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(transaction) = tx {
+        if let Some(transaction) = pending_transaction {
             let signatures = sqlx::query_as::<_, crate::models::Signature>(
                 r#"
                 SELECT * FROM transaction_signatures WHERE transaction_id = $1

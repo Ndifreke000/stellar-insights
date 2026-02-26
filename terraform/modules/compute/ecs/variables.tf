@@ -84,9 +84,27 @@ variable "max_size" {
   }
 }
 
-variable "instance_type" {
-  description = "EC2 instance type (t3.micro, t3.small, t3.medium, t3.large)"
+variable "launch_type" {
+  description = "ECS launch type (EC2 or FARGATE)"
   type        = string
+  default     = "FARGATE"
+
+  validation {
+    condition     = contains(["EC2", "FARGATE"], var.launch_type)
+    error_message = "Launch type must be either EC2 or FARGATE"
+  }
+}
+
+variable "enable_fargate" {
+  description = "Enable Fargate launch type (true for serverless, false for EC2)"
+  type        = bool
+  default     = true
+}
+
+variable "instance_type" {
+  description = "EC2 instance type (t3.micro, t3.small, t3.medium, t3.large) - only used if launch_type is EC2"
+  type        = string
+  default     = "t3.small"
 
   validation {
     condition     = can(regex("^t3\\.(micro|small|medium|large)$", var.instance_type))

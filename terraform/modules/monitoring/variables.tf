@@ -46,3 +46,20 @@ variable "project" {
   type        = string
   default     = "stellar-insights"
 }
+
+variable "enable_cost_alerts" {
+  description = "Enable AWS Budgets cost alerts"
+  type        = bool
+  default     = true
+}
+
+variable "budget_limit" {
+  description = "Monthly budget limit in USD"
+  type        = string
+  default     = "500"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.budget_limit))
+    error_message = "Budget limit must be a positive number"
+  }
+}

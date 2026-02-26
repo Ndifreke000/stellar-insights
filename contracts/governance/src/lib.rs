@@ -3,6 +3,7 @@
 mod errors;
 mod events;
 
+use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{emit_proposal_created, emit_proposal_finalized, emit_vote_cast};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
@@ -30,6 +31,14 @@ pub enum VoteChoice {
     Abstain = 2,
 }
 
+/// Parameter update action for governed contracts (e.g. analytics).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ParameterAction {
+    SetAdmin(Address),
+    SetPaused(bool),
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Proposal {
@@ -37,6 +46,7 @@ pub struct Proposal {
     pub proposer: Address,
     pub title: String,
     pub target_contract: Address,
+    /// For upgrade proposals; zero hash means this is a parameter-update proposal.
     pub new_wasm_hash: BytesN<32>,
     pub status: ProposalStatus,
     pub created_at: u64,
@@ -66,6 +76,8 @@ pub enum DataKey {
     Proposals,
     Votes(u64),
     VoteTally(u64),
+    /// Parameter-update action for a proposal (when present, proposal is parameter type).
+    ParameterAction(u64),
 }
 
 // ============================================================================
@@ -171,6 +183,96 @@ impl GovernanceContract {
             .set(&DataKey::Votes(count), &votes);
 
         // Update proposal count
+        env.storage()
+            .instance()
+            .set(&DataKey::ProposalCount, &count);
+
+        emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
+
+        Ok(count)
+    }
+
+    /// Create a parameter-update proposal (e.g. set admin or paused on analytics). Only the admin can create.
+    pub fn create_parameter_proposal(
+        env: Env,
+        caller: Address,
+        title: String,
+        target_contract: Address,
+        action: ParameterAction,
+    ) -> Result<u64, Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+
+        if title.len() == 0 {
+            return Err(Error::InvalidTitle);
+        }
+
+        let voting_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+
+        let now = env.ledger().timestamp();
+        let voting_ends_at = now + voting_period;
+
+        let mut count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalCount)
+            .unwrap_or(0);
+        count += 1;
+
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let proposal = Proposal {
+            id: count,
+            proposer: caller.clone(),
+            title,
+            target_contract: target_contract.clone(),
+            new_wasm_hash: zero_hash,
+            status: ProposalStatus::Active,
+            created_at: now,
+            voting_ends_at,
+        };
+
+        let mut proposals: Map<u64, Proposal> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposals)
+            .unwrap_or_else(|| Map::new(&env));
+        proposals.set(count, proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposals, &proposals);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ParameterAction(count), &action);
+
+        let tally = VoteTally {
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            total_voters: 0,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::VoteTally(count), &tally);
+
+        let votes: Map<Address, VoteChoice> = Map::new(&env);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Votes(count), &votes);
+
         env.storage()
             .instance()
             .set(&DataKey::ProposalCount, &count);
@@ -316,7 +418,8 @@ impl GovernanceContract {
         Ok(new_status)
     }
 
-    /// Mark a passed proposal as executed. Only the admin can call this.
+    /// Mark a passed proposal as executed and apply it. Only the admin can call this.
+    /// For parameter-update proposals, invokes the target contract (e.g. analytics) to apply the change.
     pub fn mark_executed(env: Env, caller: Address, proposal_id: u64) -> Result<(), Error> {
         caller.require_auth();
 
@@ -341,6 +444,24 @@ impl GovernanceContract {
         if proposal.status != ProposalStatus::Passed {
             return Err(Error::ProposalNotPassed);
         }
+
+        if let Some(action) = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ParameterAction(proposal_id))
+        {
+            let governance = env.current_contract_address();
+            let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+            match action {
+                ParameterAction::SetAdmin(addr) => {
+                    client.set_admin_by_governance(&governance, &addr);
+                }
+                ParameterAction::SetPaused(p) => {
+                    client.set_paused_by_governance(&governance, &p);
+                }
+            }
+        }
+        // Upgrade proposals: execution is off-chain (deploy new WASM); we only mark executed here.
 
         proposal.status = ProposalStatus::Executed;
         proposals.set(proposal_id, proposal);
@@ -383,6 +504,13 @@ impl GovernanceContract {
             .unwrap_or_else(|| Map::new(&env));
 
         votes.contains_key(voter)
+    }
+
+    /// Get the parameter action for a proposal (if it is a parameter-update proposal).
+    pub fn get_parameter_action(env: Env, proposal_id: u64) -> Option<ParameterAction> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ParameterAction(proposal_id))
     }
 
     /// Get contract configuration (admin, quorum, voting_period, proposal_count).

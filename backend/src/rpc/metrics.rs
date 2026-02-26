@@ -10,7 +10,6 @@ lazy_static! {
         &["error_type", "endpoint"]
     )
     .expect("rpc_errors_total metric");
-
     static ref CIRCUIT_BREAKER_STATE: IntGaugeVec = register_int_gauge_vec!(
         "circuit_breaker_state",
         "Circuit breaker state (0=closed, 1=open, 2=half-open)",
@@ -21,9 +20,7 @@ lazy_static! {
 
 /// Record an RPC error for metrics.
 pub fn record_rpc_error(error_type: &str, endpoint: &str) {
-    RPC_ERRORS
-        .with_label_values(&[error_type, endpoint])
-        .inc();
+    RPC_ERRORS.with_label_values(&[error_type, endpoint]).inc();
 }
 
 /// Set circuit breaker state gauge (0=closed, 1=open, 2=half-open).

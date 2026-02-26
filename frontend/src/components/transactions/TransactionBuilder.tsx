@@ -106,7 +106,7 @@ export function TransactionBuilder({ onXdrGenerated }: TransactionBuilderProps) 
       <CardHeader>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-500/10 rounded-lg">
-            <Cpu className="w-6 h-6 text-blue-400" />
+            <Cpu className="w-6 h-6 text-link-primary" />
           </div>
           <div>
             <CardTitle className="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
@@ -155,7 +155,7 @@ export function TransactionBuilder({ onXdrGenerated }: TransactionBuilderProps) 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Label className="text-slate-300 text-lg font-semibold">Operations</Label>
-            <Button onClick={addOperation} variant="outline" size="sm" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+            <Button onClick={addOperation} variant="outline" size="sm" className="border-blue-500/30 text-link-primary hover:bg-blue-500/10">
               <PlusCircle className="w-4 h-4 mr-2" />
               Add Operation
             </Button>

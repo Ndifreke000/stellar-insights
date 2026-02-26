@@ -19,4 +19,6 @@ pub enum Error {
     SnapshotNotFound = 6,
     /// Contract is paused for emergency maintenance
     ContractPaused = 7,
+    /// Epoch must be strictly greater than latest (monotonicity violated)
+    EpochMonotonicityViolated = 8,
 }

@@ -290,7 +290,7 @@ ${responseText}`);
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">API Playground</h1>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-muted-foreground dark:text-gray-300">
           Test our API endpoints directly in your browser. No setup required.
         </p>
       </div>
@@ -330,7 +330,7 @@ ${responseText}`);
                             </Badge>
                             <span className="text-sm font-mono">{endpoint.path}</span>
                           </div>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                          <p className="text-xs text-muted-foreground dark:text-muted-foreground">
                             {endpoint.description}
                           </p>
                         </div>
@@ -402,7 +402,7 @@ ${responseText}`);
                               placeholder={param.default}
                             />
                           )}
-                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                          <p className="text-xs text-muted-foreground dark:text-muted-foreground">
                             {param.description}
                           </p>
                         </div>
@@ -473,9 +473,9 @@ ${responseText}`);
           {!selectedEndpoint && (
             <Card>
               <CardContent className="p-8 text-center">
-                <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium mb-2">Select an Endpoint</h3>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-muted-foreground dark:text-muted-foreground">
                   Choose an endpoint from the left to start testing the API
                 </p>
               </CardContent>

@@ -23,7 +23,7 @@ jobs:
           docker run --rm -v $(pwd):/zap/wrk/:Z owasp/zap2docker-stable zap-baseline.py -t "$TARGET_URL" -r zap-report.html -J zap-report.json || true
 
       - name: Upload ZAP artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: zap-report
           path: |

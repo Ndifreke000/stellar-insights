@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::error::DomainError;
 use crate::http_cache::cached_json_response;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -193,12 +194,12 @@ pub async fn estimate_costs(
 
     let source_usd_rate = match resolve_usd_rate(&price_feed, &source_currency).await {
         Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error),
+        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
     let destination_usd_rate = match resolve_usd_rate(&price_feed, &destination_currency).await {
         Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error),
+        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
     if destination_usd_rate <= 0.0 {
@@ -351,7 +352,10 @@ fn estimate_route(
     }
 }
 
-async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Result<f64, String> {
+async fn resolve_usd_rate(
+    price_feed: &PriceFeedClient,
+    currency: &str,
+) -> Result<f64, DomainError> {
     if currency.contains(':') {
         if let Ok(rate) = price_feed.get_price(currency).await {
             if rate > 0.0 && rate.is_finite() {
@@ -365,7 +369,7 @@ async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Resul
             }
         }
 
-        return Err(format!("Unsupported currency or asset: {currency}"));
+        return Err(DomainError::UnsupportedCurrency(currency.to_string()));
     }
 
     if let Some(asset_id) = price_feed_asset_id(currency) {
@@ -376,7 +380,8 @@ async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Resul
         }
     }
 
-    fallback_usd_rate(currency).ok_or_else(|| format!("Unsupported currency or asset: {currency}"))
+    fallback_usd_rate(currency)
+        .ok_or_else(|| DomainError::UnsupportedCurrency(currency.to_string()))
 }
 
 fn price_feed_asset_id(currency: &str) -> Option<&'static str> {

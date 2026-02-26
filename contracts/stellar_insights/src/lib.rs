@@ -80,6 +80,7 @@ impl StellarInsightsContract {
     /// * `Error::UnauthorizedCaller` - If caller is not the admin
     /// * `Error::InvalidEpoch` - If epoch is 0
     /// * `Error::DuplicateEpoch` - If snapshot already exists for this epoch
+    /// * `Error::EpochMonotonicityViolated` - If epoch <= latest (out-of-order submission)
     ///
     /// # Returns
     /// * Ledger timestamp when the snapshot was recorded
@@ -131,6 +132,16 @@ impl StellarInsightsContract {
             return Err(Error::DuplicateEpoch);
         }
 
+        // Enforce monotonic epoch increase to prevent rollback attacks
+        let current_latest: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+        if epoch <= current_latest {
+            return Err(Error::EpochMonotonicityViolated);
+        }
+
         // Get current ledger timestamp
         let timestamp = env.ledger().timestamp();
 
@@ -147,16 +158,7 @@ impl StellarInsightsContract {
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
 
-        // Update latest epoch if this is newer
-        let current_latest: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::LatestEpoch)
-            .unwrap_or(0);
-
-        if epoch > current_latest {
-            env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
-        }
+        env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
 
         // Emit structured event for off-chain indexing
         // Event payload matches stored data exactly:

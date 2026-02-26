@@ -1,0 +1,42 @@
+filebeat.inputs:
+  - type: container
+    enabled: true
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/stellar-insights/*.log
+    fields:
+      service: stellar-insights
+      log_type: application
+
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+
+output.logstash:
+  hosts: ["logstash:5044"]
+  
+# Alternative: Direct to Elasticsearch
+# output.elasticsearch:
+#   hosts: ["elasticsearch:9200"]
+#   index: "filebeat-%{+yyyy.MM.dd}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

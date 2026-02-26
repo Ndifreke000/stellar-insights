@@ -1,6 +1,6 @@
-use lettre::{Message, SmtpTransport, Transport};
 use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
 
 pub struct EmailService {
     smtp_host: String,
@@ -10,7 +10,11 @@ pub struct EmailService {
 
 impl EmailService {
     pub fn new(smtp_host: String, smtp_user: String, smtp_pass: String) -> Self {
-        Self { smtp_host, smtp_user, smtp_pass }
+        Self {
+            smtp_host,
+            smtp_user,
+            smtp_pass,
+        }
     }
 
     pub fn send_html(&self, to: &str, subject: &str, html: &str) -> anyhow::Result<()> {

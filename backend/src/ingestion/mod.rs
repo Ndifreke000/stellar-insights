@@ -63,7 +63,7 @@ impl DataIngestionService {
         let settlement_times = Vec::new(); // Removed mut as it's never pushed to
 
         for payment in &payments {
-            let amount: f64 = payment.amount.parse().unwrap_or(0.0);
+            let amount: f64 = payment.get_amount().parse().unwrap_or(0.0);
             total_volume += amount;
 
             successful += 1;

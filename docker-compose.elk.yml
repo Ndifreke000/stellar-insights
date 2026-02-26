@@ -7,13 +7,30 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.monitoring.collection.enabled=true
+      - cluster.name=stellar-insights-cluster
+      - node.name=stellar-node-1
     ports:
       - "9200:9200"
+      - "9300:9300"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     networks:
       - elk
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.11.0
@@ -21,17 +38,27 @@ services:
     volumes:
       - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
       - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - logstash_data:/usr/share/logstash/data
     ports:
-      - "5044:5044"
-      - "5000:5000/tcp"
-      - "5000:5000/udp"
-      - "9600:9600"
+      - "5044:5044"  # Beats
+      - "5000:5000"  # TCP JSON
+      - "5001:5001"  # HTTP
+      - "9600:9600"  # Monitoring API
     environment:
-      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+      - "LS_JAVA_OPTS=-Xms512m -Xmx512m"
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=changeme
+      - LOGSTASH_DEBUG=false
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     networks:
       - elk
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
@@ -40,13 +67,53 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME=stellar-kibana
+      - MONITORING_ENABLED=true
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=changeme
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     networks:
       - elk
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+
+  # Optional: Filebeat for log file collection
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: stellar-filebeat
+    user: root
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat_data:/usr/share/filebeat/data
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - KIBANA_HOST=http://kibana:5601
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    networks:
+      - elk
+    command: filebeat -e -strict.perms=false
 
 volumes:
   es_data:
+    driver: local
+  logstash_data:
+    driver: local
+  kibana_data:
+    driver: local
+  filebeat_data:
     driver: local
 
 networks:

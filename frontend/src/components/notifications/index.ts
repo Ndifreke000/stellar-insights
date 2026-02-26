@@ -1,8 +1,10 @@
 export { Toast } from './Toast';
 export { ToastContainer } from './ToastContainer';
 export { NotificationHistory } from './NotificationHistory';
-export { NotificationPreferences } from './NotificationPreferences';
 export { NotificationBell } from './NotificationBell';
+export { NotificationCenter } from './NotificationCenter';
+export { NotificationCenterDemo } from './NotificationCenterDemo';
+export { NotificationPreferences } from './NotificationPreferences';
 export { NotificationSystem } from './NotificationSystem';
 export { ConnectionStatus } from './ConnectionStatus';
 export { ConnectionStatusDemo } from './ConnectionStatusDemo';

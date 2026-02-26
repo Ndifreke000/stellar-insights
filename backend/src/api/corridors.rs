@@ -10,6 +10,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::{Corridor, CorridorMetrics};
 use crate::models::SortBy;
 use crate::state::AppState;
+use crate::validation;
 
 // Response DTOs matching frontend TypeScript interfaces
 
@@ -124,6 +125,13 @@ pub async fn list_corridors(
     State(app_state): State<AppState>,
     Query(params): Query<ListCorridorsQuery>,
 ) -> ApiResult<Json<Vec<CorridorResponse>>> {
+    validation::validate_corridor_filters(
+        params.success_rate_min,
+        params.success_rate_max,
+        params.volume_min,
+        params.volume_max,
+    )?;
+
     let today = Utc::now().date_naive();
 
     // Determine date range based on time_period

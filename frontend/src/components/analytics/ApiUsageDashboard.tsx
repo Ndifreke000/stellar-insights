@@ -143,7 +143,7 @@ export const ApiUsageDashboard: React.FC<ApiUsageDashboardProps> = ({ data }) =>
                                 <tr key={idx} className="border-b border-border/20 hover:bg-white/5 transition-colors">
                                     <td className="py-3 px-2 truncate max-w-[200px]">{ep.endpoint}</td>
                                     <td className="py-3 px-2 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20`}>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-link-primary border border-blue-500/20`}>
                                             {ep.method}
                                         </span>
                                     </td>
