@@ -197,3 +197,9 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
 pub fn shutdown_tracing() {
     opentelemetry::global::shutdown_tracer_provider();
 }
+
+/// Re-export redaction utilities for use throughout the application
+pub use crate::logging::redaction::{
+    redact_account, redact_amount, redact_email, redact_hash, redact_ip, redact_token,
+    redact_user_id, Redacted,
+};

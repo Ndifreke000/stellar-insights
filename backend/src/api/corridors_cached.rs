@@ -373,7 +373,10 @@ pub async fn list_corridors(
             let payments = match rpc_client.fetch_all_payments(Some(1000)).await {
                 Ok(p) => p,
                 Err(e) => {
-                    tracing::error!("Failed to fetch payments from RPC: {}", e);
+                    tracing::error!(
+                        error = %e,
+                        "Failed to fetch payments from RPC"
+                    );
                     return Ok(vec![]);
                 }
             };
@@ -382,7 +385,10 @@ pub async fn list_corridors(
             let _trades = match rpc_client.fetch_all_trades(Some(1000)).await {
                 Ok(t) => t,
                 Err(e) => {
-                    tracing::warn!("Failed to fetch trades from RPC: {}", e);
+                    tracing::warn!(
+                        error = %e,
+                        "Failed to fetch trades from RPC"
+                    );
                     vec![]
                 }
             };
@@ -400,7 +406,10 @@ pub async fn list_corridors(
                         .or_insert_with(Vec::new)
                         .push(payment);
                 } else {
-                    tracing::warn!("Failed to extract asset pair from payment: {}", payment.id);
+                    tracing::warn!(
+                        payment_id = crate::logging::redaction::redact_hash(&payment.id),
+                        "Failed to extract asset pair from payment"
+                    );
                 }
             }
 
@@ -760,7 +769,10 @@ pub async fn get_corridor_detail(
         )
         .await
         .map_err(|e| {
-            tracing::error!("Failed to fetch payments from RPC: {}", e);
+            tracing::error!(
+                error = %e,
+                "Failed to fetch payments from RPC"
+            );
             anyhow::anyhow!("Failed to fetch payment data from RPC")
         })?;
 
