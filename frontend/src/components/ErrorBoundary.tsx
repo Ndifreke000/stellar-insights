@@ -7,6 +7,7 @@ import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
 
 interface State {
@@ -30,8 +31,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo)
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error("ErrorBoundary caught an error:", error, errorInfo)
+    }
+    
     this.setState({ error, errorInfo })
+    
+    // Call optional error callback
+    this.props.onError?.(error, errorInfo)
   }
 
   handleReset = () => {

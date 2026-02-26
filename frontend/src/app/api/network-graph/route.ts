@@ -1,102 +1,115 @@
 import { NextResponse } from 'next/server';
+import {
+  NetworkGraphData,
+  GraphNode,
+  GraphLink,
+  validateNetworkGraphData,
+} from '@/types/network-graph';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/api";
+/**
+ * GET /api/network-graph
+ * Returns network graph data with anchors and assets
+ */
+export async function GET(): Promise<NextResponse<NetworkGraphData>> {
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+    
+    // Fetch anchors and corridors from backend
+    const [anchorsRes, corridorsRes] = await Promise.all([
+      fetch(`${backendUrl}/api/anchors`, { cache: 'no-store' }),
+      fetch(`${backendUrl}/api/corridors`, { cache: 'no-store' }),
+    ]);
 
-interface Anchor {
-    id: string;
-    name: string;
-    stellar_account: string;
-    status: string;
-}
-
-interface Corridor {
-    id: string;
-    source_asset: string;
-    destination_asset: string;
-    health_score: number;
-    liquidity_depth_usd: number;
-}
-
-export async function GET() {
-    try {
-        // 1. Fetch Anchors and Corridors in parallel
-        const [anchorsRes, corridorsRes] = await Promise.all([
-            fetch(`${BACKEND_URL}/anchors`, { cache: 'no-store' }),
-            fetch(`${BACKEND_URL}/corridors`, { cache: 'no-store' })
-        ]);
-
-        if (!anchorsRes.ok || !corridorsRes.ok) {
-            throw new Error('Failed to fetch data from backend');
-        }
-
-        const anchorsData = await anchorsRes.json();
-        const corridors: Corridor[] = await corridorsRes.json();
-        const anchors: Anchor[] = anchorsData.anchors || [];
-
-        // 2. Transform into Nodes and Links
-        const nodes: any[] = [];
-        const links: any[] = [];
-        const assetNodesMap = new Map<string, any>();
-        const anchorNodesMap = new Map<string, any>();
-
-        // Add Anchor nodes
-        anchors.forEach(anchor => {
-            const anchorNode = {
-                id: `anchor-${anchor.id}`,
-                name: anchor.name,
-                type: 'anchor',
-                address: anchor.stellar_account,
-                status: anchor.status,
-                val: 15 // radius/weight
-            };
-            nodes.push(anchorNode);
-            anchorNodesMap.set(anchor.stellar_account, anchorNode);
-        });
-
-        // Extract Asset nodes from corridors
-        corridors.forEach(corridor => {
-            [corridor.source_asset, corridor.destination_asset].forEach(assetStr => {
-                const [code, issuer] = assetStr.split(':');
-                const assetId = `asset-${assetStr}`;
-
-                if (!assetNodesMap.has(assetId)) {
-                    const assetNode = {
-                        id: assetId,
-                        name: code,
-                        fullName: assetStr,
-                        type: 'asset',
-                        issuer: issuer,
-                        val: 10
-                    };
-                    nodes.push(assetNode);
-                    assetNodesMap.set(assetId, assetNode);
-
-                    // Link Asset to its Anchor (Issuer)
-                    if (issuer && issuer !== 'native' && anchorNodesMap.has(issuer)) {
-                        links.push({
-                            source: `anchor-${issuer}`, // Should ideally match anchor id if possible, but address is more reliable for mapping
-                            target: assetId,
-                            type: 'issuance',
-                            value: 1
-                        });
-                    }
-                }
-            });
-
-            // Add Corridor link
-            links.push({
-                source: `asset-${corridor.source_asset}`,
-                target: `asset-${corridor.destination_asset}`,
-                type: 'corridor',
-                health: corridor.health_score,
-                liquidity: corridor.liquidity_depth_usd,
-                value: Math.log10(corridor.liquidity_depth_usd + 1) + 1 // Link weight
-            });
-        });
-
-        return NextResponse.json({ nodes, links });
-    } catch (error) {
-        console.error('Network Graph API Error:', error);
-        return NextResponse.json({ error: 'Failed to fetch graph data' }, { status: 500 });
+    if (!anchorsRes.ok || !corridorsRes.ok) {
+      return NextResponse.json(
+        { nodes: [], links: [] },
+        { status: 500 }
+      );
     }
+
+    const anchors = await anchorsRes.json();
+    const corridors = await corridorsRes.json();
+
+    // Build nodes map for efficient lookup
+    const nodesMap = new Map<string, GraphNode>();
+    const links: GraphLink[] = [];
+
+    // Process anchors into nodes
+    if (Array.isArray(anchors)) {
+      anchors.forEach((anchor: any) => {
+        if (anchor.id && anchor.name) {
+          nodesMap.set(anchor.id, {
+            id: anchor.id,
+            name: anchor.name,
+            type: 'anchor',
+            val: anchor.reliability_score || 50,
+            address: anchor.address,
+            status: anchor.status,
+          });
+        }
+      });
+    }
+
+    // Process corridors into links and asset nodes
+    if (Array.isArray(corridors)) {
+      corridors.forEach((corridor: any) => {
+        if (corridor.source_anchor_id && corridor.destination_anchor_id) {
+          // Create asset node if it doesn't exist
+          const assetId = `${corridor.source_asset_code}_${corridor.source_asset_issuer}`;
+          if (!nodesMap.has(assetId)) {
+            nodesMap.set(assetId, {
+              id: assetId,
+              name: corridor.source_asset_code || 'Unknown',
+              type: 'asset',
+              val: 30,
+              fullName: corridor.source_asset_code,
+              issuer: corridor.source_asset_issuer,
+            });
+          }
+
+          // Create links: source anchor -> asset -> destination anchor
+          links.push({
+            source: corridor.source_anchor_id,
+            target: assetId,
+            type: 'issuance',
+            value: corridor.volume_usd || 0,
+          });
+
+          links.push({
+            source: assetId,
+            target: corridor.destination_anchor_id,
+            type: 'corridor',
+            value: corridor.volume_usd || 0,
+            health: corridor.success_rate,
+            liquidity: corridor.liquidity_score,
+          });
+        }
+      });
+    }
+
+    // Convert map to array
+    const nodes: GraphNode[] = Array.from(nodesMap.values());
+
+    const graphData: NetworkGraphData = {
+      nodes,
+      links,
+    };
+
+    // Validate data before returning
+    if (!validateNetworkGraphData(graphData)) {
+      console.error('Generated invalid network graph data');
+      return NextResponse.json(
+        { nodes: [], links: [] },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(graphData);
+  } catch (error) {
+    console.error('Error fetching network graph data:', error);
+    return NextResponse.json(
+      { nodes: [], links: [] },
+      { status: 500 }
+    );
+  }
 }
