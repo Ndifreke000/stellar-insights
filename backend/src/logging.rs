@@ -1,4 +1,11 @@
+pub mod redaction;
+
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+pub use redaction::{
+    redact_account, redact_amount, redact_email, redact_hash, redact_ip, redact_token,
+    redact_user_id, Redacted,
+};
 
 /// Initializes logging to stdout only. No file output or rotation.
 /// Initialize logging with Logstash integration
@@ -18,7 +25,7 @@ pub fn init_logging() -> anyhow::Result<()> {
         .with(console_layer)
         .init();
 
-    tracing::info!("Logging initialized");
+    tracing::info!("Logging initialized with redaction support");
 
     Ok(())
 }
@@ -72,5 +79,28 @@ macro_rules! log_error {
             context = $context,
             "Error occurred"
         );
+    };
+}
+
+/// Log with automatic redaction of sensitive fields
+/// 
+/// Usage:
+/// ```
+/// log_secure!(info, "Processing payment", 
+///     account = redact_account(&stellar_account),
+///     amount = redact_amount(payment_amount),
+///     user_id = redact_user_id(&user_id)
+/// );
+/// ```
+#[macro_export]
+macro_rules! log_secure {
+    ($level:ident, $msg:expr, $($key:ident = $value:expr),* $(,)?) => {
+        tracing::$level!(
+            $($key = $value,)*
+            $msg
+        );
+    };
+    ($level:ident, $msg:expr) => {
+        tracing::$level!($msg);
     };
 }

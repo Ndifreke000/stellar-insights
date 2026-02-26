@@ -201,7 +201,10 @@ impl AuthService {
                 .await
                 .map_err(|e| anyhow!("Failed to store refresh token: {}", e))?;
 
-            tracing::debug!("Stored refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Stored refresh token for user"
+            );
         } else {
             tracing::warn!("Redis not available, refresh token not stored");
         }
@@ -252,7 +255,10 @@ impl AuthService {
                 .await
                 .map_err(|e| anyhow!("Failed to invalidate refresh token: {}", e))?;
 
-            tracing::debug!("Invalidated refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Invalidated refresh token for user"
+            );
         }
 
         Ok(())

@@ -85,11 +85,19 @@ impl AlertManager {
 
     async fn send_email_alert(&self, user_id: &str, message: &str) {
         // Mocking email dispatcher for brevity 
-        tracing::info!("Sending EMAIL alert to user {}: {}", user_id, message);
+        tracing::info!(
+            user_id = crate::logging::redaction::redact_user_id(user_id),
+            message_len = message.len(),
+            "Sending EMAIL alert to user"
+        );
     }
 
     async fn send_webhook_alert(&self, user_id: &str, history: &AlertHistory) {
         // Mocking webhook dispatcher for brevity
-        tracing::info!("Sending WEBHOOK alert to user {}", user_id);
+        tracing::info!(
+            user_id = crate::logging::redaction::redact_user_id(user_id),
+            alert_type = ?history.alert_type,
+            "Sending WEBHOOK alert to user"
+        );
     }
 }

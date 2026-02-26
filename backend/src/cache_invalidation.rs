@@ -20,7 +20,10 @@ impl CacheInvalidationService {
 
     /// Invalidate specific anchor caches
     pub async fn invalidate_anchor(&self, anchor_id: &str) -> anyhow::Result<()> {
-        tracing::info!("Invalidating cache for anchor: {}", anchor_id);
+        tracing::info!(
+            anchor_id = crate::logging::redaction::redact_user_id(anchor_id),
+            "Invalidating cache for anchor"
+        );
         self.cache.delete(&keys::anchor_detail(anchor_id)).await?;
         self.cache.delete(&keys::anchor_assets(anchor_id)).await?;
         // Also invalidate the list caches since they contain this anchor
@@ -30,7 +33,10 @@ impl CacheInvalidationService {
 
     /// Invalidate anchor by account
     pub async fn invalidate_anchor_by_account(&self, account: &str) -> anyhow::Result<()> {
-        tracing::info!("Invalidating cache for anchor account: {}", account);
+        tracing::info!(
+            account = crate::logging::redaction::redact_account(account),
+            "Invalidating cache for anchor account"
+        );
         self.cache.delete(&keys::anchor_by_account(account)).await?;
         // Also invalidate list caches
         self.cache.delete_pattern(&keys::anchor_pattern()).await?;
