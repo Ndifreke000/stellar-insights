@@ -7,7 +7,7 @@ import {
 } from '@stellar/stellar-sdk';
 import { logger } from '@/lib/logger';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export interface ChallengeRequest {
   account: string;
@@ -54,7 +54,7 @@ export class Sep10AuthService {
   async getInfo(): Promise<Sep10Info> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/info`);
     if (!response.ok) {
-      throw new Error('Failed to fetch SEP-10 info');
+      throw new Error("Failed to fetch SEP-10 info");
     }
     return response.json();
   }
@@ -62,18 +62,20 @@ export class Sep10AuthService {
   /**
    * Request a challenge transaction from the server
    */
-  async requestChallenge(request: ChallengeRequest): Promise<ChallengeResponse> {
+  async requestChallenge(
+    request: ChallengeRequest,
+  ): Promise<ChallengeResponse> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/auth`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to request challenge');
+      throw new Error(error.error || "Failed to request challenge");
     }
 
     return response.json();
@@ -86,10 +88,10 @@ export class Sep10AuthService {
   async signChallenge(
     challengeXdr: string,
     networkPassphrase: string,
-    publicKey: string
+    publicKey: string,
   ): Promise<string> {
     // Try Freighter wallet first
-    if (typeof window !== 'undefined' && (window as any).freighter) {
+    if (typeof window !== "undefined" && (window as any).freighter) {
       try {
         const signedXdr = await (window as any).freighter.signTransaction(
           challengeXdr,
@@ -97,16 +99,16 @@ export class Sep10AuthService {
             network: networkPassphrase,
             networkPassphrase: networkPassphrase,
             accountToSign: publicKey,
-          }
+          },
         );
         return signedXdr;
       } catch (error) {
-        logger.error('Freighter wallet signing failed', error as Error);
+        logger.error("Freighter signing failed:", error);
       }
     }
 
     // Try Albedo wallet
-    if (typeof window !== 'undefined' && (window as any).albedo) {
+    if (typeof window !== "undefined" && (window as any).albedo) {
       try {
         const result = await (window as any).albedo.tx({
           xdr: challengeXdr,
@@ -115,12 +117,12 @@ export class Sep10AuthService {
         });
         return result.signed_envelope_xdr;
       } catch (error) {
-        logger.error('Albedo wallet signing failed', error as Error);
+        logger.error("Albedo signing failed:", error);
       }
     }
 
     // Try xBull wallet
-    if (typeof window !== 'undefined' && (window as any).xBullSDK) {
+    if (typeof window !== "undefined" && (window as any).xBullSDK) {
       try {
         const xBullSDK = (window as any).xBullSDK;
         const result = await xBullSDK.signTransaction({
@@ -130,25 +132,25 @@ export class Sep10AuthService {
         });
         return result;
       } catch (error) {
-        logger.error('xBull wallet signing failed', error as Error);
+        logger.error("xBull signing failed:", error);
       }
     }
 
     // Try Rabet wallet
-    if (typeof window !== 'undefined' && (window as any).rabet) {
+    if (typeof window !== "undefined" && (window as any).rabet) {
       try {
         const result = await (window as any).rabet.sign(
           challengeXdr,
-          networkPassphrase
+          networkPassphrase,
         );
         return result.xdr;
       } catch (error) {
-        logger.error('Rabet wallet signing failed', error as Error);
+        logger.error("Rabet signing failed:", error);
       }
     }
 
     throw new Error(
-      'No compatible Stellar wallet found. Please install Freighter, Albedo, xBull, or Rabet.'
+      "No compatible Stellar wallet found. Please install Freighter, Albedo, xBull, or Rabet.",
     );
   }
 
@@ -156,12 +158,12 @@ export class Sep10AuthService {
    * Verify the signed challenge transaction with the server
    */
   async verifyChallenge(
-    signedTransactionXdr: string
+    signedTransactionXdr: string,
   ): Promise<VerificationResponse> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/verify`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         transaction: signedTransactionXdr,
@@ -170,7 +172,7 @@ export class Sep10AuthService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to verify challenge');
+      throw new Error(error.error || "Failed to verify challenge");
     }
 
     return response.json();
@@ -186,7 +188,7 @@ export class Sep10AuthService {
       homeDomain?: string;
       clientDomain?: string;
       memo?: string;
-    }
+    },
   ): Promise<VerificationResponse> {
     // Step 1: Get server info
     const info = await this.getInfo();
@@ -205,7 +207,7 @@ export class Sep10AuthService {
     const signedXdr = await this.signChallenge(
       challengeResponse.transaction,
       challengeResponse.network_passphrase,
-      publicKey
+      publicKey,
     );
 
     // Step 4: Verify signed challenge
@@ -219,16 +221,16 @@ export class Sep10AuthService {
    */
   async logout(token: string): Promise<void> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/logout`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to logout');
+      throw new Error(error.error || "Failed to logout");
     }
   }
 
@@ -241,26 +243,26 @@ export class Sep10AuthService {
     serverPublicKey: string,
     networkPassphrase: string,
     homeDomain: string,
-    clientPublicKey: string
+    clientPublicKey: string,
   ): boolean {
     try {
       const transaction = new Transaction(challengeXdr, networkPassphrase);
 
       // Check source account is server
       if (transaction.source !== serverPublicKey) {
-        logger.warn('Invalid source account in challenge transaction');
+        logger.error("Invalid source account");
         return false;
       }
 
       // Check sequence number is 0
-      if (transaction.sequence !== '0') {
-        logger.warn('Invalid sequence number in challenge transaction');
+      if (transaction.sequence !== "0") {
+        logger.error("Invalid sequence number");
         return false;
       }
 
       // Check time bounds exist
       if (!transaction.timeBounds) {
-        logger.warn('Missing time bounds in challenge transaction');
+        logger.error("Missing time bounds");
         return false;
       }
 
@@ -270,38 +272,38 @@ export class Sep10AuthService {
         now < parseInt(transaction.timeBounds.minTime) ||
         now > parseInt(transaction.timeBounds.maxTime)
       ) {
-        logger.warn('Challenge transaction expired or not yet valid');
+        logger.error("Transaction expired or not yet valid");
         return false;
       }
 
       // Check first operation is ManageData
       if (transaction.operations.length === 0) {
-        logger.warn('No operations found in challenge transaction');
+        logger.error("No operations found");
         return false;
       }
 
       const firstOp = transaction.operations[0];
-      if (firstOp.type !== 'manageData') {
-        logger.warn('First operation must be ManageData in challenge transaction');
+      if (firstOp.type !== "manageData") {
+        logger.error("First operation must be ManageData");
         return false;
       }
 
       // Check operation source is client
       const manageDataOp = firstOp as Operation.ManageData;
       if (manageDataOp.source !== clientPublicKey) {
-        logger.warn('Invalid operation source in challenge transaction');
+        logger.error("Invalid operation source");
         return false;
       }
 
       // Check data name contains home domain
       if (!manageDataOp.name.includes(homeDomain)) {
-        logger.warn('Invalid data name in challenge transaction');
+        logger.error("Invalid data name");
         return false;
       }
 
       return true;
     } catch (error) {
-      logger.error('Challenge validation error', error as Error);
+      logger.error("Challenge validation error:", error);
       return false;
     }
   }

@@ -62,7 +62,7 @@ export default function ExportPage() {
   const getActiveColumns = () =>
     metrics.filter((m) => m.checked).map((m) => ({ id: m.id, label: m.label }));
 
-  const handleExport = (format: "csv" | "json" | "pdf") => {
+  const handleExport = async (format: "csv" | "json" | "pdf") => {
     const columns = getActiveColumns();
     if (columns.length === 0) {
       alert("Please select at least one metric to export.");
@@ -77,7 +77,7 @@ export default function ExportPage() {
         generateJSON(previewData, columns);
         break;
       case "pdf":
-        generatePDF(previewData, columns, { start: startDate, end: endDate });
+        await generatePDF(previewData, columns, { start: startDate, end: endDate });
         break;
     }
   };

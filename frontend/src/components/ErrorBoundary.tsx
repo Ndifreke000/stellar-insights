@@ -3,10 +3,12 @@
 import React, { Component, ErrorInfo, ReactNode } from "react"
 import { Link } from "@/i18n/navigation"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
+import { logger } from "@/lib/logger"
 
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
 
 interface State {
@@ -30,8 +32,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo)
+    logger.error("ErrorBoundary caught an error:", error)
     this.setState({ error, errorInfo })
+    
+    // Call optional error callback
+    this.props.onError?.(error, errorInfo)
   }
 
   handleReset = () => {

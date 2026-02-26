@@ -1,6 +1,7 @@
 "use client";
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { logger } from "@/lib/logger";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   TrendingUp,
@@ -9,43 +10,64 @@ import {
   Clock,
   Zap,
   ArrowRightLeft,
-  Info
-} from 'lucide-react';
-import { getPaymentPrediction, PredictionResponse, AlternativeRoute } from '../../lib/api';
+  Info,
+} from "lucide-react";
+import {
+  getPaymentPrediction,
+  PredictionResponse,
+  AlternativeRoute,
+} from "../../lib/api";
 
 // Common asset options for dropdowns
-const ASSETS = ['USDC', 'XLM', 'EURC', 'PHP', 'NGN', 'BRL', 'KES', 'JPY', 'GBP', 'EUR'];
+const ASSETS = [
+  "USDC",
+  "XLM",
+  "EURC",
+  "PHP",
+  "NGN",
+  "BRL",
+  "KES",
+  "JPY",
+  "GBP",
+  "EUR",
+];
 
 // Risk level colors and icons
 const RISK_CONFIG = {
   low: {
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-500/20',
-    border: 'border-emerald-500/30',
-    gradient: 'from-emerald-500 to-green-400',
-    icon: CheckCircle
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/20",
+    border: "border-emerald-500/30",
+    gradient: "from-emerald-500 to-green-400",
+    icon: CheckCircle,
   },
   medium: {
-    color: 'text-amber-400',
-    bg: 'bg-amber-500/20',
-    border: 'border-amber-500/30',
-    gradient: 'from-amber-500 to-yellow-400',
-    icon: AlertTriangle
+    color: "text-amber-400",
+    bg: "bg-amber-500/20",
+    border: "border-amber-500/30",
+    gradient: "from-amber-500 to-yellow-400",
+    icon: AlertTriangle,
   },
   high: {
-    color: 'text-red-400',
-    bg: 'bg-red-500/20',
-    border: 'border-red-500/30',
-    gradient: 'from-red-500 to-rose-400',
-    icon: AlertTriangle
+    color: "text-red-400",
+    bg: "bg-red-500/20",
+    border: "border-red-500/30",
+    gradient: "from-red-500 to-rose-400",
+    icon: AlertTriangle,
   },
 };
 
 // Circular gauge component for success probability
-function SuccessGauge({ probability, riskLevel }: { probability: number; riskLevel: 'low' | 'medium' | 'high' }) {
+function SuccessGauge({
+  probability,
+  riskLevel,
+}: {
+  probability: number;
+  riskLevel: "low" | "medium" | "high";
+}) {
   const percentage = Math.round(probability * 100);
   const circumference = 2 * Math.PI * 45;
-  const strokeDashoffset = circumference - (probability * circumference);
+  const strokeDashoffset = circumference - probability * circumference;
   const config = RISK_CONFIG[riskLevel];
 
   return (
@@ -77,8 +99,29 @@ function SuccessGauge({ probability, riskLevel }: { probability: number; riskLev
         />
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" className={`stop-color-${riskLevel}`} style={{ stopColor: riskLevel === 'low' ? '#10b981' : riskLevel === 'medium' ? '#f59e0b' : '#ef4444' }} />
-            <stop offset="100%" style={{ stopColor: riskLevel === 'low' ? '#34d399' : riskLevel === 'medium' ? '#fbbf24' : '#f87171' }} />
+            <stop
+              offset="0%"
+              className={`stop-color-${riskLevel}`}
+              style={{
+                stopColor:
+                  riskLevel === "low"
+                    ? "#10b981"
+                    : riskLevel === "medium"
+                      ? "#f59e0b"
+                      : "#ef4444",
+              }}
+            />
+            <stop
+              offset="100%"
+              style={{
+                stopColor:
+                  riskLevel === "low"
+                    ? "#34d399"
+                    : riskLevel === "medium"
+                      ? "#fbbf24"
+                      : "#f87171",
+              }}
+            />
           </linearGradient>
         </defs>
       </svg>
@@ -91,7 +134,9 @@ function SuccessGauge({ probability, riskLevel }: { probability: number; riskLev
         >
           {percentage}%
         </motion.span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wider">Success Rate</span>
+        <span className="text-xs text-gray-400 uppercase tracking-wider">
+          Success Rate
+        </span>
       </div>
     </div>
   );
@@ -117,27 +162,33 @@ function ConfidenceBar({ interval }: { interval: [number, number] }) {
       <div className="relative h-3 bg-gray-700/50 rounded-full overflow-hidden">
         <motion.div
           className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
-          initial={{ left: '50%', width: 0 }}
+          initial={{ left: "50%", width: 0 }}
           animate={{ left: `${lowerPct}%`, width: `${width}%` }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
         />
         {/* Markers */}
         <motion.div
           className="absolute top-0 w-0.5 h-full bg-white/80"
-          initial={{ left: '50%' }}
+          initial={{ left: "50%" }}
           animate={{ left: `${lowerPct}%` }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
         />
         <motion.div
           className="absolute top-0 w-0.5 h-full bg-white/80"
-          initial={{ left: '50%' }}
+          initial={{ left: "50%" }}
           animate={{ left: `${upperPct}%` }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
         />
       </div>
       <div className="flex justify-center gap-4 text-sm">
         <span className="text-gray-300">
-          <span className="text-link-primary font-semibold">{(lower * 100).toFixed(1)}%</span> - <span className="text-cyan-400 font-semibold">{(upper * 100).toFixed(1)}%</span>
+          <span className="text-blue-400 font-semibold">
+            {(lower * 100).toFixed(1)}%
+          </span>{" "}
+          -{" "}
+          <span className="text-cyan-400 font-semibold">
+            {(upper * 100).toFixed(1)}%
+          </span>
         </span>
       </div>
     </div>
@@ -145,7 +196,13 @@ function ConfidenceBar({ interval }: { interval: [number, number] }) {
 }
 
 // Alternative route card
-function RouteCard({ route, index }: { route: AlternativeRoute; index: number }) {
+function RouteCard({
+  route,
+  index,
+}: {
+  route: AlternativeRoute;
+  index: number;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -160,8 +217,10 @@ function RouteCard({ route, index }: { route: AlternativeRoute; index: number })
           </div>
           <span className="text-sm font-medium text-gray-200">
             {route.source_asset}
-            {route.via_asset && <span className="text-muted-foreground"> → {route.via_asset}</span>}
-            <span className="text-muted-foreground"> → </span>
+            {route.via_asset && (
+              <span className="text-gray-500"> → {route.via_asset}</span>
+            )}
+            <span className="text-gray-500"> → </span>
             {route.destination_asset}
           </span>
         </div>
@@ -192,10 +251,10 @@ function LoadingSkeleton() {
 }
 
 const PredictionForm = () => {
-  const [sourceAsset, setSourceAsset] = useState('USDC');
-  const [destAsset, setDestAsset] = useState('XLM');
-  const [amount, setAmount] = useState('100.0');
-  const [timeOfDay, setTimeOfDay] = useState('12:00');
+  const [sourceAsset, setSourceAsset] = useState("USDC");
+  const [destAsset, setDestAsset] = useState("XLM");
+  const [amount, setAmount] = useState("100.0");
+  const [timeOfDay, setTimeOfDay] = useState("12:00");
 
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -216,8 +275,8 @@ const PredictionForm = () => {
       });
       setPrediction(response);
     } catch (err) {
-      setError('Failed to get prediction. Please try again.');
-      console.error(err);
+      setError("Failed to get prediction. Please try again.");
+      logger.error(err as string);
     } finally {
       setLoading(false);
     }
@@ -233,8 +292,12 @@ const PredictionForm = () => {
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Corridor Success Rate Predictor</h1>
-              <p className="text-sm text-muted-foreground">Predict payment success before you send</p>
+              <h1 className="text-2xl font-bold text-white">
+                Corridor Success Rate Predictor
+              </h1>
+              <p className="text-sm text-gray-400">
+                Predict payment success before you send
+              </p>
             </div>
           </div>
         </div>
@@ -244,7 +307,10 @@ const PredictionForm = () => {
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Input Form */}
           <div>
-            <form onSubmit={handleSubmit} className="p-6 bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-2xl space-y-6">
+            <form
+              onSubmit={handleSubmit}
+              className="p-6 bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-2xl space-y-6"
+            >
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                 <Zap className="w-5 h-5 text-yellow-400" />
                 Payment Details
@@ -252,7 +318,10 @@ const PredictionForm = () => {
 
               {/* Source Asset */}
               <div className="space-y-2">
-                <label htmlFor="source-asset" className="block text-sm font-medium text-gray-300">
+                <label
+                  htmlFor="source-asset"
+                  className="block text-sm font-medium text-gray-300"
+                >
                   Source Asset
                 </label>
                 <select
@@ -261,15 +330,20 @@ const PredictionForm = () => {
                   onChange={(e) => setSourceAsset(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                 >
-                  {ASSETS.map(asset => (
-                    <option key={asset} value={asset}>{asset}</option>
+                  {ASSETS.map((asset) => (
+                    <option key={asset} value={asset}>
+                      {asset}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* Destination Asset */}
               <div className="space-y-2">
-                <label htmlFor="dest-asset" className="block text-sm font-medium text-gray-300">
+                <label
+                  htmlFor="dest-asset"
+                  className="block text-sm font-medium text-gray-300"
+                >
                   Destination Asset
                 </label>
                 <select
@@ -278,19 +352,26 @@ const PredictionForm = () => {
                   onChange={(e) => setDestAsset(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                 >
-                  {ASSETS.map(asset => (
-                    <option key={asset} value={asset}>{asset}</option>
+                  {ASSETS.map((asset) => (
+                    <option key={asset} value={asset}>
+                      {asset}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* Amount */}
               <div className="space-y-2">
-                <label htmlFor="amount" className="block text-sm font-medium text-gray-300">
+                <label
+                  htmlFor="amount"
+                  className="block text-sm font-medium text-gray-300"
+                >
                   Amount (USD equivalent)
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
+                    $
+                  </span>
                   <input
                     type="number"
                     id="amount"
@@ -306,8 +387,11 @@ const PredictionForm = () => {
 
               {/* Time of Day */}
               <div className="space-y-2">
-                <label htmlFor="time-of-day" className="block text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-muted-foreground" />
+                <label
+                  htmlFor="time-of-day"
+                  className="block text-sm font-medium text-gray-300 flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4 text-gray-400" />
                   Time of Day (UTC)
                 </label>
                 <input
@@ -332,7 +416,11 @@ const PredictionForm = () => {
                   <>
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
                       className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
                     />
                     Analyzing...
@@ -349,7 +437,9 @@ const PredictionForm = () => {
 
           {/* Results Panel */}
           <div className="p-6 bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-2xl">
-            <h2 className="text-lg font-semibold text-white mb-6">Prediction Results</h2>
+            <h2 className="text-lg font-semibold text-white mb-6">
+              Prediction Results
+            </h2>
 
             <AnimatePresence mode="wait">
               {loading && (
@@ -384,7 +474,11 @@ const PredictionForm = () => {
                   className="flex flex-col items-center justify-center h-64 text-muted-foreground"
                 >
                   <TrendingUp className="w-12 h-12 mb-4 opacity-30" />
-                  <p className="text-center">Enter payment details and click<br />&quot;Predict Success&quot; to see results</p>
+                  <p className="text-center">
+                    Enter payment details and click
+                    <br />
+                    &quot;Predict Success&quot; to see results
+                  </p>
                 </motion.div>
               )}
 
@@ -410,14 +504,21 @@ const PredictionForm = () => {
                     className={`p-4 rounded-xl ${RISK_CONFIG[prediction.risk_level].bg} ${RISK_CONFIG[prediction.risk_level].border} border`}
                   >
                     <div className="flex items-start gap-3">
-                      {React.createElement(RISK_CONFIG[prediction.risk_level].icon, {
-                        className: `w-5 h-5 ${RISK_CONFIG[prediction.risk_level].color} shrink-0 mt-0.5`
-                      })}
+                      {React.createElement(
+                        RISK_CONFIG[prediction.risk_level].icon,
+                        {
+                          className: `w-5 h-5 ${RISK_CONFIG[prediction.risk_level].color} shrink-0 mt-0.5`,
+                        },
+                      )}
                       <div>
-                        <div className={`text-sm font-semibold ${RISK_CONFIG[prediction.risk_level].color} uppercase tracking-wide mb-1`}>
+                        <div
+                          className={`text-sm font-semibold ${RISK_CONFIG[prediction.risk_level].color} uppercase tracking-wide mb-1`}
+                        >
                           {prediction.risk_level} Risk
                         </div>
-                        <p className="text-sm text-gray-300">{prediction.recommendation}</p>
+                        <p className="text-sm text-gray-300">
+                          {prediction.recommendation}
+                        </p>
                       </div>
                     </div>
                   </motion.div>

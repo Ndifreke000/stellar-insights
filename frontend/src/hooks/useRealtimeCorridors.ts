@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useWebSocket, WsMessage } from './useWebSocket';
+import { useEffect, useState, useCallback } from "react";
+import { useWebSocket, WsMessage } from "./useWebSocket";
+import { logger } from "@/lib/logger";
 
 export interface CorridorUpdate {
   corridor_key: string;
@@ -14,7 +15,7 @@ export interface CorridorUpdate {
 
 export interface HealthAlert {
   corridor_id: string;
-  severity: 'info' | 'warning' | 'error' | 'critical';
+  severity: "info" | "warning" | "error" | "critical";
   message: string;
   timestamp: string;
 }
@@ -48,7 +49,7 @@ export interface UseRealtimeCorridorsReturn {
 }
 
 export function useRealtimeCorridors(
-  options: UseRealtimeCorridorsOptions = {}
+  options: UseRealtimeCorridorsOptions = {},
 ): UseRealtimeCorridorsReturn {
   const {
     corridorKeys = [],
@@ -58,51 +59,56 @@ export function useRealtimeCorridors(
     onNewPayment,
   } = options;
 
-  const [corridorUpdates, setCorridorUpdates] = useState<Map<string, CorridorUpdate>>(new Map());
+  const [corridorUpdates, setCorridorUpdates] = useState<
+    Map<string, CorridorUpdate>
+  >(new Map());
   const [healthAlerts, setHealthAlerts] = useState<HealthAlert[]>([]);
   const [recentPayments, setRecentPayments] = useState<NewPayment[]>([]);
 
   // Get WebSocket URL from environment or default
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
 
-  const handleMessage = useCallback((message: WsMessage) => {
-    switch (message.type) {
-      case 'corridor_update':
-        const corridorUpdate = message as CorridorUpdate;
-        setCorridorUpdates(prev => {
-          const newMap = new Map(prev);
-          newMap.set(corridorUpdate.corridor_key, corridorUpdate);
-          return newMap;
-        });
-        onCorridorUpdate?.(corridorUpdate);
-        break;
+  const handleMessage = useCallback(
+    (message: WsMessage) => {
+      switch (message.type) {
+        case "corridor_update":
+          const corridorUpdate = message as CorridorUpdate;
+          setCorridorUpdates((prev) => {
+            const newMap = new Map(prev);
+            newMap.set(corridorUpdate.corridor_key, corridorUpdate);
+            return newMap;
+          });
+          onCorridorUpdate?.(corridorUpdate);
+          break;
 
-      case 'health_alert':
-        const healthAlert = message as HealthAlert;
-        setHealthAlerts(prev => [healthAlert, ...prev].slice(0, 50)); // Keep last 50 alerts
-        onHealthAlert?.(healthAlert);
-        break;
+        case "health_alert":
+          const healthAlert = message as HealthAlert;
+          setHealthAlerts((prev) => [healthAlert, ...prev].slice(0, 50)); // Keep last 50 alerts
+          onHealthAlert?.(healthAlert);
+          break;
 
-      case 'new_payment':
-        if (enablePaymentStream) {
-          const payment = message as NewPayment;
-          setRecentPayments(prev => [payment, ...prev].slice(0, 100)); // Keep last 100 payments
-          onNewPayment?.(payment);
-        }
-        break;
+        case "new_payment":
+          if (enablePaymentStream) {
+            const payment = message as NewPayment;
+            setRecentPayments((prev) => [payment, ...prev].slice(0, 100)); // Keep last 100 payments
+            onNewPayment?.(payment);
+          }
+          break;
 
-      case 'subscription_confirm':
-        console.log('Subscription confirmed:', message);
-        break;
+        case "subscription_confirm":
+          logger.debug("Subscription confirmed:", message);
+          break;
 
-      case 'ping':
-        // Handle ping/pong automatically
-        break;
+        case "ping":
+          // Handle ping/pong automatically
+          break;
 
-      default:
-        console.log('Unhandled WebSocket message:', message);
-    }
-  }, [enablePaymentStream, onCorridorUpdate, onHealthAlert, onNewPayment]);
+        default:
+          logger.debug("Unhandled WebSocket message:", message);
+      }
+    },
+    [enablePaymentStream, onCorridorUpdate, onHealthAlert, onNewPayment],
+  );
 
   const {
     isConnected,
@@ -114,35 +120,41 @@ export function useRealtimeCorridors(
   } = useWebSocket(wsUrl, {
     onMessage: handleMessage,
     onOpen: () => {
-      console.log('Connected to corridor WebSocket');
+      logger.debug("Connected to corridor WebSocket");
       // Re-subscribe to corridors on reconnection
       if (corridorKeys.length > 0) {
         subscribeToCorridors(corridorKeys);
       }
     },
     onClose: () => {
-      console.log('Disconnected from corridor WebSocket');
+      logger.debug("Disconnected from corridor WebSocket");
     },
     onError: (error) => {
-      console.error('Corridor WebSocket error:', error);
+      logger.error("Corridor WebSocket error:", error);
     },
   });
 
-  const subscribeToCorridors = useCallback((keys: string[]) => {
-    const channels = keys.map(key => `corridor:${key}`);
-    if (enablePaymentStream) {
-      channels.push(...keys.map(key => `payments:${key}`));
-    }
-    subscribe(channels);
-  }, [subscribe, enablePaymentStream]);
+  const subscribeToCorridors = useCallback(
+    (keys: string[]) => {
+      const channels = keys.map((key) => `corridor:${key}`);
+      if (enablePaymentStream) {
+        channels.push(...keys.map((key) => `payments:${key}`));
+      }
+      subscribe(channels);
+    },
+    [subscribe, enablePaymentStream],
+  );
 
-  const unsubscribeFromCorridors = useCallback((keys: string[]) => {
-    const channels = keys.map(key => `corridor:${key}`);
-    if (enablePaymentStream) {
-      channels.push(...keys.map(key => `payments:${key}`));
-    }
-    unsubscribe(channels);
-  }, [unsubscribe, enablePaymentStream]);
+  const unsubscribeFromCorridors = useCallback(
+    (keys: string[]) => {
+      const channels = keys.map((key) => `corridor:${key}`);
+      if (enablePaymentStream) {
+        channels.push(...keys.map((key) => `payments:${key}`));
+      }
+      unsubscribe(channels);
+    },
+    [unsubscribe, enablePaymentStream],
+  );
 
   const clearHealthAlerts = useCallback(() => {
     setHealthAlerts([]);

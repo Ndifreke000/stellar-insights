@@ -20,17 +20,42 @@ export function AssetDetailModal({ asset, onClose }: AssetDetailModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    if (!asset) return;
+
+    // 1. Trap focus within modal
+    const focusableElements = modalRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    
+    const firstElement = focusableElements?.[0] as HTMLElement;
+    const lastElement = focusableElements?.[focusableElements.length - 1] as HTMLElement;
+    
+    // Focus the first element (the Close button usually) when modal opens
+    firstElement?.focus();
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle Escape key
+      if (e.key === "Escape") {
+        onClose();
+      }
+
+      // Handle Tab key loop
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
     };
 
-    if (asset) {
-      document.addEventListener("keydown", handleEscape);
-      document.body.style.overflow = "hidden";
-    }
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = "hidden"; // Prevent background scroll
 
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = "unset";
     };
   }, [asset, onClose]);

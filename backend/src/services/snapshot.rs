@@ -14,6 +14,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::contract::{ContractService, SubmissionResult};
+use super::event_indexer::{EventIndexer, VerificationSummary};
 
 /// Result of snapshot generation and submission process
 #[derive(Debug, Clone, Serialize)]
@@ -37,17 +38,24 @@ pub struct SnapshotGenerationResult {
 /// 3. SHA-256 hashes are computed and stored
 /// 4. Hashes are submitted to smart contracts
 /// 5. Submission success is verified
+/// 6. On-chain verification is performed
 pub struct SnapshotService {
     db: Arc<Database>,
     contract_service: Option<Arc<ContractService>>,
+    event_indexer: Option<Arc<EventIndexer>>,
 }
 
 impl SnapshotService {
     /// Create a new snapshot service
-    pub fn new(db: Arc<Database>, contract_service: Option<Arc<ContractService>>) -> Self {
+    pub fn new(
+        db: Arc<Database>, 
+        contract_service: Option<Arc<ContractService>>,
+        event_indexer: Option<Arc<EventIndexer>>,
+    ) -> Self {
         Self {
             db,
             contract_service,
+            event_indexer,
         }
     }
 
@@ -125,8 +133,8 @@ impl SnapshotService {
         Ok(SnapshotGenerationResult {
             snapshot_id,
             epoch,
-            hash: hash_hex,
-            canonical_json,
+            hash: hash_hex.clone(),
+            canonical_json: canonical_json.clone(),
             anchor_count: snapshot.anchor_metrics.len(),
             corridor_count: snapshot.corridor_metrics.len(),
             submission_result,
@@ -682,6 +690,218 @@ impl SnapshotService {
         );
 
         Ok((hash_bytes, hash_hex, version, submission))
+    }
+
+    /// Verify snapshot hash against backend data
+    ///
+    /// This method compares the on-chain hash with the calculated hash
+    /// from backend analytics data to ensure data integrity.
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch to verify
+    ///
+    /// # Returns
+    /// Result containing verification status
+    pub async fn verify_snapshot_hash(&self, epoch: u64) -> Result<bool> {
+        info!("Verifying snapshot hash for epoch {}", epoch);
+
+        // Get backend snapshot data
+        let query = r#"
+            SELECT hash, canonical_json 
+            FROM snapshots 
+            WHERE epoch = ? 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        "#;
+
+        let row = sqlx::query(query)
+            .bind(epoch as i64)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to query snapshot from database")?;
+
+        if let Some(row) = row {
+            let backend_hash: String = row.get("hash");
+            let canonical_json: String = row.get("canonical_json");
+
+            // Get on-chain hash if contract service is available
+            if let Some(contract_service) = &self.contract_service {
+                match contract_service.get_snapshot_by_epoch(epoch).await? {
+                    Some(on_chain_hash) => {
+                        let is_verified = backend_hash == on_chain_hash;
+                        
+                        if is_verified {
+                            info!("✓ Snapshot verification passed for epoch {}", epoch);
+                        } else {
+                            warn!("✗ Snapshot verification failed for epoch {} - hash mismatch", epoch);
+                            warn!("Backend hash: {}, On-chain hash: {}", backend_hash, on_chain_hash);
+                        }
+
+                        // Update verification status in database
+                        self.update_verification_status(epoch, is_verified).await?;
+                        
+                        Ok(is_verified)
+                    }
+                    None => {
+                        warn!("No snapshot found on-chain for epoch {}", epoch);
+                        Ok(false)
+                    }
+                }
+            } else {
+                warn!("Contract service not available for on-chain verification");
+                Ok(false)
+            }
+        } else {
+            warn!("No snapshot found in database for epoch {}", epoch);
+            Ok(false)
+        }
+    }
+
+    /// Update verification status in database
+    async fn update_verification_status(&self, epoch: u64, is_verified: bool) -> Result<()> {
+        let query = r#"
+            UPDATE snapshots 
+            SET verification_status = ?, verified_at = ?
+            WHERE epoch = ?
+        "#;
+
+        sqlx::query(query)
+            .bind(if is_verified { "verified" } else { "failed" })
+            .bind(Utc::now())
+            .bind(epoch as i64)
+            .execute(self.db.pool())
+            .await
+            .context("Failed to update verification status")?;
+
+        // Also update event indexer if available
+        if let Some(event_indexer) = &self.event_indexer {
+            // Find the corresponding event and update its status
+            let events = event_indexer.get_events_for_epoch(epoch).await?;
+            for event in events {
+                if event.event_type == "SNAP_SUB" {
+                    event_indexer
+                        .update_verification_status(
+                            &event.id,
+                            if is_verified { "verified" } else { "failed" },
+                        )
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get verification summary for recent epochs
+    pub async fn get_verification_summary(&self, limit: i64) -> Result<Vec<VerificationSummary>> {
+        if let Some(event_indexer) = &self.event_indexer {
+            event_indexer.get_verification_summary(limit).await
+        } else {
+            // Fallback to database query if no event indexer
+            let query = r#"
+                SELECT 
+                    epoch,
+                    hash,
+                    ledger,
+                    verification_status,
+                    created_at,
+                    transaction_hash
+                FROM contract_events
+                WHERE event_type = 'SNAP_SUB' 
+                AND epoch IS NOT NULL
+                ORDER BY epoch DESC
+                LIMIT ?
+            "#;
+
+            let rows = sqlx::query(query)
+                .bind(limit)
+                .fetch_all(self.db.pool())
+                .await
+                .context("Failed to get verification summary")?;
+
+            let mut summaries = Vec::new();
+
+            for row in rows {
+                let summary = VerificationSummary {
+                    epoch: row.get::<i64, _>("epoch") as u64,
+                    hash: row.get("hash"),
+                    ledger: row.get::<i64, _>("ledger") as u64,
+                    verification_status: row.get("verification_status").unwrap_or("pending"),
+                    created_at: row.get("created_at"),
+                    transaction_hash: row.get("transaction_hash"),
+                };
+                summaries.push(summary);
+            }
+
+            Ok(summaries)
+        }
+    }
+
+    /// Get latest verified epoch
+    pub async fn get_latest_verified_epoch(&self) -> Result<Option<u64>> {
+        let query = r#"
+            SELECT epoch
+            FROM snapshots
+            WHERE verification_status = 'verified'
+            ORDER BY epoch DESC
+            LIMIT 1
+        "#;
+
+        let row = sqlx::query(query)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to get latest verified epoch")?;
+
+        Ok(row.map(|r| r.get::<i64, _>("epoch") as u64))
+    }
+
+    /// Check if epoch needs verification
+    pub async fn needs_verification(&self, epoch: u64) -> Result<bool> {
+        let query = r#"
+            SELECT verification_status
+            FROM snapshots
+            WHERE epoch = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        "#;
+
+        let row = sqlx::query(query)
+            .bind(epoch as i64)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to check verification status")?;
+
+        match row {
+            Some(row) => {
+                let status: Option<String> = row.get("verification_status");
+                Ok(status.is_none() || status.as_deref() == Some("pending"))
+            }
+            None => Ok(false), // No snapshot exists for this epoch
+        }
+    }
+
+    /// Batch verify multiple epochs
+    pub async fn batch_verify_epochs(&self, epochs: Vec<u64>) -> Result<Vec<(u64, bool)>> {
+        info!("Batch verifying {} epochs", epochs.len());
+
+        let mut results = Vec::new();
+
+        for epoch in epochs {
+            match self.verify_snapshot_hash(epoch).await {
+                Ok(verified) => {
+                    results.push((epoch, verified));
+                }
+                Err(e) => {
+                    error!("Failed to verify epoch {}: {}", epoch, e);
+                    results.push((epoch, false));
+                }
+            }
+        }
+
+        let verified_count = results.iter().filter(|(_, v)| *v).count();
+        info!("Batch verification complete: {}/{} epochs verified", verified_count, results.len());
+
+        Ok(results)
     }
 }
 
