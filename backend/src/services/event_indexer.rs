@@ -159,7 +159,11 @@ impl EventIndexer {
         }
 
         // Add ordering
-        match query.order_by.as_ref().unwrap_or(&EventOrderBy::CreatedAtDesc) {
+        match query
+            .order_by
+            .as_ref()
+            .unwrap_or(&EventOrderBy::CreatedAtDesc)
+        {
             EventOrderBy::CreatedAtAsc => sql.push_str(" ORDER BY created_at ASC"),
             EventOrderBy::CreatedAtDesc => sql.push_str(" ORDER BY created_at DESC"),
             EventOrderBy::LedgerAsc => sql.push_str(" ORDER BY ledger ASC"),
@@ -295,12 +299,11 @@ impl EventIndexer {
     }
 
     /// Update verification status for an event
-    pub async fn update_verification_status(
-        &self,
-        event_id: &str,
-        status: &str,
-    ) -> Result<()> {
-        debug!("Updating verification status for event {}: {}", event_id, status);
+    pub async fn update_verification_status(&self, event_id: &str, status: &str) -> Result<()> {
+        debug!(
+            "Updating verification status for event {}: {}",
+            event_id, status
+        );
 
         let query = r#"
             UPDATE contract_events 
@@ -327,6 +330,85 @@ impl EventIndexer {
 
     /// Get event statistics
     pub async fn get_event_stats(&self) -> Result<EventStats> {
+        let total_events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
+            .fetch_one(self.db.pool())
+            .await?;
+
+        let verified_snapshots: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM contract_events WHERE verification_status = 'verified'",
+        )
+        .fetch_one(self.db.pool())
+        .await?;
+
+        let failed_verifications: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM contract_events WHERE verification_status = 'failed'",
+        )
+        .fetch_one(self.db.pool())
+        .await?;
+
+        let events_last_24h: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM contract_events WHERE created_at > datetime('now', '-1 day')",
+        )
+        .fetch_one(self.db.pool())
+        .await?;
+
+        let latest_epoch: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(epoch) FROM contract_events")
+                .fetch_one(self.db.pool())
+                .await?;
+
+        let latest_ledger: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(ledger) FROM contract_events")
+                .fetch_one(self.db.pool())
+                .await?;
+
+        Ok(EventStats {
+            total_events,
+            verified_snapshots,
+            failed_verifications,
+            latest_epoch: latest_epoch.map(|v| v as u64),
+            latest_ledger: latest_ledger.map(|v| v as u64),
+            events_last_24h,
+        })
+    }
+
+    /// Get recent events from the database
+    pub async fn get_recent_events(&self, limit: i64) -> Result<Vec<IndexedEvent>> {
+        let query = r#"
+            SELECT id, contract_id, event_type, epoch, hash, timestamp, ledger, 
+                   transaction_hash, created_at, verification_status
+            FROM contract_events
+            ORDER BY created_at DESC
+            LIMIT ?
+        "#;
+
+        let rows = sqlx::query(query)
+            .bind(limit)
+            .fetch_all(self.db.pool())
+            .await?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            let event = IndexedEvent {
+                id: row.get("id"),
+                contract_id: row.get("contract_id"),
+                event_type: row.get("event_type"),
+                epoch: row.try_get::<i64, _>("epoch").ok().map(|v| v as u64),
+                hash: row.try_get("hash").ok(),
+                timestamp: row.try_get::<i64, _>("timestamp").ok().map(|v| v as u64),
+                ledger: row.get::<i64, _>("ledger") as u64,
+                transaction_hash: row.get("transaction_hash"),
+                created_at: row.get("created_at"),
+                verification_status: row.try_get("verification_status").ok(),
+            };
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Get event statistics (old implementation)
+    pub async fn get_event_stats_old(&self) -> Result<EventStats> {
         debug!("Getting event statistics");
 
         let query = r#"
@@ -359,8 +441,14 @@ impl EventIndexer {
     }
 
     /// Get verification status summary for recent epochs
-    pub async fn get_verification_summary(&self, epoch_count: i64) -> Result<Vec<VerificationSummary>> {
-        debug!("Getting verification summary for last {} epochs", epoch_count);
+    pub async fn get_verification_summary(
+        &self,
+        epoch_count: i64,
+    ) -> Result<Vec<VerificationSummary>> {
+        debug!(
+            "Getting verification summary for last {} epochs",
+            epoch_count
+        );
 
         let query = r#"
             SELECT 
@@ -390,7 +478,10 @@ impl EventIndexer {
                 epoch: row.get::<i64, _>("epoch") as u64,
                 hash: row.get("hash"),
                 ledger: row.get::<i64, _>("ledger") as u64,
-                verification_status: row.get("verification_status").unwrap_or("pending"),
+                verification_status: row
+                    .try_get("verification_status")
+                    .ok()
+                    .unwrap_or_else(|| "pending".to_string()),
                 created_at: row.get("created_at"),
                 transaction_hash: row.get("transaction_hash"),
             };
@@ -401,7 +492,11 @@ impl EventIndexer {
     }
 
     /// Search events by hash prefix
-    pub async fn search_by_hash_prefix(&self, prefix: &str, limit: i64) -> Result<Vec<IndexedEvent>> {
+    pub async fn search_by_hash_prefix(
+        &self,
+        prefix: &str,
+        limit: i64,
+    ) -> Result<Vec<IndexedEvent>> {
         debug!("Searching events by hash prefix: {}", prefix);
 
         let query = r#"
@@ -440,7 +535,11 @@ impl EventIndexer {
             events.push(event);
         }
 
-        debug!("Found {} events matching hash prefix {}", events.len(), prefix);
+        debug!(
+            "Found {} events matching hash prefix {}",
+            events.len(),
+            prefix
+        );
         Ok(events)
     }
 
@@ -448,14 +547,12 @@ impl EventIndexer {
     pub async fn cleanup_old_events(&self, days_to_keep: i64) -> Result<i64> {
         info!("Cleaning up events older than {} days", days_to_keep);
 
-        let query = r#"
-            DELETE FROM contract_events
-            WHERE created_at < datetime('now', '-{} days')
-        "#;
+        let query = format!(
+            "DELETE FROM contract_events WHERE created_at < datetime('now', '-{} days')",
+            days_to_keep
+        );
 
-        let query = query.replace("{}", &days_to_keep.to_string());
-
-        let result = sqlx::query(query)
+        let result = sqlx::query(&query)
             .execute(self.db.pool())
             .await
             .context("Failed to cleanup old events")?;
@@ -509,7 +606,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_event_indexing() {
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -544,7 +642,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_verification_status_update() {
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -563,11 +662,17 @@ mod tests {
         indexer.index_event(event).await.unwrap();
 
         // Update verification status
-        indexer.update_verification_status("test-event-2", "verified").await.unwrap();
+        indexer
+            .update_verification_status("test-event-2", "verified")
+            .await
+            .unwrap();
 
         // Verify update
         let retrieved = indexer.get_event_by_id("test-event-2").await.unwrap();
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().verification_status, Some("verified".to_string()));
+        assert_eq!(
+            retrieved.unwrap().verification_status,
+            Some("verified".to_string())
+        );
     }
 }

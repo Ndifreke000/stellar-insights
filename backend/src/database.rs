@@ -617,6 +617,14 @@ impl Database {
     /// # Performance
     ///
     /// Uses dynamic SQL with IN clause. Efficient for batch operations.
+    /// Get all anchors from the database
+    pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
+        let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(anchors)
+    }
+
     /// Returns empty HashMap if anchor_ids is empty.
     pub async fn get_assets_by_anchors(
         &self,

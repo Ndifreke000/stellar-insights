@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -101,6 +102,8 @@ impl ContractEventListener {
             .build()
             .context("Failed to create HTTP client")?;
 
+        let last_ledger = config.start_ledger.unwrap_or(0);
+
         info!(
             "Initialized ContractEventListener for contract {} on RPC {}",
             config.contract_id, config.rpc_url
@@ -110,7 +113,7 @@ impl ContractEventListener {
             client,
             config,
             db,
-            last_ledger: config.start_ledger.unwrap_or(0),
+            last_ledger,
         })
     }
 
@@ -152,9 +155,15 @@ impl ContractEventListener {
             return Ok(0); // No new ledgers
         }
 
-        debug!("Polling events from ledger {} to {}", self.last_ledger + 1, current_ledger);
+        debug!(
+            "Polling events from ledger {} to {}",
+            self.last_ledger + 1,
+            current_ledger
+        );
 
-        let events = self.get_events_for_ledger_range(self.last_ledger + 1, current_ledger).await?;
+        let events = self
+            .get_events_for_ledger_range(self.last_ledger + 1, current_ledger)
+            .await?;
 
         let mut events_processed = 0;
 
@@ -216,8 +225,8 @@ impl ContractEventListener {
         }
 
         if let Some(result) = body.result {
-            let events: Vec<ContractEvent> = serde_json::from_value(result)
-                .context("Failed to deserialize events")?;
+            let events: Vec<ContractEvent> =
+                serde_json::from_value(result).context("Failed to deserialize events")?;
             Ok(events)
         } else {
             Ok(vec![])
@@ -259,13 +268,14 @@ impl ContractEventListener {
             .and_then(|t| t.as_u64())
             .ok_or_else(|| anyhow::anyhow!("Missing timestamp in event"))?;
 
-        let ledger = event.ledger
+        let ledger = event
+            .ledger
             .parse::<u64>()
             .context("Invalid ledger number")?;
 
         let snapshot_event = SnapshotEvent {
             epoch,
-            hash,
+            hash: hash.clone(),
             timestamp,
             ledger,
             transaction_hash: event.id.clone(),
@@ -337,21 +347,27 @@ impl ContractEventListener {
             let backend_hash: String = row.get("hash");
             let canonical_json: String = row.get("canonical_json");
 
-            debug!("Backend hash: {}, On-chain hash: {}", backend_hash, on_chain_hash);
+            debug!(
+                "Backend hash: {}, On-chain hash: {}",
+                backend_hash, on_chain_hash
+            );
 
             let is_verified = backend_hash == on_chain_hash;
 
             if is_verified {
                 info!("✓ Snapshot verification passed for epoch {}", epoch);
             } else {
-                error!("✗ Snapshot verification failed for epoch {} - hash mismatch", epoch);
+                error!(
+                    "✗ Snapshot verification failed for epoch {} - hash mismatch",
+                    epoch
+                );
                 error!("Expected (backend): {}", backend_hash);
                 error!("Actual (on-chain): {}", on_chain_hash);
-                
+
                 // Calculate hash to verify our data
                 let calculated_hash = self.calculate_hash(&canonical_json)?;
                 error!("Recalculated hash: {}", calculated_hash);
-                
+
                 // TODO: Send alert via AlertService
                 // This would require passing AlertService to the listener
             }
@@ -370,7 +386,7 @@ impl ContractEventListener {
     /// Calculate SHA-256 hash of data
     fn calculate_hash(&self, data: &str) -> Result<String> {
         use sha2::{Digest, Sha256};
-        
+
         let mut hasher = Sha256::new();
         hasher.update(data.as_bytes());
         let result = hasher.finalize();
@@ -565,7 +581,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_calculate_hash() {
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let config = ListenerConfig {
             rpc_url: "https://test.com".to_string(),
             contract_id: "test-contract".to_string(),
@@ -579,7 +596,7 @@ mod tests {
 
         // Should be 64 characters (32 bytes × 2 hex chars)
         assert_eq!(hash.len(), 64);
-        
+
         // Should only contain valid hex characters
         assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -591,13 +608,14 @@ mod tests {
         std::env::set_var("CONTRACT_EVENT_POLL_INTERVAL", "15");
         std::env::set_var("CONTRACT_EVENT_START_LEDGER", "2000");
 
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let listener = ContractEventListener::from_env(db).unwrap();
-        
+
         assert_eq!(listener.config.contract_id, "test-contract-id");
         assert_eq!(listener.config.poll_interval_secs, 15);
         assert_eq!(listener.config.start_ledger, Some(2000));
-        
+
         // Clean up
         std::env::remove_var("SNAPSHOT_CONTRACT_ID");
         std::env::remove_var("CONTRACT_EVENT_POLL_INTERVAL");

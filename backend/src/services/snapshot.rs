@@ -48,7 +48,7 @@ pub struct SnapshotService {
 impl SnapshotService {
     /// Create a new snapshot service
     pub fn new(
-        db: Arc<Database>, 
+        db: Arc<Database>,
         contract_service: Option<Arc<ContractService>>,
         event_indexer: Option<Arc<EventIndexer>>,
     ) -> Self {
@@ -729,17 +729,23 @@ impl SnapshotService {
                 match contract_service.get_snapshot_by_epoch(epoch).await? {
                     Some(on_chain_hash) => {
                         let is_verified = backend_hash == on_chain_hash;
-                        
+
                         if is_verified {
                             info!("✓ Snapshot verification passed for epoch {}", epoch);
                         } else {
-                            warn!("✗ Snapshot verification failed for epoch {} - hash mismatch", epoch);
-                            warn!("Backend hash: {}, On-chain hash: {}", backend_hash, on_chain_hash);
+                            warn!(
+                                "✗ Snapshot verification failed for epoch {} - hash mismatch",
+                                epoch
+                            );
+                            warn!(
+                                "Backend hash: {}, On-chain hash: {}",
+                                backend_hash, on_chain_hash
+                            );
                         }
 
                         // Update verification status in database
                         self.update_verification_status(epoch, is_verified).await?;
-                        
+
                         Ok(is_verified)
                     }
                     None => {
@@ -826,7 +832,10 @@ impl SnapshotService {
                     epoch: row.get::<i64, _>("epoch") as u64,
                     hash: row.get("hash"),
                     ledger: row.get::<i64, _>("ledger") as u64,
-                    verification_status: row.get("verification_status").unwrap_or("pending"),
+                    verification_status: row
+                        .try_get("verification_status")
+                        .ok()
+                        .unwrap_or_else(|| "pending".to_string()),
                     created_at: row.get("created_at"),
                     transaction_hash: row.get("transaction_hash"),
                 };
@@ -899,7 +908,11 @@ impl SnapshotService {
         }
 
         let verified_count = results.iter().filter(|(_, v)| *v).count();
-        info!("Batch verification complete: {}/{} epochs verified", verified_count, results.len());
+        info!(
+            "Batch verification complete: {}/{} epochs verified",
+            verified_count,
+            results.len()
+        );
 
         Ok(results)
     }

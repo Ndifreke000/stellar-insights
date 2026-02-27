@@ -589,8 +589,8 @@ impl AssetVerifier {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_calculate_reputation_score() {
+    #[tokio::test]
+    async fn test_calculate_reputation_score() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         let verifier = AssetVerifier::new(pool).unwrap();
 
@@ -609,8 +609,8 @@ mod tests {
         assert!(score <= 100.0);
     }
 
-    #[test]
-    fn test_determine_status() {
+    #[tokio::test]
+    async fn test_determine_status() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         let verifier = AssetVerifier::new(pool).unwrap();
 

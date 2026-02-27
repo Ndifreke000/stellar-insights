@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::NaiveDate;
+use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::models::corridor::{Corridor, CorridorAnalytics, CorridorMetrics};
@@ -264,7 +265,7 @@ impl CorridorAggregates {
     }
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct AggregatedCorridorMetrics {
     pub corridor_key: String,
     pub asset_a_code: String,

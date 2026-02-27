@@ -41,16 +41,17 @@ impl AnchorMonitor {
 
     async fn check_anchors(&self) -> Result<()> {
         let anchors = self.db.get_all_anchors().await?;
-        
+
         for anchor in anchors {
+            // Get metrics from anchor_metrics_history or calculate from transactions
             let current_metrics = AnchorMetrics {
-                transaction_count: anchor.transaction_count.unwrap_or(0.0),
-                success_rate: anchor.success_rate.unwrap_or(0.0),
-                avg_latency: anchor.avg_latency.unwrap_or(0.0),
+                transaction_count: 0.0, // TODO: Calculate from transactions
+                success_rate: 0.0,      // TODO: Calculate from transactions
+                avg_latency: 0.0,       // TODO: Calculate from transactions
             };
 
             let mut last_metrics = self.last_metrics.write().await;
-            
+
             if let Some(prev_metrics) = last_metrics.get(&anchor.id) {
                 // Check for significant changes
                 if current_metrics.success_rate < prev_metrics.success_rate - 10.0 {

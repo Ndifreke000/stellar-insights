@@ -4,7 +4,7 @@ pub mod scheduler;
 
 pub use asset_revalidation::{AssetRevalidationJob, RevalidationConfig, RevalidationStats};
 pub use contract_event_listener::{
-    ContractEventListenerJob, ContractEventListenerConfig, ContractEventListenerStats,
-    start_contract_event_listener_job,
+    start_contract_event_listener_job, ContractEventListenerConfig, ContractEventListenerJob,
+    ContractEventListenerStats,
 };
 pub use scheduler::{JobConfig, JobScheduler};

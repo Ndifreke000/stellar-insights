@@ -65,19 +65,25 @@ impl SlackBotService {
         ];
 
         if let Some(ref corridor_id) = alert.corridor_id {
-            fields.insert(0, serde_json::json!({
-                "title": "Corridor",
-                "value": corridor_id,
-                "short": true
-            }));
+            fields.insert(
+                0,
+                serde_json::json!({
+                    "title": "Corridor",
+                    "value": corridor_id,
+                    "short": true
+                }),
+            );
         }
 
         if let Some(ref anchor_id) = alert.anchor_id {
-            fields.insert(0, serde_json::json!({
-                "title": "Anchor",
-                "value": anchor_id,
-                "short": true
-            }));
+            fields.insert(
+                0,
+                serde_json::json!({
+                    "title": "Anchor",
+                    "value": anchor_id,
+                    "short": true
+                }),
+            );
         }
 
         let payload = serde_json::json!({

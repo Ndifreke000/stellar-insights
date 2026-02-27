@@ -16,19 +16,15 @@ pub fn escape_markdown(text: &str) -> String {
 }
 
 pub fn format_alert(alert: &Alert) -> String {
-    let emoji = match alert.alert_type {
-        AlertType::SuccessRateDrop => "\u{1F534}",   // red circle
-        AlertType::LatencyIncrease => "\u{1F7E1}",   // yellow circle
-        AlertType::LiquidityDecrease => "\u{1F7E0}", // orange circle
+    let (emoji, type_label) = match alert.alert_type {
+        AlertType::SuccessRateDrop => ("\u{1F534}", "Success Rate Drop"),
+        AlertType::LatencyIncrease => ("\u{1F7E1}", "Latency Increase"),
+        AlertType::LiquidityDecrease => ("\u{1F7E0}", "Liquidity Decrease"),
+        AlertType::AnchorStatusChange => ("\u{1F504}", "Anchor Status Change"),
+        AlertType::AnchorMetricChange => ("\u{1F4CA}", "Anchor Metric Change"),
     };
 
-    let type_label = match alert.alert_type {
-        AlertType::SuccessRateDrop => "Success Rate Drop",
-        AlertType::LatencyIncrease => "Latency Increase",
-        AlertType::LiquidityDecrease => "Liquidity Decrease",
-    };
-
-    let corridor = escape_markdown(&alert.corridor_id);
+    let corridor = escape_markdown(alert.corridor_id.as_deref().unwrap_or("N/A"));
     let message = escape_markdown(&alert.message);
     let ts = escape_markdown(&alert.timestamp);
 

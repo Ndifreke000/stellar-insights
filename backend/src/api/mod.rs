@@ -10,8 +10,8 @@ pub mod auth;
 pub mod cache_stats;
 pub mod corridors;
 pub mod corridors_cached;
-pub mod export;
 pub mod cost_calculator;
+pub mod export;
 // pub mod digest;  // Commented out - depends on email module
 pub mod api_analytics;
 pub mod contract_events;

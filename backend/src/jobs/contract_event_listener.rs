@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::database::Database;
 use crate::services::contract_listener::{ContractEventListener, ListenerConfig};
@@ -67,7 +67,7 @@ impl ContractEventListenerJob {
 
         // Create services
         let event_indexer = Arc::new(EventIndexer::new(self.db.clone()));
-        
+
         let listener_config = ListenerConfig {
             rpc_url: self.config.rpc_url.clone(),
             contract_id: self.config.contract_id.clone(),
@@ -97,10 +97,11 @@ impl ContractEventListenerJob {
     /// Check for missed events and process them
     async fn check_for_missed_events(&self, event_indexer: &Arc<EventIndexer>) -> Result<usize> {
         // Get the latest event from the database
-        let recent_events = event_indexer.get_recent_events(1).await?;
-        
-        let start_ledger = if let Some(latest_event) = recent_events.first() {
-            latest_event.ledger + 1
+        let recent_events = event_indexer.get_event_stats().await?;
+
+        let start_ledger = if recent_events.total_events > 0 {
+            // Get the latest ledger from the database
+            recent_events.latest_ledger.unwrap_or(0) + 1
         } else {
             self.config.start_ledger.unwrap_or(0)
         };
@@ -109,10 +110,10 @@ impl ContractEventListenerJob {
         // 1. Query the Stellar RPC for events since start_ledger
         // 2. Process each event through the event indexer
         // 3. Update verification status for snapshots
-        
+
         // For now, we'll just log that we're checking
         debug!("Checking for events since ledger {}", start_ledger);
-        
+
         // Return 0 events processed for now
         // In a real implementation, this would return the actual count
         Ok(0)
@@ -159,7 +160,7 @@ pub async fn start_contract_event_listener_job(
 ) -> Result<Arc<ContractEventListenerJob>> {
     let config = ContractEventListenerConfig::default();
     let job = Arc::new(ContractEventListenerJob::new(db, config));
-    
+
     let job_clone = job.clone();
     tokio::spawn(async move {
         job_clone.start().await;
@@ -177,7 +178,7 @@ mod tests {
     #[tokio::test]
     async fn test_contract_event_listener_job_config() {
         let config = ContractEventListenerConfig::default();
-        
+
         assert!(config.enabled);
         assert_eq!(config.interval_seconds, 10);
         assert!(!config.contract_id.is_empty());
@@ -186,23 +187,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_contract_event_listener_job_creation() {
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let config = ContractEventListenerConfig::default();
-        
+
         let job = ContractEventListenerJob::new(db, config);
-        
+
         assert_eq!(job.config.interval_seconds, 10);
         assert!(job.config.enabled);
     }
 
     #[tokio::test]
     async fn test_get_stats() {
-        let db = Arc::new(Database::new("sqlite::memory:").await.unwrap());
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let db = Arc::new(Database::new(pool));
         let config = ContractEventListenerConfig::default();
         let job = ContractEventListenerJob::new(db, config);
-        
+
         let stats = job.get_stats().await.unwrap();
-        
+
         assert!(stats.enabled);
         assert_eq!(stats.interval_seconds, 10);
         assert_eq!(stats.total_events, 0); // No events in empty database

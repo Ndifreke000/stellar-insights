@@ -4,7 +4,7 @@
 //! verification status, and on-chain audit trails.
 
 use crate::database::Database;
-use crate::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy, VerificationSummary};
+use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -117,12 +117,7 @@ pub async fn get_contract_event(
                 format!("Failed to get event: {}", e),
             )
         })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Event not found: {}", id),
-            )
-        })?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Event not found: {}", id)))?;
 
     Ok(Json(event))
 }
@@ -173,7 +168,10 @@ pub fn routes(event_indexer: Arc<EventIndexer>) -> Router {
             get(get_verification_summary),
         )
         .route("/api/analytics/contract-events", get(list_contract_events))
-        .route("/api/analytics/contract-events/:id", get(get_contract_event))
+        .route(
+            "/api/analytics/contract-events/:id",
+            get(get_contract_event),
+        )
         .route(
             "/api/analytics/contract-events/epoch/:epoch",
             get(get_events_for_epoch),

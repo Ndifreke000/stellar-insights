@@ -8,9 +8,6 @@ use std::sync::Arc;
 use crate::webhooks::events::{
     AnchorStatusChangedEvent, CorridorHealthDegradedEvent, CorridorLiquidityDroppedEvent,
     CorridorMetrics, PaymentCreatedEvent,
-use crate::webhooks::{
-    AnchorStatusChangedEvent, CorridorHealthDegradedEvent, CorridorLiquidityDroppedEvent,
-    CorridorMetrics, PaymentCreatedEvent, WebhookEventType, WebhookService,
 };
 use crate::webhooks::{WebhookEventType, WebhookService};
 
@@ -208,10 +205,6 @@ mod tests {
     async fn test_filter_application() {
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         let service = WebhookEventService::new(pool);
-    #[test]
-    fn test_filter_application() {
-        let service =
-            WebhookEventService::new(sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap());
 
         let payload = json!({
             "corridor_key": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN->XLM:native",

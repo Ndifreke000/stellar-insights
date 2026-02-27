@@ -136,4 +136,3 @@ impl IntoResponse for ApiKeyError {
         (status, Json(json!({ "error": message }))).into_response()
     }
 }
-

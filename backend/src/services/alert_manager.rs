@@ -54,16 +54,19 @@ impl AlertManager {
                     );
 
                     // 1. Save to History
-                    let history = self.db.insert_alert_history(
-                        &rule.id,
-                        &rule.user_id,
-                        Some(corridor_id.to_string()),
-                        &rule.metric_type,
-                        current_value,
-                        rule.threshold,
-                        &rule.condition,
-                        &message,
-                    ).await?;
+                    let history = self
+                        .db
+                        .insert_alert_history(
+                            &rule.id,
+                            &rule.user_id,
+                            Some(corridor_id.to_string()),
+                            &rule.metric_type,
+                            current_value,
+                            rule.threshold,
+                            &rule.condition,
+                            &message,
+                        )
+                        .await?;
 
                     // 2. Transmit via requested channels
                     if rule.notify_email {
@@ -84,7 +87,7 @@ impl AlertManager {
     }
 
     async fn send_email_alert(&self, user_id: &str, message: &str) {
-        // Mocking email dispatcher for brevity 
+        // Mocking email dispatcher for brevity
         tracing::info!(
             user_id = crate::logging::redaction::redact_user_id(user_id),
             message_len = message.len(),
@@ -96,7 +99,7 @@ impl AlertManager {
         // Mocking webhook dispatcher for brevity
         tracing::info!(
             user_id = crate::logging::redaction::redact_user_id(user_id),
-            alert_type = ?history.alert_type,
+            alert_type = ?history.metric_type,
             "Sending WEBHOOK alert to user"
         );
     }
