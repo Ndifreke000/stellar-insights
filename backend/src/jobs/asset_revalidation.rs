@@ -40,7 +40,8 @@ pub struct AssetRevalidationJob {
 
 impl AssetRevalidationJob {
     /// Create a new asset revalidation job
-    pub fn new(pool: SqlitePool, config: RevalidationConfig) -> Self {
+    #[must_use] 
+    pub const fn new(pool: SqlitePool, config: RevalidationConfig) -> Self {
         Self { pool, config }
     }
 
@@ -75,12 +76,12 @@ impl AssetRevalidationJob {
 
         // Get assets that need revalidation (oldest first)
         let assets = sqlx::query_as::<_, VerifiedAsset>(
-            r#"
+            r"
             SELECT * FROM verified_assets
             WHERE last_verified_at IS NULL OR last_verified_at < ?
             ORDER BY last_verified_at ASC NULLS FIRST
             LIMIT ?
-            "#,
+            ",
         )
         .bind(cutoff_date)
         .bind(self.config.batch_size as i64)
@@ -163,7 +164,7 @@ impl AssetRevalidationJob {
         }
 
         let row = sqlx::query_as::<_, StatsRow>(
-            r#"
+            r"
             SELECT
                 COUNT(*) as total_assets,
                 SUM(CASE WHEN last_verified_at IS NULL OR last_verified_at < ? THEN 1 ELSE 0 END) as needs_revalidation,
@@ -171,7 +172,7 @@ impl AssetRevalidationJob {
                 SUM(CASE WHEN verification_status = 'unverified' THEN 1 ELSE 0 END) as unverified_count,
                 SUM(CASE WHEN verification_status = 'suspicious' THEN 1 ELSE 0 END) as suspicious_count
             FROM verified_assets
-            "#,
+            ",
         )
         .bind(cutoff_date)
         .fetch_one(&self.pool)

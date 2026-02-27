@@ -11,8 +11,8 @@ pub enum StellarNetwork {
 impl fmt::Display for StellarNetwork {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StellarNetwork::Mainnet => write!(f, "mainnet"),
-            StellarNetwork::Testnet => write!(f, "testnet"),
+            Self::Mainnet => write!(f, "mainnet"),
+            Self::Testnet => write!(f, "testnet"),
         }
     }
 }
@@ -22,11 +22,10 @@ impl std::str::FromStr for StellarNetwork {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "mainnet" => Ok(StellarNetwork::Mainnet),
-            "testnet" => Ok(StellarNetwork::Testnet),
+            "mainnet" => Ok(Self::Mainnet),
+            "testnet" => Ok(Self::Testnet),
             _ => Err(format!(
-                "Invalid network: {}. Must be 'mainnet' or 'testnet'",
-                s
+                "Invalid network: {s}. Must be 'mainnet' or 'testnet'"
             )),
         }
     }
@@ -42,6 +41,7 @@ pub struct NetworkConfig {
 
 impl NetworkConfig {
     /// Create network configuration from environment variables
+    #[must_use] 
     pub fn from_env() -> Self {
         let network_str =
             std::env::var("STELLAR_NETWORK").unwrap_or_else(|_| "mainnet".to_string());
@@ -58,6 +58,7 @@ impl NetworkConfig {
     }
 
     /// Create network configuration for a specific network
+    #[must_use] 
     pub fn for_network(network: StellarNetwork) -> Self {
         let (rpc_url, horizon_url, network_passphrase) = match network {
             StellarNetwork::Mainnet => (
@@ -85,22 +86,26 @@ impl NetworkConfig {
     }
 
     /// Get the network passphrase for transaction signing
+    #[must_use] 
     pub fn network_passphrase(&self) -> &str {
         &self.network_passphrase
     }
 
     /// Check if this is the mainnet
+    #[must_use] 
     pub fn is_mainnet(&self) -> bool {
         self.network == StellarNetwork::Mainnet
     }
 
     /// Check if this is the testnet
+    #[must_use] 
     pub fn is_testnet(&self) -> bool {
         self.network == StellarNetwork::Testnet
     }
 
     /// Get a display-friendly network name
-    pub fn display_name(&self) -> &str {
+    #[must_use] 
+    pub const fn display_name(&self) -> &str {
         match self.network {
             StellarNetwork::Mainnet => "Stellar Mainnet",
             StellarNetwork::Testnet => "Stellar Testnet",
@@ -108,7 +113,8 @@ impl NetworkConfig {
     }
 
     /// Get network color for UI (hex color code)
-    pub fn color(&self) -> &str {
+    #[must_use] 
+    pub const fn color(&self) -> &str {
         match self.network {
             StellarNetwork::Mainnet => "#00D4AA", // Stellar green
             StellarNetwork::Testnet => "#FF6B35", // Orange for testnet

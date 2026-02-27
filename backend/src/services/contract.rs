@@ -192,8 +192,7 @@ impl ContractService {
                             epoch, MAX_RETRIES, e
                         );
                         return Err(e).context(format!(
-                            "Failed to submit snapshot after {} retries",
-                            MAX_RETRIES
+                            "Failed to submit snapshot after {MAX_RETRIES} retries"
                         ));
                     }
 
@@ -294,7 +293,7 @@ impl ContractService {
         }
 
         body.result
-            .ok_or_else(|| anyhow::anyhow!("No simulation result returned (status: {})", status))
+            .ok_or_else(|| anyhow::anyhow!("No simulation result returned (status: {status})"))
     }
 
     /// Prepare and sign the transaction
@@ -411,13 +410,13 @@ impl ContractService {
                     "SUCCESS" => {
                         let ledger = result
                             .get("ledger")
-                            .and_then(|l| l.as_u64())
+                            .and_then(serde_json::Value::as_u64)
                             .ok_or_else(|| anyhow::anyhow!("Ledger number not found"))?;
 
                         // Get timestamp from contract return value
                         let timestamp = result
                             .get("returnValue")
-                            .and_then(|rv| rv.as_u64())
+                            .and_then(serde_json::Value::as_u64)
                             .unwrap_or(0);
 
                         return Ok(SubmissionResult {
@@ -432,7 +431,7 @@ impl ContractService {
                             .get("resultXdr")
                             .and_then(|x| x.as_str())
                             .unwrap_or("Unknown error");
-                        return Err(anyhow::anyhow!("Transaction failed: {}", error_msg));
+                        return Err(anyhow::anyhow!("Transaction failed: {error_msg}"));
                     }
                     "PENDING" | "NOT_FOUND" => {
                         debug!("Transaction still pending (attempt {})", attempt);
@@ -440,15 +439,14 @@ impl ContractService {
                         continue;
                     }
                     _ => {
-                        return Err(anyhow::anyhow!("Unknown transaction status: {}", status));
+                        return Err(anyhow::anyhow!("Unknown transaction status: {status}"));
                     }
                 }
             }
         }
 
         Err(anyhow::anyhow!(
-            "Transaction confirmation timeout after {} attempts",
-            max_wait_attempts
+            "Transaction confirmation timeout after {max_wait_attempts} attempts"
         ))
     }
 
@@ -537,7 +535,7 @@ impl ContractService {
             // Extract the return value from the simulation
             let return_value = result
                 .get("returnValue")
-                .and_then(|rv| rv.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
 
             debug!("Verification result for epoch {}: {}", epoch, return_value);
@@ -595,7 +593,7 @@ impl ContractService {
             let hash_hex = result
                 .get("returnValue")
                 .and_then(|rv| rv.as_str())
-                .map(|s| s.to_string());
+                .map(std::string::ToString::to_string);
 
             Ok(hash_hex)
         } else {

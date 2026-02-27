@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 use crate::alerts::AlertManager;
-use crate::api::corridors_cached::CorridorResponse;
 use crate::cache::CacheManager;
 use crate::rpc::StellarRpcClient;
 use crate::webhooks::events::CorridorMetrics;
@@ -24,6 +23,7 @@ struct CorridorState {
 }
 
 impl CorridorMonitor {
+    #[must_use] 
     pub fn new(
         alert_manager: Arc<AlertManager>,
         cache: Arc<CacheManager>,
@@ -38,6 +38,7 @@ impl CorridorMonitor {
         }
     }
 
+    #[must_use] 
     pub fn new_with_webhooks(
         alert_manager: Arc<AlertManager>,
         cache: Arc<CacheManager>,
@@ -69,7 +70,7 @@ impl CorridorMonitor {
             .rpc_client
             .fetch_payments(200, None)
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
         for payment in &payments {
@@ -80,7 +81,7 @@ impl CorridorMonitor {
             );
             corridor_map
                 .entry(key)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(payment);
         }
 

@@ -68,6 +68,7 @@ pub struct OAuthService {
 
 impl OAuthService {
     /// Create new OAuth service
+    #[must_use] 
     pub fn new(db: SqlitePool) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
             .expect("JWT_SECRET environment variable is required for OAuth service");
@@ -108,13 +109,13 @@ impl OAuthService {
         let client_secret = Uuid::new_v4().to_string();
 
         let encrypted_secret = crate::crypto::encrypt_data(&client_secret, &self.encryption_key)
-            .map_err(|e| anyhow!("Failed to encrypt client secret: {}", e))?;
+            .map_err(|e| anyhow!("Failed to encrypt client secret: {e}"))?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO oauth_clients (id, user_id, client_id, client_secret, app_name)
             VALUES (?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(id)
         .bind(user_id)
@@ -134,10 +135,10 @@ impl OAuthService {
         client_secret: &str,
     ) -> Result<String> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT user_id, client_secret FROM oauth_clients
             WHERE client_id = ?
-            "#,
+            ",
         )
         .bind(client_id)
         .fetch_optional(&self.db)
@@ -172,7 +173,7 @@ impl OAuthService {
             &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
             &validation,
         )
-        .map_err(|e| anyhow!("Failed to decode token: {}", e))?;
+        .map_err(|e| anyhow!("Failed to decode token: {e}"))?;
 
         // Verify audience
         if decoded.claims.aud != self.jwt_audience {
@@ -215,7 +216,7 @@ impl OAuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate access token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate access token: {e}"))
     }
 
     /// Generate refresh token
@@ -246,7 +247,7 @@ impl OAuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate refresh token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate refresh token: {e}"))
     }
 
     /// Validate scopes (ensure requested scopes are allowed)
@@ -255,11 +256,11 @@ impl OAuthService {
 
         for scope in &scopes {
             if !AVAILABLE_SCOPES.contains(scope) {
-                return Err(anyhow!("Invalid scope: {}", scope));
+                return Err(anyhow!("Invalid scope: {scope}"));
             }
         }
 
-        Ok(scopes.iter().map(|s| s.to_string()).collect())
+        Ok(scopes.iter().map(|s| (*s).to_string()).collect())
     }
 
     /// Store authorization for a client+user (for authorization code flow)
@@ -273,10 +274,10 @@ impl OAuthService {
         let scopes_str = scopes.join(",");
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO oauth_authorizations (id, client_id, user_id, scopes)
             VALUES (?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(id)
         .bind(client_id)
@@ -295,10 +296,10 @@ impl OAuthService {
         user_id: &str,
     ) -> Result<Option<Vec<String>>> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT scopes FROM oauth_authorizations
             WHERE client_id = ? AND user_id = ?
-            "#,
+            ",
         )
         .bind(client_id)
         .bind(user_id)
@@ -328,15 +329,15 @@ impl OAuthService {
             .to_rfc3339();
 
         let enc_access_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
-            .map_err(|e| anyhow!("Failed to encrypt access token: {}", e))?;
+            .map_err(|e| anyhow!("Failed to encrypt access token: {e}"))?;
         let enc_refresh_token = crate::crypto::encrypt_data(refresh_token, &self.encryption_key)
-            .map_err(|e| anyhow!("Failed to encrypt refresh token: {}", e))?;
+            .map_err(|e| anyhow!("Failed to encrypt refresh token: {e}"))?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO oauth_tokens (id, user_id, access_token, refresh_token, token_type, expires_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(id)
         .bind(user_id)
@@ -353,9 +354,9 @@ impl OAuthService {
     /// Revoke OAuth token by deleting it from the database
     pub async fn revoke_token(&self, access_token: &str) -> Result<()> {
         let enc_token = crate::crypto::encrypt_data(access_token, &self.encryption_key)
-            .map_err(|e| anyhow!("Failed to encrypt token for lookup: {}", e))?;
+            .map_err(|e| anyhow!("Failed to encrypt token for lookup: {e}"))?;
 
-        let result = sqlx::query(r#"DELETE FROM oauth_tokens WHERE access_token = ?"#)
+        let result = sqlx::query(r"DELETE FROM oauth_tokens WHERE access_token = ?")
             .bind(enc_token)
             .execute(&self.db)
             .await?;

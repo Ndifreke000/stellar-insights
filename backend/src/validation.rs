@@ -2,7 +2,7 @@
 
 use crate::error::{ApiError, ApiResult};
 
-/// Validates a single optional filter value: must be finite (no NaN/Infinity), and within [min_allowed, max_allowed].
+/// Validates a single optional filter value: must be finite (no NaN/Infinity), and within [`min_allowed`, `max_allowed`].
 #[inline]
 fn validate_filter_f64(
     value: Option<f64>,
@@ -28,8 +28,7 @@ fn validate_filter_f64(
         return Err(ApiError::bad_request(
             "INVALID_PARAMETER",
             format!(
-                "{} must be between {} and {} (got {}).",
-                param_name, min_allowed, max_allowed, v
+                "{param_name} must be between {min_allowed} and {max_allowed} (got {v})."
             ),
         ));
     }
@@ -37,8 +36,8 @@ fn validate_filter_f64(
 }
 
 /// Validates corridor list query filter parameters.
-/// - success_rate_min/max: finite, in [0, 100], and min <= max when both set.
-/// - volume_min/max: finite, >= 0, and min <= max when both set.
+/// - `success_rate_min/max`: finite, in [0, 100], and min <= max when both set.
+/// - `volume_min/max`: finite, >= 0, and min <= max when both set.
 pub fn validate_corridor_filters(
     success_rate_min: Option<f64>,
     success_rate_max: Option<f64>,

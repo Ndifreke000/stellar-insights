@@ -30,7 +30,7 @@ pub async fn api_analytics_middleware(
     let response = next.run(req).await;
 
     let duration = start.elapsed().as_millis() as i32;
-    let status = response.status().as_u16() as i32;
+    let status = i32::from(response.status().as_u16());
 
     // Save to database asynchronously
     let db_clone = Arc::clone(&db);

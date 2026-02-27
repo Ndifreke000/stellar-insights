@@ -27,7 +27,7 @@ pub fn validate_env() -> Result<()> {
     // Check required variables
     for var in REQUIRED_VARS {
         if env::var(var).is_err() {
-            errors.push(format!("Missing required environment variable: {}", var));
+            errors.push(format!("Missing required environment variable: {var}"));
         }
     }
 
@@ -36,8 +36,7 @@ pub fn validate_env() -> Result<()> {
         if let Ok(value) = env::var(var) {
             if !validator(&value) {
                 errors.push(format!(
-                    "Invalid value for environment variable {}: '{}'",
-                    var, value
+                    "Invalid value for environment variable {var}: '{value}'"
                 ));
             }
         }
@@ -131,7 +130,7 @@ fn sanitize_database_url(url: &str) -> String {
                 let scheme = &url[..scheme_end + 3];
                 let user = &url[scheme_end + 3..colon_pos];
                 let host_and_db = &url[at_pos..];
-                return format!("{}{}:****{}", scheme, user, host_and_db);
+                return format!("{scheme}{user}:****{host_and_db}");
             }
         }
     }
@@ -145,7 +144,7 @@ fn sanitize_url(url: &str) -> String {
         if let Some(scheme_end) = url.find("://") {
             let scheme = &url[..scheme_end + 3];
             let host_and_path = &url[at_pos + 1..];
-            return format!("{}****@{}", scheme, host_and_path);
+            return format!("{scheme}****@{host_and_path}");
         }
     }
     url.to_string()

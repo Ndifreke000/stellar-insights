@@ -4,13 +4,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    database::Database,
-    models::{PendingTransaction, PendingTransactionWithSignatures, Signature, TransactionResult},
+    models::{PendingTransaction, PendingTransactionWithSignatures, TransactionResult},
     state::AppState,
 };
 
@@ -151,7 +149,7 @@ pub async fn submit_transaction(
     // 3. Submit to Stellar network using `reqwest` or `rpc_client`
 
     // Mock successful submission
-    let mock_hash = Uuid::new_v4().to_string().replace("-", "");
+    let mock_hash = Uuid::new_v4().to_string().replace('-', "");
 
     // Update status in DB
     state

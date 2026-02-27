@@ -1,7 +1,7 @@
 // I'm exporting the ledger ingestion module as required by issue #2
 pub mod ledger;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -15,7 +15,8 @@ pub struct DataIngestionService {
 }
 
 impl DataIngestionService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
+    #[must_use] 
+    pub const fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
         Self { rpc_client, db }
     }
 
@@ -37,7 +38,7 @@ impl DataIngestionService {
 
         for anchor in anchors {
             match self.process_anchor_metrics(&anchor.stellar_account).await {
-                Ok(_) => info!("Updated metrics for anchor: {}", anchor.name),
+                Ok(()) => info!("Updated metrics for anchor: {}", anchor.name),
                 Err(e) => warn!("Failed to update anchor {}: {}", anchor.name, e),
             }
         }
@@ -51,7 +52,7 @@ impl DataIngestionService {
             .rpc_client
             .fetch_account_payments(account_id, 100)
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         if payments.is_empty() {
             return Ok(());
@@ -69,19 +70,19 @@ impl DataIngestionService {
             successful += 1;
         }
 
-        let total_transactions = (successful + failed) as i64;
+        let total_transactions = i64::from(successful + failed);
         let success_rate = if total_transactions > 0 {
-            (successful as f64 / total_transactions as f64) * 100.0
+            (f64::from(successful) / total_transactions as f64) * 100.0
         } else {
             0.0
         };
 
-        let reliability_score = self.calculate_reliability_score(success_rate, failed as i64);
+        let reliability_score = self.calculate_reliability_score(success_rate, i64::from(failed));
 
-        let avg_settlement_time = if !settlement_times.is_empty() {
-            settlement_times.iter().sum::<i32>() / settlement_times.len() as i32
-        } else {
+        let avg_settlement_time = if settlement_times.is_empty() {
             1000
+        } else {
+            settlement_times.iter().sum::<i32>() / settlement_times.len() as i32
         };
 
         let status = if success_rate >= 98.0 {
@@ -96,8 +97,8 @@ impl DataIngestionService {
             .update_anchor_from_rpc(crate::database::AnchorRpcUpdate {
                 stellar_account: account_id.to_string(),
                 total_transactions,
-                successful_transactions: successful as i64,
-                failed_transactions: failed as i64,
+                successful_transactions: i64::from(successful),
+                failed_transactions: i64::from(failed),
                 total_volume_usd: total_volume,
                 avg_settlement_time_ms: avg_settlement_time,
                 reliability_score,
@@ -120,7 +121,7 @@ impl DataIngestionService {
             .rpc_client
             .check_health()
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         Ok(NetworkHealth {
             status: health.status,
@@ -153,14 +154,14 @@ impl DataIngestionService {
                 .fetch_optional(self.db.pool())
                 .await?;
 
-        let last_ingested = cursor_row.map(|r| r.0 as u64).unwrap_or(0);
+        let last_ingested = cursor_row.map_or(0, |r| r.0 as u64);
 
         // We get network state
         let health = self
             .rpc_client
             .check_health()
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         Ok(IngestionStatus {
             last_ingested_ledger: last_ingested,

@@ -22,7 +22,7 @@ pub struct ListAnchorsQuery {
     pub offset: i64,
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     50
 }
 
@@ -70,7 +70,7 @@ pub async fn get_anchor(
         details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
         ApiError::not_found_with_details(
             "ANCHOR_NOT_FOUND",
-            format!("Anchor with id {} not found", id),
+            format!("Anchor with id {id} not found"),
             details,
         )
     })?;
@@ -78,7 +78,7 @@ pub async fn get_anchor(
     Ok(Json(anchor_detail))
 }
 
-/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account (G- or M-address)
+/// GET /`api/anchors/account/:stellar_account` - Get anchor by Stellar account (G- or M-address)
 pub async fn get_anchor_by_account(
     State(app_state): State<AppState>,
     Path(stellar_account): Path<String>,
@@ -104,7 +104,7 @@ pub async fn get_anchor_by_account(
             );
             ApiError::not_found_with_details(
                 "ANCHOR_NOT_FOUND",
-                format!("Anchor with stellar account {} not found", account_lookup),
+                format!("Anchor with stellar account {account_lookup} not found"),
                 details,
             )
         })?;
@@ -118,7 +118,7 @@ pub struct MuxedAnalyticsQuery {
     #[serde(default = "default_muxed_limit")]
     pub limit: i64,
 }
-fn default_muxed_limit() -> i64 {
+const fn default_muxed_limit() -> i64 {
     20
 }
 
@@ -179,7 +179,7 @@ pub async fn update_anchor_metrics(
         details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
         return Err(ApiError::not_found_with_details(
             "ANCHOR_NOT_FOUND",
-            format!("Anchor with id {} not found", id),
+            format!("Anchor with id {id} not found"),
             details,
         ));
     }
@@ -213,7 +213,7 @@ pub async fn get_anchor_assets(
         details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
         return Err(ApiError::not_found_with_details(
             "ANCHOR_NOT_FOUND",
-            format!("Anchor with id {} not found", id),
+            format!("Anchor with id {id} not found"),
             details,
         ));
     }
@@ -241,7 +241,7 @@ pub async fn create_anchor_asset(
         details.insert("anchor_id".to_string(), serde_json::json!(id.to_string()));
         return Err(ApiError::not_found_with_details(
             "ANCHOR_NOT_FOUND",
-            format!("Anchor with id {} not found", id),
+            format!("Anchor with id {id} not found"),
             details,
         ));
     }
@@ -335,7 +335,7 @@ pub async fn update_corridor_metrics_from_transactions(
         details.insert("corridor_id".to_string(), serde_json::json!(id.to_string()));
         return Err(ApiError::not_found_with_details(
             "CORRIDOR_NOT_FOUND",
-            format!("Corridor with id {} not found", id),
+            format!("Corridor with id {id} not found"),
             details,
         ));
     }

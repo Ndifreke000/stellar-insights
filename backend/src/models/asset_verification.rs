@@ -11,19 +11,21 @@ pub enum VerificationStatus {
 }
 
 impl VerificationStatus {
-    pub fn as_str(&self) -> &str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &str {
         match self {
-            VerificationStatus::Verified => "verified",
-            VerificationStatus::Unverified => "unverified",
-            VerificationStatus::Suspicious => "suspicious",
+            Self::Verified => "verified",
+            Self::Unverified => "unverified",
+            Self::Suspicious => "suspicious",
         }
     }
 
+    #[must_use] 
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "verified" => VerificationStatus::Verified,
-            "suspicious" => VerificationStatus::Suspicious,
-            _ => VerificationStatus::Unverified,
+            "verified" => Self::Verified,
+            "suspicious" => Self::Suspicious,
+            _ => Self::Unverified,
         }
     }
 }
@@ -68,6 +70,7 @@ pub struct VerifiedAsset {
 }
 
 impl VerifiedAsset {
+    #[must_use] 
     pub fn get_status(&self) -> VerificationStatus {
         VerificationStatus::from_str(&self.verification_status)
     }
@@ -120,12 +123,13 @@ pub enum ReportType {
 }
 
 impl ReportType {
-    pub fn as_str(&self) -> &str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &str {
         match self {
-            ReportType::Suspicious => "suspicious",
-            ReportType::Scam => "scam",
-            ReportType::Impersonation => "impersonation",
-            ReportType::Other => "other",
+            Self::Suspicious => "suspicious",
+            Self::Scam => "scam",
+            Self::Impersonation => "impersonation",
+            Self::Other => "other",
         }
     }
 }
@@ -140,12 +144,13 @@ pub enum ReportStatus {
 }
 
 impl ReportStatus {
-    pub fn as_str(&self) -> &str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &str {
         match self {
-            ReportStatus::Pending => "pending",
-            ReportStatus::Reviewed => "reviewed",
-            ReportStatus::Resolved => "resolved",
-            ReportStatus::Dismissed => "dismissed",
+            Self::Pending => "pending",
+            Self::Reviewed => "reviewed",
+            Self::Resolved => "resolved",
+            Self::Dismissed => "dismissed",
         }
     }
 }
@@ -230,7 +235,7 @@ pub struct StellarTomlData {
 
 impl From<VerifiedAsset> for VerifiedAssetResponse {
     fn from(asset: VerifiedAsset) -> Self {
-        VerifiedAssetResponse {
+        Self {
             asset_code: asset.asset_code.clone(),
             asset_issuer: asset.asset_issuer.clone(),
             verification_status: asset.get_status(),

@@ -35,20 +35,17 @@ impl ShutdownConfig {
         let graceful_timeout = std::env::var("SHUTDOWN_GRACEFUL_TIMEOUT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .map(Duration::from_secs)
-            .unwrap_or(Duration::from_secs(30));
+            .map_or(Duration::from_secs(30), Duration::from_secs);
 
         let background_task_timeout = std::env::var("SHUTDOWN_BACKGROUND_TIMEOUT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .map(Duration::from_secs)
-            .unwrap_or(Duration::from_secs(10));
+            .map_or(Duration::from_secs(10), Duration::from_secs);
 
         let db_close_timeout = std::env::var("SHUTDOWN_DB_TIMEOUT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .map(Duration::from_secs)
-            .unwrap_or(Duration::from_secs(5));
+            .map_or(Duration::from_secs(5), Duration::from_secs);
 
         Self {
             graceful_timeout,
@@ -66,6 +63,7 @@ pub struct ShutdownCoordinator {
 
 impl ShutdownCoordinator {
     /// Create a new shutdown coordinator with the given configuration
+    #[must_use] 
     pub fn new(config: ShutdownConfig) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         Self {
@@ -75,6 +73,7 @@ impl ShutdownCoordinator {
     }
 
     /// Get a receiver for shutdown notifications
+    #[must_use] 
     pub fn subscribe(&self) -> broadcast::Receiver<()> {
         self.shutdown_tx.subscribe()
     }
@@ -86,17 +85,20 @@ impl ShutdownCoordinator {
     }
 
     /// Get the graceful timeout duration
-    pub fn graceful_timeout(&self) -> Duration {
+    #[must_use] 
+    pub const fn graceful_timeout(&self) -> Duration {
         self.config.graceful_timeout
     }
 
     /// Get the background task timeout duration
-    pub fn background_task_timeout(&self) -> Duration {
+    #[must_use] 
+    pub const fn background_task_timeout(&self) -> Duration {
         self.config.background_task_timeout
     }
 
     /// Get the database close timeout duration
-    pub fn db_close_timeout(&self) -> Duration {
+    #[must_use] 
+    pub const fn db_close_timeout(&self) -> Duration {
         self.config.db_close_timeout
     }
 }
@@ -146,22 +148,19 @@ pub async fn shutdown_background_tasks(
     let shutdown_future = async {
         for (idx, task) in tasks.into_iter().enumerate() {
             match task.await {
-                Ok(_) => info!("Background task {} completed successfully", idx),
+                Ok(()) => info!("Background task {} completed successfully", idx),
                 Err(e) if e.is_cancelled() => {
-                    info!("Background task {} was cancelled", idx)
+                    info!("Background task {} was cancelled", idx);
                 }
                 Err(e) => warn!("Background task {} failed: {}", idx, e),
             }
         }
     };
 
-    match timeout(timeout_duration, shutdown_future).await {
-        Ok(_) => info!("All background tasks completed within timeout"),
-        Err(_) => warn!(
-            "Background tasks did not complete within {:?}, proceeding with shutdown",
-            timeout_duration
-        ),
-    }
+    if let Ok(()) = timeout(timeout_duration, shutdown_future).await { info!("All background tasks completed within timeout") } else { warn!(
+        "Background tasks did not complete within {:?}, proceeding with shutdown",
+        timeout_duration
+    ) }
 }
 
 /// Gracefully close database connection pool
@@ -175,13 +174,10 @@ pub async fn shutdown_database(pool: sqlx::SqlitePool, timeout_duration: Duratio
         info!("Database connections closed successfully");
     };
 
-    match timeout(timeout_duration, close_future).await {
-        Ok(_) => info!("Database closed within timeout"),
-        Err(_) => warn!(
-            "Database did not close within {:?}, proceeding with shutdown",
-            timeout_duration
-        ),
-    }
+    if let Ok(()) = timeout(timeout_duration, close_future).await { info!("Database closed within timeout") } else { warn!(
+        "Database did not close within {:?}, proceeding with shutdown",
+        timeout_duration
+    ) }
 }
 
 /// Flush Redis cache and close connections gracefully
@@ -212,13 +208,10 @@ pub async fn flush_cache(
         }
     };
 
-    match timeout(timeout_duration, flush_future).await {
-        Ok(_) => info!("Cache flush completed within timeout"),
-        Err(_) => warn!(
-            "Cache flush did not complete within {:?}, proceeding with shutdown",
-            timeout_duration
-        ),
-    }
+    if let Ok(()) = timeout(timeout_duration, flush_future).await { info!("Cache flush completed within timeout") } else { warn!(
+        "Cache flush did not complete within {:?}, proceeding with shutdown",
+        timeout_duration
+    ) }
 }
 
 /// Close WebSocket connections gracefully
@@ -248,13 +241,10 @@ pub async fn shutdown_websockets(
         info!("All WebSocket connections closed");
     };
 
-    match timeout(timeout_duration, close_future).await {
-        Ok(_) => info!("WebSocket shutdown completed within timeout"),
-        Err(_) => warn!(
-            "WebSocket shutdown did not complete within {:?}, proceeding with shutdown",
-            timeout_duration
-        ),
-    }
+    if let Ok(()) = timeout(timeout_duration, close_future).await { info!("WebSocket shutdown completed within timeout") } else { warn!(
+        "WebSocket shutdown did not complete within {:?}, proceeding with shutdown",
+        timeout_duration
+    ) }
 }
 
 /// Log shutdown statistics and final state

@@ -11,7 +11,8 @@ pub struct FeeBumpTrackerService {
 }
 
 impl FeeBumpTrackerService {
-    pub fn new(pool: Pool<Sqlite>) -> Self {
+    #[must_use] 
+    pub const fn new(pool: Pool<Sqlite>) -> Self {
         Self { pool }
     }
 
@@ -42,9 +43,7 @@ impl FeeBumpTrackerService {
                         .unwrap_or(0);
 
                     // Parse created_at
-                    let created_at = DateTime::parse_from_rfc3339(&tx.created_at)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now());
+                    let created_at = DateTime::parse_from_rfc3339(&tx.created_at).map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
 
                     let fee_bump_tx = FeeBumpTransaction {
                         transaction_hash: tx.hash.clone(),
@@ -80,14 +79,14 @@ impl FeeBumpTrackerService {
     /// Persist a single fee bump transaction
     async fn persist_fee_bump(&self, tx: &FeeBumpTransaction) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO fee_bump_transactions (
                 transaction_hash, ledger_sequence, fee_source, fee_charged, max_fee,
                 inner_transaction_hash, inner_max_fee, signatures_count, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (transaction_hash) DO NOTHING
-            "#,
+            ",
         )
         .bind(&tx.transaction_hash)
         .bind(tx.ledger_sequence)
@@ -107,11 +106,11 @@ impl FeeBumpTrackerService {
     /// Get recent fee bump transactions
     pub async fn get_recent_fee_bumps(&self, limit: i64) -> Result<Vec<FeeBumpTransaction>> {
         let transactions = sqlx::query_as::<_, FeeBumpTransaction>(
-            r#"
+            r"
             SELECT * FROM fee_bump_transactions
             ORDER BY created_at DESC
             LIMIT $1
-            "#,
+            ",
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -123,7 +122,7 @@ impl FeeBumpTrackerService {
     /// Get fee bump statistics
     pub async fn get_fee_bump_stats(&self) -> Result<FeeBumpStats> {
         let row: (i64, f64, i64, i64, i64) = sqlx::query_as(
-            r#"
+            r"
             SELECT 
                 COUNT(*) as total_count,
                 COALESCE(AVG(fee_charged), 0.0) as avg_fee,
@@ -131,7 +130,7 @@ impl FeeBumpTrackerService {
                 COALESCE(MIN(fee_charged), 0) as min_fee,
                 COUNT(DISTINCT fee_source) as unique_sources
             FROM fee_bump_transactions
-            "#,
+            ",
         )
         .fetch_one(&self.pool)
         .await?;

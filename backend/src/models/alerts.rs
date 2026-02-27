@@ -65,6 +65,6 @@ pub struct SnoozeAlertRequest {
     pub snoozed_until: DateTime<Utc>,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }

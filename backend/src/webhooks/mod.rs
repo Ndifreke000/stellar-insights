@@ -15,6 +15,7 @@ pub struct WebhookSignature;
 
 impl WebhookSignature {
     /// Generate HMAC-SHA256 signature for webhook payload
+    #[must_use] 
     pub fn sign(payload: &str, secret: &str) -> String {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
@@ -23,6 +24,7 @@ impl WebhookSignature {
     }
 
     /// Verify webhook signature
+    #[must_use] 
     pub fn verify(payload: &str, secret: &str, signature: &str) -> bool {
         let expected = Self::sign(payload, secret);
         signature == expected
@@ -81,7 +83,8 @@ pub enum WebhookEventType {
 }
 
 impl WebhookEventType {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::CorridorHealthDegraded => "corridor.health_degraded",
             Self::AnchorStatusChanged => "anchor.status_changed",
@@ -90,6 +93,7 @@ impl WebhookEventType {
         }
     }
 
+    #[must_use] 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "corridor.health_degraded" => Some(Self::CorridorHealthDegraded),
@@ -108,6 +112,7 @@ pub struct WebhookService {
 }
 
 impl WebhookService {
+    #[must_use] 
     pub fn new(db: SqlitePool) -> Self {
         let encryption_key = std::env::var("ENCRYPTION_KEY").unwrap_or_else(|_| {
             "0000000000000000000000000000000000000000000000000000000000000000".to_string()
@@ -124,17 +129,17 @@ impl WebhookService {
         let id = Uuid::new_v4().to_string();
         let secret = Uuid::new_v4().to_string();
         let event_types_str = request.event_types.join(",");
-        let filters_str = request.filters.as_ref().map(|f| f.to_string());
+        let filters_str = request.filters.as_ref().map(std::string::ToString::to_string);
         let now = chrono::Utc::now().to_rfc3339();
 
         let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
             .unwrap_or_else(|_| secret.clone());
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(user_id)
@@ -285,7 +290,7 @@ impl WebhookService {
         Ok(())
     }
 
-    /// Update webhook's last_fired_at timestamp
+    /// Update webhook's `last_fired_at` timestamp
     pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query("UPDATE webhooks SET last_fired_at = ? WHERE id = ?")

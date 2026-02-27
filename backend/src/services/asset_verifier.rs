@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::models::asset_verification::{
@@ -93,8 +93,7 @@ impl AssetVerifier {
     /// Check Stellar Expert for asset verification
     async fn check_stellar_expert(&self, asset_code: &str, asset_issuer: &str) -> Result<bool> {
         let url = format!(
-            "{}/asset/{}-{}",
-            STELLAR_EXPERT_API, asset_code, asset_issuer
+            "{STELLAR_EXPERT_API}/asset/{asset_code}-{asset_issuer}"
         );
 
         for attempt in 1..=MAX_RETRIES {
@@ -124,7 +123,7 @@ impl AssetVerifier {
             }
 
             if attempt < MAX_RETRIES {
-                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * attempt as u64)).await;
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * u64::from(attempt))).await;
             }
         }
 
@@ -147,7 +146,7 @@ impl AssetVerifier {
         };
 
         // Fetch and parse stellar.toml
-        let toml_url = format!("https://{}/.well-known/stellar.toml", home_domain);
+        let toml_url = format!("https://{home_domain}/.well-known/stellar.toml");
 
         for attempt in 1..=MAX_RETRIES {
             match self.http_client.get(&toml_url).send().await {
@@ -176,7 +175,7 @@ impl AssetVerifier {
             }
 
             if attempt < MAX_RETRIES {
-                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * attempt as u64)).await;
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * u64::from(attempt))).await;
             }
         }
 
@@ -185,7 +184,7 @@ impl AssetVerifier {
 
     /// Get home domain from Stellar account
     async fn get_home_domain_from_account(&self, account_id: &str) -> Result<Option<String>> {
-        let url = format!("https://horizon.stellar.org/accounts/{}", account_id);
+        let url = format!("https://horizon.stellar.org/accounts/{account_id}");
 
         let response = self.http_client.get(&url).send().await?;
 
@@ -268,14 +267,14 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<Option<(i64, i64, f64)>> {
         let result = sqlx::query_as::<_, (i64, i64, f64)>(
-            r#"
+            r"
             SELECT 
                 COALESCE(SUM(trustline_count), 0) as trustline_count,
                 COALESCE(COUNT(*), 0) as transaction_count,
                 COALESCE(SUM(total_volume_usd), 0.0) as total_volume
             FROM payments
             WHERE asset_code = $1 AND asset_issuer = $2
-            "#,
+            ",
         )
         .bind(asset_code)
         .bind(asset_issuer)
@@ -292,8 +291,7 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<(i64, i64, f64)> {
         let url = format!(
-            "https://horizon.stellar.org/assets?asset_code={}&asset_issuer={}",
-            asset_code, asset_issuer
+            "https://horizon.stellar.org/assets?asset_code={asset_code}&asset_issuer={asset_issuer}"
         );
 
         #[derive(Deserialize)]
@@ -329,6 +327,7 @@ impl AssetVerifier {
     }
 
     /// Calculate reputation score based on verification results
+    #[must_use] 
     pub fn calculate_reputation_score(&self, result: &VerificationResult) -> f64 {
         let mut score: f64 = 0.0;
 
@@ -373,6 +372,7 @@ impl AssetVerifier {
     }
 
     /// Determine verification status based on reputation score and other factors
+    #[must_use] 
     pub fn determine_status(
         &self,
         reputation_score: f64,
@@ -427,7 +427,7 @@ impl AssetVerifier {
             .and_then(|d| d.logo_url.clone());
 
         let verified_asset = sqlx::query_as::<_, VerifiedAsset>(
-            r#"
+            r"
             INSERT INTO verified_assets (
                 id, asset_code, asset_issuer, verification_status, reputation_score,
                 stellar_expert_verified, stellar_toml_verified, anchor_registry_verified,
@@ -454,7 +454,7 @@ impl AssetVerifier {
                 last_verified_at = EXCLUDED.last_verified_at,
                 updated_at = EXCLUDED.updated_at
             RETURNING *
-            "#,
+            ",
         )
         .bind(&id)
         .bind(asset_code)
@@ -513,13 +513,13 @@ impl AssetVerifier {
         let id = Uuid::new_v4().to_string();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO asset_verification_history (
                 id, asset_code, asset_issuer, previous_status, new_status,
                 previous_reputation_score, new_reputation_score, change_reason, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(asset_code)
@@ -543,10 +543,10 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<Option<VerifiedAsset>> {
         let asset = sqlx::query_as::<_, VerifiedAsset>(
-            r#"
+            r"
             SELECT * FROM verified_assets
             WHERE asset_code = $1 AND asset_issuer = $2
-            "#,
+            ",
         )
         .bind(asset_code)
         .bind(asset_issuer)
@@ -571,11 +571,11 @@ impl AssetVerifier {
         }
 
         if let Some(min_rep) = min_reputation {
-            query.push_str(&format!(" AND reputation_score >= {}", min_rep));
+            query.push_str(&format!(" AND reputation_score >= {min_rep}"));
         }
 
         query.push_str(" ORDER BY reputation_score DESC, updated_at DESC");
-        query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        query.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
 
         let assets = sqlx::query_as::<_, VerifiedAsset>(&query)
             .fetch_all(&self.pool)

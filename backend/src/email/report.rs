@@ -26,6 +26,7 @@ pub struct DigestReport {
     pub avg_success_rate: f64,
 }
 
+#[must_use] 
 pub fn generate_html_report(report: &DigestReport) -> String {
     format!(r#"
 <!DOCTYPE html>

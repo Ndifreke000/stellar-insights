@@ -1,6 +1,6 @@
 use crate::database::Database;
 use crate::models::{ApiAnalyticsOverview, EndpointStat, StatusStat};
-use axum::{extract::State, response::Response, routing::get, Json, Router};
+use axum::{extract::State, routing::get, Json, Router};
 use std::sync::Arc;
 
 /// Handler for GET /api/admin/analytics/overview

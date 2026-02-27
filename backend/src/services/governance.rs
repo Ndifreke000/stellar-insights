@@ -78,7 +78,8 @@ pub struct GovernanceService {
 }
 
 impl GovernanceService {
-    pub fn new(db: Arc<Database>) -> Self {
+    #[must_use] 
+    pub const fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 
@@ -94,11 +95,11 @@ impl GovernanceService {
             .unwrap_or_else(|| "contract_upgrade".to_string());
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO governance_proposals
             (id, title, description, proposal_type, target_contract, new_wasm_hash, status, created_by, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(&request.title)
@@ -147,11 +148,11 @@ impl GovernanceService {
         let voting_ends_str = voting_ends_at.to_rfc3339();
 
         let result = sqlx::query(
-            r#"
+            r"
             UPDATE governance_proposals
             SET status = 'active', voting_ends_at = ?, updated_at = ?
             WHERE id = ? AND status = 'draft'
-            "#,
+            ",
         )
         .bind(&voting_ends_str)
         .bind(&now_str)
@@ -176,7 +177,7 @@ impl GovernanceService {
     ) -> Result<ProposalsListResponse> {
         let (rows, total) = if let Some(status) = status {
             let rows = sqlx::query(
-                r#"
+                r"
                 SELECT p.*,
                     COALESCE(SUM(CASE WHEN v.choice = 'for' THEN 1 ELSE 0 END), 0) as votes_for,
                     COALESCE(SUM(CASE WHEN v.choice = 'against' THEN 1 ELSE 0 END), 0) as votes_against,
@@ -187,7 +188,7 @@ impl GovernanceService {
                 GROUP BY p.id
                 ORDER BY p.created_at DESC
                 LIMIT ? OFFSET ?
-                "#,
+                ",
             )
             .bind(status)
             .bind(limit)
@@ -206,7 +207,7 @@ impl GovernanceService {
             (rows, total)
         } else {
             let rows = sqlx::query(
-                r#"
+                r"
                 SELECT p.*,
                     COALESCE(SUM(CASE WHEN v.choice = 'for' THEN 1 ELSE 0 END), 0) as votes_for,
                     COALESCE(SUM(CASE WHEN v.choice = 'against' THEN 1 ELSE 0 END), 0) as votes_against,
@@ -216,7 +217,7 @@ impl GovernanceService {
                 GROUP BY p.id
                 ORDER BY p.created_at DESC
                 LIMIT ? OFFSET ?
-                "#,
+                ",
             )
             .bind(limit)
             .bind(offset)
@@ -234,7 +235,7 @@ impl GovernanceService {
 
         let proposals = rows
             .iter()
-            .map(|row| proposal_from_row(row))
+            .map(proposal_from_row)
             .collect::<Result<Vec<_>>>()?;
 
         Ok(ProposalsListResponse { proposals, total })
@@ -242,7 +243,7 @@ impl GovernanceService {
 
     pub async fn get_proposal(&self, id: &str) -> Result<ProposalResponse> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT p.*,
                 COALESCE(SUM(CASE WHEN v.choice = 'for' THEN 1 ELSE 0 END), 0) as votes_for,
                 COALESCE(SUM(CASE WHEN v.choice = 'against' THEN 1 ELSE 0 END), 0) as votes_against,
@@ -251,7 +252,7 @@ impl GovernanceService {
             LEFT JOIN governance_votes v ON p.id = v.proposal_id
             WHERE p.id = ?
             GROUP BY p.id
-            "#,
+            ",
         )
         .bind(id)
         .fetch_one(self.db.pool())
@@ -283,10 +284,10 @@ impl GovernanceService {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO governance_votes (id, proposal_id, voter_address, choice, tx_hash, voted_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(proposal_id)
@@ -315,13 +316,13 @@ impl GovernanceService {
 
     pub async fn get_votes(&self, proposal_id: &str, limit: i64) -> Result<Vec<VoteResponse>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT id, proposal_id, voter_address, choice, tx_hash, voted_at
             FROM governance_votes
             WHERE proposal_id = ?
             ORDER BY voted_at DESC
             LIMIT ?
-            "#,
+            ",
         )
         .bind(proposal_id)
         .bind(limit)
@@ -374,10 +375,10 @@ impl GovernanceService {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO governance_comments (id, proposal_id, author_address, content, created_at)
             VALUES (?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(proposal_id)
@@ -405,13 +406,13 @@ impl GovernanceService {
         limit: i64,
     ) -> Result<Vec<CommentResponse>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT id, proposal_id, author_address, content, created_at
             FROM governance_comments
             WHERE proposal_id = ?
             ORDER BY created_at DESC
             LIMIT ?
-            "#,
+            ",
         )
         .bind(proposal_id)
         .bind(limit)

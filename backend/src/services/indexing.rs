@@ -13,7 +13,8 @@ pub struct IndexingService {
 }
 
 impl IndexingService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
+    #[must_use] 
+    pub const fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
         Self { rpc_client, db }
     }
 

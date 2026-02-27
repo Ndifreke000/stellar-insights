@@ -33,7 +33,7 @@ where
     ) -> Result<Self, Self::Rejection> {
         parts
             .extensions
-            .get::<AuthUser>()
+            .get::<Self>()
             .cloned()
             .ok_or(AuthError::MissingToken)
     }
@@ -101,8 +101,8 @@ pub enum AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
-            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+            Self::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
+            Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
         };
 
         let body = json!({

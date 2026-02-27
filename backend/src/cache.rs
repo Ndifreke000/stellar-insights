@@ -16,6 +16,7 @@ pub struct CacheStats {
 }
 
 impl CacheStats {
+    #[must_use] 
     pub fn hit_rate(&self) -> f64 {
         let total = self.hits + self.misses;
         if total == 0 {
@@ -35,6 +36,7 @@ pub struct CacheConfig {
 }
 
 impl CacheConfig {
+    #[must_use] 
     pub fn get_ttl(&self, cache_type: &str) -> usize {
         match cache_type {
             "corridor" => self.corridor_metrics_ttl,
@@ -153,7 +155,7 @@ impl CacheManager {
                         .query_async::<_, ()>(&mut conn)
                         .await
                     {
-                        Ok(_) => {
+                        Ok(()) => {
                             tracing::debug!("Cache set for key: {} (TTL: {}s)", key, ttl_seconds);
                             Ok(())
                         }
@@ -182,7 +184,7 @@ impl CacheManager {
                 .query_async::<_, ()>(&mut conn)
                 .await
             {
-                Ok(_) => {
+                Ok(()) => {
                     self.invalidations.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!("Cache invalidated for key: {}", key);
                     Ok(())
@@ -254,7 +256,7 @@ impl CacheManager {
         }
     }
 
-    /// Invalidate cache keys matching a pattern (alias for delete_pattern)
+    /// Invalidate cache keys matching a pattern (alias for `delete_pattern`)
     pub async fn invalidate_pattern(&self, pattern: &str) -> anyhow::Result<usize> {
         self.delete_pattern(pattern).await
     }
@@ -266,6 +268,7 @@ impl CacheManager {
     }
 
     /// Get current cache statistics
+    #[must_use] 
     pub fn get_stats(&self) -> CacheStats {
         CacheStats {
             hits: self.hits.load(Ordering::Relaxed),
@@ -298,49 +301,60 @@ impl CacheManager {
 
 /// Cache key builders for consistency
 pub mod keys {
+    #[must_use] 
     pub fn anchor_list(limit: i64, offset: i64) -> String {
-        format!("anchor:list:{}:{}", limit, offset)
+        format!("anchor:list:{limit}:{offset}")
     }
 
+    #[must_use] 
     pub fn anchor_detail(id: &str) -> String {
-        format!("anchor:detail:{}", id)
+        format!("anchor:detail:{id}")
     }
 
+    #[must_use] 
     pub fn anchor_by_account(account: &str) -> String {
-        format!("anchor:account:{}", account)
+        format!("anchor:account:{account}")
     }
 
+    #[must_use] 
     pub fn anchor_assets(anchor_id: &str) -> String {
-        format!("anchor:assets:{}", anchor_id)
+        format!("anchor:assets:{anchor_id}")
     }
 
+    #[must_use] 
     pub fn corridor_list(limit: i64, offset: i64, filters: &str) -> String {
-        format!("corridor:list:{}:{}:{}", limit, offset, filters)
+        format!("corridor:list:{limit}:{offset}:{filters}")
     }
 
+    #[must_use] 
     pub fn corridor_detail(corridor_key: &str) -> String {
-        format!("corridor:detail:{}", corridor_key)
+        format!("corridor:detail:{corridor_key}")
     }
 
+    #[must_use] 
     pub fn dashboard_stats() -> String {
         "dashboard:stats".to_string()
     }
 
+    #[must_use] 
     pub fn metrics_overview() -> String {
         "metrics:overview".to_string()
     }
 
     /// Pattern for invalidating all anchor-related caches
+    #[must_use] 
     pub fn anchor_pattern() -> String {
         "anchor:*".to_string()
     }
 
     /// Pattern for invalidating all corridor-related caches
+    #[must_use] 
     pub fn corridor_pattern() -> String {
         "corridor:*".to_string()
     }
 
     /// Pattern for invalidating all dashboard caches
+    #[must_use] 
     pub fn dashboard_pattern() -> String {
         "dashboard:*".to_string()
     }

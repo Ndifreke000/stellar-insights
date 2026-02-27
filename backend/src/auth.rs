@@ -87,9 +87,7 @@ impl AuthService {
         let jwt_secret = std::env::var("JWT_SECRET")
             .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
 
-        if jwt_secret.len() < 32 {
-            panic!("JWT_SECRET must be at least 32 characters for adequate security");
-        }
+        assert!((jwt_secret.len() >= 32), "JWT_SECRET must be at least 32 characters for adequate security");
 
         Self {
             jwt_secret,
@@ -114,12 +112,12 @@ impl AuthService {
         .bind(username)
         .fetch_optional(&self.db_pool)
         .await
-        .map_err(|e| anyhow!("Database error during authentication: {}", e))?;
+        .map_err(|e| anyhow!("Database error during authentication: {e}"))?;
 
         let record = record.ok_or_else(|| anyhow!("Invalid username or password"))?;
 
         let parsed_hash = PasswordHash::new(&record.password_hash)
-            .map_err(|e| anyhow!("Failed to parse password hash: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse password hash: {e}"))?;
 
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
@@ -151,7 +149,7 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate access token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate access token: {e}"))
     }
 
     /// Generate refresh token
@@ -174,7 +172,7 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate refresh token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate refresh token: {e}"))
     }
 
     /// Validate and decode token
@@ -187,19 +185,19 @@ impl AuthService {
             &validation,
         )
         .map(|data| data.claims)
-        .map_err(|e| anyhow!("Invalid token: {}", e))
+        .map_err(|e| anyhow!("Invalid token: {e}"))
     }
 
     /// Store refresh token in Redis
     pub async fn store_refresh_token(&self, token: &str, user_id: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{}", user_id);
+            let key = format!("refresh_token:{user_id}");
             let expiry = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60; // seconds
 
             conn.set_ex::<_, _, ()>(&key, token, expiry as u64)
                 .await
-                .map_err(|e| anyhow!("Failed to store refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to store refresh token: {e}"))?;
 
             tracing::debug!(
                 user_id = crate::logging::redaction::redact_user_id(user_id),
@@ -230,7 +228,7 @@ impl AuthService {
             let stored_token: Option<String> = conn
                 .get(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to retrieve refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to retrieve refresh token: {e}"))?;
 
             if stored_token.as_deref() != Some(token) {
                 return Err(anyhow!("Refresh token not found or invalid"));
@@ -249,11 +247,11 @@ impl AuthService {
     pub async fn invalidate_refresh_token(&self, user_id: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{}", user_id);
+            let key = format!("refresh_token:{user_id}");
 
             conn.del::<_, ()>(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to invalidate refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to invalidate refresh token: {e}"))?;
 
             tracing::debug!(
                 user_id = crate::logging::redaction::redact_user_id(user_id),

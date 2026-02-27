@@ -47,7 +47,8 @@ pub struct SnapshotService {
 
 impl SnapshotService {
     /// Create a new snapshot service
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         db: Arc<Database>,
         contract_service: Option<Arc<ContractService>>,
         event_indexer: Option<Arc<EventIndexer>>,
@@ -92,7 +93,7 @@ impl SnapshotService {
 
         // Step 3: Compute SHA-256 hash
         let hash = Self::compute_sha256_hash_bytes(&canonical_json);
-        let hash_hex = hex::encode(&hash);
+        let hash_hex = hex::encode(hash);
 
         info!("Generated snapshot hash: {}", hash_hex);
 
@@ -173,7 +174,7 @@ impl SnapshotService {
 
     /// Aggregate anchor metrics from database
     async fn aggregate_anchor_metrics(&self) -> Result<Vec<SnapshotAnchorMetrics>> {
-        let query = r#"
+        let query = r"
             SELECT 
                 id,
                 name,
@@ -188,7 +189,7 @@ impl SnapshotService {
             FROM anchors
             WHERE status != 'inactive'
             ORDER BY id
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .fetch_all(self.db.pool())
@@ -239,7 +240,7 @@ impl SnapshotService {
 
     /// Aggregate corridor metrics from database
     async fn aggregate_corridor_metrics(&self) -> Result<Vec<SnapshotCorridorMetrics>> {
-        let query = r#"
+        let query = r"
             SELECT 
                 cm.id,
                 cm.corridor_key,
@@ -259,7 +260,7 @@ impl SnapshotService {
             GROUP BY cm.corridor_key
             HAVING cm.date = MAX(cm.date)
             ORDER BY cm.corridor_key
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .fetch_all(self.db.pool())
@@ -302,11 +303,11 @@ impl SnapshotService {
     ) -> Result<String> {
         let snapshot_id = Uuid::new_v4().to_string();
 
-        let query = r#"
+        let query = r"
             INSERT INTO snapshots (
                 id, entity_id, entity_type, data, hash, epoch, timestamp, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(&snapshot_id)
@@ -563,7 +564,7 @@ impl SnapshotService {
     /// Serialize f64 to a deterministic JSON number representation
     ///
     /// This ensures that floating point numbers are always serialized
-    /// in the same way. serde_json handles this deterministically,
+    /// in the same way. `serde_json` handles this deterministically,
     /// but we ensure special cases are handled consistently.
     fn serialize_f64(value: f64) -> Value {
         if value.is_finite() {
@@ -640,7 +641,7 @@ impl SnapshotService {
     /// * `snapshot` - The analytics snapshot to version and hash
     ///
     /// # Returns
-    /// A tuple containing (hash_bytes, hash_hex, schema_version)
+    /// A tuple containing (`hash_bytes`, `hash_hex`, `schema_version`)
     pub fn version_and_hash(
         snapshot: AnalyticsSnapshot,
     ) -> Result<([u8; 32], String, u32), serde_json::Error> {
@@ -663,7 +664,7 @@ impl SnapshotService {
     /// * `contract_service` - Contract service for blockchain submission
     ///
     /// # Returns
-    /// Tuple of (hash_bytes, hash_hex, schema_version, submission_result)
+    /// Tuple of (`hash_bytes`, `hash_hex`, `schema_version`, `submission_result`)
     pub async fn version_hash_and_submit(
         snapshot: AnalyticsSnapshot,
         contract_service: &ContractService,
@@ -675,7 +676,7 @@ impl SnapshotService {
 
         // Generate hash
         let (hash_bytes, hash_hex, version) = Self::version_and_hash(snapshot)
-            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {e}"))?;
 
         info!("Generated snapshot hash for epoch {}: {}", epoch, hash_hex);
 
@@ -706,13 +707,13 @@ impl SnapshotService {
         info!("Verifying snapshot hash for epoch {}", epoch);
 
         // Get backend snapshot data
-        let query = r#"
+        let query = r"
             SELECT hash, canonical_json 
             FROM snapshots 
             WHERE epoch = ? 
             ORDER BY created_at DESC 
             LIMIT 1
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .bind(epoch as i64)
@@ -726,32 +727,29 @@ impl SnapshotService {
 
             // Get on-chain hash if contract service is available
             if let Some(contract_service) = &self.contract_service {
-                match contract_service.get_snapshot_by_epoch(epoch).await? {
-                    Some(on_chain_hash) => {
-                        let is_verified = backend_hash == on_chain_hash;
+                if let Some(on_chain_hash) = contract_service.get_snapshot_by_epoch(epoch).await? {
+                    let is_verified = backend_hash == on_chain_hash;
 
-                        if is_verified {
-                            info!("✓ Snapshot verification passed for epoch {}", epoch);
-                        } else {
-                            warn!(
-                                "✗ Snapshot verification failed for epoch {} - hash mismatch",
-                                epoch
-                            );
-                            warn!(
-                                "Backend hash: {}, On-chain hash: {}",
-                                backend_hash, on_chain_hash
-                            );
-                        }
-
-                        // Update verification status in database
-                        self.update_verification_status(epoch, is_verified).await?;
-
-                        Ok(is_verified)
+                    if is_verified {
+                        info!("✓ Snapshot verification passed for epoch {}", epoch);
+                    } else {
+                        warn!(
+                            "✗ Snapshot verification failed for epoch {} - hash mismatch",
+                            epoch
+                        );
+                        warn!(
+                            "Backend hash: {}, On-chain hash: {}",
+                            backend_hash, on_chain_hash
+                        );
                     }
-                    None => {
-                        warn!("No snapshot found on-chain for epoch {}", epoch);
-                        Ok(false)
-                    }
+
+                    // Update verification status in database
+                    self.update_verification_status(epoch, is_verified).await?;
+
+                    Ok(is_verified)
+                } else {
+                    warn!("No snapshot found on-chain for epoch {}", epoch);
+                    Ok(false)
                 }
             } else {
                 warn!("Contract service not available for on-chain verification");
@@ -765,11 +763,11 @@ impl SnapshotService {
 
     /// Update verification status in database
     async fn update_verification_status(&self, epoch: u64, is_verified: bool) -> Result<()> {
-        let query = r#"
+        let query = r"
             UPDATE snapshots 
             SET verification_status = ?, verified_at = ?
             WHERE epoch = ?
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(if is_verified { "verified" } else { "failed" })
@@ -804,7 +802,7 @@ impl SnapshotService {
             event_indexer.get_verification_summary(limit).await
         } else {
             // Fallback to database query if no event indexer
-            let query = r#"
+            let query = r"
                 SELECT 
                     epoch,
                     hash,
@@ -817,7 +815,7 @@ impl SnapshotService {
                 AND epoch IS NOT NULL
                 ORDER BY epoch DESC
                 LIMIT ?
-            "#;
+            ";
 
             let rows = sqlx::query(query)
                 .bind(limit)
@@ -848,13 +846,13 @@ impl SnapshotService {
 
     /// Get latest verified epoch
     pub async fn get_latest_verified_epoch(&self) -> Result<Option<u64>> {
-        let query = r#"
+        let query = r"
             SELECT epoch
             FROM snapshots
             WHERE verification_status = 'verified'
             ORDER BY epoch DESC
             LIMIT 1
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .fetch_optional(self.db.pool())
@@ -866,13 +864,13 @@ impl SnapshotService {
 
     /// Check if epoch needs verification
     pub async fn needs_verification(&self, epoch: u64) -> Result<bool> {
-        let query = r#"
+        let query = r"
             SELECT verification_status
             FROM snapshots
             WHERE epoch = ?
             ORDER BY created_at DESC
             LIMIT 1
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .bind(epoch as i64)

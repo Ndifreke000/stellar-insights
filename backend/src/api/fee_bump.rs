@@ -15,7 +15,7 @@ pub struct RecentFeeBumpsParams {
     limit: i64,
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     50
 }
 
@@ -33,7 +33,7 @@ async fn get_fee_bump_stats(
     let stats = service
         .get_fee_bump_stats()
         .await
-        .unwrap_or_else(|_| FeeBumpStats {
+        .unwrap_or(FeeBumpStats {
             total_fee_bumps: 0,
             avg_fee_charged: 0.0,
             max_fee_charged: 0,

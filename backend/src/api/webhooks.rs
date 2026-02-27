@@ -104,7 +104,7 @@ pub async fn list_webhooks(
         .map(|w| WebhookResponse {
             id: w.id,
             url: w.url,
-            event_types: w.event_types.split(',').map(|s| s.to_string()).collect(),
+            event_types: w.event_types.split(',').map(std::string::ToString::to_string).collect(),
             filters: w
                 .filters
                 .as_ref()
@@ -196,13 +196,13 @@ pub enum WebhookApiError {
 impl IntoResponse for WebhookApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            WebhookApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            WebhookApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            WebhookApiError::Forbidden => (
+            Self::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            Self::Forbidden => (
                 StatusCode::FORBIDDEN,
                 "You don't have permission to access this webhook".to_string(),
             ),
-            WebhookApiError::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (status, Json(json!({"error": message}))).into_response()

@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::cache::helpers::cached_query;
@@ -19,7 +19,6 @@ use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 use crate::validation;
-use anyhow::anyhow;
 
 /// Represents an asset pair (source -> destination) for a corridor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -35,7 +34,7 @@ impl AssetPair {
 }
 
 /// Extract asset pair from a payment operation
-/// Handles regular payments, path_payment_strict_send, and path_payment_strict_receive
+/// Handles regular payments, `path_payment_strict_send`, and `path_payment_strict_receive`
 fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<AssetPair> {
     let operation_type = payment.operation_type.as_deref().unwrap_or("payment");
 
@@ -209,7 +208,7 @@ pub struct ListCorridorsQuery {
     #[serde(default)]
     #[param(example = 0)]
     pub offset: i64,
-    /// Sort by field (success_rate or volume)
+    /// Sort by field (`success_rate` or volume)
     #[serde(default)]
     pub sort_by: SortBy,
     /// Minimum success rate filter
@@ -232,7 +231,7 @@ pub struct ListCorridorsQuery {
     pub time_period: Option<String>,
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     50
 }
 
@@ -253,8 +252,7 @@ fn calculate_health_score(success_rate: f64, total_transactions: i64, volume_usd
         0.0
     };
 
-    success_rate * success_weight
-        + volume_score * volume_weight
+    success_rate.mul_add(success_weight, volume_score * volume_weight)
         + transaction_score * transaction_weight
 }
 
@@ -353,7 +351,7 @@ pub async fn list_corridors(
                 circuit_breaker.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {e}"))?;
 
             // **RPC DATA**: Fetch recent trades for volume data
             let _trades = with_retry(
@@ -367,7 +365,7 @@ pub async fn list_corridors(
                 circuit_breaker.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
             // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
             // Use paginated fetch to get more complete data (up to configured limit)
             let payments = match rpc_client.fetch_all_payments(Some(1000)).await {
@@ -403,7 +401,7 @@ pub async fn list_corridors(
                     let corridor_key = asset_pair.to_corridor_key();
                     corridor_map
                         .entry(corridor_key)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(payment);
                 } else {
                     tracing::warn!(
@@ -416,7 +414,7 @@ pub async fn list_corridors(
             // Calculate metrics for each corridor
             let mut corridor_responses = Vec::new();
 
-            for (corridor_key, corridor_payments) in corridor_map.iter() {
+            for (corridor_key, corridor_payments) in &corridor_map {
                 let total_attempts = corridor_payments.len() as i64;
 
                 // In Stellar, payments in the stream are successful
@@ -443,7 +441,7 @@ pub async fn list_corridors(
 
                 // Get price for source asset
                 if let Ok(price) = price_feed.get_price(source_asset_key).await {
-                    for payment in corridor_payments.iter() {
+                    for payment in corridor_payments {
                         if let Ok(amount) = payment.get_amount().parse::<f64>() {
                             volume_usd += amount * price;
                         }
@@ -570,7 +568,7 @@ fn calculate_historical_success_rate(
                 0.0
             };
             SuccessRateDataPoint {
-                timestamp: format!("{}T00:00:00Z", date),
+                timestamp: format!("{date}T00:00:00Z"),
                 success_rate,
                 attempts: total,
             }
@@ -657,7 +655,7 @@ fn calculate_liquidity_trends(
         .map(|(date, daily_amount)| {
             let liquidity = (daily_amount / corridor_payments.len() as f64) * volume_usd;
             LiquidityDataPoint {
-                timestamp: format!("{}T00:00:00Z", date),
+                timestamp: format!("{date}T00:00:00Z"),
                 liquidity_usd: liquidity,
                 volume_24h_usd: daily_amount,
             }
@@ -686,8 +684,8 @@ fn find_related_corridors(
         .filter(|c| {
             // Include corridors with same source or destination asset (excluding the target itself)
             (c.id == target_corridor_key)
-                || c.id.starts_with(&format!("{}->", target_source))
-                || c.id.ends_with(&format!("->{}", target_dest))
+                || c.id.starts_with(&format!("{target_source}->"))
+                || c.id.ends_with(&format!("->{target_dest}"))
         })
         .cloned()
         .collect();
@@ -786,7 +784,7 @@ pub async fn get_corridor_detail(
                 let key = asset_pair.to_corridor_key();
                 corridor_map
                     .entry(key.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(payment);
 
                 if key == corridor_key {
@@ -798,13 +796,12 @@ pub async fn get_corridor_detail(
         // If no payments found for this corridor, return 404
         if corridor_payments.is_empty() {
             return Err(anyhow::anyhow!(
-                "No payment data found for corridor: {}",
-                corridor_key
+                "No payment data found for corridor: {corridor_key}"
             ));
         }
 
         // Build all corridor responses for related corridors lookup
-        for (key, corr_payments) in corridor_map.iter() {
+        for (key, corr_payments) in &corridor_map {
             let total_attempts = corr_payments.len() as i64;
             let successful_payments = total_attempts;
             let failed_payments = 0;
@@ -825,7 +822,7 @@ pub async fn get_corridor_detail(
             // Calculate volume
             let mut volume_usd = 0.0;
             if let Ok(price) = price_feed.get_price(parts[0]).await {
-                for payment in corr_payments.iter() {
+                for payment in corr_payments {
                     if let Ok(amount) = payment.get_amount().parse::<f64>() {
                         volume_usd += amount * price;
                     }
@@ -869,7 +866,7 @@ pub async fn get_corridor_detail(
 
         let mut volume_usd = 0.0;
         if let Ok(price) = price_feed.get_price(source_key).await {
-            for payment in corridor_payments.iter() {
+            for payment in &corridor_payments {
                 if let Ok(amount) = payment.get_amount().parse::<f64>() {
                     volume_usd += amount * price;
                 }

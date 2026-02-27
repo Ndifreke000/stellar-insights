@@ -20,6 +20,7 @@ pub struct TelegramBot {
 }
 
 impl TelegramBot {
+    #[must_use] 
     pub fn new(
         token: &str,
         db: Arc<Database>,
@@ -89,7 +90,7 @@ impl TelegramBot {
     }
 }
 
-/// Parse a Telegram command, stripping the optional @bot_name suffix.
+/// Parse a Telegram command, stripping the optional @`bot_name` suffix.
 fn parse_command(text: &str) -> Option<(&str, &str)> {
     let text = text.trim();
     if !text.starts_with('/') {

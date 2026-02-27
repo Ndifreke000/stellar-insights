@@ -18,13 +18,14 @@ pub struct JobConfig {
 }
 
 impl JobConfig {
+    #[must_use] 
     pub fn from_env(name: &str, default_interval: u64) -> Self {
         let env_prefix = format!("JOB_{}", name.to_uppercase().replace('-', "_"));
-        let enabled = std::env::var(format!("{}_ENABLED", env_prefix))
+        let enabled = std::env::var(format!("{env_prefix}_ENABLED"))
             .unwrap_or_else(|_| "true".to_string())
             .parse()
             .unwrap_or(true);
-        let interval_seconds = std::env::var(format!("{}_INTERVAL_SECONDS", env_prefix))
+        let interval_seconds = std::env::var(format!("{env_prefix}_INTERVAL_SECONDS"))
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(default_interval);
@@ -41,8 +42,15 @@ pub struct JobScheduler {
     handles: Vec<JoinHandle<()>>,
 }
 
+impl Default for JobScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobScheduler {
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {
             handles: Vec::new(),
         }
@@ -72,7 +80,7 @@ impl JobScheduler {
                 interval.tick().await;
                 info!("Running job '{}'", config.name);
                 match job_fn().await {
-                    Ok(_) => info!("Job '{}' completed successfully", config.name),
+                    Ok(()) => info!("Job '{}' completed successfully", config.name),
                     Err(e) => error!("Job '{}' failed: {}", config.name, e),
                 }
             }

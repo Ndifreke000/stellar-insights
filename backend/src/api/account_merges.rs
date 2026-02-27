@@ -16,7 +16,7 @@ pub struct RecentMergesParams {
     limit: i64,
 }
 
-fn default_recent_limit() -> i64 {
+const fn default_recent_limit() -> i64 {
     50
 }
 
@@ -26,7 +26,7 @@ pub struct DestinationParams {
     limit: i64,
 }
 
-fn default_destination_limit() -> i64 {
+const fn default_destination_limit() -> i64 {
     20
 }
 

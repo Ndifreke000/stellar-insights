@@ -3,12 +3,11 @@
 //! Provides REST API endpoints for querying contract events,
 //! verification status, and on-chain audit trails.
 
-use crate::database::Database;
 use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Json},
+    response::Json,
     routing::get,
     Router,
 };
@@ -55,7 +54,7 @@ pub async fn get_verification_summary(
             error!("Failed to get verification summary: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch verification summary: {}", e),
+                format!("Failed to fetch verification summary: {e}"),
             )
         })?;
 
@@ -93,7 +92,7 @@ pub async fn list_contract_events(
         error!("Failed to query events: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to query events: {}", e),
+            format!("Failed to query events: {e}"),
         )
     })?;
 
@@ -114,10 +113,10 @@ pub async fn get_contract_event(
             error!("Failed to get event: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get event: {}", e),
+                format!("Failed to get event: {e}"),
             )
         })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Event not found: {}", id)))?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Event not found: {id}")))?;
 
     Ok(Json(event))
 }
@@ -136,7 +135,7 @@ pub async fn get_events_for_epoch(
             error!("Failed to get events for epoch: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get events for epoch: {}", e),
+                format!("Failed to get events for epoch: {e}"),
             )
         })?;
 
@@ -153,7 +152,7 @@ pub async fn get_event_stats(
         error!("Failed to get event stats: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get event stats: {}", e),
+            format!("Failed to get event stats: {e}"),
         )
     })?;
 

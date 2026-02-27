@@ -19,7 +19,8 @@ pub struct TelegramSubscription {
 }
 
 impl SubscriptionService {
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use] 
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -91,7 +92,7 @@ impl SubscriptionService {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(c,)| c > 0).unwrap_or(false))
+        Ok(row.is_some_and(|(c,)| c > 0))
     }
 
     pub async fn update_last_alert_sent(&self, chat_id: i64) -> anyhow::Result<()> {

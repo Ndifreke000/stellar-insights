@@ -4,9 +4,8 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::broadcast;
 
-use crate::alerts::{Alert, AlertManager};
+use crate::alerts::AlertManager;
 
 pub async fn alert_websocket_handler(
     ws: WebSocketUpgrade,

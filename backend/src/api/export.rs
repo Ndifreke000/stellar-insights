@@ -1,17 +1,15 @@
 use axum::{
     extract::{Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap},
     response::IntoResponse,
-    Json,
 };
 use chrono::{DateTime, Duration, Utc};
 use csv::Writer;
 use rust_xlsxwriter::{Color, Format, Workbook};
-use serde::{Deserialize, Serialize};
-use std::io::Cursor;
+use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::models::{corridor::CorridorMetrics, Anchor, PaymentRecord};
+use crate::models::PaymentRecord;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -29,9 +27,8 @@ pub async fn export_corridors(
     let today = Utc::now().date_naive();
     let start_date = params
         .start_date
-        .map(|d| d.date_naive())
-        .unwrap_or(today - Duration::days(30));
-    let end_date = params.end_date.map(|d| d.date_naive()).unwrap_or(today);
+        .map_or(today - Duration::days(30), |d| d.date_naive());
+    let end_date = params.end_date.map_or(today, |d| d.date_naive());
 
     let corridors = app_state
         .db
@@ -41,14 +38,14 @@ pub async fn export_corridors(
         .map_err(|e| {
             ApiError::internal(
                 "DATABASE_ERROR",
-                format!("Failed to fetch corridors for export: {}", e),
+                format!("Failed to fetch corridors for export: {e}"),
             )
         })?;
 
     match params.format.to_lowercase().as_str() {
         "csv" => {
             let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record(&[
+            wtr.write_record([
                 "Corridor ID",
                 "Source Asset",
                 "Source Issuer",
@@ -208,14 +205,14 @@ pub async fn export_anchors(
     let anchors = app_state.db.list_anchors(1000, 0).await.map_err(|e| {
         ApiError::internal(
             "DATABASE_ERROR",
-            format!("Failed to fetch anchors for export: {}", e),
+            format!("Failed to fetch anchors for export: {e}"),
         )
     })?;
 
     match params.format.to_lowercase().as_str() {
         "csv" => {
             let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record(&[
+            wtr.write_record([
                 "Anchor ID",
                 "Name",
                 "Stellar Account",
@@ -381,12 +378,12 @@ pub async fn export_payments(
     let end_date = params.end_date.unwrap_or(Utc::now());
 
     let payments = sqlx::query_as::<_, PaymentRecord>(
-        r#"
+        r"
         SELECT * FROM payments 
         WHERE created_at BETWEEN $1 AND $2
         ORDER BY created_at DESC
         LIMIT 5000
-        "#,
+        ",
     )
     .bind(start_date)
     .bind(end_date)
@@ -395,14 +392,14 @@ pub async fn export_payments(
     .map_err(|e| {
         ApiError::internal(
             "DATABASE_ERROR",
-            format!("Failed to fetch payments for export: {}", e),
+            format!("Failed to fetch payments for export: {e}"),
         )
     })?;
 
     match params.format.to_lowercase().as_str() {
         "csv" => {
             let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record(&[
+            wtr.write_record([
                 "Transaction Hash",
                 "Source Account",
                 "Destination Account",
@@ -500,14 +497,14 @@ pub async fn export_payments(
                     .write(
                         row,
                         3,
-                        &format!("{}:{}", p.source_asset_code, p.source_asset_issuer),
+                        format!("{}:{}", p.source_asset_code, p.source_asset_issuer),
                     )
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
                     .write(
                         row,
                         4,
-                        &format!(
+                        format!(
                             "{}:{}",
                             p.destination_asset_code, p.destination_asset_issuer
                         ),

@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Indexed contract event with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,12 +79,12 @@ impl EventIndexer {
     pub async fn index_event(&self, event: IndexedEvent) -> Result<()> {
         debug!("Indexing event: {}", event.id);
 
-        let query = r#"
+        let query = r"
             INSERT OR REPLACE INTO contract_events (
                 id, contract_id, event_type, epoch, hash, timestamp, 
                 ledger, transaction_hash, created_at, verification_status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(&event.id)
@@ -110,12 +110,12 @@ impl EventIndexer {
         debug!("Querying events with filters: {:?}", query);
 
         let mut sql = String::from(
-            r#"
+            r"
             SELECT id, contract_id, event_type, epoch, hash, timestamp, 
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE 1=1
-        "#,
+        ",
         );
 
         let mut bindings = Vec::new();
@@ -174,9 +174,9 @@ impl EventIndexer {
 
         // Add pagination
         if let Some(limit) = query.limit {
-            sql.push_str(&format!(" LIMIT {}", limit));
+            sql.push_str(&format!(" LIMIT {limit}"));
             if let Some(offset) = query.offset {
-                sql.push_str(&format!(" OFFSET {}", offset));
+                sql.push_str(&format!(" OFFSET {offset}"));
             }
         }
 
@@ -217,12 +217,12 @@ impl EventIndexer {
     pub async fn get_event_by_id(&self, id: &str) -> Result<Option<IndexedEvent>> {
         debug!("Getting event by ID: {}", id);
 
-        let query = r#"
+        let query = r"
             SELECT id, contract_id, event_type, epoch, hash, timestamp, 
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE id = ?
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .bind(id)
@@ -305,11 +305,11 @@ impl EventIndexer {
             event_id, status
         );
 
-        let query = r#"
+        let query = r"
             UPDATE contract_events 
             SET verification_status = ?, verified_at = ?
             WHERE id = ?
-        "#;
+        ";
 
         let result = sqlx::query(query)
             .bind(status)
@@ -374,13 +374,13 @@ impl EventIndexer {
 
     /// Get recent events from the database
     pub async fn get_recent_events(&self, limit: i64) -> Result<Vec<IndexedEvent>> {
-        let query = r#"
+        let query = r"
             SELECT id, contract_id, event_type, epoch, hash, timestamp, ledger, 
                    transaction_hash, created_at, verification_status
             FROM contract_events
             ORDER BY created_at DESC
             LIMIT ?
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .bind(limit)
@@ -411,7 +411,7 @@ impl EventIndexer {
     pub async fn get_event_stats_old(&self) -> Result<EventStats> {
         debug!("Getting event statistics");
 
-        let query = r#"
+        let query = r"
             SELECT 
                 COUNT(*) as total_events,
                 COUNT(CASE WHEN verification_status = 'verified' THEN 1 END) as verified_snapshots,
@@ -420,7 +420,7 @@ impl EventIndexer {
                 MAX(ledger) as latest_ledger,
                 COUNT(CASE WHEN created_at > datetime('now', '-1 day') THEN 1 END) as events_last_24h
             FROM contract_events
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .fetch_one(self.db.pool())
@@ -450,7 +450,7 @@ impl EventIndexer {
             epoch_count
         );
 
-        let query = r#"
+        let query = r"
             SELECT 
                 epoch,
                 hash,
@@ -463,7 +463,7 @@ impl EventIndexer {
             AND epoch IS NOT NULL
             ORDER BY epoch DESC
             LIMIT ?
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .bind(epoch_count)
@@ -499,16 +499,16 @@ impl EventIndexer {
     ) -> Result<Vec<IndexedEvent>> {
         debug!("Searching events by hash prefix: {}", prefix);
 
-        let query = r#"
+        let query = r"
             SELECT id, contract_id, event_type, epoch, hash, timestamp, 
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE hash LIKE ?
             ORDER BY created_at DESC
             LIMIT ?
-        "#;
+        ";
 
-        let search_pattern = format!("{}%", prefix);
+        let search_pattern = format!("{prefix}%");
 
         let rows = sqlx::query(query)
             .bind(search_pattern)
@@ -548,8 +548,7 @@ impl EventIndexer {
         info!("Cleaning up events older than {} days", days_to_keep);
 
         let query = format!(
-            "DELETE FROM contract_events WHERE created_at < datetime('now', '-{} days')",
-            days_to_keep
+            "DELETE FROM contract_events WHERE created_at < datetime('now', '-{days_to_keep} days')"
         );
 
         let result = sqlx::query(&query)

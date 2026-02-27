@@ -5,7 +5,7 @@ use crate::api::{
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
 use crate::database::Database;
-use crate::handlers::*;
+use crate::handlers::{pool_metrics, get_anchor, get_anchor_by_account, get_anchor_assets, get_muxed_analytics, create_anchor, update_anchor_metrics, create_anchor_asset, create_corridor, update_corridor_metrics_from_transactions};
 use crate::rate_limit::{rate_limit_middleware, RateLimiter};
 use crate::rpc::StellarRpcClient;
 use crate::rpc_handlers;

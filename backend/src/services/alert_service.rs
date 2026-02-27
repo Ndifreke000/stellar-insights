@@ -4,11 +4,10 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::{error, info, warn};
 
 /// Alert severity levels
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AlertSeverity {
     Info,
     Warning,
@@ -56,7 +55,8 @@ pub struct AlertService {
 
 impl AlertService {
     /// Create a new alert service
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {}
     }
 
@@ -107,8 +107,7 @@ impl AlertService {
             },
             severity: AlertSeverity::Critical,
             message: format!(
-                "Snapshot verification failed for epoch {}. Expected hash: {}, Actual hash: {}",
-                epoch, expected_hash, actual_hash
+                "Snapshot verification failed for epoch {epoch}. Expected hash: {expected_hash}, Actual hash: {actual_hash}"
             ),
             timestamp: chrono::Utc::now(),
         };
@@ -121,7 +120,7 @@ impl AlertService {
         let alert = Alert {
             alert_type: AlertType::MissingSnapshot { epoch },
             severity: AlertSeverity::Warning,
-            message: format!("No snapshot found in database for epoch {}", epoch),
+            message: format!("No snapshot found in database for epoch {epoch}"),
             timestamp: chrono::Utc::now(),
         };
 
@@ -135,7 +134,7 @@ impl AlertService {
                 error: error.clone(),
             },
             severity: AlertSeverity::Error,
-            message: format!("Contract event listener failed: {}", error),
+            message: format!("Contract event listener failed: {error}"),
             timestamp: chrono::Utc::now(),
         };
 
@@ -151,8 +150,7 @@ impl AlertService {
             },
             severity: AlertSeverity::Critical,
             message: format!(
-                "Unauthorized snapshot submission detected for epoch {} from {}",
-                epoch, submitter
+                "Unauthorized snapshot submission detected for epoch {epoch} from {submitter}"
             ),
             timestamp: chrono::Utc::now(),
         };

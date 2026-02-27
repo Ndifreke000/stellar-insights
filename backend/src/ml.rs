@@ -26,7 +26,14 @@ pub struct SimpleMLModel {
     version: String,
 }
 
+impl Default for SimpleMLModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimpleMLModel {
+    #[must_use] 
     pub fn new() -> Self {
         // Simple linear model weights (trained offline)
         Self {
@@ -36,15 +43,14 @@ impl SimpleMLModel {
         }
     }
 
+    #[must_use] 
     pub fn predict(&self, features: PredictionFeatures) -> PredictionResult {
-        let input = vec![
-            features.corridor_hash,
+        let input = [features.corridor_hash,
             features.amount_usd,
             features.hour_of_day,
             features.day_of_week,
             features.liquidity_depth,
-            features.recent_success_rate,
-        ];
+            features.recent_success_rate];
 
         let mut score = self.bias;
         for (i, &weight) in self.weights.iter().enumerate() {
@@ -56,7 +62,7 @@ impl SimpleMLModel {
 
         PredictionResult {
             success_probability: prob,
-            confidence: if prob > 0.7 || prob < 0.3 { 0.9 } else { 0.7 },
+            confidence: if (0.3..=0.7).contains(&prob) { 0.7 } else { 0.9 },
             model_version: self.version.clone(),
         }
     }
@@ -130,8 +136,8 @@ impl MLService {
     ) -> anyhow::Result<PredictionResult> {
         let parts: Vec<&str> = corridor.split('-').collect();
         let corridor_hash = self.hash_corridor(
-            &Some(parts.get(0).unwrap_or(&"").to_string()),
-            &Some(parts.get(1).unwrap_or(&"").to_string()),
+            &Some((*parts.first().unwrap_or(&"")).to_string()),
+            &Some((*parts.get(1).unwrap_or(&"")).to_string()),
         );
 
         let liquidity = self
@@ -154,7 +160,7 @@ impl MLService {
 
     async fn get_corridor_liquidity(&self, corridor: &str) -> Option<f64> {
         // Mock data for now - in production this would query the database
-        Some(1000.0 + (corridor.len() as f64 * 100.0))
+        Some((corridor.len() as f64).mul_add(100.0, 1000.0))
     }
 
     async fn get_recent_success_rate(&self, corridor: &str) -> Option<f32> {

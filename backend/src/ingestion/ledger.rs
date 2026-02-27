@@ -31,7 +31,8 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         rpc_client: Arc<StellarRpcClient>,
         fee_bump_tracker: Arc<FeeBumpTrackerService>,
         account_merge_detector: Arc<AccountMergeDetector>,
@@ -46,7 +47,8 @@ impl LedgerIngestionService {
         }
     }
 
-    pub fn new_with_webhooks(
+    #[must_use] 
+    pub const fn new_with_webhooks(
         rpc_client: Arc<StellarRpcClient>,
         fee_bump_tracker: Arc<FeeBumpTrackerService>,
         account_merge_detector: Arc<AccountMergeDetector>,
@@ -65,16 +67,13 @@ impl LedgerIngestionService {
     /// I'm running the main ingestion loop - fetches ledgers and persists them
     pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
         let cursor = self.get_cursor().await?;
-        let start_ledger = match self.get_last_ledger().await? {
-            Some(l) => Some(l + 1),
-            None => {
-                let health = self
-                    .rpc_client
-                    .check_health()
-                    .await
-                    .context("Failed to check health")?;
-                Some(health.oldest_ledger)
-            }
+        let start_ledger = if let Some(l) = self.get_last_ledger().await? { Some(l + 1) } else {
+            let health = self
+                .rpc_client
+                .check_health()
+                .await
+                .context("Failed to check health")?;
+            Some(health.oldest_ledger)
         };
 
         info!(
@@ -190,11 +189,11 @@ impl LedgerIngestionService {
         let close_time = self.parse_ledger_time(&ledger.ledger_close_time)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (sequence) DO NOTHING
-            "#,
+            ",
         )
         .bind(ledger.sequence as i64)
         .bind(&ledger.hash)
@@ -207,11 +206,11 @@ impl LedgerIngestionService {
         // I'm also storing a placeholder transaction for the ledger
         let tx_hash = format!("tx_{}", ledger.sequence);
         sqlx::query(
-            r#"
+            r"
             INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (hash) DO NOTHING
-            "#,
+            ",
         )
         .bind(&tx_hash)
         .bind(ledger.sequence as i64)
@@ -228,10 +227,10 @@ impl LedgerIngestionService {
     /// I'm persisting an extracted payment to the database
     async fn persist_payment(&self, payment: &ExtractedPayment) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
+            ",
         )
         .bind(payment.ledger_sequence as i64)
         .bind(&payment.transaction_hash)
@@ -304,14 +303,14 @@ impl LedgerIngestionService {
     async fn save_cursor(&self, cursor: &str, last_ledger: Option<u64>) -> Result<()> {
         let seq = last_ledger.unwrap_or(0) as i64;
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ingestion_cursor (id, last_ledger_sequence, cursor, updated_at)
             VALUES (1, $1, $2, CURRENT_TIMESTAMP)
             ON CONFLICT (id) DO UPDATE SET
                 last_ledger_sequence = EXCLUDED.last_ledger_sequence,
                 cursor = EXCLUDED.cursor,
                 updated_at = CURRENT_TIMESTAMP
-            "#,
+            ",
         )
         .bind(seq)
         .bind(cursor)

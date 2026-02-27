@@ -78,17 +78,17 @@ pub enum Sep10ApiError {
 impl IntoResponse for Sep10ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Sep10ApiError::ChallengeGenerationFailed(msg) => (
+            Self::ChallengeGenerationFailed(msg) => (
                 StatusCode::BAD_REQUEST,
-                format!("Challenge generation failed: {}", msg),
+                format!("Challenge generation failed: {msg}"),
             ),
-            Sep10ApiError::VerificationFailed(msg) => (
+            Self::VerificationFailed(msg) => (
                 StatusCode::UNAUTHORIZED,
-                format!("Verification failed: {}", msg),
+                format!("Verification failed: {msg}"),
             ),
-            Sep10ApiError::LogoutFailed(msg) => (
+            Self::LogoutFailed(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Logout failed: {}", msg),
+                format!("Logout failed: {msg}"),
             ),
         };
 

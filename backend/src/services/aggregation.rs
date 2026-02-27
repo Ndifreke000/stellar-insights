@@ -35,7 +35,8 @@ pub struct AggregationService {
 }
 
 impl AggregationService {
-    pub fn new(db: Arc<Database>, config: AggregationConfig) -> Self {
+    #[must_use] 
+    pub const fn new(db: Arc<Database>, config: AggregationConfig) -> Self {
         Self { db, config }
     }
 
@@ -173,9 +174,9 @@ impl AggregationService {
 
                     // Update averages (weighted by transaction count)
                     if let Some(latency) = metric.avg_settlement_latency_ms {
-                        let total_latency = existing.avg_settlement_latency_ms.unwrap_or(0) as i64
+                        let total_latency = i64::from(existing.avg_settlement_latency_ms.unwrap_or(0))
                             * existing.total_transactions
-                            + latency as i64 * metric.total_transactions;
+                            + i64::from(latency) * metric.total_transactions;
                         existing.avg_settlement_latency_ms = Some(
                             (total_latency
                                 / (existing.total_transactions + metric.total_transactions))
@@ -184,7 +185,7 @@ impl AggregationService {
                     }
 
                     existing.liquidity_depth_usd =
-                        (existing.liquidity_depth_usd + metric.liquidity_depth_usd) / 2.0;
+                        f64::midpoint(existing.liquidity_depth_usd, metric.liquidity_depth_usd);
                 })
                 .or_insert_with(|| HourlyCorridorMetrics {
                     id: Uuid::new_v4().to_string(),
@@ -343,10 +344,10 @@ impl AggregationService {
                 volumes.sort_by_key(|(time, _)| *time);
 
                 let total_volume: f64 = volumes.iter().map(|(_, v)| v).sum();
-                let avg_volume = if !volumes.is_empty() {
-                    total_volume / volumes.len() as f64
-                } else {
+                let avg_volume = if volumes.is_empty() {
                     0.0
+                } else {
+                    total_volume / volumes.len() as f64
                 };
 
                 // Calculate trend (simple linear regression slope)

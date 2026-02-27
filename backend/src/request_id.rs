@@ -14,11 +14,13 @@ pub struct RequestId(pub String);
 
 impl RequestId {
     /// Generate a new random request ID
+    #[must_use] 
     pub fn new() -> Self {
         Self(Uuid::new_v4().to_string())
     }
 
     /// Get the request ID as a string slice
+    #[must_use] 
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -48,9 +50,7 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
     let request_id = if let Some(existing_id) = req.headers().get("X-Request-ID") {
         existing_id
             .to_str()
-            .ok()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| Uuid::new_v4().to_string())
+            .ok().map_or_else(|| Uuid::new_v4().to_string(), std::string::ToString::to_string)
     } else {
         Uuid::new_v4().to_string()
     };
@@ -89,6 +89,7 @@ pub fn get_request_id(req: &Request<Body>) -> Option<String> {
 }
 
 /// Error response with request ID
+#[must_use] 
 pub fn error_with_request_id(
     status: StatusCode,
     message: String,

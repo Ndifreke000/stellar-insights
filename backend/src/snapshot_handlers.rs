@@ -144,12 +144,12 @@ pub enum SnapshotError {
 impl IntoResponse for SnapshotError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            SnapshotError::GenerationFailed(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            SnapshotError::GenerationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            SnapshotError::HashingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            SnapshotError::SubmissionError(msg) => (StatusCode::BAD_GATEWAY, msg),
-            SnapshotError::ConnectionError(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
-            SnapshotError::ConfigError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::GenerationFailed(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::GenerationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::HashingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::SubmissionError(msg) => (StatusCode::BAD_GATEWAY, msg),
+            Self::ConnectionError(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
+            Self::ConfigError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (

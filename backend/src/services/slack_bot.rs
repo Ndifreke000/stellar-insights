@@ -11,7 +11,8 @@ pub struct SlackBotService {
 }
 
 impl SlackBotService {
-    /// Create a new SlackBotService
+    /// Create a new `SlackBotService`
+    #[must_use] 
     pub fn new(webhook_url: String, alert_rx: broadcast::Receiver<Alert>) -> Self {
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(5))
@@ -112,7 +113,7 @@ impl SlackBotService {
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Slack API returned error status {}: {}", status, error_text);
+            anyhow::bail!("Slack API returned error status {status}: {error_text}");
         }
 
         tracing::info!("Alert sent to Slack successfully: {}", alert.message);

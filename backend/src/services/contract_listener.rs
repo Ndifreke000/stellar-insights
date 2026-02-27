@@ -5,7 +5,7 @@
 
 use crate::database::Database;
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -169,7 +169,7 @@ impl ContractEventListener {
 
         for event in events {
             match self.process_event(event).await {
-                Ok(_) => events_processed += 1,
+                Ok(()) => events_processed += 1,
                 Err(e) => {
                     error!("Failed to process event: {}", e);
                     // Continue processing other events
@@ -254,7 +254,7 @@ impl ContractEventListener {
         // Extract event data
         let epoch = event_value
             .get("epoch")
-            .and_then(|e| e.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| anyhow::anyhow!("Missing epoch in event"))?;
 
         let hash = event_value
@@ -265,7 +265,7 @@ impl ContractEventListener {
 
         let timestamp = event_value
             .get("timestamp")
-            .and_then(|t| t.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| anyhow::anyhow!("Missing timestamp in event"))?;
 
         let ledger = event
@@ -299,12 +299,12 @@ impl ContractEventListener {
 
     /// Store snapshot event in database
     async fn store_snapshot_event(&self, event: &SnapshotEvent) -> Result<()> {
-        let query = r#"
+        let query = r"
             INSERT OR REPLACE INTO contract_events (
                 id, contract_id, event_type, epoch, hash, timestamp, 
                 ledger, transaction_hash, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(&event.transaction_hash)
@@ -329,13 +329,13 @@ impl ContractEventListener {
         debug!("Verifying snapshot epoch {} against backend data", epoch);
 
         // Get snapshot from database
-        let query = r#"
+        let query = r"
             SELECT hash, canonical_json 
             FROM snapshots 
             WHERE epoch = ? 
             ORDER BY created_at DESC 
             LIMIT 1
-        "#;
+        ";
 
         let row = sqlx::query(query)
             .bind(epoch as i64)
@@ -395,11 +395,11 @@ impl ContractEventListener {
 
     /// Update verification status in database
     async fn update_verification_status(&self, epoch: u64, is_verified: bool) -> Result<()> {
-        let query = r#"
+        let query = r"
             UPDATE snapshots 
             SET verification_status = ?, verified_at = ?
             WHERE epoch = ?
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(if is_verified { "verified" } else { "failed" })
@@ -445,7 +445,7 @@ impl ContractEventListener {
         if let Some(result) = body.result {
             let ledger = result
                 .get("sequence")
-                .and_then(|s| s.as_u64())
+                .and_then(serde_json::Value::as_u64)
                 .ok_or_else(|| anyhow::anyhow!("Invalid ledger sequence"))?;
             Ok(ledger)
         } else {
@@ -512,7 +512,7 @@ impl ContractEventListener {
             let hash = result
                 .get("returnValue")
                 .and_then(|rv| rv.as_str())
-                .map(|s| s.to_string());
+                .map(std::string::ToString::to_string);
             Ok(hash)
         } else {
             Ok(None)
@@ -521,13 +521,13 @@ impl ContractEventListener {
 
     /// Get recent events from database
     pub async fn get_recent_events(&self, limit: i64) -> Result<Vec<SnapshotEvent>> {
-        let query = r#"
+        let query = r"
             SELECT contract_id, event_type, epoch, hash, timestamp, 
                    ledger, transaction_hash
             FROM contract_events
             ORDER BY created_at DESC
             LIMIT ?
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .bind(limit)

@@ -81,7 +81,7 @@ pub struct ListCorridorsQuery {
     pub time_period: Option<String>, // "7d", "30d", "90d"
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     50
 }
 
@@ -104,8 +104,7 @@ fn calculate_health_score(success_rate: f64, total_transactions: i64, volume_usd
         0.0
     };
 
-    success_rate * success_weight
-        + volume_score * volume_weight
+    success_rate.mul_add(success_weight, volume_score * volume_weight)
         + transaction_score * transaction_weight
 }
 
@@ -152,7 +151,7 @@ pub async fn list_corridors(
             .map_err(|e| {
                 ApiError::internal(
                     "DATABASE_ERROR",
-                    format!("Failed to fetch corridors: {}", e),
+                    format!("Failed to fetch corridors: {e}"),
                 )
             })?;
 
@@ -189,7 +188,7 @@ pub async fn list_corridors(
             .map_err(|e| {
                 ApiError::internal(
                     "DATABASE_ERROR",
-                    format!("Failed to fetch corridors: {}", e),
+                    format!("Failed to fetch corridors: {e}"),
                 )
             })?
     };
@@ -242,7 +241,7 @@ pub async fn list_corridors(
             let health_score =
                 calculate_health_score(m.success_rate, m.total_transactions, m.volume_usd);
             let liquidity_trend = get_liquidity_trend(m.volume_usd);
-            let avg_latency = 400.0 + (m.success_rate * 2.0);
+            let avg_latency = m.success_rate.mul_add(2.0, 400.0);
 
             CorridorResponse {
                 id: m.corridor_key.clone(),
@@ -268,7 +267,7 @@ pub async fn list_corridors(
     Ok(Json(corridors))
 }
 
-/// GET /api/corridors/:corridor_key - Get detailed corridor information
+/// GET /`api/corridors/:corridor_key` - Get detailed corridor information
 pub async fn get_corridor_detail(
     State(app_state): State<AppState>,
     Path(corridor_key): Path<String>,
@@ -309,7 +308,7 @@ pub async fn get_corridor_detail(
         .map_err(|e| {
             ApiError::internal(
                 "DATABASE_ERROR",
-                format!("Failed to fetch corridor detail: {}", e),
+                format!("Failed to fetch corridor detail: {e}"),
             )
         })?;
 
@@ -318,7 +317,7 @@ pub async fn get_corridor_detail(
         details.insert("corridor_id".to_string(), serde_json::json!(corridor_key));
         return Err(ApiError::not_found_with_details(
             "CORRIDOR_NOT_FOUND",
-            format!("Corridor {} not found", corridor_key),
+            format!("Corridor {corridor_key} not found"),
             details,
         ));
     }
@@ -330,7 +329,7 @@ pub async fn get_corridor_detail(
         latest.volume_usd,
     );
     let liquidity_trend = get_liquidity_trend(latest.volume_usd);
-    let avg_latency = 400.0 + (latest.success_rate * 2.0);
+    let avg_latency = latest.success_rate.mul_add(2.0, 400.0);
 
     let corridor_response = CorridorResponse {
         id: latest.corridor_key.clone(),
@@ -407,7 +406,7 @@ pub async fn get_corridor_detail(
         .map_err(|e| {
             ApiError::internal(
                 "DATABASE_ERROR",
-                format!("Failed to fetch related corridors: {}", e),
+                format!("Failed to fetch related corridors: {e}"),
             )
         })?;
 
@@ -419,7 +418,7 @@ pub async fn get_corridor_detail(
             let health_score =
                 calculate_health_score(m.success_rate, m.total_transactions, m.volume_usd);
             let liquidity_trend = get_liquidity_trend(m.volume_usd);
-            let avg_latency = 400.0 + (m.success_rate * 2.0);
+            let avg_latency = m.success_rate.mul_add(2.0, 400.0);
 
             CorridorResponse {
                 id: m.corridor_key.clone(),

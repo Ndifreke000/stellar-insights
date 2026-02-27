@@ -24,7 +24,7 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
         .route("/proposals/:id/comments", post(add_comment))
         .route("/proposals/:id/activate", put(activate_proposal))
         .layer(middleware::from_fn_with_state(
-            sep10_service.clone(),
+            sep10_service,
             sep10_auth_middleware,
         ))
         // Public routes
@@ -45,7 +45,7 @@ pub struct ListProposalsQuery {
     pub offset: i64,
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     20
 }
 
@@ -55,7 +55,7 @@ pub struct VotesQuery {
     pub limit: i64,
 }
 
-fn default_votes_limit() -> i64 {
+const fn default_votes_limit() -> i64 {
     50
 }
 
@@ -65,7 +65,7 @@ pub struct CommentsQuery {
     pub limit: i64,
 }
 
-fn default_comments_limit() -> i64 {
+const fn default_comments_limit() -> i64 {
     50
 }
 
@@ -75,7 +75,7 @@ pub struct ActivateRequest {
     pub voting_duration_secs: i64,
 }
 
-fn default_voting_duration() -> i64 {
+const fn default_voting_duration() -> i64 {
     604800 // 7 days
 }
 
@@ -246,9 +246,9 @@ pub enum GovernanceError {
 impl IntoResponse for GovernanceError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            GovernanceError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            GovernanceError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            GovernanceError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            Self::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            Self::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         let body = Json(ErrorResponse { error: message });

@@ -77,7 +77,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    /// Create a NotFound error with a specific code
+    /// Create a `NotFound` error with a specific code
     pub fn not_found(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::NotFound {
             code: code.into(),
@@ -86,7 +86,7 @@ impl ApiError {
         }
     }
 
-    /// Create a NotFound error with details
+    /// Create a `NotFound` error with details
     pub fn not_found_with_details(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -99,7 +99,7 @@ impl ApiError {
         }
     }
 
-    /// Create a BadRequest error
+    /// Create a `BadRequest` error
     pub fn bad_request(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::BadRequest {
             code: code.into(),
@@ -108,7 +108,7 @@ impl ApiError {
         }
     }
 
-    /// Create a BadRequest error with details
+    /// Create a `BadRequest` error with details
     pub fn bad_request_with_details(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -121,7 +121,7 @@ impl ApiError {
         }
     }
 
-    /// Create an InternalError
+    /// Create an `InternalError`
     pub fn internal(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::InternalError {
             code: code.into(),
@@ -141,6 +141,7 @@ impl ApiError {
     }
 
     /// Add details to any error variant
+    #[must_use] 
     pub fn with_details(mut self, details: HashMap<String, serde_json::Value>) -> Self {
         match &mut self {
             Self::NotFound { details: d, .. }
@@ -154,7 +155,7 @@ impl ApiError {
     }
 
     /// Get the HTTP status code for this error
-    fn status_code(&self) -> StatusCode {
+    const fn status_code(&self) -> StatusCode {
         match self {
             Self::NotFound { .. } => StatusCode::NOT_FOUND,
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
@@ -163,7 +164,8 @@ impl ApiError {
         }
     }
 
-    /// Convert to ErrorResponse with optional request ID
+    /// Convert to `ErrorResponse` with optional request ID
+    #[must_use] 
     pub fn to_error_response(&self, request_id: Option<String>) -> ErrorResponse {
         let include_stack_trace = cfg!(debug_assertions);
 
@@ -227,7 +229,7 @@ pub fn error_response_with_request_id(error: ApiError, req: &Request) -> Respons
     (status, Json(error_response)).into_response()
 }
 
-/// Convert from anyhow::Error
+/// Convert from `anyhow::Error`
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         Self::InternalError {
@@ -239,7 +241,7 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
-/// Convert from sqlx::Error
+/// Convert from `sqlx::Error`
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
         let (code, message) = match &err {

@@ -13,7 +13,8 @@ pub struct LiquidityPoolAnalyzer {
 }
 
 impl LiquidityPoolAnalyzer {
-    pub fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
+    #[must_use] 
+    pub const fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
         Self { pool, rpc_client }
     }
 
@@ -28,7 +29,7 @@ impl LiquidityPoolAnalyzer {
             .rpc_client
             .fetch_liquidity_pools(50, None)
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut count = 0u64;
 
         for hp in &horizon_pools {
@@ -57,7 +58,7 @@ impl LiquidityPoolAnalyzer {
             let trade_count_24h = trades.len() as i32;
 
             // Compute fees earned (fee_bp basis points applied to volume)
-            let fee_rate = hp.fee_bp as f64 / 10_000.0;
+            let fee_rate = f64::from(hp.fee_bp) / 10_000.0;
             let fees_earned_24h = volume_24h_usd * fee_rate;
 
             // Compute APY: annualize daily fees relative to TVL
@@ -75,7 +76,7 @@ impl LiquidityPoolAnalyzer {
             let now = Utc::now();
 
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO liquidity_pools (
                     pool_id, pool_type, fee_bp, total_trustlines, total_shares,
                     reserve_a_asset_code, reserve_a_asset_issuer, reserve_a_amount,
@@ -97,7 +98,7 @@ impl LiquidityPoolAnalyzer {
                     trade_count_24h = excluded.trade_count_24h,
                     last_synced_at = excluded.last_synced_at,
                     updated_at = excluded.updated_at
-                "#,
+                ",
             )
             .bind(&hp.id)
             .bind(&hp.pool_type)
@@ -140,13 +141,13 @@ impl LiquidityPoolAnalyzer {
 
         for pool in &pools {
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO liquidity_pool_snapshots (
                     pool_id, reserve_a_amount, reserve_b_amount, total_value_usd,
                     volume_usd, fees_usd, apy, impermanent_loss_pct, trade_count, snapshot_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                "#,
+                ",
             )
             .bind(&pool.pool_id)
             .bind(pool.reserve_a_amount)
@@ -206,12 +207,12 @@ impl LiquidityPoolAnalyzer {
         limit: i64,
     ) -> Result<Vec<LiquidityPoolSnapshot>> {
         let snapshots = sqlx::query_as::<_, LiquidityPoolSnapshot>(
-            r#"
+            r"
             SELECT * FROM liquidity_pool_snapshots
             WHERE pool_id = $1
             ORDER BY snapshot_at DESC
             LIMIT $2
-            "#,
+            ",
         )
         .bind(pool_id)
         .bind(limit)
@@ -232,8 +233,7 @@ impl LiquidityPoolAnalyzer {
         };
 
         let query = format!(
-            "SELECT * FROM liquidity_pools ORDER BY {} LIMIT $1",
-            order_clause
+            "SELECT * FROM liquidity_pools ORDER BY {order_clause} LIMIT $1"
         );
 
         let pools = sqlx::query_as::<_, LiquidityPool>(&query)
@@ -247,7 +247,7 @@ impl LiquidityPoolAnalyzer {
     /// Get aggregate pool statistics
     pub async fn get_pool_stats(&self) -> Result<LiquidityPoolStats> {
         let row: (i64, f64, f64, f64, f64, f64) = sqlx::query_as(
-            r#"
+            r"
             SELECT
                 COUNT(*) as total_pools,
                 COALESCE(SUM(total_value_usd), 0.0) as total_tvl,
@@ -256,7 +256,7 @@ impl LiquidityPoolAnalyzer {
                 COALESCE(AVG(apy), 0.0) as avg_apy,
                 COALESCE(AVG(impermanent_loss_pct), 0.0) as avg_il
             FROM liquidity_pools
-            "#,
+            ",
         )
         .fetch_one(&self.pool)
         .await?;
@@ -278,8 +278,9 @@ impl LiquidityPoolAnalyzer {
     // ========================================================================
 
     /// Compute impermanent loss given initial and current reserves.
-    /// IL = 2 * sqrt(price_ratio) / (1 + price_ratio) - 1
-    /// where price_ratio = (current_a/current_b) / (initial_a/initial_b)
+    /// IL = 2 * `sqrt(price_ratio)` / (1 + `price_ratio`) - 1
+    /// where `price_ratio` = (`current_a/current_b`) / (`initial_a/initial_b`)
+    #[must_use] 
     pub fn compute_impermanent_loss(
         initial_a: f64,
         initial_b: f64,
@@ -309,13 +310,13 @@ impl LiquidityPoolAnalyzer {
         current_b: f64,
     ) -> f64 {
         let initial = sqlx::query_as::<_, (f64, f64)>(
-            r#"
+            r"
             SELECT reserve_a_amount, reserve_b_amount
             FROM liquidity_pool_snapshots
             WHERE pool_id = $1
             ORDER BY snapshot_at ASC
             LIMIT 1
-            "#,
+            ",
         )
         .bind(pool_id)
         .fetch_optional(&self.pool)

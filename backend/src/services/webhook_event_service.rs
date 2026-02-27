@@ -17,6 +17,7 @@ pub struct WebhookEventService {
 }
 
 impl WebhookEventService {
+    #[must_use] 
     pub fn new(db: SqlitePool) -> Self {
         Self {
             webhook_service: Arc::new(WebhookService::new(db)),
@@ -126,7 +127,7 @@ impl WebhookEventService {
         let event_type_str = event_type.as_str();
 
         // Get all active webhooks that subscribe to this event type
-        let webhooks = self.get_webhooks_for_event(&event_type_str).await?;
+        let webhooks = self.get_webhooks_for_event(event_type_str).await?;
 
         for webhook in webhooks {
             // Apply filters if any

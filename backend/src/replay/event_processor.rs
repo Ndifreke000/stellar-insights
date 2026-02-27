@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
-use super::{ContractEvent, ReplayError};
+use super::ContractEvent;
 
 /// Context provided to event processors
 #[derive(Debug, Clone)]
@@ -30,7 +30,8 @@ pub struct ProcessingContext {
 
 impl ProcessingContext {
     /// Create a new processing context
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {
             session_id: None,
             dry_run: false,
@@ -41,7 +42,8 @@ impl ProcessingContext {
     }
 
     /// Create context for replay
-    pub fn for_replay(session_id: String, dry_run: bool) -> Self {
+    #[must_use] 
+    pub const fn for_replay(session_id: String, dry_run: bool) -> Self {
         Self {
             session_id: Some(session_id),
             dry_run,
@@ -52,7 +54,8 @@ impl ProcessingContext {
     }
 
     /// Check if this is a replay context
-    pub fn is_replay(&self) -> bool {
+    #[must_use] 
+    pub const fn is_replay(&self) -> bool {
         self.session_id.is_some()
     }
 }
@@ -80,7 +83,8 @@ pub struct ProcessingResult {
 
 impl ProcessingResult {
     /// Create a successful result
-    pub fn success() -> Self {
+    #[must_use] 
+    pub const fn success() -> Self {
         Self {
             success: true,
             error: None,
@@ -91,7 +95,8 @@ impl ProcessingResult {
     }
 
     /// Create a failed result
-    pub fn failure(error: String) -> Self {
+    #[must_use] 
+    pub const fn failure(error: String) -> Self {
         Self {
             success: false,
             error: Some(error),
@@ -102,7 +107,8 @@ impl ProcessingResult {
     }
 
     /// Create a skipped result (idempotency)
-    pub fn skipped() -> Self {
+    #[must_use] 
+    pub const fn skipped() -> Self {
         Self {
             success: true,
             error: None,
@@ -113,13 +119,15 @@ impl ProcessingResult {
     }
 
     /// Add a state change
+    #[must_use] 
     pub fn with_change(mut self, change: StateChange) -> Self {
         self.state_changes.push(change);
         self
     }
 
     /// Set duration
-    pub fn with_duration(mut self, duration_ms: u64) -> Self {
+    #[must_use] 
+    pub const fn with_duration(mut self, duration_ms: u64) -> Self {
         self.duration_ms = duration_ms;
         self
     }
@@ -178,6 +186,7 @@ pub struct CompositeEventProcessor {
 
 impl CompositeEventProcessor {
     /// Create a new composite processor
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             processors: Vec::new(),
@@ -307,7 +316,8 @@ pub struct SnapshotEventProcessor {
 }
 
 impl SnapshotEventProcessor {
-    pub fn new(pool: sqlx::SqlitePool) -> Self {
+    #[must_use] 
+    pub const fn new(pool: sqlx::SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -320,7 +330,7 @@ impl SnapshotEventProcessor {
         let epoch = event
             .data
             .get("epoch")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .context("Missing epoch in event data")?;
 
         let hash = event
@@ -350,11 +360,11 @@ impl SnapshotEventProcessor {
         // Insert snapshot record (if not dry-run)
         if !context.dry_run {
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO snapshots (epoch, hash, ledger_sequence, transaction_hash, created_at)
                 VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (epoch) DO NOTHING
-                "#,
+                ",
             )
             .bind(epoch as i64)
             .bind(hash)
@@ -398,7 +408,7 @@ impl EventProcessor for SnapshotEventProcessor {
     async fn is_processed(&self, event: &ContractEvent) -> Result<bool> {
         let exists: bool =
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)")
-                .bind(&event.unique_id())
+                .bind(event.unique_id())
                 .fetch_one(&self.pool)
                 .await?;
 
@@ -407,13 +417,13 @@ impl EventProcessor for SnapshotEventProcessor {
 
     async fn mark_processed(&self, event: &ContractEvent) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO processed_events (event_id, ledger_sequence, processed_at)
             VALUES ($1, $2, CURRENT_TIMESTAMP)
             ON CONFLICT (event_id) DO NOTHING
-            "#,
+            ",
         )
-        .bind(&event.unique_id())
+        .bind(event.unique_id())
         .bind(event.ledger_sequence as i64)
         .execute(&self.pool)
         .await?;
@@ -421,7 +431,7 @@ impl EventProcessor for SnapshotEventProcessor {
         Ok(())
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "SnapshotEventProcessor"
     }
 }

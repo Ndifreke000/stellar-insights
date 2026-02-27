@@ -25,7 +25,14 @@ pub struct WsState {
     pub tx: broadcast::Sender<WsMessage>,
 }
 
+impl Default for WsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WsState {
+    #[must_use] 
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
         Self {
@@ -47,7 +54,7 @@ impl WsState {
         let mut target_connections = Vec::new();
 
         // Find connections subscribed to this channel
-        for entry in self.subscriptions.iter() {
+        for entry in &self.subscriptions {
             let (connection_id, channels) = entry.pair();
             if channels.contains(channel) {
                 target_connections.push(*connection_id);
@@ -72,7 +79,7 @@ impl WsState {
         let mut subscription_set = self
             .subscriptions
             .entry(connection_id)
-            .or_insert_with(HashSet::new);
+            .or_default();
 
         for channel in channels {
             subscription_set.insert(channel.clone());
@@ -97,11 +104,13 @@ impl WsState {
     }
 
     /// Get the number of active connections
+    #[must_use] 
     pub fn connection_count(&self) -> usize {
         self.connections.len()
     }
 
     /// Get subscription count for a channel
+    #[must_use] 
     pub fn channel_subscription_count(&self, channel: &str) -> usize {
         self.subscriptions
             .iter()
@@ -243,13 +252,10 @@ fn validate_token(token: &str) -> bool {
 
     // If WS_AUTH_TOKEN env var is set, validate against it
     // Otherwise, accept all tokens (for development)
-    match std::env::var("WS_AUTH_TOKEN") {
-        Ok(expected_token) => token == expected_token,
-        Err(_) => {
-            // No token configured, allow all connections
-            warn!("WS_AUTH_TOKEN not configured, allowing all WebSocket connections");
-            true
-        }
+    if let Ok(expected_token) = std::env::var("WS_AUTH_TOKEN") { token == expected_token } else {
+        // No token configured, allow all connections
+        warn!("WS_AUTH_TOKEN not configured, allowing all WebSocket connections");
+        true
     }
 }
 

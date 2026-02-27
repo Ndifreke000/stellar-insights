@@ -33,6 +33,7 @@ pub struct Checkpoint {
 
 impl Checkpoint {
     /// Create a new checkpoint
+    #[must_use] 
     pub fn new(session_id: String, last_ledger: u64) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -47,19 +48,22 @@ impl Checkpoint {
     }
 
     /// Add metadata to checkpoint
+    #[must_use] 
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
         self
     }
 
     /// Set state snapshot
+    #[must_use] 
     pub fn with_state(mut self, state: serde_json::Value) -> Self {
         self.state_snapshot = state;
         self
     }
 
     /// Set processing statistics
-    pub fn with_stats(mut self, processed: u64, failed: u64) -> Self {
+    #[must_use] 
+    pub const fn with_stats(mut self, processed: u64, failed: u64) -> Self {
         self.events_processed = processed;
         self.events_failed = failed;
         self
@@ -73,7 +77,8 @@ pub struct CheckpointManager {
 
 impl CheckpointManager {
     /// Create a new checkpoint manager
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use] 
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -88,7 +93,7 @@ impl CheckpointManager {
         let state_json = serde_json::to_string(&checkpoint.state_snapshot)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO replay_checkpoints (
                 id, session_id, last_ledger, events_processed, events_failed,
                 state_snapshot, metadata, created_at
@@ -100,7 +105,7 @@ impl CheckpointManager {
                 events_failed = EXCLUDED.events_failed,
                 state_snapshot = EXCLUDED.state_snapshot,
                 metadata = EXCLUDED.metadata
-            "#,
+            ",
         )
         .bind(&checkpoint.id)
         .bind(&checkpoint.session_id)
@@ -124,12 +129,12 @@ impl CheckpointManager {
 
         let row: Option<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
             sqlx::query_as(
-                r#"
+                r"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
             WHERE id = $1
-            "#,
+            ",
             )
             .bind(checkpoint_id)
             .fetch_optional(&self.pool)
@@ -171,14 +176,14 @@ impl CheckpointManager {
 
         let row: Option<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
             sqlx::query_as(
-                r#"
+                r"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
             WHERE session_id = $1
             ORDER BY created_at DESC
             LIMIT 1
-            "#,
+            ",
             )
             .bind(session_id)
             .fetch_optional(&self.pool)
@@ -220,13 +225,13 @@ impl CheckpointManager {
 
         let rows: Vec<(String, String, i64, i64, i64, String, String, DateTime<Utc>)> =
             sqlx::query_as(
-                r#"
+                r"
             SELECT id, session_id, last_ledger, events_processed, events_failed,
                    state_snapshot, metadata, created_at
             FROM replay_checkpoints
             WHERE session_id = $1
             ORDER BY created_at DESC
-            "#,
+            ",
             )
             .bind(session_id)
             .fetch_all(&self.pool)

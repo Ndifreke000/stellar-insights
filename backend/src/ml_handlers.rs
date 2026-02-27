@@ -90,7 +90,7 @@ pub async fn retrain_model(
     let mut service = ml_service.write().await;
 
     match service.retrain_weekly().await {
-        Ok(_) => Ok(Json(serde_json::json!({
+        Ok(()) => Ok(Json(serde_json::json!({
             "status": "success",
             "message": "Model retrained successfully"
         }))),

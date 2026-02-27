@@ -14,7 +14,8 @@ pub struct CommandHandler {
 }
 
 impl CommandHandler {
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         db: Arc<Database>,
         cache: Arc<CacheManager>,
         rpc_client: Arc<StellarRpcClient>,
@@ -83,8 +84,7 @@ impl CommandHandler {
             Ok(p) => p,
             Err(e) => {
                 return formatter::escape_markdown(&format!(
-                    "Failed to fetch corridor data: {}",
-                    e
+                    "Failed to fetch corridor data: {e}"
                 ));
             }
         };
@@ -131,8 +131,7 @@ impl CommandHandler {
             Ok(p) => p,
             Err(e) => {
                 return formatter::escape_markdown(&format!(
-                    "Failed to fetch corridor data: {}",
-                    e
+                    "Failed to fetch corridor data: {e}"
                 ));
             }
         };
@@ -153,7 +152,7 @@ impl CommandHandler {
         }
 
         if count == 0 {
-            return formatter::escape_markdown(&format!("Corridor '{}' not found.", key));
+            return formatter::escape_markdown(&format!("Corridor '{key}' not found."));
         }
 
         let parts: Vec<&str> = key.split("->").collect();
@@ -170,7 +169,7 @@ impl CommandHandler {
         let anchors = match self.db.list_anchors(50, 0).await {
             Ok(a) => a,
             Err(e) => {
-                return formatter::escape_markdown(&format!("Failed to fetch anchors: {}", e));
+                return formatter::escape_markdown(&format!("Failed to fetch anchors: {e}"));
             }
         };
 
@@ -207,8 +206,8 @@ impl CommandHandler {
                 anchor.failed_transactions,
                 &anchor.status,
             ),
-            Ok(None) => formatter::escape_markdown(&format!("Anchor '{}' not found.", id)),
-            Err(e) => formatter::escape_markdown(&format!("Failed to fetch anchor: {}", e)),
+            Ok(None) => formatter::escape_markdown(&format!("Anchor '{id}' not found.")),
+            Err(e) => formatter::escape_markdown(&format!("Failed to fetch anchor: {e}")),
         }
     }
 
@@ -230,7 +229,7 @@ impl CommandHandler {
             Ok(false) => {
                 formatter::escape_markdown("You are already subscribed to alerts.")
             }
-            Err(e) => formatter::escape_markdown(&format!("Failed to subscribe: {}", e)),
+            Err(e) => formatter::escape_markdown(&format!("Failed to subscribe: {e}")),
         }
     }
 
@@ -240,7 +239,7 @@ impl CommandHandler {
                 "Unsubscribed from alerts. You will no longer receive notifications.",
             ),
             Ok(false) => formatter::escape_markdown("You are not currently subscribed to alerts."),
-            Err(e) => formatter::escape_markdown(&format!("Failed to unsubscribe: {}", e)),
+            Err(e) => formatter::escape_markdown(&format!("Failed to unsubscribe: {e}")),
         }
     }
 }

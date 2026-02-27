@@ -2,6 +2,7 @@ use crate::models::corridor::{Corridor, CorridorAnalytics, PaymentRecord};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
+#[must_use] 
 pub fn compute_corridor_analytics(payments: &[PaymentRecord]) -> Vec<CorridorAnalytics> {
     let mut corridor_payments: HashMap<String, Vec<&PaymentRecord>> = HashMap::new();
 
@@ -48,6 +49,7 @@ pub fn compute_corridor_analytics(payments: &[PaymentRecord]) -> Vec<CorridorAna
     analytics
 }
 
+#[must_use] 
 pub fn compute_corridor_analytics_for_date(
     payments: &[PaymentRecord],
     target_date: DateTime<Utc>,
@@ -61,6 +63,7 @@ pub fn compute_corridor_analytics_for_date(
     compute_corridor_analytics(&filtered_payments)
 }
 
+#[must_use] 
 pub fn get_top_corridors_by_volume(
     analytics: &[CorridorAnalytics],
     limit: usize,
@@ -71,6 +74,7 @@ pub fn get_top_corridors_by_volume(
     sorted_analytics
 }
 
+#[must_use] 
 pub fn get_top_corridors_by_transactions(
     analytics: &[CorridorAnalytics],
     limit: usize,
@@ -81,6 +85,7 @@ pub fn get_top_corridors_by_transactions(
     sorted_analytics
 }
 
+#[must_use] 
 pub fn get_corridors_by_success_rate(
     analytics: &[CorridorAnalytics],
     min_transactions: i64,

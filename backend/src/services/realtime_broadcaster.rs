@@ -1,7 +1,7 @@
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::models::corridor::CorridorMetrics;
-use crate::models::{AnchorMetrics, AnchorStatus, PaymentRecord};
+use crate::models::{AnchorMetrics, AnchorStatus};
 use crate::rpc::StellarRpcClient;
 use crate::websocket::{WsMessage, WsState};
 use dashmap::DashMap;
@@ -68,6 +68,7 @@ pub enum BroadcastMessage {
 
 impl RealtimeBroadcaster {
     /// Create a new realtime broadcaster
+    #[must_use] 
     pub fn new(
         ws_state: Arc<WsState>,
         db: Arc<Database>,
@@ -256,7 +257,7 @@ impl RealtimeBroadcaster {
         successful: bool,
         timestamp: String,
     ) {
-        let channel = format!("corridor:{}", corridor_key);
+        let channel = format!("corridor:{corridor_key}");
         let message = BroadcastMessage::NewPayment {
             corridor_key: corridor_key.clone(),
             amount,
@@ -293,7 +294,7 @@ impl RealtimeBroadcaster {
         let mut subscription_set = self
             .subscriptions
             .entry(connection_id)
-            .or_insert_with(HashSet::new);
+            .or_default();
 
         for channel in channels {
             subscription_set.insert(channel.clone());
@@ -374,11 +375,11 @@ impl RealtimeBroadcaster {
 }
 
 impl WsMessage {
-    /// Convert BroadcastMessage to WsMessage
+    /// Convert `BroadcastMessage` to `WsMessage`
     fn from_broadcast_message(broadcast_msg: BroadcastMessage) -> Self {
         match broadcast_msg {
             BroadcastMessage::CorridorUpdate { corridor, .. } => {
-                WsMessage::CorridorUpdate {
+                Self::CorridorUpdate {
                     corridor_key: corridor.corridor_key,
                     asset_a_code: corridor.asset_a_code,
                     asset_a_issuer: corridor.asset_a_issuer,
@@ -393,7 +394,7 @@ impl WsMessage {
                 anchor,
                 old_status: _,
                 ..
-            } => WsMessage::AnchorUpdate {
+            } => Self::AnchorUpdate {
                 anchor_id: "unknown".to_string(),
                 name: "unknown".to_string(),
                 reliability_score: anchor.reliability_score,
@@ -407,7 +408,7 @@ impl WsMessage {
                 successful,
                 timestamp,
                 ..
-            } => WsMessage::NewPayment {
+            } => Self::NewPayment {
                 corridor_id: corridor_key,
                 amount,
                 successful,
@@ -418,13 +419,13 @@ impl WsMessage {
                 severity,
                 message,
                 timestamp,
-            } => WsMessage::HealthAlert {
+            } => Self::HealthAlert {
                 corridor_id,
                 severity,
                 message,
                 timestamp,
             },
-            BroadcastMessage::ConnectionStatus { status } => WsMessage::ConnectionStatus { status },
+            BroadcastMessage::ConnectionStatus { status } => Self::ConnectionStatus { status },
         }
     }
 }

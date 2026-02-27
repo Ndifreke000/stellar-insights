@@ -21,7 +21,7 @@ fn default_sort() -> String {
     "apy".to_string()
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     20
 }
 
@@ -31,7 +31,7 @@ pub struct SnapshotParams {
     limit: i64,
 }
 
-fn default_snapshot_limit() -> i64 {
+const fn default_snapshot_limit() -> i64 {
     100
 }
 
@@ -58,7 +58,7 @@ async fn get_pool_stats(
     let stats = analyzer
         .get_pool_stats()
         .await
-        .unwrap_or_else(|_| LiquidityPoolStats {
+        .unwrap_or(LiquidityPoolStats {
             total_pools: 0,
             total_liquidity_usd: 0.0,
             avg_pool_size_usd: 0.0,

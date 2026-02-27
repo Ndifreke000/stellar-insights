@@ -145,13 +145,13 @@ impl Sep10Service {
         // Decode transaction
         let challenge_bytes = BASE64
             .decode(&request.transaction)
-            .map_err(|e| anyhow!("Invalid base64 encoding: {}", e))?;
+            .map_err(|e| anyhow!("Invalid base64 encoding: {e}"))?;
 
         let challenge_json =
-            String::from_utf8(challenge_bytes).map_err(|e| anyhow!("Invalid UTF-8: {}", e))?;
+            String::from_utf8(challenge_bytes).map_err(|e| anyhow!("Invalid UTF-8: {e}"))?;
 
         let challenge: serde_json::Value =
-            serde_json::from_str(&challenge_json).map_err(|e| anyhow!("Invalid JSON: {}", e))?;
+            serde_json::from_str(&challenge_json).map_err(|e| anyhow!("Invalid JSON: {e}"))?;
 
         // Validate challenge structure
         let challenge_type = challenge["type"]
@@ -189,7 +189,7 @@ impl Sep10Service {
         let token = self.generate_session_token(&client_account)?;
 
         // Store session
-        let client_domain = challenge["client_domain"].as_str().map(|s| s.to_string());
+        let client_domain = challenge["client_domain"].as_str().map(std::string::ToString::to_string);
         let session = Sep10Session {
             account: client_account,
             client_domain,
@@ -222,10 +222,10 @@ impl Sep10Service {
     pub async fn invalidate_session(&self, token: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("sep10:session:{}", token);
+            let key = format!("sep10:session:{token}");
             conn.del::<_, ()>(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to invalidate session: {}", e))?;
+                .map_err(|e| anyhow!("Failed to invalidate session: {e}"))?;
         }
         Ok(())
     }
@@ -236,24 +236,24 @@ impl Sep10Service {
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let nonce: [u8; 32] = rng.gen();
-        BASE64.encode(&nonce)
+        BASE64.encode(nonce)
     }
 
     fn generate_session_token(&self, account: &str) -> Result<String> {
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let random_bytes: [u8; 32] = rng.gen();
-        let token = format!("{}:{}", account, BASE64.encode(&random_bytes));
+        let token = format!("{}:{}", account, BASE64.encode(random_bytes));
         Ok(BASE64.encode(token.as_bytes()))
     }
 
     async fn store_challenge(&self, account: &str, nonce: &str, expiry: i64) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("sep10:challenge:{}:{}", account, nonce);
+            let key = format!("sep10:challenge:{account}:{nonce}");
             conn.set_ex::<_, _, ()>(&key, "1", expiry as u64)
                 .await
-                .map_err(|e| anyhow!("Failed to store challenge: {}", e))?;
+                .map_err(|e| anyhow!("Failed to store challenge: {e}"))?;
         }
         Ok(())
     }
@@ -261,13 +261,13 @@ impl Sep10Service {
     async fn validate_and_consume_challenge(&self, account: &str, nonce: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("sep10:challenge:{}:{}", account, nonce);
+            let key = format!("sep10:challenge:{account}:{nonce}");
 
             // Check if challenge exists
             let exists: bool = conn
                 .exists(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to check challenge: {}", e))?;
+                .map_err(|e| anyhow!("Failed to check challenge: {e}"))?;
 
             if !exists {
                 return Err(anyhow!("Challenge not found or already used"));
@@ -276,7 +276,7 @@ impl Sep10Service {
             // Delete challenge (consume it)
             conn.del::<_, ()>(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to consume challenge: {}", e))?;
+                .map_err(|e| anyhow!("Failed to consume challenge: {e}"))?;
         } else {
             // Fail closed: refuse to validate without Redis (SEC-007)
             tracing::error!(
@@ -290,13 +290,13 @@ impl Sep10Service {
     async fn store_session(&self, token: &str, session: &Sep10Session) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("sep10:session:{}", token);
+            let key = format!("sep10:session:{token}");
             let session_json = serde_json::to_string(session)?;
             let expiry = SESSION_EXPIRY_DAYS * 24 * 60 * 60;
 
             conn.set_ex::<_, _, ()>(&key, session_json, expiry as u64)
                 .await
-                .map_err(|e| anyhow!("Failed to store session: {}", e))?;
+                .map_err(|e| anyhow!("Failed to store session: {e}"))?;
         }
         Ok(())
     }
@@ -304,12 +304,12 @@ impl Sep10Service {
     async fn get_session(&self, token: &str) -> Result<Sep10Session> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("sep10:session:{}", token);
+            let key = format!("sep10:session:{token}");
 
             let session_json: Option<String> = conn
                 .get(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to get session: {}", e))?;
+                .map_err(|e| anyhow!("Failed to get session: {e}"))?;
 
             if let Some(json) = session_json {
                 let session: Sep10Session = serde_json::from_str(&json)?;

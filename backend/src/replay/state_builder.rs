@@ -25,6 +25,7 @@ pub struct ApplicationState {
 
 impl ApplicationState {
     /// Create a new empty state
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             ledger: 0,
@@ -35,6 +36,7 @@ impl ApplicationState {
     }
 
     /// Create state at a specific ledger
+    #[must_use] 
     pub fn at_ledger(ledger: u64) -> Self {
         Self {
             ledger,
@@ -55,6 +57,7 @@ impl ApplicationState {
     }
 
     /// Compute state hash for verification
+    #[must_use] 
     pub fn compute_hash(&self) -> String {
         use sha2::{Digest, Sha256};
         let json = self.to_json().unwrap_or_default();
@@ -95,6 +98,7 @@ pub struct StateBuilder {
 
 impl StateBuilder {
     /// Create a new state builder
+    #[must_use] 
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             pool,
@@ -103,12 +107,14 @@ impl StateBuilder {
     }
 
     /// Create state builder with initial state
-    pub fn with_state(pool: SqlitePool, state: ApplicationState) -> Self {
+    #[must_use] 
+    pub const fn with_state(pool: SqlitePool, state: ApplicationState) -> Self {
         Self { pool, state }
     }
 
     /// Get current state
-    pub fn state(&self) -> &ApplicationState {
+    #[must_use] 
+    pub const fn state(&self) -> &ApplicationState {
         &self.state
     }
 
@@ -144,7 +150,7 @@ impl StateBuilder {
         let epoch = event
             .data
             .get("epoch")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .context("Missing epoch")?;
 
         let hash = event
@@ -182,7 +188,7 @@ impl StateBuilder {
         let epoch = event
             .data
             .get("epoch")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .context("Missing epoch")?;
 
         let verifier = event
@@ -192,7 +198,7 @@ impl StateBuilder {
             .context("Missing verifier")?
             .to_string();
 
-        let key = format!("{}:{}", epoch, verifier);
+        let key = format!("{epoch}:{verifier}");
 
         // Check if already exists (idempotency)
         if self.state.verifications.contains_key(&key) {
@@ -224,14 +230,14 @@ impl StateBuilder {
         let state_hash = self.state.compute_hash();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO replay_state (ledger, state_json, state_hash, updated_at)
             VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
             ON CONFLICT (ledger) DO UPDATE SET
                 state_json = EXCLUDED.state_json,
                 state_hash = EXCLUDED.state_hash,
                 updated_at = CURRENT_TIMESTAMP
-            "#,
+            ",
         )
         .bind(self.state.ledger as i64)
         .bind(serde_json::to_string(&state_json)?)
@@ -253,28 +259,23 @@ impl StateBuilder {
                 .fetch_optional(&self.pool)
                 .await?;
 
-        match row {
-            Some((state_json, state_hash)) => {
-                let state_value: serde_json::Value = serde_json::from_str(&state_json)?;
-                self.state = ApplicationState::from_json(&state_value)?;
+        if let Some((state_json, state_hash)) = row {
+            let state_value: serde_json::Value = serde_json::from_str(&state_json)?;
+            self.state = ApplicationState::from_json(&state_value)?;
 
-                // Verify hash
-                let computed_hash = self.state.compute_hash();
-                if computed_hash != state_hash {
-                    return Err(anyhow::anyhow!(
-                        "State hash mismatch: expected {}, got {}",
-                        state_hash,
-                        computed_hash
-                    ));
-                }
+            // Verify hash
+            let computed_hash = self.state.compute_hash();
+            if computed_hash != state_hash {
+                return Err(anyhow::anyhow!(
+                    "State hash mismatch: expected {state_hash}, got {computed_hash}"
+                ));
+            }
 
-                info!("Loaded state at ledger {} (hash: {})", ledger, state_hash);
-                Ok(true)
-            }
-            None => {
-                debug!("No state found at ledger {}", ledger);
-                Ok(false)
-            }
+            info!("Loaded state at ledger {} (hash: {})", ledger, state_hash);
+            Ok(true)
+        } else {
+            debug!("No state found at ledger {}", ledger);
+            Ok(false)
         }
     }
 
@@ -288,26 +289,23 @@ impl StateBuilder {
                 .fetch_optional(&self.pool)
                 .await?;
 
-        match row {
-            Some((expected_hash,)) => {
-                let actual_hash = self.state.compute_hash();
-                let matches = actual_hash == expected_hash;
+        if let Some((expected_hash,)) = row {
+            let actual_hash = self.state.compute_hash();
+            let matches = actual_hash == expected_hash;
 
-                if matches {
-                    info!("State verification passed at ledger {}", ledger);
-                } else {
-                    info!(
-                        "State verification failed at ledger {}: expected {}, got {}",
-                        ledger, expected_hash, actual_hash
-                    );
-                }
+            if matches {
+                info!("State verification passed at ledger {}", ledger);
+            } else {
+                info!(
+                    "State verification failed at ledger {}: expected {}, got {}",
+                    ledger, expected_hash, actual_hash
+                );
+            }
 
-                Ok(matches)
-            }
-            None => {
-                debug!("No state to verify at ledger {}", ledger);
-                Ok(false)
-            }
+            Ok(matches)
+        } else {
+            debug!("No state to verify at ledger {}", ledger);
+            Ok(false)
         }
     }
 

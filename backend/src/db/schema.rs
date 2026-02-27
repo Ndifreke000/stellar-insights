@@ -4,7 +4,7 @@ pub struct Schema;
 impl Schema {
     /// Create all tables if they don't exist
     /// This is a helper for manual verification or if migrations aren't used
-    pub const CREATE_ANCHORS: &'static str = r#"
+    pub const CREATE_ANCHORS: &'static str = r"
         CREATE TABLE IF NOT EXISTS anchors (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -20,9 +20,9 @@ impl Schema {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
-    "#;
+    ";
 
-    pub const CREATE_ASSETS: &'static str = r#"
+    pub const CREATE_ASSETS: &'static str = r"
         CREATE TABLE IF NOT EXISTS assets (
             id TEXT PRIMARY KEY,
             anchor_id TEXT NOT NULL REFERENCES anchors(id) ON DELETE CASCADE,
@@ -34,9 +34,9 @@ impl Schema {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(asset_code, asset_issuer)
         );
-    "#;
+    ";
 
-    pub const CREATE_CORRIDORS: &'static str = r#"
+    pub const CREATE_CORRIDORS: &'static str = r"
         CREATE TABLE IF NOT EXISTS corridors (
             id TEXT PRIMARY KEY,
             source_asset_code TEXT NOT NULL,
@@ -49,9 +49,9 @@ impl Schema {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)
         );
-    "#;
+    ";
 
-    pub const CREATE_METRICS: &'static str = r#"
+    pub const CREATE_METRICS: &'static str = r"
         CREATE TABLE IF NOT EXISTS metrics (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -61,9 +61,9 @@ impl Schema {
             timestamp TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
-    "#;
+    ";
 
-    pub const CREATE_SNAPSHOTS: &'static str = r#"
+    pub const CREATE_SNAPSHOTS: &'static str = r"
         CREATE TABLE IF NOT EXISTS snapshots (
             id TEXT PRIMARY KEY,
             entity_id TEXT NOT NULL,
@@ -76,9 +76,9 @@ impl Schema {
             verification_status TEXT DEFAULT 'pending',
             verified_at TEXT
         );
-    "#;
+    ";
 
-    pub const CREATE_CONTRACT_EVENTS: &'static str = r#"
+    pub const CREATE_CONTRACT_EVENTS: &'static str = r"
         CREATE TABLE IF NOT EXISTS contract_events (
             id TEXT PRIMARY KEY,
             contract_id TEXT NOT NULL,
@@ -92,14 +92,14 @@ impl Schema {
             verified_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
-    "#;
+    ";
 
-    pub const CREATE_CONTRACT_EVENTS_INDEXES: &'static str = r#"
+    pub const CREATE_CONTRACT_EVENTS_INDEXES: &'static str = r"
         CREATE INDEX IF NOT EXISTS idx_contract_events_created_at ON contract_events(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_contract_events_ledger ON contract_events(ledger DESC);
         CREATE INDEX IF NOT EXISTS idx_contract_events_epoch ON contract_events(epoch DESC);
         CREATE INDEX IF NOT EXISTS idx_contract_events_contract_id ON contract_events(contract_id);
         CREATE INDEX IF NOT EXISTS idx_contract_events_verification_status ON contract_events(verification_status);
         CREATE INDEX IF NOT EXISTS idx_contract_events_event_type ON contract_events(event_type);
-    "#;
+    ";
 }

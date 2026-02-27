@@ -2,8 +2,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
-    Json, Router,
+    Json,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -15,7 +14,7 @@ fn extract_wallet_address(headers: &HeaderMap) -> Result<String, ApiKeyError> {
     headers
         .get("X-Wallet-Address")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| ApiKeyError::Unauthorized("Missing X-Wallet-Address header".to_string()))
 }
@@ -127,10 +126,10 @@ pub enum ApiKeyError {
 impl IntoResponse for ApiKeyError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            ApiKeyError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiKeyError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiKeyError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            ApiKeyError::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            Self::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            Self::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (status, Json(json!({ "error": message }))).into_response()

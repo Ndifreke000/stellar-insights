@@ -59,6 +59,7 @@ pub struct CorridorMetrics {
 }
 
 /// Check if corridor metrics have degraded
+#[must_use] 
 pub fn check_corridor_degradation(
     old: &CorridorMetrics,
     new: &CorridorMetrics,
@@ -98,6 +99,7 @@ pub fn check_corridor_degradation(
 }
 
 /// Determine severity based on degradation magnitude
+#[must_use] 
 pub fn determine_severity(old: &CorridorMetrics, new: &CorridorMetrics) -> String {
     // Critical: success rate dropped >25% or liquidity dropped >50%
     if (old.success_rate - new.success_rate) > 0.25 {

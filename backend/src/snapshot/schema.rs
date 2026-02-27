@@ -57,7 +57,8 @@ pub struct AnalyticsSnapshot {
 
 impl AnalyticsSnapshot {
     /// Create a new snapshot with given epoch and timestamp
-    pub fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
+    #[must_use] 
+    pub const fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             epoch,

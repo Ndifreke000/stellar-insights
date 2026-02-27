@@ -59,20 +59,22 @@ pub enum ClientIdentifier {
 
 impl ClientIdentifier {
     /// Get the tier for this client type
-    pub fn tier(&self) -> ClientTier {
+    #[must_use] 
+    pub const fn tier(&self) -> ClientTier {
         match self {
-            ClientIdentifier::ApiKey(_) => ClientTier::Authenticated,
-            ClientIdentifier::User(_) => ClientTier::Authenticated,
-            ClientIdentifier::IpAddress(_) => ClientTier::Anonymous,
+            Self::ApiKey(_) => ClientTier::Authenticated,
+            Self::User(_) => ClientTier::Authenticated,
+            Self::IpAddress(_) => ClientTier::Anonymous,
         }
     }
 
     /// Get the identifier string for rate limit key
+    #[must_use] 
     pub fn as_key(&self) -> String {
         match self {
-            ClientIdentifier::ApiKey(key) => format!("apikey:{}", key),
-            ClientIdentifier::User(id) => format!("user:{}", id),
-            ClientIdentifier::IpAddress(ip) => format!("ip:{}", ip),
+            Self::ApiKey(key) => format!("apikey:{key}"),
+            Self::User(id) => format!("user:{id}"),
+            Self::IpAddress(ip) => format!("ip:{ip}"),
         }
     }
 }
@@ -179,7 +181,7 @@ impl RateLimiter {
         .await
     }
 
-    /// Update API key last_used_at timestamp
+    /// Update API key `last_used_at` timestamp
     async fn update_api_key_last_used(
         &self,
         pool: &sqlx::SqlitePool,
@@ -204,7 +206,7 @@ impl RateLimiter {
     }
 
     /// Get rate limit for client based on tier
-    fn get_limit_for_client(&self, config: &RateLimitConfig, tier: ClientTier) -> u32 {
+    const fn get_limit_for_client(&self, config: &RateLimitConfig, tier: ClientTier) -> u32 {
         if let Some(client_limits) = &config.client_limits {
             match tier {
                 ClientTier::Anonymous => client_limits.anonymous,
@@ -258,20 +260,17 @@ impl RateLimiter {
         // Try Redis first
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match self.check_redis_limit(&mut conn, &key, limit).await {
-                Ok((allowed, remaining, reset)) => {
-                    return (
-                        allowed,
-                        RateLimitInfo {
-                            limit,
-                            remaining,
-                            reset_after: reset,
-                            is_whitelisted: false,
-                            client_id: Some(client.as_key()),
-                        },
-                    );
-                }
-                Err(_) => {}
+            if let Ok((allowed, remaining, reset)) = self.check_redis_limit(&mut conn, &key, limit).await {
+                return (
+                    allowed,
+                    RateLimitInfo {
+                        limit,
+                        remaining,
+                        reset_after: reset,
+                        is_whitelisted: false,
+                        client_id: Some(client.as_key()),
+                    },
+                );
             }
         }
 
@@ -319,11 +318,7 @@ impl RateLimiter {
             conn.expire::<_, ()>(key, 60).await?;
         }
 
-        let remaining = if new_count >= limit {
-            0
-        } else {
-            limit - new_count
-        };
+        let remaining = limit.saturating_sub(new_count);
         Ok((new_count < limit, remaining, 60))
     }
 
@@ -347,11 +342,7 @@ impl RateLimiter {
         } else {
             let new_count = count + 1;
             store.insert(key.to_string(), (new_count, expiry));
-            let remaining = if new_count >= limit {
-                0
-            } else {
-                limit - new_count
-            };
+            let remaining = limit.saturating_sub(new_count);
             (new_count < limit, remaining, (expiry - now) as u32)
         }
     }
@@ -414,9 +405,7 @@ pub async fn rate_limit_middleware(
 
     let ip = req
         .extensions()
-        .get::<ConnectInfo<std::net::SocketAddr>>()
-        .map(|connect_info| connect_info.0.ip().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+        .get::<ConnectInfo<std::net::SocketAddr>>().map_or_else(|| "unknown".to_string(), |connect_info| connect_info.0.ip().to_string());
     let path = req.uri().path().to_string();
 
     // Resolve client identifier from copied request metadata.

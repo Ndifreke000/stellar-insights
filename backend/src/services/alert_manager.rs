@@ -2,7 +2,6 @@ use crate::database::Database;
 use crate::models::alerts::AlertHistory;
 use reqwest::Client;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
 
 pub struct AlertManager {
     db: Arc<Database>,
@@ -10,6 +9,7 @@ pub struct AlertManager {
 }
 
 impl AlertManager {
+    #[must_use] 
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             db,

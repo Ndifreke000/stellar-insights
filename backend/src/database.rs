@@ -3,7 +3,6 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, SqlitePool};
-use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use uuid::Uuid;
@@ -46,7 +45,7 @@ pub struct SqlLogConfig {
     pub level: log::LevelFilter,
     /// In development: log all queries. In production: log only slow queries.
     pub log_all_in_dev: bool,
-    /// Slow query threshold (ms); only used when log_all_in_dev is false.
+    /// Slow query threshold (ms); only used when `log_all_in_dev` is false.
     pub slow_query_threshold_ms: u64,
 }
 
@@ -62,9 +61,10 @@ impl Default for SqlLogConfig {
 
 impl SqlLogConfig {
     /// Load from environment:
-    /// - RUST_ENV or ENVIRONMENT: "development" => log all queries, else log only slow
-    /// - DB_LOG_LEVEL: trace | debug | info | warn | error | off (default: debug in dev, info in prod)
-    /// - DB_SLOW_QUERY_MS: threshold in ms for slow query logging in production (default: 100)
+    /// - `RUST_ENV` or ENVIRONMENT: "development" => log all queries, else log only slow
+    /// - `DB_LOG_LEVEL`: trace | debug | info | warn | error | off (default: debug in dev, info in prod)
+    /// - `DB_SLOW_QUERY_MS`: threshold in ms for slow query logging in production (default: 100)
+    #[must_use] 
     pub fn from_env() -> Self {
         let env_mode = std::env::var("RUST_ENV")
             .or_else(|_| std::env::var("ENVIRONMENT"))
@@ -105,6 +105,7 @@ fn parse_db_log_level(is_dev: bool) -> log::LevelFilter {
 
 impl PoolConfig {
     /// Load pool configuration from environment variables
+    #[must_use] 
     pub fn from_env() -> Self {
         Self {
             max_connections: std::env::var("DB_POOL_MAX_CONNECTIONS")
@@ -130,14 +131,14 @@ impl PoolConfig {
         }
     }
 
-    /// Create a configured SQLite pool with these settings.
+    /// Create a configured `SQLite` pool with these settings.
     /// Uses WAL journal mode and configurable SQL query logging (all in dev, slow-only in prod).
     pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
         let sql_log = SqlLogConfig::from_env();
 
         let mut opts: SqliteConnectOptions = database_url
             .parse()
-            .map_err(|e: sqlx::Error| anyhow::anyhow!("Invalid DATABASE_URL: {}", e))?;
+            .map_err(|e: sqlx::Error| anyhow::anyhow!("Invalid DATABASE_URL: {e}"))?;
 
         opts = opts.journal_mode(SqliteJournalMode::Wal);
 
@@ -210,6 +211,7 @@ pub struct Database {
 }
 
 impl Database {
+    #[must_use] 
     pub fn new(pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         Self {
@@ -218,15 +220,18 @@ impl Database {
         }
     }
 
-    pub fn pool(&self) -> &SqlitePool {
+    #[must_use] 
+    pub const fn pool(&self) -> &SqlitePool {
         &self.pool
     }
 
+    #[must_use] 
     pub fn corridor_aggregates(&self) -> crate::db::aggregates::CorridorAggregates {
         crate::db::aggregates::CorridorAggregates::new(self.pool.clone())
     }
 
     /// Get connection pool metrics
+    #[must_use] 
     pub fn pool_metrics(&self) -> PoolMetrics {
         PoolMetrics {
             size: self.pool.size(),
@@ -240,7 +245,7 @@ impl Database {
     ///
     /// # Arguments
     ///
-    /// * `req` - Anchor creation request containing name, stellar_account, and home_domain
+    /// * `req` - Anchor creation request containing name, `stellar_account`, and `home_domain`
     ///
     /// # Returns
     ///
@@ -260,11 +265,11 @@ impl Database {
     pub async fn create_anchor(&self, req: CreateAnchorRequest) -> Result<Anchor> {
         let id = Uuid::new_v4().to_string();
         let anchor = sqlx::query_as::<_, Anchor>(
-            r#"
+            r"
             INSERT INTO anchors (id, name, stellar_account, home_domain)
             VALUES ($1, $2, $3, $4)
             RETURNING *
-            "#,
+            ",
         )
         .bind(id)
         .bind(&req.name)
@@ -305,9 +310,9 @@ impl Database {
     /// Indexed query on primary key, typically <1ms.
     pub async fn get_anchor_by_id(&self, id: Uuid) -> Result<Option<Anchor>> {
         let anchor = sqlx::query_as::<_, Anchor>(
-            r#"
+            r"
             SELECT * FROM anchors WHERE id = $1
-            "#,
+            ",
         )
         .bind(id.to_string())
         .fetch_optional(&self.pool)
@@ -339,9 +344,9 @@ impl Database {
         stellar_account: &str,
     ) -> Result<Option<Anchor>> {
         let anchor = sqlx::query_as::<_, Anchor>(
-            r#"
+            r"
             SELECT * FROM anchors WHERE stellar_account = $1
-            "#,
+            ",
         )
         .bind(stellar_account)
         .fetch_optional(&self.pool)
@@ -359,7 +364,7 @@ impl Database {
     ///
     /// # Returns
     ///
-    /// Vector of anchors sorted by reliability_score DESC, then updated_at DESC.
+    /// Vector of anchors sorted by `reliability_score` DESC, then `updated_at` DESC.
     ///
     /// # Examples
     ///
@@ -377,11 +382,11 @@ impl Database {
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
         let start = Instant::now();
         let anchors = sqlx::query_as::<_, Anchor>(
-            r#"
+            r"
             SELECT * FROM anchors
             ORDER BY reliability_score DESC, updated_at DESC
             LIMIT $1 OFFSET $2
-            "#,
+            ",
         )
         .bind(limit)
         .bind(offset)
@@ -434,7 +439,7 @@ impl Database {
     ///
     /// - Updates anchor's `updated_at` timestamp
     /// - Records entry in `anchor_metrics_history` table
-    /// - Computes and updates reliability_score and status
+    /// - Computes and updates `reliability_score` and status
     pub async fn update_anchor_metrics(
         &self,
         anchor_id: Uuid,
@@ -454,7 +459,7 @@ impl Database {
 
         // Update anchor
         let anchor = sqlx::query_as::<_, Anchor>(
-            r#"
+            r"
             UPDATE anchors
             SET total_transactions = $1,
                 successful_transactions = $2,
@@ -466,7 +471,7 @@ impl Database {
                 updated_at = $8
             WHERE id = $9
             RETURNING *
-            "#,
+            ",
         )
         .bind(total_transactions)
         .bind(successful_transactions)
@@ -502,7 +507,7 @@ impl Database {
     /// Creates a new asset or updates existing asset's anchor association.
     ///
     /// Uses UPSERT logic: if an asset with the same code and issuer exists,
-    /// updates its anchor_id and timestamp. Otherwise, creates a new asset.
+    /// updates its `anchor_id` and timestamp. Otherwise, creates a new asset.
     ///
     /// # Arguments
     ///
@@ -537,14 +542,14 @@ impl Database {
     ) -> Result<Asset> {
         let id = Uuid::new_v4().to_string();
         let asset = sqlx::query_as::<_, Asset>(
-            r#"
+            r"
             INSERT INTO assets (id, anchor_id, asset_code, asset_issuer)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (asset_code, asset_issuer) DO UPDATE
             SET anchor_id = EXCLUDED.anchor_id,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING *
-            "#,
+            ",
         )
         .bind(id)
         .bind(anchor_id.to_string())
@@ -564,7 +569,7 @@ impl Database {
     ///
     /// # Returns
     ///
-    /// Vector of assets sorted alphabetically by asset_code.
+    /// Vector of assets sorted alphabetically by `asset_code`.
     /// Returns empty vector if anchor has no assets.
     ///
     /// # Examples
@@ -577,10 +582,10 @@ impl Database {
     /// ```
     pub async fn get_assets_by_anchor(&self, anchor_id: Uuid) -> Result<Vec<Asset>> {
         let assets = sqlx::query_as::<_, Asset>(
-            r#"
+            r"
             SELECT * FROM assets WHERE anchor_id = $1
             ORDER BY asset_code ASC
-            "#,
+            ",
         )
         .bind(anchor_id.to_string())
         .fetch_all(&self.pool)
@@ -591,7 +596,7 @@ impl Database {
 
     /// Retrieves assets for multiple anchors in a single query.
     ///
-    /// Returns a HashMap mapping anchor_id to their list of assets.
+    /// Returns a `HashMap` mapping `anchor_id` to their list of assets.
     /// More efficient than calling `get_assets_by_anchor` multiple times.
     ///
     /// # Arguments
@@ -600,7 +605,7 @@ impl Database {
     ///
     /// # Returns
     ///
-    /// HashMap where keys are anchor_id strings and values are vectors of assets.
+    /// `HashMap` where keys are `anchor_id` strings and values are vectors of assets.
     /// Anchors with no assets are not included in the map.
     ///
     /// # Examples
@@ -625,7 +630,7 @@ impl Database {
         Ok(anchors)
     }
 
-    /// Returns empty HashMap if anchor_ids is empty.
+    /// Returns empty `HashMap` if `anchor_ids` is empty.
     pub async fn get_assets_by_anchors(
         &self,
         anchor_ids: &[Uuid],
@@ -634,7 +639,7 @@ impl Database {
             return Ok(std::collections::HashMap::new());
         }
 
-        let anchor_id_strs: Vec<String> = anchor_ids.iter().map(|id| id.to_string()).collect();
+        let anchor_id_strs: Vec<String> = anchor_ids.iter().map(std::string::ToString::to_string).collect();
         let placeholders = anchor_id_strs
             .iter()
             .enumerate()
@@ -643,8 +648,7 @@ impl Database {
             .join(", ");
 
         let query_str = format!(
-            "SELECT * FROM assets WHERE anchor_id IN ({}) ORDER BY anchor_id, asset_code ASC",
-            placeholders
+            "SELECT * FROM assets WHERE anchor_id IN ({placeholders}) ORDER BY anchor_id, asset_code ASC"
         );
 
         let mut query = sqlx::query_as::<_, Asset>(&query_str);
@@ -659,7 +663,7 @@ impl Database {
         for asset in assets {
             result
                 .entry(asset.anchor_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(asset);
         }
 
@@ -668,9 +672,9 @@ impl Database {
 
     pub async fn count_assets_by_anchor(&self, anchor_id: Uuid) -> Result<i64> {
         let count: (i64,) = sqlx::query_as(
-            r#"
+            r"
             SELECT COUNT(*) FROM assets WHERE anchor_id = $1
-            "#,
+            ",
         )
         .bind(anchor_id.to_string())
         .fetch_one(&self.pool)
@@ -682,7 +686,7 @@ impl Database {
     // Update anchor metrics from RPC ingestion
     pub async fn update_anchor_from_rpc(&self, params: AnchorRpcUpdate) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             UPDATE anchors
             SET total_transactions = $1,
                 successful_transactions = $2,
@@ -693,7 +697,7 @@ impl Database {
                 status = $7,
                 updated_at = $8
             WHERE stellar_account = $9
-            "#,
+            ",
         )
         .bind(params.total_transactions)
         .bind(params.successful_transactions)
@@ -717,7 +721,7 @@ impl Database {
     ) -> Result<AnchorMetricsHistory> {
         let id = Uuid::new_v4().to_string();
         let history = sqlx::query_as::<_, AnchorMetricsHistory>(
-            r#"
+            r"
             INSERT INTO anchor_metrics_history (
                 id, anchor_id, timestamp, success_rate, failure_rate, reliability_score,
                 total_transactions, successful_transactions, failed_transactions,
@@ -725,7 +729,7 @@ impl Database {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
-            "#,
+            ",
         )
         .bind(id)
         .bind(params.anchor_id.to_string())
@@ -750,12 +754,12 @@ impl Database {
         limit: i64,
     ) -> Result<Vec<AnchorMetricsHistory>> {
         let history = sqlx::query_as::<_, AnchorMetricsHistory>(
-            r#"
+            r"
             SELECT * FROM anchor_metrics_history
             WHERE anchor_id = $1
             ORDER BY timestamp DESC
             LIMIT $2
-            "#,
+            ",
         )
         .bind(anchor_id.to_string())
         .bind(limit)
@@ -795,7 +799,7 @@ impl Database {
 
         // Ensure the corridor exists in the database
         sqlx::query(
-            r#"
+            r"
             INSERT INTO corridors (
                 id, source_asset_code, source_asset_issuer,
                 destination_asset_code, destination_asset_issuer
@@ -803,7 +807,7 @@ impl Database {
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)
             DO UPDATE SET updated_at = CURRENT_TIMESTAMP
-            "#,
+            ",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&corridor.asset_a_code)
@@ -823,9 +827,9 @@ impl Database {
     ) -> Result<Vec<crate::models::corridor::Corridor>> {
         let start = Instant::now();
         let records = sqlx::query_as::<_, CorridorRecord>(
-            r#"
+            r"
             SELECT * FROM corridors ORDER BY reliability_score DESC LIMIT $1 OFFSET $2
-            "#,
+            ",
         )
         .bind(limit)
         .bind(offset)
@@ -856,9 +860,9 @@ impl Database {
         id: Uuid,
     ) -> Result<Option<crate::models::corridor::Corridor>> {
         let record = sqlx::query_as::<_, CorridorRecord>(
-            r#"
+            r"
             SELECT * FROM corridors WHERE id = $1
-            "#,
+            ",
         )
         .bind(id.to_string())
         .fetch_optional(&self.pool)
@@ -880,13 +884,13 @@ impl Database {
         metrics: crate::models::corridor::CorridorMetrics,
     ) -> Result<crate::models::corridor::Corridor> {
         let record = sqlx::query_as::<_, CorridorRecord>(
-            r#"
+            r"
             UPDATE corridors
             SET reliability_score = $1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
             RETURNING *
-            "#,
+            ",
         )
         .bind(metrics.success_rate)
         .bind(id.to_string())
@@ -911,11 +915,11 @@ impl Database {
     ) -> Result<MetricRecord> {
         let id = Uuid::new_v4().to_string();
         let metric = sqlx::query_as::<_, MetricRecord>(
-            r#"
+            r"
             INSERT INTO metrics (id, name, value, entity_id, entity_type, timestamp)
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
-            "#,
+            ",
         )
         .bind(id)
         .bind(name)
@@ -940,11 +944,11 @@ impl Database {
     ) -> Result<SnapshotRecord> {
         let id = Uuid::new_v4().to_string();
         let snapshot = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
+            r"
             INSERT INTO snapshots (id, entity_id, entity_type, data, hash, epoch, timestamp)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-            "#,
+            ",
         )
         .bind(id)
         .bind(entity_id)
@@ -961,9 +965,9 @@ impl Database {
 
     pub async fn get_snapshot_by_epoch(&self, epoch: i64) -> Result<Option<SnapshotRecord>> {
         let snapshot = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
+            r"
             SELECT * FROM snapshots WHERE epoch = $1 LIMIT 1
-            "#,
+            ",
         )
         .bind(epoch)
         .fetch_optional(&self.pool)
@@ -974,12 +978,12 @@ impl Database {
 
     pub async fn list_snapshots(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotRecord>> {
         let snapshots = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
+            r"
             SELECT * FROM snapshots
             WHERE epoch IS NOT NULL
             ORDER BY epoch DESC
             LIMIT $1 OFFSET $2
-            "#,
+            ",
         )
         .bind(limit)
         .bind(offset)
@@ -992,9 +996,9 @@ impl Database {
     // Ingestion methods
     pub async fn get_ingestion_cursor(&self, task_name: &str) -> Result<Option<String>> {
         let state = sqlx::query_as::<_, crate::models::IngestionState>(
-            r#"
+            r"
             SELECT * FROM ingestion_state WHERE task_name = $1
-            "#,
+            ",
         )
         .bind(task_name)
         .fetch_optional(&self.pool)
@@ -1005,13 +1009,13 @@ impl Database {
 
     pub async fn update_ingestion_cursor(&self, task_name: &str, last_cursor: &str) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ingestion_state (task_name, last_cursor, updated_at)
             VALUES ($1, $2, $3)
             ON CONFLICT (task_name) DO UPDATE SET
                 last_cursor = EXCLUDED.last_cursor,
                 updated_at = EXCLUDED.updated_at
-            "#,
+            ",
         )
         .bind(task_name)
         .bind(last_cursor)
@@ -1026,14 +1030,14 @@ impl Database {
         let start = Instant::now();
         for payment in payments {
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO payments (
                     id, transaction_hash, source_account, destination_account,
                     asset_type, asset_code, asset_issuer, amount, created_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (id) DO NOTHING
-                "#,
+                ",
             )
             .bind(&payment.id)
             .bind(&payment.transaction_hash)
@@ -1056,6 +1060,7 @@ impl Database {
     }
 
     // Aggregation methods
+    #[must_use] 
     pub fn aggregation_db(&self) -> crate::db::aggregation::AggregationDb {
         crate::db::aggregation::AggregationDb::new(self.pool.clone())
     }
@@ -1130,11 +1135,11 @@ impl Database {
         const MUXED_LEN: i64 = 69;
 
         let total_muxed_payments = sqlx::query_scalar::<_, i64>(
-            r#"
+            r"
             SELECT COUNT(*) FROM payments
             WHERE (source_account LIKE 'M%' AND LENGTH(source_account) = ?1)
                OR (destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1)
-            "#,
+            ",
         )
         .bind(MUXED_LEN)
         .fetch_one(&self.pool)
@@ -1147,13 +1152,13 @@ impl Database {
         }
 
         let source_counts: Vec<AddrCount> = sqlx::query_as(
-            r#"
+            r"
             SELECT source_account AS addr, COUNT(*) AS cnt FROM payments
             WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
             GROUP BY source_account
             ORDER BY cnt DESC
             LIMIT ?2
-            "#,
+            ",
         )
         .bind(MUXED_LEN)
         .bind(top_limit)
@@ -1161,13 +1166,13 @@ impl Database {
         .await?;
 
         let dest_counts: Vec<AddrCount> = sqlx::query_as(
-            r#"
+            r"
             SELECT destination_account AS addr, COUNT(*) AS cnt FROM payments
             WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
             GROUP BY destination_account
             ORDER BY cnt DESC
             LIMIT ?2
-            "#,
+            ",
         )
         .bind(MUXED_LEN)
         .bind(top_limit)
@@ -1202,13 +1207,13 @@ impl Database {
         top_muxed_by_activity.truncate(top_limit as usize);
 
         let unique_muxed_addresses = sqlx::query_scalar::<_, i64>(
-            r#"
+            r"
             SELECT COUNT(DISTINCT addr) FROM (
                 SELECT source_account AS addr FROM payments WHERE source_account LIKE 'M%' AND LENGTH(source_account) = ?1
                 UNION
                 SELECT destination_account AS addr FROM payments WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = ?1
             )
-            "#,
+            ",
         )
         .bind(MUXED_LEN)
         .fetch_one(&self.pool)
@@ -1246,11 +1251,11 @@ impl Database {
         let status = "pending";
 
         let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
-            r#"
+            r"
             INSERT INTO pending_transactions (id, source_account, xdr, required_signatures, status)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-            "#,
+            ",
         )
         .bind(&id)
         .bind(source_account)
@@ -1268,9 +1273,9 @@ impl Database {
         id: &str,
     ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
         let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
-            r#"
+            r"
             SELECT * FROM pending_transactions WHERE id = $1
-            "#,
+            ",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -1278,9 +1283,9 @@ impl Database {
 
         if let Some(transaction) = pending_transaction {
             let signatures = sqlx::query_as::<_, crate::models::Signature>(
-                r#"
+                r"
                 SELECT * FROM transaction_signatures WHERE transaction_id = $1
-                "#,
+                ",
             )
             .bind(id)
             .fetch_all(&self.pool)
@@ -1304,10 +1309,10 @@ impl Database {
         let id = Uuid::new_v4().to_string();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO transaction_signatures (id, transaction_id, signer, signature)
             VALUES ($1, $2, $3, $4)
-            "#,
+            ",
         )
         .bind(id)
         .bind(transaction_id)
@@ -1321,11 +1326,11 @@ impl Database {
 
     pub async fn update_transaction_status(&self, id: &str, status: &str) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             UPDATE pending_transactions
             SET status = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-            "#,
+            ",
         )
         .bind(status)
         .bind(id)
@@ -1348,10 +1353,10 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO api_keys (id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(&req.name)
@@ -1377,11 +1382,11 @@ impl Database {
 
     pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
         let keys = sqlx::query_as::<_, ApiKey>(
-            r#"
+            r"
             SELECT * FROM api_keys
             WHERE wallet_address = $1
             ORDER BY created_at DESC
-            "#,
+            ",
         )
         .bind(wallet_address)
         .fetch_all(&self.pool)
@@ -1437,11 +1442,11 @@ impl Database {
 
     pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
         let result = sqlx::query(
-            r#"
+            r"
             UPDATE api_keys
             SET status = 'revoked', revoked_at = $1
             WHERE id = $2 AND wallet_address = $3 AND status = 'active'
-            "#,
+            ",
         )
         .bind(Utc::now().to_rfc3339())
         .bind(id)

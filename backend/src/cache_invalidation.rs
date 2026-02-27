@@ -7,7 +7,8 @@ pub struct CacheInvalidationService {
 }
 
 impl CacheInvalidationService {
-    pub fn new(cache: Arc<CacheManager>) -> Self {
+    #[must_use] 
+    pub const fn new(cache: Arc<CacheManager>) -> Self {
         Self { cache }
     }
 

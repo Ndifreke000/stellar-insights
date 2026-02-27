@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_RESPONSE_SIZE: usize = 1024 * 1024;
 
 /// Stellar.toml metadata according to SEP-1
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StellarToml {
     // Organization Information
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,7 +81,7 @@ pub struct StellarToml {
     pub fetched_at: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CurrencyInfo {
     pub code: String,
 
@@ -128,7 +128,7 @@ pub struct CurrencyInfo {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Principal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -146,7 +146,7 @@ pub struct Principal {
     pub github: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Documentation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_name: Option<String>,
@@ -179,7 +179,7 @@ pub struct StellarTomlClient {
 }
 
 impl StellarTomlClient {
-    /// Create a new StellarTomlClient
+    /// Create a new `StellarTomlClient`
     pub fn new(
         redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
         network_passphrase: Option<String>,
@@ -206,7 +206,7 @@ impl StellarTomlClient {
         if let Some(cached) = self.get_from_cache(domain).await? {
             return match cached {
                 CachedResult::Success(toml) => Ok(toml),
-                CachedResult::Failure(err) => Err(anyhow!("Cached failure: {}", err)),
+                CachedResult::Failure(err) => Err(anyhow!("Cached failure: {err}")),
             };
         }
 
@@ -235,10 +235,10 @@ impl StellarTomlClient {
     pub async fn invalidate_cache(&self, domain: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("stellar_toml:{}", domain);
+            let key = format!("stellar_toml:{domain}");
             conn.del::<_, ()>(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to invalidate cache: {}", e))?;
+                .map_err(|e| anyhow!("Failed to invalidate cache: {e}"))?;
         }
         Ok(())
     }
@@ -300,7 +300,7 @@ impl StellarTomlClient {
     /// Fetch stellar.toml from network
     async fn fetch_toml_from_network(&self, domain: &str) -> Result<StellarToml> {
         // Try HTTPS first
-        let https_url = format!("https://{}/.well-known/stellar.toml", domain);
+        let https_url = format!("https://{domain}/.well-known/stellar.toml");
 
         match self.fetch_url(&https_url).await {
             Ok(content) => return self.parse_toml(&content, domain),
@@ -310,7 +310,7 @@ impl StellarTomlClient {
         }
 
         // Fallback to HTTP
-        let http_url = format!("http://{}/.well-known/stellar.toml", domain);
+        let http_url = format!("http://{domain}/.well-known/stellar.toml");
 
         match self.fetch_url(&http_url).await {
             Ok(content) => self.parse_toml(&content, domain),
@@ -326,7 +326,7 @@ impl StellarTomlClient {
     /// Fetch URL content
     async fn fetch_url(&self, url: &str) -> Result<String> {
         // Validate URL
-        let parsed_url = Url::parse(url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
+        let parsed_url = Url::parse(url).map_err(|e| anyhow!("Invalid URL: {e}"))?;
 
         // Additional security checks
         if parsed_url.scheme() != "https" && parsed_url.scheme() != "http" {
@@ -339,7 +339,7 @@ impl StellarTomlClient {
             .get(url)
             .send()
             .await
-            .map_err(|e| anyhow!("Request failed: {}", e))?;
+            .map_err(|e| anyhow!("Request failed: {e}"))?;
 
         // Check status
         if !response.status().is_success() {
@@ -357,87 +357,87 @@ impl StellarTomlClient {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| anyhow!("Failed to read response: {}", e))?;
+            .map_err(|e| anyhow!("Failed to read response: {e}"))?;
 
         if bytes.len() > MAX_RESPONSE_SIZE {
             return Err(anyhow!("Response exceeds size limit"));
         }
 
-        String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!("Invalid UTF-8: {}", e))
+        String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!("Invalid UTF-8: {e}"))
     }
 
     /// Parse TOML content
     pub fn parse_toml(&self, content: &str, domain: &str) -> Result<StellarToml> {
         // Parse TOML
         let parsed: toml::Value =
-            toml::from_str(content).map_err(|e| anyhow!("Failed to parse TOML: {}", e))?;
+            toml::from_str(content).map_err(|e| anyhow!("Failed to parse TOML: {e}"))?;
 
         // Extract organization information
         let organization_name = parsed
             .get("ORGANIZATION_NAME")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_dba = parsed
             .get("ORGANIZATION_DBA")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_url = parsed
             .get("ORGANIZATION_URL")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_logo = parsed
             .get("ORGANIZATION_LOGO")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_description = parsed
             .get("ORGANIZATION_DESCRIPTION")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_physical_address = parsed
             .get("ORGANIZATION_PHYSICAL_ADDRESS")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_phone_number = parsed
             .get("ORGANIZATION_PHONE_NUMBER")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_keybase = parsed
             .get("ORGANIZATION_KEYBASE")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_twitter = parsed
             .get("ORGANIZATION_TWITTER")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_github = parsed
             .get("ORGANIZATION_GITHUB")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_official_email = parsed
             .get("ORGANIZATION_OFFICIAL_EMAIL")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let organization_support_email = parsed
             .get("ORGANIZATION_SUPPORT_EMAIL")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         // Extract network passphrase
         let network_passphrase = parsed
             .get("NETWORK_PASSPHRASE")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         // Validate network passphrase if configured
         if let Some(ref expected) = self.network_passphrase {
@@ -506,47 +506,47 @@ impl StellarTomlClient {
                     issuer: table
                         .get("issuer")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     display_decimals: table
                         .get("display_decimals")
-                        .and_then(|v| v.as_integer())
+                        .and_then(toml::Value::as_integer)
                         .map(|i| i as i32),
                     name: table
                         .get("name")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     desc: table
                         .get("desc")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     conditions: table
                         .get("conditions")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     image: table
                         .get("image")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    fixed_number: table.get("fixed_number").and_then(|v| v.as_integer()),
-                    max_number: table.get("max_number").and_then(|v| v.as_integer()),
-                    is_unlimited: table.get("is_unlimited").and_then(|v| v.as_bool()),
-                    is_asset_anchored: table.get("is_asset_anchored").and_then(|v| v.as_bool()),
+                        .map(std::string::ToString::to_string),
+                    fixed_number: table.get("fixed_number").and_then(toml::Value::as_integer),
+                    max_number: table.get("max_number").and_then(toml::Value::as_integer),
+                    is_unlimited: table.get("is_unlimited").and_then(toml::Value::as_bool),
+                    is_asset_anchored: table.get("is_asset_anchored").and_then(toml::Value::as_bool),
                     anchor_asset_type: table
                         .get("anchor_asset_type")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     anchor_asset: table
                         .get("anchor_asset")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     redemption_instructions: table
                         .get("redemption_instructions")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     status: table
                         .get("status")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                 });
             }
         }
@@ -573,23 +573,23 @@ impl StellarTomlClient {
                     name: table
                         .get("name")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     email: table
                         .get("email")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     keybase: table
                         .get("keybase")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     twitter: table
                         .get("twitter")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                     github: table
                         .get("github")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(std::string::ToString::to_string),
                 });
             }
         }
@@ -612,23 +612,23 @@ impl StellarTomlClient {
             org_name: doc_table
                 .get("ORG_NAME")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+                .map(std::string::ToString::to_string),
             org_dba: doc_table
                 .get("ORG_DBA")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+                .map(std::string::ToString::to_string),
             org_url: doc_table
                 .get("ORG_URL")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+                .map(std::string::ToString::to_string),
             org_logo: doc_table
                 .get("ORG_LOGO")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+                .map(std::string::ToString::to_string),
             org_description: doc_table
                 .get("ORG_DESCRIPTION")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+                .map(std::string::ToString::to_string),
         }))
     }
 
@@ -636,12 +636,12 @@ impl StellarTomlClient {
     async fn get_from_cache(&self, domain: &str) -> Result<Option<CachedResult>> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("stellar_toml:{}", domain);
+            let key = format!("stellar_toml:{domain}");
 
             let cached: Option<String> = conn
                 .get(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to get from cache: {}", e))?;
+                .map_err(|e| anyhow!("Failed to get from cache: {e}"))?;
 
             if let Some(json) = cached {
                 let result: CachedResult = serde_json::from_str(&json)?;
@@ -655,13 +655,13 @@ impl StellarTomlClient {
     async fn cache_success(&self, domain: &str, toml: &StellarToml) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("stellar_toml:{}", domain);
+            let key = format!("stellar_toml:{domain}");
             let cached = CachedResult::Success(toml.clone());
             let json = serde_json::to_string(&cached)?;
 
             conn.set_ex::<_, _, ()>(&key, json, SUCCESS_CACHE_TTL)
                 .await
-                .map_err(|e| anyhow!("Failed to cache success: {}", e))?;
+                .map_err(|e| anyhow!("Failed to cache success: {e}"))?;
         }
         Ok(())
     }
@@ -670,13 +670,13 @@ impl StellarTomlClient {
     async fn cache_failure(&self, domain: &str, error: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("stellar_toml:{}", domain);
+            let key = format!("stellar_toml:{domain}");
             let cached = CachedResult::Failure(error.to_string());
             let json = serde_json::to_string(&cached)?;
 
             conn.set_ex::<_, _, ()>(&key, json, FAILURE_CACHE_TTL)
                 .await
-                .map_err(|e| anyhow!("Failed to cache failure: {}", e))?;
+                .map_err(|e| anyhow!("Failed to cache failure: {e}"))?;
         }
         Ok(())
     }

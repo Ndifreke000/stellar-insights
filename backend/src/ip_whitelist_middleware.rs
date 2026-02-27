@@ -64,16 +64,16 @@ impl IpWhitelistConfig {
                 let network = match ip {
                     IpAddr::V4(ipv4) => IpNetwork::V4(
                         ipnetwork::Ipv4Network::new(ipv4, 32)
-                            .map_err(|e| format!("Invalid IPv4 address {}: {}", trimmed, e))?,
+                            .map_err(|e| format!("Invalid IPv4 address {trimmed}: {e}"))?,
                     ),
                     IpAddr::V6(ipv6) => IpNetwork::V6(
                         ipnetwork::Ipv6Network::new(ipv6, 128)
-                            .map_err(|e| format!("Invalid IPv6 address {}: {}", trimmed, e))?,
+                            .map_err(|e| format!("Invalid IPv6 address {trimmed}: {e}"))?,
                     ),
                 };
                 networks.push(network);
             } else {
-                return Err(format!("Invalid IP address or CIDR range: {}", trimmed));
+                return Err(format!("Invalid IP address or CIDR range: {trimmed}"));
             }
         }
 
@@ -85,6 +85,7 @@ impl IpWhitelistConfig {
     }
 
     /// Check if an IP address is whitelisted
+    #[must_use] 
     pub fn is_allowed(&self, ip: &IpAddr) -> bool {
         self.allowed_networks
             .iter()
@@ -103,7 +104,7 @@ fn extract_client_ip(req: &Request, config: &IpWhitelistConfig) -> Result<IpAddr
                 let ips: Vec<&str> = forwarded_str
                     .split(',')
                     .take(config.max_forwarded_ips)
-                    .map(|s| s.trim())
+                    .map(str::trim)
                     .collect();
 
                 if let Some(first_ip) = ips.first() {
@@ -171,18 +172,18 @@ pub enum IpWhitelistError {
 
 impl From<String> for IpWhitelistError {
     fn from(err: String) -> Self {
-        IpWhitelistError::InvalidIp(err)
+        Self::InvalidIp(err)
     }
 }
 
 impl IntoResponse for IpWhitelistError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            IpWhitelistError::Forbidden => (
+            Self::Forbidden => (
                 StatusCode::FORBIDDEN,
                 "Access denied: IP address not whitelisted",
             ),
-            IpWhitelistError::InvalidIp(_) => (
+            Self::InvalidIp(_) => (
                 StatusCode::FORBIDDEN,
                 "Access denied: Unable to verify IP address",
             ),

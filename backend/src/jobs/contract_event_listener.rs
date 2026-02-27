@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::database::Database;
-use crate::services::contract_listener::{ContractEventListener, ListenerConfig};
+use crate::services::contract_listener::ListenerConfig;
 use crate::services::event_indexer::EventIndexer;
 
 /// Configuration for contract event listener job
@@ -46,7 +46,8 @@ pub struct ContractEventListenerJob {
 
 impl ContractEventListenerJob {
     /// Create a new contract event listener job
-    pub fn new(db: Arc<Database>, config: ContractEventListenerConfig) -> Self {
+    #[must_use] 
+    pub const fn new(db: Arc<Database>, config: ContractEventListenerConfig) -> Self {
         Self { db, config }
     }
 

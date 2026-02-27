@@ -1,11 +1,10 @@
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    Json,
+    http::HeaderMap,
+    response::Response,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::cache::helpers::cached_query;
@@ -14,7 +13,6 @@ use crate::database::Database;
 use crate::error::ApiResult;
 use crate::rpc::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
-    error::{with_retry, RetryConfig, RpcError},
     StellarRpcClient,
 };
 use crate::services::price_feed::PriceFeedClient;
@@ -32,7 +30,7 @@ pub struct ListAnchorsQuery {
     pub offset: i64,
 }
 
-fn default_limit() -> i64 {
+const fn default_limit() -> i64 {
     50
 }
 
@@ -176,19 +174,19 @@ pub async fn get_anchors(
 
                 // Calculate metrics from RPC payment data
                 let (total_transactions, successful_transactions, failed_transactions) =
-                    if !payments.is_empty() {
+                    if payments.is_empty() {
+                        (
+                            anchor.total_transactions,
+                            anchor.successful_transactions,
+                            anchor.failed_transactions,
+                        )
+                    } else {
                         let total = payments.len() as i64;
                         // In Stellar, if a payment appears in the ledger, it was successful
                         // Failed payments don't appear in the payment stream
                         let successful = total;
                         let failed = 0;
                         (total, successful, failed)
-                    } else {
-                        (
-                            anchor.total_transactions,
-                            anchor.successful_transactions,
-                            anchor.failed_transactions,
-                        )
                     };
 
                 let failure_rate = if total_transactions > 0 {

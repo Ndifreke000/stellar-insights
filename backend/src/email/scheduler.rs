@@ -15,7 +15,8 @@ pub struct DigestScheduler {
 }
 
 impl DigestScheduler {
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         email_service: Arc<EmailService>,
         cache: Arc<CacheManager>,
         rpc_client: Arc<StellarRpcClient>,
@@ -59,7 +60,7 @@ impl DigestScheduler {
         for recipient in &self.recipients {
             self.email_service.send_html(
                 recipient,
-                &format!("Stellar Insights - {} Performance Report", period),
+                &format!("Stellar Insights - {period} Performance Report"),
                 &html,
             )?;
         }
@@ -77,7 +78,7 @@ impl DigestScheduler {
             .rpc_client
             .fetch_payments(500, None)
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         let mut corridor_map = std::collections::HashMap::new();
         for payment in &payments {

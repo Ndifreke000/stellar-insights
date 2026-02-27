@@ -26,6 +26,7 @@ impl Default for RpcRateLimitConfig {
 }
 
 impl RpcRateLimitConfig {
+    #[must_use] 
     pub fn from_env() -> Self {
         let default = Self::default();
 
@@ -71,7 +72,7 @@ pub enum RpcRateLimitError {
 impl fmt::Display for RpcRateLimitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RpcRateLimitError::QueueFull => write!(f, "rate limiter queue is full"),
+            Self::QueueFull => write!(f, "rate limiter queue is full"),
         }
     }
 }
@@ -101,6 +102,7 @@ pub struct QueuePermit {
 }
 
 impl RpcRateLimiter {
+    #[must_use] 
     pub fn new(config: RpcRateLimitConfig) -> Self {
         let capacity = config.burst_size.max(1.0);
         let refill_rate_per_second = (config.requests_per_minute / 60.0).max(0.01);
@@ -193,6 +195,7 @@ impl RpcRateLimiter {
         tokio::time::sleep(Duration::from_secs(wait_seconds)).await;
     }
 
+    #[must_use] 
     pub fn metrics(&self) -> RpcRateLimitMetrics {
         RpcRateLimitMetrics {
             total_requests: self.total_requests.load(Ordering::Relaxed),
@@ -208,7 +211,7 @@ impl RpcRateLimiter {
             return;
         }
 
-        state.tokens = (state.tokens + elapsed * state.refill_rate_per_second).min(state.capacity);
+        state.tokens = elapsed.mul_add(state.refill_rate_per_second, state.tokens).min(state.capacity);
         state.last_refill = Instant::now();
     }
 }

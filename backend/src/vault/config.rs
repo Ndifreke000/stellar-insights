@@ -1,10 +1,10 @@
 /// Vault configuration from environment variables
 ///
 /// Expects:
-/// - VAULT_ADDR: Base URL of Vault cluster (e.g., https://vault.example.com)
-/// - VAULT_TOKEN: Authentication token (for development/testing)
-/// - VAULT_NAMESPACE: Optional namespace path
-/// - DB_ROLE: Database role for credential generation (e.g., stellar-app)
+/// - `VAULT_ADDR`: Base URL of Vault cluster (e.g., <https://vault.example.com>)
+/// - `VAULT_TOKEN`: Authentication token (for development/testing)
+/// - `VAULT_NAMESPACE`: Optional namespace path
+/// - `DB_ROLE`: Database role for credential generation (e.g., stellar-app)
 use crate::vault::VaultError;
 use std::env;
 
@@ -29,7 +29,7 @@ impl VaultConfig {
 
         let db_role = env::var("DB_ROLE").unwrap_or_else(|_| "stellar-app".to_string());
 
-        Ok(VaultConfig {
+        Ok(Self {
             vault_addr,
             vault_token,
             vault_namespace,
@@ -38,8 +38,9 @@ impl VaultConfig {
     }
 
     /// Create config with explicit values (for testing)
-    pub fn new(vault_addr: String, vault_token: String, db_role: String) -> Self {
-        VaultConfig {
+    #[must_use] 
+    pub const fn new(vault_addr: String, vault_token: String, db_role: String) -> Self {
+        Self {
             vault_addr,
             vault_token,
             vault_namespace: None,

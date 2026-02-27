@@ -12,7 +12,7 @@ pub fn encrypt_data(plain_text: &str, key_hex: &str) -> Result<String> {
         return Ok(String::new());
     }
 
-    let key_bytes = hex::decode(key_hex).map_err(|e| anyhow!("Invalid hex key: {}", e))?;
+    let key_bytes = hex::decode(key_hex).map_err(|e| anyhow!("Invalid hex key: {e}"))?;
 
     if key_bytes.len() != 32 {
         return Err(anyhow!(
@@ -27,12 +27,12 @@ pub fn encrypt_data(plain_text: &str, key_hex: &str) -> Result<String> {
 
     let cipher_text = cipher
         .encrypt(&nonce, plain_text.as_bytes())
-        .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+        .map_err(|e| anyhow!("Encryption failed: {e}"))?;
 
     let nonce_b64 = base64_standard.encode(nonce);
     let cipher_text_b64 = base64_standard.encode(cipher_text);
 
-    Ok(format!("{}:{}", nonce_b64, cipher_text_b64))
+    Ok(format!("{nonce_b64}:{cipher_text_b64}"))
 }
 
 /// Decrypts a base64 encoded `nonce:ciphertext` string using AES-256-GCM.
@@ -52,7 +52,7 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
         ));
     }
 
-    let key_bytes = hex::decode(key_hex).map_err(|e| anyhow!("Invalid hex key: {}", e))?;
+    let key_bytes = hex::decode(key_hex).map_err(|e| anyhow!("Invalid hex key: {e}"))?;
 
     if key_bytes.len() != 32 {
         return Err(anyhow!(
@@ -65,22 +65,23 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
 
     let nonce_bytes = base64_standard
         .decode(parts[0])
-        .map_err(|e| anyhow!("Invalid nonce base64: {}", e))?;
+        .map_err(|e| anyhow!("Invalid nonce base64: {e}"))?;
     let cipher_text_bytes = base64_standard
         .decode(parts[1])
-        .map_err(|e| anyhow!("Invalid ciphertext base64: {}", e))?;
+        .map_err(|e| anyhow!("Invalid ciphertext base64: {e}"))?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let plain_text_bytes = cipher
         .decrypt(nonce, cipher_text_bytes.as_ref())
-        .map_err(|e| anyhow!("Decryption failed: {}", e))?;
+        .map_err(|e| anyhow!("Decryption failed: {e}"))?;
 
     String::from_utf8(plain_text_bytes)
-        .map_err(|e| anyhow!("Invalid UTF-8 in decrypted data: {}", e))
+        .map_err(|e| anyhow!("Invalid UTF-8 in decrypted data: {e}"))
 }
 
 /// Helper function to check if a string appears to be encrypted
+#[must_use] 
 pub fn is_encrypted(data: &str) -> bool {
     data.contains(':') && data.split(':').count() == 2
 }

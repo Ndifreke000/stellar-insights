@@ -30,7 +30,7 @@ impl PaymentRoute {
         vec![Self::StellarDex, Self::AnchorDirect, Self::LiquidityPool]
     }
 
-    fn as_key(&self) -> &'static str {
+    const fn as_key(&self) -> &'static str {
         match self {
             Self::StellarDex => "stellar_dex",
             Self::AnchorDirect => "anchor_direct",
@@ -38,7 +38,7 @@ impl PaymentRoute {
         }
     }
 
-    fn label(&self) -> &'static str {
+    const fn label(&self) -> &'static str {
         match self {
             Self::StellarDex => "Stellar DEX",
             Self::AnchorDirect => "Anchor Direct",
@@ -112,7 +112,7 @@ struct RouteFees {
 }
 
 impl RouteFees {
-    fn for_route(route: PaymentRoute) -> Self {
+    const fn for_route(route: PaymentRoute) -> Self {
         match route {
             PaymentRoute::StellarDex => Self {
                 spread_bps: 35.0,
@@ -283,8 +283,7 @@ fn estimate_route(
     mid_market_rate: f64,
 ) -> RouteEstimate {
     let fees = RouteFees::for_route(route);
-    let slippage_bps = (fees.slippage_base_bps
-        + (source_amount / 10_000.0) * fees.slippage_per_10k_bps)
+    let slippage_bps = (source_amount / 10_000.0).mul_add(fees.slippage_per_10k_bps, fees.slippage_base_bps)
         .min(200.0);
 
     let destination_before_fees = source_amount * mid_market_rate;

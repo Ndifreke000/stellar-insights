@@ -9,7 +9,8 @@ pub struct AggregationDb {
 }
 
 impl AggregationDb {
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use] 
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -21,7 +22,7 @@ impl AggregationDb {
         limit: i64,
     ) -> Result<Vec<crate::models::corridor::PaymentRecord>> {
         let records = sqlx::query_as::<_, PaymentRecordRow>(
-            r#"
+            r"
             SELECT 
                 id,
                 transaction_hash,
@@ -36,7 +37,7 @@ impl AggregationDb {
             WHERE created_at >= ? AND created_at <= ?
             ORDER BY created_at ASC
             LIMIT ?
-            "#,
+            ",
         )
         .bind(start_time.to_rfc3339())
         .bind(end_time.to_rfc3339())
@@ -108,7 +109,7 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO corridor_metrics_hourly (
                 id,
                 corridor_key,
@@ -145,7 +146,7 @@ impl AggregationDb {
                 ),
                 liquidity_depth_usd = (liquidity_depth_usd + excluded.liquidity_depth_usd) / 2.0,
                 updated_at = ?
-            "#,
+            ",
         )
         .bind(&metric.id)
         .bind(&metric.corridor_key)
@@ -179,7 +180,7 @@ impl AggregationDb {
         end_time: DateTime<Utc>,
     ) -> Result<Vec<HourlyCorridorMetrics>> {
         let rows = sqlx::query_as::<_, HourlyCorridorMetricsRow>(
-            r#"
+            r"
             SELECT 
                 id,
                 corridor_key,
@@ -199,7 +200,7 @@ impl AggregationDb {
             FROM corridor_metrics_hourly
             WHERE hour_bucket >= ? AND hour_bucket <= ?
             ORDER BY hour_bucket ASC
-            "#,
+            ",
         )
         .bind(start_time.to_rfc3339())
         .bind(end_time.to_rfc3339())
@@ -242,10 +243,10 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO aggregation_jobs (id, job_type, status, created_at, updated_at)
             VALUES (?, ?, 'pending', ?, ?)
-            "#,
+            ",
         )
         .bind(job_id)
         .bind(job_type)
@@ -283,12 +284,11 @@ impl AggregationDb {
         };
 
         let query_str = format!(
-            r#"
+            r"
             UPDATE aggregation_jobs
-            SET status = ?, error_message = ?, {} = ?, updated_at = ?
+            SET status = ?, error_message = ?, {time_field} = ?, updated_at = ?
             WHERE id = ?
-            "#,
-            time_field
+            "
         );
 
         sqlx::query(&query_str)
@@ -309,11 +309,11 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             UPDATE aggregation_jobs
             SET last_processed_hour = ?, updated_at = ?
             WHERE id = ?
-            "#,
+            ",
         )
         .bind(last_hour)
         .bind(&now)
@@ -328,9 +328,9 @@ impl AggregationDb {
     /// Get job retry count
     pub async fn get_job_retry_count(&self, job_id: &str) -> Result<i32> {
         let row: (i32,) = sqlx::query_as(
-            r#"
+            r"
             SELECT retry_count FROM aggregation_jobs WHERE id = ?
-            "#,
+            ",
         )
         .bind(job_id)
         .fetch_one(&self.pool)
@@ -345,11 +345,11 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"
+            r"
             UPDATE aggregation_jobs
             SET retry_count = retry_count + 1, updated_at = ?
             WHERE id = ?
-            "#,
+            ",
         )
         .bind(&now)
         .bind(job_id)

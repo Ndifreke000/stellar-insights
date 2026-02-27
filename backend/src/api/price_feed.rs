@@ -101,7 +101,7 @@ pub struct ErrorResponse {
 ///
 /// Returns the current USD price for a Stellar asset.
 ///
-/// **DATA SOURCE: CoinGecko API**
+/// **DATA SOURCE: `CoinGecko` API**
 #[utoipa::path(
     get,
     path = "/api/prices",
@@ -128,7 +128,7 @@ pub async fn get_price(
         }
         Err(e) => {
             let error = ErrorResponse {
-                error: format!("Failed to fetch price: {}", e),
+                error: format!("Failed to fetch price: {e}"),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
         }
@@ -139,7 +139,7 @@ pub async fn get_price(
 ///
 /// Returns the current USD prices for multiple Stellar assets.
 ///
-/// **DATA SOURCE: CoinGecko API**
+/// **DATA SOURCE: `CoinGecko` API**
 #[utoipa::path(
     get,
     path = "/api/prices/batch",
@@ -183,7 +183,7 @@ pub async fn get_prices(
 ///
 /// Converts an amount of a Stellar asset to USD using current prices.
 ///
-/// **DATA SOURCE: CoinGecko API**
+/// **DATA SOURCE: `CoinGecko` API**
 #[utoipa::path(
     get,
     path = "/api/prices/convert",
@@ -216,7 +216,7 @@ pub async fn convert_to_usd(
         }
         Err(e) => {
             let error = ErrorResponse {
-                error: format!("Failed to convert: {}", e),
+                error: format!("Failed to convert: {e}"),
             };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
         }

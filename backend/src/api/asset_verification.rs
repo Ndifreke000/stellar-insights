@@ -161,7 +161,7 @@ async fn get_verification(
 }
 
 /// List verified assets with optional filters
-/// GET /api/assets/verified?status=verified&min_reputation=60&limit=50&offset=0
+/// GET /`api/assets/verified?status=verified&min_reputation=60&limit=50&offset=0`
 async fn list_verified_assets(
     State(pool): State<Arc<SqlitePool>>,
     Query(query): Query<ListVerifiedAssetsQuery>,
@@ -200,7 +200,7 @@ async fn list_verified_assets(
         Ok(assets) => {
             let total = assets.len() as i64;
             let responses: Vec<VerifiedAssetResponse> =
-                assets.into_iter().map(|a| a.into()).collect();
+                assets.into_iter().map(std::convert::Into::into).collect();
 
             Ok((
                 StatusCode::OK,
@@ -290,12 +290,12 @@ async fn report_suspicious_asset(
 
     // Insert report into database
     let result = sqlx::query(
-        r#"
+        r"
         INSERT INTO asset_verification_reports (
             id, asset_code, asset_issuer, reporter_account,
             report_type, description, evidence_url, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-        "#,
+        ",
     )
     .bind(&report_id)
     .bind(&request.asset_code)
@@ -311,13 +311,13 @@ async fn report_suspicious_asset(
         Ok(_) => {
             // Update suspicious reports count
             let _ = sqlx::query(
-                r#"
+                r"
                 UPDATE verified_assets
                 SET suspicious_reports_count = suspicious_reports_count + 1,
                     last_suspicious_report_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE asset_code = ? AND asset_issuer = ?
-                "#,
+                ",
             )
             .bind(&request.asset_code)
             .bind(&request.asset_issuer)

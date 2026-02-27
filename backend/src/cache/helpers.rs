@@ -53,7 +53,7 @@ where
 /// Builds a deterministic cache key from a prefix and serializable params.
 pub fn build_param_cache_key<P: Serialize>(key_prefix: &str, params: &P) -> String {
     let params_hash = calculate_hash(params);
-    format!("{}:{}", key_prefix, params_hash)
+    format!("{key_prefix}:{params_hash}")
 }
 
 fn calculate_hash<T: Serialize>(value: &T) -> String {

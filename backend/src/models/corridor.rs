@@ -11,13 +11,14 @@ pub struct Corridor {
 }
 
 impl Corridor {
+    #[must_use] 
     pub fn new(
         asset_a_code: String,
         asset_a_issuer: String,
         asset_b_code: String,
         asset_b_issuer: String,
     ) -> Self {
-        let mut corridor = Corridor {
+        let mut corridor = Self {
             asset_a_code,
             asset_a_issuer,
             asset_b_code,
@@ -37,6 +38,7 @@ impl Corridor {
         }
     }
 
+    #[must_use] 
     pub fn to_string_key(&self) -> String {
         format!(
             "{}:{}->{}:{}",
@@ -111,6 +113,7 @@ pub struct PaymentRecord {
 
 impl PaymentRecord {
     /// Computes settlement latency in milliseconds between submission and confirmation times.
+    #[must_use] 
     pub fn settlement_latency_ms(&self) -> Option<i64> {
         match (self.submission_time, self.confirmation_time) {
             (Some(submitted), Some(confirmed)) => {
@@ -122,6 +125,7 @@ impl PaymentRecord {
     }
 
     /// Extracts the corridor from source and destination assets.
+    #[must_use] 
     pub fn get_corridor(&self) -> Corridor {
         Corridor::new(
             self.source_asset_code.clone(),
@@ -139,9 +143,9 @@ pub fn compute_median(values: &mut [i64]) -> Option<i64> {
     }
     values.sort_unstable();
     let len = values.len();
-    if len % 2 == 0 {
+    if len.is_multiple_of(2) {
         // Average of two middle values
-        Some((values[len / 2 - 1] + values[len / 2]) / 2)
+        Some(i64::midpoint(values[len / 2 - 1], values[len / 2]))
     } else {
         Some(values[len / 2])
     }

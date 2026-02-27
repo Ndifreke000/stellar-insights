@@ -36,7 +36,7 @@ where
         parts
             .extensions
             .get::<Sep10User>()
-            .map(|user| Sep10Claims {
+            .map(|user| Self {
                 account: user.account.clone(),
                 client_domain: user.client_domain.clone(),
             })
@@ -92,10 +92,10 @@ pub enum Sep10AuthError {
 impl IntoResponse for Sep10AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Sep10AuthError::MissingToken => {
+            Self::MissingToken => {
                 (StatusCode::UNAUTHORIZED, "Missing authentication token")
             }
-            Sep10AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+            Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
         };
 
         let body = json!({

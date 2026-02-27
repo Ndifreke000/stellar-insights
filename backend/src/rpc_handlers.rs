@@ -16,7 +16,7 @@ pub struct PaginationQuery {
     pub cursor: Option<String>,
 }
 
-fn default_limit() -> u32 {
+const fn default_limit() -> u32 {
     20
 }
 
@@ -47,7 +47,7 @@ pub async fn rpc_health_check(
         Err(e) => Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: format!("RPC health check failed: {}", e),
+                error: format!("RPC health check failed: {e}"),
             }),
         )),
     }
@@ -63,7 +63,7 @@ pub async fn get_latest_ledger(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch ledger: {}", e),
+                error: format!("Failed to fetch ledger: {e}"),
             }),
         )),
     }
@@ -81,7 +81,7 @@ pub async fn get_payments(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch payments: {}", e),
+                error: format!("Failed to fetch payments: {e}"),
             }),
         )),
     }
@@ -102,7 +102,7 @@ pub async fn get_account_payments(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch account payments: {}", e),
+                error: format!("Failed to fetch account payments: {e}"),
             }),
         )),
     }
@@ -120,7 +120,7 @@ pub async fn get_trades(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch trades: {}", e),
+                error: format!("Failed to fetch trades: {e}"),
             }),
         )),
     }
@@ -152,7 +152,7 @@ pub async fn get_order_book(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch order book: {}", e),
+                error: format!("Failed to fetch order book: {e}"),
             }),
         )),
     }

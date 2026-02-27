@@ -17,7 +17,7 @@ pub enum SortBy {
 
 impl Default for SortBy {
     fn default() -> Self {
-        SortBy::SuccessRate
+        Self::SuccessRate
     }
 }
 
@@ -78,7 +78,7 @@ pub struct AnchorMetrics {
     pub status: AnchorStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AnchorStatus {
     Green,
     Yellow,
@@ -86,21 +86,23 @@ pub enum AnchorStatus {
 }
 
 impl AnchorStatus {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            AnchorStatus::Green => "green",
-            AnchorStatus::Yellow => "yellow",
-            AnchorStatus::Red => "red",
+            Self::Green => "green",
+            Self::Yellow => "yellow",
+            Self::Red => "red",
         }
     }
 
+    #[must_use] 
     pub fn from_metrics(success_rate: f64, failure_rate: f64) -> Self {
         if success_rate > 98.0 && failure_rate <= 1.0 {
-            AnchorStatus::Green
+            Self::Green
         } else if success_rate >= 95.0 && failure_rate <= 5.0 {
-            AnchorStatus::Yellow
+            Self::Yellow
         } else {
-            AnchorStatus::Red
+            Self::Red
         }
     }
 }
@@ -200,6 +202,7 @@ pub struct PaymentRecord {
 }
 
 impl PaymentRecord {
+    #[must_use] 
     pub fn get_corridor(&self) -> crate::models::corridor::Corridor {
         let src_code = if self.source_asset_code.is_empty() {
             self.asset_code.clone().unwrap_or_default()

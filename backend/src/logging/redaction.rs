@@ -37,6 +37,7 @@ impl<T: Serialize> Serialize for Redacted<T> {
 ///
 /// Example: `GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
 /// becomes `GXXX...XXXX`
+#[must_use] 
 pub fn redact_account(account: &str) -> String {
     if account.len() <= 8 {
         return "[REDACTED]".to_string();
@@ -47,15 +48,17 @@ pub fn redact_account(account: &str) -> String {
 /// Redact payment amounts (show only order of magnitude)
 ///
 /// Example: `1234.56` becomes `~10^3`
+#[must_use] 
 pub fn redact_amount(amount: f64) -> String {
     if amount <= 0.0 {
         return "~10^0".to_string();
     }
     let magnitude = amount.log10().floor() as i32;
-    format!("~10^{}", magnitude)
+    format!("~10^{magnitude}")
 }
 
 /// Redact transaction hash (show first 4 and last 4 chars)
+#[must_use] 
 pub fn redact_hash(hash: &str) -> String {
     if hash.len() <= 8 {
         return "[REDACTED]".to_string();
@@ -66,6 +69,7 @@ pub fn redact_hash(hash: &str) -> String {
 /// Redact user ID (show only prefix)
 ///
 /// Example: `user_12345678` becomes `user_****`
+#[must_use] 
 pub fn redact_user_id(user_id: &str) -> String {
     if let Some(pos) = user_id.find('_') {
         format!("{}****", &user_id[..=pos])
@@ -79,6 +83,7 @@ pub fn redact_user_id(user_id: &str) -> String {
 /// Redact email address (show only domain)
 ///
 /// Example: `user@example.com` becomes `****@example.com`
+#[must_use] 
 pub fn redact_email(email: &str) -> String {
     if let Some(pos) = email.find('@') {
         format!("****{}", &email[pos..])
@@ -90,6 +95,7 @@ pub fn redact_email(email: &str) -> String {
 /// Redact IP address (show only first two octets)
 ///
 /// Example: `192.168.1.100` becomes `192.168.*.*`
+#[must_use] 
 pub fn redact_ip(ip: &str) -> String {
     let parts: Vec<&str> = ip.split('.').collect();
     if parts.len() == 4 {
@@ -97,10 +103,10 @@ pub fn redact_ip(ip: &str) -> String {
     } else if ip.contains(':') {
         // IPv6 - show only first segment
         let parts: Vec<&str> = ip.split(':').collect();
-        if !parts.is_empty() {
-            format!("{}:****", parts[0])
-        } else {
+        if parts.is_empty() {
             "[REDACTED]".to_string()
+        } else {
+            format!("{}:****", parts[0])
         }
     } else {
         "[REDACTED]".to_string()
@@ -108,6 +114,7 @@ pub fn redact_ip(ip: &str) -> String {
 }
 
 /// Redact API key or token (show only first 4 chars)
+#[must_use] 
 pub fn redact_token(token: &str) -> String {
     if token.len() > 4 {
         format!("{}****", &token[..4])

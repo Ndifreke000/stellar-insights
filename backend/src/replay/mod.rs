@@ -27,7 +27,6 @@ pub use event_processor::{EventProcessor, ProcessingContext, ProcessingResult};
 pub use state_builder::StateBuilder;
 pub use storage::{EventStorage, ReplayStorage};
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -54,6 +53,7 @@ pub struct ContractEvent {
 
 impl ContractEvent {
     /// Create a unique identifier for this event
+    #[must_use] 
     pub fn unique_id(&self) -> String {
         format!(
             "{}:{}:{}",
@@ -62,6 +62,7 @@ impl ContractEvent {
     }
 
     /// Check if event matches a filter
+    #[must_use] 
     pub fn matches_filter(&self, filter: &EventFilter) -> bool {
         if let Some(ref contract_ids) = filter.contract_ids {
             if !contract_ids.contains(&self.contract_id) {
@@ -145,8 +146,7 @@ impl fmt::Display for ReplayStatus {
                 events_failed,
             } => write!(
                 f,
-                "In Progress (ledger: {}, processed: {}, failed: {})",
-                current_ledger, events_processed, events_failed
+                "In Progress (ledger: {current_ledger}, processed: {events_processed}, failed: {events_failed})"
             ),
             Self::Completed {
                 events_processed,
@@ -154,19 +154,17 @@ impl fmt::Display for ReplayStatus {
                 duration_secs,
             } => write!(
                 f,
-                "Completed (processed: {}, failed: {}, duration: {}s)",
-                events_processed, events_failed, duration_secs
+                "Completed (processed: {events_processed}, failed: {events_failed}, duration: {duration_secs}s)"
             ),
             Self::Failed { error, last_ledger } => {
-                write!(f, "Failed: {} (last ledger: {:?})", error, last_ledger)
+                write!(f, "Failed: {error} (last ledger: {last_ledger:?})")
             }
             Self::Paused {
                 last_ledger,
                 events_processed,
             } => write!(
                 f,
-                "Paused (last ledger: {}, processed: {})",
-                last_ledger, events_processed
+                "Paused (last ledger: {last_ledger}, processed: {events_processed})"
             ),
         }
     }

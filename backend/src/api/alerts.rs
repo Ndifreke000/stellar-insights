@@ -5,13 +5,10 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     auth_middleware::AuthUser,
-    database::Database,
-    error::{ApiError, ApiResult},
+    error::ApiResult,
     models::alerts::{CreateAlertRuleRequest, SnoozeAlertRequest, UpdateAlertRuleRequest},
     state::AppState,
 };

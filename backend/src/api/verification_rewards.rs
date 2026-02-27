@@ -26,7 +26,7 @@ pub fn routes(
         .route("/stats", get(get_user_stats))
         .route("/history", get(get_user_verifications))
         .layer(middleware::from_fn_with_state(
-            sep10_service.clone(),
+            sep10_service,
             sep10_auth_middleware,
         ))
         .route("/leaderboard", get(get_leaderboard))
@@ -41,7 +41,7 @@ pub struct LeaderboardQuery {
     pub limit: i32,
 }
 
-fn default_limit() -> i32 {
+const fn default_limit() -> i32 {
     10
 }
 
@@ -52,7 +52,7 @@ pub struct VerificationsQuery {
     pub limit: i32,
 }
 
-fn default_verification_limit() -> i32 {
+const fn default_verification_limit() -> i32 {
     20
 }
 
@@ -129,7 +129,7 @@ pub async fn get_user_verifications(
     Ok((StatusCode::OK, Json(verifications)).into_response())
 }
 
-/// GET /api/verifications/stats/:user_id
+/// GET /`api/verifications/stats/:user_id`
 /// Get reward statistics for a specific user (public)
 pub async fn get_public_user_stats(
     State(service): State<Arc<VerificationRewardsService>>,
@@ -154,9 +154,9 @@ pub enum VerificationError {
 impl IntoResponse for VerificationError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            VerificationError::VerificationFailed(msg) => (StatusCode::BAD_REQUEST, msg),
-            VerificationError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            VerificationError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            Self::VerificationFailed(msg) => (StatusCode::BAD_REQUEST, msg),
+            Self::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
         };
 
         let body = Json(ErrorResponse { error: message });

@@ -1,4 +1,4 @@
-use crate::alerts::{Alert, AlertManager, AlertType};
+use crate::alerts::{AlertManager, AlertType};
 use crate::database::Database;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -19,6 +19,7 @@ struct AnchorMetrics {
 }
 
 impl AnchorMonitor {
+    #[must_use] 
     pub fn new(db: Arc<Database>, alert_manager: Arc<AlertManager>) -> Self {
         Self {
             db,

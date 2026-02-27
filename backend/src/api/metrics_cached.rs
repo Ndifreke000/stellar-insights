@@ -43,7 +43,7 @@ pub async fn metrics_overview(
         },
     )
     .await
-    .unwrap_or_else(|_| MetricsOverview {
+    .unwrap_or(MetricsOverview {
         total_volume: 0.0,
         total_transactions: 0,
         active_users: 0,

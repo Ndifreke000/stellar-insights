@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 pub struct PriceFeedConfig {
     /// Provider to use (coingecko, coinmarketcap)
     pub provider: String,
-    /// API key (optional for CoinGecko free tier, required for CoinMarketCap)
+    /// API key (optional for `CoinGecko` free tier, required for `CoinMarketCap`)
     pub api_key: Option<String>,
     /// Cache TTL in seconds (default: 900 = 15 minutes)
     pub cache_ttl_seconds: u64,
@@ -32,6 +32,7 @@ impl Default for PriceFeedConfig {
 }
 
 impl PriceFeedConfig {
+    #[must_use] 
     pub fn from_env() -> Self {
         Self {
             provider: std::env::var("PRICE_FEED_PROVIDER")
@@ -69,13 +70,14 @@ pub trait PriceFeedProvider: Send + Sync {
     fn name(&self) -> &str;
 }
 
-/// CoinGecko provider implementation
+/// `CoinGecko` provider implementation
 pub struct CoinGeckoProvider {
     client: Client,
     api_key: Option<String>,
 }
 
 impl CoinGeckoProvider {
+    #[must_use] 
     pub fn new(api_key: Option<String>, timeout: Duration) -> Self {
         let client = Client::builder()
             .timeout(timeout)
@@ -96,13 +98,11 @@ impl PriceFeedProvider for CoinGeckoProvider {
     async fn fetch_price(&self, asset_id: &str) -> Result<f64> {
         let url = if let Some(api_key) = &self.api_key {
             format!(
-                "https://pro-api.coingecko.com/api/v3/simple/price?ids={}&vs_currencies=usd&x_cg_pro_api_key={}",
-                asset_id, api_key
+                "https://pro-api.coingecko.com/api/v3/simple/price?ids={asset_id}&vs_currencies=usd&x_cg_pro_api_key={api_key}"
             )
         } else {
             format!(
-                "https://api.coingecko.com/api/v3/simple/price?ids={}&vs_currencies=usd",
-                asset_id
+                "https://api.coingecko.com/api/v3/simple/price?ids={asset_id}&vs_currencies=usd"
             )
         };
 
@@ -116,7 +116,7 @@ impl PriceFeedProvider for CoinGeckoProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("CoinGecko API error: {} - {}", status, body);
+            anyhow::bail!("CoinGecko API error: {status} - {body}");
         }
 
         let prices: HashMap<String, CoinGeckoSimplePrice> = response
@@ -127,7 +127,7 @@ impl PriceFeedProvider for CoinGeckoProvider {
         prices
             .get(asset_id)
             .map(|p| p.usd)
-            .ok_or_else(|| anyhow::anyhow!("Price not found for asset: {}", asset_id))
+            .ok_or_else(|| anyhow::anyhow!("Price not found for asset: {asset_id}"))
     }
 
     async fn fetch_prices(&self, asset_ids: &[String]) -> Result<HashMap<String, f64>> {
@@ -138,13 +138,11 @@ impl PriceFeedProvider for CoinGeckoProvider {
         let ids = asset_ids.join(",");
         let url = if let Some(api_key) = &self.api_key {
             format!(
-                "https://pro-api.coingecko.com/api/v3/simple/price?ids={}&vs_currencies=usd&x_cg_pro_api_key={}",
-                ids, api_key
+                "https://pro-api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd&x_cg_pro_api_key={api_key}"
             )
         } else {
             format!(
-                "https://api.coingecko.com/api/v3/simple/price?ids={}&vs_currencies=usd",
-                ids
+                "https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd"
             )
         };
 
@@ -158,7 +156,7 @@ impl PriceFeedProvider for CoinGeckoProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("CoinGecko API error: {} - {}", status, body);
+            anyhow::bail!("CoinGecko API error: {status} - {body}");
         }
 
         let prices: HashMap<String, CoinGeckoSimplePrice> = response
@@ -169,7 +167,7 @@ impl PriceFeedProvider for CoinGeckoProvider {
         Ok(prices.into_iter().map(|(k, v)| (k, v.usd)).collect())
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CoinGecko"
     }
 }
@@ -187,15 +185,12 @@ impl PriceFeedClient {
     pub fn new(config: PriceFeedConfig, asset_mapping: HashMap<String, String>) -> Self {
         let timeout = Duration::from_secs(config.request_timeout_seconds);
 
-        let provider: Arc<dyn PriceFeedProvider> = match config.provider.as_str() {
-            "coingecko" => Arc::new(CoinGeckoProvider::new(config.api_key.clone(), timeout)),
-            _ => {
-                warn!(
-                    "Unknown provider '{}', defaulting to CoinGecko",
-                    config.provider
-                );
-                Arc::new(CoinGeckoProvider::new(config.api_key.clone(), timeout))
-            }
+        let provider: Arc<dyn PriceFeedProvider> = if config.provider.as_str() == "coingecko" { Arc::new(CoinGeckoProvider::new(config.api_key.clone(), timeout)) } else {
+            warn!(
+                "Unknown provider '{}', defaulting to CoinGecko",
+                config.provider
+            );
+            Arc::new(CoinGeckoProvider::new(config.api_key.clone(), timeout))
         };
 
         info!(
@@ -229,7 +224,7 @@ impl PriceFeedClient {
         let asset_id = self
             .asset_mapping
             .get(stellar_asset)
-            .ok_or_else(|| anyhow::anyhow!("No mapping found for asset: {}", stellar_asset))?;
+            .ok_or_else(|| anyhow::anyhow!("No mapping found for asset: {stellar_asset}"))?;
 
         // Fetch from provider
         debug!("Fetching price for {} ({})", stellar_asset, asset_id);
@@ -370,6 +365,7 @@ impl PriceFeedClient {
 }
 
 /// Default asset mapping for common Stellar assets
+#[must_use] 
 pub fn default_asset_mapping() -> HashMap<String, String> {
     let mut mapping = HashMap::new();
 
