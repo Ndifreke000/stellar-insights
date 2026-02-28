@@ -4778,11 +4778,13 @@ dependencies = [
 
 [[package]]
 name = "tracing-logstash"
-version = "0.2.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6d1c09bd0e17a62bd2e65d350bbd200a739fc8096f34b25193b5c9f6de01c67"
+checksum = "c9900b4757b24cae22aad80a9e2d3fd784d06ef8534e45acfcc18f328c8c7c18"
 dependencies = [
+ "serde",
  "serde_json",
+ "time",
  "tracing-core",
  "tracing-subscriber",
 ]
