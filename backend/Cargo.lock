@@ -4086,7 +4086,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "prometheus",
- "rand 0.8.5",
+ "rand 0.9.2",
  "redis",
  "reqwest",
  "rust_xlsxwriter",
