@@ -43,7 +43,7 @@
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.1.4",
     "autocannon": "^8.0.0",
     "axe-core": "^4.10.2",
     "eslint": "^9.39.3",
