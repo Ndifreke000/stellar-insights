@@ -17,7 +17,7 @@
     "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.2",
+    "@prisma/client": "^7.4.2",
     "@stellar/stellar-sdk": "^14.5.0",
     "d3-force-3d": "^3.0.6",
     "date-fns": "^4.1.0",
