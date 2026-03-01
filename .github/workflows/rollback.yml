@@ -37,7 +37,7 @@ jobs:
           echo "container_name=stellar-insights" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/terraform-executor
           aws-region: ${{ env.AWS_REGION }}
