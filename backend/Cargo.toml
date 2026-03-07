@@ -47,7 +47,7 @@ tracing-log = "0.2"
 tracing-appender = "0.2"
 tracing-logstash = "0.2"
 opentelemetry = { version = "0.20", features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.13", features = ["grpc-tonic", "trace"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "trace"] }
 tracing-opentelemetry = "0.21"
 dotenvy = "0.15"
 sha2 = "0.10"
