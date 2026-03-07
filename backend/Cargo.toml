@@ -29,7 +29,7 @@ legacy_sep10_tests = []
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.4", features = ["util"] }
+tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
