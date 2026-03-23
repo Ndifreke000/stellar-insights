@@ -59,7 +59,7 @@
     "prisma": "^6.12.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "typescript-eslint": "^8.56.1",
+    "typescript-eslint": "^8.57.2",
     "vitest": "^4.0.18",
     "vitest-axe": "^1.0.0-pre.5"
   },
