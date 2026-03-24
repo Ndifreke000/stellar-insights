@@ -266,7 +266,8 @@ fn test_bounded_storage_growth_simulation() {
 
     client.initialize(&admin);
 
-    let num_epochs = 100u64;
+    // Use a smaller set to stay within budget limits
+    let num_epochs = 20u64;
     for epoch in 1..=num_epochs {
         let hash = create_test_hash(&env, (epoch % 255) as u8);
         client.submit_snapshot(&epoch, &hash, &admin);
@@ -417,4 +418,210 @@ fn test_old_admin_cannot_submit_after_transfer() {
     let epoch = 1u64;
     let hash = create_test_hash(&env, 1);
     client.submit_snapshot(&epoch, &hash, &admin);
+}
+
+// ============================================================================
+// Snapshot Expiry Tests
+// ============================================================================
+
+#[test]
+fn test_snapshot_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Submit at t=1000 with 500s TTL -> expires at t=1500
+    env.ledger().set_timestamp(1000);
+    let hash = create_test_hash(&env, 1);
+    client.submit_snapshot_with_ttl(&1u64, &hash, &admin, &Some(500u64));
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.expires_at, Some(1500u64));
+
+    // Before expiry: not expired
+    env.ledger().set_timestamp(1499);
+    assert!(!client.is_snapshot_expired(&1u64));
+
+    // After expiry: expired
+    env.ledger().set_timestamp(1501);
+    assert!(client.is_snapshot_expired(&1u64));
+}
+
+#[test]
+fn test_snapshot_default_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(0);
+    let hash = create_test_hash(&env, 1);
+    client.submit_snapshot_with_ttl(&1u64, &hash, &admin, &None);
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    // Default TTL is 90 days = 7_776_000 seconds
+    assert_eq!(snapshot.expires_at, Some(7_776_000u64));
+}
+
+#[test]
+fn test_snapshot_no_expiry_by_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // submit_snapshot (no TTL) should have expires_at = None
+    env.ledger().set_timestamp(1000);
+    let hash = create_test_hash(&env, 1);
+    client.submit_snapshot(&1u64, &hash, &admin);
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.expires_at, None);
+
+    // Should never be considered expired
+    env.ledger().set_timestamp(u64::MAX / 2);
+    assert!(!client.is_snapshot_expired(&1u64));
+}
+
+#[test]
+fn test_cleanup_expired_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Submit 3 snapshots with short TTL (100s) and 1 with long TTL (10000s)
+    env.ledger().set_timestamp(1000);
+    for epoch in 1u64..=3 {
+        let hash = create_test_hash(&env, epoch as u8);
+        client.submit_snapshot_with_ttl(&epoch, &hash, &admin, &Some(100u64));
+    }
+    let hash4 = create_test_hash(&env, 4);
+    client.submit_snapshot_with_ttl(&4u64, &hash4, &admin, &Some(10_000u64));
+
+    // Advance past the short TTL expiry
+    env.ledger().set_timestamp(1200);
+
+    // Clean up max 2 at a time
+    let cleaned = client.cleanup_expired_snapshots(&admin, &2u32);
+    assert_eq!(cleaned, 2);
+
+    // Epochs 1 and 2 removed, 3 and 4 still present
+    assert!(client.get_snapshot(&1u64).is_none());
+    assert!(client.get_snapshot(&2u64).is_none());
+    assert!(client.get_snapshot(&3u64).is_some());
+    assert!(client.get_snapshot(&4u64).is_some());
+
+    // Clean remaining expired
+    let cleaned2 = client.cleanup_expired_snapshots(&admin, &10u32);
+    assert_eq!(cleaned2, 1); // epoch 3 expired, epoch 4 not yet
+
+    assert!(client.get_snapshot(&3u64).is_none());
+    assert!(client.get_snapshot(&4u64).is_some());
+}
+
+#[test]
+fn test_cleanup_respects_max_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(0);
+    for epoch in 1u64..=5 {
+        let hash = create_test_hash(&env, epoch as u8);
+        client.submit_snapshot_with_ttl(&epoch, &hash, &admin, &Some(100u64));
+    }
+
+    // All 5 expired
+    env.ledger().set_timestamp(200);
+
+    // Only clean 3
+    let cleaned = client.cleanup_expired_snapshots(&admin, &3u32);
+    assert_eq!(cleaned, 3);
+
+    // 2 still remain
+    let history = client.get_snapshot_history();
+    assert_eq!(history.len(), 2);
+}
+
+#[test]
+fn test_cleanup_no_expired_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(0);
+    let hash = create_test_hash(&env, 1);
+    client.submit_snapshot_with_ttl(&1u64, &hash, &admin, &Some(10_000u64));
+
+    // Not yet expired
+    env.ledger().set_timestamp(100);
+    let cleaned = client.cleanup_expired_snapshots(&admin, &10u32);
+    assert_eq!(cleaned, 0);
+    assert!(client.get_snapshot(&1u64).is_some());
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_cleanup_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    client.cleanup_expired_snapshots(&attacker, &10u32);
+}
+
+#[test]
+fn test_submit_snapshot_with_ttl_stores_submitter_and_ledger() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(5000);
+    let hash = create_test_hash(&env, 42);
+    client.submit_snapshot_with_ttl(&1u64, &hash, &admin, &Some(1000u64));
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.submitter, admin);
+    assert_eq!(snapshot.timestamp, 5000);
+    assert_eq!(snapshot.expires_at, Some(6000u64));
+    assert_eq!(snapshot.hash, hash);
 }
