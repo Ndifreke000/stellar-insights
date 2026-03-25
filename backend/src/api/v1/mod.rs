@@ -1,18 +1,13 @@
 use crate::api::{
-    account_merges, anchors_cached, cache_stats, corridors_cached, cost_calculator, fee_bump,
-    liquidity_pools, metrics_cached, oauth, price_feed as price_feed_api, webhooks,
+    account_merges, anchors, anchors_cached, cache_stats, corridors, corridors_cached, 
+    cost_calculator, fee_bump, liquidity_pools, metrics_cached, oauth, price_feed as price_feed_api, 
+    rpc, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
 use crate::database::Database;
-use crate::handlers::{
-    create_anchor, create_anchor_asset, create_corridor, get_anchor, get_anchor_assets,
-    get_anchor_by_account, get_muxed_analytics, pool_metrics, update_anchor_metrics,
-    update_corridor_metrics_from_transactions,
-};
 use crate::rate_limit::{rate_limit_middleware, RateLimiter};
 use crate::rpc::StellarRpcClient;
-use crate::rpc_handlers;
 use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 use crate::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
@@ -56,28 +51,28 @@ pub fn routes(
 
     // 2. Public anchor routes
     let public_anchor_routes = Router::new()
-        .route("/db/pool-metrics", get(pool_metrics))
-        .route("/anchors/:id", get(get_anchor))
+        .route("/db/pool-metrics", get(crate::handlers::pool_metrics))
+        .route("/anchors/:id", get(anchors::get_anchor))
         .route(
             "/anchors/account/:stellar_account",
-            get(get_anchor_by_account),
+            get(anchors::get_anchor_by_account),
         )
-        .route("/anchors/:id/assets", get(get_anchor_assets))
-        .route("/analytics/muxed", get(get_muxed_analytics))
+        .route("/anchors/:id/assets", get(anchors::get_anchor_assets))
+        .route("/analytics/muxed", get(anchors::get_muxed_analytics))
         .with_state(app_state.clone());
 
     // 3. Protected anchor routes
     let protected_routes = Router::new()
-        .route("/anchors", axum::routing::post(create_anchor))
-        .route("/anchors/:id/metrics", put(update_anchor_metrics))
+        .route("/anchors", axum::routing::post(anchors::create_anchor))
+        .route("/anchors/:id/metrics", put(anchors::update_anchor_metrics))
         .route(
             "/anchors/:id/assets",
-            axum::routing::post(create_anchor_asset),
+            axum::routing::post(anchors::create_anchor_asset),
         )
-        .route("/corridors", axum::routing::post(create_corridor))
+        .route("/corridors", axum::routing::post(corridors::create_corridor))
         .route(
             "/corridors/:id/metrics-from-transactions",
-            put(update_corridor_metrics_from_transactions),
+            put(corridors::update_corridor_metrics_from_transactions),
         )
         .with_state(app_state)
         .layer(middleware::from_fn(auth_middleware));
@@ -88,15 +83,15 @@ pub fn routes(
 
     // 4. RPC routes
     let rpc_routes = Router::new()
-        .route("/rpc/health", get(rpc_handlers::rpc_health_check))
-        .route("/rpc/ledger/latest", get(rpc_handlers::get_latest_ledger))
-        .route("/rpc/payments", get(rpc_handlers::get_payments))
+        .route("/rpc/health", get(rpc::rpc_health_check))
+        .route("/rpc/ledger/latest", get(rpc::get_latest_ledger))
+        .route("/rpc/payments", get(rpc::get_payments))
         .route(
             "/rpc/payments/account/:account_id",
-            get(rpc_handlers::get_account_payments),
+            get(rpc::get_account_payments),
         )
-        .route("/rpc/trades", get(rpc_handlers::get_trades))
-        .route("/rpc/orderbook", get(rpc_handlers::get_order_book))
+        .route("/rpc/trades", get(rpc::get_trades))
+        .route("/rpc/orderbook", get(rpc::get_order_book))
         .with_state(rpc_client);
 
     // 5. Special service routes

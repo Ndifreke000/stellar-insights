@@ -5,10 +5,13 @@ use axum::{
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
+use crate::broadcast::broadcast_corridor_update;
 use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::{Corridor, CorridorMetrics};
-use crate::models::SortBy;
+use crate::models::{CreateCorridorRequest, SortBy};
+use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
 use crate::state::AppState;
 use crate::validation;
 
@@ -443,6 +446,78 @@ pub async fn get_corridor_detail(
         liquidity_trends,
         related_corridors: Some(related_corridors),
     }))
+}
+
+/// POST /api/corridors - Create a new corridor
+pub async fn create_corridor(
+    State(app_state): State<AppState>,
+    Json(req): Json<CreateCorridorRequest>,
+) -> ApiResult<Json<Corridor>> {
+    if req.source_asset_code.is_empty() || req.dest_asset_code.is_empty() {
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Asset codes cannot be empty",
+        ));
+    }
+    if req.source_asset_issuer.is_empty() || req.dest_asset_issuer.is_empty() {
+        return Err(ApiError::bad_request(
+            "INVALID_INPUT",
+            "Asset issuers cannot be empty",
+        ));
+    }
+    let corridor = app_state.db.create_corridor(req).await?;
+
+    // Broadcast the new corridor to WebSocket clients
+    broadcast_corridor_update(&app_state.ws_state, &corridor);
+
+    Ok(Json(corridor))
+}
+
+/// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
+#[derive(Debug, Deserialize)]
+pub struct UpdateCorridorMetricsFromTxns {
+    pub transactions: Vec<CorridorTransactionDto>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CorridorTransactionDto {
+    pub successful: bool,
+    pub settlement_latency_ms: Option<i32>,
+    pub amount_usd: f64,
+}
+
+pub async fn update_corridor_metrics_from_transactions(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateCorridorMetricsFromTxns>,
+) -> ApiResult<Json<Corridor>> {
+    if app_state.db.get_corridor_by_id(id).await?.is_none() {
+        let mut details = HashMap::new();
+        details.insert("corridor_id".to_string(), serde_json::json!(id.to_string()));
+        return Err(ApiError::not_found_with_details(
+            "CORRIDOR_NOT_FOUND",
+            format!("Corridor with id {id} not found"),
+            details,
+        ));
+    }
+
+    let txs: Vec<CorridorTransaction> = req
+        .transactions
+        .into_iter()
+        .map(|t| CorridorTransaction {
+            successful: t.successful,
+            settlement_latency_ms: t.settlement_latency_ms,
+            amount_usd: t.amount_usd,
+        })
+        .collect();
+
+    let metrics = compute_corridor_metrics(&txs, None, 1.0);
+    let corridor = app_state.db.update_corridor_metrics(id, metrics).await?;
+
+    // Broadcast the corridor update to WebSocket clients
+    broadcast_corridor_update(&app_state.ws_state, &corridor);
+
+    Ok(Json(corridor))
 }
 
 #[cfg(test)]
