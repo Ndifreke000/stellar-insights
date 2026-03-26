@@ -185,6 +185,17 @@ pub struct AnchorRpcUpdate {
     pub status: String,
 }
 
+/// Parameters for updating anchor metrics
+#[derive(Debug, Clone)]
+pub struct AnchorMetricsUpdate {
+    pub anchor_id: Uuid,
+    pub total_transactions: i64,
+    pub successful_transactions: i64,
+    pub failed_transactions: i64,
+    pub avg_settlement_time_ms: Option<i32>,
+    pub volume_usd: Option<f64>,
+}
+
 /// Parameters for recording anchor metrics history
 pub struct AnchorMetricsParams {
     pub anchor_id: Uuid,
@@ -442,19 +453,14 @@ impl Database {
     /// - Computes and updates `reliability_score` and status
     pub async fn update_anchor_metrics(
         &self,
-        anchor_id: Uuid,
-        total_transactions: i64,
-        successful_transactions: i64,
-        failed_transactions: i64,
-        avg_settlement_time_ms: Option<i32>,
-        volume_usd: Option<f64>,
+        update: AnchorMetricsUpdate,
     ) -> Result<Anchor> {
         // Compute metrics
         let metrics = compute_anchor_metrics(
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            avg_settlement_time_ms,
+            update.total_transactions,
+            update.successful_transactions,
+            update.failed_transactions,
+            update.avg_settlement_time_ms,
         );
 
         // Update anchor
@@ -473,29 +479,29 @@ impl Database {
             RETURNING *
             ",
         )
-        .bind(total_transactions)
-        .bind(successful_transactions)
-        .bind(failed_transactions)
-        .bind(avg_settlement_time_ms.unwrap_or(0))
+        .bind(update.total_transactions)
+        .bind(update.successful_transactions)
+        .bind(update.failed_transactions)
+        .bind(update.avg_settlement_time_ms.unwrap_or(0))
         .bind(metrics.reliability_score)
         .bind(metrics.status.as_str())
-        .bind(volume_usd.unwrap_or(0.0))
+        .bind(update.volume_usd.unwrap_or(0.0))
         .bind(Utc::now())
-        .bind(anchor_id.to_string())
+        .bind(update.anchor_id.to_string())
         .fetch_one(&self.pool)
         .await?;
 
         // Record metrics history
         self.record_anchor_metrics_history(AnchorMetricsParams {
-            anchor_id,
+            anchor_id: update.anchor_id,
             success_rate: metrics.success_rate,
             failure_rate: metrics.failure_rate,
             reliability_score: metrics.reliability_score,
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            avg_settlement_time_ms,
-            volume_usd,
+            total_transactions: update.total_transactions,
+            successful_transactions: update.successful_transactions,
+            failed_transactions: update.failed_transactions,
+            avg_settlement_time_ms: update.avg_settlement_time_ms,
+            volume_usd: update.volume_usd,
         })
         .await?;
 

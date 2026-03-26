@@ -1,5 +1,6 @@
 use async_graphql::*;
 use sqlx::SqlitePool;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::types::*;
@@ -49,20 +50,20 @@ impl QueryRoot {
 
         if let Some(f) = &filter {
             if let Some(status) = &f.status {
-                query.push_str(&format!(" AND status = '{}'", status));
-                count_query.push_str(&format!(" AND status = '{}'", status));
+                write!(query, " AND status = '{}'", status).unwrap();
+                write!(count_query, " AND status = '{}'", status).unwrap();
             }
             if let Some(min_score) = f.min_reliability_score {
-                query.push_str(&format!(" AND reliability_score >= {}", min_score));
-                count_query.push_str(&format!(" AND reliability_score >= {}", min_score));
+                write!(query, " AND reliability_score >= {}", min_score).unwrap();
+                write!(count_query, " AND reliability_score >= {}", min_score).unwrap();
             }
             if let Some(search) = &f.search {
-                query.push_str(&format!(" AND (name LIKE '%{}%' OR stellar_account LIKE '%{}%')", search, search));
-                count_query.push_str(&format!(" AND (name LIKE '%{}%' OR stellar_account LIKE '%{}%')", search, search));
+                write!(query, " AND (name LIKE '%{}%' OR stellar_account LIKE '%{}%')", search, search).unwrap();
+                write!(count_query, " AND (name LIKE '%{}%' OR stellar_account LIKE '%{}%')", search, search).unwrap();
             }
         }
 
-        query.push_str(&format!(" ORDER BY reliability_score DESC LIMIT {} OFFSET {}", limit, offset));
+        write!(query, " ORDER BY reliability_score DESC LIMIT {} OFFSET {}", limit, offset).unwrap();
 
         let anchors = sqlx::query_as::<_, AnchorType>(&query)
             .fetch_all(pool.as_ref())
@@ -118,24 +119,24 @@ impl QueryRoot {
 
         if let Some(f) = &filter {
             if let Some(source) = &f.source_asset_code {
-                query.push_str(&format!(" AND source_asset_code = '{}'", source));
-                count_query.push_str(&format!(" AND source_asset_code = '{}'", source));
+                write!(query, " AND source_asset_code = '{}'", source).unwrap();
+                write!(count_query, " AND source_asset_code = '{}'", source).unwrap();
             }
             if let Some(dest) = &f.destination_asset_code {
-                query.push_str(&format!(" AND destination_asset_code = '{}'", dest));
-                count_query.push_str(&format!(" AND destination_asset_code = '{}'", dest));
+                write!(query, " AND destination_asset_code = '{}'", dest).unwrap();
+                write!(count_query, " AND destination_asset_code = '{}'", dest).unwrap();
             }
             if let Some(status) = &f.status {
-                query.push_str(&format!(" AND status = '{}'", status));
-                count_query.push_str(&format!(" AND status = '{}'", status));
+                write!(query, " AND status = '{}'", status).unwrap();
+                write!(count_query, " AND status = '{}'", status).unwrap();
             }
             if let Some(min_score) = f.min_reliability_score {
-                query.push_str(&format!(" AND reliability_score >= {}", min_score));
-                count_query.push_str(&format!(" AND reliability_score >= {}", min_score));
+                write!(query, " AND reliability_score >= {}", min_score).unwrap();
+                write!(count_query, " AND reliability_score >= {}", min_score).unwrap();
             }
         }
 
-        query.push_str(&format!(" ORDER BY reliability_score DESC LIMIT {} OFFSET {}", limit, offset));
+        write!(query, " ORDER BY reliability_score DESC LIMIT {} OFFSET {}", limit, offset).unwrap();
 
         let corridors = sqlx::query_as::<_, CorridorType>(&query)
             .fetch_all(pool.as_ref())
@@ -191,16 +192,16 @@ impl QueryRoot {
         let mut query = String::from("SELECT id, name, value, entity_id, entity_type, timestamp, created_at FROM metrics WHERE 1=1");
 
         if let Some(eid) = &entity_id {
-            query.push_str(&format!(" AND entity_id = '{}'", eid));
+            write!(query, " AND entity_id = '{}'", eid).unwrap();
         }
         if let Some(etype) = &entity_type {
-            query.push_str(&format!(" AND entity_type = '{}'", etype));
+            write!(query, " AND entity_type = '{}'", etype).unwrap();
         }
         if let Some(tr) = &time_range {
-            query.push_str(&format!(" AND timestamp >= '{}' AND timestamp <= '{}'", tr.start, tr.end));
+            write!(query, " AND timestamp >= '{}' AND timestamp <= '{}'", tr.start, tr.end).unwrap();
         }
 
-        query.push_str(&format!(" ORDER BY timestamp DESC LIMIT {} OFFSET {}", limit, offset));
+        write!(query, " ORDER BY timestamp DESC LIMIT {} OFFSET {}", limit, offset).unwrap();
 
         let metrics = sqlx::query_as::<_, MetricType>(&query)
             .fetch_all(pool.as_ref())

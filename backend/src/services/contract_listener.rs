@@ -234,7 +234,7 @@ impl ContractEventListener {
     }
 
     /// Process a single contract event
-    pub async fn process_event(&self, event: ContractEvent) -> Result<()> {
+    async fn process_event(&self, event: ContractEvent) -> Result<()> {
         debug!("Processing contract event: {:?}", event);
 
         // Check if this is a snapshot submission event

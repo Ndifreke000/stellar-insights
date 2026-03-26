@@ -23,8 +23,11 @@ use stellar_insights_backend::{
         webhook_dispatcher::WebhookDispatcher,
     },
     state::AppState,
+    openapi::ApiDoc,
     websocket::WsState,
 };
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,6 +107,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cors,
         pool,
         cache,
+    )
+    .merge(
+        SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()),
     );
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
@@ -116,3 +122,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
