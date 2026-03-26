@@ -20,7 +20,10 @@ use utoipa::OpenApi;
         (url = "https://api.stellarinsights.io", description = "Production server")
     ),
     paths(
+        crate::api::anchors::get_anchor,
+        crate::api::anchors::get_anchor_by_account,
         crate::api::anchors::get_anchors,
+        crate::api::anchors::get_muxed_analytics,
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
         crate::api::price_feed::get_price,

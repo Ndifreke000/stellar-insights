@@ -1,27 +1,19 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::broadcast::broadcast_anchor_update;
 use crate::error::{ApiError, ApiResult};
 use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
 use crate::state::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct ListAnchorsQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-const fn default_limit() -> i64 {
-    50
-}
 
 #[derive(Debug, Serialize)]
 pub struct ListAnchorsResponse {
@@ -30,9 +22,11 @@ pub struct ListAnchorsResponse {
 }
 
 /// GET /api/analytics/muxed - Muxed account usage analytics
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MuxedAnalyticsQuery {
     #[serde(default = "default_muxed_limit")]
+    #[param(example = 20, minimum = 1, maximum = 100)]
     pub limit: i64,
 }
 
@@ -41,6 +35,19 @@ const fn default_muxed_limit() -> i64 {
 }
 
 /// GET /api/anchors/:id - Get detailed anchor information
+#[utoipa::path(
+    get,
+    path = "/api/anchors/{id}",
+    params(
+        ("id" = String, Path, description = "Anchor UUID")
+    ),
+    responses(
+        (status = 200, description = "Anchor details retrieved successfully"),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
 pub async fn get_anchor(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -59,6 +66,19 @@ pub async fn get_anchor(
 }
 
 /// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account (G- or M-address)
+#[utoipa::path(
+    get,
+    path = "/api/anchors/account/{stellar_account}",
+    params(
+        ("stellar_account" = String, Path, description = "Anchor Stellar account address (G... or M...)")
+    ),
+    responses(
+        (status = 200, description = "Anchor retrieved successfully"),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
 pub async fn get_anchor_by_account(
     State(app_state): State<AppState>,
     Path(stellar_account): Path<String>,
@@ -92,6 +112,16 @@ pub async fn get_anchor_by_account(
     Ok(Json(anchor))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/muxed",
+    params(MuxedAnalyticsQuery),
+    responses(
+        (status = 200, description = "Muxed account analytics retrieved successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
 pub async fn get_muxed_analytics(
     State(app_state): State<AppState>,
     Query(params): Query<MuxedAnalyticsQuery>,
@@ -156,14 +186,14 @@ pub async fn update_anchor_metrics(
 
     let anchor = app_state
         .db
-        .update_anchor_metrics(
-            id,
-            req.total_transactions,
-            req.successful_transactions,
-            req.failed_transactions,
-            req.avg_settlement_time_ms,
-            req.volume_usd,
-        )
+        .update_anchor_metrics(crate::database::AnchorMetricsUpdate {
+            anchor_id: id,
+            total_transactions: req.total_transactions,
+            successful_transactions: req.successful_transactions,
+            failed_transactions: req.failed_transactions,
+            avg_settlement_time_ms: req.avg_settlement_time_ms,
+            volume_usd: req.volume_usd,
+        })
         .await?;
 
     // Broadcast the anchor update to WebSocket clients

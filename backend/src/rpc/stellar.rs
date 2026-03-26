@@ -11,6 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::fmt::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
@@ -865,7 +866,7 @@ impl StellarRpcClient {
     ) -> Result<Vec<Payment>, RpcError> {
         let mut url = format!("{}/payments?order=desc&limit={}", self.horizon_url, limit);
         if let Some(c) = cursor {
-            url.push_str(&format!("&cursor={c}"));
+            write!(url, "&cursor={c}").unwrap();
         }
         let response = self
             .client
@@ -912,7 +913,7 @@ impl StellarRpcClient {
     ) -> Result<Vec<Trade>, RpcError> {
         let mut url = format!("{}/trades?order=desc&limit={}", self.horizon_url, limit);
         if let Some(c) = cursor {
-            url.push_str(&format!("&cursor={c}"));
+            write!(url, "&cursor={c}").unwrap();
         }
         let response = self
             .client
@@ -1398,7 +1399,7 @@ impl StellarRpcClient {
             );
 
             if let Some(ref cursor_val) = cursor {
-                url.push_str(&format!("&cursor={cursor_val}"));
+                write!(url, "&cursor={cursor_val}").unwrap();
             }
 
             let response = self
@@ -1974,7 +1975,7 @@ impl StellarRpcClient {
             self.horizon_url, limit
         );
         if let Some(c) = cursor {
-            url.push_str(&format!("&cursor={c}"));
+            write!(url, "&cursor={c}").unwrap();
         }
         let response = self
             .client
