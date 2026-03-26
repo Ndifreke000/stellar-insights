@@ -1,9 +1,10 @@
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, Map, String,
+    Vec,
 };
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -125,6 +126,23 @@ pub struct TimelockAction {
 const TIMELOCK_DELAY: u64 = 172800; // 48 hours in seconds
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiSigConfig {
+    pub admins: Vec<Address>,
+    pub threshold: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAction {
+    pub action_id: u64,
+    pub action_type: String,
+    pub signatures: Vec<Address>,
+    pub created_at: u64,
+    pub expires_at: u64,
+}
+
+#[contracttype]
 pub enum DataKey {
     Admin,
     Snapshots,
@@ -139,6 +157,8 @@ pub enum DataKey {
     /// Per-caller rate limit tracking
     RateLimit(Address),
     Version,
+    MultiSigConfig,
+    PendingAction(u64),
 }
 
 fn check_rate_limit(env: &Env, caller: &Address) {
@@ -895,29 +915,23 @@ impl AnalyticsContract {
         caller: Address,
         admins: Vec<Address>,
         threshold: u32,
-    ) -> Result<(), u32> {
+    ) {
         caller.require_auth();
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized: admin not set");
+        let admin = require_admin(&env);
 
         if caller != admin {
             panic!("Unauthorized: only the admin can initialize multisig");
         }
 
-        if threshold == 0 || threshold > admins.len() as u32 {
-            return Err(1); // InvalidThreshold
+        if threshold == 0 || threshold > admins.len() {
+            panic!("Invalid threshold: must be > 0 and <= number of admins");
         }
 
         let config = MultiSigConfig { admins, threshold };
         env.storage()
             .instance()
             .set(&DataKey::MultiSigConfig, &config);
-
-        Ok(())
     }
 
     /// Get the current multi-sig configuration.
@@ -939,7 +953,7 @@ impl AnalyticsContract {
             .storage()
             .instance()
             .get(&DataKey::MultiSigConfig)
-            .expect("MultiSig not initialized");
+            .unwrap_or_else(|| panic!("MultiSig not initialized"));
 
         if !config.admins.contains(&proposer) {
             panic!("Unauthorized: proposer is not a multisig admin");
@@ -981,7 +995,7 @@ impl AnalyticsContract {
             .storage()
             .instance()
             .get(&DataKey::MultiSigConfig)
-            .expect("MultiSig not initialized");
+            .unwrap_or_else(|| panic!("MultiSig not initialized"));
 
         if !config.admins.contains(&signer) {
             panic!("Unauthorized: signer is not a multisig admin");
@@ -991,7 +1005,7 @@ impl AnalyticsContract {
             .storage()
             .persistent()
             .get(&DataKey::PendingAction(action_id))
-            .expect("Action not found");
+            .unwrap_or_else(|| panic!("Action not found"));
 
         if env.ledger().timestamp() > pending.expires_at {
             panic!("Action expired");
@@ -1012,6 +1026,39 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .get(&DataKey::PendingAction(action_id))
+    }
+
+    /// Emergency withdrawal of tokens from the contract.
+    /// Only the admin can call this, and the contract must be paused.
+    pub fn emergency_withdraw(
+        env: Env,
+        admin: Address,
+        token_addr: Address,
+        amount: i128,
+        recipient: Address,
+    ) {
+        admin.require_auth();
+        let stored_admin = require_admin(&env);
+        if admin != stored_admin {
+            panic!("Unauthorized: only the admin can perform emergency withdrawal");
+        }
+
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if !paused {
+            panic!("Contract must be paused for emergency withdrawal");
+        }
+
+        let token_client = token::Client::new(&env, &token_addr);
+        token_client.transfer(&env.current_contract_address(), &recipient, &amount);
+
+        env.events().publish(
+            (symbol_short!("emergency"), admin),
+            (token_addr, amount, recipient),
+        );
     }
 }
 

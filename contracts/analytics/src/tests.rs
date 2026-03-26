@@ -1,6 +1,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
+    token::{StellarAssetClient, TokenClient},
     vec, Address, BytesN, Env, Vec,
 };
 
@@ -62,7 +63,7 @@ fn test_version_stored_on_init() {
     let version = client.getversion();
     assert!(!version.is_empty());
     // Version should be stored and retrievable
-    assert_eq!(version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(version, soroban_sdk::String::from_str(&env, env!("CARGO_PKG_VERSION")));
 }
 
 #[test]
@@ -1274,4 +1275,90 @@ fn test_prune_old_snapshots() {
     // Verify recent snapshots still exist
     assert!(client.get_snapshot(&91).is_some());
     assert!(client.get_snapshot(&100).is_some());
+}
+
+// ============================================================================
+// Emergency Withdrawal Tests - Issue #597
+// ============================================================================
+
+#[test]
+fn test_emergency_withdrawal() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Set up a token
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = token_contract.address();
+    let sac_client = StellarAssetClient::new(&env, &token_addr);
+    let token_client = TokenClient::new(&env, &token_addr);
+
+    // Mint tokens to the analytics contract
+    sac_client.mint(&contract_id, &1000_i128);
+    assert_eq!(token_client.balance(&contract_id), 1000);
+
+    // Pause the contract first (required for emergency withdrawal)
+    let reason = soroban_sdk::String::from_str(&env, "emergency");
+    client.pause(&admin, &reason);
+
+    // Perform emergency withdrawal
+    let recipient = Address::generate(&env);
+    client.emergency_withdraw(&admin, &token_addr, &500_i128, &recipient);
+
+    // Verify balances
+    assert_eq!(token_client.balance(&contract_id), 500);
+    assert_eq!(token_client.balance(&recipient), 500);
+}
+
+#[test]
+#[should_panic(expected = "Contract must be paused")]
+fn test_emergency_withdrawal_requires_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = token_contract.address();
+
+    let recipient = Address::generate(&env);
+    // Should fail because contract is not paused
+    client.emergency_withdraw(&admin, &token_addr, &500_i128, &recipient);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_emergency_withdrawal_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = token_contract.address();
+
+    // Pause the contract
+    let reason = soroban_sdk::String::from_str(&env, "emergency");
+    client.pause(&admin, &reason);
+
+    // Non-admin should fail
+    let attacker = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    client.emergency_withdraw(&attacker, &token_addr, &500_i128, &recipient);
 }
