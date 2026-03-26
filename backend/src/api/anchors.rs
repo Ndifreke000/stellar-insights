@@ -14,9 +14,11 @@ use uuid::Uuid;
 use uuid::Uuid;
 
 use crate::broadcast::broadcast_anchor_update;
+use crate::cache::CacheManager;
 use crate::error::{ApiError, ApiResult};
 use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
 use crate::state::AppState;
+use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnchorMetrics {
@@ -293,16 +295,26 @@ const fn default_limit() -> i64 {
     50
 }
 
-fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
+pub(crate) fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
     static CIRCUIT_BREAKER: OnceLock<Arc<CircuitBreaker>> = OnceLock::new();
     CIRCUIT_BREAKER
         .get_or_init(|| {
             Arc::new(CircuitBreaker::new(
-                CircuitBreakerConfig::default(),
+                CircuitBreakerConfig {
+                    failure_threshold: 5,
+                    success_threshold: 2,
+                    timeout_duration: Duration::from_secs(30),
+                    half_open_max_calls: 3,
+                },
                 "horizon",
             ))
         })
         .clone()
+}
+
+#[cfg(test)]
+pub(crate) fn rpc_circuit_breaker_instance() -> Arc<CircuitBreaker> {
+    rpc_circuit_breaker()
 }
 
 // Add retry helper
@@ -339,24 +351,43 @@ pub async fn get_anchor_metrics_with_rpc(
     rpc_client: Arc<StellarRpcClient>,
 ) -> anyhow::Result<AnchorMetrics> {
     let circuit_breaker = rpc_circuit_breaker();
-    
-    // Use with_retry with circuit_breaker for resilience
-    with_retry(
-        || async {
+
+    let result = circuit_breaker
+        .call(|| async {
             rpc_client
                 .fetch_anchor_metrics(anchor_id)
                 .await
                 .map_err(|e| RpcError::categorize(&e.to_string()))
-        },
-        RetryConfig {
-            max_attempts: 4,
-            base_delay_ms: 100,
-            max_delay_ms: 5000,
-        },
-        circuit_breaker,
-    )
-    .await
-    .context("Failed to fetch anchor metrics from RPC")
+        })
+        .await;
+
+    let metrics = match result {
+        Ok(metrics) => metrics,
+        Err(RpcError::CircuitBreakerOpen) => {
+            return Err(anyhow::anyhow!("Circuit breaker open - RPC service unavailable"));
+        }
+        Err(err) => return Err(anyhow::anyhow!(err.to_string())),
+    };
+
+    Ok(metrics)
+}
+
+pub async fn get_anchor_metrics_with_fallback(
+    anchor_id: Uuid,
+    rpc_client: Arc<StellarRpcClient>,
+    cache: Arc<CacheManager>,
+) -> anyhow::Result<AnchorMetrics> {
+    match get_anchor_metrics_with_rpc(anchor_id, rpc_client).await {
+        Ok(metrics) => Ok(metrics),
+        Err(e) if e.to_string().contains("Circuit breaker open") => {
+            warn!("Circuit breaker open, using cached data");
+            cache
+                .get(&format!("anchor_metrics:{}", anchor_id))
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No cached data available"))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]

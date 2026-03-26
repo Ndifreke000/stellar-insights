@@ -3,7 +3,13 @@ use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
 
-use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_rpc, AnchorMetrics};
+use stellar_insights_backend::api::anchors::{
+    get_anchor_metrics_with_fallback,
+    get_anchor_metrics_with_rpc,
+    rpc_circuit_breaker_instance,
+    AnchorMetrics,
+};
+use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
 use stellar_insights_backend::rpc::StellarRpcClient;
@@ -65,6 +71,41 @@ async fn test_circuit_breaker_opens_on_failures() {
     // Should allow call again
     let result4 = circuit_breaker.call(|| async { Ok("recovered".to_string()) }).await;
     assert!(result4.is_ok());
+}
+
+#[tokio::test]
+async fn test_circuit_breaker_fallback() {
+    let anchor_id = Uuid::new_v4();
+    let client = StellarRpcClient::new_with_defaults(true);
+    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+
+    // Open circuit via repeated retryable failures
+    let circuit_breaker = rpc_circuit_breaker_instance();
+    for _ in 0..5 {
+        let _ = circuit_breaker
+            .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
+            .await;
+    }
+
+    // Store cached fallback data for the anchor
+    let fallback = AnchorMetrics {
+        anchor_id,
+        total_payments: 10,
+        successful_payments: 8,
+        failed_payments: 2,
+        total_volume: 12345.6,
+    };
+    cache
+        .set(&format!("anchor_metrics:{}", anchor_id), &fallback, 60)
+        .await
+        .unwrap();
+
+    let metrics = get_anchor_metrics_with_fallback(anchor_id, Arc::new(client), cache.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(metrics.anchor_id, anchor_id);
+    assert_eq!(metrics.total_payments, fallback.total_payments);
 }
 
 #[tokio::test]
