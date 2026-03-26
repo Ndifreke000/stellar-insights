@@ -48,22 +48,30 @@ async fn test_circuit_breaker_opens_on_failures() {
     ));
 
     // First failure
-    let result1 = circuit_breaker.call(|| async { Err(RpcError::NetworkError("fail".to_string())) }).await;
+    let result1 = circuit_breaker
+        .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
+        .await;
     assert!(result1.is_err());
 
     // Second failure - should open circuit
-    let result2 = circuit_breaker.call(|| async { Err(RpcError::NetworkError("fail".to_string())) }).await;
+    let result2 = circuit_breaker
+        .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
+        .await;
     assert!(result2.is_err());
 
     // Third call should fail fast due to open circuit
-    let result3 = circuit_breaker.call(|| async { Ok("should not reach here".to_string()) }).await;
+    let result3 = circuit_breaker
+        .call(|| async { Ok("should not reach here".to_string()) })
+        .await;
     assert!(result3.is_err());
 
     // Wait for recovery timeout
     sleep(Duration::from_millis(1100)).await;
 
     // Should allow call again
-    let result4 = circuit_breaker.call(|| async { Ok("recovered".to_string()) }).await;
+    let result4 = circuit_breaker
+        .call(|| async { Ok("recovered".to_string()) })
+        .await;
     assert!(result4.is_ok());
 }
 
@@ -73,11 +81,7 @@ async fn test_anchor_metrics_with_retry() {
     let anchor_id = Uuid::new_v4();
 
     // Test the new function with retry
-    let metrics = get_anchor_metrics_with_rpc(
-        anchor_id,
-        Arc::new(client),
-    )
-    .await;
+    let metrics = get_anchor_metrics_with_rpc(anchor_id, Arc::new(client)).await;
 
     assert!(metrics.is_ok());
     let metrics = metrics.unwrap();

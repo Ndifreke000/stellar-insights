@@ -1,8 +1,4 @@
-use axum::{
-    response::IntoResponse,
-    extract::State,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 
 use crate::state::AppState;
 
@@ -32,4 +28,3 @@ pub async fn ingestion_status(
     let status = app_state.ingestion.get_ingestion_status().await?;
     Ok(Json(status))
 }
-

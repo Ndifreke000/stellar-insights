@@ -412,8 +412,6 @@ pub async fn list_corridors(
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
-                }
-            };
 
             // Group payments by asset pairs to identify corridors
             use std::collections::HashMap;

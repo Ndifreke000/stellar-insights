@@ -1,5 +1,5 @@
 -- GDPR Compliance Tables
--- Migration: 017_create_gdpr_tables.sql
+-- Migration: 015_create_gdpr_tables.sql
 
 -- User consent tracking table
 CREATE TABLE IF NOT EXISTS user_consents (

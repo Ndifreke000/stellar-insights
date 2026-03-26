@@ -63,7 +63,11 @@ pub struct NotificationBatchError {
 
 impl std::fmt::Display for NotificationBatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "notification delivery failed for {} channel(s)", self.failures.len())
+        write!(
+            f,
+            "notification delivery failed for {} channel(s)",
+            self.failures.len()
+        )
     }
 }
 

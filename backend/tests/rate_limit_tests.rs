@@ -297,6 +297,9 @@ async fn test_rate_limit_headers() {
     assert_eq!(headers.get("RateLimit-Remaining").unwrap(), "0");
     assert_eq!(headers.get("RateLimit-Reset").unwrap(), "123456789");
     assert_eq!(headers.get(header::RETRY_AFTER).unwrap(), "30");
-    assert_eq!(headers.get("X-RateLimit-Policy").unwrap(), "100 requests per 60 seconds");
+    assert_eq!(
+        headers.get("X-RateLimit-Policy").unwrap(),
+        "100 requests per 60 seconds"
+    );
     assert_eq!(headers.get("X-RateLimit-Client").unwrap(), "test_client");
 }

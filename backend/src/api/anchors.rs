@@ -317,7 +317,7 @@ where
 {
     let mut backoff = initial_backoff;
     let mut last_error = None;
-    
+
     for attempt in 0..=max_retries {
         match operation().await {
             Ok(result) => return Ok(result),
@@ -325,12 +325,12 @@ where
                 last_error = Some(e);
                 if attempt < max_retries {
                     tokio::time::sleep(backoff).await;
-                    backoff *= 2;  // Exponential backoff
+                    backoff *= 2; // Exponential backoff
                 }
             }
         }
     }
-    
+
     Err(last_error.unwrap())
 }
 
@@ -339,7 +339,7 @@ pub async fn get_anchor_metrics_with_rpc(
     rpc_client: Arc<StellarRpcClient>,
 ) -> anyhow::Result<AnchorMetrics> {
     let circuit_breaker = rpc_circuit_breaker();
-    
+
     // Use with_retry with circuit_breaker for resilience
     with_retry(
         || async {

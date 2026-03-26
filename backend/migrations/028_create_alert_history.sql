@@ -1,4 +1,6 @@
 -- Create alert_history table
+-- Migration: 028_create_alert_history.sql
+
 CREATE TABLE IF NOT EXISTS alert_history (
     id TEXT PRIMARY KEY,
     rule_id TEXT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
@@ -11,10 +13,10 @@ CREATE TABLE IF NOT EXISTS alert_history (
     message TEXT NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT 0,
     is_dismissed BOOLEAN NOT NULL DEFAULT 0,
-    triggered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    triggered_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_alert_history_user_id ON alert_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_alert_history_rule_id ON alert_history(rule_id);
 CREATE INDEX IF NOT EXISTS idx_alert_history_is_read ON alert_history(is_read);
-CREATE INDEX IF NOT EXISTS idx_alert_history_is_dismissed ON alert_history(is_read);
+CREATE INDEX IF NOT EXISTS idx_alert_history_triggered_at ON alert_history(triggered_at DESC);

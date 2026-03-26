@@ -1,4 +1,6 @@
 -- Telegram bot subscription tracking
+-- Migration: 016_create_telegram_subscriptions.sql
+
 CREATE TABLE IF NOT EXISTS telegram_subscriptions (
     id TEXT PRIMARY KEY NOT NULL,
     chat_id INTEGER NOT NULL UNIQUE,

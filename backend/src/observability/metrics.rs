@@ -125,7 +125,8 @@ pub async fn metrics_handler() -> Response {
             "http_requests_total{} {}\n",
             key_to_prom_labels(&key),
             value
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP http_request_duration_seconds HTTP request duration in seconds\n");
@@ -136,12 +137,14 @@ pub async fn metrics_handler() -> Response {
             out,
             "http_request_duration_seconds_count{} {}\n",
             labels, series.count
-        ).unwrap();
+        )
+        .unwrap();
         write!(
             out,
             "http_request_duration_seconds_sum{} {}\n",
             labels, series.sum
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP rpc_calls_total Total RPC calls\n");
@@ -152,7 +155,8 @@ pub async fn metrics_handler() -> Response {
             "rpc_calls_total{} {}\n",
             key_to_prom_labels(&key),
             value
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP rpc_call_duration_seconds RPC call duration in seconds\n");
@@ -163,12 +167,14 @@ pub async fn metrics_handler() -> Response {
             out,
             "rpc_call_duration_seconds_count{} {}\n",
             labels, series.count
-        ).unwrap();
+        )
+        .unwrap();
         write!(
             out,
             "rpc_call_duration_seconds_sum{} {}\n",
             labels, series.sum
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP cache_operations_total Cache operations by result\n");
@@ -179,18 +185,14 @@ pub async fn metrics_handler() -> Response {
             "cache_operations_total{} {}\n",
             key_to_prom_labels(&key),
             value
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP errors_total Total errors by type\n");
     out.push_str("# TYPE errors_total counter\n");
     for (key, value) in snapshot_counters(&metrics.errors_total) {
-        write!(
-            out,
-            "errors_total{} {}\n",
-            key_to_prom_labels(&key),
-            value
-        ).unwrap();
+        write!(out, "errors_total{} {}\n", key_to_prom_labels(&key), value).unwrap();
     }
 
     out.push_str("# HELP db_query_duration_seconds Database query duration in seconds\n");
@@ -201,12 +203,14 @@ pub async fn metrics_handler() -> Response {
             out,
             "db_query_duration_seconds_count{} {}\n",
             labels, series.count
-        ).unwrap();
+        )
+        .unwrap();
         write!(
             out,
             "db_query_duration_seconds_sum{} {}\n",
             labels, series.sum
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP background_jobs_total Background jobs by name and status\n");
@@ -217,7 +221,8 @@ pub async fn metrics_handler() -> Response {
             "background_jobs_total{} {}\n",
             key_to_prom_labels(&key),
             value
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     out.push_str("# HELP active_connections Active websocket connections\n");
@@ -226,7 +231,8 @@ pub async fn metrics_handler() -> Response {
         out,
         "active_connections {}\n",
         metrics.active_connections.load(Ordering::Relaxed)
-    ).unwrap();
+    )
+    .unwrap();
 
     out.push_str("# HELP corridors_tracked Number of tracked corridors\n");
     out.push_str("# TYPE corridors_tracked gauge\n");
@@ -234,7 +240,8 @@ pub async fn metrics_handler() -> Response {
         out,
         "corridors_tracked {}\n",
         metrics.corridors_tracked.load(Ordering::Relaxed)
-    ).unwrap();
+    )
+    .unwrap();
 
     out.push_str("# HELP http_in_flight_requests In-flight HTTP requests\n");
     out.push_str("# TYPE http_in_flight_requests gauge\n");
@@ -242,19 +249,35 @@ pub async fn metrics_handler() -> Response {
         out,
         "http_in_flight_requests {}\n",
         metrics.http_in_flight_requests.load(Ordering::Relaxed)
-    ).unwrap();
+    )
+    .unwrap();
 
     out.push_str("# HELP db_pool_size Total database pool connections\n");
     out.push_str("# TYPE db_pool_size gauge\n");
-    write!(out, "db_pool_size {}\n", metrics.pool_size.load(Ordering::Relaxed)).unwrap();
+    write!(
+        out,
+        "db_pool_size {}\n",
+        metrics.pool_size.load(Ordering::Relaxed)
+    )
+    .unwrap();
 
     out.push_str("# HELP db_pool_idle Idle database pool connections\n");
     out.push_str("# TYPE db_pool_idle gauge\n");
-    write!(out, "db_pool_idle {}\n", metrics.pool_idle.load(Ordering::Relaxed)).unwrap();
+    write!(
+        out,
+        "db_pool_idle {}\n",
+        metrics.pool_idle.load(Ordering::Relaxed)
+    )
+    .unwrap();
 
     out.push_str("# HELP db_pool_active Active database pool connections\n");
     out.push_str("# TYPE db_pool_active gauge\n");
-    write!(out, "db_pool_active {}\n", metrics.pool_active.load(Ordering::Relaxed)).unwrap();
+    write!(
+        out,
+        "db_pool_active {}\n",
+        metrics.pool_active.load(Ordering::Relaxed)
+    )
+    .unwrap();
 
     (
         [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],

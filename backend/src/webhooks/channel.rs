@@ -71,7 +71,11 @@ impl NotificationChannel for WebhookChannel {
 
             let response = request.body(payload_str.clone()).send().await?;
             if !response.status().is_success() {
-                anyhow::bail!("webhook endpoint {} returned {}", endpoint.url, response.status());
+                anyhow::bail!(
+                    "webhook endpoint {} returned {}",
+                    endpoint.url,
+                    response.status()
+                );
             }
         }
         Ok(())

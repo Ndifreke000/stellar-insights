@@ -3,8 +3,7 @@ use axum::{
     body::Body,
     http::{
         header::{
-            CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH,
-            LAST_MODIFIED,
+            CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
         },
         HeaderMap, HeaderValue, StatusCode,
     },
@@ -15,8 +14,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Mutex;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::OnceLock;
 
 #[derive(Clone)]
@@ -286,9 +285,13 @@ mod http_tests {
 
         let mut conditional_headers = HeaderMap::new();
         conditional_headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
-        let second =
-            cached_json_response(&conditional_headers, "resource:b", &Payload { value: "b" }, 60)
-                .unwrap();
+        let second = cached_json_response(
+            &conditional_headers,
+            "resource:b",
+            &Payload { value: "b" },
+            60,
+        )
+        .unwrap();
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 
@@ -306,11 +309,18 @@ mod http_tests {
             .to_string();
 
         let mut conditional_headers = HeaderMap::new();
-        conditional_headers.insert(IF_MODIFIED_SINCE, HeaderValue::from_str(&last_modified).unwrap());
+        conditional_headers.insert(
+            IF_MODIFIED_SINCE,
+            HeaderValue::from_str(&last_modified).unwrap(),
+        );
 
-        let second =
-            cached_json_response(&conditional_headers, "resource:c", &Payload { value: "c" }, 60)
-                .unwrap();
+        let second = cached_json_response(
+            &conditional_headers,
+            "resource:c",
+            &Payload { value: "c" },
+            60,
+        )
+        .unwrap();
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 }

@@ -15,12 +15,12 @@ pub mod cache_invalidation;
 pub mod crypto;
 pub mod database;
 
-pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod db;
 pub mod email;
 pub mod env_config;
 pub mod error;
 pub mod handlers; // Core handlers (pool_metrics, health_check, ingestion_status)
+pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod ingestion;
 pub mod ip_whitelist_middleware;
 pub mod jobs;

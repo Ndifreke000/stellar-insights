@@ -13,7 +13,7 @@ fn setup_analytics(env: &Env) -> (AnalyticsContractClient, Address) {
     let client = AnalyticsContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
     env.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin).unwrap();
     (client, admin)
 }
 
@@ -43,7 +43,9 @@ fn bench_submit_snapshot(c: &mut Criterion) {
     c.bench_function("analytics::submit_snapshot", |b| {
         b.iter(|| {
             let hash = make_hash(&env, (epoch % 255) as u8);
-            client.submit_snapshot(black_box(&epoch), black_box(&hash), black_box(&admin));
+            client
+                .submit_snapshot(black_box(&epoch), black_box(&hash), black_box(&admin))
+                .unwrap();
             epoch += 1;
         })
     });
@@ -60,7 +62,7 @@ fn bench_get_snapshot(c: &mut Criterion) {
 
     for epoch in 1u64..=100 {
         let hash = make_hash(&env, (epoch % 255) as u8);
-        client.submit_snapshot(&epoch, &hash, &admin);
+        client.submit_snapshot(&epoch, &hash, &admin).unwrap();
     }
 
     c.bench_function("analytics::get_snapshot", |b| {
@@ -79,7 +81,7 @@ fn bench_get_latest_snapshot(c: &mut Criterion) {
 
     for epoch in 1u64..=50 {
         let hash = make_hash(&env, (epoch % 255) as u8);
-        client.submit_snapshot(&epoch, &hash, &admin);
+        client.submit_snapshot(&epoch, &hash, &admin).unwrap();
     }
 
     c.bench_function("analytics::get_latest_snapshot", |b| {
@@ -106,11 +108,9 @@ fn bench_batch_operations(c: &mut Criterion) {
                     let (client, admin) = setup_analytics(&env);
                     for epoch in 1..=size {
                         let hash = make_hash(&env, (epoch % 255) as u8);
-                        client.submit_snapshot(
-                            black_box(&epoch),
-                            black_box(&hash),
-                            black_box(&admin),
-                        );
+                        client
+                            .submit_snapshot(black_box(&epoch), black_box(&hash), black_box(&admin))
+                            .unwrap();
                     }
                 })
             },
@@ -134,7 +134,7 @@ fn bench_snapshot_history_growth(c: &mut Criterion) {
             let (client, admin) = setup_analytics(&env);
             for epoch in 1..=n {
                 let hash = make_hash(&env, (epoch % 255) as u8);
-                client.submit_snapshot(&epoch, &hash, &admin);
+                client.submit_snapshot(&epoch, &hash, &admin).unwrap();
             }
             b.iter(|| client.get_snapshot_history())
         });

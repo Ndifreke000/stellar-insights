@@ -5,7 +5,9 @@ mod events;
 
 use errors::Error;
 use events::emit_snapshot_submitted;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Storage keys for persistent contract data
 #[contracttype]
@@ -31,6 +33,29 @@ pub struct Snapshot {
     pub epoch: u64,
     /// Ledger timestamp when recorded
     pub timestamp: u64,
+}
+
+/// Extended contract metadata for public disclosure
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PublicMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub repository: String,
+    pub license: String,
+}
+
+/// Contract info combining metadata with runtime state
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContractInfo {
+    pub metadata: PublicMetadata,
+    pub initialized: bool,
+    pub paused: bool,
+    pub admin: Option<Address>,
+    pub total_snapshots: u64,
 }
 
 #[contract]
@@ -334,29 +359,6 @@ impl StellarInsightsContract {
     // Contract Metadata
     // =========================================================================
 
-    /// Extended contract metadata for public disclosure
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct PublicMetadata {
-        pub name: String,
-        pub version: String,
-        pub author: String,
-        pub description: String,
-        pub repository: String,
-        pub license: String,
-    }
-
-    /// Contract info combining metadata with runtime state
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct ContractInfo {
-        pub metadata: PublicMetadata,
-        pub initialized: bool,
-        pub paused: bool,
-        pub admin: Option<Address>,
-        pub total_snapshots: u64,
-    }
-
     /// Get public contract metadata
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
@@ -377,9 +379,17 @@ impl StellarInsightsContract {
         ContractInfo {
             metadata: Self::get_metadata(env.clone()),
             initialized: env.storage().instance().has(&DataKey::Admin),
-            paused: env.storage().instance().get(&DataKey::Paused).unwrap_or(false),
+            paused: env
+                .storage()
+                .instance()
+                .get(&DataKey::Paused)
+                .unwrap_or(false),
             admin: env.storage().instance().get(&DataKey::Admin),
-            total_snapshots: env.storage().instance().get(&DataKey::LatestEpoch).unwrap_or(0),
+            total_snapshots: env
+                .storage()
+                .instance()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0),
         }
     }
 }

@@ -8,6 +8,8 @@ use errors::Error;
 use events::{emit_proposal_created, emit_proposal_finalized, emit_vote_cast};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // ============================================================================
 // Data Types
 // ============================================================================
@@ -84,13 +86,40 @@ pub enum DataKey {
 // Contract
 // ============================================================================
 
+/// Extended contract metadata for public disclosure
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PublicMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub repository: String,
+    pub license: String,
+}
+
+/// Contract info combining metadata with runtime state
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContractInfo {
+    pub metadata: PublicMetadata,
+    pub initialized: bool,
+    pub admin: Option<Address>,
+    pub total_proposals: u64,
+}
+
 #[contract]
 pub struct GovernanceContract;
 
 #[contractimpl]
 impl GovernanceContract {
     /// Initialize the governance contract with an admin, quorum, and voting period.
-    pub fn initialize(env: Env, admin: Address, quorum: u64, voting_period: u64) -> Result<(), errors::Error> {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        quorum: u64,
+        voting_period: u64,
+    ) -> Result<(), errors::Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(errors::Error::AlreadyInitialized);
         }
@@ -455,10 +484,10 @@ impl GovernanceContract {
             let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
             match action {
                 ParameterAction::SetAdmin(addr) => {
-                    client.set_admin_by_governance(&governance, &addr);
+                    let _ = client.set_admin_by_governance(&governance, &addr);
                 }
                 ParameterAction::SetPaused(p) => {
-                    client.set_paused_by_governance(&governance, &p);
+                    let _ = client.set_paused_by_governance(&governance, &p);
                 }
             }
         }
@@ -547,28 +576,6 @@ impl GovernanceContract {
     // Contract Metadata
     // =========================================================================
 
-    /// Extended contract metadata for public disclosure
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct PublicMetadata {
-        pub name: String,
-        pub version: String,
-        pub author: String,
-        pub description: String,
-        pub repository: String,
-        pub license: String,
-    }
-
-    /// Contract info combining metadata with runtime state
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct ContractInfo {
-        pub metadata: PublicMetadata,
-        pub initialized: bool,
-        pub admin: Option<Address>,
-        pub total_proposals: u64,
-    }
-
     /// Get public contract metadata
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
@@ -590,7 +597,11 @@ impl GovernanceContract {
             metadata: Self::get_metadata(env.clone()),
             initialized: env.storage().instance().has(&DataKey::Admin),
             admin: env.storage().instance().get(&DataKey::Admin),
-            total_proposals: env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0),
+            total_proposals: env
+                .storage()
+                .instance()
+                .get(&DataKey::ProposalCount)
+                .unwrap_or(0),
         }
     }
 }
