@@ -10,6 +10,7 @@ use axum::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -202,13 +203,13 @@ pub async fn get_transactions(
     let base = base_url(&q.transfer_server);
     let mut url = format!("{base}/transactions?");
     if let Some(s) = &q.status {
-        url.push_str(&format!("status={}&", urlencoding::encode(s)));
+        write!(url, "status={}&", urlencoding::encode(s)).unwrap();
     }
     if let Some(l) = q.limit {
-        url.push_str(&format!("limit={l}&"));
+        write!(url, "limit={l}&").unwrap();
     }
     if let Some(c) = &q.cursor {
-        url.push_str(&format!("cursor={}&", urlencoding::encode(c)));
+        write!(url, "cursor={}&", urlencoding::encode(c)).unwrap();
     }
     let url = url.trim_end_matches('&').trim_end_matches('?');
 

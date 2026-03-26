@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::broadcast::broadcast_corridor_update;

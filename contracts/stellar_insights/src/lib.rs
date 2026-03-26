@@ -46,10 +46,10 @@ impl StellarInsightsContract {
     ///
     /// # Returns
     /// * Success confirmation
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         // Verify admin doesn't already exist to prevent re-initialization
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Contract already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         // Store the admin address
@@ -60,6 +60,7 @@ impl StellarInsightsContract {
 
         // Initialize contract as not paused
         env.storage().instance().set(&DataKey::Paused, &false);
+        Ok(())
     }
 
     /// Submit a cryptographic hash of an analytics snapshot on-chain

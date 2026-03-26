@@ -272,3 +272,31 @@ async fn test_rate_limit_info_includes_client_id() {
     assert!(info.client_id.is_some());
     assert_eq!(info.client_id.unwrap(), "apikey:test_key_123");
 }
+
+#[tokio::test]
+async fn test_rate_limit_headers() {
+    use axum::http::{header, StatusCode};
+    use axum::response::IntoResponse;
+    use stellar_insights_backend::rate_limit::{add_rate_limit_headers, RateLimitInfo};
+
+    let info = RateLimitInfo {
+        limit: 100,
+        remaining: 0, // Should trigger Retry-After
+        reset_at: 123456789,
+        reset_after_seconds: 30,
+        window_seconds: 60,
+        is_whitelisted: false,
+        client_id: Some("test_client".to_string()),
+    };
+
+    let response = (StatusCode::OK, "OK").into_response();
+    let response = add_rate_limit_headers(response, &info).expect("Failed to add headers");
+
+    let headers = response.headers();
+    assert_eq!(headers.get("RateLimit-Limit").unwrap(), "100");
+    assert_eq!(headers.get("RateLimit-Remaining").unwrap(), "0");
+    assert_eq!(headers.get("RateLimit-Reset").unwrap(), "123456789");
+    assert_eq!(headers.get(header::RETRY_AFTER).unwrap(), "30");
+    assert_eq!(headers.get("X-RateLimit-Policy").unwrap(), "100 requests per 60 seconds");
+    assert_eq!(headers.get("X-RateLimit-Client").unwrap(), "test_client");
+}

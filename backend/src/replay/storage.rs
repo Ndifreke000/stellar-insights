@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
+use std::fmt::Write;
 use tracing::{debug, info};
 
 use super::{ContractEvent, EventFilter, ReplayMetadata};
@@ -75,21 +76,21 @@ impl EventStorage {
         // Apply filters
         let mut bind_index = 3;
         if filter.contract_ids.is_some() {
-            query.push_str(&format!(" AND contract_id IN (${bind_index}) "));
+            write!(query, " AND contract_id IN (${bind_index}) ").unwrap();
             bind_index += 1;
         }
         if filter.event_types.is_some() {
-            query.push_str(&format!(" AND event_type IN (${bind_index}) "));
+            write!(query, " AND event_type IN (${bind_index}) ").unwrap();
             bind_index += 1;
         }
         if filter.network.is_some() {
-            query.push_str(&format!(" AND network = ${bind_index} "));
+            write!(query, " AND network = ${bind_index} ").unwrap();
         }
 
         query.push_str(" ORDER BY ledger_sequence ASC, id ASC");
 
         if let Some(lim) = limit {
-            query.push_str(&format!(" LIMIT {lim}"));
+            write!(query, " LIMIT {lim}").unwrap();
         }
 
         let query_builder = sqlx::query_as::<

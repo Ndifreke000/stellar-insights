@@ -90,9 +90,9 @@ pub struct GovernanceContract;
 #[contractimpl]
 impl GovernanceContract {
     /// Initialize the governance contract with an admin, quorum, and voting period.
-    pub fn initialize(env: Env, admin: Address, quorum: u64, voting_period: u64) {
+    pub fn initialize(env: Env, admin: Address, quorum: u64, voting_period: u64) -> Result<(), errors::Error> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Contract already initialized");
+            return Err(errors::Error::AlreadyInitialized);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -101,6 +101,7 @@ impl GovernanceContract {
         env.storage()
             .instance()
             .set(&DataKey::VotingPeriod, &voting_period);
+        Ok(())
     }
 
     /// Create a new governance proposal. Only the admin can create proposals.
