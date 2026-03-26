@@ -111,7 +111,11 @@ async fn main() -> Result<()> {
     let pool = pool_config.create_pool(&database_url).await?;
 
     tracing::info!("Running database migrations...");
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .context("Failed to run database migrations")?;
+    tracing::info!("Database migrations completed successfully");
 
     let db = Arc::new(Database::new(pool.clone()));
 

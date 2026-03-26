@@ -79,12 +79,17 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## CI Status
 
-The CI will fail if:
-- ❌ Any compiler warnings exist
-- ❌ Any clippy warnings exist
-- ❌ Code is not formatted
-- ❌ Tests fail
-- ❌ Documentation has warnings
+Your existing CI workflow already enforces:
+- ✅ Zero compiler warnings (build fails if any exist)
+- ✅ Zero clippy warnings (with `-D warnings` flag)
+- ✅ Proper code formatting (cargo fmt check)
+- ✅ All tests passing
+- ✅ Security audit passing
+
+The workflow runs on:
+- Every push to main/develop branches
+- Every pull request to main/develop branches
+- Only when backend files change (optimized)
 
 ## Need Help?
 

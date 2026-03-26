@@ -6,12 +6,8 @@ pub mod auth;
 pub mod cache_stats;
 pub mod corridors;
 pub mod corridors_cached;
-<<<<<<< feature/zapier-integration
-pub mod digest;
-=======
 pub mod cost_calculator;
-// pub mod digest;  // Commented out - depends on email module
->>>>>>> main
+pub mod digest;
 pub mod fee_bump;
 pub mod liquidity_pools;
 pub mod metrics;
@@ -24,8 +20,5 @@ pub mod sep10;
 pub mod sep24_proxy;
 pub mod sep31_proxy;
 pub mod trustlines;
-<<<<<<< feature/zapier-integration
-pub mod webhooks;
-=======
 pub mod verification_rewards;
->>>>>>> main
+pub mod webhooks;
