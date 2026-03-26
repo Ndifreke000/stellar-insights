@@ -1,0 +1,14 @@
+[package]
+name = "access_control"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "=21.6.0", features = ["testutils"] }
+
+[dev-dependencies]
+soroban-sdk = { version = "=21.6.0", features = ["testutils"] }

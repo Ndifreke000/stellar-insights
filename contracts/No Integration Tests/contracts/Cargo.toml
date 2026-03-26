@@ -1,0 +1,11 @@
+[workspace]
+members = ["analytics", "access_control"]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+lto = true
+codegen-units = 1
+strip = true
+debug = false
