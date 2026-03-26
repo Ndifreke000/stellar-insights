@@ -29,6 +29,7 @@ pub enum DataKey {
     Admin,
     Stopped,
     Paused,
+    ReentrancyGuard,
 }
 
 #[contract]
@@ -46,6 +47,27 @@ impl SnapshotContract {
         {
             panic!("Contract is stopped: emergency halt active");
         }
+    }
+
+    /// Internal: check and set reentrancy guard
+    fn check_and_set_reentrancy_guard(env: &Env) -> Result<(), &'static str> {
+        let is_locked: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::ReentrancyGuard)
+            .unwrap_or(false);
+
+        if is_locked {
+            return Err("Reentrancy detected: function already in execution");
+        }
+
+        env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        Ok(())
+    }
+
+    /// Internal: clear reentrancy guard
+    fn clear_reentrancy_guard(env: &Env) {
+        env.storage().instance().set(&DataKey::ReentrancyGuard, &false);
     }
 
     /// Admin-only: stop contract operations
@@ -246,10 +268,16 @@ impl SnapshotContract {
     /// * If epoch is 0
     /// * If a snapshot already exists for this epoch
     /// * If epoch <= latest (monotonicity violated: out-of-order or duplicate)
+    /// * If reentrancy is detected
     ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
     pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> u64 {
+        // Check reentrancy guard
+        if let Err(e) = Self::check_and_set_reentrancy_guard(&env) {
+            panic!("{}", e);
+        }
+
         // Check if contract is paused
         let is_paused: bool = env
             .storage()
@@ -257,12 +285,13 @@ impl SnapshotContract {
             .get(&DataKey::Paused)
             .unwrap_or(false);
         if is_paused {
+            Self::clear_reentrancy_guard(&env);
             panic!("Contract is paused for emergency maintenance");
         }
 
         // Validate inputs
-
         if hash.len() != HASH_SIZE {
+            Self::clear_reentrancy_guard(&env);
             panic!(
                 "Invalid hash size: expected {} bytes, got {}",
                 HASH_SIZE,
@@ -271,6 +300,7 @@ impl SnapshotContract {
         }
 
         if epoch == 0 {
+            Self::clear_reentrancy_guard(&env);
             panic!("Invalid epoch: must be greater than 0");
         }
 
@@ -278,6 +308,7 @@ impl SnapshotContract {
         let current_latest: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
         if let Some(latest) = current_latest {
             if epoch <= latest {
+                Self::clear_reentrancy_guard(&env);
                 if epoch == latest {
                     panic!("Snapshot for epoch {} already exists", epoch);
                 } else {
@@ -304,6 +335,7 @@ impl SnapshotContract {
             .unwrap_or_else(|| Map::new(&env));
 
         if snapshots.contains_key(epoch) {
+            Self::clear_reentrancy_guard(&env);
             panic!("Snapshot for epoch {} already exists", epoch);
         }
 
@@ -319,6 +351,9 @@ impl SnapshotContract {
 
         env.events()
             .publish((symbol_short!("SNAP_SUB"),), (hash, epoch, timestamp));
+
+        // Clear guard before returning
+        Self::clear_reentrancy_guard(&env);
 
         timestamp
     }
@@ -934,5 +969,28 @@ mod test {
         client.submit_snapshot(&hash2, &2);
         assert!(!client.verify_latest_snapshot(&hash1));
         assert!(client.verify_latest_snapshot(&hash2));
+    }
+
+    #[test]
+    #[should_panic(expected = "Reentrancy detected")]
+    fn test_reentrancy_protection() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
+
+        let hash = bytes!(
+            &env,
+            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+        );
+
+        // Manually set the reentrancy guard to simulate a reentrant call
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyGuard, &true);
+
+        // This should panic due to reentrancy detection
+        client.submit_snapshot(&hash, &1);
     }
 }
