@@ -23,4 +23,6 @@ pub enum Error {
     ProposalNotPassed = 9,
     /// Invalid proposal title
     InvalidTitle = 10,
+    /// Contract has already been initialized
+    AlreadyInitialized = 11,
 }

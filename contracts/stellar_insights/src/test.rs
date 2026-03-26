@@ -1,4 +1,7 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
 
 use super::*;
 use crate::events::{SnapshotSubmitted, SNAPSHOT_LIFECYCLE, SNAPSHOT_SUBMITTED};

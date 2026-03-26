@@ -1,4 +1,7 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
 
 use super::*;
 use analytics::AnalyticsContractClient;
