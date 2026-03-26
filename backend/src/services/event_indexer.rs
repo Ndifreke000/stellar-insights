@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use std::fmt::Write;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -174,9 +175,9 @@ impl EventIndexer {
 
         // Add pagination
         if let Some(limit) = query.limit {
-            sql.push_str(&format!(" LIMIT {limit}"));
+            write!(sql, " LIMIT {limit}").unwrap();
             if let Some(offset) = query.offset {
-                sql.push_str(&format!(" OFFSET {offset}"));
+                write!(sql, " OFFSET {offset}").unwrap();
             }
         }
 
