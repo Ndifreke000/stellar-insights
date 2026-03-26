@@ -30,6 +30,9 @@ struct MetricsState {
     active_connections: AtomicI64,
     corridors_tracked: AtomicI64,
     http_in_flight_requests: AtomicI64,
+    pool_size: AtomicI64,
+    pool_idle: AtomicI64,
+    pool_active: AtomicI64,
 }
 
 static METRICS: OnceLock<MetricsState> = OnceLock::new();
@@ -241,6 +244,18 @@ pub async fn metrics_handler() -> Response {
         metrics.http_in_flight_requests.load(Ordering::Relaxed)
     ).unwrap();
 
+    out.push_str("# HELP db_pool_size Total database pool connections\n");
+    out.push_str("# TYPE db_pool_size gauge\n");
+    write!(out, "db_pool_size {}\n", metrics.pool_size.load(Ordering::Relaxed)).unwrap();
+
+    out.push_str("# HELP db_pool_idle Idle database pool connections\n");
+    out.push_str("# TYPE db_pool_idle gauge\n");
+    write!(out, "db_pool_idle {}\n", metrics.pool_idle.load(Ordering::Relaxed)).unwrap();
+
+    out.push_str("# HELP db_pool_active Active database pool connections\n");
+    out.push_str("# TYPE db_pool_active gauge\n");
+    write!(out, "db_pool_active {}\n", metrics.pool_active.load(Ordering::Relaxed)).unwrap();
+
     (
         [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],
         out,
@@ -325,6 +340,18 @@ pub fn record_background_job(job: &str, status: &str) {
 
 pub fn set_corridors_tracked(count: i64) {
     state().corridors_tracked.store(count, Ordering::Relaxed);
+}
+
+pub fn set_pool_size(count: i64) {
+    state().pool_size.store(count, Ordering::Relaxed);
+}
+
+pub fn set_pool_idle(count: i64) {
+    state().pool_idle.store(count, Ordering::Relaxed);
+}
+
+pub fn set_pool_active(count: i64) {
+    state().pool_active.store(count, Ordering::Relaxed);
 }
 
 #[cfg(test)]

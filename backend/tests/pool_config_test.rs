@@ -116,3 +116,17 @@ async fn test_pool_metrics() {
     assert_eq!(metrics.size, 2);
     assert_eq!(metrics.idle, 2);
 }
+
+#[tokio::test]
+async fn test_pool_exhaustion_handling() {
+    use stellar_insights_backend::error::ApiError;
+
+    // PoolTimedOut maps to ServiceUnavailable (503)
+    let err = ApiError::from(sqlx::Error::PoolTimedOut);
+    match err {
+        ApiError::ServiceUnavailable { code, .. } => {
+            assert_eq!(code, "DB_POOL_EXHAUSTED");
+        }
+        other => panic!("Expected ServiceUnavailable, got {:?}", other),
+    }
+}

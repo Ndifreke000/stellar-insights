@@ -74,6 +74,11 @@ pub enum ApiError {
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
+    ServiceUnavailable {
+        code: String,
+        message: String,
+        details: Option<HashMap<String, serde_json::Value>>,
+    },
 }
 
 impl ApiError {
@@ -140,6 +145,15 @@ impl ApiError {
         }
     }
 
+    /// Create a ServiceUnavailable error
+    pub fn service_unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::ServiceUnavailable {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
     /// Add details to any error variant
     #[must_use]
     pub fn with_details(mut self, details: HashMap<String, serde_json::Value>) -> Self {
@@ -147,7 +161,8 @@ impl ApiError {
             Self::NotFound { details: d, .. }
             | Self::BadRequest { details: d, .. }
             | Self::InternalError { details: d, .. }
-            | Self::Unauthorized { details: d, .. } => {
+            | Self::Unauthorized { details: d, .. }
+            | Self::ServiceUnavailable { details: d, .. } => {
                 *d = Some(details);
             }
         }
@@ -161,6 +176,7 @@ impl ApiError {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
             Self::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -192,6 +208,11 @@ impl ApiError {
                 source.clone(),
             ),
             Self::Unauthorized {
+                code,
+                message,
+                details,
+            } => (code.clone(), message.clone(), details.clone(), None),
+            Self::ServiceUnavailable {
                 code,
                 message,
                 details,
@@ -244,20 +265,37 @@ impl From<anyhow::Error> for ApiError {
 /// Convert from `sqlx::Error`
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
-        let (code, message) = match &err {
+        let (code, message, status) = match &err {
             sqlx::Error::RowNotFound => (
                 "NOT_FOUND".to_string(),
                 "The requested resource was not found".to_string(),
+                None,
+            ),
+            sqlx::Error::PoolTimedOut => (
+                "DB_POOL_EXHAUSTED".to_string(),
+                "Database pool exhausted. Please try again later.".to_string(),
+                Some(StatusCode::SERVICE_UNAVAILABLE),
             ),
             sqlx::Error::Database(db_err) => (
                 "DATABASE_ERROR".to_string(),
                 format!("Database error: {}", db_err.message()),
+                None,
             ),
             _ => (
                 "INTERNAL_ERROR".to_string(),
                 "An internal error occurred".to_string(),
+                None,
             ),
         };
+
+        if let Some(StatusCode::SERVICE_UNAVAILABLE) = status {
+            tracing::error!("Database pool exhausted");
+            return Self::ServiceUnavailable {
+                code,
+                message,
+                details: None,
+            };
+        }
 
         Self::InternalError {
             code,
