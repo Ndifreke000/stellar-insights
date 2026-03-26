@@ -344,7 +344,7 @@ impl RateLimiter {
     async fn check_memory_limit(&self, key: &str, limit: u32) -> (bool, u32, u32) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs() as i64;
 
         let mut store = self.fallback_memory_store.write().await;

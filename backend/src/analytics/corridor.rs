@@ -1,5 +1,6 @@
 use crate::models::corridor::{Corridor, CorridorAnalytics, PaymentRecord};
 use chrono::{DateTime, Utc};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 #[must_use]
@@ -69,7 +70,11 @@ pub fn get_top_corridors_by_volume(
     limit: usize,
 ) -> Vec<&CorridorAnalytics> {
     let mut sorted_analytics = analytics.iter().collect::<Vec<_>>();
-    sorted_analytics.sort_by(|a, b| b.volume_usd.partial_cmp(&a.volume_usd).unwrap());
+    sorted_analytics.sort_by(|a, b| {
+        b.volume_usd
+            .partial_cmp(&a.volume_usd)
+            .unwrap_or(Ordering::Equal)
+    });
     sorted_analytics.truncate(limit);
     sorted_analytics
 }

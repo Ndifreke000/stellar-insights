@@ -1,6 +1,7 @@
 use sqlx::SqlitePool;
 use std::time::Duration;
 use std::sync::Arc;
+use anyhow::Context;
 use axum::http::{
     header::{AUTHORIZATION, CONTENT_TYPE},
     HeaderValue, Method,
@@ -30,7 +31,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
     env_config::log_env_config();
     let _tracing_guard = stellar_insights_backend::observability::tracing::init_tracing(
@@ -43,7 +44,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = SqlitePool::connect(&db_url).await?;
     let db = Arc::new(Database::new(pool.clone()));
 
-    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+    let cache = Arc::new(
+        CacheManager::new(CacheConfig::default())
+            .await
+            .context("Failed to initialize cache manager - check Redis connection")?,
+    );
 
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
 
@@ -69,7 +74,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(AccountMergeDetector::new(pool.clone(), rpc_client.clone()));
     let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(pool.clone(), rpc_client.clone()));
 
-    let rate_limiter = Arc::new(RateLimiter::new().await.unwrap());
+    let rate_limiter = Arc::new(
+        RateLimiter::new()
+            .await
+            .context("Failed to initialize rate limiter - check Redis connection")?,
+    );
 
     // Start webhook dispatcher as a background task
     let webhook_pool = pool.clone();
