@@ -1,3 +1,5 @@
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, Vec};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec};
@@ -135,6 +137,7 @@ pub enum DataKey {
     TimelockAction(u64),
     /// Per-caller rate limit tracking
     RateLimit(Address),
+    Version,
 }
 
 fn check_rate_limit(env: &Env, caller: &Address) {
@@ -234,6 +237,7 @@ impl AnalyticsContract {
         storage.set(&DataKey::Admin, &admin);
         storage.set(&DataKey::LatestEpoch, &0u64);
         storage.set(&DataKey::Paused, &false);
+        storage.set(&DataKey::Version, &VERSION);
         env.storage().persistent().set(
             &DataKey::Snapshots,
             &Map::<u64, SnapshotMetadata>::new(&env),
@@ -612,6 +616,10 @@ impl AnalyticsContract {
 
     pub fn get_admin(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::Admin)
+    }
+
+    pub fn getversion(env: Env) -> String {
+        String::from_str(&env, VERSION)
     }
 
     pub fn set_admin(env: Env, current_admin: Address, new_admin: Address) {

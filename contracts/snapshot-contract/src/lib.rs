@@ -1,10 +1,10 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, String, Symbol,
 };
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const HASH_SIZE: u32 = 32;
-const CONTRACT_VERSION: u32 = 1;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,6 +29,7 @@ pub enum DataKey {
     Admin,
     Stopped,
     Paused,
+    Version,
 }
 
 #[contract]
@@ -83,16 +84,17 @@ impl SnapshotContract {
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
 
         let metadata = ContractMetadata {
-            version: CONTRACT_VERSION,
+            version: 1, // Keep existing u32 version for compatibility
             upgrade_timestamp: env.ledger().timestamp(),
         };
         env.storage().instance().set(&DataKey::Metadata, &metadata);
         env.storage().instance().set(&DataKey::Stopped, &false);
 
         env.events()
-            .publish((symbol_short!("INIT"),), (admin, CONTRACT_VERSION));
+            .publish((symbol_short!("INIT"),), (admin, 1u32));
     }
 
     /// Get the current contract version
@@ -101,8 +103,12 @@ impl SnapshotContract {
         let metadata: Option<ContractMetadata> = env.storage().instance().get(&DataKey::Metadata);
         match metadata {
             Some(m) => m.version,
-            None => CONTRACT_VERSION,
+            None => 1,
         }
+    }
+
+    pub fn getversion(env: Env) -> String {
+        String::from_str(&env, VERSION)
     }
 
     /// Get the contract admin address

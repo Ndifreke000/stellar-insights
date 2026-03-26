@@ -1,5 +1,7 @@
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 
 #[derive(Clone)]
 #[contracttype]
@@ -20,6 +22,7 @@ pub struct Permission {
 pub enum DataKey {
     Roles(Address),
     Permissions(Role),
+    Version,
 }
 
 #[contract]
@@ -34,6 +37,7 @@ impl AccessControl {
         env.storage()
             .persistent()
             .set(&DataKey::Roles(admin), &roles);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
     }
 
     pub fn grant_role(env: Env, caller: Address, user: Address, role: Role) {
@@ -127,6 +131,10 @@ impl AccessControl {
             }
         }
         false
+    }
+
+    pub fn getversion(env: Env) -> String {
+        String::from_str(&env, VERSION)
     }
 
     fn require_role(env: &Env, user: &Address, role: Role) {

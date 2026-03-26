@@ -42,6 +42,23 @@ fn test_initialize_cannot_reinitialize() {
 }
 
 #[test]
+fn test_version_stored_on_init() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let version = client.getversion();
+    assert!(!version.is_empty());
+    // Version should be stored and retrievable
+    assert_eq!(version, env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
 fn test_submit_single_snapshot() {
     let env = Env::default();
     env.mock_all_auths();

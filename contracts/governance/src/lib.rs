@@ -1,3 +1,5 @@
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #![no_std]
 
 mod errors;
@@ -78,6 +80,7 @@ pub enum DataKey {
     VoteTally(u64),
     /// Parameter-update action for a proposal (when present, proposal is parameter type).
     ParameterAction(u64),
+    Version,
 }
 
 // ============================================================================
@@ -101,6 +104,7 @@ impl GovernanceContract {
         env.storage()
             .instance()
             .set(&DataKey::VotingPeriod, &voting_period);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
     }
 
     /// Create a new governance proposal. Only the admin can create proposals.
@@ -536,6 +540,10 @@ impl GovernanceContract {
             .unwrap_or(0);
 
         Ok((admin, quorum, voting_period, proposal_count))
+    }
+
+    pub fn getversion(env: Env) -> String {
+        String::from_str(&env, VERSION)
     }
 }
 
