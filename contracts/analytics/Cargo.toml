@@ -18,3 +18,5 @@ soroban-sdk = { workspace = true }
 arbitrary = "1.3"
 bolero = "0.13.4"
 soroban-sdk = { workspace = true, features = ["testutils"] }
+bolero = "0.10"
+bolero-generator = "0.10"
