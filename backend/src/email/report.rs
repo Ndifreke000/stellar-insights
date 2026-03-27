@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CorridorSummary {
     pub id: String,
     pub success_rate: f64,
@@ -9,7 +9,7 @@ pub struct CorridorSummary {
     pub change_pct: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AnchorSummary {
     pub name: String,
     pub success_rate: f64,
@@ -17,7 +17,7 @@ pub struct AnchorSummary {
     pub volume_usd: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DigestReport {
     pub period: String,
     pub top_corridors: Vec<CorridorSummary>,

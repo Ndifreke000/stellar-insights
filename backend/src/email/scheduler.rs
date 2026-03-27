@@ -54,7 +54,16 @@ impl DigestScheduler {
     }
 
     pub async fn send_digest(&self, period: &str) -> anyhow::Result<()> {
-        let report = self.generate_report(period).await?;
+        let cache_key = format!("daily_digest:{}", period);
+
+        let report = if let Some(cached) = self.cache.get::<DigestReport>(&cache_key).await? {
+            cached
+        } else {
+            let fresh = self.generate_report(period).await?;
+            let _ = self.cache.set(&cache_key, &fresh, 3600).await;
+            fresh
+        };
+
         let html = generate_html_report(&report);
 
         for recipient in &self.recipients {
