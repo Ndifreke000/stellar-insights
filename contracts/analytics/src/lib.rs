@@ -737,9 +737,12 @@ impl AnalyticsContract {
         })
     }
 
-    pub fn get_admin(env: Env) -> Result<Option<Address>, Error> {
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
         require_initialized(&env)?;
-        Ok(env.storage().instance().get(&DataKey::Admin))
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)
     }
 
     pub fn getversion(env: Env) -> String {
