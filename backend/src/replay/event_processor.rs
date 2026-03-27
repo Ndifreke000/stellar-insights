@@ -291,7 +291,6 @@ impl CompositeEventProcessor {
                         event.unique_id(),
                         e
                     );
-                    continue;
                 }
             }
         }

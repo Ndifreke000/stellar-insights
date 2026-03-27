@@ -475,7 +475,6 @@ impl ContractService {
                     "PENDING" | "NOT_FOUND" => {
                         debug!("Transaction still pending (attempt {})", attempt);
                         tokio::time::sleep(poll_interval).await;
-                        continue;
                     }
                     _ => {
                         return Err(anyhow::anyhow!("Unknown transaction status: {status}"));
