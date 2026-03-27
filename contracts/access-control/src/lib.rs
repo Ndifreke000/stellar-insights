@@ -4,12 +4,8 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
-    Symbol, Vec,
-};
-
 pub const VERSION: &str = "0.1.0";
+
 
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

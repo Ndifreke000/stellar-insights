@@ -1196,6 +1196,9 @@ mod test {
 
         // This should panic due to reentrancy detection
         client.submit_snapshot(&hash, &1);
+    }
+
+    #[test]
     fn test_multisig_initialization() {
         let env = Env::default();
         let contract_id = env.register_contract(None, SnapshotContract);

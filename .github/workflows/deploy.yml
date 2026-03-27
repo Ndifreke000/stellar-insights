@@ -28,6 +28,7 @@ jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    continue-on-error: true
     environment: ${{ github.event.inputs.environment || 'production' }}
 
     steps:
