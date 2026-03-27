@@ -1,11 +1,35 @@
 {
   "generators": {
-    "address": 1,
+    "address": 2,
     "nonce": 0
   },
   "auth": [
     [],
-    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "submit_snapshot",
+              "args": [
+                {
+                  "u64": 13000439944906858182
+                },
+                {
+                  "bytes": "b4fdc88063e5c0782c89f6a487fe417487ff6b461ffdd1da71a9a492d57dc108"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
     [],
     []
   ],
@@ -19,6 +43,168 @@
     "min_temp_entry_ttl": 16,
     "max_entry_ttl": 6312000,
     "ledger_entries": [
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "RateLimit"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "RateLimit"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
+                },
+                "durability": "temporary",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "call_count"
+                      },
+                      "val": {
+                        "u32": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "last_call"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "window_start"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          15
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Snapshot"
+                },
+                {
+                  "u64": 13000439944906858182
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Snapshot"
+                    },
+                    {
+                      "u64": 13000439944906858182
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "epoch"
+                      },
+                      "val": {
+                        "u64": 13000439944906858182
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "expires_at"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "hash"
+                      },
+                      "val": {
+                        "bytes": "b4fdc88063e5c0782c89f6a487fe417487ff6b461ffdd1da71a9a492d57dc108"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "ledger_sequence"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "submitter"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
       [
         {
           "contract_data": {
@@ -52,7 +238,7 @@
                   "map": [
                     {
                       "key": {
-                        "u64": 5390457872434962827
+                        "u64": 13000439944906858182
                       },
                       "val": {
                         "map": [
@@ -61,15 +247,37 @@
                               "symbol": "epoch"
                             },
                             "val": {
-                              "u64": 5390457872434962827
+                              "u64": 13000439944906858182
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "expires_at"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
                               "symbol": "hash"
                             },
                             "val": {
-                              "bytes": "d2bd99133ee456fbc143bccd909226594ef34ce6cad5c76c69b836be17fa1525"
+                              "bytes": "b4fdc88063e5c0782c89f6a487fe417487ff6b461ffdd1da71a9a492d57dc108"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "ledger_sequence"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "submitter"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                             }
                           },
                           {
@@ -119,12 +327,48 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "Admin"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "LatestEpoch"
                             }
                           ]
                         },
                         "val": {
-                          "u64": 5390457872434962827
+                          "u64": 13000439944906858182
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Paused"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": false
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Version"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "string": "0.1.0"
                         }
                       }
                     ]
@@ -135,6 +379,39 @@
             "ext": "v0"
           },
           4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 801925984706572462
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 801925984706572462
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
         ]
       ],
       [
@@ -179,7 +456,9 @@
                 "symbol": "initialize"
               }
             ],
-            "data": "void"
+            "data": {
+              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+            }
           }
         }
       },
@@ -227,10 +506,85 @@
             "data": {
               "vec": [
                 {
-                  "u64": 5390457872434962827
+                  "u64": 13000439944906858182
                 },
                 {
-                  "bytes": "d2bd99133ee456fbc143bccd909226594ef34ce6cad5c76c69b836be17fa1525"
+                  "bytes": "b4fdc88063e5c0782c89f6a487fe417487ff6b461ffdd1da71a9a492d57dc108"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "snapshot"
+              },
+              {
+                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "epoch"
+                  },
+                  "val": {
+                    "u64": 13000439944906858182
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "hash"
+                  },
+                  "val": {
+                    "bytes": "b4fdc88063e5c0782c89f6a487fe417487ff6b461ffdd1da71a9a492d57dc108"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "ledger_sequence"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "previous_epoch"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "submitter"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
                 }
               ]
             }
@@ -283,10 +637,13 @@
             "data": {
               "vec": [
                 {
-                  "u64": 2614804216002727970
+                  "u64": 6449872281853508704
                 },
                 {
-                  "bytes": "61c4644d90568ae7d7901c73f8f7967ca3c994af80c6f3f35c85fd9fb84974f8"
+                  "bytes": "450f14782ca6fb8d210587ceae86de36a21fffcc7aa24f6e5e7fe8ebe3206f16"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }
@@ -310,15 +667,45 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Epoch monotonicity violated: epoch 2614804216002727970 must be strictly greater than latest 5390457872434962827' from contract function 'Symbol(obj#65)'"
+                  "string": "[Error #{}] {:?} - {}"
                 },
                 {
-                  "u64": 2614804216002727970
+                  "u32": 8
                 },
                 {
-                  "bytes": "61c4644d90568ae7d7901c73f8f7967ca3c994af80c6f3f35c85fd9fb84974f8"
+                  "error": {
+                    "contract": 8
+                  }
+                },
+                {
+                  "string": "validate_epoch: epoch must be strictly greater than latest"
                 }
               ]
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "submit_snapshot"
+              }
+            ],
+            "data": {
+              "error": {
+                "contract": 8
+              }
             }
           }
         }
@@ -338,12 +725,12 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 8
                 }
               }
             ],
             "data": {
-              "string": "caught error from function"
+              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
             }
           }
         }
@@ -363,7 +750,7 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 8
                 }
               }
             ],
@@ -378,10 +765,13 @@
                 {
                   "vec": [
                     {
-                      "u64": 2614804216002727970
+                      "u64": 6449872281853508704
                     },
                     {
-                      "bytes": "61c4644d90568ae7d7901c73f8f7967ca3c994af80c6f3f35c85fd9fb84974f8"
+                      "bytes": "450f14782ca6fb8d210587ceae86de36a21fffcc7aa24f6e5e7fe8ebe3206f16"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                     }
                   ]
                 }
@@ -432,7 +822,7 @@
               }
             ],
             "data": {
-              "u64": 5390457872434962827
+              "u64": 13000439944906858182
             }
           }
         }
