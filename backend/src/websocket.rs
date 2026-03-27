@@ -146,10 +146,14 @@ pub enum WsMessage {
     /// Corridor metrics updated
     CorridorUpdate {
         corridor_key: String,
-        asset_a_code: String,
-        asset_a_issuer: String,
-        asset_b_code: String,
-        asset_b_issuer: String,
+        #[serde(rename = "asset_a_code")]
+        source_asset_code: String,
+        #[serde(rename = "asset_a_issuer")]
+        source_asset_issuer: String,
+        #[serde(rename = "asset_b_code")]
+        destination_asset_code: String,
+        #[serde(rename = "asset_b_issuer")]
+        destination_asset_issuer: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         success_rate: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]

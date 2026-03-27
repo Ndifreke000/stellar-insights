@@ -20,10 +20,10 @@ pub fn broadcast_anchor_update(ws_state: &Arc<WsState>, anchor: &Anchor) {
 pub fn broadcast_corridor_update(ws_state: &Arc<WsState>, corridor: &Corridor) {
     let message = WsMessage::CorridorUpdate {
         corridor_key: corridor.to_string_key(),
-        asset_a_code: corridor.asset_a_code.clone(),
-        asset_a_issuer: corridor.asset_a_issuer.clone(),
-        asset_b_code: corridor.asset_b_code.clone(),
-        asset_b_issuer: corridor.asset_b_issuer.clone(),
+        source_asset_code: corridor.source_asset_code.clone(),
+        source_asset_issuer: corridor.source_asset_issuer.clone(),
+        destination_asset_code: corridor.destination_asset_code.clone(),
+        destination_asset_issuer: corridor.destination_asset_issuer.clone(),
         success_rate: None,
         health_score: None,
         last_updated: None,

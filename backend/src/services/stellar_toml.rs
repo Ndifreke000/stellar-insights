@@ -300,9 +300,9 @@ impl StellarTomlClient {
     /// Fetch stellar.toml from network
     async fn fetch_toml_from_network(&self, domain: &str) -> Result<StellarToml> {
         // Try HTTPS first
-        let https_url = format!("https://{domain}/.well-known/stellar.toml");
-
-        match self.fetch_url(&https_url).await {
+        let secure_toml_url = format!("https://{domain}/.well-known/stellar.toml");
+ 
+        match self.fetch_url(&secure_toml_url).await {
             Ok(content) => return self.parse_toml(&content, domain),
             Err(e) => {
                 tracing::debug!("HTTPS fetch failed for {}: {}", domain, e);
@@ -310,9 +310,9 @@ impl StellarTomlClient {
         }
 
         // Fallback to HTTP
-        let http_url = format!("http://{domain}/.well-known/stellar.toml");
-
-        match self.fetch_url(&http_url).await {
+        let fallback_toml_url = format!("http://{domain}/.well-known/stellar.toml");
+ 
+        match self.fetch_url(&fallback_toml_url).await {
             Ok(content) => self.parse_toml(&content, domain),
             Err(e) => {
                 tracing::warn!("HTTP fetch also failed for {}: {}", domain, e);

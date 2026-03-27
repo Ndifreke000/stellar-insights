@@ -129,13 +129,17 @@ pub struct LiquidityPoolType {
     /// Pool ID
     pub pool_id: String,
     /// Asset A code
-    pub asset_a_code: String,
+    #[graphql(name = "asset_a_code")]
+    pub reserve_a_asset_code: String,
     /// Asset A issuer
-    pub asset_a_issuer: String,
+    #[graphql(name = "asset_a_issuer")]
+    pub reserve_a_asset_issuer: String,
     /// Asset B code
-    pub asset_b_code: String,
+    #[graphql(name = "asset_b_code")]
+    pub reserve_b_asset_code: String,
     /// Asset B issuer
-    pub asset_b_issuer: String,
+    #[graphql(name = "asset_b_issuer")]
+    pub reserve_b_asset_issuer: String,
     /// Total liquidity in USD
     pub total_liquidity_usd: f64,
     /// Total shares

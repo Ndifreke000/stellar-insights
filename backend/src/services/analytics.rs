@@ -68,10 +68,10 @@ pub fn compute_corridor_metrics(
         return CorridorMetrics {
             id: uuid::Uuid::nil().to_string(),
             corridor_key: String::new(),
-            asset_a_code: String::new(),
-            asset_a_issuer: String::new(),
-            asset_b_code: String::new(),
-            asset_b_issuer: String::new(),
+            reserve_asset_a_code: String::new(),
+            reserve_asset_a_issuer: String::new(),
+            reserve_asset_b_code: String::new(),
+            reserve_asset_b_issuer: String::new(),
             date: chrono::Utc::now(),
             success_rate: 0.0,
             avg_settlement_latency_ms: None,
@@ -123,10 +123,10 @@ pub fn compute_corridor_metrics(
     CorridorMetrics {
         id: uuid::Uuid::nil().to_string(),
         corridor_key: String::new(),
-        asset_a_code: String::new(),
-        asset_a_issuer: String::new(),
-        asset_b_code: String::new(),
-        asset_b_issuer: String::new(),
+        reserve_asset_a_code: String::new(),
+        reserve_asset_a_issuer: String::new(),
+        reserve_asset_b_code: String::new(),
+        reserve_asset_b_issuer: String::new(),
         date: chrono::Utc::now(),
         total_transactions,
         successful_transactions,
@@ -201,10 +201,10 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
         results.push(CorridorMetrics {
             id: uuid::Uuid::new_v4().to_string(), // Generate new ID for this snapshot
             corridor_key: key,
-            asset_a_code: corridor.asset_a_code,
-            asset_a_issuer: corridor.asset_a_issuer,
-            asset_b_code: corridor.asset_b_code,
-            asset_b_issuer: corridor.asset_b_issuer,
+            reserve_asset_a_code: corridor.source_asset_code,
+            reserve_asset_a_issuer: corridor.source_asset_issuer,
+            reserve_asset_b_code: corridor.destination_asset_code,
+            reserve_asset_b_issuer: corridor.destination_asset_issuer,
             date: chrono::Utc::now(),
             total_transactions,
             successful_transactions,
@@ -303,7 +303,7 @@ mod tests {
         // Find USDC -> EURC metrics
         let usdc_metrics = metrics
             .iter()
-            .find(|m| m.asset_a_code == "EURC" || m.asset_a_code == "USDC") // Normalized
+            .find(|m| m.reserve_asset_a_code == "EURC" || m.reserve_asset_a_code == "USDC") // Normalized
             .expect("Should find USDC/EURC metrics");
 
         assert_eq!(usdc_metrics.total_transactions, 2);

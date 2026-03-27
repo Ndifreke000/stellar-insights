@@ -32,10 +32,10 @@ async fn test_websocket_subscription_flow() {
 async fn test_corridor_update_message_serialization() {
     let corridor_update = WsMessage::CorridorUpdate {
         corridor_key: "USDC-XLM".to_string(),
-        asset_a_code: "USDC".to_string(),
-        asset_a_issuer: "issuer1".to_string(),
-        asset_b_code: "XLM".to_string(),
-        asset_b_issuer: "native".to_string(),
+        source_asset_code: "USDC".to_string(),
+        source_asset_issuer: "issuer1".to_string(),
+        destination_asset_code: "XLM".to_string(),
+        destination_asset_issuer: "native".to_string(),
         success_rate: Some(95.5),
         health_score: Some(92.0),
         last_updated: Some("2026-02-20T10:30:00Z".to_string()),

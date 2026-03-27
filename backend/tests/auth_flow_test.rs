@@ -19,7 +19,9 @@ fn create_auth_router() -> Router {
     }
 
     let redis = Arc::new(RwLock::new(None));
-    let auth_service = Arc::new(AuthService::new(redis));
+    // Use an in-memory database for testing AuthService if no real pool is available
+    let pool = futures::executor::block_on(sqlx::SqlitePool::connect("sqlite::memory:")).unwrap();
+    let auth_service = Arc::new(AuthService::new(redis, pool));
     auth::routes(auth_service)
 }
 
@@ -101,7 +103,8 @@ async fn test_token_generation_and_validation_for_access_tokens() {
     }
 
     let redis = Arc::new(RwLock::new(None));
-    let auth_service = AuthService::new(redis);
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let auth_service = AuthService::new(redis, pool);
 
     let user = User {
         id: "user-1".to_string(),

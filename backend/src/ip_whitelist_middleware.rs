@@ -47,7 +47,7 @@ impl IpWhitelistConfig {
     }
 
     /// Parse comma-separated list of IPs and CIDR ranges
-    fn parse_whitelist(whitelist_str: &str) -> Result<Vec<IpNetwork>, String> {
+    pub fn parse_whitelist(whitelist_str: &str) -> Result<Vec<IpNetwork>, String> {
         let mut networks = Vec::new();
 
         for entry in whitelist_str.split(',') {

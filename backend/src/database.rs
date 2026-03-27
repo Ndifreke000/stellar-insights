@@ -865,10 +865,10 @@ impl Database {
             ",
             )
             .bind(Uuid::new_v4().to_string())
-            .bind(&corridor.asset_a_code)
-            .bind(&corridor.asset_a_issuer)
-            .bind(&corridor.asset_b_code)
-            .bind(&corridor.asset_b_issuer)
+            .bind(&corridor.source_asset_code)
+            .bind(&corridor.source_asset_issuer)
+            .bind(&corridor.destination_asset_code)
+            .bind(&corridor.destination_asset_issuer)
             .execute(&self.pool)
             .await?;
             Ok(corridor)
@@ -1503,22 +1503,6 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        if let Some(ref k) = key {
-            if let Some(ref expires_at) = k.expires_at {
-                match DateTime::parse_from_rfc3339(expires_at) {
-                    Ok(exp) => {
-                        if exp < Utc::now() {
-                            return Ok(None);
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "API key {} has malformed expires_at '{}': {}. Treating as expired.",
-                            k.id,
-                            expires_at,
-                            e
-                        );
-                        return Ok(None);
             if let Some(ref k) = key {
                 if let Some(ref expires_at) = k.expires_at {
                     match DateTime::parse_from_rfc3339(expires_at) {
@@ -1529,7 +1513,7 @@ impl Database {
                         }
                         Err(e) => {
                             log::warn!(
-                                "API key {} has malformed expires_at '{}': {}",
+                                "API key {} has malformed expires_at '{}': {}. Treating as expired.",
                                 k.id,
                                 expires_at,
                                 e
@@ -1538,27 +1522,16 @@ impl Database {
                         }
                     }
                 }
-            }
 
-            // last_used_at update is best-effort; a failure here should not block validation
-            if let Err(e) = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
-                .bind(Utc::now().to_rfc3339())
-                .bind(&k.id)
-                .execute(&self.pool)
-                .await
-            {
-                log::warn!("Failed to update last_used_at for API key {}: {}", k.id, e);
-            }
-        }
                 // last_used_at update is best-effort; a failure here should not block validation
-                if let Err(e) = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
+                let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
                     .bind(Utc::now().to_rfc3339())
                     .bind(&k.id)
                     .execute(&self.pool)
                     .await
-                {
-                    log::warn!("Failed to update last_used_at for API key {}: {}", k.id, e);
-                }
+                    .map_err(|e| {
+                        log::warn!("Failed to update last_used_at for API key {}: {}", k.id, e);
+                    });
             }
 
             Ok(key)

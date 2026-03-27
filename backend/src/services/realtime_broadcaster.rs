@@ -201,10 +201,10 @@ impl RealtimeBroadcaster {
                     let metrics = CorridorMetrics {
                         id: corridor_key.clone(),
                         corridor_key,
-                        asset_a_code: corridor.asset_a_code,
-                        asset_a_issuer: corridor.asset_a_issuer,
-                        asset_b_code: corridor.asset_b_code,
-                        asset_b_issuer: corridor.asset_b_issuer,
+                        reserve_asset_a_code: corridor.source_asset_code.clone(),
+                        reserve_asset_a_issuer: corridor.source_asset_issuer.clone(),
+                        reserve_asset_b_code: corridor.destination_asset_code.clone(),
+                        reserve_asset_b_issuer: corridor.destination_asset_issuer.clone(),
                         date: now,
                         total_transactions: 0,
                         successful_transactions: 0,
@@ -438,10 +438,10 @@ impl WsMessage {
             BroadcastMessage::CorridorUpdate { corridor, .. } => {
                 Self::CorridorUpdate {
                     corridor_key: corridor.corridor_key,
-                    asset_a_code: corridor.asset_a_code,
-                    asset_a_issuer: corridor.asset_a_issuer,
-                    asset_b_code: corridor.asset_b_code,
-                    asset_b_issuer: corridor.asset_b_issuer,
+                    source_asset_code: corridor.reserve_asset_a_code,
+                    source_asset_issuer: corridor.reserve_asset_a_issuer,
+                    destination_asset_code: corridor.reserve_asset_b_code,
+                    destination_asset_issuer: corridor.reserve_asset_b_issuer,
                     success_rate: Some(corridor.success_rate),
                     health_score: Some(corridor.success_rate * 100.0), // Simple health score calculation
                     last_updated: Some(corridor.updated_at.to_rfc3339()),

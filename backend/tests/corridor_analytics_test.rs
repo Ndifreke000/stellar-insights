@@ -48,7 +48,7 @@ fn test_known_dataset_expected_success_rates() {
 
     let usdc_eurc_analytics = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "EURC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| a.corridor.source_asset_code == "EURC" && a.corridor.destination_asset_code == "USDC")
         .unwrap();
 
     assert_eq!(usdc_eurc_analytics.total_transactions, 3);
@@ -59,7 +59,7 @@ fn test_known_dataset_expected_success_rates() {
 
     let usdc_btc_analytics = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "BTC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| a.corridor.source_asset_code == "BTC" && a.corridor.destination_asset_code == "USDC")
         .unwrap();
 
     assert_eq!(usdc_btc_analytics.total_transactions, 3);
@@ -148,13 +148,13 @@ fn test_mixed_success_rates_across_corridors() {
 
     let usdc_eurc = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "EURC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| a.corridor.source_asset_code == "EURC" && a.corridor.destination_asset_code == "USDC")
         .unwrap();
     assert!((usdc_eurc.success_rate - 66.66666666666667).abs() < 0.0001);
 
     let usdc_btc = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "BTC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| a.corridor.source_asset_code == "BTC" && a.corridor.destination_asset_code == "USDC")
         .unwrap();
     assert!((usdc_btc.success_rate - 33.33333333333333).abs() < 0.0001);
 }

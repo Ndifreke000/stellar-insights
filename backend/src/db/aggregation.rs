@@ -150,10 +150,10 @@ impl AggregationDb {
         )
         .bind(&metric.id)
         .bind(&metric.corridor_key)
-        .bind(&metric.asset_a_code)
-        .bind(&metric.asset_a_issuer)
-        .bind(&metric.asset_b_code)
-        .bind(&metric.asset_b_issuer)
+        .bind(&metric.source_asset_code)
+        .bind(&metric.source_asset_issuer)
+        .bind(&metric.destination_asset_code)
+        .bind(&metric.destination_asset_issuer)
         .bind(metric.hour_bucket.to_rfc3339())
         .bind(metric.total_transactions)
         .bind(metric.successful_transactions)
@@ -218,10 +218,10 @@ impl AggregationDb {
                 Some(HourlyCorridorMetrics {
                     id: row.id,
                     corridor_key: row.corridor_key,
-                    asset_a_code: row.asset_a_code,
-                    asset_a_issuer: row.asset_a_issuer,
-                    asset_b_code: row.asset_b_code,
-                    asset_b_issuer: row.asset_b_issuer,
+                    source_asset_code: row.source_asset_code,
+                    source_asset_issuer: row.source_asset_issuer,
+                    destination_asset_code: row.destination_asset_code,
+                    destination_asset_issuer: row.destination_asset_issuer,
                     hour_bucket,
                     total_transactions: row.total_transactions,
                     successful_transactions: row.successful_transactions,
@@ -385,10 +385,14 @@ struct PaymentRecordRow {
 struct HourlyCorridorMetricsRow {
     id: String,
     corridor_key: String,
-    asset_a_code: String,
-    asset_a_issuer: String,
-    asset_b_code: String,
-    asset_b_issuer: String,
+    #[sqlx(rename = "asset_a_code")]
+    source_asset_code: String,
+    #[sqlx(rename = "asset_a_issuer")]
+    source_asset_issuer: String,
+    #[sqlx(rename = "asset_b_code")]
+    destination_asset_code: String,
+    #[sqlx(rename = "asset_b_issuer")]
+    destination_asset_issuer: String,
     hour_bucket: String,
     total_transactions: i64,
     successful_transactions: i64,

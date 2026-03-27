@@ -42,10 +42,10 @@ impl CorridorAggregates {
             ",
         )
         .bind(&corridor_key)
-        .bind(&analytics.corridor.asset_a_code)
-        .bind(&analytics.corridor.asset_a_issuer)
-        .bind(&analytics.corridor.asset_b_code)
-        .bind(&analytics.corridor.asset_b_issuer)
+        .bind(&analytics.corridor.source_asset_code)
+        .bind(&analytics.corridor.source_asset_issuer)
+        .bind(&analytics.corridor.destination_asset_code)
+        .bind(&analytics.corridor.destination_asset_issuer)
         .bind(date_datetime)
         .bind(analytics.total_transactions)
         .bind(analytics.successful_transactions)
@@ -281,10 +281,14 @@ fn end_of_day_utc(date: NaiveDate) -> Result<chrono::DateTime<chrono::Utc>> {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct AggregatedCorridorMetrics {
     pub corridor_key: String,
-    pub asset_a_code: String,
-    pub asset_a_issuer: String,
-    pub asset_b_code: String,
-    pub asset_b_issuer: String,
+    #[sqlx(rename = "asset_a_code")]
+    pub source_asset_code: String,
+    #[sqlx(rename = "asset_a_issuer")]
+    pub source_asset_issuer: String,
+    #[sqlx(rename = "asset_b_code")]
+    pub destination_asset_code: String,
+    #[sqlx(rename = "asset_b_issuer")]
+    pub destination_asset_issuer: String,
     pub total_transactions: i64,
     pub successful_transactions: i64,
     pub failed_transactions: i64,

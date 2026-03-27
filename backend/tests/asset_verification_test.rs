@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;
 use stellar_insights_backend::models::asset_verification::{
-    ReportAssetRequest, ReportType, VerificationStatus,
+    ReportAssetRequest, ReportType, StellarTomlData, VerificationResult, VerificationStatus,
 };
 use stellar_insights_backend::services::asset_verifier::AssetVerifier;
 use uuid::Uuid;
@@ -85,7 +85,7 @@ async fn test_reputation_score_calculation() -> Result<()> {
     let verifier = AssetVerifier::new(pool)?;
 
     // Test case 1: All verifications passed
-    let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: true,
         stellar_toml_data: None,
@@ -99,7 +99,7 @@ async fn test_reputation_score_calculation() -> Result<()> {
     assert_eq!(score, 100.0); // 30 + 30 + 20 + 10 + 10
 
     // Test case 2: Only Stellar Expert verified
-    let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: false,
         stellar_toml_data: None,
@@ -113,7 +113,7 @@ async fn test_reputation_score_calculation() -> Result<()> {
     assert_eq!(score, 30.0);
 
     // Test case 3: Medium metrics
-    let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: true,
         stellar_toml_data: None,
@@ -165,11 +165,11 @@ async fn test_save_and_retrieve_verification() -> Result<()> {
     let asset_code = "USDC";
     let asset_issuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
-    let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: true,
         stellar_toml_data: Some(
-            stellar_insights_backend::services::asset_verifier::StellarTomlData {
+            StellarTomlData {
                 home_domain: "centre.io".to_string(),
                 name: Some("USD Coin".to_string()),
                 description: Some("Stablecoin".to_string()),
@@ -184,9 +184,12 @@ async fn test_save_and_retrieve_verification() -> Result<()> {
         total_volume_usd: 50000000.0,
     };
 
+    let score = verifier.calculate_reputation_score(&result);
+    let status = verifier.determine_status(score, 0);
+
     // Save verification result
     let saved_asset = verifier
-        .save_verification_result(asset_code, asset_issuer, &result)
+        .save_verification_result(asset_code, asset_issuer, &result, score, status)
         .await?;
 
     assert_eq!(saved_asset.asset_code, asset_code);
@@ -222,7 +225,7 @@ async fn test_list_verified_assets() -> Result<()> {
         let asset_code = format!("TEST{}", i);
         let asset_issuer = format!("G{}SEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", i);
 
-        let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+        let result = VerificationResult {
             stellar_expert_verified: i % 2 == 0,
             stellar_toml_verified: i % 2 == 0,
             stellar_toml_data: None,
@@ -232,8 +235,11 @@ async fn test_list_verified_assets() -> Result<()> {
             total_volume_usd: (i as f64) * 100000.0,
         };
 
+        let score = verifier.calculate_reputation_score(&result);
+        let status = verifier.determine_status(score, 0);
+
         verifier
-            .save_verification_result(&asset_code, &asset_issuer, &result)
+            .save_verification_result(&asset_code, &asset_issuer, &result, score, status)
             .await?;
     }
 
@@ -243,7 +249,7 @@ async fn test_list_verified_assets() -> Result<()> {
 
     // List only verified assets
     let assets = verifier
-        .list_verified_assets(Some(&VerificationStatus::Verified), None, 10, 0)
+        .list_verified_assets(Some(VerificationStatus::Verified), None, 10, 0)
         .await?;
     assert!(assets.len() >= 2); // At least assets 0, 2, 4
 
@@ -264,7 +270,7 @@ async fn test_unique_constraint() -> Result<()> {
     let asset_code = "USDC";
     let asset_issuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
-    let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: false,
         stellar_toml_data: None,
@@ -274,14 +280,17 @@ async fn test_unique_constraint() -> Result<()> {
         total_volume_usd: 100000.0,
     };
 
+    let score = verifier.calculate_reputation_score(&result);
+    let status = verifier.determine_status(score, 0);
+
     // First save should succeed
     let first_save = verifier
-        .save_verification_result(asset_code, asset_issuer, &result)
+        .save_verification_result(asset_code, asset_issuer, &result, score, status)
         .await?;
     assert_eq!(first_save.reputation_score, 37.0); // 30 + 7
 
     // Second save should update (not create duplicate)
-    let updated_result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+    let updated_result = VerificationResult {
         stellar_expert_verified: true,
         stellar_toml_verified: true,
         stellar_toml_data: None,
@@ -291,8 +300,11 @@ async fn test_unique_constraint() -> Result<()> {
         total_volume_usd: 200000.0,
     };
 
+    let score = verifier.calculate_reputation_score(&updated_result);
+    let status = verifier.determine_status(score, 0);
+
     let second_save = verifier
-        .save_verification_result(asset_code, asset_issuer, &updated_result)
+        .save_verification_result(asset_code, asset_issuer, &updated_result, score, status)
         .await?;
     assert_eq!(second_save.reputation_score, 74.0); // 30 + 30 + 7 + 7
 
@@ -317,7 +329,7 @@ async fn test_concurrent_verification() -> Result<()> {
                     format!("G{}SEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", i);
 
                 let result =
-                    stellar_insights_backend::services::asset_verifier::VerificationResult {
+                    VerificationResult {
                         stellar_expert_verified: true,
                         stellar_toml_verified: false,
                         stellar_toml_data: None,
@@ -327,8 +339,11 @@ async fn test_concurrent_verification() -> Result<()> {
                         total_volume_usd: 10000.0,
                     };
 
+                let score = verifier.calculate_reputation_score(&result);
+                let status = verifier.determine_status(score, 0);
+
                 verifier
-                    .save_verification_result(&asset_code, &asset_issuer, &result)
+                    .save_verification_result(&asset_code, &asset_issuer, &result, score, status)
                     .await
             })
         })
@@ -369,7 +384,7 @@ async fn test_similar_asset_codes() -> Result<()> {
     ];
 
     for (code, issuer) in &assets {
-        let result = stellar_insights_backend::services::asset_verifier::VerificationResult {
+        let result = VerificationResult {
             stellar_expert_verified: true,
             stellar_toml_verified: false,
             stellar_toml_data: None,
@@ -379,8 +394,11 @@ async fn test_similar_asset_codes() -> Result<()> {
             total_volume_usd: 100000.0,
         };
 
+        let score = verifier.calculate_reputation_score(&result);
+        let status = verifier.determine_status(score, 0);
+
         verifier
-            .save_verification_result(code, issuer, &result)
+            .save_verification_result(code, issuer, &result, score, status)
             .await?;
     }
 

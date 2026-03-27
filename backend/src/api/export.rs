@@ -63,10 +63,10 @@ pub async fn export_corridors(
             for m in corridors {
                 wtr.write_record(&[
                     m.corridor_key,
-                    m.asset_a_code,
-                    m.asset_a_issuer,
-                    m.asset_b_code,
-                    m.asset_b_issuer,
+                    m.source_asset_code,
+                    m.source_asset_issuer,
+                    m.destination_asset_code,
+                    m.destination_asset_issuer,
                     format!("{:.2}", m.avg_success_rate),
                     m.total_transactions.to_string(),
                     m.successful_transactions.to_string(),
@@ -140,16 +140,16 @@ pub async fn export_corridors(
                     .write(row, 0, &m.corridor_key)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
-                    .write(row, 1, &m.asset_a_code)
+                    .write(row, 1, &m.source_asset_code)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
-                    .write(row, 2, &m.asset_a_issuer)
+                    .write(row, 2, &m.source_asset_issuer)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
-                    .write(row, 3, &m.asset_b_code)
+                    .write(row, 3, &m.destination_asset_code)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
-                    .write(row, 4, &m.asset_b_issuer)
+                    .write(row, 4, &m.destination_asset_issuer)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
                 worksheet
                     .write(row, 5, m.avg_success_rate)

@@ -274,10 +274,10 @@ impl SnapshotService {
                 id: Uuid::parse_str(&row.get::<String, _>("id"))
                     .context("Invalid corridor metrics ID format")?,
                 corridor_key: row.get("corridor_key"),
-                asset_a_code: row.get("asset_a_code"),
-                asset_a_issuer: row.get("asset_a_issuer"),
-                asset_b_code: row.get("asset_b_code"),
-                asset_b_issuer: row.get("asset_b_issuer"),
+                source_asset_code: row.get("asset_a_code"),
+                source_asset_issuer: row.get("asset_a_issuer"),
+                destination_asset_code: row.get("asset_b_code"),
+                destination_asset_issuer: row.get("asset_b_issuer"),
                 total_transactions: row.get("total_transactions"),
                 successful_transactions: row.get("successful_transactions"),
                 failed_transactions: row.get("failed_transactions"),
@@ -502,20 +502,20 @@ impl SnapshotService {
             Value::String(metrics.corridor_key.clone()),
         );
         map.insert(
-            "asset_a_code".to_string(),
-            Value::String(metrics.asset_a_code.clone()),
+            "source_asset_code".to_string(),
+            Value::String(metrics.source_asset_code.clone()),
         );
         map.insert(
-            "asset_a_issuer".to_string(),
-            Value::String(metrics.asset_a_issuer.clone()),
+            "source_asset_issuer".to_string(),
+            Value::String(metrics.source_asset_issuer.clone()),
         );
         map.insert(
-            "asset_b_code".to_string(),
-            Value::String(metrics.asset_b_code.clone()),
+            "destination_asset_code".to_string(),
+            Value::String(metrics.destination_asset_code.clone()),
         );
         map.insert(
-            "asset_b_issuer".to_string(),
-            Value::String(metrics.asset_b_issuer.clone()),
+            "destination_asset_issuer".to_string(),
+            Value::String(metrics.destination_asset_issuer.clone()),
         );
         map.insert(
             "total_transactions".to_string(),
@@ -944,10 +944,10 @@ mod tests {
         SnapshotCorridorMetrics {
             id,
             corridor_key: key.to_string(),
-            asset_a_code: "USDC".to_string(),
-            asset_a_issuer: "issuer1".to_string(),
-            asset_b_code: "EURC".to_string(),
-            asset_b_issuer: "issuer2".to_string(),
+            source_asset_code: "USDC".to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: "EURC".to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
             total_transactions: 500,
             successful_transactions: 475,
             failed_transactions: 25,
