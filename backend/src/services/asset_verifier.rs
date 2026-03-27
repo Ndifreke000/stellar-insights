@@ -567,7 +567,8 @@ impl AssetVerifier {
         let mut qb = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
 
         if let Some(s) = status {
-            qb.push(" AND verification_status = ").push_bind(s.as_str().to_owned());
+            qb.push(" AND verification_status = ")
+                .push_bind(s.as_str().to_owned());
         }
 
         if let Some(min_rep) = min_reputation {
