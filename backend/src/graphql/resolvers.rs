@@ -1,85 +1,11 @@
 use async_graphql::*;
-use sqlx::SqlitePool;
-use std::fmt::Write;
+use sqlx::{QueryBuilder, SqlitePool};
 use std::sync::Arc;
 
 use super::types::*;
 
 pub struct QueryRoot {
     pub pool: Arc<SqlitePool>,
-}
-
-#[derive(Default)]
-struct AnchorQueryBuilder {
-    conditions: Vec<String>,
-}
-
-impl AnchorQueryBuilder {
-    fn from_filter(filter: Option<&AnchorFilter>) -> Self {
-        let mut builder = Self::default();
-
-        if let Some(f) = filter {
-            if let Some(status) = &f.status {
-                builder.add_status_filter(status);
-            }
-            if let Some(min_score) = f.min_reliability_score {
-                builder.add_min_score_filter(min_score);
-            }
-            if let Some(search) = &f.search {
-                builder.add_search_filter(search);
-            }
-        }
-
-        builder
-    }
-
-    fn add_status_filter(&mut self, status: &str) {
-        let escaped = escape_sql_literal(status);
-        self.conditions.push(format!("status = '{escaped}'"));
-    }
-
-    fn add_min_score_filter(&mut self, min_score: f64) {
-        self.conditions
-            .push(format!("reliability_score >= {min_score}"));
-    }
-
-    fn add_search_filter(&mut self, search: &str) {
-        let escaped = escape_sql_literal(search);
-        self.conditions.push(format!(
-            "(name LIKE '%{escaped}%' OR stellar_account LIKE '%{escaped}%')"
-        ));
-    }
-
-    fn apply_conditions(&self, query: &mut String) {
-        if !self.conditions.is_empty() {
-            query.push_str(" AND ");
-            query.push_str(&self.conditions.join(" AND "));
-        }
-    }
-
-    fn build_data_query(&self, limit: i32, offset: i32) -> String {
-        let mut query = String::from(
-            "SELECT id, name, stellar_account, home_domain, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status, created_at, updated_at FROM anchors WHERE 1=1",
-        );
-        self.apply_conditions(&mut query);
-        write!(
-            query,
-            " ORDER BY reliability_score DESC LIMIT {} OFFSET {}",
-            limit, offset
-        )
-        .unwrap();
-        query
-    }
-
-    fn build_count_query(&self) -> String {
-        let mut query = String::from("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
-        self.apply_conditions(&mut query);
-        query
-    }
-}
-
-fn escape_sql_literal(value: &str) -> String {
-    value.replace('\'', "''")
 }
 
 #[Object]
@@ -118,15 +44,55 @@ impl QueryRoot {
         let limit = pagination.as_ref().and_then(|p| p.limit).unwrap_or(10).min(100);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let query_builder = AnchorQueryBuilder::from_filter(filter.as_ref());
-        let query = query_builder.build_data_query(limit, offset);
-        let count_query = query_builder.build_count_query();
+        let mut data_qb = QueryBuilder::new(
+            "SELECT id, name, stellar_account, home_domain, total_transactions, \
+             successful_transactions, failed_transactions, total_volume_usd, \
+             avg_settlement_time_ms, reliability_score, status, created_at, updated_at \
+             FROM anchors WHERE 1=1",
+        );
+        let mut count_qb =
+            QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
 
-        let anchors = sqlx::query_as::<_, AnchorType>(&query)
+        if let Some(f) = &filter {
+            if let Some(status) = &f.status {
+                // Clone owned Strings so each QueryBuilder owns its bound value
+                data_qb.push(" AND status = ").push_bind(status.clone());
+                count_qb.push(" AND status = ").push_bind(status.clone());
+            }
+            if let Some(min_score) = f.min_reliability_score {
+                data_qb.push(" AND reliability_score >= ").push_bind(min_score);
+                count_qb.push(" AND reliability_score >= ").push_bind(min_score);
+            }
+            if let Some(search) = &f.search {
+                let pattern = format!("%{}%", search);
+                data_qb
+                    .push(" AND (name LIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" OR stellar_account LIKE ")
+                    .push_bind(pattern.clone())
+                    .push(")");
+                count_qb
+                    .push(" AND (name LIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" OR stellar_account LIKE ")
+                    .push_bind(pattern)
+                    .push(")");
+            }
+        }
+
+        data_qb
+            .push(" ORDER BY reliability_score DESC LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let anchors = data_qb
+            .build_query_as::<AnchorType>()
             .fetch_all(pool.as_ref())
             .await?;
 
-        let total: (i32,) = sqlx::query_as(&count_query)
+        let total: (i32,) = count_qb
+            .build_query_as()
             .fetch_one(pool.as_ref())
             .await?;
 
@@ -171,35 +137,46 @@ impl QueryRoot {
         let limit = pagination.as_ref().and_then(|p| p.limit).unwrap_or(10).min(100);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let mut query = String::from("SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, reliability_score, status, created_at, updated_at FROM corridors WHERE 1=1");
-        let mut count_query = String::from("SELECT COUNT(*) as count FROM corridors WHERE 1=1");
+        let mut data_qb = QueryBuilder::new(
+            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, \
+             destination_asset_issuer, reliability_score, status, created_at, updated_at \
+             FROM corridors WHERE 1=1",
+        );
+        let mut count_qb =
+            QueryBuilder::new("SELECT COUNT(*) as count FROM corridors WHERE 1=1");
 
         if let Some(f) = &filter {
             if let Some(source) = &f.source_asset_code {
-                write!(query, " AND source_asset_code = '{}'", source).unwrap();
-                write!(count_query, " AND source_asset_code = '{}'", source).unwrap();
+                data_qb.push(" AND source_asset_code = ").push_bind(source.clone());
+                count_qb.push(" AND source_asset_code = ").push_bind(source.clone());
             }
             if let Some(dest) = &f.destination_asset_code {
-                write!(query, " AND destination_asset_code = '{}'", dest).unwrap();
-                write!(count_query, " AND destination_asset_code = '{}'", dest).unwrap();
+                data_qb.push(" AND destination_asset_code = ").push_bind(dest.clone());
+                count_qb.push(" AND destination_asset_code = ").push_bind(dest.clone());
             }
             if let Some(status) = &f.status {
-                write!(query, " AND status = '{}'", status).unwrap();
-                write!(count_query, " AND status = '{}'", status).unwrap();
+                data_qb.push(" AND status = ").push_bind(status.clone());
+                count_qb.push(" AND status = ").push_bind(status.clone());
             }
             if let Some(min_score) = f.min_reliability_score {
-                write!(query, " AND reliability_score >= {}", min_score).unwrap();
-                write!(count_query, " AND reliability_score >= {}", min_score).unwrap();
+                data_qb.push(" AND reliability_score >= ").push_bind(min_score);
+                count_qb.push(" AND reliability_score >= ").push_bind(min_score);
             }
         }
 
-        write!(query, " ORDER BY reliability_score DESC LIMIT {} OFFSET {}", limit, offset).unwrap();
+        data_qb
+            .push(" ORDER BY reliability_score DESC LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
 
-        let corridors = sqlx::query_as::<_, CorridorType>(&query)
+        let corridors = data_qb
+            .build_query_as::<CorridorType>()
             .fetch_all(pool.as_ref())
             .await?;
 
-        let total: (i32,) = sqlx::query_as(&count_query)
+        let total: (i32,) = count_qb
+            .build_query_as()
             .fetch_one(pool.as_ref())
             .await?;
 
@@ -246,21 +223,30 @@ impl QueryRoot {
         let limit = pagination.as_ref().and_then(|p| p.limit).unwrap_or(100).min(1000);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let mut query = String::from("SELECT id, name, value, entity_id, entity_type, timestamp, created_at FROM metrics WHERE 1=1");
+        let mut qb = QueryBuilder::new(
+            "SELECT id, name, value, entity_id, entity_type, timestamp, created_at \
+             FROM metrics WHERE 1=1",
+        );
 
-        if let Some(eid) = &entity_id {
-            write!(query, " AND entity_id = '{}'", eid).unwrap();
+        if let Some(eid) = entity_id {
+            qb.push(" AND entity_id = ").push_bind(eid);
         }
-        if let Some(etype) = &entity_type {
-            write!(query, " AND entity_type = '{}'", etype).unwrap();
+        if let Some(etype) = entity_type {
+            qb.push(" AND entity_type = ").push_bind(etype);
         }
-        if let Some(tr) = &time_range {
-            write!(query, " AND timestamp >= '{}' AND timestamp <= '{}'", tr.start, tr.end).unwrap();
+        // Fix: DateTime<Utc> is bound directly — no .as_str()
+        if let Some(tr) = time_range {
+            qb.push(" AND timestamp >= ").push_bind(tr.start);
+            qb.push(" AND timestamp <= ").push_bind(tr.end);
         }
 
-        write!(query, " ORDER BY timestamp DESC LIMIT {} OFFSET {}", limit, offset).unwrap();
+        qb.push(" ORDER BY timestamp DESC LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
 
-        let metrics = sqlx::query_as::<_, MetricType>(&query)
+        let metrics = qb
+            .build_query_as::<MetricType>()
             .fetch_all(pool.as_ref())
             .await?;
 
@@ -305,20 +291,43 @@ impl QueryRoot {
     ) -> Result<SearchResults> {
         let pool = &self.pool;
         let search_limit = limit.unwrap_or(10).min(50);
+        let pattern = format!("%{}%", query);
 
-        let anchors = sqlx::query_as::<_, AnchorType>(&format!(
-            "SELECT id, name, stellar_account, home_domain, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status, created_at, updated_at FROM anchors WHERE name LIKE '%{}%' OR stellar_account LIKE '%{}%' LIMIT {}",
-            query, query, search_limit
-        ))
-        .fetch_all(pool.as_ref())
-        .await?;
+        // Fix: use let mut variables instead of chaining on temporaries
+        let mut anchor_qb = QueryBuilder::new(
+            "SELECT id, name, stellar_account, home_domain, total_transactions, \
+             successful_transactions, failed_transactions, total_volume_usd, \
+             avg_settlement_time_ms, reliability_score, status, created_at, updated_at \
+             FROM anchors WHERE name LIKE ",
+        );
+        anchor_qb
+            .push_bind(pattern.clone())
+            .push(" OR stellar_account LIKE ")
+            .push_bind(pattern.clone())
+            .push(" LIMIT ")
+            .push_bind(search_limit);
 
-        let corridors = sqlx::query_as::<_, CorridorType>(&format!(
-            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, reliability_score, status, created_at, updated_at FROM corridors WHERE source_asset_code LIKE '%{}%' OR destination_asset_code LIKE '%{}%' LIMIT {}",
-            query, query, search_limit
-        ))
-        .fetch_all(pool.as_ref())
-        .await?;
+        let anchors = anchor_qb
+            .build_query_as::<AnchorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
+
+        let mut corridor_qb = QueryBuilder::new(
+            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, \
+             destination_asset_issuer, reliability_score, status, created_at, updated_at \
+             FROM corridors WHERE source_asset_code LIKE ",
+        );
+        corridor_qb
+            .push_bind(pattern.clone())
+            .push(" OR destination_asset_code LIKE ")
+            .push_bind(pattern)
+            .push(" LIMIT ")
+            .push_bind(search_limit);
+
+        let corridors = corridor_qb
+            .build_query_as::<CorridorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
 
         Ok(SearchResults { anchors, corridors })
     }
@@ -340,5 +349,77 @@ impl MutationRoot {
     /// Placeholder for future mutations
     async fn placeholder(&self) -> Result<bool> {
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that SQL injection payloads are treated as literal strings,
+    /// not executable SQL, by the parameterized query builder.
+    #[tokio::test]
+    async fn test_sql_injection_prevention() {
+        let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
+
+        // Create minimal schema matching production types (avg_settlement_time_ms is INTEGER)
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS anchors (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT '',
+                stellar_account TEXT NOT NULL DEFAULT '',
+                home_domain TEXT,
+                total_transactions INTEGER NOT NULL DEFAULT 0,
+                successful_transactions INTEGER NOT NULL DEFAULT 0,
+                failed_transactions INTEGER NOT NULL DEFAULT 0,
+                total_volume_usd REAL NOT NULL DEFAULT 0.0,
+                avg_settlement_time_ms INTEGER NOT NULL DEFAULT 0,
+                reliability_score REAL NOT NULL DEFAULT 0.0,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
+            )",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO anchors (id, name, stellar_account, status, reliability_score)
+             VALUES ('1', 'TestAnchor', 'GTEST', 'active', 90.0)",
+        )
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        // Injection attempt: classic tautology that bypasses string-built SQL
+        let malicious_status = "' OR '1'='1".to_string();
+
+        let mut qb = QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
+        qb.push(" AND status = ").push_bind(malicious_status);
+
+        let (count,): (i32,) = qb
+            .build_query_as()
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+
+        // If parameterization works correctly, the payload matches no rows
+        assert_eq!(
+            count, 0,
+            "Injection payload must be treated as a literal value, not SQL"
+        );
+
+        // Sanity check: legitimate query does find the row
+        let mut qb2 = QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
+        qb2.push(" AND status = ").push_bind("active".to_string());
+
+        let (legit_count,): (i32,) = qb2
+            .build_query_as()
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+
+        assert_eq!(legit_count, 1, "Legitimate query must still return correct results");
     }
 }

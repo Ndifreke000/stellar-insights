@@ -2,8 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
-use std::fmt::Write;
+use sqlx::{QueryBuilder, SqlitePool};
 use std::time::Duration;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -565,20 +564,22 @@ impl AssetVerifier {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<VerifiedAsset>> {
-        let mut query = String::from("SELECT * FROM verified_assets WHERE 1=1");
+        let mut qb = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
 
-        if let Some(status) = status {
-            write!(query, " AND verification_status = '{}'", status.as_str()).unwrap();
+        if let Some(s) = status {
+            qb.push(" AND verification_status = ").push_bind(s.as_str().to_owned());
         }
 
         if let Some(min_rep) = min_reputation {
-            write!(query, " AND reputation_score >= {min_rep}").unwrap();
+            qb.push(" AND reputation_score >= ").push_bind(min_rep);
         }
 
-        query.push_str(" ORDER BY reputation_score DESC, updated_at DESC");
-        write!(query, " LIMIT {limit} OFFSET {offset}").unwrap();
+        qb.push(" ORDER BY reputation_score DESC, updated_at DESC");
+        qb.push(" LIMIT ").push_bind(limit);
+        qb.push(" OFFSET ").push_bind(offset);
 
-        let assets = sqlx::query_as::<_, VerifiedAsset>(&query)
+        let assets = qb
+            .build_query_as::<VerifiedAsset>()
             .fetch_all(&self.pool)
             .await?;
 
