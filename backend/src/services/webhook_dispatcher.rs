@@ -1,13 +1,12 @@
 /// Webhook Dispatcher Service
 /// Processes webhook events and sends them to registered webhooks with retry logic
-
 use anyhow::Result;
 use reqwest::Client;
 use sqlx::SqlitePool;
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::webhooks::{WebhookService, WebhookSignature, WebhookEventEnvelope};
+use crate::webhooks::{WebhookEventEnvelope, WebhookService, WebhookSignature};
 
 /// Webhook dispatcher - sends events to webhooks asynchronously
 pub struct WebhookDispatcher {
@@ -17,6 +16,7 @@ pub struct WebhookDispatcher {
 
 impl WebhookDispatcher {
     /// Create new webhook dispatcher
+    #[must_use]
     pub fn new(db: SqlitePool) -> Self {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(10))
@@ -50,15 +50,14 @@ impl WebhookDispatcher {
 
         for (event_id, webhook_id, event_type, payload_str) in events {
             // Get webhook details
-            let webhook = match service.get_webhook(&webhook_id).await? {
-                Some(w) => w,
-                None => {
-                    // Webhook was deleted, mark event as failed
-                    let _ = service
-                        .update_event_status(&event_id, "failed", Some("webhook_deleted"), 0)
-                        .await;
-                    continue;
-                }
+            let webhook = if let Some(w) = service.get_webhook(&webhook_id).await? {
+                w
+            } else {
+                // Webhook was deleted, mark event as failed
+                let _ = service
+                    .update_event_status(&event_id, "failed", Some("webhook_deleted"), 0)
+                    .await;
+                continue;
             };
 
             if !webhook.is_active {
@@ -73,7 +72,7 @@ impl WebhookDispatcher {
                 .deliver_webhook(&webhook.url, &payload_str, &webhook.secret, &event_type)
                 .await
             {
-                Ok(_) => {
+                Ok(()) => {
                     // Success
                     let _ = service
                         .update_event_status(&event_id, "delivered", None, 0)
@@ -90,10 +89,7 @@ impl WebhookDispatcher {
                 }
                 Err(e) => {
                     // Determine retry count from event
-                    let current_retries = self
-                        .get_event_retries(&event_id)
-                        .await
-                        .unwrap_or(0);
+                    let current_retries = self.get_event_retries(&event_id).await.unwrap_or(0);
 
                     if current_retries < 3 {
                         // Retry later
@@ -185,10 +181,11 @@ impl WebhookDispatcher {
 
     /// Get current retry count for an event
     async fn get_event_retries(&self, event_id: &str) -> Result<i32> {
-        let retries: Option<i64> = sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
-            .bind(event_id)
-            .fetch_optional(&self.db)
-            .await?;
+        let retries: Option<i64> =
+            sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+                .bind(event_id)
+                .fetch_optional(&self.db)
+                .await?;
 
         Ok(retries.unwrap_or(0) as i32)
     }

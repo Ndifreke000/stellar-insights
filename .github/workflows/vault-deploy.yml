@@ -26,7 +26,14 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Set fallback test secrets when Vault is unavailable
+        if: ${{ secrets.VAULT_ADDR == '' }}
+        run: |
+          echo "JWT_SECRET=fallback-test-secret-value-at-least-32-characters" >> $GITHUB_ENV
+          echo "DATABASE_URL=sqlite::memory:" >> $GITHUB_ENV
+
       - name: Get Vault Token via GitHub OIDC
+        if: ${{ secrets.VAULT_ADDR != '' }}
         id: vault-auth
         run: |
           TOKEN=$(curl -s -X POST \

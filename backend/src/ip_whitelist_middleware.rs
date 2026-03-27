@@ -47,7 +47,7 @@ impl IpWhitelistConfig {
     }
 
     /// Parse comma-separated list of IPs and CIDR ranges
-    fn parse_whitelist(whitelist_str: &str) -> Result<Vec<IpNetwork>, String> {
+    pub fn parse_whitelist(whitelist_str: &str) -> Result<Vec<IpNetwork>, String> {
         let mut networks = Vec::new();
 
         for entry in whitelist_str.split(',') {
@@ -62,14 +62,18 @@ impl IpWhitelistConfig {
             } else if let Ok(ip) = IpAddr::from_str(trimmed) {
                 // Single IP address - convert to /32 (IPv4) or /128 (IPv6) network
                 let network = match ip {
-                    IpAddr::V4(ipv4) => IpNetwork::V4(ipnetwork::Ipv4Network::new(ipv4, 32)
-                        .map_err(|e| format!("Invalid IPv4 address {}: {}", trimmed, e))?),
-                    IpAddr::V6(ipv6) => IpNetwork::V6(ipnetwork::Ipv6Network::new(ipv6, 128)
-                        .map_err(|e| format!("Invalid IPv6 address {}: {}", trimmed, e))?),
+                    IpAddr::V4(ipv4) => IpNetwork::V4(
+                        ipnetwork::Ipv4Network::new(ipv4, 32)
+                            .map_err(|e| format!("Invalid IPv4 address {trimmed}: {e}"))?,
+                    ),
+                    IpAddr::V6(ipv6) => IpNetwork::V6(
+                        ipnetwork::Ipv6Network::new(ipv6, 128)
+                            .map_err(|e| format!("Invalid IPv6 address {trimmed}: {e}"))?,
+                    ),
                 };
                 networks.push(network);
             } else {
-                return Err(format!("Invalid IP address or CIDR range: {}", trimmed));
+                return Err(format!("Invalid IP address or CIDR range: {trimmed}"));
             }
         }
 
@@ -81,16 +85,16 @@ impl IpWhitelistConfig {
     }
 
     /// Check if an IP address is whitelisted
+    #[must_use]
     pub fn is_allowed(&self, ip: &IpAddr) -> bool {
-        self.allowed_networks.iter().any(|network| network.contains(*ip))
+        self.allowed_networks
+            .iter()
+            .any(|network| network.contains(*ip))
     }
 }
 
 /// Extract client IP address from request
-fn extract_client_ip(
-    req: &Request,
-    config: &IpWhitelistConfig,
-) -> Result<IpAddr, String> {
+fn extract_client_ip(req: &Request, config: &IpWhitelistConfig) -> Result<IpAddr, String> {
     // If behind proxy and trust_proxy is enabled, check X-Forwarded-For
     if config.trust_proxy {
         if let Some(forwarded_for) = req.headers().get("x-forwarded-for") {
@@ -100,7 +104,7 @@ fn extract_client_ip(
                 let ips: Vec<&str> = forwarded_str
                     .split(',')
                     .take(config.max_forwarded_ips)
-                    .map(|s| s.trim())
+                    .map(str::trim)
                     .collect();
 
                 if let Some(first_ip) = ips.first() {
@@ -168,18 +172,18 @@ pub enum IpWhitelistError {
 
 impl From<String> for IpWhitelistError {
     fn from(err: String) -> Self {
-        IpWhitelistError::InvalidIp(err)
+        Self::InvalidIp(err)
     }
 }
 
 impl IntoResponse for IpWhitelistError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            IpWhitelistError::Forbidden => (
+            Self::Forbidden => (
                 StatusCode::FORBIDDEN,
                 "Access denied: IP address not whitelisted",
             ),
-            IpWhitelistError::InvalidIp(_) => (
+            Self::InvalidIp(_) => (
                 StatusCode::FORBIDDEN,
                 "Access denied: Unable to verify IP address",
             ),
@@ -216,7 +220,8 @@ mod tests {
 
     #[test]
     fn test_parse_multiple_ips() {
-        let config = IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1").unwrap();
+        let config =
+            IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1").unwrap();
         assert_eq!(config.len(), 3);
     }
 
@@ -244,7 +249,7 @@ mod tests {
     fn test_is_allowed() {
         let config = IpWhitelistConfig {
             allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("192.168.1.0/24, 10.0.0.1").unwrap()
+                IpWhitelistConfig::parse_whitelist("192.168.1.0/24, 10.0.0.1").unwrap(),
             ),
             trust_proxy: false,
             max_forwarded_ips: 3,
@@ -260,7 +265,7 @@ mod tests {
     fn test_localhost_ipv4_and_ipv6() {
         let config = IpWhitelistConfig {
             allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1").unwrap()
+                IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1").unwrap(),
             ),
             trust_proxy: false,
             max_forwarded_ips: 3,

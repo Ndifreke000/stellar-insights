@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Calculator } from "lucide-react";
+import { Activity } from "lucide-react";
 import { CostCalculator } from "@/components/CostCalculator";
 
 export default function CalculatorPage() {
@@ -13,7 +13,7 @@ export default function CalculatorPage() {
             Payments // Cost Estimator
           </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
-            <Calculator className="w-8 h-8 text-accent" />
+            <Activity className="w-8 h-8 text-accent" />
             Cost calculator
           </h2>
         </div>

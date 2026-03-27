@@ -95,7 +95,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({
             animate={{ opacity: 1 }}
             className="text-center py-2"
           >
-            <span className="text-xs text-gray-500 dark:text-gray-400 bg-white/80 dark:bg-gray-800/80 px-2 py-1 rounded-full backdrop-blur-sm">
+            <span className="text-xs text-muted-foreground dark:text-muted-foreground bg-white/80 dark:bg-gray-800/80 px-2 py-1 rounded-full backdrop-blur-sm">
               +{notifications.length - maxNotifications} more notifications
             </span>
           </motion.div>

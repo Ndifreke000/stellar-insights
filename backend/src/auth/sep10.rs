@@ -7,6 +7,16 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
+// Stellar SDK imports
+use stellar_sdk::{
+    types::{
+        KeyPair, PublicKey, Network, Transaction, TransactionEnvelope, 
+        Operation, OperationBody, MuxedAccount, SequenceNumber, TimeBounds, 
+        Preconditions, Memo, DecoratedSignature, Signature,
+    },
+    network::Network as StellarNetwork,
+};
+
 /// SEP-10 challenge transaction validity duration (5 minutes)
 const CHALLENGE_EXPIRY_SECONDS: i64 = 300;
 
@@ -60,7 +70,10 @@ pub struct Sep10Session {
     pub expires_at: i64,
 }
 
-/// SEP-10 Authentication Service
+/// SEP-10 Authentication Service (legacy implementation)
+///
+/// NOTE: This module is currently not used by default, as `sep10_simple` is the canonical implementation.
+/// It requires detailed stellar-xdr operations and may need extra dependency support.
 pub struct Sep10Service {
     server_keypair: KeyPair,
     network_passphrase: String,
@@ -158,7 +171,7 @@ impl Sep10Service {
         };
 
         // Sign transaction with server key
-        let network = Network::new(&self.network_passphrase);
+        let network = StellarNetwork::new(&self.network_passphrase);
         let tx_hash = transaction.hash(&network)?;
         let server_signature = self.server_keypair.sign(&tx_hash);
 
@@ -218,7 +231,7 @@ impl Sep10Service {
         }
 
         // Verify signatures
-        let network = Network::new(&self.network_passphrase);
+        let network = StellarNetwork::new(&self.network_passphrase);
         let tx_hash = transaction.hash(&network)?;
 
         // Must have server signature

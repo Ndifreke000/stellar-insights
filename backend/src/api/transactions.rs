@@ -4,13 +4,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    database::Database,
-    models::{PendingTransaction, PendingTransactionWithSignatures, Signature, TransactionResult},
+    models::{PendingTransaction, PendingTransactionWithSignatures, TransactionResult},
     state::AppState,
 };
 
@@ -38,11 +36,22 @@ pub fn routes() -> Router<AppState> {
 }
 
 // Handlers
+/// POST /api/transactions - Create a new pending transaction
+#[utoipa::path(
+    post,
+    path = "/api/transactions/",
+    request_body = CreateTransactionRequest,
+    responses(
+        (status = 200, description = "Transaction created", body = PendingTransaction),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 pub async fn create_transaction(
     State(state): State<AppState>,
     Json(req): Json<CreateTransactionRequest>,
 ) -> Result<Json<PendingTransaction>, (StatusCode, String)> {
-    let tx = state
+    let pending_transaction = state
         .db
         .create_pending_transaction(&req.source_account, &req.xdr, req.required_signatures)
         .await
@@ -54,14 +63,28 @@ pub async fn create_transaction(
             )
         })?;
 
-    Ok(Json(tx))
+    Ok(Json(pending_transaction))
 }
 
+/// GET /api/transactions/{id} - Get a pending transaction by ID
+#[utoipa::path(
+    get,
+    path = "/api/transactions/{id}",
+    params(
+        ("id" = String, Path, description = "Transaction ID")
+    ),
+    responses(
+        (status = 200, description = "Transaction details", body = PendingTransactionWithSignatures),
+        (status = 404, description = "Transaction not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 pub async fn get_transaction(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<PendingTransactionWithSignatures>, (StatusCode, String)> {
-    let tx = state.db.get_pending_transaction(&id).await.map_err(|e| {
+    let pending_transaction = state.db.get_pending_transaction(&id).await.map_err(|e| {
         tracing::error!("Failed to get transaction: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -69,13 +92,29 @@ pub async fn get_transaction(
         )
     })?;
 
-    if let Some(tx) = tx {
-        Ok(Json(tx))
+    if let Some(transaction_with_signatures) = pending_transaction {
+        Ok(Json(transaction_with_signatures))
     } else {
         Err((StatusCode::NOT_FOUND, "Transaction not found".to_string()))
     }
 }
 
+/// POST /api/transactions/{id}/signatures - Add a signature to a transaction
+#[utoipa::path(
+    post,
+    path = "/api/transactions/{id}/signatures",
+    params(
+        ("id" = String, Path, description = "Transaction ID")
+    ),
+    request_body = AddSignatureRequest,
+    responses(
+        (status = 201, description = "Signature added"),
+        (status = 400, description = "Signature already exists from this signer"),
+        (status = 404, description = "Transaction not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 pub async fn add_signature(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -125,6 +164,21 @@ pub async fn add_signature(
     Ok(StatusCode::CREATED)
 }
 
+/// POST /api/transactions/{id}/submit - Submit a transaction to the Stellar network
+#[utoipa::path(
+    post,
+    path = "/api/transactions/{id}/submit",
+    params(
+        ("id" = String, Path, description = "Transaction ID")
+    ),
+    responses(
+        (status = 200, description = "Transaction submitted", body = TransactionResult),
+        (status = 400, description = "Not enough signatures"),
+        (status = 404, description = "Transaction not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 pub async fn submit_transaction(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -151,7 +205,7 @@ pub async fn submit_transaction(
     // 3. Submit to Stellar network using `reqwest` or `rpc_client`
 
     // Mock successful submission
-    let mock_hash = Uuid::new_v4().to_string().replace("-", "");
+    let mock_hash = Uuid::new_v4().to_string().replace('-', "");
 
     // Update status in DB
     state

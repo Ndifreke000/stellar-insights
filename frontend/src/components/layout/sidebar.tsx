@@ -43,6 +43,7 @@ const navItems = [
   { key: "quests", icon: Trophy, path: "/quests" },
   { key: "governance", icon: ScrollText, path: "/governance" },
   { key: "privacy", icon: Shield, path: "/settings/gdpr" },
+  { key: "alerts", icon: Activity, path: "/alerts" },
 ];
 
 interface SidebarProps {
@@ -60,9 +61,8 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
   return (
     <aside
       aria-label="Sidebar navigation"
-      className={`hidden md:block fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${
-        collapsed ? "w-20" : "w-64"
-      }`}
+      className={`hidden md:block fixed top-0 left-0 h-screen overflow-y-auto glass border-r border-border transition-all duration-500 z-50 ${collapsed ? "w-20" : "w-64"
+        }`}
     >
       <div className="flex flex-col h-full">
         {/* Logo Section */}
@@ -81,38 +81,40 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
         </div>
 
         {/* Navigation Section */}
-        <nav aria-label="Primary navigation" className="flex-1 px-4 py-8 space-y-3 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = pathname === item.path;
-            const Icon = item.icon;
+        <nav aria-label="Primary navigation" className="flex-1 px-4 py-8 overflow-y-auto">
+          <ul role="list" className="space-y-3 m-0 p-0 list-none">
+            {navItems.map((item) => {
+              const isActive = pathname === item.path;
+              const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                aria-current={isActive ? "page" : undefined}
-                aria-label={t(item.key)}
-                className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${
-                  isActive
-                    ? "bg-accent/10 text-accent border border-accent/20"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
-                }`}
-              >
-                <Icon
-                  aria-hidden="true"
-                  className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
-                />
-                {!collapsed && (
-                  <span className="font-bold text-sm uppercase tracking-widest">
-                    {t(item.key)}
-                  </span>
-                )}
-                {isActive && !collapsed && (
-                  <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" aria-hidden="true" />
-                )}
-              </Link>
-            );
-          })}
+              return (
+                <li key={item.path}>
+                  <Link
+                    href={item.path}
+                    aria-current={isActive ? "page" : undefined}
+                    aria-label={t(item.key)}
+                    className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${isActive
+                        ? "bg-accent/10 text-accent border border-accent/20"
+                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
+                      }`}
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
+                    />
+                    {!collapsed && (
+                      <span className="font-bold text-sm uppercase tracking-widest">
+                        {t(item.key)}
+                      </span>
+                    )}
+                    {isActive && !collapsed && (
+                      <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" aria-hidden="true" />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
         {/* Footer / Settings Section */}
@@ -157,9 +159,10 @@ export function Sidebar({ open, onClose }: SidebarProps = {}) {
 
           <Link
             href="/settings"
+            aria-label="Navigate to Settings"
             className="flex items-center gap-4 px-4 py-3 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-300"
           >
-            <Settings className="w-5 h-5 shrink-0" />
+            <Settings className="w-5 h-5 shrink-0" aria-hidden="true" />
             {!collapsed && (
               <span className="text-xs font-bold uppercase tracking-widest">
                 {t("settings")}

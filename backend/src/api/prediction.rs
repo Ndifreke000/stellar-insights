@@ -18,6 +18,21 @@ pub struct PredictionResponse {
 }
 
 /// POST /api/predict/success - Predict payment success
+#[utoipa::path(
+    post,
+    path = "/api/predict/success",
+    params(
+        ("source_asset" = String, Query, description = "Source asset code (e.g., 'USD')"),
+        ("destination_asset" = String, Query, description = "Destination asset code (e.g., 'EUR')"),
+        ("amount" = f64, Query, description = "Payment amount"),
+        ("time_of_day" = String, Query, description = "Time of day for prediction (e.g., 'morning', 'afternoon', 'evening')")
+    ),
+    responses(
+        (status = 200, description = "Payment success prediction", body = PredictionResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Prediction"
+)]
 pub async fn predict_success(Query(_params): Query<PredictionQuery>) -> Json<PredictionResponse> {
     // Mock implementation
     let mut rng = rand::thread_rng();

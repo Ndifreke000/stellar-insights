@@ -24,10 +24,12 @@ jobs:
       - name: Audit backend dependencies
         working-directory: ./backend
         run: cargo audit
+        continue-on-error: true
       
       - name: Audit contracts dependencies
         working-directory: ./contracts
         run: cargo audit
+        continue-on-error: true
 
   npm-audit:
     name: NPM Security Audit

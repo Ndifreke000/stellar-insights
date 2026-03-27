@@ -27,8 +27,15 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts.extensions.get::<AuthUser>().cloned().ok_or(AuthError::MissingToken)
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<Self>()
+            .cloned()
+            .ok_or(AuthError::MissingToken)
     }
 }
 
@@ -94,8 +101,8 @@ pub enum AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
-            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+            Self::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
+            Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
         };
 
         let body = json!({

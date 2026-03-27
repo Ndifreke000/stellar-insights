@@ -27,10 +27,10 @@ pub struct SnapshotAnchorMetrics {
 pub struct SnapshotCorridorMetrics {
     pub id: Uuid,
     pub corridor_key: String,
-    pub asset_a_code: String,
-    pub asset_a_issuer: String,
-    pub asset_b_code: String,
-    pub asset_b_issuer: String,
+    pub source_asset_code: String,
+    pub source_asset_issuer: String,
+    pub destination_asset_code: String,
+    pub destination_asset_issuer: String,
     pub total_transactions: i64,
     pub successful_transactions: i64,
     pub failed_transactions: i64,
@@ -57,7 +57,8 @@ pub struct AnalyticsSnapshot {
 
 impl AnalyticsSnapshot {
     /// Create a new snapshot with given epoch and timestamp
-    pub fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
+    #[must_use]
+    pub const fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             epoch,

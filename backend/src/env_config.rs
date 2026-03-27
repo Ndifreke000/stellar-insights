@@ -27,7 +27,7 @@ pub fn validate_env() -> Result<()> {
     // Check required variables
     for var in REQUIRED_VARS {
         if env::var(var).is_err() {
-            errors.push(format!("Missing required environment variable: {}", var));
+            errors.push(format!("Missing required environment variable: {var}"));
         }
     }
 
@@ -36,8 +36,7 @@ pub fn validate_env() -> Result<()> {
         if let Ok(value) = env::var(var) {
             if !validator(&value) {
                 errors.push(format!(
-                    "Invalid value for environment variable {}: '{}'",
-                    var, value
+                    "Invalid value for environment variable {var}: '{value}'"
                 ));
             }
         }
@@ -87,13 +86,12 @@ pub fn log_env_config() {
 
     // CORS
     log_var("CORS_ALLOWED_ORIGINS");
-    
+
     // Slack Bot
     if let Ok(slack_url) = env::var("SLACK_WEBHOOK_URL") {
         let sanitized = sanitize_url(&slack_url);
         tracing::info!("  SLACK_WEBHOOK_URL: {}", sanitized);
     }
-
 
     // Price feed (don't log API key)
     log_var("PRICE_FEED_PROVIDER");
@@ -132,7 +130,7 @@ fn sanitize_database_url(url: &str) -> String {
                 let scheme = &url[..scheme_end + 3];
                 let user = &url[scheme_end + 3..colon_pos];
                 let host_and_db = &url[at_pos..];
-                return format!("{}{}:****{}", scheme, user, host_and_db);
+                return format!("{scheme}{user}:****{host_and_db}");
             }
         }
     }
@@ -146,7 +144,7 @@ fn sanitize_url(url: &str) -> String {
         if let Some(scheme_end) = url.find("://") {
             let scheme = &url[..scheme_end + 3];
             let host_and_path = &url[at_pos + 1..];
-            return format!("{}****@{}", scheme, host_and_path);
+            return format!("{scheme}****@{host_and_path}");
         }
     }
     url.to_string()
@@ -168,14 +166,16 @@ fn validate_stellar_public_key(value: &str) -> bool {
     if !value.starts_with('G') || value.len() != 56 {
         return false;
     }
-    
+
     // Check if it's not the placeholder value
     if value == "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" {
         return false;
     }
-    
+
     // Validate base32 characters (A-Z, 2-7)
-    value.chars().all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
+    value
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
 }
 
 #[cfg(test)]

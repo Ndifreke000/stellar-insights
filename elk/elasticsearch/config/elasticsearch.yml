@@ -1,0 +1,16 @@
+cluster.name: "stellar-insights-cluster"
+network.host: 0.0.0.0
+
+# Index settings
+index.number_of_shards: 1
+index.number_of_replicas: 0
+
+# Performance tuning
+indices.memory.index_buffer_size: 30%
+indices.queries.cache.size: 10%
+
+# Lifecycle management
+xpack.ilm.enabled: true
+
+# Monitoring
+xpack.monitoring.collection.enabled: true

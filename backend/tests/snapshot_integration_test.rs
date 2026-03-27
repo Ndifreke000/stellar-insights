@@ -44,10 +44,10 @@ async fn setup_test_database() -> Arc<Database> {
         CREATE TABLE corridor_metrics (
             id TEXT PRIMARY KEY,
             corridor_key TEXT NOT NULL,
-            asset_a_code TEXT NOT NULL,
-            asset_a_issuer TEXT NOT NULL,
-            asset_b_code TEXT NOT NULL,
-            asset_b_issuer TEXT NOT NULL,
+            source_asset_code TEXT NOT NULL,
+            source_asset_issuer TEXT NOT NULL,
+            destination_asset_code TEXT NOT NULL,
+            destination_asset_issuer TEXT NOT NULL,
             date TEXT NOT NULL,
             total_transactions INTEGER DEFAULT 0,
             successful_transactions INTEGER DEFAULT 0,
@@ -90,7 +90,7 @@ async fn setup_test_database() -> Arc<Database> {
     "#).execute(db.pool()).await.unwrap();
 
     let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(r#"
-        INSERT INTO corridor_metrics (id, corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer, date, total_transactions, successful_transactions, failed_transactions, success_rate, volume_usd, avg_settlement_latency_ms, liquidity_depth_usd)
+        INSERT INTO corridor_metrics (id, corridor_key, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, date, total_transactions, successful_transactions, failed_transactions, success_rate, volume_usd, avg_settlement_latency_ms, liquidity_depth_usd)
         VALUES 
         ('00000000-0000-0000-0000-000000000003', 'USDC:ISSUER1->EURC:ISSUER2', 'USDC', 'ISSUER1', 'EURC', 'ISSUER2', datetime('now'), 500, 475, 25, 95.0, 50000.0, 250, 100000.0),
         ('00000000-0000-0000-0000-000000000004', 'USDC:ISSUER1->GBPC:ISSUER3', 'USDC', 'ISSUER1', 'GBPC', 'ISSUER3', datetime('now'), 300, 285, 15, 95.0, 30000.0, 300, 75000.0)
@@ -104,7 +104,7 @@ async fn test_acceptance_criteria_1_aggregate_all_metrics() {
     println!("🧪 Testing Acceptance Criteria 1: Aggregate all metrics");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None);
+    let service = SnapshotService::new(db, None, None);
 
     let snapshot = service.aggregate_all_metrics(1).await.unwrap();
 
@@ -132,7 +132,7 @@ async fn test_acceptance_criteria_2_serialize_deterministic_json() {
     println!("🧪 Testing Acceptance Criteria 2: Serialize to deterministic JSON");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None);
+    let service = SnapshotService::new(db, None, None);
 
     let mut snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
     let mut snapshot2 = service.aggregate_all_metrics(2).await.unwrap();
@@ -164,7 +164,7 @@ async fn test_acceptance_criteria_3_compute_sha256_hash() {
     println!("🧪 Testing Acceptance Criteria 3: Compute SHA-256 hash");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None);
+    let service = SnapshotService::new(db, None, None);
 
     let snapshot = service.aggregate_all_metrics(3).await.unwrap();
 
@@ -191,7 +191,7 @@ async fn test_acceptance_criteria_4_store_hash_in_database() {
     println!("🧪 Testing Acceptance Criteria 4: Store hash in database");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db.clone(), None);
+    let service = SnapshotService::new(db.clone(), None, None);
 
     let result = service.generate_and_submit_snapshot(4).await.unwrap();
 
@@ -219,7 +219,7 @@ async fn test_acceptance_criteria_5_and_6_contract_submission_and_verification()
     println!("🧪 Testing Acceptance Criteria 5 & 6: Submit to contract & verify (simulated)");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None);
+    let service = SnapshotService::new(db, None, None);
 
     // Without contract service, submission should be skipped but other steps should work
     let result = service.generate_and_submit_snapshot(5).await.unwrap();
@@ -248,7 +248,7 @@ async fn test_complete_workflow() {
     println!("🧪 Testing Complete Workflow - All Acceptance Criteria");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db.clone(), None);
+    let service = SnapshotService::new(db.clone(), None, None);
 
     let epoch = 12345;
     let result = service.generate_and_submit_snapshot(epoch).await.unwrap();

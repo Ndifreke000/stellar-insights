@@ -146,7 +146,7 @@ export default function NotificationsDemo() {
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             Notification System Demo
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground dark:text-muted-foreground max-w-2xl mx-auto">
             Experience our comprehensive toast notification system with real-time WebSocket support, 
             sound alerts, and customizable preferences.
           </p>
@@ -211,7 +211,7 @@ export default function NotificationsDemo() {
               <li>• <span className="font-medium">Disconnected</span> - No WebSocket connection (gray)</li>
               <li>• <span className="font-medium">Reconnecting</span> - Attempting to reconnect (yellow, spinning)</li>
             </ul>
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+            <p className="text-xs text-blue-600 dark:text-link-primary mt-3">
               To enable WebSocket: Set NEXT_PUBLIC_WS_URL in your .env.local file
             </p>
           </div>
@@ -259,7 +259,7 @@ export default function NotificationsDemo() {
                       <h3 className="font-medium text-gray-900 dark:text-white">
                         {notification.title}
                       </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                         {notification.message}
                       </p>
                       <div className="flex items-center space-x-2 mt-2">
@@ -307,10 +307,10 @@ export default function NotificationsDemo() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="text-center">
               <div className="bg-blue-100 dark:bg-blue-900 rounded-full p-3 w-12 h-12 mx-auto mb-3 flex items-center justify-center">
-                <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                <Bell className="h-6 w-6 text-blue-600 dark:text-link-primary" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Toast Variants</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Success, error, warning, and info toast notifications with custom styling
               </p>
             </div>
@@ -319,7 +319,7 @@ export default function NotificationsDemo() {
                 <Zap className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Real-time WebSocket</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Live notifications from server events with automatic reconnection
               </p>
             </div>
@@ -328,7 +328,7 @@ export default function NotificationsDemo() {
                 <CheckCircle className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Sound Alerts</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Customizable sound notifications with volume and type controls
               </p>
             </div>
@@ -337,7 +337,7 @@ export default function NotificationsDemo() {
                 <Info className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Notification History</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Complete history with search, filtering, and mark as read functionality
               </p>
             </div>
@@ -346,7 +346,7 @@ export default function NotificationsDemo() {
                 <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Priority System</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Low, medium, high, and critical priority levels with visual indicators
               </p>
             </div>
@@ -355,7 +355,7 @@ export default function NotificationsDemo() {
                 <Camera className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
               </div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">Preferences</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Comprehensive settings for customizing notification behavior
               </p>
             </div>

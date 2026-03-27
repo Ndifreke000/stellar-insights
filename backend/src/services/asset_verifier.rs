@@ -3,8 +3,9 @@ use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::fmt::Write;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::models::asset_verification::{
@@ -92,10 +93,7 @@ impl AssetVerifier {
 
     /// Check Stellar Expert for asset verification
     async fn check_stellar_expert(&self, asset_code: &str, asset_issuer: &str) -> Result<bool> {
-        let url = format!(
-            "{}/asset/{}-{}",
-            STELLAR_EXPERT_API, asset_code, asset_issuer
-        );
+        let url = format!("{STELLAR_EXPERT_API}/asset/{asset_code}-{asset_issuer}");
 
         for attempt in 1..=MAX_RETRIES {
             match self.http_client.get(&url).send().await {
@@ -124,7 +122,8 @@ impl AssetVerifier {
             }
 
             if attempt < MAX_RETRIES {
-                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * attempt as u64)).await;
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * u64::from(attempt)))
+                    .await;
             }
         }
 
@@ -132,10 +131,7 @@ impl AssetVerifier {
     }
 
     /// Check and parse stellar.toml file
-    async fn check_stellar_toml(
-        &self,
-        asset_issuer: &str,
-    ) -> (bool, Option<StellarTomlData>) {
+    async fn check_stellar_toml(&self, asset_issuer: &str) -> (bool, Option<StellarTomlData>) {
         // First, try to get the home domain from the issuer account
         let home_domain = match self.get_home_domain_from_account(asset_issuer).await {
             Ok(Some(domain)) => domain,
@@ -150,20 +146,18 @@ impl AssetVerifier {
         };
 
         // Fetch and parse stellar.toml
-        let toml_url = format!("https://{}/.well-known/stellar.toml", home_domain);
+        let toml_url = format!("https://{home_domain}/.well-known/stellar.toml");
 
         for attempt in 1..=MAX_RETRIES {
             match self.http_client.get(&toml_url).send().await {
-                Ok(response) if response.status().is_success() => {
-                    match response.text().await {
-                        Ok(toml_content) => {
-                            return self.parse_stellar_toml(&toml_content, &home_domain);
-                        }
-                        Err(e) => {
-                            warn!("Failed to read TOML content: {}", e);
-                        }
+                Ok(response) if response.status().is_success() => match response.text().await {
+                    Ok(toml_content) => {
+                        return self.parse_stellar_toml(&toml_content, &home_domain);
                     }
-                }
+                    Err(e) => {
+                        warn!("Failed to read TOML content: {}", e);
+                    }
+                },
                 Ok(response) => {
                     warn!(
                         "TOML fetch returned status {}: attempt {}/{}",
@@ -181,7 +175,8 @@ impl AssetVerifier {
             }
 
             if attempt < MAX_RETRIES {
-                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * attempt as u64)).await;
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * u64::from(attempt)))
+                    .await;
             }
         }
 
@@ -190,7 +185,7 @@ impl AssetVerifier {
 
     /// Get home domain from Stellar account
     async fn get_home_domain_from_account(&self, account_id: &str) -> Result<Option<String>> {
-        let url = format!("https://horizon.stellar.org/accounts/{}", account_id);
+        let url = format!("https://horizon.stellar.org/accounts/{account_id}");
 
         let response = self.http_client.get(&url).send().await?;
 
@@ -254,11 +249,7 @@ impl AssetVerifier {
     }
 
     /// Get on-chain metrics from database or Horizon
-    async fn get_on_chain_metrics(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> (i64, i64, f64) {
+    async fn get_on_chain_metrics(&self, asset_code: &str, asset_issuer: &str) -> (i64, i64, f64) {
         // Try to get from database first
         if let Ok(Some(metrics)) = self.get_metrics_from_db(asset_code, asset_issuer).await {
             return metrics;
@@ -277,14 +268,14 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<Option<(i64, i64, f64)>> {
         let result = sqlx::query_as::<_, (i64, i64, f64)>(
-            r#"
-            SELECT 
+            r"
+            SELECT
                 COALESCE(SUM(trustline_count), 0) as trustline_count,
                 COALESCE(COUNT(*), 0) as transaction_count,
                 COALESCE(SUM(total_volume_usd), 0.0) as total_volume
             FROM payments
             WHERE asset_code = $1 AND asset_issuer = $2
-            "#,
+            ",
         )
         .bind(asset_code)
         .bind(asset_issuer)
@@ -301,8 +292,7 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<(i64, i64, f64)> {
         let url = format!(
-            "https://horizon.stellar.org/assets?asset_code={}&asset_issuer={}",
-            asset_code, asset_issuer
+            "https://horizon.stellar.org/assets?asset_code={asset_code}&asset_issuer={asset_issuer}"
         );
 
         #[derive(Deserialize)]
@@ -338,8 +328,9 @@ impl AssetVerifier {
     }
 
     /// Calculate reputation score based on verification results
+    #[must_use]
     pub fn calculate_reputation_score(&self, result: &VerificationResult) -> f64 {
-        let mut score = 0.0;
+        let mut score: f64 = 0.0;
 
         // Stellar Expert verification (30 points)
         if result.stellar_expert_verified {
@@ -382,6 +373,7 @@ impl AssetVerifier {
     }
 
     /// Determine verification status based on reputation score and other factors
+    #[must_use]
     pub fn determine_status(
         &self,
         reputation_score: f64,
@@ -436,7 +428,7 @@ impl AssetVerifier {
             .and_then(|d| d.logo_url.clone());
 
         let verified_asset = sqlx::query_as::<_, VerifiedAsset>(
-            r#"
+            r"
             INSERT INTO verified_assets (
                 id, asset_code, asset_issuer, verification_status, reputation_score,
                 stellar_expert_verified, stellar_toml_verified, anchor_registry_verified,
@@ -463,7 +455,7 @@ impl AssetVerifier {
                 last_verified_at = EXCLUDED.last_verified_at,
                 updated_at = EXCLUDED.updated_at
             RETURNING *
-            "#,
+            ",
         )
         .bind(&id)
         .bind(asset_code)
@@ -522,13 +514,13 @@ impl AssetVerifier {
         let id = Uuid::new_v4().to_string();
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO asset_verification_history (
                 id, asset_code, asset_issuer, previous_status, new_status,
                 previous_reputation_score, new_reputation_score, change_reason, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(asset_code)
@@ -552,10 +544,10 @@ impl AssetVerifier {
         asset_issuer: &str,
     ) -> Result<Option<VerifiedAsset>> {
         let asset = sqlx::query_as::<_, VerifiedAsset>(
-            r#"
+            r"
             SELECT * FROM verified_assets
             WHERE asset_code = $1 AND asset_issuer = $2
-            "#,
+            ",
         )
         .bind(asset_code)
         .bind(asset_issuer)
@@ -576,15 +568,15 @@ impl AssetVerifier {
         let mut query = String::from("SELECT * FROM verified_assets WHERE 1=1");
 
         if let Some(status) = status {
-            query.push_str(&format!(" AND verification_status = '{}'", status.as_str()));
+            write!(query, " AND verification_status = '{}'", status.as_str()).unwrap();
         }
 
         if let Some(min_rep) = min_reputation {
-            query.push_str(&format!(" AND reputation_score >= {}", min_rep));
+            write!(query, " AND reputation_score >= {min_rep}").unwrap();
         }
 
         query.push_str(" ORDER BY reputation_score DESC, updated_at DESC");
-        query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        write!(query, " LIMIT {limit} OFFSET {offset}").unwrap();
 
         let assets = sqlx::query_as::<_, VerifiedAsset>(&query)
             .fetch_all(&self.pool)
@@ -598,8 +590,8 @@ impl AssetVerifier {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_calculate_reputation_score() {
+    #[tokio::test]
+    async fn test_calculate_reputation_score() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         let verifier = AssetVerifier::new(pool).unwrap();
 
@@ -618,8 +610,8 @@ mod tests {
         assert!(score <= 100.0);
     }
 
-    #[test]
-    fn test_determine_status() {
+    #[tokio::test]
+    async fn test_determine_status() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         let verifier = AssetVerifier::new(pool).unwrap();
 

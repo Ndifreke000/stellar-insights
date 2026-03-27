@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::DomainError;
+
 use super::EventFilter;
 
 /// Configuration for a replay operation
@@ -51,76 +53,93 @@ impl Default for ReplayConfig {
 
 impl ReplayConfig {
     /// Create a new replay config with defaults
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Set replay mode
-    pub fn with_mode(mut self, mode: ReplayMode) -> Self {
+    #[must_use]
+    pub const fn with_mode(mut self, mode: ReplayMode) -> Self {
         self.mode = mode;
         self
     }
 
     /// Set ledger range
+    #[must_use]
     pub fn with_range(mut self, range: ReplayRange) -> Self {
         self.range = range;
         self
     }
 
     /// Set event filter
+    #[must_use]
     pub fn with_filter(mut self, filter: EventFilter) -> Self {
         self.filter = filter;
         self
     }
 
     /// Set batch size
-    pub fn with_batch_size(mut self, size: usize) -> Self {
+    #[must_use]
+    pub const fn with_batch_size(mut self, size: usize) -> Self {
         self.batch_size = size;
         self
     }
 
     /// Enable dry-run mode
-    pub fn dry_run(mut self) -> Self {
+    #[must_use]
+    pub const fn dry_run(mut self) -> Self {
         self.dry_run = true;
         self
     }
 
     /// Enable verbose logging
-    pub fn verbose(mut self) -> Self {
+    #[must_use]
+    pub const fn verbose(mut self) -> Self {
         self.verbose = true;
         self
     }
 
     /// Validate configuration
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), DomainError> {
         if self.batch_size == 0 {
-            return Err("Batch size must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Batch size must be greater than 0".to_string(),
+            ));
         }
 
         if self.max_workers == 0 {
-            return Err("Max workers must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Max workers must be greater than 0".to_string(),
+            ));
         }
 
         if self.checkpoint_interval == 0 {
-            return Err("Checkpoint interval must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Checkpoint interval must be greater than 0".to_string(),
+            ));
         }
 
         if self.event_timeout_secs == 0 {
-            return Err("Event timeout must be greater than 0".to_string());
+            return Err(DomainError::InvalidConfiguration(
+                "Event timeout must be greater than 0".to_string(),
+            ));
         }
 
         match &self.range {
             ReplayRange::FromTo { start, end } => {
                 if start > end {
-                    return Err(format!(
-                        "Invalid range: start ({}) > end ({})",
-                        start, end
-                    ));
+                    return Err(DomainError::InvalidTimeRange {
+                        start: start.to_string(),
+                        end: end.to_string(),
+                    });
                 }
             }
             ReplayRange::FromCheckpoint { checkpoint_id } => {
                 if checkpoint_id.is_empty() {
-                    return Err("Checkpoint ID cannot be empty".to_string());
+                    return Err(DomainError::InvalidConfiguration(
+                        "Checkpoint ID cannot be empty".to_string(),
+                    ));
                 }
             }
             _ => {}
@@ -173,7 +192,8 @@ pub enum ReplayRange {
 
 impl ReplayRange {
     /// Get the start ledger for this range
-    pub fn start_ledger(&self, latest: u64, checkpoint_ledger: Option<u64>) -> Option<u64> {
+    #[must_use]
+    pub const fn start_ledger(&self, latest: u64, checkpoint_ledger: Option<u64>) -> Option<u64> {
         match self {
             Self::All => Some(0),
             Self::From { start } => Some(*start),
@@ -185,7 +205,8 @@ impl ReplayRange {
     }
 
     /// Get the end ledger for this range
-    pub fn end_ledger(&self, latest: u64) -> Option<u64> {
+    #[must_use]
+    pub const fn end_ledger(&self, latest: u64) -> Option<u64> {
         match self {
             Self::All => Some(latest),
             Self::From { .. } => Some(latest),
@@ -197,6 +218,7 @@ impl ReplayRange {
     }
 
     /// Check if a ledger is within this range
+    #[must_use]
     pub fn contains(&self, ledger: u64, latest: u64, checkpoint_ledger: Option<u64>) -> bool {
         let start = self.start_ledger(latest, checkpoint_ledger).unwrap_or(0);
         let end = self.end_ledger(latest).unwrap_or(u64::MAX);

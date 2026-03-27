@@ -1,7 +1,9 @@
 use crate::models::corridor::{Corridor, CorridorAnalytics, PaymentRecord};
 use chrono::{DateTime, Utc};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
+#[must_use]
 pub fn compute_corridor_analytics(payments: &[PaymentRecord]) -> Vec<CorridorAnalytics> {
     let mut corridor_payments: HashMap<String, Vec<&PaymentRecord>> = HashMap::new();
 
@@ -48,6 +50,7 @@ pub fn compute_corridor_analytics(payments: &[PaymentRecord]) -> Vec<CorridorAna
     analytics
 }
 
+#[must_use]
 pub fn compute_corridor_analytics_for_date(
     payments: &[PaymentRecord],
     target_date: DateTime<Utc>,
@@ -61,16 +64,22 @@ pub fn compute_corridor_analytics_for_date(
     compute_corridor_analytics(&filtered_payments)
 }
 
+#[must_use]
 pub fn get_top_corridors_by_volume(
     analytics: &[CorridorAnalytics],
     limit: usize,
 ) -> Vec<&CorridorAnalytics> {
     let mut sorted_analytics = analytics.iter().collect::<Vec<_>>();
-    sorted_analytics.sort_by(|a, b| b.volume_usd.partial_cmp(&a.volume_usd).unwrap());
+    sorted_analytics.sort_by(|a, b| {
+        b.volume_usd
+            .partial_cmp(&a.volume_usd)
+            .unwrap_or(Ordering::Equal)
+    });
     sorted_analytics.truncate(limit);
     sorted_analytics
 }
 
+#[must_use]
 pub fn get_top_corridors_by_transactions(
     analytics: &[CorridorAnalytics],
     limit: usize,
@@ -81,6 +90,7 @@ pub fn get_top_corridors_by_transactions(
     sorted_analytics
 }
 
+#[must_use]
 pub fn get_corridors_by_success_rate(
     analytics: &[CorridorAnalytics],
     min_transactions: i64,
@@ -94,6 +104,7 @@ pub fn get_corridors_by_success_rate(
         .collect()
 }
 
+#[allow(clippy::similar_names)]
 fn parse_corridor_key(corridor_key: &str) -> Corridor {
     let parts: Vec<&str> = corridor_key.split("->").collect();
     let asset_a_parts: Vec<&str> = parts[0].split(':').collect();

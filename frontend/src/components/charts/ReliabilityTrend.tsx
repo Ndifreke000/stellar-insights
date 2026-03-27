@@ -1,5 +1,6 @@
 "use client";
 
+import { ReliabilityDataPoint } from "@/lib/api/types";
 import { useState, useMemo } from "react";
 import {
   AreaChart,
@@ -7,11 +8,8 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  TooltipProps,
-  ResponsiveContainer,
+  Tooltip, ResponsiveContainer
 } from "recharts";
-import { ReliabilityDataPoint } from "@/lib/api";
 
 interface ReliabilityTrendProps {
   data: ReliabilityDataPoint[];

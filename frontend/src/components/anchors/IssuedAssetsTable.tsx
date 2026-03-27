@@ -1,7 +1,7 @@
-import { IssuedAsset } from "@/lib/api";
 import { ArrowUpRight, AlertTriangle } from "lucide-react";
 import { usePagination } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
+import { IssuedAsset } from "@/lib/api/types";
 
 interface IssuedAssetsTableProps {
   assets: IssuedAsset[];

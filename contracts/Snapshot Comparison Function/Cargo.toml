@@ -1,0 +1,19 @@
+[package]
+name = "snapshot-comparison"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = { version = "20.3.0", features = ["contract"] }
+
+[dev-dependencies]
+soroban-sdk = { version = "20.3.0", features = ["contract"] }
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

@@ -4,6 +4,12 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 
+# Panic prevention lints - enforce proper error handling
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
 [lib]
 crate-type = ["cdylib"]
 doctest = false

@@ -5,6 +5,7 @@ pub mod metrics;
 pub mod rate_limiter;
 pub mod stellar;
 
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 pub use rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
 pub use stellar::{
     Asset, FeeBumpTransactionInfo, GetLedgersResult, HealthResponse, HorizonAsset, HorizonEffect,

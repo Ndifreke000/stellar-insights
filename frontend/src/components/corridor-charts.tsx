@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import {
   LineChart,
   Line,
@@ -19,7 +18,7 @@ import {
   LiquidityDataPoint,
   VolumeDataPoint,
   SlippageDataPoint,
-} from "@/lib/api";
+} from "@/lib/api/api";
 
 interface SuccessRateChartProps {
   data: SuccessRateDataPoint[];

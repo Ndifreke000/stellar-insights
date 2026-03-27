@@ -6,8 +6,20 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
 [dependencies]
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
+arbitrary = { version = "1.3", features = ["derive"] }
+bolero = "0.10"
+bolero-generator = "0.10"
+
+
+
 soroban-sdk = { workspace = true, features = ["testutils"] }
+

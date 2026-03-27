@@ -66,7 +66,7 @@ export default function MonitoringDashboard() {
             <Activity className="text-blue-500" />
             Internal Performance Dashboard
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-muted-foreground dark:text-muted-foreground">
             Real-time monitoring of frontend vitals, API health, and system
             errors.
           </p>
@@ -76,7 +76,7 @@ export default function MonitoringDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <h3 className="text-sm font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider">
                 Total Sessions
               </h3>
               <Globe className="text-blue-500 w-5 h-5" />
@@ -86,13 +86,13 @@ export default function MonitoringDashboard() {
             </p>
             <p className="text-sm text-green-500 mt-2 flex items-center gap-1">
               <span>↑ 12%</span>
-              <span className="text-gray-400 font-normal">vs last 24h</span>
+              <span className="text-muted-foreground font-normal">vs last 24h</span>
             </p>
           </div>
 
           <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <h3 className="text-sm font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider">
                 Avg. Session Duration
               </h3>
               <Clock className="text-purple-500 w-5 h-5" />
@@ -101,12 +101,12 @@ export default function MonitoringDashboard() {
               {Math.floor(stats.sessionStats.avgDuration / 60)}m{" "}
               {stats.sessionStats.avgDuration % 60}s
             </p>
-            <p className="text-sm text-gray-400 mt-2">Target: 5m 00s</p>
+            <p className="text-sm text-muted-foreground mt-2">Target: 5m 00s</p>
           </div>
 
           <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <h3 className="text-sm font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider">
                 Bounce Rate
               </h3>
               <Zap className="text-yellow-500 w-5 h-5" />
@@ -116,7 +116,7 @@ export default function MonitoringDashboard() {
             </p>
             <p className="text-sm text-red-500 mt-2 flex items-center gap-1">
               <span>↑ 2.1%</span>
-              <span className="text-gray-400 font-normal">vs last 24h</span>
+              <span className="text-muted-foreground font-normal">vs last 24h</span>
             </p>
           </div>
         </div>
@@ -313,7 +313,7 @@ export default function MonitoringDashboard() {
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                   ></div>
-                  <span className="text-xs text-gray-500">{entry.name}</span>
+                  <span className="text-xs text-muted-foreground">{entry.name}</span>
                 </div>
               ))}
             </div>

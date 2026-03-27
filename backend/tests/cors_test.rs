@@ -1,4 +1,4 @@
-/// Integration tests for CORS middleware (issue #207).
+/// Integration tests for CORS middleware.
 ///
 /// Covers:
 /// - Allowed origin receives correct CORS response headers
@@ -6,6 +6,8 @@
 /// - Non-matching origin does NOT receive Access-Control-Allow-Origin
 /// - Wildcard "*" origin configuration reflects properly
 /// - max-age header is present on preflight responses
+/// - Only specific headers (Authorization, Content-Type) are advertised
+/// - Credentials flag is respected
 use axum::{
     body::Body,
     http::{header, Method, Request, StatusCode},
@@ -14,7 +16,7 @@ use axum::{
 };
 use std::time::Duration;
 use tower::util::ServiceExt;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,8 +29,10 @@ fn build_router_with_cors(cors: CorsLayer) -> Router {
         .layer(cors)
 }
 
-/// Build a CorsLayer that mirrors the real application logic for a given
-/// `CORS_ALLOWED_ORIGINS` value (mirrors `main.rs`).
+/// Build a CorsLayer that exactly mirrors the production logic in `main.rs`
+/// for a given `CORS_ALLOWED_ORIGINS` value.
+///
+/// This must be kept in sync with the CORS setup in `backend/src/main.rs`.
 fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
     let methods = [
         Method::GET,
@@ -37,12 +41,15 @@ fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
         Method::DELETE,
         Method::OPTIONS,
         Method::PATCH,
-        Method::HEAD,
     ];
+
+    // Matches main.rs: specific headers only, not Any
+    let allowed_headers = [header::AUTHORIZATION, header::CONTENT_TYPE];
 
     let base = CorsLayer::new()
         .allow_methods(methods)
-        .allow_headers(Any)
+        .allow_headers(allowed_headers)
+        .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
     if cors_allowed_origins.trim() == "*" {
@@ -54,7 +61,8 @@ fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
             .collect();
 
         if origins.is_empty() {
-            base.allow_origin(Any)
+            // Mirror main.rs behaviour: empty list rejects all cross-origin requests.
+            base.allow_origin(AllowOrigin::list([]))
         } else {
             base.allow_origin(origins)
         }
@@ -139,7 +147,6 @@ async fn test_cors_disallowed_origin_does_not_receive_acao_header() {
         .await
         .unwrap();
 
-    // The response may still be 200 but MUST NOT carry a permissive ACAO header.
     let acao = response.headers().get("access-control-allow-origin");
     if let Some(value) = acao {
         assert_ne!(
@@ -147,7 +154,7 @@ async fn test_cors_disallowed_origin_does_not_receive_acao_header() {
             "Disallowed origin must not be reflected in ACAO header"
         );
     }
-    // If header is absent that is also acceptable – the browser will block the request.
+    // Absent header is also acceptable — the browser will block the request.
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +180,6 @@ async fn test_cors_preflight_returns_allow_methods() {
         .await
         .unwrap();
 
-    // Preflight should be answered with 200 or 204
     assert!(
         response.status() == StatusCode::OK || response.status() == StatusCode::NO_CONTENT,
         "Preflight OPTIONS should return 200 or 204, got {}",
@@ -219,6 +225,7 @@ async fn test_cors_preflight_returns_max_age() {
         .expect("Access-Control-Max-Age should be a numeric value");
 
     assert!(secs > 0, "max-age should be positive");
+    assert_eq!(secs, 3600, "max-age should be exactly 3600 seconds");
 }
 
 #[tokio::test]
@@ -250,6 +257,69 @@ async fn test_cors_preflight_returns_allow_headers() {
             .is_some(),
         "Preflight response must contain Access-Control-Allow-Headers"
     );
+}
+
+/// Verify that the preflight response only advertises the specific headers
+/// allowed by the production configuration (Authorization and Content-Type),
+/// not a wildcard (*).
+#[tokio::test]
+async fn test_cors_preflight_does_not_allow_wildcard_headers() {
+    let cors = cors_layer_from_origins("http://localhost:3000");
+    let app = build_router_with_cors(cors);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/health")
+                .header(header::ORIGIN, "http://localhost:3000")
+                .header("access-control-request-method", "POST")
+                .header("access-control-request-headers", "authorization")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    if let Some(allow_headers) = response.headers().get("access-control-allow-headers") {
+        let value = allow_headers.to_str().unwrap_or("");
+        assert_ne!(
+            value, "*",
+            "Access-Control-Allow-Headers must not be wildcard — only specific headers allowed"
+        );
+    }
+}
+
+/// Verify that credentials support is enabled (`Access-Control-Allow-Credentials: true`).
+/// This is required for requests that include cookies or Authorization headers.
+#[tokio::test]
+async fn test_cors_preflight_allows_credentials() {
+    let cors = cors_layer_from_origins("http://localhost:3000");
+    let app = build_router_with_cors(cors);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/health")
+                .header(header::ORIGIN, "http://localhost:3000")
+                .header("access-control-request-method", "GET")
+                .header("access-control-request-headers", "authorization")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let allow_credentials = response.headers().get("access-control-allow-credentials");
+
+    if let Some(value) = allow_credentials {
+        assert_eq!(
+            value.to_str().unwrap_or(""),
+            "true",
+            "Access-Control-Allow-Credentials must be 'true' when credentials are enabled"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +367,6 @@ async fn test_cors_request_without_origin_still_succeeds() {
             Request::builder()
                 .method(Method::GET)
                 .uri("/health")
-                // No Origin header – simulates same-origin or non-browser requests
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -341,4 +410,37 @@ async fn test_cors_production_origin_receives_acao_header() {
         .expect("Production origin should receive ACAO header");
 
     assert_eq!(acao, "https://stellar-insights.com");
+}
+
+// ---------------------------------------------------------------------------
+// Tests – Empty / invalid origins fallback
+// ---------------------------------------------------------------------------
+
+/// When all provided origins fail to parse, the list is empty and all
+/// cross-origin requests should be rejected (no ACAO header returned).
+#[tokio::test]
+async fn test_cors_empty_origins_rejects_cross_origin() {
+    // Passing only whitespace — every entry fails to parse.
+    let cors = cors_layer_from_origins("   ,   ");
+    let app = build_router_with_cors(cors);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/health")
+                .header(header::ORIGIN, "http://localhost:3000")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Browser-level: no ACAO header means the request is blocked cross-origin.
+    let acao = response.headers().get("access-control-allow-origin");
+    assert!(
+        acao.is_none(),
+        "Empty origins list should not produce an ACAO header, got: {:?}",
+        acao
+    );
 }

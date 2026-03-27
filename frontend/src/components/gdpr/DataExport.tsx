@@ -101,11 +101,11 @@ export function DataExport({ onClose }: DataExportProps) {
       pending:
         "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
       processing:
-        "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+        "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-link-primary",
       completed:
         "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
       expired:
-        "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+        "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-muted-foreground",
       failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     };
 
@@ -137,7 +137,7 @@ export function DataExport({ onClose }: DataExportProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
           >
             <svg
               className="w-6 h-6"
@@ -162,8 +162,8 @@ export function DataExport({ onClose }: DataExportProps) {
           onClick={() => setActiveTab("new")}
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === "new"
-              ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              ? "border-b-2 border-blue-600 text-blue-600 dark:text-link-primary"
+              : "text-muted-foreground dark:text-muted-foreground hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           New Export
@@ -172,8 +172,8 @@ export function DataExport({ onClose }: DataExportProps) {
           onClick={() => setActiveTab("history")}
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === "history"
-              ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              ? "border-b-2 border-blue-600 text-blue-600 dark:text-link-primary"
+              : "text-muted-foreground dark:text-muted-foreground hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           Export History
@@ -197,20 +197,20 @@ export function DataExport({ onClose }: DataExportProps) {
       {activeTab === "new" && availableTypes && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground dark:text-muted-foreground">
               Select the data you want to export:
             </p>
             <div className="flex gap-2">
               <button
                 onClick={handleSelectAll}
-                className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                className="text-xs text-blue-600 hover:text-blue-700 dark:text-link-primary"
               >
                 Select All
               </button>
-              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span className="text-gray-300 dark:text-muted-foreground">|</span>
               <button
                 onClick={handleDeselectAll}
-                className="text-xs text-gray-600 hover:text-gray-700 dark:text-gray-400"
+                className="text-xs text-muted-foreground hover:text-gray-700 dark:text-muted-foreground"
               >
                 Deselect All
               </button>
@@ -237,7 +237,7 @@ export function DataExport({ onClose }: DataExportProps) {
                   <p className="font-medium text-gray-900 dark:text-white text-sm">
                     {type.name}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
                     {type.description}
                   </p>
                 </div>
@@ -260,7 +260,7 @@ export function DataExport({ onClose }: DataExportProps) {
       {activeTab === "history" && (
         <div>
           {exportRequests.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+            <p className="text-center text-muted-foreground dark:text-muted-foreground py-8">
               No export requests yet.
             </p>
           ) : (
@@ -274,11 +274,11 @@ export function DataExport({ onClose }: DataExportProps) {
                     <p className="text-sm text-gray-900 dark:text-white">
                       Request #{request.id.slice(0, 8)}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
                       Created: {new Date(request.requested_at).toLocaleString()}
                     </p>
                     {request.expires_at && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground dark:text-muted-foreground">
                         Expires: {new Date(request.expires_at).toLocaleString()}
                       </p>
                     )}

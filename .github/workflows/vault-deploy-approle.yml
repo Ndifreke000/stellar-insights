@@ -22,7 +22,13 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Set fallback JWT secret when Vault credentials are unavailable
+        if: ${{ secrets.VAULT_ADDR == '' || secrets.VAULT_ROLE_ID == '' || secrets.VAULT_SECRET_ID == '' }}
+        run: |
+          echo "JWT_SECRET=fallback-test-secret-value-at-least-32-characters" >> $GITHUB_ENV
+
       - name: Authenticate to Vault with AppRole
+        if: ${{ secrets.VAULT_ADDR != '' && secrets.VAULT_ROLE_ID != '' && secrets.VAULT_SECRET_ID != '' }}
         id: vault-auth
         run: |
           TOKEN=$(curl -s -X POST \
@@ -42,6 +48,7 @@ jobs:
           echo "VAULT_TOKEN=$TOKEN" >> $GITHUB_ENV
 
       - name: Read JWT_SECRET from Vault
+        if: ${{ steps.vault-auth.outcome == 'success' }}
         run: |
           JWT_SECRET=$(curl -s -X GET \
             "${{ secrets.VAULT_ADDR }}/v1/data/secret/stellar/jwt_secret" \

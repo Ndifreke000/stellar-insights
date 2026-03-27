@@ -1,14 +1,13 @@
 "use client";
 
+import { IssuedAsset } from "@/lib/api/types";
 import {
   PieChart,
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip,
-  TooltipProps,
+  Tooltip
 } from "recharts";
-import { IssuedAsset } from "@/lib/api";
 
 interface AssetDistributionChartProps {
   assets: IssuedAsset[];

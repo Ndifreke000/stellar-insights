@@ -20,7 +20,8 @@ pub struct AdminAuditLogger {
 }
 
 impl AdminAuditLogger {
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use]
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -39,18 +40,18 @@ impl AdminAuditLogger {
         // The original format string for `data` was correct in terms of placeholder count.
         // If "Fix placeholders in audit log" implies changing how `details` is serialized,
         // `details.to_string()` is a common way to include JSON in a string hash.
-        let data = format!("{}|{}|{}|{}|{}|{}|{}", id, timestamp, action, resource, user_id, status, details.to_string());
+        let data = format!("{id}|{timestamp}|{action}|{resource}|{user_id}|{status}|{details}");
         let hash_input = match prev_hash {
-            Some(h) => format!("{}|{}", h, data),
+            Some(h) => format!("{h}|{data}"),
             None => data.clone(),
         };
         let hash = format!("{:x}", md5::compute(hash_input));
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO admin_audit_log (id, timestamp, action, resource, user_id, status, details, hash)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(timestamp)

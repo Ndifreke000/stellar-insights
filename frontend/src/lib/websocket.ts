@@ -1,18 +1,19 @@
 /**
  * WebSocket client for real-time updates from the Stellar Insights backend
  */
+import { logger } from "@/lib/logger";
 
 export type WsMessageType =
-  | 'snapshot_update'
-  | 'corridor_update'
-  | 'anchor_update'
-  | 'ping'
-  | 'pong'
-  | 'connected'
-  | 'error';
+  | "snapshot_update"
+  | "corridor_update"
+  | "anchor_update"
+  | "ping"
+  | "pong"
+  | "connected"
+  | "error";
 
 export interface WsSnapshotUpdate {
-  type: 'snapshot_update';
+  type: "snapshot_update";
   snapshot_id: string;
   epoch: number;
   timestamp: string;
@@ -20,7 +21,7 @@ export interface WsSnapshotUpdate {
 }
 
 export interface WsCorridorUpdate {
-  type: 'corridor_update';
+  type: "corridor_update";
   corridor_id: string;
   corridor_key: string;
   success_rate: number;
@@ -29,7 +30,7 @@ export interface WsCorridorUpdate {
 }
 
 export interface WsAnchorUpdate {
-  type: 'anchor_update';
+  type: "anchor_update";
   anchor_id: string;
   name: string;
   reliability_score: number;
@@ -37,22 +38,22 @@ export interface WsAnchorUpdate {
 }
 
 export interface WsPing {
-  type: 'ping';
+  type: "ping";
   timestamp: number;
 }
 
 export interface WsPong {
-  type: 'pong';
+  type: "pong";
   timestamp: number;
 }
 
 export interface WsConnected {
-  type: 'connected';
+  type: "connected";
   connection_id: string;
 }
 
 export interface WsError {
-  type: 'error';
+  type: "error";
   message: string;
 }
 
@@ -87,7 +88,7 @@ export class StellarInsightsWebSocket {
   constructor(config: WebSocketConfig = {}) {
     this.config = {
       url: config.url || this.getDefaultWsUrl(),
-      token: config.token || '',
+      token: config.token || "",
       autoReconnect: config.autoReconnect ?? true,
       reconnectInterval: config.reconnectInterval || 3000,
       maxReconnectAttempts: config.maxReconnectAttempts || 5,
@@ -98,13 +99,13 @@ export class StellarInsightsWebSocket {
    * Get the default WebSocket URL based on the current environment
    */
   private getDefaultWsUrl(): string {
-    if (typeof window === 'undefined') {
-      return 'ws://localhost:8080/ws';
+    if (typeof window === "undefined") {
+      return "ws://localhost:8080/ws";
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.hostname;
-    const port = process.env.NEXT_PUBLIC_WS_PORT || '8080';
+    const port = process.env.NEXT_PUBLIC_WS_PORT || "8080";
 
     return `${protocol}//${host}:${port}/ws`;
   }
@@ -114,7 +115,7 @@ export class StellarInsightsWebSocket {
    */
   public connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected');
+      logger.debug("WebSocket already connected");
       return;
     }
 
@@ -123,10 +124,10 @@ export class StellarInsightsWebSocket {
     try {
       const url = new URL(this.config.url);
       if (this.config.token) {
-        url.searchParams.set('token', this.config.token);
+        url.searchParams.set("token", this.config.token);
       }
 
-      console.log('Connecting to WebSocket:', url.toString());
+      logger.debug("Connecting to WebSocket:", url.toString());
       this.ws = new WebSocket(url.toString());
 
       this.ws.onopen = this.handleOpen.bind(this);
@@ -134,7 +135,7 @@ export class StellarInsightsWebSocket {
       this.ws.onerror = this.handleError.bind(this);
       this.ws.onclose = this.handleClose.bind(this);
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
+      logger.error("Failed to create WebSocket connection:", error);
       this.scheduleReconnect();
     }
   }
@@ -156,7 +157,7 @@ export class StellarInsightsWebSocket {
     }
 
     this.connectionId = null;
-    console.log('WebSocket disconnected');
+    logger.debug("WebSocket disconnected");
   }
 
   /**
@@ -196,13 +197,13 @@ export class StellarInsightsWebSocket {
     const unsubscribers: Array<() => void> = [];
 
     const types: WsMessageType[] = [
-      'snapshot_update',
-      'corridor_update',
-      'anchor_update',
-      'ping',
-      'pong',
-      'connected',
-      'error',
+      "snapshot_update",
+      "corridor_update",
+      "anchor_update",
+      "ping",
+      "pong",
+      "connected",
+      "error",
     ];
 
     types.forEach((type) => {
@@ -220,12 +221,12 @@ export class StellarInsightsWebSocket {
    */
   public ping(): void {
     if (!this.isConnected()) {
-      console.warn('Cannot send ping: WebSocket not connected');
+      logger.warn("Cannot send ping: WebSocket not connected");
       return;
     }
 
     const message: WsPing = {
-      type: 'ping',
+      type: "ping",
       timestamp: Date.now(),
     };
 
@@ -237,14 +238,14 @@ export class StellarInsightsWebSocket {
    */
   private send(message: WsPing | WsPong): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('Cannot send message: WebSocket not connected');
+      logger.warn("Cannot send message: WebSocket not connected");
       return;
     }
 
     try {
       this.ws.send(JSON.stringify(message));
     } catch (error) {
-      console.error('Failed to send message:', error);
+      logger.error("Failed to send message:", error);
     }
   }
 
@@ -252,7 +253,7 @@ export class StellarInsightsWebSocket {
    * Handle WebSocket open event
    */
   private handleOpen(): void {
-    console.log('WebSocket connected');
+    logger.debug("WebSocket connected");
     this.reconnectAttempts = 0;
 
     if (this.reconnectTimeout) {
@@ -269,14 +270,14 @@ export class StellarInsightsWebSocket {
       const message = JSON.parse(event.data) as WsMessage;
 
       // Store connection ID when connected
-      if (message.type === 'connected') {
+      if (message.type === "connected") {
         this.connectionId = message.connection_id;
       }
 
       // Automatically respond to pings with pongs
-      if (message.type === 'ping') {
+      if (message.type === "ping") {
         const pong: WsPong = {
-          type: 'pong',
+          type: "pong",
           timestamp: message.timestamp,
         };
         this.send(pong);
@@ -289,12 +290,12 @@ export class StellarInsightsWebSocket {
           try {
             handler(message);
           } catch (error) {
-            console.error('Error in message handler:', error);
+            logger.error("Error in message handler:", error);
           }
         });
       }
     } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
+      logger.error("Failed to parse WebSocket message:", error);
     }
   }
 
@@ -302,14 +303,14 @@ export class StellarInsightsWebSocket {
    * Handle WebSocket error event
    */
   private handleError(error: Event): void {
-    console.error('WebSocket error:', error);
+    logger.error("WebSocket error:", error);
 
     const errorMessage: WsError = {
-      type: 'error',
-      message: 'WebSocket connection error',
+      type: "error",
+      message: "WebSocket connection error",
     };
 
-    const handlers = this.listeners.get('error');
+    const handlers = this.listeners.get("error");
     if (handlers) {
       handlers.forEach((handler) => handler(errorMessage));
     }
@@ -319,8 +320,8 @@ export class StellarInsightsWebSocket {
    * Handle WebSocket close event
    */
   private handleClose(event: CloseEvent): void {
-    console.log(
-      `WebSocket closed: code=${event.code}, reason=${event.reason || 'none'}`
+    logger.debug(
+      `WebSocket closed: code=${event.code}, reason=${event.reason || "none"}`,
     );
 
     this.connectionId = null;
@@ -335,8 +336,8 @@ export class StellarInsightsWebSocket {
    */
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      console.error(
-        `Max reconnection attempts (${this.config.maxReconnectAttempts}) reached`
+      logger.error(
+        `Max reconnection attempts (${this.config.maxReconnectAttempts}) reached`,
       );
       return;
     }
@@ -344,8 +345,8 @@ export class StellarInsightsWebSocket {
     this.reconnectAttempts++;
 
     const delay = this.config.reconnectInterval * this.reconnectAttempts;
-    console.log(
-      `Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`
+    logger.debug(
+      `Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`,
     );
 
     this.reconnectTimeout = setTimeout(() => {
@@ -361,7 +362,7 @@ let wsInstance: StellarInsightsWebSocket | null = null;
  * Get the singleton WebSocket instance
  */
 export function getWebSocketInstance(
-  config?: WebSocketConfig
+  config?: WebSocketConfig,
 ): StellarInsightsWebSocket {
   if (!wsInstance) {
     wsInstance = new StellarInsightsWebSocket(config);

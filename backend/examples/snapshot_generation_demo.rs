@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Initialize snapshot service
-    let snapshot_service = SnapshotService::new(db.clone(), contract_service.clone());
+    let snapshot_service = SnapshotService::new(db.clone(), contract_service.clone(), None);
 
     // Generate snapshot for current epoch
     let epoch = chrono::Utc::now().timestamp() as u64 / 3600; // Hourly epochs

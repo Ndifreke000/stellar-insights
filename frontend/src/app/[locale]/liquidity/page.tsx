@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Waves, Droplets, ArrowRight, Activity, Zap } from "lucide-react";
+import { Waves, Activity as Droplets, ArrowRight, Activity, Zap } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { LiquidityChart } from "@/components/charts/LiquidityChart";
 import { LiquidityHeatmap } from "@/components/charts/LiquidityHeatmap";

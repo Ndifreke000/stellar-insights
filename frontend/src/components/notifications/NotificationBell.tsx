@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Settings } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationCenter } from './NotificationCenter';
+import { NotificationCenter } from './NotificationCenter/NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
 
 export const NotificationBell: React.FC = () => {
@@ -18,7 +18,7 @@ export const NotificationBell: React.FC = () => {
         {/* Notification Bell Button */}
         <button
           onClick={() => setShowHistory(true)}
-          className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          className="relative p-2 text-muted-foreground dark:text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
         >
           <Bell className="h-6 w-6" />
@@ -50,7 +50,7 @@ export const NotificationBell: React.FC = () => {
         {/* Settings Button */}
         <button
           onClick={() => setShowPreferences(true)}
-          className="ml-1 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          className="ml-1 p-2 text-muted-foreground dark:text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           aria-label="Notification settings"
         >
           <Settings className="h-5 w-5" />

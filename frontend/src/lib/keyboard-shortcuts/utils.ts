@@ -42,7 +42,7 @@ export function getPlatformBinding(binding: KeyBinding, platform: Platform): Key
  */
 export function normalizeKey(key: string): string {
   // Convert to lowercase
-  let normalized = key.toLowerCase();
+  const normalized = key.toLowerCase();
   
   // Handle special cases
   const keyMap: Record<string, string> = {

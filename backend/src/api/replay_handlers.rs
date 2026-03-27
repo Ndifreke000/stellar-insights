@@ -19,7 +19,7 @@ use crate::{
         event_processor::CompositeEventProcessor,
         state_builder::StateBuilder,
         storage::{EventStorage, ReplayStorage},
-        EventFilter, ReplayMetadata,
+        EventFilter,
     },
     state::AppState,
 };

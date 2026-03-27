@@ -34,6 +34,9 @@
       "privacy": "Privacy",
       "settings": "Settings",
       "collapse": "Collapse",
+      "alerts": "Alerts",
+      "expandSidebar": "Expand Sidebar",
+      "collapseSidebar": "Collapse Sidebar",
       "systemNominal": "System Nominal"
     }
   },

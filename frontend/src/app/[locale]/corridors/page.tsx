@@ -1,26 +1,23 @@
 "use client";
-
-import React, { useEffect, useState, useMemo, Suspense } from "react";
+import { logger } from "@/lib/logger";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import {
   TrendingUp,
   Search,
   Filter,
-  Grid3x3,
-  List,
-  Droplets,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@/i18n/navigation";
-import { getCorridors, CorridorMetrics } from "@/lib/api";
+import { getCorridors, CorridorMetrics } from "@/lib/api/corridors";
 import { mockCorridors } from "@/components/lib//mockCorridorData";
-import { MainLayout } from "@/components/layout";
-import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
+import { ExportDialog } from "@/components/ExportDialog";
 import {
   useUserPreferences,
   type CorridorsTimePeriod,
@@ -30,6 +27,8 @@ function CorridorsPageContent() {
   const { prefs, setPrefs } = useUserPreferences();
 
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
   // Persisted preferences
   const viewMode = prefs.corridorsViewMode;
   const setViewMode = (v: typeof viewMode) =>
@@ -43,31 +42,7 @@ function CorridorsPageContent() {
   const [loading, setLoading] = useState(true);
   // Volatile filters — intentionally session-only
   const [searchTerm, setSearchTerm] = useState("");
-  // Filter state variables (volatile — session only)
-  const [successRateRange, setSuccessRateRange] = useState<[number, number]>([
-    0, 100,
-  ]);
-  const [volumeRange, setVolumeRange] = useState<[number, number]>([
-    0, 10000000,
-  ]);
-  const [assetCodeFilter, setAssetCodeFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-
-  // Filter presets state
-  const [filterPresets, setFilterPresets] = useState<
-    Array<{
-      name: string;
-      filters: {
-        successRateRange: [number, number];
-        volumeRange: [number, number];
-        assetCodeFilter: string;
-        timePeriod: string;
-        searchTerm: string;
-        sortBy: "success_rate" | "health_score" | "liquidity";
-      };
-    }>
-  >([]);
-  const [presetName, setPresetName] = useState("");
 
   const filteredCorridors = useMemo(() => {
     return corridors
@@ -107,13 +82,6 @@ function CorridorsPageContent() {
         setLoading(true);
         try {
           const filters: Record<string, string | number> = {};
-          if (successRateRange[0] > 0)
-            filters.success_rate_min = successRateRange[0];
-          if (successRateRange[1] < 100)
-            filters.success_rate_max = successRateRange[1];
-          if (volumeRange[0] > 0) filters.volume_min = volumeRange[0];
-          if (volumeRange[1] < 10000000) filters.volume_max = volumeRange[1];
-          if (assetCodeFilter) filters.asset_code = assetCodeFilter;
           if (timePeriod) filters.time_period = timePeriod;
           filters.sort_by = sortBy;
 
@@ -125,14 +93,14 @@ function CorridorsPageContent() {
           setCorridors(mockCorridors);
         }
       } catch (err) {
-        console.error("Error fetching corridors:", err);
+        logger.error("Error fetching corridors:", err);
       } finally {
         setLoading(false);
       }
     }
 
     fetchCorridors();
-  }, [successRateRange, volumeRange, assetCodeFilter, timePeriod, sortBy]);
+  }, [timePeriod, sortBy]);
 
   const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
@@ -179,8 +147,22 @@ function CorridorsPageContent() {
           >
             {filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
+          <button
+            onClick={() => setIsExportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-white transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)] hover:shadow-accent/30"
+          >
+            <Download className="w-3 h-3" />
+            Export Data
+          </button>
         </div>
       </div>
+
+      <ExportDialog
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        type="corridors"
+        title="Payment Corridors"
+      />
 
       {/* Search and Filter */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -239,7 +221,6 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <List className="w-3 h-3" />
           Grid
         </button>
         <button
@@ -250,7 +231,6 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <Grid3x3 className="w-3 h-3" />
           Heatmap
         </button>
       </div>

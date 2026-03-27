@@ -1,8 +1,8 @@
 /// Vault secrets management module for secure credential handling
 ///
-/// This module provides integration with HashiCorp Vault for:
+/// This module provides integration with `HashiCorp` Vault for:
 /// - Static secrets (API keys, OAuth credentials)
-/// - Dynamic database credentials (PostgreSQL)
+/// - Dynamic database credentials (`PostgreSQL`)
 /// - Lease lifecycle management and renewal
 /// - Audit logging of secret access
 pub mod client;

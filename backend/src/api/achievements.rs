@@ -140,10 +140,28 @@ fn achievement_definitions() -> Vec<AchievementDef> {
     ]
 }
 
+/// GET /api/achievements/quests - Get all available quests
+#[utoipa::path(
+    get,
+    path = "/api/achievements/quests",
+    responses(
+        (status = 200, description = "List of quest definitions")
+    ),
+    tag = "Achievements"
+)]
 async fn get_quests() -> Json<Vec<QuestDef>> {
     Json(quest_definitions())
 }
 
+/// GET /api/achievements/achievements - Get all achievements
+#[utoipa::path(
+    get,
+    path = "/api/achievements/achievements",
+    responses(
+        (status = 200, description = "List of achievement definitions")
+    ),
+    tag = "Achievements"
+)]
 async fn get_achievements() -> Json<Vec<AchievementDef>> {
     Json(achievement_definitions())
 }

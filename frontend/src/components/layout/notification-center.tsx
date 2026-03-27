@@ -109,7 +109,7 @@ export function NotificationCenter() {
                         {unreadCount > 0 && (
                             <button
                                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); markAllAsRead(); }}
-                                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors flex items-center gap-1"
+                                className="text-xs font-medium text-blue-600 dark:text-link-primary hover:text-blue-800 dark:hover:text-blue-300 transition-colors flex items-center gap-1"
                             >
                                 <Check className="w-3.5 h-3.5" />
                                 Mark all read
@@ -122,8 +122,8 @@ export function NotificationCenter() {
                         <button
                             onClick={() => setActiveTab("all")}
                             className={`flex-1 py-2.5 text-sm font-medium transition-colors relative ${activeTab === "all"
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                ? "text-blue-600 dark:text-link-primary"
+                                : "text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
                                 }`}
                         >
                             All
@@ -134,15 +134,15 @@ export function NotificationCenter() {
                         <button
                             onClick={() => setActiveTab("unread")}
                             className={`flex-1 py-2.5 text-sm font-medium transition-colors relative flex items-center justify-center gap-2 ${activeTab === "unread"
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                ? "text-blue-600 dark:text-link-primary"
+                                : "text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
                                 }`}
                         >
                             Unread
                             {unreadCount > 0 && (
                                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "unread"
-                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                                    : "bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-400"
+                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-link-primary"
+                                    : "bg-gray-100 text-muted-foreground dark:bg-slate-800 dark:text-muted-foreground"
                                     }`}>
                                     {unreadCount}
                                 </span>
@@ -181,17 +181,17 @@ export function NotificationCenter() {
                                                         }`}>
                                                         {notification.title}
                                                     </p>
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap shrink-0">
+                                                    <span className="text-xs text-muted-foreground dark:text-muted-foreground whitespace-nowrap shrink-0">
                                                         {formatDistanceToNow(notification.createdAt)}
                                                     </span>
                                                 </div>
-                                                <p className={`text-xs line-clamp-2 ${!notification.read ? "text-gray-600 dark:text-gray-300" : "text-gray-500 dark:text-gray-400"
+                                                <p className={`text-xs line-clamp-2 ${!notification.read ? "text-muted-foreground dark:text-gray-300" : "text-muted-foreground dark:text-muted-foreground"
                                                     }`}>
                                                     {notification.message}
                                                 </p>
 
                                                 {notification.actionText && (
-                                                    <div className="mt-2 flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                                                    <div className="mt-2 flex items-center text-xs font-medium text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300">
                                                         {notification.actionText}
                                                         <ExternalLink className="w-3 h-3 ml-1" />
                                                     </div>
@@ -202,7 +202,7 @@ export function NotificationCenter() {
                                             <div className="absolute right-3 top-4 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
                                                 <button
                                                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeNotification(notification.id); }}
-                                                    className="p-1 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors bg-white dark:bg-slate-800 shadow-sm"
+                                                    className="p-1 text-muted-foreground hover:text-red-500 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors bg-white dark:bg-slate-800 shadow-sm"
                                                     title="Remove notification"
                                                 >
                                                     <X className="w-4 h-4" />
@@ -220,7 +220,7 @@ export function NotificationCenter() {
                                 <h4 className="text-gray-900 dark:text-white font-medium mb-1">
                                     All caught up!
                                 </h4>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[200px]">
+                                <p className="text-sm text-muted-foreground dark:text-muted-foreground max-w-[200px]">
                                     {activeTab === 'unread'
                                         ? "You don't have any unread notifications."
                                         : "When you receive new alerts, they will appear here."}
@@ -234,7 +234,7 @@ export function NotificationCenter() {
                         <div className="p-2 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/50">
                             <button
                                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); clearAll(); }}
-                                className="w-full py-2 text-xs font-medium text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors flex items-center justify-center gap-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
+                                className="w-full py-2 text-xs font-medium text-muted-foreground hover:text-red-500 dark:text-muted-foreground dark:hover:text-red-400 transition-colors flex items-center justify-center gap-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 Clear all notifications

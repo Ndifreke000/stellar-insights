@@ -1,5 +1,5 @@
 "use client";
-
+import { logger } from "@/lib/logger";
 import React, { useEffect, useState } from "react";
 import {
   TrendingUp,
@@ -10,14 +10,36 @@ import {
 } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
-import { LiquidityChart } from "@/components/charts/LiquidityChart";
-import { TVLChart } from "@/components/charts/TVLChart";
-import { SettlementLatencyChart } from "@/components/charts/SettlementLatencyChart";
-import { TopCorridors } from "@/components/charts/TopCorridors";
-import { LiquidityHeatmap } from "@/components/charts/LiquidityHeatmap";
+import dynamic from "next/dynamic";
+
+const ChartSkeleton = () => (
+  <div className="h-64 w-full rounded-xl bg-white/5 animate-pulse" />
+);
+
+const LiquidityChart = dynamic(
+  () => import("@/components/charts/LiquidityChart").then((m) => ({ default: m.LiquidityChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const TVLChart = dynamic(
+  () => import("@/components/charts/TVLChart").then((m) => ({ default: m.TVLChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const SettlementLatencyChart = dynamic(
+  () => import("@/components/charts/SettlementLatencyChart").then((m) => ({ default: m.SettlementLatencyChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const TopCorridors = dynamic(
+  () => import("@/components/charts/TopCorridors").then((m) => ({ default: m.TopCorridors })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const LiquidityHeatmap = dynamic(
+  () => import("@/components/charts/LiquidityHeatmap").then((m) => ({ default: m.LiquidityHeatmap })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { MuxedAccountCard } from "@/components/analytics/MuxedAccountCard";
+import { OnChainVerification } from "@/components/OnChainVerification";
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
@@ -38,13 +60,14 @@ export default function AnalyticsPage() {
           err instanceof Error ? err.message : "Failed to load metrics";
         setError(errorMessage);
 
-        const isNetworkError = err instanceof TypeError &&
-          (err.message.includes('Failed to fetch') ||
-            err.message.includes('fetch is not defined') ||
-            err.message.includes('Network request failed'));
+        const isNetworkError =
+          err instanceof TypeError &&
+          (err.message.includes("Failed to fetch") ||
+            err.message.includes("fetch is not defined") ||
+            err.message.includes("Network request failed"));
 
         if (!isNetworkError) {
-          console.error("Error loading analytics metrics:", err);
+          logger.error("Error loading analytics metrics:", err);
         }
       } finally {
         setLoading(false);
@@ -63,7 +86,7 @@ export default function AnalyticsPage() {
       setMetrics(data);
       setLastUpdated(new Date());
     } catch (err) {
-      console.error("Error refreshing metrics:", err);
+      logger.error("Error refreshing metrics:", err);
     } finally {
       setLoading(false);
     }
@@ -72,17 +95,19 @@ export default function AnalyticsPage() {
   if (!metrics && loading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
-        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest italic">Calibrating Intelligence Sensors... // 707-Z</div>
+        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest italic">
+          Calibrating Intelligence Sensors... // 707-Z
+        </div>
       </div>
     );
   }
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 2
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      notation: "compact",
+      maximumFractionDigits: 2,
     }).format(value);
   };
 
@@ -91,7 +116,9 @@ export default function AnalyticsPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
         <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">Deep Analytics // 03</div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+            Deep Analytics // 03
+          </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             Network Intelligence
           </h2>
@@ -119,7 +146,12 @@ export default function AnalyticsPage() {
               Emergency Shutdown Avoided // Running on Local Cache (Mock Data)
             </p>
           </div>
-          <Badge variant="outline" className="border-red-500/30 text-red-500 text-[10px]">FIX_REQUIRED</Badge>
+          <Badge
+            variant="outline"
+            className="border-red-500/30 text-red-500 text-[10px]"
+          >
+            FIX_REQUIRED
+          </Badge>
         </div>
       )}
 
@@ -143,7 +175,16 @@ export default function AnalyticsPage() {
         />
         <MetricCard
           label="Aggregated Liquidity"
-          value={metrics ? formatCurrency(metrics.top_corridors.reduce((sum, c) => sum + c.liquidity_depth_usd, 0)) : "$0"}
+          value={
+            metrics
+              ? formatCurrency(
+                  metrics.top_corridors.reduce(
+                    (sum, c) => sum + c.liquidity_depth_usd,
+                    0,
+                  ),
+                )
+              : "$0"
+          }
           subLabel="Available Capital"
         />
       </div>
@@ -157,7 +198,11 @@ export default function AnalyticsPage() {
             {metrics && <TVLChart data={metrics.tvl_history} />}
           </div>
           <div className="glass-card rounded-2xl p-1">
-            {metrics && <SettlementLatencyChart data={metrics.settlement_latency_history} />}
+            {metrics && (
+              <SettlementLatencyChart
+                data={metrics.settlement_latency_history}
+              />
+            )}
           </div>
         </div>
         <div className="lg:col-span-4 space-y-6">
@@ -173,6 +218,7 @@ export default function AnalyticsPage() {
             )}
           </div>
           <MuxedAccountCard />
+          <OnChainVerification />
         </div>
       </div>
     </div>

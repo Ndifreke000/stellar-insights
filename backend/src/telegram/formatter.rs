@@ -1,8 +1,11 @@
 use crate::alerts::{Alert, AlertType};
 
-/// Escape special characters for Telegram MarkdownV2.
+/// Escape special characters for Telegram `MarkdownV2`.
+#[must_use]
 pub fn escape_markdown(text: &str) -> String {
-    let special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+    let special = [
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!',
+    ];
     let mut escaped = String::with_capacity(text.len() * 2);
     for ch in text.chars() {
         if special.contains(&ch) {
@@ -13,20 +16,17 @@ pub fn escape_markdown(text: &str) -> String {
     escaped
 }
 
+#[must_use]
 pub fn format_alert(alert: &Alert) -> String {
-    let emoji = match alert.alert_type {
-        AlertType::SuccessRateDrop => "\u{1F534}",    // red circle
-        AlertType::LatencyIncrease => "\u{1F7E1}",    // yellow circle
-        AlertType::LiquidityDecrease => "\u{1F7E0}",  // orange circle
+    let (emoji, type_label) = match alert.alert_type {
+        AlertType::SuccessRateDrop => ("\u{1F534}", "Success Rate Drop"),
+        AlertType::LatencyIncrease => ("\u{1F7E1}", "Latency Increase"),
+        AlertType::LiquidityDecrease => ("\u{1F7E0}", "Liquidity Decrease"),
+        AlertType::AnchorStatusChange => ("\u{1F504}", "Anchor Status Change"),
+        AlertType::AnchorMetricChange => ("\u{1F4CA}", "Anchor Metric Change"),
     };
 
-    let type_label = match alert.alert_type {
-        AlertType::SuccessRateDrop => "Success Rate Drop",
-        AlertType::LatencyIncrease => "Latency Increase",
-        AlertType::LiquidityDecrease => "Liquidity Decrease",
-    };
-
-    let corridor = escape_markdown(&alert.corridor_id);
+    let corridor = escape_markdown(alert.corridor_id.as_deref().unwrap_or("N/A"));
     let message = escape_markdown(&alert.message);
     let ts = escape_markdown(&alert.timestamp);
 
@@ -43,24 +43,18 @@ pub fn format_alert(alert: &Alert) -> String {
     )
 }
 
-pub fn format_status(
-    corridor_count: usize,
-    anchor_count: usize,
-    active_alerts: usize,
-) -> String {
+#[must_use]
+pub fn format_status(corridor_count: usize, anchor_count: usize, active_alerts: usize) -> String {
     let title = escape_markdown("System Status");
     format!(
         "*{title}*\n\n\
-         Corridors: {corridors}\n\
-         Anchors: {anchors}\n\
-         Active Alerts: {alerts}",
-        title = title,
-        corridors = corridor_count,
-        anchors = anchor_count,
-        alerts = active_alerts,
+         Corridors: {corridor_count}\n\
+         Anchors: {anchor_count}\n\
+         Active Alerts: {active_alerts}",
     )
 }
 
+#[must_use]
 pub fn format_corridor_list(
     corridors: &[(String, f64, i64, f64)], // (id, success_rate, volume, health_score)
 ) -> String {
@@ -97,6 +91,7 @@ pub fn format_corridor_list(
     lines.join("\n")
 }
 
+#[must_use]
 pub fn format_corridor_detail(
     id: &str,
     source_asset: &str,
@@ -107,7 +102,7 @@ pub fn format_corridor_detail(
     liquidity_usd: f64,
     health_score: f64,
 ) -> String {
-    let title = escape_markdown(&format!("Corridor: {}", id));
+    let title = escape_markdown(&format!("Corridor: {id}"));
     format!(
         "*{title}*\n\n\
          Source: `{src}`\n\
@@ -128,6 +123,7 @@ pub fn format_corridor_detail(
     )
 }
 
+#[must_use]
 pub fn format_anchor_list(
     anchors: &[(String, String, f64, String)], // (id, name, reliability, status)
 ) -> String {
@@ -157,6 +153,7 @@ pub fn format_anchor_list(
     lines.join("\n")
 }
 
+#[must_use]
 pub fn format_anchor_detail(
     name: &str,
     stellar_account: &str,
@@ -166,7 +163,7 @@ pub fn format_anchor_detail(
     failed_txns: i64,
     status: &str,
 ) -> String {
-    let title = escape_markdown(&format!("Anchor: {}", name));
+    let title = escape_markdown(&format!("Anchor: {name}"));
     let status_emoji = match status {
         "green" => "\u{2705}",
         "yellow" => "\u{26A0}\u{FE0F}",
@@ -192,6 +189,7 @@ pub fn format_anchor_detail(
     )
 }
 
+#[must_use]
 pub fn format_help() -> String {
     let title = escape_markdown("Stellar Insights Bot");
     let cmds = [

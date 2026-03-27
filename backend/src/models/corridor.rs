@@ -1,46 +1,58 @@
+#![allow(clippy::module_name_repetitions)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, sqlx::FromRow)]
 pub struct Corridor {
-    pub asset_a_code: String,
-    pub asset_a_issuer: String,
-    pub asset_b_code: String,
-    pub asset_b_issuer: String,
+    #[serde(rename = "asset_a_code")]
+    #[sqlx(rename = "asset_a_code")]
+    pub source_asset_code: String,
+    #[serde(rename = "asset_a_issuer")]
+    #[sqlx(rename = "asset_a_issuer")]
+    pub source_asset_issuer: String,
+    #[serde(rename = "asset_b_code")]
+    #[sqlx(rename = "asset_b_code")]
+    pub destination_asset_code: String,
+    #[serde(rename = "asset_b_issuer")]
+    #[sqlx(rename = "asset_b_issuer")]
+    pub destination_asset_issuer: String,
 }
 
 impl Corridor {
+    #[must_use]
     pub fn new(
-        asset_a_code: String,
-        asset_a_issuer: String,
-        asset_b_code: String,
-        asset_b_issuer: String,
+        source_asset_code: String,
+        source_asset_issuer: String,
+        destination_asset_code: String,
+        destination_asset_issuer: String,
     ) -> Self {
-        let mut corridor = Corridor {
-            asset_a_code,
-            asset_a_issuer,
-            asset_b_code,
-            asset_b_issuer,
+        let mut corridor = Self {
+            source_asset_code,
+            source_asset_issuer,
+            destination_asset_code,
+            destination_asset_issuer,
         };
         corridor.normalize_ordering();
         corridor
     }
 
     fn normalize_ordering(&mut self) {
-        let asset_a_key = format!("{}:{}", self.asset_a_code, self.asset_a_issuer);
-        let asset_b_key = format!("{}:{}", self.asset_b_code, self.asset_b_issuer);
-
-        if asset_a_key > asset_b_key {
-            std::mem::swap(&mut self.asset_a_code, &mut self.asset_b_code);
-            std::mem::swap(&mut self.asset_a_issuer, &mut self.asset_b_issuer);
+        let source_key = format!("{}:{}", self.source_asset_code, self.source_asset_issuer);
+        let destination_key = format!("{}:{}", self.destination_asset_code, self.destination_asset_issuer);
+ 
+        if source_key > destination_key {
+            std::mem::swap(&mut self.source_asset_code, &mut self.destination_asset_code);
+            std::mem::swap(&mut self.source_asset_issuer, &mut self.destination_asset_issuer);
         }
     }
 
+    #[must_use]
     pub fn to_string_key(&self) -> String {
         format!(
             "{}:{}->{}:{}",
-            self.asset_a_code, self.asset_a_issuer, self.asset_b_code, self.asset_b_issuer
+            self.source_asset_code, self.source_asset_issuer, self.destination_asset_code, self.destination_asset_issuer
         )
     }
 }
@@ -49,10 +61,18 @@ impl Corridor {
 pub struct CorridorMetrics {
     pub id: String,
     pub corridor_key: String,
-    pub asset_a_code: String,
-    pub asset_a_issuer: String,
-    pub asset_b_code: String,
-    pub asset_b_issuer: String,
+    #[serde(rename = "asset_a_code")]
+    #[sqlx(rename = "asset_a_code")]
+    pub reserve_asset_a_code: String,
+    #[serde(rename = "asset_a_issuer")]
+    #[sqlx(rename = "asset_a_issuer")]
+    pub reserve_asset_a_issuer: String,
+    #[serde(rename = "asset_b_code")]
+    #[sqlx(rename = "asset_b_code")]
+    pub reserve_asset_b_code: String,
+    #[serde(rename = "asset_b_issuer")]
+    #[sqlx(rename = "asset_b_issuer")]
+    pub reserve_asset_b_issuer: String,
     pub date: DateTime<Utc>,
     pub total_transactions: i64,
     pub successful_transactions: i64,
@@ -111,6 +131,7 @@ pub struct PaymentRecord {
 
 impl PaymentRecord {
     /// Computes settlement latency in milliseconds between submission and confirmation times.
+    #[must_use]
     pub fn settlement_latency_ms(&self) -> Option<i64> {
         match (self.submission_time, self.confirmation_time) {
             (Some(submitted), Some(confirmed)) => {
@@ -122,6 +143,7 @@ impl PaymentRecord {
     }
 
     /// Extracts the corridor from source and destination assets.
+    #[must_use]
     pub fn get_corridor(&self) -> Corridor {
         Corridor::new(
             self.source_asset_code.clone(),
@@ -139,9 +161,9 @@ pub fn compute_median(values: &mut [i64]) -> Option<i64> {
     }
     values.sort_unstable();
     let len = values.len();
-    if len % 2 == 0 {
+    if len.is_multiple_of(2) {
         // Average of two middle values
-        Some((values[len / 2 - 1] + values[len / 2]) / 2)
+        Some(i64::midpoint(values[len / 2 - 1], values[len / 2]))
     } else {
         Some(values[len / 2])
     }
@@ -168,8 +190,8 @@ mod tests {
         );
 
         assert_eq!(corridor1, corridor2);
-        assert_eq!(corridor1.asset_a_code, "EURC");
-        assert_eq!(corridor1.asset_b_code, "USDC");
+        assert_eq!(corridor1.source_asset_code, "EURC");
+        assert_eq!(corridor1.destination_asset_code, "USDC");
     }
 
     #[test]
@@ -180,11 +202,11 @@ mod tests {
             "USDC".to_string(),
             "issuer2".to_string(),
         );
-
-        assert_eq!(corridor.asset_a_code, "USDC");
-        assert_eq!(corridor.asset_b_code, "USDC");
-        assert_eq!(corridor.asset_a_issuer, "issuer1");
-        assert_eq!(corridor.asset_b_issuer, "issuer2");
+ 
+        assert_eq!(corridor.source_asset_code, "USDC");
+        assert_eq!(corridor.destination_asset_code, "USDC");
+        assert_eq!(corridor.source_asset_issuer, "issuer1");
+        assert_eq!(corridor.destination_asset_issuer, "issuer2");
     }
 
     #[test]
@@ -216,10 +238,10 @@ mod tests {
             submission_time: None,
             confirmation_time: None,
         };
-
+ 
         let corridor = payment.get_corridor();
-        assert_eq!(corridor.asset_a_code, "EURC");
-        assert_eq!(corridor.asset_b_code, "USDC");
+        assert_eq!(corridor.source_asset_code, "EURC");
+        assert_eq!(corridor.destination_asset_code, "USDC");
     }
 
     #[test]
