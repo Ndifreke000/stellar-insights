@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stellar-insights-config
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+data:
+  # Stellar Network Configuration
+  stellar-network: "mainnet"
+  stellar-rpc-url-mainnet: "https://stellar.api.onfinality.io/public"
+  stellar-horizon-url-mainnet: "https://horizon.stellar.org"
+  stellar-rpc-url-testnet: "https://soroban-testnet.stellar.org"
+  stellar-horizon-url-testnet: "https://horizon-testnet.stellar.org"
+  
+  # Logging Configuration
+  rust-log: "info"
+  log-format: "json"
+  
+  # CORS Configuration
+  cors-allowed-origins: "https://stellar-insights.com,https://www.stellar-insights.com"
+  
+  # Database Pool Configuration
+  db-pool-max-connections: "20"
+  db-pool-min-connections: "5"
+  db-pool-connect-timeout-seconds: "30"
+  db-pool-idle-timeout-seconds: "600"
+  db-pool-max-lifetime-seconds: "1800"
+  
+  # RPC Configuration
+  rpc-max-retries: "3"
+  rpc-initial-backoff-ms: "100"
+  rpc-max-backoff-ms: "5000"
+  rpc-rate-limit-requests-per-minute: "90"
+  
+  # Admin IP Whitelist
+  admin-ip-whitelist: "10.0.0.0/8,172.16.0.0/12"
+  
+  # Observability
+  otel-endpoint: "http://otel-collector:4317"
+  
+  # Compression
+  compression-min-size: "1024"
+  
+  # Price Feed Configuration
+  price-feed-provider: "coingecko"
+  price-feed-cache-ttl-seconds: "900"
+  price-feed-request-timeout-seconds: "10"
+  
+  # Background Jobs
+  job-corridor-refresh-enabled: "true"
+  job-corridor-refresh-interval-seconds: "300"
+  job-anchor-refresh-enabled: "true"
+  job-anchor-refresh-interval-seconds: "600"
+  job-price-feed-update-enabled: "true"
+  job-price-feed-update-interval-seconds: "900"
+  job-cache-cleanup-enabled: "true"
+  job-cache-cleanup-interval-seconds: "3600"

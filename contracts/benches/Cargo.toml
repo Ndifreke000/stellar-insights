@@ -1,0 +1,20 @@
+[package]
+name = "contract-benches"
+version = "0.1.0"
+edition = "2021"
+
+# Benchmarks legitimately use .unwrap() — override workspace deny.
+[lints.clippy]
+unwrap_used = "allow"
+expect_used = "allow"
+panic = "allow"
+
+[[bench]]
+name = "contract_benchmarks"
+harness = false
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+analytics = { path = "../analytics" }
+stellar-insights = { path = "../stellar_insights" }
+criterion = { version = "0.5", features = ["html_reports"], default-features = false }

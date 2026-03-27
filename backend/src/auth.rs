@@ -1,9 +1,16 @@
+// pub mod sep10;  // Deprecated - has dependency issues with stellar SDK. Use sep10_simple instead.
+pub mod oauth;
+// pub mod sep10_middleware;  // Consolidated into main auth.rs
+pub mod sep10_simple;
+
 use anyhow::{anyhow, Result};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -11,9 +18,8 @@ use tokio::sync::RwLock;
 const ACCESS_TOKEN_EXPIRY_HOURS: i64 = 1;
 const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
 
-// Demo credentials (hardcoded for simplicity)
-const DEMO_USERNAME: &str = "admin";
-const DEMO_PASSWORD: &str = "password123";
+// WARNING: Demo credentials removed for security. Use database-backed user store.
+// See SEC-001 in SECURITY_AUDIT.md
 
 /// User model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,30 +76,60 @@ pub struct Claims {
 pub struct AuthService {
     jwt_secret: String,
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+    db_pool: SqlitePool,
 }
 
 impl AuthService {
-    pub fn new(redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>) -> Self {
+    pub fn new(
+        redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+        db_pool: SqlitePool,
+    ) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
+
+        assert!(
+            (jwt_secret.len() >= 32),
+            "JWT_SECRET must be at least 32 characters for adequate security"
+        );
 
         Self {
             jwt_secret,
             redis_connection,
+            db_pool,
         }
     }
 
-    /// Authenticate user with credentials
-    pub fn authenticate(&self, username: &str, password: &str) -> Result<User> {
-        // Demo authentication - replace with database lookup in production
-        if username == DEMO_USERNAME && password == DEMO_PASSWORD {
-            Ok(User {
-                id: "demo-user-id-123".to_string(),
-                username: username.to_string(),
-            })
-        } else {
-            Err(anyhow!("Invalid credentials"))
+    /// Authenticate user with credentials against the database.
+    /// Passwords are verified using argon2 — never stored or compared in plaintext.
+    pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
+        #[derive(sqlx::FromRow)]
+        struct UserRecord {
+            id: String,
+            username: String,
+            password_hash: String,
         }
+
+        let record = sqlx::query_as::<_, UserRecord>(
+            "SELECT id, username, password_hash FROM users WHERE username = $1",
+        )
+        .bind(username)
+        .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| anyhow!("Database error during authentication: {e}"))?;
+
+        let record = record.ok_or_else(|| anyhow!("Invalid username or password"))?;
+
+        let parsed_hash = PasswordHash::new(&record.password_hash)
+            .map_err(|e| anyhow!("Failed to parse password hash: {e}"))?;
+
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|_| anyhow!("Invalid username or password"))?;
+
+        Ok(User {
+            id: record.id,
+            username: record.username,
+        })
     }
 
     /// Generate access token
@@ -116,7 +152,7 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate access token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate access token: {e}"))
     }
 
     /// Generate refresh token
@@ -139,7 +175,7 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate refresh token: {}", e))
+        .map_err(|e| anyhow!("Failed to generate refresh token: {e}"))
     }
 
     /// Validate and decode token
@@ -152,21 +188,24 @@ impl AuthService {
             &validation,
         )
         .map(|data| data.claims)
-        .map_err(|e| anyhow!("Invalid token: {}", e))
+        .map_err(|e| anyhow!("Invalid token: {e}"))
     }
 
     /// Store refresh token in Redis
     pub async fn store_refresh_token(&self, token: &str, user_id: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{}", user_id);
+            let key = format!("refresh_token:{user_id}");
             let expiry = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60; // seconds
 
             conn.set_ex::<_, _, ()>(&key, token, expiry as u64)
                 .await
-                .map_err(|e| anyhow!("Failed to store refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to store refresh token: {e}"))?;
 
-            tracing::debug!("Stored refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Stored refresh token for user"
+            );
         } else {
             tracing::warn!("Redis not available, refresh token not stored");
         }
@@ -184,7 +223,7 @@ impl AuthService {
             return Err(anyhow!("Invalid token type"));
         }
 
-        // Check if token exists in Redis
+        // Check if token exists in Redis (fail closed - SEC-007)
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             let key = format!("refresh_token:{}", claims.sub);
@@ -192,13 +231,16 @@ impl AuthService {
             let stored_token: Option<String> = conn
                 .get(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to retrieve refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to retrieve refresh token: {e}"))?;
 
             if stored_token.as_deref() != Some(token) {
                 return Err(anyhow!("Refresh token not found or invalid"));
             }
         } else {
-            tracing::warn!("Redis not available, skipping refresh token validation");
+            tracing::error!(
+                "Redis not available - refusing refresh token validation (fail closed)"
+            );
+            return Err(anyhow!("Token validation service unavailable"));
         }
 
         Ok(claims)
@@ -208,13 +250,16 @@ impl AuthService {
     pub async fn invalidate_refresh_token(&self, user_id: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{}", user_id);
+            let key = format!("refresh_token:{user_id}");
 
             conn.del::<_, ()>(&key)
                 .await
-                .map_err(|e| anyhow!("Failed to invalidate refresh token: {}", e))?;
+                .map_err(|e| anyhow!("Failed to invalidate refresh token: {e}"))?;
 
-            tracing::debug!("Invalidated refresh token for user: {}", user_id);
+            tracing::debug!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                "Invalidated refresh token for user"
+            );
         }
 
         Ok(())
@@ -223,7 +268,9 @@ impl AuthService {
     /// Login flow
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse> {
         // Authenticate user
-        let user = self.authenticate(&request.username, &request.password)?;
+        let user = self
+            .authenticate(&request.username, &request.password)
+            .await?;
 
         // Generate tokens
         let access_token = self.generate_access_token(&user)?;
@@ -268,5 +315,111 @@ impl AuthService {
         self.invalidate_refresh_token(&claims.sub).await?;
 
         Ok(())
+    }
+}
+
+// SEP-10 Authentication Middleware and Types
+// Consolidated from sep10_middleware.rs
+
+use axum::{
+    async_trait,
+    extract::{FromRequestParts, Request, State},
+    http::{header, request::Parts, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use serde_json::json;
+
+/// Extract SEP-10 authenticated user from request
+#[derive(Debug, Clone)]
+pub struct Sep10User {
+    pub account: String,
+    pub client_domain: Option<String>,
+}
+
+/// SEP-10 claims for extracting authenticated user in handlers
+#[derive(Debug, Clone)]
+pub struct Sep10Claims {
+    pub account: String,
+    pub client_domain: Option<String>,
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for Sep10Claims
+where
+    S: Send + Sync,
+{
+    type Rejection = Sep10AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Try to get Sep10User from extensions (set by middleware)
+        parts
+            .extensions
+            .get::<Sep10User>()
+            .map(|user| Self {
+                account: user.account.clone(),
+                client_domain: user.client_domain.clone(),
+            })
+            .ok_or(Sep10AuthError::MissingToken)
+    }
+}
+
+/// SEP-10 authentication middleware
+pub async fn sep10_auth_middleware(
+    State(sep10_service): State<Arc<sep10_simple::Sep10Service>>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, Sep10AuthError> {
+    // Extract Authorization header and token before mutating req
+    let token = {
+        let auth_header = req
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .ok_or(Sep10AuthError::MissingToken)?;
+
+        // Extract Bearer token
+        auth_header
+            .strip_prefix("Bearer ")
+            .ok_or(Sep10AuthError::InvalidToken)?
+            .to_string()
+    };
+
+    // Validate session
+    let session = sep10_service
+        .validate_session(&token)
+        .await
+        .map_err(|_| Sep10AuthError::InvalidToken)?;
+
+    // Attach user to request extensions
+    let sep10_user = Sep10User {
+        account: session.account,
+        client_domain: session.client_domain,
+    };
+    req.extensions_mut().insert(sep10_user);
+    req.extensions_mut().insert(token);
+
+    Ok(next.run(req).await)
+}
+
+/// SEP-10 authentication errors
+#[derive(Debug)]
+pub enum Sep10AuthError {
+    MissingToken,
+    InvalidToken,
+}
+
+impl IntoResponse for Sep10AuthError {
+    fn into_response(self) -> Response {
+        let (status, message) = match self {
+            Self::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
+            Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+        };
+
+        let body = json!({
+            "error": message,
+        });
+
+        (status, axum::Json(body)).into_response()
     }
 }

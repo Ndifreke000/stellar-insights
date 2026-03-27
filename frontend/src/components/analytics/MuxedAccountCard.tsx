@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Users, Activity } from "lucide-react";
-import { getMuxedAnalytics, MuxedAccountAnalytics } from "@/lib/api";
+import { getMuxedAnalytics } from "@/lib/api/api";
 import { formatAddressShort } from "@/lib/address";
+import { MuxedAccountAnalytics } from "@/lib/api/types";
 
 export function MuxedAccountCard() {
   const [data, setData] = useState<MuxedAccountAnalytics | null>(null);

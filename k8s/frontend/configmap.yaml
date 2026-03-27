@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stellar-insights-frontend-config
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: frontend
+data:
+  api-url: "http://stellar-insights-backend:8080"

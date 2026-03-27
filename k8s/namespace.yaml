@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stellar-insights
+  labels:
+    name: stellar-insights
+    environment: production
+    app: stellar-insights
+  annotations:
+    description: "Stellar Insights application namespace"

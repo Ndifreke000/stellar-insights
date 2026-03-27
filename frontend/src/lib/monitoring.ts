@@ -2,6 +2,7 @@
  * Frontend Monitoring Utility
  * Handles tracking of performance metrics and application errors.
  */
+import { logger } from "@/lib/logger";
 
 export interface Metric {
   name: string;
@@ -57,7 +58,7 @@ class Monitoring {
       metadata,
     };
 
-    console.log(`[Monitoring] Metric: ${name} = ${value}`, metadata);
+    logger.debug(`[Monitoring] Metric: ${name} = ${value}`, metadata);
     this.metricsBuffer.push(metric);
 
     if (this.metricsBuffer.length >= this.MAX_BUFFER_SIZE) {
@@ -68,7 +69,10 @@ class Monitoring {
   /**
    * Report an error
    */
-  public reportError(error: Error | string, metadata?: Record<string, unknown>) {
+  public reportError(
+    error: Error | string,
+    metadata?: Record<string, unknown>,
+  ) {
     const errorObj: AppError = {
       message: typeof error === "string" ? error : error.message,
       stack: typeof error === "string" ? undefined : error.stack,
@@ -79,7 +83,7 @@ class Monitoring {
       metadata,
     };
 
-    console.error(`[Monitoring] Error: ${errorObj.message}`, errorObj);
+    logger.error(`[Monitoring] Error: ${errorObj.message}`, errorObj);
     this.errorsBuffer.push(errorObj);
 
     // Errors are often critical, so flush immediately or soon
@@ -123,7 +127,7 @@ class Monitoring {
         );
       }
     } catch (e) {
-      console.error("[Monitoring] Failed to flush metrics", e);
+      logger.error("[Monitoring] Failed to flush metrics", e);
     }
   }
 

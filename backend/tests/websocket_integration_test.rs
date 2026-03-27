@@ -9,16 +9,16 @@ use tokio::time::{timeout, Duration};
 async fn test_websocket_subscription_flow() {
     // Create WebSocket state
     let ws_state = Arc::new(WsState::new());
-    
+
     // Test subscription message parsing
     let subscribe_msg = json!({
         "type": "subscribe",
         "channels": ["corridor:USDC-XLM", "anchor:GXXX"]
     });
-    
+
     let parsed: Result<WsMessage, _> = serde_json::from_value(subscribe_msg);
     assert!(parsed.is_ok());
-    
+
     if let Ok(WsMessage::Subscribe { channels }) = parsed {
         assert_eq!(channels.len(), 2);
         assert!(channels.contains(&"corridor:USDC-XLM".to_string()));
@@ -32,15 +32,15 @@ async fn test_websocket_subscription_flow() {
 async fn test_corridor_update_message_serialization() {
     let corridor_update = WsMessage::CorridorUpdate {
         corridor_key: "USDC-XLM".to_string(),
-        asset_a_code: "USDC".to_string(),
-        asset_a_issuer: "issuer1".to_string(),
-        asset_b_code: "XLM".to_string(),
-        asset_b_issuer: "native".to_string(),
+        source_asset_code: "USDC".to_string(),
+        source_asset_issuer: "issuer1".to_string(),
+        destination_asset_code: "XLM".to_string(),
+        destination_asset_issuer: "native".to_string(),
         success_rate: Some(95.5),
         health_score: Some(92.0),
         last_updated: Some("2026-02-20T10:30:00Z".to_string()),
     };
-    
+
     let json = serde_json::to_string(&corridor_update).unwrap();
     assert!(json.contains("corridor_update"));
     assert!(json.contains("USDC-XLM"));
@@ -55,7 +55,7 @@ async fn test_health_alert_message_serialization() {
         message: "Success rate dropped below 85%".to_string(),
         timestamp: "2026-02-20T10:30:00Z".to_string(),
     };
-    
+
     let json = serde_json::to_string(&health_alert).unwrap();
     assert!(json.contains("health_alert"));
     assert!(json.contains("USDC-PHP"));
@@ -67,21 +67,21 @@ async fn test_health_alert_message_serialization() {
 async fn test_ws_state_subscription_management() {
     let ws_state = WsState::new();
     let connection_id = uuid::Uuid::new_v4();
-    
+
     // Test subscription
     let channels = vec!["corridor:USDC-XLM".to_string(), "anchor:GXXX".to_string()];
     ws_state.subscribe_connection(connection_id, channels.clone());
-    
+
     // Verify subscription count
     assert_eq!(ws_state.channel_subscription_count("corridor:USDC-XLM"), 1);
     assert_eq!(ws_state.channel_subscription_count("anchor:GXXX"), 1);
     assert_eq!(ws_state.channel_subscription_count("nonexistent"), 0);
-    
+
     // Test unsubscription
     ws_state.unsubscribe_connection(connection_id, vec!["corridor:USDC-XLM".to_string()]);
     assert_eq!(ws_state.channel_subscription_count("corridor:USDC-XLM"), 0);
     assert_eq!(ws_state.channel_subscription_count("anchor:GXXX"), 1);
-    
+
     // Test cleanup
     ws_state.cleanup_connection(connection_id);
     assert_eq!(ws_state.channel_subscription_count("anchor:GXXX"), 0);
@@ -95,10 +95,58 @@ async fn test_new_payment_message_serialization() {
         successful: true,
         timestamp: "2026-02-20T10:30:00Z".to_string(),
     };
-    
+
     let json = serde_json::to_string(&payment_msg).unwrap();
     assert!(json.contains("new_payment"));
     assert!(json.contains("USDC-XLM"));
     assert!(json.contains("1000.5"));
     assert!(json.contains("true"));
+}
+
+#[tokio::test]
+async fn test_websocket_rate_limit_enforcement() {
+    use stellar_insights_backend::websocket::WsState;
+
+    let state = WsState::new();
+    let client_id = "integration-test-client";
+
+    // Allow up to the limit.
+    for i in 0..100u32 {
+        assert!(
+            state.check_rate_limit(client_id),
+            "message {} should be within rate limit",
+            i + 1
+        );
+    }
+
+    // 101st message must be blocked.
+    assert!(
+        !state.check_rate_limit(client_id),
+        "101st message should exceed rate limit"
+    );
+}
+
+#[tokio::test]
+async fn test_websocket_connection_limit_boundary() {
+    use stellar_insights_backend::websocket::{WsMessage, WsState};
+
+    let state = std::sync::Arc::new(WsState::new());
+
+    // Fill to one below the limit.
+    for _ in 0..999 {
+        let (tx, _rx) = tokio::sync::mpsc::channel::<WsMessage>(1);
+        state.connections.insert(uuid::Uuid::new_v4(), tx);
+    }
+
+    assert_eq!(state.connection_count(), 999);
+    // One more should still be within limit.
+    assert!(state.connection_count() < 1000);
+
+    // Add the 1000th.
+    let (tx, _rx) = tokio::sync::mpsc::channel::<WsMessage>(1);
+    state.connections.insert(uuid::Uuid::new_v4(), tx);
+    assert_eq!(state.connection_count(), 1000);
+
+    // Now at capacity — handler would reject.
+    assert!(state.connection_count() >= 1000);
 }

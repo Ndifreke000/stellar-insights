@@ -1,7 +1,5 @@
 use anyhow::Result;
-use chrono::Utc;
 use reqwest::Client;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -9,8 +7,7 @@ async fn main() -> Result<()> {
 
     // Test prediction endpoint
     let response = client
-        .get("http://localhost:8080/api/ml/predict")
-        .query(&[("corridor", "USDC-USD"), ("amount_usd", "100.0")])
+        .get("http://localhost:8080/api/ml/predict?corridor=USDC-USD&amount_usd=100.0")
         .send()
         .await?;
 

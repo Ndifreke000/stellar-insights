@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import {
   LineChart,
   Line,
@@ -12,6 +13,7 @@ import {
   AreaChart,
 } from "recharts";
 import { TrustlineSnapshot } from "@/lib/trustline-api";
+import { ChartExportButton } from "./ChartExportButton";
 
 interface TrustlineGrowthChartProps {
   data: TrustlineSnapshot[];
@@ -22,6 +24,8 @@ export function TrustlineGrowthChart({
   data,
   latestTotal,
 }: TrustlineGrowthChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  
   if (!data || data.length === 0) {
     return (
       <div className="glass-card rounded-2xl p-6 border border-border/50 flex flex-col items-center justify-center h-[400px]">
@@ -62,9 +66,9 @@ export function TrustlineGrowthChart({
   const growthPercent = earliestTotal > 0 ? (growth / earliestTotal) * 100 : 0;
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-border/50">
+    <div ref={chartRef} className="glass-card rounded-2xl p-6 border border-border/50">
       <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 gap-4">
-        <div>
+        <div className="flex-1">
           <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2 cursor-default">
             Asset Adoption // 04.A
           </div>
@@ -76,28 +80,31 @@ export function TrustlineGrowthChart({
           </p>
         </div>
 
-        <div className="flex gap-2 sm:gap-4 w-full md:w-auto mt-4 md:mt-0">
-          <div className="p-3 rounded-xl bg-slate-900/30 border border-white/5 flex-1 sm:flex-none sm:min-w-[120px]">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mb-1 cursor-default">
-              Current
-            </p>
-            <p className="text-lg sm:text-xl font-black font-mono tracking-tighter text-foreground/90 cursor-default">
-              {formatNumber(latestTotal)}
-            </p>
+        <div className="flex items-start gap-2">
+          <div className="flex gap-2 sm:gap-4">
+            <div className="p-3 rounded-xl bg-slate-900/30 border border-white/5 flex-1 sm:flex-none sm:min-w-[120px]">
+              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mb-1 cursor-default">
+                Current
+              </p>
+              <p className="text-lg sm:text-xl font-black font-mono tracking-tighter text-foreground/90 cursor-default">
+                {formatNumber(latestTotal)}
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-900/30 border border-white/5 flex-1 sm:flex-none sm:min-w-[120px]">
+              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mb-1 cursor-default">
+                Growth (Period)
+              </p>
+              <p
+                className={`text-lg sm:text-xl font-black font-mono tracking-tighter cursor-default ${
+                  growth >= 0 ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {growth >= 0 ? "+" : ""}
+                {growthPercent.toFixed(1)}%
+              </p>
+            </div>
           </div>
-          <div className="p-3 rounded-xl bg-slate-900/30 border border-white/5 flex-1 sm:flex-none sm:min-w-[120px]">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mb-1 cursor-default">
-              Growth (Period)
-            </p>
-            <p
-              className={`text-lg sm:text-xl font-black font-mono tracking-tighter cursor-default ${
-                growth >= 0 ? "text-emerald-400" : "text-red-400"
-              }`}
-            >
-              {growth >= 0 ? "+" : ""}
-              {growthPercent.toFixed(1)}%
-            </p>
-          </div>
+          <ChartExportButton chartRef={chartRef} chartName="Trustline Growth" />
         </div>
       </div>
 

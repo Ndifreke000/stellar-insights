@@ -1,0 +1,24 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit security checks..."
+
+# Run npm audit
+echo "📦 Checking for security vulnerabilities..."
+cd frontend
+if ! npm audit --audit-level=high; then
+    echo "❌ Security vulnerabilities detected!"
+    echo "Run 'npm audit fix' to resolve issues"
+    exit 1
+fi
+
+echo "✅ No high-severity vulnerabilities found"
+
+# Run linting
+echo "🔍 Running ESLint..."
+if ! npm run lint; then
+    echo "❌ Linting failed!"
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"

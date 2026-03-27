@@ -1,0 +1,9 @@
+# SQLx compile-time check needs either DATABASE_URL or offline cache.
+#
+# Option A — build with DB: set DATABASE_URL (e.g. in .env) and run `cargo build`.
+# Option B — build without DB: run once (with DB + DATABASE_URL):
+#   cargo sqlx prepare
+# then uncomment below so future builds use the .sqlx cache.
+#
+# [env]
+# SQLX_OFFLINE = "true"

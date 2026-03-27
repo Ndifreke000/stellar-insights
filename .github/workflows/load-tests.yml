@@ -1,0 +1,172 @@
+name: Load Tests
+
+on:
+  # Run on manual trigger
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of load test to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - stress
+          - spike
+  
+  # Run on schedule (weekly)
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
+  
+  # Run on release
+  release:
+    types: [published]
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            backend/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      
+      - name: Build backend
+        working-directory: backend
+        run: cargo build --release
+      
+      - name: Setup test environment
+        working-directory: backend
+        run: |
+          cp .env.example .env
+          echo "DATABASE_URL=sqlite:./test_stellar_insights.db" >> .env
+          echo "REDIS_URL=redis://localhost:6379" >> .env
+          echo "RPC_MOCK_MODE=true" >> .env
+      
+      - name: Run database migrations
+        working-directory: backend
+        run: |
+          cargo install sqlx-cli --no-default-features --features sqlite
+          sqlx migrate run
+      
+      - name: Start backend server
+        working-directory: backend
+        run: |
+          ./target/release/stellar-insights-backend &
+          echo $! > server.pid
+          sleep 10
+      
+      - name: Wait for server to be ready
+        run: |
+          timeout 60 bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+      
+      - name: Run quick load test
+        if: github.event.inputs.test_type == 'quick' || github.event_name == 'schedule'
+        working-directory: backend/load-tests
+        run: |
+          k6 run --vus 20 --duration 2m corridors-load-test.js
+      
+      - name: Run full load test suite
+        if: github.event.inputs.test_type == 'full' || github.event_name == 'release'
+        working-directory: backend/load-tests
+        run: |
+          mkdir -p results
+          k6 run --out json=results/corridors.json corridors-load-test.js
+          k6 run --out json=results/anchors.json anchors-load-test.js
+          k6 run --out json=results/rpc.json rpc-endpoints-load-test.js
+      
+      - name: Run stress test
+        if: github.event.inputs.test_type == 'stress'
+        working-directory: backend/load-tests
+        run: |
+          mkdir -p results
+          k6 run --out json=results/stress.json stress-test.js
+      
+      - name: Run spike test
+        if: github.event.inputs.test_type == 'spike'
+        working-directory: backend/load-tests
+        run: |
+          mkdir -p results
+          k6 run --out json=results/spike.json spike-test.js
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: load-test-results
+          path: backend/load-tests/results/
+          retention-days: 30
+      
+      - name: Stop backend server
+        if: always()
+        working-directory: backend
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = 'backend/load-tests/results/';
+            
+            let comment = '## Load Test Results\n\n';
+            comment += '| Test | Status |\n';
+            comment += '|------|--------|\n';
+            
+            try {
+              const files = fs.readdirSync(resultsPath);
+              files.forEach(file => {
+                if (file.endsWith('.json')) {
+                  comment += `| ${file} | ✅ Completed |\n`;
+                }
+              });
+            } catch (e) {
+              comment += '| All Tests | ❌ Failed |\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

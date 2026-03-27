@@ -1,0 +1,101 @@
+{
+  "index_patterns": ["stellar-insights-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.refresh_interval": "5s",
+      "index.codec": "best_compression",
+      "index.lifecycle.name": "stellar-insights-policy",
+      "index.lifecycle.rollover_alias": "stellar-insights"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "log_level": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "target": {
+          "type": "keyword"
+        },
+        "request_id": {
+          "type": "keyword"
+        },
+        "trace_id": {
+          "type": "keyword"
+        },
+        "http_method": {
+          "type": "keyword"
+        },
+        "http_path": {
+          "type": "keyword"
+        },
+        "http_status": {
+          "type": "short"
+        },
+        "response_time_ms": {
+          "type": "long"
+        },
+        "response_time_seconds": {
+          "type": "float"
+        },
+        "client_ip": {
+          "type": "ip"
+        },
+        "user_agent": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "error_message": {
+          "type": "text"
+        },
+        "rpc_method": {
+          "type": "keyword"
+        },
+        "query": {
+          "type": "text"
+        },
+        "query_time_ms": {
+          "type": "long"
+        },
+        "geoip": {
+          "properties": {
+            "location": {
+              "type": "geo_point"
+            },
+            "country_name": {
+              "type": "keyword"
+            },
+            "city_name": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "priority": 100,
+  "version": 1,
+  "_meta": {
+    "description": "Index template for Stellar Insights logs"
+  }
+}
