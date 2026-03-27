@@ -99,9 +99,9 @@ async fn main() -> anyhow::Result<()> {
 
     let app_state = AppState::new(
         db.clone(),
+        cache.clone(),
         ws_state,
         ingestion,
-        cache.clone(),
         rpc_client.clone(),
     );
     let cached_state = (
@@ -178,8 +178,7 @@ async fn main() -> anyhow::Result<()> {
             Method::OPTIONS,
             Method::PATCH,
         ])
-        .allow_header(AUTHORIZATION)
-        .allow_header(CONTENT_TYPE)
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 

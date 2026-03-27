@@ -1,5 +1,5 @@
 use crate::database::Database;
-use crate::services::alerts::AlertService;
+use crate::services::alert_service::AlertService;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::Client;
@@ -71,7 +71,6 @@ struct RpcError {
     code: i32,
     message: String,
 }
-
 
 pub struct ContractEventListener {
     client: Client,
@@ -360,12 +359,12 @@ impl ContractEventListener {
 
                 // Send alert via AlertService
                 let expected = backend_hash.clone();
-                let actual = on_chain_hash.clone();
+                let actual = on_chain_hash.to_string();
 
                 let alert_service = self.alert_service.clone();
                 tokio::spawn(async move {
                     if let Err(e) = alert_service
-                        .alert_verification_failed(epoch, expected, actual)
+                        .alert_verification_failed(epoch, expected, actual.to_string())
                         .await
                     {
                         error!("Failed to send verification failure alert: {}", e);
@@ -619,7 +618,8 @@ mod tests {
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         let db = Arc::new(Database::new(pool));
-        let listener = ContractEventListener::from_env(db).unwrap();
+        let alert_service = Arc::new(AlertService::default());
+        let listener = ContractEventListener::from_env(db, alert_service).unwrap();
 
         assert_eq!(listener.config.contract_id, "test-contract-id");
         assert_eq!(listener.config.poll_interval_secs, 15);
@@ -631,4 +631,3 @@ mod tests {
         std::env::remove_var("CONTRACT_EVENT_START_LEDGER");
     }
 }
-
