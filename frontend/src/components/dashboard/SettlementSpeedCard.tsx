@@ -22,7 +22,7 @@ interface SettlementSpeedCardProps {
 export function SettlementSpeedCard({ data }: SettlementSpeedCardProps) {
   return (
     <div className="col-span-1 lg:col-span-2 bg-white rounded shadow p-4">
-      <h2 className="text-sm text-gray-500">
+      <h2 className="text-sm text-muted-foreground">
         Settlement Speed (ms) — last 24 points
       </h2>
       <div style={{ width: "100%", height: 220 }} className="mt-3">

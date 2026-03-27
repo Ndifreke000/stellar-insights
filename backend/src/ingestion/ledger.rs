@@ -14,6 +14,7 @@ pub struct LedgerIngestionService {
     fee_bump_tracker: Arc<FeeBumpTrackerService>,
     account_merge_detector: Arc<AccountMergeDetector>,
     pool: SqlitePool,
+    webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
 }
 
 /// Represents a payment operation extracted from a ledger
@@ -30,7 +31,8 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         rpc_client: Arc<StellarRpcClient>,
         fee_bump_tracker: Arc<FeeBumpTrackerService>,
         account_merge_detector: Arc<AccountMergeDetector>,
@@ -41,22 +43,39 @@ impl LedgerIngestionService {
             fee_bump_tracker,
             account_merge_detector,
             pool,
+            webhook_event_service: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn new_with_webhooks(
+        rpc_client: Arc<StellarRpcClient>,
+        fee_bump_tracker: Arc<FeeBumpTrackerService>,
+        account_merge_detector: Arc<AccountMergeDetector>,
+        pool: SqlitePool,
+        webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
+    ) -> Self {
+        Self {
+            rpc_client,
+            fee_bump_tracker,
+            account_merge_detector,
+            pool,
+            webhook_event_service: Some(webhook_event_service),
         }
     }
 
     /// I'm running the main ingestion loop - fetches ledgers and persists them
     pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
         let cursor = self.get_cursor().await?;
-        let start_ledger = match self.get_last_ledger().await? {
-            Some(l) => Some(l + 1),
-            None => {
-                let health = self
-                    .rpc_client
-                    .check_health()
-                    .await
-                    .context("Failed to check health")?;
-                Some(health.oldest_ledger)
-            }
+        let start_ledger = if let Some(l) = self.get_last_ledger().await? {
+            Some(l + 1)
+        } else {
+            let health = self
+                .rpc_client
+                .check_health()
+                .await
+                .context("Failed to check health")?;
+            Some(health.oldest_ledger)
         };
 
         info!(
@@ -100,15 +119,16 @@ impl LedgerIngestionService {
                 Ok(payments) => {
                     for payment in payments {
                         // Convert RPC Payment to ExtractedPayment
+                        // Uses helper methods to support both old and new Horizon formats
                         let extracted = ExtractedPayment {
                             ledger_sequence: ledger.sequence,
-                            transaction_hash: payment.transaction_hash,
+                            transaction_hash: payment.transaction_hash.clone(),
                             operation_type: "payment".to_string(), // Horizon 'payments' endpoint returns payments
-                            source_account: payment.source_account,
-                            destination: payment.destination,
-                            asset_code: payment.asset_code,
-                            asset_issuer: payment.asset_issuer,
-                            amount: payment.amount,
+                            source_account: payment.source_account.clone(),
+                            destination: payment.get_destination().unwrap_or_default(),
+                            asset_code: payment.get_asset_code(),
+                            asset_issuer: payment.get_asset_issuer(),
+                            amount: payment.get_amount(),
                         };
 
                         if let Err(e) = self.persist_payment(&extracted).await {
@@ -171,11 +191,11 @@ impl LedgerIngestionService {
         let close_time = self.parse_ledger_time(&ledger.ledger_close_time)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (sequence) DO NOTHING
-            "#,
+            ",
         )
         .bind(ledger.sequence as i64)
         .bind(&ledger.hash)
@@ -188,11 +208,11 @@ impl LedgerIngestionService {
         // I'm also storing a placeholder transaction for the ledger
         let tx_hash = format!("tx_{}", ledger.sequence);
         sqlx::query(
-            r#"
+            r"
             INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (hash) DO NOTHING
-            "#,
+            ",
         )
         .bind(&tx_hash)
         .bind(ledger.sequence as i64)
@@ -209,10 +229,10 @@ impl LedgerIngestionService {
     /// I'm persisting an extracted payment to the database
     async fn persist_payment(&self, payment: &ExtractedPayment) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
+            ",
         )
         .bind(payment.ledger_sequence as i64)
         .bind(&payment.transaction_hash)
@@ -224,6 +244,41 @@ impl LedgerIngestionService {
         .bind(&payment.amount)
         .execute(&self.pool)
         .await?;
+
+        // Trigger webhook event for payment creation
+        if let Some(webhook_service) = &self.webhook_event_service {
+            if payment.operation_type == "payment" {
+                let asset_code = payment.asset_code.as_deref().unwrap_or("XLM");
+                let asset_issuer = payment.asset_issuer.as_deref().unwrap_or("native");
+                let amount = payment.amount.parse::<f64>().unwrap_or(0.0);
+
+                let webhook_service = webhook_service.clone();
+                let payment_id =
+                    format!("{}-{}", payment.transaction_hash, payment.ledger_sequence);
+                let source = payment.source_account.clone();
+                let destination = payment.destination.clone();
+                let asset_code = asset_code.to_string();
+                let asset_issuer = asset_issuer.to_string();
+                let timestamp = Utc::now().to_rfc3339();
+
+                tokio::spawn(async move {
+                    if let Err(e) = webhook_service
+                        .trigger_payment_created(
+                            &payment_id,
+                            &source,
+                            &destination,
+                            &asset_code,
+                            &asset_issuer,
+                            amount,
+                            &timestamp,
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to trigger payment created webhook: {}", e);
+                    }
+                });
+            }
+        }
 
         Ok(())
     }
@@ -250,14 +305,14 @@ impl LedgerIngestionService {
     async fn save_cursor(&self, cursor: &str, last_ledger: Option<u64>) -> Result<()> {
         let seq = last_ledger.unwrap_or(0) as i64;
         sqlx::query(
-            r#"
+            r"
             INSERT INTO ingestion_cursor (id, last_ledger_sequence, cursor, updated_at)
             VALUES (1, $1, $2, CURRENT_TIMESTAMP)
             ON CONFLICT (id) DO UPDATE SET
                 last_ledger_sequence = EXCLUDED.last_ledger_sequence,
                 cursor = EXCLUDED.cursor,
                 updated_at = CURRENT_TIMESTAMP
-            "#,
+            ",
         )
         .bind(seq)
         .bind(cursor)

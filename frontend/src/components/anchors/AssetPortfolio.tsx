@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { IssuedAsset } from "@/lib/api";
 import { IssuedAssetsTable } from "./IssuedAssetsTable";
 import { AssetDistributionChart } from "./AssetDistributionChart";
 import { AssetDetailModal } from "./AssetDetailModal";
 import { Download, Filter, ArrowUpDown } from "lucide-react";
+import { IssuedAsset } from "@/lib/api/types";
 
 interface AssetPortfolioProps {
   assets: IssuedAsset[];

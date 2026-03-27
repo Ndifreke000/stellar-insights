@@ -3,8 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { Menu, Wallet, LogOut } from "lucide-react";
 import { useWallet } from "../lib/wallet-context";
-import { useNotifications } from "../../contexts/NotificationContext";
-import { NetworkSwitcher } from "../NetworkSwitcher";
+import { NotificationCenter } from "./notification-center";
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -112,21 +111,10 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
           </div>
         </div>
 
-        {/* Right: Network Switcher & Wallet Connect */}
+        {/* Right: Notifications & Wallet Connect */}
         <div className="flex items-center gap-3">
-          <NetworkSwitcher 
-            onNetworkChange={(network) => {
-              showToast({
-                type: 'info',
-                priority: 'medium',
-                title: 'Network Switch',
-                message: `Switched to ${network.display_name}`,
-                category: 'system',
-                duration: 4000,
-              });
-            }}
-          />
-          
+          <NotificationCenter />
+
           <div className="relative">
             {isConnected ? (
               <div className="flex items-center gap-3">
@@ -138,17 +126,19 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
                 </div>
                 <button
                   onClick={() => setShowWalletMenu(!showWalletMenu)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors min-w-[44px] min-h-[44px] touch-manipulation active:bg-gray-200 dark:active:bg-slate-700"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                   aria-label="Wallet menu"
-                  aria-expanded={showWalletMenu}
                 >
-                  <Wallet className="w-6 h-6" />
+                  <Wallet className="w-5 h-5" />
                 </button>
 
                 {showWalletMenu && (
                   <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg py-2 min-w-[180px]">
                     <button
-                      onClick={handleDisconnect}
+                      onClick={() => {
+                        disconnectWallet();
+                        setShowWalletMenu(false);
+                      }}
                       className="w-full px-4 py-2 flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 transition-colors"
                     >
                       <LogOut className="w-4 h-4" />
@@ -159,8 +149,8 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               </div>
             ) : (
               <button
-                onClick={handleConnect}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2 min-h-[44px] touch-manipulation active:bg-blue-700"
+                onClick={connectWallet}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2"
               >
                 <Wallet className="w-4 h-4" />
                 <span className="hidden sm:inline">Connect Wallet</span>

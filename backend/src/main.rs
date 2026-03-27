@@ -1,9 +1,3 @@
-use anyhow::Result;
-use axum::{
-    routing::{get, put},
-    Router,
-};
-use dotenv::dotenv;
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
@@ -11,80 +5,62 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
 
-use stellar_insights_backend::api::account_merges;
-use stellar_insights_backend::api::anchors_cached::get_anchors;
-use stellar_insights_backend::api::cache_stats;
-use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
-use stellar_insights_backend::api::fee_bump;
-use stellar_insights_backend::api::liquidity_pools;
-use stellar_insights_backend::api::metrics_cached;
-use stellar_insights_backend::auth::AuthService;
-use stellar_insights_backend::auth_middleware::auth_middleware;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::handlers::*;
-use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::network::NetworkConfig;
-use stellar_insights_backend::openapi::ApiDoc;
-use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::rpc_handlers;
-use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
-use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
-use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
-use stellar_insights_backend::services::price_feed::{
-    default_asset_mapping, PriceFeedClient, PriceFeedConfig,
+use anyhow::Context;
+use axum::http::{
+    header::{AUTHORIZATION, CONTENT_TYPE},
+    HeaderValue, Method,
 };
-use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
-use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
-use stellar_insights_backend::shutdown::{ShutdownConfig, ShutdownCoordinator};
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::websocket::WsState;
+
+use stellar_insights_backend::{
+    api::v1::routes,
+    backup::{BackupConfig, BackupManager},
+    cache::{CacheConfig, CacheManager},
+    database::{Database, PoolConfig},
+    env_config,
+    ingestion::DataIngestionService,
+    openapi::ApiDoc,
+    rate_limit::RateLimiter,
+    rpc::StellarRpcClient,
+    services::{
+        account_merge_detector::AccountMergeDetector,
+        fee_bump_tracker::FeeBumpTrackerService,
+        liquidity_pool_analyzer::LiquidityPoolAnalyzer,
+        price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
+        webhook_dispatcher::WebhookDispatcher,
+    },
+    state::AppState,
+    websocket::WsState,
+};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    // Track shutdown start time for logging
-    let _shutdown_start = std::time::Instant::now();
+async fn main() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
+    env_config::log_env_config();
+    let _tracing_guard =
+        stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
+    tracing::info!("Stellar Insights Backend - Initializing Server");
 
-    // Load environment variables
-    dotenv().ok();
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
+    let pool = PoolConfig::from_env()
+        .create_pool(&db_url)
+        .await
+        .context("Failed to create database pool")?;
 
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "backend=info,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
-    tracing::info!("Starting Stellar Insights Backend");
-
-    // Initialize shutdown coordinator
-    let shutdown_config = ShutdownConfig::from_env();
-    tracing::info!(
-        "Shutdown configuration: graceful_timeout={:?}, background_timeout={:?}, db_timeout={:?}",
-        shutdown_config.graceful_timeout,
-        shutdown_config.background_task_timeout,
-        shutdown_config.db_close_timeout
-    );
-    let _shutdown_coordinator = Arc::new(ShutdownCoordinator::new(shutdown_config));
-
-    // Database connection
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
-
-    tracing::info!("Connecting to database: {}", database_url);
-    let pool = sqlx::SqlitePool::connect(&database_url).await?;
-
-    tracing::info!("Running database migrations...");
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // Run migrations on startup
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .context("Failed to run database migrations")?;
+    tracing::info!("Database migrations completed successfully");
 
     let db = Arc::new(Database::new(pool.clone()));
 
@@ -118,340 +94,135 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap_or(false);
+    // Pool exhaustion monitoring: warn at >90% utilization, update Prometheus gauges
+    {
+        let monitor_pool = pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let size = monitor_pool.size();
+                let idle = monitor_pool.num_idle() as u32;
+                let active = size.saturating_sub(idle);
+                if size > 0 && active as f64 / size as f64 > 0.9 {
+                    tracing::warn!(
+                        "Database pool nearly exhausted: {}/{} connections active",
+                        active,
+                        size
+                    );
+                }
+                stellar_insights_backend::observability::metrics::set_pool_size(size as i64);
+                stellar_insights_backend::observability::metrics::set_pool_idle(idle as i64);
+                stellar_insights_backend::observability::metrics::set_pool_active(active as i64);
+            }
+        });
+    }
 
-    // Initialize Stellar RPC Client with network configuration
-    let network_config = NetworkConfig::from_env();
-    tracing::info!(
-        "Initializing Stellar RPC client for {} (mock_mode: {})",
-        network_config.display_name(),
-        mock_mode
+    let cache = Arc::new(
+        CacheManager::new(CacheConfig::default())
+            .await
+            .context("Failed to initialize cache manager - check Redis connection")?,
     );
 
-    let rpc_client = if mock_mode {
-        Arc::new(StellarRpcClient::new_with_network(network_config.network, true))
-    } else {
-        Arc::new(StellarRpcClient::new(
-            network_config.rpc_url.clone(),
-            network_config.horizon_url.clone(),
-            false,
-        ))
-    };
+    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
 
-    // Initialize WebSocket state
+    let price_feed_config = PriceFeedConfig::default();
+    let price_feed = Arc::new(PriceFeedClient::new(
+        price_feed_config,
+        default_asset_mapping(),
+    ));
+
     let ws_state = Arc::new(WsState::new());
-    tracing::info!("WebSocket state initialized");
+    let ingestion = Arc::new(DataIngestionService::new(rpc_client.clone(), db.clone()));
 
-    // Initialize Data Ingestion Service
-    let ingestion_service = Arc::new(DataIngestionService::new(
-        Arc::clone(&rpc_client),
-        Arc::clone(&db),
-    ));
-
-    // Initialize Fee Bump Tracker Service
-    let fee_bump_tracker = Arc::new(FeeBumpTrackerService::new(pool.clone()));
-
-    // Initialize Account Merge Detector Service
-    let account_merge_detector = Arc::new(AccountMergeDetector::new(
-        pool.clone(),
-        Arc::clone(&rpc_client),
-    ));
-
-    // Initialize Liquidity Pool Analyzer
-    let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(
-        pool.clone(),
-        Arc::clone(&rpc_client),
-    ));
-
-    // Initialize Price Feed Client
-    let price_feed_config = PriceFeedConfig::from_env();
-    let asset_mapping = default_asset_mapping();
-    let price_feed = Arc::new(PriceFeedClient::new(price_feed_config, asset_mapping));
-    tracing::info!("Price feed client initialized");
-
-    // Initialize Trustline Analyzer
-    let trustline_analyzer = Arc::new(TrustlineAnalyzer::new(
-        pool.clone(),
-        Arc::clone(&rpc_client),
-    ));
-
-    // Initialize Ledger Ingestion Service
-    let ledger_ingestion_service = Arc::new(LedgerIngestionService::new(
-        Arc::clone(&rpc_client),
-        Arc::clone(&fee_bump_tracker),
-        Arc::clone(&account_merge_detector),
-        pool.clone(),
-    ));
-
-    // Initialize Redis cache
-    let cache_config = CacheConfig::default();
-    let cache = Arc::new(CacheManager::new(cache_config).await?);
-    tracing::info!("Cache manager initialized");
-
-    // Initialize cache invalidation service
-    let cache_invalidation = Arc::new(CacheInvalidationService::new(Arc::clone(&cache)));
-
-    // Initialize RealtimeBroadcaster
-    let mut realtime_broadcaster = RealtimeBroadcaster::new(
-        Arc::clone(&ws_state),
-        Arc::clone(&db),
-        Arc::clone(&rpc_client),
-        Arc::clone(&cache),
-    );
-    tracing::info!("RealtimeBroadcaster initialized");
-
-    // Create app state for handlers that need it
     let app_state = AppState::new(
-        Arc::clone(&db),
-        Arc::clone(&ws_state),
-        Arc::clone(&ingestion_service),
+        db.clone(),
+        ws_state,
+        ingestion,
+        cache.clone(),
+        rpc_client.clone(),
     );
-
-    // Create cached state tuple for cached API handlers
     let cached_state = (
-        Arc::clone(&db),
-        Arc::clone(&cache),
-        Arc::clone(&rpc_client),
-        Arc::clone(&price_feed),
+        db.clone(),
+        cache.clone(),
+        rpc_client.clone(),
+        price_feed.clone(),
     );
 
-    let ingestion_clone = Arc::clone(&ingestion_service);
-    let cache_invalidation_clone = Arc::clone(&cache_invalidation);
+    let fee_bump_tracker = Arc::new(FeeBumpTrackerService::new(pool.clone()));
+    let account_merge_detector =
+        Arc::new(AccountMergeDetector::new(pool.clone(), rpc_client.clone()));
+    let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(pool.clone(), rpc_client.clone()));
+
+    let backup_config = BackupConfig::from_env();
+    if backup_config.enabled {
+        let backup_manager = Arc::new(BackupManager::new(backup_config));
+        backup_manager.spawn_scheduler();
+        tracing::info!("Backup scheduler enabled");
+    }
+
+    let rate_limiter = Arc::new(
+        RateLimiter::new()
+            .await
+            .context("Failed to initialize rate limiter")?,
+    );
+
+    // Start webhook dispatcher as a background task
+    let webhook_pool = pool.clone();
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
-        loop {
-            interval.tick().await;
-            if let Err(e) = ingestion_clone.sync_all_metrics().await {
-                tracing::error!("Metrics synchronization failed: {}", e);
-            } else {
-                // Invalidate caches after successful sync
-                if let Err(e) = cache_invalidation_clone.invalidate_anchors().await {
-                    tracing::warn!("Failed to invalidate anchor caches: {}", e);
-                }
-                if let Err(e) = cache_invalidation_clone.invalidate_corridors().await {
-                    tracing::warn!("Failed to invalidate corridor caches: {}", e);
-                }
-                if let Err(e) = cache_invalidation_clone.invalidate_metrics().await {
-                    tracing::warn!("Failed to invalidate metrics caches: {}", e);
-                }
-            }
+        let dispatcher = WebhookDispatcher::new(webhook_pool);
+        if let Err(e) = dispatcher.run().await {
+            tracing::error!("Webhook dispatcher stopped: {}", e);
         }
     });
+    let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:3000,https://stellar-insights.com".to_string());
 
-    // Initialize Auth Service with its own Redis connection
-    let redis_url =
-        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    let auth_redis_connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-        match client.get_multiplexed_tokio_connection().await {
-            Ok(conn) => {
-                tracing::info!("Auth service connected to Redis");
-                Some(conn)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Auth service failed to connect to Redis ({}), refresh tokens will not persist",
-                    e
-                );
-                None
-            }
-        }
-    } else {
-        tracing::warn!("Invalid Redis URL for auth service");
-        None
-    };
-    let auth_service = Arc::new(AuthService::new(Arc::new(tokio::sync::RwLock::new(
-        auth_redis_connection,
-    ))));
-    tracing::info!("Auth service initialized");
-
-    // ML Retraining task (commented out)
-    /*
-    let ml_service_clone = ml_service.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(7 * 24 * 3600)); // 7 days
-        loop {
-            interval.tick().await;
-            if let Ok(mut service) = ml_service_clone.try_write() {
-                if let Err(e) = service.retrain_weekly().await {
-                    tracing::error!("Weekly ML retraining failed: {}", e);
+    let origins: Vec<HeaderValue> = allowed_origins
+        .split(',')
+        .filter_map(|origin| {
+            let trimmed = origin.trim();
+            match trimmed.parse::<HeaderValue>() {
+                Ok(value) => {
+                    tracing::info!("CORS: allowing origin '{}'", trimmed);
+                    Some(value)
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "CORS: skipping invalid origin '{}' — check CORS_ALLOWED_ORIGINS",
+                        trimmed
+                    );
+                    None
                 }
             }
-        }
-    });
-    */
+        })
+        .collect();
 
-    // Ledger ingestion task
-    let ledger_ingestion_clone = Arc::clone(&ledger_ingestion_service);
-    tokio::spawn(async move {
-        tracing::info!("Starting ledger ingestion background task");
-        loop {
-            match ledger_ingestion_clone.run_ingestion(5).await {
-                Ok(count) => {
-                    if count == 0 {
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    } else {
-                        tokio::task::yield_now().await;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Ledger ingestion failed: {}", e);
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                }
-            }
-        }
-    });
+    if origins.is_empty() {
+        tracing::warn!(
+            "CORS: no valid origins parsed from CORS_ALLOWED_ORIGINS='{}'. \
+             All cross-origin requests will be rejected.",
+            allowed_origins
+        );
+    }
 
-    // Liquidity pool sync background task
-    let lp_analyzer_clone = Arc::clone(&lp_analyzer);
-    tokio::spawn(async move {
-        tracing::info!("Starting liquidity pool sync background task");
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
-        loop {
-            interval.tick().await;
-            if let Err(e) = lp_analyzer_clone.sync_pools().await {
-                tracing::error!("Liquidity pool sync failed: {}", e);
-            }
-            if let Err(e) = lp_analyzer_clone.take_snapshots().await {
-                tracing::error!("Liquidity pool snapshot failed: {}", e);
-            }
-        }
-    });
-
-    // Trustline stats sync background task
-    let trustline_analyzer_clone = Arc::clone(&trustline_analyzer);
-    tokio::spawn(async move {
-        tracing::info!("Starting trustline stats sync background task");
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(900)); // 15 minutes
-        loop {
-            interval.tick().await;
-            if let Err(e) = trustline_analyzer_clone.sync_assets().await {
-                tracing::error!("Trustline sync failed: {}", e);
-            }
-            if let Err(e) = trustline_analyzer_clone.take_snapshots().await {
-                tracing::error!("Trustline snapshot failed: {}", e);
-            }
-        }
-    });
-
-    // Start RealtimeBroadcaster background task
-    tokio::spawn(async move {
-        tracing::info!("Starting RealtimeBroadcaster background task");
-        realtime_broadcaster.start().await;
-    });
-
-    // Run initial sync (skip on network errors)
-    tracing::info!("Running initial metrics synchronization...");
-    let _ = ingestion_service.sync_all_metrics().await;
-
-    // Initialize rate limiter
-    let rate_limiter_result = RateLimiter::new().await;
-    let rate_limiter = match rate_limiter_result {
-        Ok(limiter) => {
-            tracing::info!("Rate limiter initialized successfully");
-            Arc::new(limiter)
-        }
-        Err(e) => {
-            tracing::warn!(
-                "Failed to initialize Redis rate limiter, creating with memory fallback: {}",
-                e
-            );
-            Arc::new(
-                RateLimiter::new()
-                    .await
-                    .unwrap_or_else(|_| panic!("Failed to create rate limiter: critical error")),
-            )
-        }
-    };
-
-    // Configure rate limits for endpoints
-    rate_limiter
-        .register_endpoint(
-            "/health".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 1000,
-                whitelist_ips: vec!["127.0.0.1".to_string()],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/anchors".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/corridors".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/rpc/payments".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/rpc/trades".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/liquidity-pools".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/prices".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    rate_limiter
-        .register_endpoint(
-            "/api/account-merges".to_string(),
-            RateLimitConfig {
-                requests_per_minute: 100,
-                whitelist_ips: vec![],
-            },
-        )
-        .await;
-
-    // CORS configuration
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+            Method::PATCH,
+        ])
+        .allow_header(AUTHORIZATION)
+        .allow_header(CONTENT_TYPE)
+        .allow_credentials(true)
+        .max_age(Duration::from_secs(3600));
 
-    // Compression configuration
-    // Only compress responses larger than 1KB to avoid overhead on small responses
-    let compression_min_size = std::env::var("COMPRESSION_MIN_SIZE")
+    // Configure request timeout
+    let timeout_seconds = std::env::var("REQUEST_TIMEOUT_SECONDS")
         .ok()
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(1024);
@@ -649,19 +420,34 @@ async fn main() -> Result<()> {
         .merge(metrics_routes)
         .merge(ws_routes);
         .layer(compression); // Apply compression to all routes
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
+    let timeout_duration = Duration::from_secs(timeout_seconds);
+    tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
-    // Start server
-    let host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
-    let addr = format!("{}:{}", host, port);
-
-    tracing::info!("Server starting on {}", addr);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    let app = routes(
+        app_state,
+        cached_state,
+        rpc_client,
+        fee_bump_tracker,
+        account_merge_detector,
+        lp_analyzer,
+        price_feed,
+        rate_limiter,
+        cors,
+        pool,
+        cache,
     )
-    .await?;
+    .layer(TimeoutLayer::new(timeout_duration))
+    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+
+    let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    tracing::info!(address = %addr, "Server listening");
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
+    stellar_insights_backend::observability::tracing::shutdown_tracing();
 
     Ok(())
 }

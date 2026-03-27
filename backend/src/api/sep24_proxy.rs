@@ -10,10 +10,11 @@ use axum::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Allowed transfer server hosts (env: SEP24_ALLOWED_ORIGINS, comma-separated).
+/// Allowed transfer server hosts (env: `SEP24_ALLOWED_ORIGINS`, comma-separated).
 /// If unset, any origin is allowed (use in dev only).
 fn allowed_origins() -> Vec<String> {
     std::env::var("SEP24_ALLOWED_ORIGINS")
@@ -39,7 +40,14 @@ pub struct Sep24State {
     pub client: Arc<Client>,
 }
 
+impl Default for Sep24State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sep24State {
+    #[must_use]
     pub fn new() -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
@@ -56,12 +64,25 @@ fn base_url(transfer_server: &str) -> String {
     s.to_string()
 }
 
-/// GET /api/sep24/info?transfer_server=<url>
+/// GET /api/sep24/info - Get SEP-24 server information
 #[derive(Debug, Deserialize)]
 pub struct InfoQuery {
     pub transfer_server: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/sep24/info",
+    params(
+        ("transfer_server" = String, Query, description = "Transfer server URL")
+    ),
+    responses(
+        (status = 200, description = "SEP-24 server information"),
+        (status = 403, description = "Transfer server not allowed"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn get_info(
     State(state): State<Sep24State>,
     Query(q): Query<InfoQuery>,
@@ -116,6 +137,18 @@ pub struct DepositInteractiveBody {
     pub extra: Value,
 }
 
+/// POST /api/sep24/deposit/interactive - Initiate interactive deposit
+#[utoipa::path(
+    post,
+    path = "/api/sep24/deposit/interactive",
+    request_body = DepositInteractiveBody,
+    responses(
+        (status = 200, description = "Interactive deposit started"),
+        (status = 403, description = "Transfer server not allowed"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn post_deposit_interactive(
     State(state): State<Sep24State>,
     Json(body): Json<DepositInteractiveBody>,
@@ -132,7 +165,7 @@ pub async fn post_deposit_interactive(
 
     let mut req = state.client.post(&url);
     if let Some(jwt) = &body.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let payload = serde_json::json!({
         "asset_code": body.asset_code,
@@ -187,6 +220,18 @@ pub struct WithdrawInteractiveBody {
     pub extra: Value,
 }
 
+/// POST /api/sep24/withdraw/interactive - Initiate interactive withdrawal
+#[utoipa::path(
+    post,
+    path = "/api/sep24/withdraw/interactive",
+    request_body = WithdrawInteractiveBody,
+    responses(
+        (status = 200, description = "Interactive withdrawal started"),
+        (status = 403, description = "Transfer server not allowed"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn post_withdraw_interactive(
     State(state): State<Sep24State>,
     Json(body): Json<WithdrawInteractiveBody>,
@@ -203,7 +248,7 @@ pub async fn post_withdraw_interactive(
 
     let mut req = state.client.post(&url);
     if let Some(jwt) = &body.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let payload = serde_json::json!({
         "asset_code": body.asset_code,
@@ -233,7 +278,7 @@ pub async fn post_withdraw_interactive(
     Ok(Json(data))
 }
 
-/// GET /api/sep24/transactions?transfer_server=&jwt=&...
+/// GET /`api/sep24/transactions?transfer_server=&jwt`=&...
 #[derive(Debug, Deserialize)]
 pub struct TransactionsQuery {
     pub transfer_server: String,
@@ -249,6 +294,25 @@ pub struct TransactionsQuery {
     pub cursor: Option<String>,
 }
 
+/// GET /api/sep24/transactions - Get SEP-24 transactions
+#[utoipa::path(
+    get,
+    path = "/api/sep24/transactions",
+    params(
+        ("transfer_server" = String, Query, description = "Transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT token"),
+        ("asset_code" = Option<String>, Query, description = "Filter by asset code"),
+        ("kind" = Option<String>, Query, description = "Filter by transaction kind"),
+        ("limit" = Option<u32>, Query, description = "Maximum results"),
+        ("cursor" = Option<String>, Query, description = "Pagination cursor")
+    ),
+    responses(
+        (status = 200, description = "List of transactions"),
+        (status = 403, description = "Transfer server not allowed"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn get_transactions(
     State(state): State<Sep24State>,
     Query(q): Query<TransactionsQuery>,
@@ -259,26 +323,29 @@ pub async fn get_transactions(
         ));
     }
     let base = base_url(&q.transfer_server);
-    let mut url = format!("{}/transactions?", base);
+    let mut url = format!("{base}/transactions?");
     if let Some(c) = &q.asset_code {
-        url.push_str(&format!("asset_code={}&", urlencoding::encode(c)));
+        write!(url, "asset_code={}&", urlencoding::encode(c)).unwrap();
     }
     if let Some(k) = &q.kind {
-        url.push_str(&format!("kind={}&", urlencoding::encode(k)));
+        write!(url, "kind={}&", urlencoding::encode(k)).unwrap();
     }
     if let Some(l) = q.limit {
-        url.push_str(&format!("limit={}&", l));
+        write!(url, "limit={l}&").unwrap();
     }
     if let Some(c) = &q.cursor {
-        url.push_str(&format!("cursor={}&", urlencoding::encode(c)));
+        write!(url, "cursor={}&", urlencoding::encode(c)).unwrap();
     }
     let url = url.trim_end_matches('&').trim_end_matches('?');
 
     let mut req = state.client.get(url);
     if let Some(jwt) = &q.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
-    let resp = req.send().await.map_err(|e| Sep24Error::Proxy(e.to_string()))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| Sep24Error::Proxy(e.to_string()))?;
 
     let status = resp.status();
     let data = resp
@@ -292,7 +359,7 @@ pub async fn get_transactions(
     Ok(Json(data))
 }
 
-/// GET /api/sep24/transaction?transfer_server=&id=&jwt=
+/// GET /`api/sep24/transaction?transfer_server=&id=&jwt`=
 #[derive(Debug, Deserialize)]
 pub struct TransactionQuery {
     pub transfer_server: String,
@@ -301,6 +368,22 @@ pub struct TransactionQuery {
     pub jwt: Option<String>,
 }
 
+/// GET /api/sep24/transaction - Get a specific SEP-24 transaction
+#[utoipa::path(
+    get,
+    path = "/api/sep24/transaction",
+    params(
+        ("transfer_server" = String, Query, description = "Transfer server URL"),
+        ("id" = String, Query, description = "Transaction ID"),
+        ("jwt" = Option<String>, Query, description = "JWT token")
+    ),
+    responses(
+        (status = 200, description = "Transaction details"),
+        (status = 403, description = "Transfer server not allowed"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn get_transaction(
     State(state): State<Sep24State>,
     Query(q): Query<TransactionQuery>,
@@ -318,9 +401,12 @@ pub async fn get_transaction(
 
     let mut req = state.client.get(&url);
     if let Some(jwt) = &q.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
-    let resp = req.send().await.map_err(|e| Sep24Error::Proxy(e.to_string()))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| Sep24Error::Proxy(e.to_string()))?;
 
     let status = resp.status();
     let data = resp
@@ -343,6 +429,15 @@ pub struct Sep24AnchorInfo {
     pub home_domain: Option<String>,
 }
 
+/// GET /api/sep24/anchors - List known SEP-24-enabled anchors
+#[utoipa::path(
+    get,
+    path = "/api/sep24/anchors",
+    responses(
+        (status = 200, description = "List of SEP-24 anchors")
+    ),
+    tag = "SEP-24"
+)]
 pub async fn list_anchors() -> Json<Value> {
     // Env: SEP24_ANCHORS = JSON array of { "name", "transfer_server", "home_domain" }
     let anchors: Vec<Sep24AnchorInfo> = if let Ok(s) = std::env::var("SEP24_ANCHORS") {
@@ -364,15 +459,15 @@ pub enum Sep24Error {
 impl IntoResponse for Sep24Error {
     fn into_response(self) -> axum::response::Response {
         let (status, body) = match &self {
-            Sep24Error::Forbidden(msg) => (
+            Self::Forbidden(msg) => (
                 StatusCode::FORBIDDEN,
                 serde_json::json!({ "error": "forbidden", "message": msg }),
             ),
-            Sep24Error::Proxy(msg) => (
+            Self::Proxy(msg) => (
                 StatusCode::BAD_GATEWAY,
                 serde_json::json!({ "error": "proxy", "message": msg }),
             ),
-            Sep24Error::Anchor(code, data) => {
+            Self::Anchor(code, data) => {
                 let status = StatusCode::from_u16(*code).unwrap_or(StatusCode::BAD_GATEWAY);
                 (status, data.clone())
             }
@@ -394,8 +489,14 @@ pub fn routes() -> axum::Router {
             "/api/sep24/withdraw/interactive",
             axum::routing::post(post_withdraw_interactive),
         )
-        .route("/api/sep24/transactions", axum::routing::get(get_transactions))
-        .route("/api/sep24/transaction", axum::routing::get(get_transaction))
+        .route(
+            "/api/sep24/transactions",
+            axum::routing::get(get_transactions),
+        )
+        .route(
+            "/api/sep24/transaction",
+            axum::routing::get(get_transaction),
+        )
         .route("/api/sep24/anchors", axum::routing::get(list_anchors))
         .with_state(state)
 }
@@ -406,13 +507,22 @@ mod tests {
 
     #[test]
     fn test_base_url() {
-        assert_eq!(base_url("https://api.example.com"), "https://api.example.com");
-        assert_eq!(base_url("https://api.example.com/"), "https://api.example.com");
+        assert_eq!(
+            base_url("https://api.example.com"),
+            "https://api.example.com"
+        );
+        assert_eq!(
+            base_url("https://api.example.com/"),
+            "https://api.example.com"
+        );
     }
 
     #[test]
     fn test_base_url_trim() {
-        assert_eq!(base_url("  https://api.example.com  "), "https://api.example.com");
+        assert_eq!(
+            base_url("  https://api.example.com  "),
+            "https://api.example.com"
+        );
     }
 
     #[test]

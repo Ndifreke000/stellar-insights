@@ -20,8 +20,8 @@ async fn test_ml_prediction() {
 
 #[test]
 fn test_prediction_result_risk_levels() {
+    use crate::api::ml::PredictionResponse;
     use crate::ml::PredictionResult;
-    use crate::ml_handlers::PredictionResponse;
 
     let high_prob = PredictionResult {
         success_probability: 0.9,

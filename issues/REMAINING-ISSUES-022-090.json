@@ -1,0 +1,897 @@
+[
+  {
+    "id": 22,
+    "title": "Anchor Reliability Scoring Algorithm Enhancement",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "anchors"
+    ],
+    "description": "Enhance the anchor reliability scoring algorithm with machine learning to predict anchor performance based on historical data, transaction patterns, and network conditions.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 23,
+    "title": "Payment Success Prediction Model Enhancement",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "ml",
+      "prediction"
+    ],
+    "description": "Improve the existing payment success prediction model with additional features: time-of-day patterns, network congestion, historical corridor performance, and anchor status.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 27,
+    "title": "Asset Velocity Metrics and Analysis",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "assets"
+    ],
+    "description": "Track and analyze asset velocity - how quickly assets move through the network. Measure transaction frequency, holder turnover, and circulation patterns.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 28,
+    "title": "Network Congestion Indicator",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "monitoring",
+      "network"
+    ],
+    "description": "Real-time network congestion indicator showing transaction queue depth, fee levels, and ledger close times. Help users time their transactions optimally.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 29,
+    "title": "Anchor Downtime Tracker and Alerting",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "monitoring",
+      "anchors"
+    ],
+    "description": "Track anchor uptime/downtime with historical records. Alert users when anchors go offline or experience issues. Provide uptime SLA tracking.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 31,
+    "title": "Liquidity Fragmentation Analysis",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "liquidity"
+    ],
+    "description": "Analyze liquidity fragmentation across the network. Identify where liquidity is concentrated, fragmented, or missing. Provide recommendations for liquidity providers.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 32,
+    "title": "Market Maker Performance Metrics",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "market-makers"
+    ],
+    "description": "Track and analyze market maker performance on Stellar DEX. Measure spread consistency, quote depth, uptime, and profitability indicators.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 33,
+    "title": "Settlement Time Distribution Analysis",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "performance"
+    ],
+    "description": "Detailed analysis of settlement time distributions across corridors. Show percentiles (p50, p95, p99), identify outliers, and track improvements over time.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 34,
+    "title": "Failed Payment Root Cause Analysis",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "debugging"
+    ],
+    "description": "Analyze failed payments to identify root causes. Categorize failures (insufficient balance, no trust, path not found, etc.) and provide actionable insights.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 35,
+    "title": "Corridor Health Forecasting",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "ml",
+      "prediction"
+    ],
+    "description": "Use time-series forecasting to predict corridor health trends. Alert users to potential degradation before it happens.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 37,
+    "title": "Customizable Dashboard Widgets",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ui",
+      "customization"
+    ],
+    "description": "Allow users to customize their dashboard by adding, removing, and rearranging widgets. Save layouts per user.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 38,
+    "title": "Advanced Filtering and Search",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ui",
+      "search"
+    ],
+    "description": "Implement advanced filtering and search across all data tables. Support multiple filters, saved searches, and complex queries.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 39,
+    "title": "Bookmark Favorite Corridors and Anchors",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ui",
+      "bookmarks"
+    ],
+    "description": "Allow users to bookmark favorite corridors and anchors for quick access. Display bookmarks in sidebar and dashboard.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 40,
+    "title": "Export Charts as Images",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "export",
+      "charts"
+    ],
+    "description": "Add ability to export charts and visualizations as PNG/SVG images for use in reports and presentations.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 41,
+    "title": "Mobile-Responsive Improvements",
+    "priority": "High",
+    "type": "Enhancement",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "mobile",
+      "responsive"
+    ],
+    "description": "Comprehensive mobile responsiveness improvements across all pages. Optimize layouts, navigation, and interactions for mobile devices.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 42,
+    "title": "Keyboard Shortcuts",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "accessibility",
+      "ux"
+    ],
+    "description": "Implement keyboard shortcuts for common actions. Provide shortcut help overlay and customization.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 43,
+    "title": "Accessibility (WCAG 2.1 AA Compliance)",
+    "priority": "High",
+    "type": "Enhancement",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "accessibility",
+      "a11y"
+    ],
+    "description": "Comprehensive accessibility audit and improvements to meet WCAG 2.1 AA standards. Ensure platform is usable by everyone.",
+    "estimated_effort_days": 10
+  },
+  {
+    "id": 44,
+    "title": "Multi-Language Support (i18n)",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "i18n",
+      "localization"
+    ],
+    "description": "Implement internationalization (i18n) to support multiple languages. Start with English, Spanish, and Chinese.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 45,
+    "title": "User Preferences Persistence",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ux",
+      "storage"
+    ],
+    "description": "Persist user preferences across sessions including theme, language, dashboard layout, filters, and display options.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 46,
+    "title": "Corridor Performance Alerts",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Frontend + Backend",
+    "labels": [
+      "enhancement",
+      "alerts",
+      "monitoring"
+    ],
+    "description": "Real-time alerts for corridor performance changes. Notify users when success rates drop, latency increases, or liquidity decreases.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 47,
+    "title": "Real-Time Notification Center",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "notifications",
+      "ui"
+    ],
+    "description": "Centralized notification center for all alerts, updates, and system messages. Support read/unread status, filtering, and actions.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 48,
+    "title": "Interactive Network Graph Visualization",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "visualization",
+      "network"
+    ],
+    "description": "Interactive graph visualization showing relationships between anchors, assets, and corridors. Enable exploration of network topology.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 49,
+    "title": "Time Range Selector Component",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ui",
+      "component"
+    ],
+    "description": "Reusable time range selector component with presets (24h, 7d, 30d, custom) and date picker. Use across all time-based views.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 50,
+    "title": "Data Refresh Indicator",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "enhancement",
+      "ui",
+      "ux"
+    ],
+    "description": "Visual indicator showing when data was last updated and when next refresh will occur. Manual refresh button.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 51,
+    "title": "GraphQL API Layer",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "api",
+      "graphql"
+    ],
+    "description": "Add GraphQL API layer alongside REST API for more flexible data querying. Enable clients to request exactly the data they need.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 52,
+    "title": "REST API Rate Limiting per Client",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "api",
+      "security"
+    ],
+    "description": "Implement per-client rate limiting for REST API to prevent abuse and ensure fair usage.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 53,
+    "title": "API Key Management System",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "api",
+      "authentication"
+    ],
+    "description": "Full API key management system for developers to generate, rotate, and revoke API keys.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 54,
+    "title": "Webhook Support for Events",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "webhooks",
+      "integration"
+    ],
+    "description": "Allow users to register webhooks for corridor events, anchor status changes, and alerts.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 55,
+    "title": "Zapier Integration",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "integration",
+      "automation"
+    ],
+    "description": "Create Zapier integration to connect Stellar Insights with 5000+ apps.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 56,
+    "title": "Slack Bot for Alerts",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "integration",
+      "notifications"
+    ],
+    "description": "Slack bot that sends corridor alerts and anchor notifications to Slack channels.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 57,
+    "title": "Telegram Bot for Notifications",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "integration",
+      "notifications"
+    ],
+    "description": "Telegram bot for receiving alerts and querying corridor/anchor status.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 58,
+    "title": "Email Digest Reports",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "email",
+      "reports"
+    ],
+    "description": "Automated email digest reports with weekly/monthly corridor and anchor performance summaries.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 59,
+    "title": "Public API Documentation Portal",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Frontend",
+    "labels": [
+      "documentation",
+      "api"
+    ],
+    "description": "Dedicated API documentation portal with interactive examples, code samples, and playground.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 60,
+    "title": "API Usage Analytics Dashboard",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Backend + Frontend",
+    "labels": [
+      "enhancement",
+      "analytics",
+      "api"
+    ],
+    "description": "Dashboard showing API usage statistics, popular endpoints, error rates, and performance metrics.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 61,
+    "title": "Snapshot Contract Upgrade Mechanism",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "upgrades"
+    ],
+    "description": "Implement safe contract upgrade mechanism for snapshot contract with migration support.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 62,
+    "title": "Multi-Admin Support for Contracts",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "access-control"
+    ],
+    "description": "Support multiple admin addresses for snapshot contract with role-based permissions.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 63,
+    "title": "Contract Pause/Unpause Functionality",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "safety"
+    ],
+    "description": "Add emergency pause functionality to contracts for security incidents.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 64,
+    "title": "Snapshot Verification Rewards",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "incentives"
+    ],
+    "description": "Reward mechanism for users who verify snapshot hashes match backend data.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 65,
+    "title": "On-Chain Governance for Parameters",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "governance"
+    ],
+    "description": "On-chain governance system for updating contract parameters through voting.",
+    "estimated_effort_days": 8
+  },
+  {
+    "id": 66,
+    "title": "Contract Event Replay System",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Backend",
+    "labels": [
+      "enhancement",
+      "contracts",
+      "events"
+    ],
+    "description": "System to replay contract events for rebuilding state or debugging.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 67,
+    "title": "Snapshot Rollback Protection",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "safety"
+    ],
+    "description": "Prevent snapshot rollback attacks by enforcing monotonic epoch increases.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 68,
+    "title": "Contract Access Control Lists",
+    "priority": "Medium",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "security"
+    ],
+    "description": "Fine-grained access control lists for contract functions.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 69,
+    "title": "Emergency Stop Mechanism",
+    "priority": "High",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "safety"
+    ],
+    "description": "Emergency stop mechanism that halts all contract operations in case of critical issues.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 70,
+    "title": "Contract Upgrade Proposal System",
+    "priority": "Low",
+    "type": "Feature",
+    "component": "Contracts",
+    "labels": [
+      "enhancement",
+      "soroban",
+      "governance"
+    ],
+    "description": "Proposal system for contract upgrades with community voting.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 71,
+    "title": "Kubernetes Deployment Manifests",
+    "priority": "High",
+    "type": "DevOps",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "kubernetes",
+      "deployment"
+    ],
+    "description": "Complete Kubernetes deployment manifests for production deployment.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 72,
+    "title": "Terraform Infrastructure as Code",
+    "priority": "High",
+    "type": "DevOps",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "terraform",
+      "iac"
+    ],
+    "description": "Terraform modules for provisioning all infrastructure components.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 73,
+    "title": "CI/CD Pipeline Optimization",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "CI/CD",
+    "labels": [
+      "devops",
+      "ci-cd",
+      "optimization"
+    ],
+    "description": "Optimize CI/CD pipelines for faster builds and deployments.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 74,
+    "title": "Automated Backup System",
+    "priority": "High",
+    "type": "DevOps",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "backup",
+      "disaster-recovery"
+    ],
+    "description": "Automated backup system for database and critical data with retention policies.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 75,
+    "title": "Disaster Recovery Plan",
+    "priority": "High",
+    "type": "Documentation",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "disaster-recovery",
+      "documentation"
+    ],
+    "description": "Comprehensive disaster recovery plan with runbooks and procedures.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 76,
+    "title": "Blue-Green Deployment Strategy",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "Deployment",
+    "labels": [
+      "devops",
+      "deployment",
+      "zero-downtime"
+    ],
+    "description": "Implement blue-green deployment strategy for zero-downtime releases.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 77,
+    "title": "Database Migration Automation",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "Database",
+    "labels": [
+      "devops",
+      "database",
+      "automation"
+    ],
+    "description": "Automated database migration system with version control and rollback.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 78,
+    "title": "Log Aggregation (ELK Stack)",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "logging",
+      "elk"
+    ],
+    "description": "Set up ELK (Elasticsearch, Logstash, Kibana) stack for centralized logging.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 79,
+    "title": "APM Integration (New Relic/Datadog)",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "Monitoring",
+    "labels": [
+      "devops",
+      "apm",
+      "monitoring"
+    ],
+    "description": "Integrate Application Performance Monitoring tool for deep insights.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 80,
+    "title": "Cost Optimization Analysis",
+    "priority": "Medium",
+    "type": "DevOps",
+    "component": "Infrastructure",
+    "labels": [
+      "devops",
+      "cost-optimization",
+      "finops"
+    ],
+    "description": "Analyze and optimize infrastructure costs with recommendations.",
+    "estimated_effort_days": 4
+  },
+  {
+    "id": 81,
+    "title": "Security Audit Preparation",
+    "priority": "High",
+    "type": "Security",
+    "component": "All",
+    "labels": [
+      "security",
+      "audit",
+      "compliance"
+    ],
+    "description": "Prepare codebase for professional security audit with documentation and threat modeling.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 82,
+    "title": "GDPR Compliance Features",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend + Frontend",
+    "labels": [
+      "security",
+      "compliance",
+      "gdpr"
+    ],
+    "description": "Implement GDPR compliance features including data export, deletion, and consent management.",
+    "estimated_effort_days": 7
+  },
+  {
+    "id": 83,
+    "title": "API Request Signing",
+    "priority": "Medium",
+    "type": "Security",
+    "component": "Backend",
+    "labels": [
+      "security",
+      "api",
+      "authentication"
+    ],
+    "description": "Implement request signing for API calls to prevent tampering and replay attacks.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 84,
+    "title": "IP Whitelisting for Admin",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend",
+    "labels": [
+      "security",
+      "access-control",
+      "admin"
+    ],
+    "description": "IP whitelisting for admin endpoints to restrict access to trusted networks.",
+    "estimated_effort_days": 3
+  },
+  {
+    "id": 85,
+    "title": "Two-Factor Authentication",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend + Frontend",
+    "labels": [
+      "security",
+      "authentication",
+      "2fa"
+    ],
+    "description": "Implement two-factor authentication using TOTP for enhanced security.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 86,
+    "title": "Session Management System",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend",
+    "labels": [
+      "security",
+      "authentication",
+      "sessions"
+    ],
+    "description": "Robust session management with timeout, refresh, and device tracking.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 87,
+    "title": "Audit Log for Admin Actions",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend",
+    "labels": [
+      "security",
+      "audit",
+      "logging"
+    ],
+    "description": "Comprehensive audit log for all admin actions with tamper-proof storage.",
+    "estimated_effort_days": 5
+  },
+  {
+    "id": 88,
+    "title": "Data Encryption at Rest",
+    "priority": "High",
+    "type": "Security",
+    "component": "Backend",
+    "labels": [
+      "security",
+      "encryption",
+      "data-protection"
+    ],
+    "description": "Encrypt sensitive data at rest using industry-standard encryption.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 89,
+    "title": "Secrets Management (Vault)",
+    "priority": "High",
+    "type": "Security",
+    "component": "Infrastructure",
+    "labels": [
+      "security",
+      "secrets",
+      "vault"
+    ],
+    "description": "Integrate HashiCorp Vault for secure secrets management.",
+    "estimated_effort_days": 6
+  },
+  {
+    "id": 90,
+    "title": "Penetration Testing Framework",
+    "priority": "Medium",
+    "type": "Security",
+    "component": "Testing",
+    "labels": [
+      "security",
+      "testing",
+      "pentest"
+    ],
+    "description": "Set up automated penetration testing framework for continuous security validation.",
+    "estimated_effort_days": 7
+  }
+]

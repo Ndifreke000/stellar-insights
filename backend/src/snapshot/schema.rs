@@ -27,10 +27,10 @@ pub struct SnapshotAnchorMetrics {
 pub struct SnapshotCorridorMetrics {
     pub id: Uuid,
     pub corridor_key: String,
-    pub asset_a_code: String,
-    pub asset_a_issuer: String,
-    pub asset_b_code: String,
-    pub asset_b_issuer: String,
+    pub source_asset_code: String,
+    pub source_asset_issuer: String,
+    pub destination_asset_code: String,
+    pub destination_asset_issuer: String,
     pub total_transactions: i64,
     pub successful_transactions: i64,
     pub failed_transactions: i64,
@@ -57,7 +57,8 @@ pub struct AnalyticsSnapshot {
 
 impl AnalyticsSnapshot {
     /// Create a new snapshot with given epoch and timestamp
-    pub fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
+    #[must_use]
+    pub const fn new(epoch: u64, timestamp: DateTime<Utc>) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             epoch,
@@ -119,7 +120,7 @@ mod tests {
             successful_transactions: 995,
             failed_transactions: 5,
             avg_settlement_time_ms: Some(500),
-            volume_usd: Some(10000.0),
+            volume_usd: Some(10_000.0),
             status: "green".to_string(),
         };
 
@@ -148,7 +149,7 @@ mod tests {
             successful_transactions: 990,
             failed_transactions: 10,
             avg_settlement_time_ms: Some(500),
-            volume_usd: Some(10000.0),
+            volume_usd: Some(10_000.0),
             status: "green".to_string(),
         };
 
@@ -163,7 +164,7 @@ mod tests {
             successful_transactions: 1960,
             failed_transactions: 40,
             avg_settlement_time_ms: Some(600),
-            volume_usd: Some(20000.0),
+            volume_usd: Some(20_000.0),
             status: "yellow".to_string(),
         };
 
@@ -178,7 +179,7 @@ mod tests {
             successful_transactions: 2910,
             failed_transactions: 90,
             avg_settlement_time_ms: Some(700),
-            volume_usd: Some(30000.0),
+            volume_usd: Some(30_000.0),
             status: "yellow".to_string(),
         };
 

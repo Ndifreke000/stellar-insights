@@ -5,7 +5,9 @@ mod events;
 
 use errors::Error;
 use events::emit_snapshot_submitted;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Storage keys for persistent contract data
 #[contracttype]
@@ -17,6 +19,10 @@ pub enum DataKey {
     Snapshots,
     /// Latest epoch number recorded
     LatestEpoch,
+    /// Emergency pause state (true = paused, false = active)
+    Paused,
+    /// Contract package version at initialization
+    Version,
 }
 
 /// Analytics snapshot data structure
@@ -29,6 +35,29 @@ pub struct Snapshot {
     pub epoch: u64,
     /// Ledger timestamp when recorded
     pub timestamp: u64,
+}
+
+/// Extended contract metadata for public disclosure
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PublicMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub repository: String,
+    pub license: String,
+}
+
+/// Contract info combining metadata with runtime state
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContractInfo {
+    pub metadata: PublicMetadata,
+    pub initialized: bool,
+    pub paused: bool,
+    pub admin: Option<Address>,
+    pub total_snapshots: u64,
 }
 
 #[contract]
@@ -44,10 +73,10 @@ impl StellarInsightsContract {
     ///
     /// # Returns
     /// * Success confirmation
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         // Verify admin doesn't already exist to prevent re-initialization
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Contract already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         // Store the admin address
@@ -55,6 +84,20 @@ impl StellarInsightsContract {
 
         // Initialize latest epoch to 0
         env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
+
+        // Initialize contract as not paused
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        Ok(())
+    }
+
+    pub fn get_version(env: Env) -> String {
+        env.storage()
+            .instance()
+            .get(&DataKey::Version)
+            .unwrap_or_else(|| String::from_str(&env, VERSION))
     }
 
     /// Submit a cryptographic hash of an analytics snapshot on-chain
@@ -70,10 +113,12 @@ impl StellarInsightsContract {
     /// * `caller` - Address attempting to submit the snapshot
     ///
     /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::UnauthorizedCaller` - If caller is not the admin
     /// * `Error::InvalidEpoch` - If epoch is 0
     /// * `Error::DuplicateEpoch` - If snapshot already exists for this epoch
+    /// * `Error::EpochMonotonicityViolated` - If epoch <= latest (out-of-order submission)
     ///
     /// # Returns
     /// * Ledger timestamp when the snapshot was recorded
@@ -83,6 +128,16 @@ impl StellarInsightsContract {
         hash: BytesN<32>,
         caller: Address,
     ) -> Result<u64, Error> {
+        // Check if contract is paused
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         // Verify caller is authenticated
         caller.require_auth();
 
@@ -95,12 +150,12 @@ impl StellarInsightsContract {
 
         // Verify caller is the admin
         if caller != admin {
-            return Err(Error::UnauthorizedCaller);
+            return Err(Error::Unauthorized);
         }
 
         // Validate epoch is not zero
         if epoch == 0 {
-            return Err(Error::InvalidEpoch);
+            return Err(Error::InvalidEpochZero);
         }
 
         // Get existing snapshots map or create new one
@@ -113,6 +168,16 @@ impl StellarInsightsContract {
         // Check for duplicate epoch
         if snapshots.contains_key(epoch) {
             return Err(Error::DuplicateEpoch);
+        }
+
+        // Enforce monotonic epoch increase to prevent rollback attacks
+        let current_latest: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+        if epoch <= current_latest {
+            return Err(Error::EpochMonotonicityViolated);
         }
 
         // Get current ledger timestamp
@@ -131,16 +196,15 @@ impl StellarInsightsContract {
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
 
-        // Update latest epoch if this is newer
-        let current_latest: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::LatestEpoch)
-            .unwrap_or(0);
+        // Extend storage TTL (~30 days at 5s per ledger)
+        const LEDGERS_TO_EXTEND: u32 = 518_400;
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
-        if epoch > current_latest {
-            env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
-        }
+        env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
 
         // Emit structured event for off-chain indexing
         // Event payload matches stored data exactly:
@@ -165,6 +229,15 @@ impl StellarInsightsContract {
     /// # Returns
     /// * The 32-byte hash stored for that epoch
     pub fn get_snapshot(env: Env, epoch: u64) -> Result<BytesN<32>, Error> {
+        // Extend TTL on read to keep data alive
+        const LEDGERS_TO_EXTEND: u32 = 518_400;
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -238,6 +311,115 @@ impl StellarInsightsContract {
             .instance()
             .get(&DataKey::LatestEpoch)
             .unwrap_or(0)
+    }
+
+    /// Emergency pause the contract
+    ///
+    /// Pauses all snapshot submissions. Only the admin can pause the contract.
+    /// Read operations remain available during pause.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to pause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::UnauthorizedCaller` - If caller is not the admin
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        Ok(())
+    }
+
+    /// Unpause the contract
+    ///
+    /// Resumes normal operations. Only the admin can unpause the contract.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to unpause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::UnauthorizedCaller` - If caller is not the admin
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        Ok(())
+    }
+
+    /// Check if contract is paused
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Returns
+    /// * `true` if contract is paused, `false` otherwise
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    // =========================================================================
+    // Contract Metadata
+    // =========================================================================
+
+    /// Get public contract metadata
+    pub fn get_metadata(env: Env) -> PublicMetadata {
+        PublicMetadata {
+            name: String::from_str(&env, "Stellar Insights Core"),
+            version: String::from_str(&env, VERSION),
+            author: String::from_str(&env, "Stellar Insights Team"),
+            description: String::from_str(
+                &env,
+                "Core analytics snapshot contract for Stellar network",
+            ),
+            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            license: String::from_str(&env, "MIT"),
+        }
+    }
+
+    /// Get comprehensive contract information
+    pub fn get_contract_info(env: Env) -> ContractInfo {
+        ContractInfo {
+            metadata: Self::get_metadata(env.clone()),
+            initialized: env.storage().instance().has(&DataKey::Admin),
+            paused: env
+                .storage()
+                .instance()
+                .get(&DataKey::Paused)
+                .unwrap_or(false),
+            admin: env.storage().instance().get(&DataKey::Admin),
+            total_snapshots: env
+                .storage()
+                .instance()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0),
+        }
     }
 }
 

@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: stellar-insights-dev
+
+bases:
+- ../../
+
+namePrefix: dev-
+
+commonLabels:
+  environment: development
+
+patches:
+- path: backend-replicas.yaml
+- path: frontend-replicas.yaml
+- path: configmap-patch.yaml
+
+images:
+- name: stellar-insights/backend
+  newTag: dev
+- name: stellar-insights/frontend
+  newTag: dev
+
+configMapGenerator:
+- name: stellar-insights-config
+  behavior: merge
+  literals:
+  - stellar-network=testnet
+  - rust-log=debug

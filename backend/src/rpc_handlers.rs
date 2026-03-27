@@ -16,7 +16,7 @@ pub struct PaginationQuery {
     pub cursor: Option<String>,
 }
 
-fn default_limit() -> u32 {
+const fn default_limit() -> u32 {
     20
 }
 
@@ -38,6 +38,7 @@ pub struct ErrorResponse {
 }
 
 /// Health check for Stellar RPC
+#[tracing::instrument(skip(client))]
 pub async fn rpc_health_check(
     State(client): State<Arc<StellarRpcClient>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
@@ -46,13 +47,14 @@ pub async fn rpc_health_check(
         Err(e) => Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: format!("RPC health check failed: {}", e),
+                error: format!("RPC health check failed: {e}"),
             }),
         )),
     }
 }
 
 /// Get latest ledger information
+#[tracing::instrument(skip(client))]
 pub async fn get_latest_ledger(
     State(client): State<Arc<StellarRpcClient>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
@@ -61,13 +63,14 @@ pub async fn get_latest_ledger(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch ledger: {}", e),
+                error: format!("Failed to fetch ledger: {e}"),
             }),
         )),
     }
 }
 
 /// Get recent payments
+#[tracing::instrument(skip(client))]
 pub async fn get_payments(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<PaginationQuery>,
@@ -78,13 +81,14 @@ pub async fn get_payments(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch payments: {}", e),
+                error: format!("Failed to fetch payments: {e}"),
             }),
         )),
     }
 }
 
 /// Get payments for a specific account
+#[tracing::instrument(skip(client))]
 pub async fn get_account_payments(
     State(client): State<Arc<StellarRpcClient>>,
     Path(account_id): Path<String>,
@@ -98,13 +102,14 @@ pub async fn get_account_payments(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch account payments: {}", e),
+                error: format!("Failed to fetch account payments: {e}"),
             }),
         )),
     }
 }
 
 /// Get recent trades
+#[tracing::instrument(skip(client))]
 pub async fn get_trades(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<PaginationQuery>,
@@ -115,13 +120,14 @@ pub async fn get_trades(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch trades: {}", e),
+                error: format!("Failed to fetch trades: {e}"),
             }),
         )),
     }
 }
 
 /// Get order book for a trading pair
+#[tracing::instrument(skip(client))]
 pub async fn get_order_book(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<OrderBookQuery>,
@@ -146,7 +152,7 @@ pub async fn get_order_book(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("Failed to fetch order book: {}", e),
+                error: format!("Failed to fetch order book: {e}"),
             }),
         )),
     }

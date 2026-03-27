@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import {
   LineChart,
   Line,
@@ -19,7 +18,7 @@ import {
   LiquidityDataPoint,
   VolumeDataPoint,
   SlippageDataPoint,
-} from "@/lib/api";
+} from "@/lib/api/api";
 
 interface SuccessRateChartProps {
   data: SuccessRateDataPoint[];
@@ -189,7 +188,10 @@ export function VolumeTrendChart({ data }: VolumeTrendChartProps) {
           />
           <YAxis
             label={{ value: "Volume ($)", angle: -90, position: "insideLeft" }}
-            tickFormatter={(value: number) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={(value: any) => {
+              const n = Number(value || 0);
+              return `$${(n / 1000).toFixed(0)}k`;
+            }}
           />
           <Tooltip
             formatter={(value, _name, _props) => {

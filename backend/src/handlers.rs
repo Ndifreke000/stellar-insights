@@ -5,163 +5,119 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, response::IntoResponse, Json};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::sync::Arc;
+use std::time::Instant;
 
-use crate::broadcast::{broadcast_anchor_update, broadcast_corridor_update};
-use crate::models::corridor::Corridor;
-use crate::models::{AnchorDetailResponse, CreateAnchorRequest, CreateCorridorRequest};
-use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
+use crate::cache::CacheManager;
+use crate::database::Database;
+use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 
-pub type ApiResult<T> = Result<T, ApiError>;
-
-#[derive(Debug)]
-pub enum ApiError {
-    NotFound(String),
-    BadRequest(String),
-    InternalError(String),
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HealthStatus {
+    pub status: String,
+    pub timestamp: String,
+    pub version: String,
+    pub uptime_seconds: u64,
+    pub checks: HealthChecks,
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-        };
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HealthChecks {
+    pub database: ComponentHealth,
+    pub cache: ComponentHealth,
+    pub rpc: ComponentHealth,
+}
 
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ComponentHealth {
+    pub status: String, // "healthy", "degraded", "unhealthy"
+    pub response_time_ms: Option<u64>,
+    pub message: Option<String>,
+}
+
+/// Check database health
+async fn check_database_health(db: &Arc<Database>) -> ComponentHealth {
+    let start = Instant::now();
+
+    match sqlx::query("SELECT 1").fetch_one(db.pool()).await {
+        Ok(_) => ComponentHealth {
+            status: "healthy".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: None,
+        },
+        Err(e) => ComponentHealth {
+            status: "unhealthy".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: Some(format!("Database error: {}", e)),
+        },
     }
 }
 
-impl From<anyhow::Error> for ApiError {
-    fn from(err: anyhow::Error) -> Self {
-        ApiError::InternalError(err.to_string())
+/// Check cache health
+async fn check_cache_health(cache: &Arc<CacheManager>) -> ComponentHealth {
+    let start = Instant::now();
+
+    match cache.ping().await {
+        Ok(_) => ComponentHealth {
+            status: "healthy".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: None,
+        },
+        Err(e) => ComponentHealth {
+            status: "degraded".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: Some(format!("Cache error: {}", e)),
+        },
     }
 }
 
-impl From<sqlx::Error> for ApiError {
-    fn from(err: sqlx::Error) -> Self {
-        ApiError::InternalError(err.to_string())
+/// Check RPC health
+async fn check_rpc_health(rpc: &Arc<StellarRpcClient>) -> ComponentHealth {
+    let start = Instant::now();
+
+    match rpc.check_health().await {
+        Ok(_) => ComponentHealth {
+            status: "healthy".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: None,
+        },
+        Err(e) => ComponentHealth {
+            status: "degraded".to_string(),
+            response_time_ms: Some(start.elapsed().as_millis() as u64),
+            message: Some(format!("RPC error: {}", e)),
+        },
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ListAnchorsQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
+/// Detailed health check endpoint
+pub async fn health_check(State(app_state): State<AppState>) -> impl IntoResponse {
+    let start_time = Instant::now();
 
-fn default_limit() -> i64 {
-    50
-}
+    // Check database
+    let db_health = check_database_health(&app_state.db).await;
 
-#[derive(Debug, Serialize)]
-pub struct ListAnchorsResponse {
-    pub anchors: Vec<crate::models::Anchor>,
-    pub total: usize,
-}
+    // Check cache
+    let cache_health = check_cache_health(&app_state.cache).await;
 
-#[derive(Debug, Deserialize)]
-pub struct ListCorridorsQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
+    // Check RPC
+    let rpc_health = check_rpc_health(&app_state.rpc_client).await;
 
-#[derive(Debug, Serialize)]
-pub struct ListCorridorsResponse {
-    pub corridors: Vec<Corridor>,
-    pub total: usize,
-}
-
-/// GET /api/anchors - List all anchors with their metrics
-pub async fn list_anchors(
-    State(app_state): State<AppState>,
-    Query(params): Query<ListAnchorsQuery>,
-) -> ApiResult<Json<ListAnchorsResponse>> {
-    let anchors = app_state
-        .db
-        .list_anchors(params.limit, params.offset)
-        .await?;
-    let total = anchors.len();
-
-    Ok(Json(ListAnchorsResponse { anchors, total }))
-}
-
-/// GET /api/anchors/:id - Get detailed anchor information
-pub async fn get_anchor(
-    State(app_state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<AnchorDetailResponse>> {
-    let anchor_detail = app_state
-        .db
-        .get_anchor_detail(id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Anchor with id {} not found", id)))?;
-
-    Ok(Json(anchor_detail))
-}
-
-/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account (G- or M-address)
-pub async fn get_anchor_by_account(
-    State(app_state): State<AppState>,
-    Path(stellar_account): Path<String>,
-) -> ApiResult<Json<crate::models::Anchor>> {
-    let account_lookup = stellar_account.trim();
-    // If M-address, resolve to base account for anchor lookup (anchors are keyed by G-address)
-    let lookup_key = if crate::muxed::is_muxed_address(account_lookup) {
-        crate::muxed::parse_muxed_address(account_lookup)
-            .and_then(|i| i.base_account)
-            .unwrap_or_else(|| account_lookup.to_string())
+    // Overall status
+    let overall_status = if db_health.status == "healthy"
+        && cache_health.status != "unhealthy"
+        && rpc_health.status != "unhealthy"
+    {
+        "healthy"
+    } else if db_health.status == "unhealthy" {
+        "unhealthy"
     } else {
-        account_lookup.to_string()
+        "degraded"
     };
-    let anchor = app_state
-        .db
-        .get_anchor_by_stellar_account(&lookup_key)
-        .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "Anchor with stellar account {} not found",
-                account_lookup
-            ))
-        })?;
-
-    Ok(Json(anchor))
-}
-
-/// GET /api/analytics/muxed - Muxed account usage analytics
-#[derive(Debug, Deserialize)]
-pub struct MuxedAnalyticsQuery {
-    #[serde(default = "default_muxed_limit")]
-    pub limit: i64,
-}
-fn default_muxed_limit() -> i64 {
-    20
-}
-
-pub async fn get_muxed_analytics(
-    State(app_state): State<AppState>,
-    Query(params): Query<MuxedAnalyticsQuery>,
-) -> ApiResult<Json<crate::models::MuxedAccountAnalytics>> {
-    let limit = params.limit.clamp(1, 100);
-    let analytics = app_state.db.get_muxed_analytics(limit).await?;
-    Ok(Json(analytics))
-}
-
-/// POST /api/anchors - Create a new anchor
-pub async fn create_anchor(
-    State(app_state): State<AppState>,
-    Json(req): Json<CreateAnchorRequest>,
-) -> ApiResult<Json<crate::models::Anchor>> {
-    if req.name.is_empty() {
-        return Err(ApiError::BadRequest("Name cannot be empty".to_string()));
-    }
 
     if req.stellar_account.is_empty() {
         return Err(ApiError::BadRequest(
@@ -349,48 +305,30 @@ pub async fn create_corridor(
 pub struct UpdateCorridorMetricsFromTxns {
     pub transactions: Vec<CorridorTransactionDto>,
 }
+    let health_status = HealthStatus {
+        status: overall_status.to_string(),
+        timestamp: Utc::now().to_rfc3339(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_seconds: start_time.elapsed().as_secs(),
+        checks: HealthChecks {
+            database: db_health,
+            cache: cache_health,
+            rpc: rpc_health,
+        },
+    };
 
-#[derive(Debug, Deserialize)]
-pub struct CorridorTransactionDto {
-    pub successful: bool,
-    pub settlement_latency_ms: Option<i32>,
-    pub amount_usd: f64,
+    Json(health_status)
 }
 
-pub async fn update_corridor_metrics_from_transactions(
-    State(app_state): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(req): Json<UpdateCorridorMetricsFromTxns>,
-) -> ApiResult<Json<Corridor>> {
-    if app_state.db.get_corridor_by_id(id).await?.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Corridor with id {} not found",
-            id
-        )));
-    }
-
-    let txs: Vec<CorridorTransaction> = req
-        .transactions
-        .into_iter()
-        .map(|t| CorridorTransaction {
-            successful: t.successful,
-            settlement_latency_ms: t.settlement_latency_ms,
-            amount_usd: t.amount_usd,
-        })
-        .collect();
-
-    let metrics = compute_corridor_metrics(&txs, None, 1.0);
-    let corridor = app_state.db.update_corridor_metrics(id, metrics).await?;
-
-    // Broadcast the corridor update to WebSocket clients
-    broadcast_corridor_update(&app_state.ws_state, &corridor);
-
-    Ok(Json(corridor))
+/// Database pool metrics endpoint
+pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let metrics = state.db.pool_metrics();
+    Json(metrics)
 }
 
 pub async fn ingestion_status(
     State(app_state): State<AppState>,
-) -> ApiResult<Json<crate::ingestion::IngestionStatus>> {
+) -> crate::error::ApiResult<Json<crate::ingestion::IngestionStatus>> {
     let status = app_state.ingestion.get_ingestion_status().await?;
     Ok(Json(status))
 }

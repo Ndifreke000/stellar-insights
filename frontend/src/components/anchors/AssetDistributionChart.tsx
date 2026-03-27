@@ -1,14 +1,13 @@
 "use client";
 
+import { IssuedAsset } from "@/lib/api/types";
 import {
   PieChart,
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip,
-  TooltipProps,
+  Tooltip
 } from "recharts";
-import { IssuedAsset } from "@/lib/api";
 
 interface AssetDistributionChartProps {
   assets: IssuedAsset[];
@@ -25,7 +24,8 @@ const COLORS = [
   "#14b8a6", // Teal 500
 ];
 
-const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+const CustomTooltip = (props: any) => {
+  const { active, payload } = props;
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (

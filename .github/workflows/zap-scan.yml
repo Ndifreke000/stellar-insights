@@ -1,0 +1,66 @@
+name: "OWASP ZAP: Staging scan"
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # nightly at 04:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run OWASP ZAP baseline (docker)
+        env:
+          TARGET_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          if [ -z "$TARGET_URL" ]; then
+            echo "STAGING_URL secret is not set; aborting ZAP scan.";
+            exit 78;
+          fi
+          docker run --rm -v $(pwd):/zap/wrk/:Z owasp/zap2docker-stable zap-baseline.py -t "$TARGET_URL" -r zap-report.html -J zap-report.json || true
+
+      - name: Upload ZAP artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: zap-report
+          path: |
+            zap-report.html
+            zap-report.json
+
+      - name: Parse ZAP results and create issue
+        id: parse
+        run: |
+          if [ ! -f zap-report.json ]; then
+            echo "no_report=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          ALERTS=$(jq '[.site[].alerts[]?] | length' zap-report.json 2>/dev/null || echo 0)
+          echo "alerts=$ALERTS" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub issue for ZAP findings
+        if: steps.parse.outputs.alerts != '0'
+        uses: peter-evans/create-issue@v4
+        with:
+          title: "[Security][ZAP] Staging scan found vulnerabilities"
+          body: |
+            The nightly OWASP ZAP scan against staging found ${{ steps.parse.outputs.alerts }} alerts.
+
+            Download the scan artifacts from the workflow run for full detail.
+
+            Please triage and assign.
+
+      - name: Optional email notification for ZAP
+        if: ${{ secrets.MAIL_HOST != '' && steps.parse.outputs.alerts != '0' }}
+        uses: dawidd6/action-send-mail@v9
+        with:
+          server_address: ${{ secrets.MAIL_HOST }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Security][ZAP] Staging scan found ${{ steps.parse.outputs.alerts }} alerts"
+          body: "OWASP ZAP scan against staging found ${{ steps.parse.outputs.alerts }} alerts. See workflow artifacts for details."
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_FROM }}

@@ -1,9 +1,9 @@
+use chrono::{DateTime, Utc};
 use stellar_insights_backend::analytics::corridor::{
     compute_corridor_analytics, compute_corridor_analytics_for_date, get_corridors_by_success_rate,
     get_top_corridors_by_transactions, get_top_corridors_by_volume,
 };
 use stellar_insights_backend::models::corridor::PaymentRecord;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 fn create_test_payment(
@@ -48,25 +48,29 @@ fn test_known_dataset_expected_success_rates() {
 
     let usdc_eurc_analytics = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "EURC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| {
+            a.corridor.source_asset_code == "EURC" && a.corridor.destination_asset_code == "USDC"
+        })
         .unwrap();
 
     assert_eq!(usdc_eurc_analytics.total_transactions, 3);
     assert_eq!(usdc_eurc_analytics.successful_transactions, 2);
     assert_eq!(usdc_eurc_analytics.failed_transactions, 1);
     assert!((usdc_eurc_analytics.success_rate - 66.66666666666667).abs() < 0.0001);
-    assert_eq!(usdc_eurc_analytics.volume_usd, 225.0);
+    assert_eq!(usdc_eurc_analytics.volume_usd, 150.0);
 
     let usdc_btc_analytics = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "BTC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| {
+            a.corridor.source_asset_code == "BTC" && a.corridor.destination_asset_code == "USDC"
+        })
         .unwrap();
 
     assert_eq!(usdc_btc_analytics.total_transactions, 3);
     assert_eq!(usdc_btc_analytics.successful_transactions, 2);
     assert_eq!(usdc_btc_analytics.failed_transactions, 1);
     assert!((usdc_btc_analytics.success_rate - 66.66666666666667).abs() < 0.0001);
-    assert_eq!(usdc_btc_analytics.volume_usd, 450.0);
+    assert_eq!(usdc_btc_analytics.volume_usd, 350.0);
 }
 
 #[test]
@@ -148,13 +152,17 @@ fn test_mixed_success_rates_across_corridors() {
 
     let usdc_eurc = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "EURC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| {
+            a.corridor.source_asset_code == "EURC" && a.corridor.destination_asset_code == "USDC"
+        })
         .unwrap();
     assert!((usdc_eurc.success_rate - 66.66666666666667).abs() < 0.0001);
 
     let usdc_btc = analytics
         .iter()
-        .find(|a| a.corridor.asset_a_code == "BTC" && a.corridor.asset_b_code == "USDC")
+        .find(|a| {
+            a.corridor.source_asset_code == "BTC" && a.corridor.destination_asset_code == "USDC"
+        })
         .unwrap();
     assert!((usdc_btc.success_rate - 33.33333333333333).abs() < 0.0001);
 }

@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stellar-insights-backend
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: backend
+spec:
+  minAvailable: 2  # Always keep at least 2 pods running
+  selector:
+    matchLabels:
+      app: stellar-insights
+      component: backend
+  unhealthyPodEvictionPolicy: IfHealthyBudget

@@ -1,4 +1,7 @@
+"use client";
+
 import React from 'react';
+import { useTranslations } from 'next-intl';
 
 export interface WebSocketStatusProps {
   isConnected: boolean;
@@ -15,6 +18,7 @@ export function WebSocketStatus({
   onReconnect,
   className = '',
 }: WebSocketStatusProps) {
+  const t = useTranslations("dashboard");
   const getStatusColor = () => {
     if (isConnected) return 'text-green-600 bg-green-100';
     if (isConnecting) return 'text-yellow-600 bg-yellow-100';
@@ -22,9 +26,9 @@ export function WebSocketStatus({
   };
 
   const getStatusText = () => {
-    if (isConnected) return 'Connected';
-    if (isConnecting) return 'Connecting...';
-    return `Disconnected${connectionAttempts > 0 ? ` (${connectionAttempts} attempts)` : ''}`;
+    if (isConnected) return t("connected");
+    if (isConnecting) return t("connecting");
+    return `${t("disconnected")}${connectionAttempts > 0 ? ` (${connectionAttempts} ${t("attempts")})` : ''}`;
   };
 
   const getStatusIcon = () => {
@@ -75,7 +79,7 @@ export function WebSocketStatus({
           onClick={onReconnect}
           className="text-xs text-blue-600 hover:text-blue-800 underline"
         >
-          Reconnect
+          {t("reconnect")}
         </button>
       )}
     </div>

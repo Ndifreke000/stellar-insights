@@ -1,0 +1,98 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ── Backend (Rust) ────────────────────────────────────────────────────────
+  backend-coverage:
+    name: Backend – cargo llvm-cov (≥ 70 %)
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable + llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo registry & build artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run tests with coverage
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite::memory:
+          REDIS_URL: redis://127.0.0.1:6379
+        run: |
+          cargo llvm-cov \
+            --all-features \
+            --workspace \
+            --lcov --output-path lcov.info \
+            --fail-under-fns 70
+
+      - name: Upload coverage report (LCOV)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-lcov
+          path: backend/lcov.info
+          retention-days: 14
+
+  # ── Frontend (Vitest) ─────────────────────────────────────────────────────
+  frontend-coverage:
+    name: Frontend – Vitest (≥ 70 %)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage (thresholds enforced in vitest.config.ts)
+        working-directory: frontend
+        run: pnpm vitest run --coverage
+
+      - name: Upload coverage report (LCOV)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-lcov
+          path: frontend/coverage/lcov.info
+          retention-days: 14

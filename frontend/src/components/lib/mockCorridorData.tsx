@@ -1,4 +1,4 @@
-import { CorridorMetrics, generateMockCorridorData } from "../../lib/api";
+import { CorridorMetrics, generateMockCorridorData } from "../../lib/api/corridors";
 
 export const mockCorridors: CorridorMetrics[] = [
   // USDC corridors (Major stablecoin - high volume)

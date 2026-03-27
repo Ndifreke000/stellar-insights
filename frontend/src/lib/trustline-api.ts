@@ -1,4 +1,5 @@
-import { API_BASE_URL } from "./api";
+import { logger } from "@/lib/logger";
+import { API_BASE_URL } from "./api/api";
 
 export interface TrustlineStat {
   asset_code: string;
@@ -39,7 +40,7 @@ export async function fetchTrustlineStats(): Promise<TrustlineMetrics> {
     }
     return res.json();
   } catch (err) {
-    console.error("Error fetching trustline stats:", err);
+    logger.error("Error fetching trustline stats:", err);
     return {
       total_assets_tracked: 0,
       total_trustlines_across_network: 0,
@@ -61,7 +62,7 @@ export async function fetchTrustlineRankings(
     }
     return res.json();
   } catch (err) {
-    console.error("Error fetching trustline rankings:", err);
+    logger.error("Error fetching trustline rankings:", err);
     return [];
   }
 }
@@ -85,7 +86,7 @@ export async function fetchTrustlineHistory(
     }
     return res.json();
   } catch (err) {
-    console.error("Error fetching trustline history:", err);
+    logger.error("Error fetching trustline history:", err);
     return [];
   }
 }

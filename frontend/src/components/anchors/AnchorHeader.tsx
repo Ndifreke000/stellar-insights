@@ -1,4 +1,4 @@
-import { AnchorMetrics } from '@/lib/api';
+import { AnchorMetrics } from '@/lib/api/types';
 import { Shield, ShieldAlert, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
 
 interface AnchorHeaderProps {

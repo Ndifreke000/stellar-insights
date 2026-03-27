@@ -13,7 +13,8 @@ pub struct IndexingService {
 }
 
 impl IndexingService {
-    pub fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
+    #[must_use]
+    pub const fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
         Self { rpc_client, db }
     }
 
@@ -64,7 +65,7 @@ impl IndexingService {
                     destination_asset_issuer: p.asset_issuer.unwrap_or_default(),
                     amount,
                     successful: true,
-                    timestamp: created_at,
+                    timestamp: Some(created_at),
                     submission_time: None,
                     confirmation_time: None,
                     created_at,
