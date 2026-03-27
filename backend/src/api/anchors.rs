@@ -6,11 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 use uuid::Uuid;
 
 use crate::broadcast::broadcast_anchor_update;
@@ -271,7 +268,7 @@ use crate::cache::{keys, CacheManager};
 use crate::database::Database;
 use crate::rpc::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
-    error::{with_retry, RetryConfig},
+    error::{with_retry, RetryConfig, RpcError},
     StellarRpcClient,
 };
 use crate::services::price_feed::PriceFeedClient;
@@ -305,42 +302,12 @@ fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
         .clone()
 }
 
-// Add retry helper
-async fn with_retry<F, Fut, T>(
-    mut operation: F,
-    max_retries: u32,
-    initial_backoff: Duration,
-) -> anyhow::Result<T>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = anyhow::Result<T>>,
-{
-    let mut backoff = initial_backoff;
-    let mut last_error = None;
-    
-    for attempt in 0..=max_retries {
-        match operation().await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                last_error = Some(e);
-                if attempt < max_retries {
-                    tokio::time::sleep(backoff).await;
-                    backoff *= 2;  // Exponential backoff
-                }
-            }
-        }
-    }
-    
-    Err(last_error.unwrap())
-}
-
 pub async fn get_anchor_metrics_with_rpc(
     anchor_id: Uuid,
     rpc_client: Arc<StellarRpcClient>,
 ) -> anyhow::Result<AnchorMetrics> {
     let circuit_breaker = rpc_circuit_breaker();
-    
-    // Use with_retry with circuit_breaker for resilience
+
     with_retry(
         || async {
             rpc_client

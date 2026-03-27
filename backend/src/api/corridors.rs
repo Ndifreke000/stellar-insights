@@ -357,35 +357,7 @@ pub async fn list_corridors(
         || async {
             let circuit_breaker = rpc_circuit_breaker();
 
-            // **RPC DATA**: Fetch recent payments to identify active corridors
-            let payments = with_retry(
-                || async {
-                    rpc_client
-                        .fetch_payments(200, None)
-                        .await
-                        .map_err(|e| RpcError::categorize(&e.to_string()))
-                },
-                RetryConfig::default(),
-                circuit_breaker.clone(),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {e}"))?;
-
-            // **RPC DATA**: Fetch recent trades for volume data
-            let _trades = with_retry(
-                || async {
-                    rpc_client
-                        .fetch_trades(200, None)
-                        .await
-                        .map_err(|e| RpcError::categorize(&e.to_string()))
-                },
-                RetryConfig::default(),
-                circuit_breaker.clone(),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
             // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
-            // Use paginated fetch to get more complete data (up to configured limit)
             let payments = with_retry(
                 || async {
                     rpc_client
@@ -412,8 +384,6 @@ pub async fn list_corridors(
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
-                }
-            };
 
             // Group payments by asset pairs to identify corridors
             use std::collections::HashMap;
