@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use serde::{Deserialize, Serialize};
 
 use crate::alerts::AlertManager;
 use crate::cache::CacheManager;
@@ -94,8 +94,11 @@ impl CorridorMonitor {
                 .sum();
 
             let cache_key = format!("corridor_health:{}", corridor_id);
-            let cached_state: Option<CorridorState> = self.cache.get(&cache_key).await.unwrap_or(None);
-            let effective_old = cached_state.as_ref().or_else(|| prev_state.get(&corridor_id));
+            let cached_state: Option<CorridorState> =
+                self.cache.get(&cache_key).await.unwrap_or(None);
+            let effective_old = cached_state
+                .as_ref()
+                .or_else(|| prev_state.get(&corridor_id));
 
             if let Some(old_state) = effective_old {
                 self.alert_manager.check_and_alert(
@@ -191,7 +194,11 @@ impl CorridorMonitor {
                 }
             }
 
-            let new_state = CorridorState { success_rate, latency, liquidity };
+            let new_state = CorridorState {
+                success_rate,
+                latency,
+                liquidity,
+            };
             let _ = self.cache.set(&cache_key, &new_state, 60).await;
             prev_state.insert(corridor_id, new_state);
         }

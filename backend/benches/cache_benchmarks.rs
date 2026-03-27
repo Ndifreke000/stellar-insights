@@ -169,9 +169,8 @@ fn bench_cache_get_operations(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("get_cached_value", |b| {
-        b.to_async(&rt).iter(|| async {
-            cache.get(black_box("corridor:USDC:EURC"), &data).await
-        });
+        b.to_async(&rt)
+            .iter(|| async { cache.get(black_box("corridor:USDC:EURC"), &data).await });
     });
 
     group.bench_function("get_miss", |b| {
@@ -196,9 +195,7 @@ fn bench_cache_serialization(c: &mut Criterion) {
 
     group.bench_function("deserialize_small", |b| {
         let json = serde_json::to_string(&small_data).unwrap();
-        b.iter(|| {
-            serde_json::from_str::<CorridorMetricsData>(black_box(&json)).unwrap()
-        });
+        b.iter(|| serde_json::from_str::<CorridorMetricsData>(black_box(&json)).unwrap());
     });
 
     // Large payload (simulating batch data)
@@ -212,9 +209,7 @@ fn bench_cache_serialization(c: &mut Criterion) {
 
     group.bench_function("deserialize_large_batch", |b| {
         let json = serde_json::to_string(&large_data).unwrap();
-        b.iter(|| {
-            serde_json::from_str::<Vec<CorridorMetricsData>>(black_box(&json)).unwrap()
-        });
+        b.iter(|| serde_json::from_str::<Vec<CorridorMetricsData>>(black_box(&json)).unwrap());
     });
 
     group.finish();

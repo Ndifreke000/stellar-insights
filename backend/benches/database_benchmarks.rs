@@ -18,7 +18,7 @@
 //! ```
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 use tokio::runtime::Runtime;
 
 /// Setup an in-memory SQLite database for benchmarking
@@ -158,30 +158,17 @@ async fn seed_test_data(pool: &SqlitePool) {
 
 fn bench_db_connection(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
-    
+
     let mut group = c.benchmark_group("db_connection");
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("create_pool", |b| {
-        b.iter(|| {
-            rt.block_on(async {
-                SqlitePool::connect("sqlite::memory:")
-                    .await
-                    .unwrap()
-            })
-        });
+        b.iter(|| rt.block_on(async { SqlitePool::connect("sqlite::memory:").await.unwrap() }));
     });
 
     group.bench_function("pool_ping", |b| {
         let pool = rt.block_on(setup_test_db());
-        b.iter(|| {
-            rt.block_on(async {
-                sqlx::query("SELECT 1")
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap()
-            })
-        });
+        b.iter(|| rt.block_on(async { sqlx::query("SELECT 1").fetch_one(&pool).await.unwrap() }));
     });
 
     group.finish();
@@ -232,7 +219,7 @@ fn bench_db_read_operations(c: &mut Criterion) {
             sqlx::query(
                 "SELECT corridor_key, COUNT(*), AVG(success_rate) 
                  FROM corridor_metrics 
-                 GROUP BY corridor_key"
+                 GROUP BY corridor_key",
             )
             .fetch_all(&pool)
             .await
@@ -371,13 +358,9 @@ fn bench_db_pool_metrics(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("db_pool_metrics");
 
-    group.bench_function("get_pool_size", |b| {
-        b.iter(|| black_box(&pool).size())
-    });
+    group.bench_function("get_pool_size", |b| b.iter(|| black_box(&pool).size()));
 
-    group.bench_function("get_pool_idle", |b| {
-        b.iter(|| black_box(&pool).num_idle())
-    });
+    group.bench_function("get_pool_idle", |b| b.iter(|| black_box(&pool).num_idle()));
 
     group.finish();
 }

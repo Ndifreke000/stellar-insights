@@ -325,7 +325,10 @@ impl Database {
             .bind(&req.home_domain)
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to create anchor: name={}, stellar_account={}", req.name, req.stellar_account))?;
+            .context(format!(
+                "Failed to create anchor: name={}, stellar_account={}",
+                req.name, req.stellar_account
+            ))?;
             Ok(anchor)
         })
         .await
@@ -407,7 +410,10 @@ impl Database {
             .bind(stellar_account)
             .fetch_optional(&self.pool)
             .await
-            .context(format!("Failed to fetch anchor by stellar_account: {}", stellar_account))?;
+            .context(format!(
+                "Failed to fetch anchor by stellar_account: {}",
+                stellar_account
+            ))?;
             Ok(anchor)
         })
         .await
@@ -451,7 +457,10 @@ impl Database {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .context(format!("Failed to list anchors (limit={}, offset={})", limit, offset))?;
+            .context(format!(
+                "Failed to list anchors (limit={}, offset={})",
+                limit, offset
+            ))?;
             Ok(anchors)
         })
         .await
@@ -533,7 +542,10 @@ impl Database {
         .bind(update.anchor_id.to_string())
         .fetch_one(&self.pool)
         .await
-        .context(format!("Failed to update metrics for anchor: {}", update.anchor_id))?;
+        .context(format!(
+            "Failed to update metrics for anchor: {}",
+            update.anchor_id
+        ))?;
 
         // Record metrics history
         self.record_anchor_metrics_history(AnchorMetricsParams {
@@ -608,7 +620,10 @@ impl Database {
             .bind(&asset_issuer)
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to create asset: code={}, issuer={}, anchor_id={}", asset_code, asset_issuer, anchor_id))?;
+            .context(format!(
+                "Failed to create asset: code={}, issuer={}, anchor_id={}",
+                asset_code, asset_issuer, anchor_id
+            ))?;
             Ok(asset)
         })
         .await
@@ -719,9 +734,10 @@ impl Database {
             query = query.bind(id);
         }
 
-        let assets = query.fetch_all(&self.pool)
-            .await
-            .context(format!("Failed to get assets for {} anchor ids", anchor_ids.len()))?;
+        let assets = query.fetch_all(&self.pool).await.context(format!(
+            "Failed to get assets for {} anchor ids",
+            anchor_ids.len()
+        ))?;
 
         let mut result: std::collections::HashMap<String, Vec<Asset>> =
             std::collections::HashMap::new();
@@ -745,7 +761,10 @@ impl Database {
             .bind(anchor_id.to_string())
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to count assets for anchor_id: {}", anchor_id))?;
+            .context(format!(
+                "Failed to count assets for anchor_id: {}",
+                anchor_id
+            ))?;
             Ok(count.0)
         })
         .await
@@ -779,7 +798,10 @@ impl Database {
             .bind(&params.stellar_account)
             .execute(&self.pool)
             .await
-            .context(format!("Failed to update anchor from RPC for stellar_account: {}", params.stellar_account))?;
+            .context(format!(
+                "Failed to update anchor from RPC for stellar_account: {}",
+                params.stellar_account
+            ))?;
             Ok(())
         })
         .await
@@ -816,7 +838,10 @@ impl Database {
             .bind(params.volume_usd.unwrap_or(0.0))
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to record metrics history for anchor_id: {}", params.anchor_id))?;
+            .context(format!(
+                "Failed to record metrics history for anchor_id: {}",
+                params.anchor_id
+            ))?;
             Ok(history)
         })
         .await
@@ -840,7 +865,10 @@ impl Database {
             .bind(limit)
             .fetch_all(&self.pool)
             .await
-            .context(format!("Failed to get metrics history for anchor_id: {} (limit={})", anchor_id, limit))?;
+            .context(format!(
+                "Failed to get metrics history for anchor_id: {} (limit={})",
+                anchor_id, limit
+            ))?;
             Ok(history)
         })
         .await
@@ -915,7 +943,10 @@ impl Database {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .context(format!("Failed to list corridors (limit={}, offset={})", limit, offset))?;
+            .context(format!(
+                "Failed to list corridors (limit={}, offset={})",
+                limit, offset
+            ))?;
 
             let corridors = records
                 .into_iter()
@@ -1017,7 +1048,10 @@ impl Database {
             .bind(Utc::now())
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to record metric: name={}, entity_id={:?}", name, entity_id))?;
+            .context(format!(
+                "Failed to record metric: name={}, entity_id={:?}",
+                name, entity_id
+            ))?;
             Ok(metric)
         })
         .await
@@ -1050,7 +1084,10 @@ impl Database {
             .bind(Utc::now())
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to create snapshot: entity_id={}, entity_type={}", entity_id, entity_type))?;
+            .context(format!(
+                "Failed to create snapshot: entity_id={}, entity_type={}",
+                entity_id, entity_type
+            ))?;
             Ok(snapshot)
         })
         .await
@@ -1086,7 +1123,10 @@ impl Database {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .context(format!("Failed to list snapshots (limit={}, offset={})", limit, offset))?;
+            .context(format!(
+                "Failed to list snapshots (limit={}, offset={})",
+                limit, offset
+            ))?;
             Ok(snapshots)
         })
         .await
@@ -1103,7 +1143,10 @@ impl Database {
             .bind(task_name)
             .fetch_optional(&self.pool)
             .await
-            .context(format!("Failed to get ingestion cursor for task: {}", task_name))?;
+            .context(format!(
+                "Failed to get ingestion cursor for task: {}",
+                task_name
+            ))?;
             Ok(state.map(|s| s.last_cursor))
         })
         .await
@@ -1125,7 +1168,10 @@ impl Database {
             .bind(Utc::now())
             .execute(&self.pool)
             .await
-            .context(format!("Failed to update ingestion cursor for task: {}, cursor: {}", task_name, last_cursor))?;
+            .context(format!(
+                "Failed to update ingestion cursor for task: {}, cursor: {}",
+                task_name, last_cursor
+            ))?;
             Ok(())
         })
         .await
@@ -1268,7 +1314,10 @@ impl Database {
         .bind(top_limit)
         .fetch_all(&self.pool)
         .await
-        .context(format!("Failed to fetch top muxed source accounts (limit={})", top_limit))?;
+        .context(format!(
+            "Failed to fetch top muxed source accounts (limit={})",
+            top_limit
+        ))?;
 
         let dest_counts: Vec<AddrCount> = sqlx::query_as(
             r"
@@ -1283,7 +1332,10 @@ impl Database {
         .bind(top_limit)
         .fetch_all(&self.pool)
         .await
-        .context(format!("Failed to fetch top muxed destination accounts (limit={})", top_limit))?;
+        .context(format!(
+            "Failed to fetch top muxed destination accounts (limit={})",
+            top_limit
+        ))?;
 
         let mut by_addr: std::collections::HashMap<String, (i64, i64)> =
             std::collections::HashMap::new();
@@ -1370,7 +1422,10 @@ impl Database {
             .bind("pending")
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to create pending transaction for source_account: {}", source_account))?;
+            .context(format!(
+                "Failed to create pending transaction for source_account: {}",
+                source_account
+            ))?;
             Ok(pending_transaction)
         })
         .await
@@ -1389,7 +1444,10 @@ impl Database {
             .bind(id)
             .fetch_optional(&self.pool)
             .await
-            .context(format!("Failed to fetch pending transaction with id: {}", id))?;
+            .context(format!(
+                "Failed to fetch pending transaction with id: {}",
+                id
+            ))?;
 
             if let Some(transaction) = pending_transaction {
                 let signatures = sqlx::query_as::<_, crate::models::Signature>(
@@ -1400,7 +1458,10 @@ impl Database {
                 .bind(id)
                 .fetch_all(&self.pool)
                 .await
-                .context(format!("Failed to fetch signatures for transaction id: {}", id))?;
+                .context(format!(
+                    "Failed to fetch signatures for transaction id: {}",
+                    id
+                ))?;
 
                 Ok(Some(crate::models::PendingTransactionWithSignatures {
                     transaction,
@@ -1433,7 +1494,10 @@ impl Database {
             .bind(signature)
             .execute(&self.pool)
             .await
-            .context(format!("Failed to add signature for transaction_id: {}, signer: {}", transaction_id, signer))?;
+            .context(format!(
+                "Failed to add signature for transaction_id: {}, signer: {}",
+                transaction_id, signer
+            ))?;
             Ok(())
         })
         .await
@@ -1452,7 +1516,10 @@ impl Database {
             .bind(id)
             .execute(&self.pool)
             .await
-            .context(format!("Failed to update transaction status to '{}' for id: {}", status, id))?;
+            .context(format!(
+                "Failed to update transaction status to '{}' for id: {}",
+                status, id
+            ))?;
             Ok(())
         })
         .await
@@ -1515,7 +1582,10 @@ impl Database {
             .bind(wallet_address)
             .fetch_all(&self.pool)
             .await
-            .context(format!("Failed to list API keys for wallet: {}", wallet_address))?;
+            .context(format!(
+                "Failed to list API keys for wallet: {}",
+                wallet_address
+            ))?;
             Ok(keys.into_iter().map(ApiKeyInfo::from).collect())
         })
         .await
@@ -1534,7 +1604,10 @@ impl Database {
             .bind(wallet_address)
             .fetch_optional(&self.pool)
             .await
-            .context(format!("Failed to get API key id: {} for wallet: {}", id, wallet_address))?;
+            .context(format!(
+                "Failed to get API key id: {} for wallet: {}",
+                id, wallet_address
+            ))?;
             Ok(key.map(ApiKeyInfo::from))
         })
         .await
@@ -1602,7 +1675,10 @@ impl Database {
             .bind(wallet_address)
             .execute(&self.pool)
             .await
-            .context(format!("Failed to revoke API key id: {} for wallet: {}", id, wallet_address))?;
+            .context(format!(
+                "Failed to revoke API key id: {} for wallet: {}",
+                id, wallet_address
+            ))?;
             Ok(result.rows_affected() > 0)
         })
         .await
@@ -1670,7 +1746,10 @@ impl Database {
             .bind(start_time.to_rfc3339())
             .fetch_one(&self.pool)
             .await
-            .context(format!("Failed to get recent anchor performance for anchor_id: {}, minutes: {}", anchor_id, minutes))?;
+            .context(format!(
+                "Failed to get recent anchor performance for anchor_id: {}, minutes: {}",
+                anchor_id, minutes
+            ))?;
 
             let total_transactions = row.0;
             let successful_transactions = row.1;

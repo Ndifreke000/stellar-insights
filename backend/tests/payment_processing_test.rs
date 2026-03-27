@@ -6,7 +6,6 @@
 ///   - `compute_median()`
 ///   - `compute_metrics_from_payments()`
 ///   - `compute_metrics_by_window()`
-
 use chrono::{Duration, Utc};
 use stellar_insights_backend::models::corridor::{compute_median, Corridor, PaymentRecord};
 use stellar_insights_backend::services::analytics::{
@@ -289,9 +288,9 @@ fn metrics_by_window_filters_outside_range() {
     let window_end = base + Duration::hours(1);
 
     let payments = [
-        payment("USDC", "issA", "NGN", "issB", 100.0, true, 0),       // inside
-        payment("USDC", "issA", "NGN", "issB", 200.0, true, -3_600),  // before
-        payment("USDC", "issA", "NGN", "issB", 300.0, true, 7_200),   // after
+        payment("USDC", "issA", "NGN", "issB", 100.0, true, 0), // inside
+        payment("USDC", "issA", "NGN", "issB", 200.0, true, -3_600), // before
+        payment("USDC", "issA", "NGN", "issB", 300.0, true, 7_200), // after
     ];
 
     let metrics = compute_metrics_by_window(&payments, window_start, window_end);
@@ -342,7 +341,10 @@ fn metrics_by_window_includes_boundary_payments() {
 fn metrics_by_empty_window_returns_empty() {
     let base = Utc::now();
     let payments = [payment("USDC", "issA", "NGN", "issB", 100.0, true, 0)];
-    let metrics =
-        compute_metrics_by_window(&payments, base + Duration::hours(1), base + Duration::hours(2));
+    let metrics = compute_metrics_by_window(
+        &payments,
+        base + Duration::hours(1),
+        base + Duration::hours(2),
+    );
     assert!(metrics.is_empty());
 }
