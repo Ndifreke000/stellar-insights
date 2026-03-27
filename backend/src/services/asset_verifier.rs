@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::SqlitePool;
 use std::time::Duration;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -564,26 +564,31 @@ impl AssetVerifier {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<VerifiedAsset>> {
-        let mut qb = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
+        let mut sql = String::from("SELECT * FROM verified_assets WHERE 1=1");
 
-        if let Some(s) = status {
-            qb.push(" AND verification_status = ")
-                .push_bind(s.as_str().to_owned());
+        let status_str = status.as_ref().map(|s| s.as_str().to_owned());
+
+        if status_str.is_some() {
+            sql.push_str(" AND verification_status = ?");
+        }
+        if min_reputation.is_some() {
+            sql.push_str(" AND reputation_score >= ?");
         }
 
+        sql.push_str(" ORDER BY reputation_score DESC, updated_at DESC LIMIT ? OFFSET ?");
+
+        let mut query = sqlx::query_as::<_, VerifiedAsset>(&sql);
+
+        if let Some(ref s) = status_str {
+            query = query.bind(s.clone());
+        }
         if let Some(min_rep) = min_reputation {
-            qb.push(" AND reputation_score >= ").push_bind(min_rep);
+            query = query.bind(min_rep);
         }
 
-        qb.push(" ORDER BY reputation_score DESC, updated_at DESC");
-        qb.push(" LIMIT ").push_bind(limit);
-        qb.push(" OFFSET ").push_bind(offset);
+        query = query.bind(limit).bind(offset);
 
-        let assets = qb
-            .build_query_as::<VerifiedAsset>()
-            .fetch_all(&self.pool)
-            .await?;
-
+        let assets = query.fetch_all(&self.pool).await?;
         Ok(assets)
     }
 }
