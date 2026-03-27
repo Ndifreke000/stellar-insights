@@ -4,7 +4,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = "0.1.0";
 
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13,7 +13,7 @@ pub enum Error {
     Unauthorized = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub enum Role {
     Admin,
@@ -32,6 +32,7 @@ pub struct Permission {
 pub enum DataKey {
     Roles(Address),
     Permissions(Role),
+    Version,
 }
 
 // ---------------------------------------------------------------------------
@@ -66,12 +67,12 @@ pub struct PermissionGrantedEvent {
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct PublicMetadata {
-    pub name: String,
-    pub version: String,
-    pub author: String,
-    pub description: String,
-    pub repository: String,
-    pub license: String,
+    pub name: soroban_sdk::String,
+    pub version: soroban_sdk::String,
+    pub author: soroban_sdk::String,
+    pub description: soroban_sdk::String,
+    pub repository: soroban_sdk::String,
+    pub license: soroban_sdk::String,
 }
 
 /// Contract info combining metadata with runtime state
@@ -84,10 +85,10 @@ pub struct ContractInfo {
 }
 
 #[contract]
-pub struct AccessControl;
+pub struct AccessControlContract;
 
 #[contractimpl]
-impl AccessControl {
+impl AccessControlContract {
     pub fn initialize(env: Env, admin: Address) {
         admin.require_auth();
         let mut roles = Vec::new(&env);
@@ -241,31 +242,30 @@ impl AccessControl {
         )
     }
 
-    // =========================================================================
-    // Contract Metadata
-    // =========================================================================
-
     /// Get public contract metadata
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
-            name: String::from_str(&env, "Stellar Insights Access Control"),
-            version: String::from_str(&env, VERSION),
-            author: String::from_str(&env, "Stellar Insights Team"),
-            description: String::from_str(
+            name: soroban_sdk::String::from_str(&env, "Stellar Insights Access Control"),
+            version: soroban_sdk::String::from_str(&env, VERSION),
+            author: soroban_sdk::String::from_str(&env, "Stellar Insights Team"),
+            description: soroban_sdk::String::from_str(
                 &env,
                 "Role-based access control contract for Stellar Insights",
             ),
-            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
-            license: String::from_str(&env, "MIT"),
+            repository: soroban_sdk::String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            license: soroban_sdk::String::from_str(&env, "MIT"),
         }
     }
 
     /// Get comprehensive contract information
     pub fn get_contract_info(env: Env) -> ContractInfo {
+        // Check if contract is initialized by looking for the version key
+        let initialized = env.storage().persistent().has(&DataKey::Version);
+        
         ContractInfo {
             metadata: Self::get_metadata(env),
-            initialized: true,
-            total_roles: 0,
+            initialized,
+            total_roles: 0, 
         }
     }
 }
@@ -276,13 +276,13 @@ impl AccessControl {
 #[allow(clippy::panic)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{testutils::{Address as _, Events}, Env, Val, Vec};
 
     macro_rules! setup {
         ($env:ident, $client:ident, $admin:ident) => {
             let $env = Env::default();
-            let contract_id = $env.register_contract(None, AccessControl);
-            let $client = AccessControlClient::new(&$env, &contract_id);
+            let contract_id = $env.register_contract(None, AccessControlContract);
+            let $client = AccessControlContractClient::new(&$env, &contract_id);
             let $admin = Address::generate(&$env);
             $env.mock_all_auths();
             $client.initialize(&$admin);
@@ -588,10 +588,8 @@ mod test {
         assert!(!events.is_empty());
         // The last event should be the role_grnt event for the user grant
         // (initialize emits nothing, so only the grant_role event is present)
-        let (topics, data): (soroban_sdk::Vec<soroban_sdk::Val>, RoleGrantedEvent) = events
-            .last()
-            .map(|(_, t, d)| (t, soroban_sdk::FromVal::from_val(&env, &d)))
-            .unwrap();
+        let (topics, data): (soroban_sdk::Vec<Val>, RoleGrantedEvent) =
+            events.last().map(|(_, t, d)| (t, soroban_sdk::FromVal::from_val(&env, &d))).unwrap();
         assert_eq!(data.user, user);
         assert_eq!(data.admin, admin);
         assert!(matches!(data.role, Role::Operator));
@@ -663,5 +661,70 @@ mod test {
         assert_eq!(data.admin, admin);
         assert_eq!(data.function, func);
         assert!(matches!(data.role, Role::Operator));
+    }
+
+    #[test]
+    fn test_grant_role_unauthorized_issue_689() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, AccessControlContract);
+        let client = AccessControlContractClient::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        
+        env.mock_all_auths();
+        client.initialize(&admin);
+        
+        // Should fail - unauthorized user trying to grant role
+        let result = client.try_grant_role(&unauthorized, &user, &Role::Admin);
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_role_hierarchy_issue_689() {
+        setup!(env, client, admin);
+        let user = Address::generate(&env);
+        let target = Address::generate(&env);
+        
+        // Test that admin can grant any role
+        client.grant_role(&admin, &user, &Role::Admin);
+        assert!(client.has_role(&user, &Role::Admin));
+        
+        // Test that non-admin (Viewer) cannot grant roles
+        let viewer = Address::generate(&env);
+        client.grant_role(&admin, &viewer, &Role::Viewer);
+        let result = client.try_grant_role(&viewer, &target, &Role::Operator);
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_revoke_role_issue_689() {
+        setup!(env, client, admin);
+        let user = Address::generate(&env);
+        
+        // Grant and then revoke
+        client.grant_role(&admin, &user, &Role::Operator);
+        assert!(client.has_role(&user, &Role::Operator));
+        
+        client.revoke_role(&admin, &user, &Role::Operator);
+        assert!(!client.has_role(&user, &Role::Operator));
+    }
+    
+    #[test]
+    fn test_check_permission_issue_689() {
+        setup!(env, client, admin);
+        let user = Address::generate(&env);
+        let func = symbol_short!("execute");
+        
+        client.grant_role(&admin, &user, &Role::Operator);
+        client.grant_permission(&admin, &Role::Operator, &func);
+        
+        // Test permission checking
+        assert!(client.check_permission(&user, &func));
+        
+        // Test unauthorized permission checking
+        let stranger = Address::generate(&env);
+        assert!(!client.check_permission(&stranger, &func));
     }
 }
