@@ -16,7 +16,7 @@ use tracing::{debug, error, info, warn};
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 1000;
 const BACKOFF_MULTIPLIER: u64 = 2;
-const REQUEST_TIMEOUT_SECS: u64 = 30;
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Configuration for the contract service
 #[derive(Clone, Debug)]
@@ -98,7 +98,7 @@ impl ContractService {
     /// Create a new contract service instance
     pub fn new(config: ContractConfig) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .context("Failed to create HTTP client")?;
 

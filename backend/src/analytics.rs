@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_compute_anchor_reliability_score_empty_assets() {
-        let score = compute_anchor_reliability_score(&[], 1000000.0);
+        let score = compute_anchor_reliability_score(&[], 1_000_000.0);
 
         assert_eq!(score.composite_score, 0.0);
         assert_eq!(score.asset_performance_score, 0.0);
@@ -286,7 +286,7 @@ mod tests {
             total_volume_usd: 100000.0,
         }];
 
-        let score = compute_anchor_reliability_score(&assets, 1000000.0);
+        let score = compute_anchor_reliability_score(&assets, 1_000_000.0);
 
         assert_eq!(score.weighted_success_rate, 100.0);
         assert_eq!(score.asset_performance_score, 100.0);
@@ -316,7 +316,7 @@ mod tests {
             },
         ];
 
-        let score = compute_anchor_reliability_score(&assets, 1000000.0);
+        let score = compute_anchor_reliability_score(&assets, 1_000_000.0);
 
         // Weighted: (100 * 80000 + 50 * 20000) / 100000 = 90
         assert_eq!(score.weighted_success_rate, 90.0);
@@ -339,7 +339,7 @@ mod tests {
             })
             .collect();
 
-        let score = compute_anchor_reliability_score(&assets, 1000000.0);
+        let score = compute_anchor_reliability_score(&assets, 1_000_000.0);
 
         assert_eq!(score.total_assets, 15);
         assert_eq!(score.asset_diversity_score, 100.0); // Capped at 100
@@ -374,7 +374,7 @@ mod tests {
             total_volume_usd: 1000000.0, // Max volume
         }];
 
-        let score = compute_anchor_reliability_score(&assets, 1000000.0);
+        let score = compute_anchor_reliability_score(&assets, 1_000_000.0);
 
         // Performance: 100, Volume: ~100, Diversity: 10
         // Composite: 0.6*100 + 0.3*100 + 0.1*10 = 60 + 30 + 1 = 91

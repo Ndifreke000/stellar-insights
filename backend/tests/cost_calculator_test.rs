@@ -22,7 +22,7 @@ async fn estimate_returns_cost_breakdown_and_comparison() {
         "source_currency": "USD",
         "destination_currency": "NGN",
         "source_amount": 1000.0,
-        "destination_amount": 1500000.0,
+        "destination_amount": 1_500_000.0,
         "routes": ["stellar_dex", "anchor_direct", "liquidity_pool"]
     });
 

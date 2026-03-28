@@ -209,21 +209,26 @@ impl Database {
         Ok(anchors)
     }
 
+    #[derive(Debug)]
+    pub struct AnchorMetricsUpdate {
+        pub anchor_id: Uuid,
+        pub total_transactions: i64,
+        pub successful_transactions: i64,
+        pub failed_transactions: i64,
+        pub avg_settlement_time_ms: Option<i32>,
+        pub volume_usd: Option<f64>,
+    }
+
     pub async fn update_anchor_metrics(
         &self,
-        anchor_id: Uuid,
-        total_transactions: i64,
-        successful_transactions: i64,
-        failed_transactions: i64,
-        avg_settlement_time_ms: Option<i32>,
-        volume_usd: Option<f64>,
+        params: AnchorMetricsUpdate,
     ) -> Result<Anchor> {
         // Compute metrics
         let metrics = compute_anchor_metrics(
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            avg_settlement_time_ms,
+            params.total_transactions,
+            params.successful_transactions,
+            params.failed_transactions,
+            params.avg_settlement_time_ms,
         );
 
         // Update anchor
@@ -242,29 +247,29 @@ impl Database {
             RETURNING *
             "#,
         )
-        .bind(total_transactions)
-        .bind(successful_transactions)
-        .bind(failed_transactions)
-        .bind(avg_settlement_time_ms.unwrap_or(0))
+        .bind(params.total_transactions)
+        .bind(params.successful_transactions)
+        .bind(params.failed_transactions)
+        .bind(params.avg_settlement_time_ms.unwrap_or(0))
         .bind(metrics.reliability_score)
         .bind(metrics.status.as_str())
-        .bind(volume_usd.unwrap_or(0.0))
+        .bind(params.volume_usd.unwrap_or(0.0))
         .bind(Utc::now())
-        .bind(anchor_id.to_string())
+        .bind(params.anchor_id.to_string())
         .fetch_one(&self.pool)
         .await?;
 
         // Record metrics history
         self.record_anchor_metrics_history(AnchorMetricsParams {
-            anchor_id,
+            anchor_id: params.anchor_id,
             success_rate: metrics.success_rate,
             failure_rate: metrics.failure_rate,
             reliability_score: metrics.reliability_score,
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            avg_settlement_time_ms,
-            volume_usd,
+            total_transactions: params.total_transactions,
+            successful_transactions: params.successful_transactions,
+            failed_transactions: params.failed_transactions,
+            avg_settlement_time_ms: params.avg_settlement_time_ms,
+            volume_usd: params.volume_usd,
         })
         .await?;
 

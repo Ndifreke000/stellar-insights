@@ -464,7 +464,7 @@ mod tests {
             successful_transactions: 950,
             failed_transactions: 50,
             success_rate: 95.0,
-            volume_usd: 1000000.0,
+            volume_usd: 1_000_000.0,
             avg_settlement_latency_ms: Some(400),
             median_settlement_latency_ms: Some(300),
             liquidity_depth_usd: 500000.0,
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(response.destination_asset, "USDC");
         assert_eq!(response.success_rate, 95.0);
         assert_eq!(response.total_attempts, 1000);
-        assert_eq!(response.liquidity_depth_usd, 1000000.0);
+        assert_eq!(response.liquidity_depth_usd, 1_000_000.0);
         assert!(response.id.contains("EURC:issuer2"));
         assert!(response.id.contains("USDC:issuer1"));
     }
