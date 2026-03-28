@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CorridorSummary {
     pub id: String,
     pub success_rate: f64,
@@ -9,7 +9,7 @@ pub struct CorridorSummary {
     pub change_pct: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AnchorSummary {
     pub name: String,
     pub success_rate: f64,
@@ -17,7 +17,7 @@ pub struct AnchorSummary {
     pub volume_usd: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DigestReport {
     pub period: String,
     pub top_corridors: Vec<CorridorSummary>,
@@ -26,6 +26,7 @@ pub struct DigestReport {
     pub avg_success_rate: f64,
 }
 
+#[must_use]
 pub fn generate_html_report(report: &DigestReport) -> String {
     format!(r#"
 <!DOCTYPE html>
@@ -44,11 +45,11 @@ pub fn generate_html_report(report: &DigestReport) -> String {
 </head>
 <body>
     <h1>Stellar Insights - {} Performance Report</h1>
-    
+
     <h2>Overview</h2>
     <p>Total Volume: <span class="metric">${:.2}</span></p>
     <p>Average Success Rate: <span class="metric">{:.1}%</span></p>
-    
+
     <h2>Top Corridors</h2>
     <table>
         <tr>
@@ -60,7 +61,7 @@ pub fn generate_html_report(report: &DigestReport) -> String {
         </tr>
         {}
     </table>
-    
+
     <h2>Top Anchors</h2>
     <table>
         <tr>

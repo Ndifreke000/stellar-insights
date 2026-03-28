@@ -4,6 +4,7 @@ import React from "react"
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { sep10AuthService } from '../../services/sep10Auth'
+import { logger } from "@/lib/logger"
 
 // Extend Window interface for Stellar wallets
 declare global {
@@ -73,7 +74,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (error) {
-        console.error('Error checking wallet connection:', error)
+        logger.error('Error checking wallet connection:', error as string)
       }
     }
 
@@ -90,7 +91,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         try {
           publicKey = await window.freighter.getPublicKey()
         } catch (error) {
-          console.error('Freighter connection failed:', error)
+          logger.error('Freighter connection failed:', error)
         }
       }
 
@@ -99,7 +100,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         try {
           publicKey = await window.stellar.requestPublicKey()
         } catch (error) {
-          console.error('Stellar wallet connection failed:', error)
+          logger.error('Stellar wallet connection failed:', error)
         }
       }
 
@@ -109,7 +110,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           const result = await window.albedo.publicKey({})
           publicKey = result.pubkey
         } catch (error) {
-          console.error('Albedo connection failed:', error)
+          logger.error('Albedo connection failed:', error)
         }
       }
 
@@ -119,7 +120,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           const result = await window.rabet.connect()
           publicKey = result.publicKey
         } catch (error) {
-          console.error('Rabet connection failed:', error)
+          logger.error('Rabet connection failed:', error)
         }
       }
 
@@ -133,7 +134,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         )
       }
     } catch (error) {
-      console.error('Error connecting wallet:', error)
+      logger.error('Error connecting wallet:', error)
       setIsConnecting(false)
       throw error
     } finally {
@@ -160,7 +161,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAuthToken(result.token)
       setIsAuthenticated(true)
     } catch (error) {
-      console.error('SEP-10 authentication failed:', error)
+      logger.error('SEP-10 authentication failed:', error)
       throw error
     }
   }, [address])
@@ -170,7 +171,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       try {
         await sep10AuthService.logout(authToken)
       } catch (error) {
-        console.error('Logout failed:', error)
+        logger.error('Logout failed:', error)
       }
     }
 

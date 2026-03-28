@@ -12,6 +12,16 @@ use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest}
 use crate::error::ApiError;
 
 /// POST /api/auth/login - User login
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful"),
+        (status = 401, description = "Invalid credentials")
+    ),
+    tag = "Auth"
+)]
 pub async fn login(
     State(auth_service): State<Arc<AuthService>>,
     Json(request): Json<LoginRequest>,
@@ -24,6 +34,16 @@ pub async fn login(
 }
 
 /// POST /api/auth/refresh - Refresh access token
+#[utoipa::path(
+    post,
+    path = "/api/auth/refresh",
+    request_body = RefreshTokenRequest,
+    responses(
+        (status = 200, description = "Token refreshed"),
+        (status = 401, description = "Invalid or expired token")
+    ),
+    tag = "Auth"
+)]
 pub async fn refresh(
     State(auth_service): State<Arc<AuthService>>,
     Json(request): Json<RefreshTokenRequest>,
@@ -37,6 +57,16 @@ pub async fn refresh(
 }
 
 /// POST /api/auth/logout - Logout user
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    request_body = LogoutRequest,
+    responses(
+        (status = 200, description = "Logged out successfully"),
+        (status = 401, description = "Invalid or expired token")
+    ),
+    tag = "Auth"
+)]
 pub async fn logout(
     State(auth_service): State<Arc<AuthService>>,
     Json(request): Json<LogoutRequest>,

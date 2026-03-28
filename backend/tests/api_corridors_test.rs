@@ -10,11 +10,12 @@ use tower::util::ServiceExt;
 
 // Use correct handlers from the updated API
 use stellar_insights_backend::api::corridors::{get_corridor_detail, list_corridors};
+use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::database::Database;
-use stellar_insights_backend::ingestion::DataIngestionService;
 use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::websocket::WsState;
+use stellar_insights_backend::services::price_feed::{
+    default_asset_mapping, PriceFeedClient, PriceFeedConfig,
+};
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();
@@ -25,15 +26,16 @@ async fn setup_test_db() -> SqlitePool {
     pool
 }
 
-fn create_test_router(db: Arc<Database>) -> Router {
-    let ws_state = Arc::new(WsState::new());
+async fn create_test_router(db: Arc<Database>) -> Router {
+    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
-    let ingestion = Arc::new(DataIngestionService::new(rpc_client, Arc::clone(&db)));
-    let state = AppState {
-        db,
-        ws_state,
-        ingestion,
-    };
+    let price_feed = Arc::new(PriceFeedClient::new(
+        PriceFeedConfig::default(),
+        default_asset_mapping(),
+    ));
+
+    let state = (db, cache, rpc_client, price_feed);
+
     Router::new()
         .route("/api/corridors", axum::routing::get(list_corridors))
         .route(
@@ -48,7 +50,7 @@ async fn test_list_corridors_success() {
     let pool = setup_test_db().await;
     let db = Arc::new(Database::new(pool));
 
-    let app = create_test_router(db);
+    let app = create_test_router(db).await;
 
     let request = Request::builder()
         .uri("/api/corridors")
@@ -75,7 +77,7 @@ async fn test_get_corridor_detail_success() {
     let pool = setup_test_db().await;
     let db = Arc::new(Database::new(pool));
 
-    let app = create_test_router(db);
+    let app = create_test_router(db).await;
 
     // Use URL encoded corridor key
     let corridor_key = "EURC%3Aissuer2-%3EUSDC%3Aissuer1";
@@ -95,7 +97,7 @@ async fn test_get_corridor_detail_not_found() {
     let pool = setup_test_db().await;
     let db = Arc::new(Database::new(pool));
 
-    let app = create_test_router(db);
+    let app = create_test_router(db).await;
 
     // Use URL encoded corridor key
     let corridor_key = "NONEXISTENT%3Aissuer-%3EFAKE%3Aissuer";
@@ -112,7 +114,7 @@ async fn test_get_corridor_detail_not_found() {
 async fn test_get_corridor_detail_invalid_format() {
     let pool = setup_test_db().await;
     let db = Arc::new(Database::new(pool));
-    let app = create_test_router(db);
+    let app = create_test_router(db).await;
 
     let invalid_key = "INVALID_FORMAT";
     let request = Request::builder()

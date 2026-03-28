@@ -1,5 +1,6 @@
 /// Webhooks module for Zapier integration
 /// Manages webhook registrations, event definitions, and dispatching
+pub mod channel;
 pub mod events;
 
 use hmac::{Hmac, Mac};
@@ -10,11 +11,14 @@ use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
+pub use channel::{WebhookChannel, WebhookEndpoint};
+
 /// Webhook signature - for verifying webhook requests
 pub struct WebhookSignature;
 
 impl WebhookSignature {
     /// Generate HMAC-SHA256 signature for webhook payload
+    #[must_use]
     pub fn sign(payload: &str, secret: &str) -> String {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
@@ -23,6 +27,7 @@ impl WebhookSignature {
     }
 
     /// Verify webhook signature
+    #[must_use]
     pub fn verify(payload: &str, secret: &str, signature: &str) -> bool {
         let expected = Self::sign(payload, secret);
         signature == expected
@@ -81,7 +86,8 @@ pub enum WebhookEventType {
 }
 
 impl WebhookEventType {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::CorridorHealthDegraded => "corridor.health_degraded",
             Self::AnchorStatusChanged => "anchor.status_changed",
@@ -90,6 +96,7 @@ impl WebhookEventType {
         }
     }
 
+    #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "corridor.health_degraded" => Some(Self::CorridorHealthDegraded),
@@ -103,14 +110,16 @@ impl WebhookEventType {
 
 /// Webhook service - manages webhook operations
 pub struct WebhookService {
-    db: SqlitePool,
+    pub db: SqlitePool,
     encryption_key: String,
 }
 
 impl WebhookService {
+    #[must_use]
     pub fn new(db: SqlitePool) -> Self {
-        let encryption_key = std::env::var("ENCRYPTION_KEY")
-            .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+        let encryption_key = std::env::var("ENCRYPTION_KEY").unwrap_or_else(|_| {
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
+        });
         Self { db, encryption_key }
     }
 
@@ -123,17 +132,20 @@ impl WebhookService {
         let id = Uuid::new_v4().to_string();
         let secret = Uuid::new_v4().to_string();
         let event_types_str = request.event_types.join(",");
-        let filters_str = request.filters.as_ref().map(|f| f.to_string());
+        let filters_str = request
+            .filters
+            .as_ref()
+            .map(std::string::ToString::to_string);
         let now = chrono::Utc::now().to_rfc3339();
 
         let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
             .unwrap_or_else(|_| secret.clone());
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(&id)
         .bind(user_id)
@@ -241,21 +253,24 @@ impl WebhookService {
              FROM webhook_events we
              WHERE we.status = 'pending' AND we.retries < 3
              ORDER BY we.created_at ASC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(query_limit)
         .fetch_all(&self.db)
         .await?;
 
-        let events: Vec<(String, String, String, String)> = rows.into_iter().map(|row| {
-            use sqlx::Row;
-            (
-                row.get::<String, _>(0),
-                row.get::<String, _>(1),
-                row.get::<String, _>(2),
-                row.get::<String, _>(3),
-            )
-        }).collect();
+        let events: Vec<(String, String, String, String)> = rows
+            .into_iter()
+            .map(|row| {
+                use sqlx::Row;
+                (
+                    row.get::<String, _>(0),
+                    row.get::<String, _>(1),
+                    row.get::<String, _>(2),
+                    row.get::<String, _>(3),
+                )
+            })
+            .collect();
 
         Ok(events)
     }
@@ -268,18 +283,20 @@ impl WebhookService {
         error: Option<&str>,
         retries: i32,
     ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?")
-            .bind(status)
-            .bind(error)
-            .bind(retries)
-            .bind(event_id)
-            .execute(&self.db)
-            .await?;
+        sqlx::query(
+            "UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?",
+        )
+        .bind(status)
+        .bind(error)
+        .bind(retries)
+        .bind(event_id)
+        .execute(&self.db)
+        .await?;
 
         Ok(())
     }
 
-    /// Update webhook's last_fired_at timestamp
+    /// Update webhook's `last_fired_at` timestamp
     pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query("UPDATE webhooks SET last_fired_at = ? WHERE id = ?")

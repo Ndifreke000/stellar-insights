@@ -16,7 +16,7 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
 
   if (activeMetrics.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-xl h-full">
+      <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-xl h-full">
         <p>Select at least one metric to see preview</p>
       </div>
     );
@@ -28,7 +28,7 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
           Preview
         </h3>
-        <p className="text-xs text-gray-500">First 5 rows of export</p>
+        <p className="text-xs text-muted-foreground">First 5 rows of export</p>
       </div>
       <div className="overflow-x-auto flex-1">
         <table className="w-full text-sm text-left">
@@ -53,7 +53,7 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
                 {activeMetrics.map((metric) => (
                   <td
                     key={`${idx}-${metric.id}`}
-                    className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-300"
+                    className="px-6 py-4 whitespace-nowrap text-muted-foreground dark:text-gray-300"
                   >
                     {(() => {
                       const value = row[metric.id];
@@ -81,7 +81,7 @@ export function ExportPreview({ metrics, data }: ExportPreviewProps) {
           </tbody>
         </table>
       </div>
-      <div className="p-3 border-t border-gray-200 dark:border-slate-700 text-xs text-center text-gray-500 bg-gray-50 dark:bg-slate-800">
+      <div className="p-3 border-t border-gray-200 dark:border-slate-700 text-xs text-center text-muted-foreground bg-gray-50 dark:bg-slate-800">
         Showing 5 of {data.length} records
       </div>
     </div>

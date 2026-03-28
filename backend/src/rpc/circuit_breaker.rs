@@ -55,7 +55,7 @@ impl CircuitBreaker {
     }
 
     /// Run an operation through the circuit breaker.
-    /// Returns CircuitBreakerOpen if the circuit is open.
+    /// Returns `CircuitBreakerOpen` if the circuit is open.
     pub async fn call<F, Fut, T>(&self, f: F) -> Result<T, RpcError>
     where
         F: FnOnce() -> Fut,
@@ -101,34 +101,25 @@ impl CircuitBreaker {
 
     async fn on_success(&self) {
         let mut state = self.state.lock().await;
-        let current = std::mem::replace(
-            &mut *state,
-            CircuitState::Closed { failure_count: 0 },
-        );
-        *state = match current {
-            CircuitState::HalfOpen { success_count } => {
-                if success_count + 1 >= self.config.success_threshold {
-                    metrics::set_circuit_breaker_state(&self.endpoint, 0); // closed
-                    CircuitState::Closed { failure_count: 0 }
-                } else {
-                    CircuitState::HalfOpen {
-                        success_count: success_count + 1,
-                    }
+        let current = std::mem::replace(&mut *state, CircuitState::Closed { failure_count: 0 });
+        *state = if let CircuitState::HalfOpen { success_count } = current {
+            if success_count + 1 >= self.config.success_threshold {
+                metrics::set_circuit_breaker_state(&self.endpoint, 0); // closed
+                CircuitState::Closed { failure_count: 0 }
+            } else {
+                CircuitState::HalfOpen {
+                    success_count: success_count + 1,
                 }
             }
-            _ => {
-                metrics::set_circuit_breaker_state(&self.endpoint, 0);
-                CircuitState::Closed { failure_count: 0 }
-            }
+        } else {
+            metrics::set_circuit_breaker_state(&self.endpoint, 0);
+            CircuitState::Closed { failure_count: 0 }
         };
     }
 
     async fn on_failure(&self) {
         let mut state = self.state.lock().await;
-        let current = std::mem::replace(
-            &mut *state,
-            CircuitState::Closed { failure_count: 0 },
-        );
+        let current = std::mem::replace(&mut *state, CircuitState::Closed { failure_count: 0 });
         *state = match current {
             CircuitState::Closed { failure_count } => {
                 if failure_count + 1 >= self.config.failure_threshold {
@@ -173,10 +164,20 @@ mod tests {
 
         // Two retryable failures -> open
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
 
         let r = cb.call(|| async { Ok(()) }).await;
@@ -212,10 +213,20 @@ mod tests {
 
         // Open the circuit
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb
-            .call(|| async { Err(RpcError::ServerError { status: 503, message: "x".into() }) })
+            .call(|| async {
+                Err(RpcError::ServerError {
+                    status: 503,
+                    message: "x".into(),
+                })
+            })
             .await;
         let _: Result<(), _> = cb.call(|| async { Ok(()) }).await;
         assert!(matches!(

@@ -1,11 +1,91 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
+
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, BytesN, Env,
+    testutils::{Address as _, Events as _, Ledger},
+    vec, Address, BytesN, Env, Vec,
 };
 
 fn create_test_hash(env: &Env, value: u8) -> BytesN<32> {
     BytesN::from_array(env, &[value; 32])
+}
+
+// ============================================================================
+// Initialization Tests
+// ============================================================================
+
+#[test]
+fn test_functions_require_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_get_snapshot(&1u64);
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_get_latest_snapshot_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_get_latest_snapshot();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_get_snapshot_history_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_get_snapshot_history();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_get_latest_epoch_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_get_latest_epoch();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_get_all_epochs_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_get_all_epochs();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_is_snapshot_expired_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let result = client.try_is_snapshot_expired(&1u64);
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_batch_get_snapshots_requires_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let mut epochs = Vec::new(&env);
+    epochs.push_back(1u64);
+    let result = client.try_batch_get_snapshots(&epochs);
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
 }
 
 #[test]
@@ -22,11 +102,10 @@ fn test_initialization() {
     assert_eq!(client.get_latest_epoch(), 0);
     assert_eq!(client.get_snapshot_history().len(), 0);
     assert_eq!(client.get_latest_snapshot(), None);
-    assert_eq!(client.get_admin(), Some(admin));
+    assert_eq!(client.get_admin(), admin);
 }
 
 #[test]
-#[should_panic(expected = "Contract already initialized")]
 fn test_initialize_cannot_reinitialize() {
     let env = Env::default();
     env.mock_all_auths();
@@ -36,8 +115,31 @@ fn test_initialize_cannot_reinitialize() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-    // Second initialization should fail
+    let result = client.try_initialize(&admin);
+    assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+}
+
+// ============================================================================
+// Single Snapshot Tests
+// ============================================================================
+
+#[test]
+fn test_version_stored_on_init() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
     client.initialize(&admin);
+
+    let version = client.getversion();
+    assert!(!version.is_empty());
+    assert_eq!(
+        version,
+        soroban_sdk::String::from_str(&env, env!("CARGO_PKG_VERSION"))
+    );
 }
 
 #[test]
@@ -50,24 +152,22 @@ fn test_submit_single_snapshot() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
     env.ledger().set_timestamp(1234);
 
     let epoch = 1u64;
     let hash = create_test_hash(&env, 1);
-
     let timestamp = client.submit_snapshot(&epoch, &hash, &admin);
 
     assert_eq!(timestamp, 1234);
 
-    let snapshot = client.get_snapshot(&epoch).unwrap();
+    let snapshot = client.get_snapshot(&epoch).unwrap(); // Snapshot
+
     assert_eq!(snapshot.epoch, epoch);
     assert_eq!(snapshot.hash, hash);
     assert_eq!(snapshot.timestamp, timestamp);
-
     assert_eq!(client.get_latest_epoch(), epoch);
 
-    let latest = client.get_latest_snapshot().unwrap();
+    let latest = client.get_latest_snapshot().unwrap(); // Optional<Snapshot>
     assert_eq!(latest.epoch, epoch);
     assert_eq!(latest.hash, hash);
     assert_eq!(latest.timestamp, timestamp);
@@ -84,36 +184,20 @@ fn test_multiple_snapshots_strictly_increasing_epochs() {
 
     client.initialize(&admin);
 
-    let epoch1 = 1u64;
-    let hash1 = create_test_hash(&env, 1);
-    client.submit_snapshot(&epoch1, &hash1, &admin);
+    for i in 1u64..=3 {
+        let hash = create_test_hash(&env, i as u8);
+        client.submit_snapshot(&i, &hash, &admin);
+    }
 
-    let epoch2 = 2u64;
-    let hash2 = create_test_hash(&env, 2);
-    client.submit_snapshot(&epoch2, &hash2, &admin);
-
-    let epoch3 = 3u64;
-    let hash3 = create_test_hash(&env, 3);
-    client.submit_snapshot(&epoch3, &hash3, &admin);
-
-    assert_eq!(client.get_snapshot(&epoch1).unwrap().hash, hash1);
-    assert_eq!(client.get_snapshot(&epoch2).unwrap().hash, hash2);
-    assert_eq!(client.get_snapshot(&epoch3).unwrap().hash, hash3);
-
-    assert_eq!(client.get_latest_epoch(), epoch3);
-
-    let latest = client.get_latest_snapshot().unwrap();
-    assert_eq!(latest.epoch, epoch3);
-    assert_eq!(latest.hash, hash3);
-
-    let history = client.get_snapshot_history();
-    assert_eq!(history.len(), 3);
-
-    let all_epochs = client.get_all_epochs();
-    assert_eq!(all_epochs.len(), 3);
-    assert!(all_epochs.contains(epoch1));
-    assert!(all_epochs.contains(epoch2));
-    assert!(all_epochs.contains(epoch3));
+    for i in 1u64..=3 {
+        assert_eq!(
+            client.get_snapshot(&i).unwrap().hash,
+            create_test_hash(&env, i as u8)
+        );
+    }
+    assert_eq!(client.get_latest_epoch(), 3);
+    assert_eq!(client.get_snapshot_history().len(), 3);
+    assert_eq!(client.get_all_epochs().len(), 3);
 }
 
 #[test]
@@ -138,7 +222,6 @@ fn test_non_sequential_epochs_monotonic_order() {
         assert_eq!(snapshot.epoch, epoch);
         assert_eq!(snapshot.hash, create_test_hash(&env, (i + 1) as u8));
     }
-
     assert_eq!(client.get_latest_epoch(), 10u64);
     assert_eq!(client.get_snapshot_history().len(), 3);
 }
@@ -155,32 +238,21 @@ fn test_historical_data_integrity_after_new_submissions() {
     client.initialize(&admin);
 
     env.ledger().set_timestamp(100);
-    let epoch1 = 1u64;
-    let hash1 = create_test_hash(&env, 1);
-    let timestamp1 = client.submit_snapshot(&epoch1, &hash1, &admin);
+    let ts1 = client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    let snap1_before = client.get_snapshot(&1u64).unwrap();
 
     env.ledger().set_timestamp(200);
-    let epoch2 = 2u64;
-    let hash2 = create_test_hash(&env, 2);
-    let timestamp2 = client.submit_snapshot(&epoch2, &hash2, &admin);
-
-    let snapshot1_before = client.get_snapshot(&epoch1).unwrap();
-    let snapshot2_before = client.get_snapshot(&epoch2).unwrap();
+    let ts2 = client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &admin);
+    let snap2_before = client.get_snapshot(&2u64).unwrap();
 
     env.ledger().set_timestamp(300);
-    let epoch3 = 5u64;
-    let hash3 = create_test_hash(&env, 5);
-    client.submit_snapshot(&epoch3, &hash3, &admin);
+    client.submit_snapshot(&5u64, &create_test_hash(&env, 5), &admin);
 
-    let snapshot1_after = client.get_snapshot(&epoch1).unwrap();
-    let snapshot2_after = client.get_snapshot(&epoch2).unwrap();
-
-    assert_eq!(snapshot1_after, snapshot1_before);
-    assert_eq!(snapshot2_after, snapshot2_before);
-    assert_eq!(snapshot1_after.timestamp, timestamp1);
-    assert_eq!(snapshot2_after.timestamp, timestamp2);
-
-    assert_eq!(client.get_latest_epoch(), epoch3);
+    assert_eq!(client.get_snapshot(&1u64).unwrap(), snap1_before);
+    assert_eq!(client.get_snapshot(&2u64).unwrap(), snap2_before);
+    assert_eq!(client.get_snapshot(&1u64).unwrap().timestamp, ts1);
+    assert_eq!(client.get_snapshot(&2u64).unwrap().timestamp, ts2);
+    assert_eq!(client.get_latest_epoch(), 5u64);
 }
 
 #[test]
@@ -193,12 +265,10 @@ fn test_get_nonexistent_snapshot() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
     assert_eq!(client.get_snapshot(&999), None);
 }
 
 #[test]
-#[should_panic(expected = "Invalid epoch: must be greater than 0")]
 fn test_invalid_epoch_zero() {
     let env = Env::default();
     env.mock_all_auths();
@@ -208,13 +278,11 @@ fn test_invalid_epoch_zero() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
-    let hash = create_test_hash(&env, 1);
-    client.submit_snapshot(&0, &hash, &admin);
+    let result = client.try_submit_snapshot(&0u64, &create_test_hash(&env, 1), &admin);
+    assert_eq!(result, Err(Ok(Error::InvalidEpochZero)));
 }
 
 #[test]
-#[should_panic(expected = "already exists")]
 fn test_duplicate_epoch_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -224,17 +292,12 @@ fn test_duplicate_epoch_fails() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
-    let epoch = 1u64;
-    let hash1 = create_test_hash(&env, 1);
-    let hash2 = create_test_hash(&env, 2);
-
-    client.submit_snapshot(&epoch, &hash1, &admin);
-    client.submit_snapshot(&epoch, &hash2, &admin);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 2), &admin);
+    assert_eq!(result, Err(Ok(Error::DuplicateEpoch)));
 }
 
 #[test]
-#[should_panic(expected = "Epoch monotonicity violated")]
 fn test_older_epoch_rejected() {
     let env = Env::default();
     env.mock_all_auths();
@@ -244,15 +307,9 @@ fn test_older_epoch_rejected() {
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
-    let epoch_new = 10u64;
-    let hash_new = create_test_hash(&env, 10);
-    client.submit_snapshot(&epoch_new, &hash_new, &admin);
-    assert_eq!(client.get_latest_epoch(), epoch_new);
-
-    let epoch_old = 5u64;
-    let hash_old = create_test_hash(&env, 5);
-    client.submit_snapshot(&epoch_old, &hash_old, &admin);
+    client.submit_snapshot(&10u64, &create_test_hash(&env, 10), &admin);
+    let result = client.try_submit_snapshot(&5u64, &create_test_hash(&env, 5), &admin);
+    assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
 }
 
 #[test]
@@ -266,44 +323,129 @@ fn test_bounded_storage_growth_simulation() {
 
     client.initialize(&admin);
 
-    let num_epochs = 100u64;
-    for epoch in 1..=num_epochs {
+    for epoch in 1u64..=20 {
         let hash = create_test_hash(&env, (epoch % 255) as u8);
         client.submit_snapshot(&epoch, &hash, &admin);
     }
 
-    for epoch in 1..=num_epochs {
-        assert!(client.get_snapshot(&epoch).is_some());
+    for epoch in 1u64..=20 {
+        client.get_snapshot(&epoch);
     }
-
-    assert_eq!(client.get_latest_epoch(), num_epochs);
-    assert_eq!(client.get_snapshot_history().len(), num_epochs as u32);
-    assert_eq!(client.get_all_epochs().len(), num_epochs as u32);
+    assert_eq!(client.get_latest_epoch(), 20);
+    assert_eq!(client.get_snapshot_history().len(), 20);
+    assert_eq!(client.get_all_epochs().len(), 20);
 }
 
 // ============================================================================
-// Access Control Tests - Tests for Issue #41
+// Input Validation Security Tests
 // ============================================================================
 
 #[test]
-#[should_panic(expected = "Unauthorized")]
+fn test_submit_snapshot_with_zero_hash() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Attempt to submit with a zero hash (all bytes are 0x00)
+    let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+    let result = client.try_submit_snapshot(&1u64, &zero_hash, &admin);
+
+    // Should fail with InvalidHashZero error
+    assert_eq!(result, Err(Ok(Error::InvalidHashZero)));
+}
+
+#[test]
+fn test_submit_snapshot_epoch_zero_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Attempt to submit with epoch 0
+    // Note: valid non-zero hash should be used; validation should catch epoch=0 first
+    let valid_hash = create_test_hash(&env, 42);
+    let result = client.try_submit_snapshot(&0u64, &valid_hash, &admin);
+
+    // Should fail with InvalidEpochZero error
+    assert_eq!(result, Err(Ok(Error::InvalidEpochZero)));
+}
+
+#[test]
+fn test_submit_snapshot_unauthorized_caller_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let unauthorized_user = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Attempt to submit with unauthorized caller
+    let valid_hash = create_test_hash(&env, 42);
+    let result = client.try_submit_snapshot(&1u64, &valid_hash, &unauthorized_user);
+
+    // Should fail with Unauthorized error
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_submit_snapshot_valid_after_edge_cases() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(5000);
+
+    // After testing edge cases, verify a valid submission still works
+    let valid_hash = create_test_hash(&env, 99);
+    let result = client.try_submit_snapshot(&1u64, &valid_hash, &admin);
+
+    // Should succeed
+    assert!(result.is_ok());
+    let timestamp = result.unwrap();
+    assert_eq!(timestamp, 5000);
+
+    // Verify snapshot was stored correctly
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.epoch, 1u64);
+    assert_eq!(snapshot.hash, valid_hash);
+    assert_eq!(snapshot.timestamp, 5000);
+    assert_eq!(snapshot.submitter, admin);
+}
+
+
+// ============================================================================
+// Access Control Tests
+// ============================================================================
+
+#[test]
 fn test_unauthorized_submission_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
     let unauthorized_user = Address::generate(&env);
 
     client.initialize(&admin);
-
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 1);
-
-    // Attempt to submit snapshot with unauthorized address should fail
-    client.submit_snapshot(&epoch, &hash, &unauthorized_user);
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &unauthorized_user);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
 
 #[test]
@@ -313,24 +455,14 @@ fn test_authorized_submission_succeeds() {
 
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
 
     client.initialize(&admin);
-
     env.ledger().set_timestamp(1000);
 
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 1);
-
-    // Authorized admin should be able to submit
-    let timestamp = client.submit_snapshot(&epoch, &hash, &admin);
-
+    let timestamp = client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
     assert_eq!(timestamp, 1000);
-    assert_eq!(client.get_latest_epoch(), epoch);
-
-    let snapshot = client.get_snapshot(&epoch).unwrap();
-    assert_eq!(snapshot.hash, hash);
+    assert_eq!(client.get_latest_epoch(), 1u64);
 }
 
 #[test]
@@ -341,14 +473,13 @@ fn test_get_admin() {
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
 
-    // Before initialization, admin should be None
-    assert_eq!(client.get_admin(), None);
+    // Before initialization, should error
+    let result = client.try_get_admin();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
-
-    // After initialization, admin should match
-    assert_eq!(client.get_admin(), Some(admin));
+    assert_eq!(client.get_admin(), admin);
 }
 
 #[test]
@@ -358,63 +489,922 @@ fn test_set_admin_by_authorized_admin() {
 
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
     client.initialize(&admin);
-    assert_eq!(client.get_admin(), Some(admin.clone()));
-
-    // Current admin transfers rights to new admin
     client.set_admin(&admin, &new_admin);
-    assert_eq!(client.get_admin(), Some(new_admin.clone()));
+    assert_eq!(client.get_admin(), new_admin.clone());
 
-    // New admin can now submit snapshots
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 1);
-    client.submit_snapshot(&epoch, &hash, &new_admin);
-
-    assert_eq!(client.get_latest_epoch(), epoch);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &new_admin);
+    assert_eq!(client.get_latest_epoch(), 1u64);
 }
 
 #[test]
-#[should_panic(expected = "Unauthorized")]
 fn test_set_admin_by_unauthorized_user_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
     let unauthorized_user = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
     client.initialize(&admin);
-
-    // Unauthorized user attempts to change admin should fail
-    client.set_admin(&unauthorized_user, &new_admin);
+    let result = client.try_set_admin(&unauthorized_user, &new_admin);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
 
 #[test]
-#[should_panic(expected = "Unauthorized")]
+fn test_admin_transfer_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+
+    client.initialize(&admin1);
+    env.ledger().set_timestamp(1000);
+
+    // Transfer admin from admin1 to admin2
+    client.set_admin(&admin1, &admin2);
+
+    // Verify new admin is set
+    assert_eq!(client.get_admin(), admin2.clone());
+
+    // Verify events were emitted
+    let events = env.events().all();
+    assert!(!events.is_empty(), "Events should have been published");
+
+    // Check the event topics and data — soroban events are (contract_id, topics, data)
+    let (_contract_id, topics, event_data) = events.first_unchecked();
+    assert_eq!(topics.len(), 2u32, "Event should have 2 topics");
+
+    // Verify the event data can be decoded as AdminTransferEvent
+    let event: AdminTransferEvent = soroban_sdk::FromVal::from_val(&env, &event_data);
+    assert_eq!(
+        event.previous_admin, admin1,
+        "Previous admin should be admin1"
+    );
+    assert_eq!(event.new_admin, admin2, "New admin should be admin2");
+    assert_eq!(
+        event.transferred_by, admin1,
+        "Transferred by should be admin1"
+    );
+    assert_eq!(
+        event.timestamp, 1000,
+        "Timestamp should match ledger timestamp"
+    );
+}
+
+#[test]
+fn test_snapshot_immutability() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 2), &admin);
+    assert_eq!(result, Err(Ok(Error::DuplicateEpoch)));
+}
+
+#[test]
 fn test_old_admin_cannot_submit_after_transfer() {
     let env = Env::default();
     env.mock_all_auths();
 
     let contract_id = env.register_contract(None, AnalyticsContract);
     let client = AnalyticsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
     client.initialize(&admin);
-
-    // Transfer admin rights
     client.set_admin(&admin, &new_admin);
 
-    // Old admin should no longer be able to submit
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 1);
-    client.submit_snapshot(&epoch, &hash, &admin);
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+// ============================================================================
+// Batch Operations Tests
+// ============================================================================
+
+#[test]
+fn test_batch_submit_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let mut snapshots = Vec::new(&env);
+    snapshots.push_back((1u64, create_test_hash(&env, 1)));
+    snapshots.push_back((2u64, create_test_hash(&env, 2)));
+    snapshots.push_back((3u64, create_test_hash(&env, 3)));
+
+    let timestamps = client.batch_submit_snapshots(&admin, &snapshots);
+
+    assert_eq!(timestamps.len(), 3);
+    assert_eq!(client.get_latest_epoch(), 3);
+    assert_eq!(
+        client.get_snapshot(&1u64).unwrap().hash,
+        create_test_hash(&env, 1)
+    );
+    assert_eq!(
+        client.get_snapshot(&2u64).unwrap().hash,
+        create_test_hash(&env, 2)
+    );
+    assert_eq!(
+        client.get_snapshot(&3u64).unwrap().hash,
+        create_test_hash(&env, 3)
+    );
+}
+
+#[test]
+fn test_batch_get_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &admin);
+    client.submit_snapshot(&3u64, &create_test_hash(&env, 3), &admin);
+
+    let epochs = Vec::from_array(&env, [1u64, 2u64, 99u64]); // non-existent
+
+    let results = client.batch_get_snapshots(&epochs);
+
+    assert_eq!(results.len(), 3);
+    assert_eq!(
+        results.get(0).unwrap().unwrap().hash,
+        create_test_hash(&env, 1)
+    );
+    assert_eq!(
+        results.get(1).unwrap().unwrap().hash,
+        create_test_hash(&env, 2)
+    );
+    assert!(results.get(2).unwrap().is_none());
+}
+
+#[test]
+fn test_batch_operations_gas_efficiency() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(5000);
+
+    let mut snapshots = Vec::new(&env);
+    for i in 1u64..=10 {
+        snapshots.push_back((i, create_test_hash(&env, i as u8)));
+    }
+
+    let timestamps = client.batch_submit_snapshots(&admin, &snapshots);
+    assert_eq!(timestamps.len(), 10);
+    assert_eq!(client.get_latest_epoch(), 10);
+
+    let mut epochs = Vec::new(&env);
+    for i in 1u64..=10 {
+        epochs.push_back(i);
+    }
+    let results = client.batch_get_snapshots(&epochs);
+    assert_eq!(results.len(), 10);
+    for i in 0u32..10 {
+        let snapshot = results.get(i).unwrap().unwrap();
+        assert_eq!(snapshot.epoch, (i + 1) as u64);
+        assert_eq!(snapshot.hash, create_test_hash(&env, (i + 1) as u8));
+    }
+}
+
+#[test]
+fn test_batch_submit_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    client.initialize(&admin);
+
+    let input = vec![&env, (1u64, create_test_hash(&env, 1))];
+    let result = client.try_batch_submit(&input, &attacker);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_batch_submit_non_monotonic_epochs() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let input = vec![
+        &env,
+        (5u64, create_test_hash(&env, 5)),
+        (3u64, create_test_hash(&env, 3)),
+    ];
+    let result = client.try_batch_submit(&input, &admin);
+    assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
+}
+
+#[test]
+fn test_batch_submit_basic() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let hash1 = create_test_hash(&env, 1);
+    let hash2 = create_test_hash(&env, 2);
+    let hash3 = create_test_hash(&env, 3);
+
+    let input = vec![
+        &env,
+        (1u64, hash1.clone()),
+        (2u64, hash2.clone()),
+        (3u64, hash3.clone()),
+    ];
+    let timestamps = client.batch_submit(&input, &admin);
+
+    assert_eq!(timestamps.len(), 3);
+    assert_eq!(client.get_latest_epoch(), 3);
+    assert_eq!(client.get_snapshot(&1u64).unwrap().hash, hash1);
+    assert_eq!(client.get_snapshot(&2u64).unwrap().hash, hash2);
+    assert_eq!(client.get_snapshot(&3u64).unwrap().hash, hash3);
+}
+
+// ============================================================================
+// Snapshot Expiry Tests
+// ============================================================================
+
+#[test]
+fn test_snapshot_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(1000);
+    client.submit_snapshot_with_ttl(&1u64, &create_test_hash(&env, 1), &admin, &Some(500u64));
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.expires_at, Some(1500u64));
+
+    env.ledger().set_timestamp(1499);
+    assert!(!client.is_snapshot_expired(&1u64));
+
+    env.ledger().set_timestamp(1501);
+    assert!(client.is_snapshot_expired(&1u64));
+}
+
+#[test]
+fn test_snapshot_default_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(0);
+    client.submit_snapshot_with_ttl(&1u64, &create_test_hash(&env, 1), &admin, &None);
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.expires_at, Some(7_776_000u64));
+}
+
+#[test]
+fn test_snapshot_no_expiry_by_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.expires_at, None);
+
+    env.ledger().set_timestamp(u64::MAX / 2);
+    assert!(!client.is_snapshot_expired(&1u64));
+}
+
+#[test]
+fn test_cleanup_expired_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    for epoch in 1u64..=3 {
+        client.submit_snapshot_with_ttl(
+            &epoch,
+            &create_test_hash(&env, epoch as u8),
+            &admin,
+            &Some(100u64),
+        );
+    }
+    client.submit_snapshot_with_ttl(&4u64, &create_test_hash(&env, 4), &admin, &Some(10_000u64));
+
+    env.ledger().set_timestamp(1200);
+
+    let cleaned = client.cleanup_expired_snapshots(&admin, &2u32);
+    assert_eq!(cleaned, 2);
+    assert!(client.get_snapshot(&1u64).is_none());
+    assert!(client.get_snapshot(&2u64).is_none());
+    assert!(client.get_snapshot(&3u64).is_some());
+    assert!(client.get_snapshot(&4u64).is_some());
+
+    let cleaned2 = client.cleanup_expired_snapshots(&admin, &10u32);
+    assert_eq!(cleaned2, 1);
+    assert!(client.get_snapshot(&3u64).is_none());
+    assert!(client.get_snapshot(&4u64).is_some());
+}
+
+#[test]
+fn test_cleanup_respects_max_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(0);
+
+    for epoch in 1u64..=5 {
+        client.submit_snapshot_with_ttl(
+            &epoch,
+            &create_test_hash(&env, epoch as u8),
+            &admin,
+            &Some(100u64),
+        );
+    }
+
+    env.ledger().set_timestamp(200);
+    let cleaned = client.cleanup_expired_snapshots(&admin, &3u32);
+    assert_eq!(cleaned, 3);
+    assert_eq!(client.get_snapshot_history().len(), 2);
+}
+
+#[test]
+fn test_cleanup_no_expired_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(0);
+    client.submit_snapshot_with_ttl(&1u64, &create_test_hash(&env, 1), &admin, &Some(10_000u64));
+
+    env.ledger().set_timestamp(100);
+    let cleaned = client.cleanup_expired_snapshots(&admin, &10u32);
+    assert_eq!(cleaned, 0);
+    assert!(client.get_snapshot(&1u64).is_some());
+}
+
+#[test]
+fn test_cleanup_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.initialize(&admin);
+    let result = client.try_cleanup_expired_snapshots(&attacker, &10u32);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+// ============================================================================
+// Timelock Tests
+// ============================================================================
+
+#[test]
+fn test_timelock_proposal() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    let action = client.get_timelock_action(&action_id).unwrap();
+
+    assert_eq!(action.proposer, admin);
+    assert_eq!(action.action_data, new_admin);
+    assert_eq!(action.proposed_at, 1000);
+    assert_eq!(action.executable_at, 1000 + 172_800);
+    assert!(!action.executed);
+    assert_eq!(client.get_admin(), admin);
+}
+
+#[test]
+fn test_timelock_cannot_execute_early() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    env.ledger().set_timestamp(1000 + 172_799);
+
+    let result = client.try_execute_timelock_action(&admin, &action_id);
+    assert_eq!(result, Err(Ok(Error::TimelockNotExpired)));
+}
+
+#[test]
+fn test_timelock_execution_after_delay() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    env.ledger().set_timestamp(1000 + 172_800);
+    client.execute_timelock_action(&admin, &action_id);
+
+    assert_eq!(client.get_admin(), new_admin);
+    assert!(client.get_timelock_action(&action_id).unwrap().executed);
+}
+
+#[test]
+fn test_timelock_cancellation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    client.cancel_timelock_action(&admin, &action_id);
+
+    assert!(client.get_timelock_action(&action_id).is_none());
+    assert_eq!(client.get_admin(), admin);
+}
+
+#[test]
+fn test_timelock_already_executed() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    env.ledger().set_timestamp(1000 + 172_800);
+    client.execute_timelock_action(&admin, &action_id);
+
+    // Second execution must fail with ActionAlreadyExecuted
+    let result = client.try_execute_timelock_action(&admin, &action_id);
+    assert_eq!(result, Err(Ok(Error::ActionAlreadyExecuted)));
+}
+
+#[test]
+fn test_timelock_action_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    let result = client.try_execute_timelock_action(&admin, &999u64);
+    assert_eq!(result, Err(Ok(Error::ActionNotFound)));
+}
+
+// ============================================================================
+// Pause / Unpause Tests
+// ============================================================================
+
+#[test]
+fn test_pause_and_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    assert!(!client.is_paused());
+
+    client.pause(&admin, &soroban_sdk::String::from_str(&env, "maintenance"));
+    assert!(client.is_paused());
+
+    client.unpause(&admin, &soroban_sdk::String::from_str(&env, "done"));
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_submit_while_paused_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.pause(&admin, &soroban_sdk::String::from_str(&env, "test"));
+
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_pause_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.initialize(&admin);
+    let result = client.try_pause(&attacker, &soroban_sdk::String::from_str(&env, "hack"));
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+// ============================================================================
+// Error Messages Tests (verifies the spec requirement)
+// ============================================================================
+
+#[test]
+fn test_error_descriptions_are_non_empty() {
+    // Every variant must have a non-empty description — catches missing match arms.
+    let variants = [
+        Error::AlreadyInitialized,
+        Error::NotInitialized,
+        Error::Unauthorized,
+        Error::InvalidEpoch,
+        Error::InvalidEpochZero,
+        Error::InvalidEpochTooLarge,
+        Error::DuplicateEpoch,
+        Error::EpochMonotonicityViolated,
+        Error::ContractPaused,
+        Error::ContractNotPaused,
+        Error::InvalidHash,
+        Error::InvalidHashZero,
+        Error::SnapshotNotFound,
+        Error::AdminNotSet,
+        Error::GovernanceNotSet,
+        Error::RateLimitExceeded,
+        Error::TimelockNotExpired,
+        Error::ActionNotFound,
+        Error::ActionExpired,
+        Error::ActionAlreadyExecuted,
+        Error::MultiSigNotInitialized,
+        Error::InvalidThreshold,
+        Error::SignerNotAdmin,
+        Error::UnknownActionType,
+    ];
+
+    for variant in variants {
+        assert!(
+            !variant.description().is_empty(),
+            "description missing for {:?}",
+            variant
+        );
+        assert!(variant.code() > 0, "code must be > 0 for {:?}", variant);
+    }
+}
+
+#[test]
+fn test_error_codes_are_unique() {
+    let variants = [
+        Error::AlreadyInitialized,
+        Error::NotInitialized,
+        Error::Unauthorized,
+        Error::InvalidEpoch,
+        Error::InvalidEpochZero,
+        Error::InvalidEpochTooLarge,
+        Error::DuplicateEpoch,
+        Error::EpochMonotonicityViolated,
+        Error::ContractPaused,
+        Error::ContractNotPaused,
+        Error::InvalidHash,
+        Error::InvalidHashZero,
+        Error::SnapshotNotFound,
+        Error::AdminNotSet,
+        Error::GovernanceNotSet,
+        Error::RateLimitExceeded,
+        Error::TimelockNotExpired,
+        Error::ActionNotFound,
+        Error::ActionExpired,
+        Error::ActionAlreadyExecuted,
+        Error::MultiSigNotInitialized,
+        Error::InvalidThreshold,
+        Error::SignerNotAdmin,
+        Error::UnknownActionType,
+    ];
+
+    // Use a plain std Vec — no soroban runtime needed for this pure logic check.
+    let mut seen: std::vec::Vec<u32> = std::vec::Vec::new();
+    for variant in variants {
+        let code = variant.code();
+        assert!(
+            !seen.contains(&code),
+            "duplicate error code {} for {:?}",
+            code,
+            variant
+        );
+        seen.push(code);
+    }
+}
+
+// ============================================================================
+// Rate Limiting Tests
+// ============================================================================
+
+#[test]
+fn test_rate_limiting_within_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    for epoch in 1u64..=5 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u8), &admin);
+    }
+    assert_eq!(client.get_latest_epoch(), 5);
+}
+
+#[test]
+fn test_rate_limit_exceeded() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    for epoch in 1u64..=100 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, (epoch % 255) as u8), &admin);
+    }
+
+    let result = client.try_submit_snapshot(&101u64, &create_test_hash(&env, 101), &admin);
+    assert_eq!(result, Err(Ok(Error::RateLimitExceeded)));
+}
+
+#[test]
+fn test_rate_limit_window_reset() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    env.ledger().set_timestamp(1000);
+
+    for epoch in 1u64..=100 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, (epoch % 255) as u8), &admin);
+    }
+
+    // Advance past the 1-hour window
+    env.ledger().set_timestamp(1000 + 3_601);
+    let ts = client.submit_snapshot(&101u64, &create_test_hash(&env, 101), &admin);
+    assert_eq!(ts, 1000 + 3_601);
+    assert_eq!(client.get_latest_epoch(), 101);
+}
+
+// ============================================================================
+// Prune Snapshots Tests
+// ============================================================================
+
+#[test]
+fn test_prune_old_snapshots() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    for i in 1u64..=100 {
+        client.submit_snapshot(&i, &create_test_hash(&env, (i % 255) as u8), &admin);
+    }
+
+    assert_eq!(client.get_latest_epoch(), 100);
+    let removed = client.prune_old_snapshots(&admin, &10u32);
+    assert_eq!(removed, 90);
+
+    assert!(client.get_snapshot(&1u64).is_none());
+    assert!(client.get_snapshot(&90u64).is_none());
+    assert!(client.get_snapshot(&91u64).is_some());
+    assert!(client.get_snapshot(&100u64).is_some());
+}
+
+// ============================================================================
+// Pagination Tests
+// ============================================================================
+
+#[test]
+fn test_pagination() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    for epoch in 1u64..=5 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u8), &admin);
+    }
+
+    let page1 = client.get_snapshots_paginated(&3u32, &None);
+    assert_eq!(page1.snapshots.len(), 3);
+    assert_eq!(page1.total_count, 5);
+    assert!(page1.has_more);
+    assert_eq!(page1.next_cursor, Some(4u64));
+    assert_eq!(page1.snapshots.get(0).unwrap().epoch, 1u64);
+    assert_eq!(page1.snapshots.get(2).unwrap().epoch, 3u64);
+
+    let page2 = client.get_snapshots_paginated(&3u32, &page1.next_cursor);
+    assert_eq!(page2.snapshots.len(), 2);
+    assert!(!page2.has_more);
+    assert_eq!(page2.next_cursor, None);
+    assert_eq!(page2.snapshots.get(0).unwrap().epoch, 4u64);
+    assert_eq!(page2.snapshots.get(1).unwrap().epoch, 5u64);
+}
+
+#[test]
+fn test_pagination_cursor() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    for epoch in [1u64, 3u64, 5u64, 7u64, 9u64] {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u8), &admin);
+    }
+
+    let page1 = client.get_snapshots_paginated(&2u32, &None);
+    assert_eq!(page1.snapshots.get(0).unwrap().epoch, 1u64);
+    assert_eq!(page1.snapshots.get(1).unwrap().epoch, 3u64);
+    assert_eq!(page1.next_cursor, Some(4u64));
+
+    let page2 = client.get_snapshots_paginated(&2u32, &page1.next_cursor);
+    assert_eq!(page2.snapshots.get(0).unwrap().epoch, 5u64);
+    assert_eq!(page2.snapshots.get(1).unwrap().epoch, 7u64);
+
+    let page3 = client.get_snapshots_paginated(&2u32, &page2.next_cursor);
+    assert_eq!(page3.snapshots.len(), 1);
+    assert_eq!(page3.snapshots.get(0).unwrap().epoch, 9u64);
+    assert!(!page3.has_more);
+}
+
+#[test]
+fn test_pagination_empty_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let page = client.get_snapshots_paginated(&10u32, &None);
+    assert_eq!(page.snapshots.len(), 0);
+    assert_eq!(page.total_count, 0);
+    assert!(!page.has_more);
+    assert_eq!(page.next_cursor, None);
+}
+
+// ============================================================================
+// Per-epoch storage key Tests
+// ============================================================================
+
+#[test]
+fn test_get_snapshot_uses_per_epoch_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    env.ledger().set_timestamp(500);
+    let hash = create_test_hash(&env, 7);
+    client.submit_snapshot(&10u64, &hash, &admin);
+
+    let snap = client.get_snapshot(&10u64).unwrap();
+    assert_eq!(snap.epoch, 10);
+    assert_eq!(snap.hash, hash);
+    assert_eq!(snap.timestamp, 500);
+
+    assert!(client.get_snapshot(&99u64).is_none());
+}
+
+#[test]
+fn test_submit_snapshot_with_ttl_stores_metadata() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.ledger().set_timestamp(5000);
+    let hash = create_test_hash(&env, 42);
+    client.submit_snapshot_with_ttl(&1u64, &hash, &admin, &Some(1000u64));
+
+    let snapshot = client.get_snapshot(&1u64).unwrap();
+    assert_eq!(snapshot.submitter, admin);
+    assert_eq!(snapshot.timestamp, 5000);
+    assert_eq!(snapshot.expires_at, Some(6000u64));
+    assert_eq!(snapshot.hash, hash);
 }

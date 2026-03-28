@@ -11,6 +11,14 @@ use std::sync::Arc;
 use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
 
 /// GET /api/sep10/info - Get SEP-10 server information
+#[utoipa::path(
+    get,
+    path = "/api/sep10/info",
+    responses(
+        (status = 200, description = "SEP-10 server information")
+    ),
+    tag = "SEP-10"
+)]
 pub async fn get_info(
     State(sep10_service): State<Arc<Sep10Service>>,
 ) -> Result<Response, Sep10ApiError> {
@@ -25,6 +33,16 @@ pub async fn get_info(
 }
 
 /// POST /api/sep10/auth - Request SEP-10 challenge transaction
+#[utoipa::path(
+    post,
+    path = "/api/sep10/auth",
+    request_body = ChallengeRequest,
+    responses(
+        (status = 200, description = "Challenge transaction generated"),
+        (status = 400, description = "Challenge generation failed")
+    ),
+    tag = "SEP-10"
+)]
 pub async fn request_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
     Json(request): Json<ChallengeRequest>,
@@ -38,6 +56,16 @@ pub async fn request_challenge(
 }
 
 /// POST /api/sep10/verify - Verify signed challenge transaction
+#[utoipa::path(
+    post,
+    path = "/api/sep10/verify",
+    request_body = VerificationRequest,
+    responses(
+        (status = 200, description = "Verification successful"),
+        (status = 401, description = "Verification failed")
+    ),
+    tag = "SEP-10"
+)]
 pub async fn verify_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
     Json(request): Json<VerificationRequest>,
@@ -51,6 +79,15 @@ pub async fn verify_challenge(
 }
 
 /// POST /api/sep10/logout - Invalidate SEP-10 session
+#[utoipa::path(
+    post,
+    path = "/api/sep10/logout",
+    responses(
+        (status = 200, description = "Logged out successfully"),
+        (status = 500, description = "Logout failed")
+    ),
+    tag = "SEP-10"
+)]
 pub async fn logout(
     State(sep10_service): State<Arc<Sep10Service>>,
     axum::extract::Extension(token): axum::extract::Extension<String>,
@@ -78,17 +115,17 @@ pub enum Sep10ApiError {
 impl IntoResponse for Sep10ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Sep10ApiError::ChallengeGenerationFailed(msg) => (
+            Self::ChallengeGenerationFailed(msg) => (
                 StatusCode::BAD_REQUEST,
-                format!("Challenge generation failed: {}", msg),
+                format!("Challenge generation failed: {msg}"),
             ),
-            Sep10ApiError::VerificationFailed(msg) => (
+            Self::VerificationFailed(msg) => (
                 StatusCode::UNAUTHORIZED,
-                format!("Verification failed: {}", msg),
+                format!("Verification failed: {msg}"),
             ),
-            Sep10ApiError::LogoutFailed(msg) => (
+            Self::LogoutFailed(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Logout failed: {}", msg),
+                format!("Logout failed: {msg}"),
             ),
         };
 

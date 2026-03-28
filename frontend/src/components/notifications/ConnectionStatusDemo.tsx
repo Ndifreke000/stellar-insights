@@ -92,7 +92,7 @@ export const ConnectionStatusDemo: React.FC = () => {
             <div className="flex items-center justify-center p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                <span className="text-sm text-gray-600 dark:text-gray-400">Disconnected</span>
+                <span className="text-sm text-muted-foreground dark:text-muted-foreground">Disconnected</span>
               </div>
             </div>
             <div className="flex items-center justify-center p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">

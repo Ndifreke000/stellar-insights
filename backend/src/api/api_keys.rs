@@ -2,8 +2,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
-    Json, Router,
+    Json,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -15,11 +14,24 @@ fn extract_wallet_address(headers: &HeaderMap) -> Result<String, ApiKeyError> {
     headers
         .get("X-Wallet-Address")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| ApiKeyError::Unauthorized("Missing X-Wallet-Address header".to_string()))
 }
 
+/// POST /api/api-keys - Create a new API key
+#[utoipa::path(
+    post,
+    path = "/api/api-keys",
+    request_body = CreateApiKeyRequest,
+    responses(
+        (status = 201, description = "API key created"),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized - missing X-Wallet-Address header"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "API Keys"
+)]
 pub async fn create_api_key(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
@@ -39,6 +51,17 @@ pub async fn create_api_key(
     Ok((StatusCode::CREATED, Json(json!(response))).into_response())
 }
 
+/// GET /api/api-keys - List all API keys for the authenticated user
+#[utoipa::path(
+    get,
+    path = "/api/api-keys",
+    responses(
+        (status = 200, description = "List of API keys"),
+        (status = 401, description = "Unauthorized - missing X-Wallet-Address header"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "API Keys"
+)]
 pub async fn list_api_keys(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
@@ -53,6 +76,21 @@ pub async fn list_api_keys(
     Ok((StatusCode::OK, Json(json!({ "keys": keys }))).into_response())
 }
 
+/// GET /api/api-keys/{id} - Get a specific API key by ID
+#[utoipa::path(
+    get,
+    path = "/api/api-keys/{id}",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 200, description = "API key details"),
+        (status = 401, description = "Unauthorized - missing X-Wallet-Address header"),
+        (status = 404, description = "API key not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "API Keys"
+)]
 pub async fn get_api_key(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
@@ -71,6 +109,21 @@ pub async fn get_api_key(
     }
 }
 
+/// POST /api/api-keys/{id}/rotate - Rotate an API key
+#[utoipa::path(
+    post,
+    path = "/api/api-keys/{id}/rotate",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 200, description = "API key rotated"),
+        (status = 401, description = "Unauthorized - missing X-Wallet-Address header"),
+        (status = 404, description = "API key not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "API Keys"
+)]
 pub async fn rotate_api_key(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
@@ -91,6 +144,21 @@ pub async fn rotate_api_key(
     }
 }
 
+/// DELETE /api/api-keys/{id} - Revoke an API key
+#[utoipa::path(
+    delete,
+    path = "/api/api-keys/{id}",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 200, description = "API key revoked"),
+        (status = 401, description = "Unauthorized - missing X-Wallet-Address header"),
+        (status = 404, description = "API key not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "API Keys"
+)]
 pub async fn revoke_api_key(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
@@ -127,20 +195,12 @@ pub enum ApiKeyError {
 impl IntoResponse for ApiKeyError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            ApiKeyError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiKeyError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiKeyError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            ApiKeyError::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Self::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            Self::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            Self::ServerError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (status, Json(json!({ "error": message }))).into_response()
     }
-}
-
-pub fn routes(db: Arc<Database>) -> Router {
-    Router::new()
-        .route("/", get(list_api_keys).post(create_api_key))
-        .route("/:id", get(get_api_key).delete(revoke_api_key))
-        .route("/:id/rotate", post(rotate_api_key))
-        .with_state(db)
 }

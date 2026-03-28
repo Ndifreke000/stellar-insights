@@ -5,10 +5,10 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use std::sync::Arc;
+use std::fmt::Write;
 use tracing::{debug, info};
 
-use super::{ContractEvent, EventFilter, ReplayMetadata, ReplayStatus};
+use super::{ContractEvent, EventFilter, ReplayMetadata};
 
 /// Storage for contract events
 pub struct EventStorage {
@@ -17,7 +17,8 @@ pub struct EventStorage {
 
 impl EventStorage {
     /// Create a new event storage
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use]
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -26,14 +27,14 @@ impl EventStorage {
         let data_json = serde_json::to_string(&event.data)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO contract_events (
                 id, ledger_sequence, transaction_hash, contract_id,
                 event_type, data, timestamp, network
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO NOTHING
-            "#,
+            ",
         )
         .bind(&event.id)
         .bind(event.ledger_sequence as i64)
@@ -64,54 +65,65 @@ impl EventStorage {
         );
 
         let mut query = String::from(
-            r#"
+            r"
             SELECT id, ledger_sequence, transaction_hash, contract_id,
                    event_type, data, timestamp, network
             FROM contract_events
             WHERE ledger_sequence >= $1 AND ledger_sequence <= $2
-            "#,
+            ",
         );
 
-        // Apply filters
-        let mut bind_index = 3;
-        if filter.contract_ids.is_some() {
-            query.push_str(&format!(" AND contract_id IN (${}) ", bind_index));
-            bind_index += 1;
-        }
-        if filter.event_types.is_some() {
-            query.push_str(&format!(" AND event_type IN (${}) ", bind_index));
-            bind_index += 1;
-        }
+        // Add network filter to query if present
         if filter.network.is_some() {
-            query.push_str(&format!(" AND network = ${} ", bind_index));
+            query.push_str(" AND network = $3");
         }
 
         query.push_str(" ORDER BY ledger_sequence ASC, id ASC");
 
         if let Some(lim) = limit {
-            query.push_str(&format!(" LIMIT {}", lim));
+            write!(query, " LIMIT {lim}").unwrap();
         }
 
-        let mut query_builder = sqlx::query_as::<_, (
-            String,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            DateTime<Utc>,
-            String,
-        )>(&query)
+        let mut query_builder = sqlx::query_as::<
+            _,
+            (
+                String,
+                i64,
+                String,
+                String,
+                String,
+                String,
+                DateTime<Utc>,
+                String,
+            ),
+        >(&query)
         .bind(start_ledger as i64)
         .bind(end_ledger as i64);
 
-        // Bind filter parameters (simplified - in production, use proper parameter binding)
+        // Bind network filter if present
+        if let Some(network) = &filter.network {
+            query_builder = query_builder.bind(network);
+            debug!("Applied network filter: {}", network);
+        }
+
         let rows = query_builder.fetch_all(&self.pool).await?;
 
         let events = rows
             .into_iter()
             .filter_map(
                 |(id, ledger, tx_hash, contract_id, event_type, data_json, timestamp, network)| {
+                    // Apply in-memory filters for complex IN clauses
+                    if let Some(contract_ids) = &filter.contract_ids {
+                        if !contract_ids.contains(&contract_id) {
+                            return None;
+                        }
+                    }
+                    if let Some(event_types) = &filter.event_types {
+                        if !event_types.contains(&event_type) {
+                            return None;
+                        }
+                    }
+
                     let data = serde_json::from_str(&data_json).ok()?;
                     Some(ContractEvent {
                         id,
@@ -138,11 +150,11 @@ impl EventStorage {
         filter: &EventFilter,
     ) -> Result<u64> {
         let count: i64 = sqlx::query_scalar(
-            r#"
+            r"
             SELECT COUNT(*)
             FROM contract_events
             WHERE ledger_sequence >= $1 AND ledger_sequence <= $2
-            "#,
+            ",
         )
         .bind(start_ledger as i64)
         .bind(end_ledger as i64)
@@ -170,7 +182,8 @@ pub struct ReplayStorage {
 
 impl ReplayStorage {
     /// Create a new replay storage
-    pub fn new(pool: SqlitePool) -> Self {
+    #[must_use]
+    pub const fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -183,7 +196,7 @@ impl ReplayStorage {
         let checkpoint_json = serde_json::to_string(&metadata.checkpoint)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO replay_sessions (
                 session_id, config, status, started_at, ended_at, checkpoint
             )
@@ -192,7 +205,7 @@ impl ReplayStorage {
                 status = EXCLUDED.status,
                 ended_at = EXCLUDED.ended_at,
                 checkpoint = EXCLUDED.checkpoint
-            "#,
+            ",
         )
         .bind(&metadata.session_id)
         .bind(&config_json)
@@ -209,17 +222,23 @@ impl ReplayStorage {
 
     /// Load replay metadata
     pub async fn load_metadata(&self, session_id: &str) -> Result<Option<ReplayMetadata>> {
-        let row: Option<(String, String, String, DateTime<Utc>, Option<DateTime<Utc>>, String)> =
-            sqlx::query_as(
-                r#"
+        let row: Option<(
+            String,
+            String,
+            String,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            String,
+        )> = sqlx::query_as(
+            r"
                 SELECT session_id, config, status, started_at, ended_at, checkpoint
                 FROM replay_sessions
                 WHERE session_id = $1
-                "#,
-            )
-            .bind(session_id)
-            .fetch_optional(&self.pool)
-            .await?;
+                ",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
 
         match row {
             Some((session_id, config_json, status_json, started_at, ended_at, checkpoint_json)) => {
@@ -242,20 +261,25 @@ impl ReplayStorage {
 
     /// List all replay sessions
     pub async fn list_sessions(&self, limit: Option<usize>) -> Result<Vec<ReplayMetadata>> {
-        let limit_clause = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
+        let limit_clause = limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
 
         let query = format!(
-            r#"
+            r"
             SELECT session_id, config, status, started_at, ended_at, checkpoint
             FROM replay_sessions
             ORDER BY started_at DESC
-            {}
-            "#,
-            limit_clause
+            {limit_clause}
+            "
         );
 
-        let rows: Vec<(String, String, String, DateTime<Utc>, Option<DateTime<Utc>>, String)> =
-            sqlx::query_as(&query).fetch_all(&self.pool).await?;
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            String,
+        )> = sqlx::query_as(&query).fetch_all(&self.pool).await?;
 
         let sessions = rows
             .into_iter()

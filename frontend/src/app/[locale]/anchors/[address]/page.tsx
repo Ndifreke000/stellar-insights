@@ -1,13 +1,14 @@
 "use client";
-
-import React, { useEffect, useState, use, Suspense } from "react";
-import { getAnchorDetail, AnchorDetailData } from "@/lib/api";
+import { logger } from "@/lib/logger";
+import { useEffect, useState, use, Suspense } from "react";
 import { getAddressValidationError } from "@/lib/address";
 import { AnchorHeader } from "@/components/anchors/AnchorHeader";
 import { AssetPortfolio } from "@/components/anchors/AssetPortfolio";
 import { ReliabilityTrend } from "@/components/charts/ReliabilityTrend";
 import { AlertCircle, Clock, ArrowLeft, XCircle } from "lucide-react";
 import { Link } from "@/i18n/navigation";
+import { AnchorDetailData } from "@/lib/api/types";
+import { getAnchorDetail } from "@/lib/api/anchor";
 
 function AnchorDetailPageContent({
   params,
@@ -38,7 +39,7 @@ function AnchorDetailPageContent({
         setData(result);
         setError(null);
       } catch (err) {
-        console.error("Failed to fetch anchor details:", err);
+        logger.error("Failed to fetch anchor details:", err);
         setError("Failed to load anchor data. Please try again later.");
       } finally {
         setLoading(false);

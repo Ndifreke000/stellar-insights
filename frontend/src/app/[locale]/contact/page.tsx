@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Mail, Github, Twitter, Send, CheckCircle2, Loader2 } from "lucide-react";
+import { Mail, ExternalLink as Github, ExternalLink as Twitter, Send, CheckCircle2, Loader2 } from "lucide-react";
 
 const channelsConfig = [
   { icon: Mail, key: "email", value: "hello@stellarinsights.io", href: "mailto:hello@stellarinsights.io", hintKey: "emailHint" },

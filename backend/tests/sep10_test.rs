@@ -5,7 +5,7 @@ use std::sync::Arc;
 use stellar_base::crypto::KeyPair;
 use tokio::sync::RwLock;
 
-use stellar_analytics::auth::sep10::{ChallengeRequest, Sep10Service, VerificationRequest};
+use stellar_analytics::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
 
 /// Helper to create a test SEP-10 service
 fn create_test_service() -> Sep10Service {

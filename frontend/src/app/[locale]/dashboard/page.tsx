@@ -12,6 +12,7 @@ import { DataRefreshIndicator } from "@/components/DataRefreshIndicator";
 import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
 import { useRealtimeAnchors } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
+import { logger } from "@/lib/logger";
 
 interface CorridorData {
   id: string;
@@ -81,7 +82,7 @@ export default function DashboardPage() {
     if (!response.ok) throw new Error(t("failedToFetch"));
     const result = await response.json();
     setData(result);
-  }, []);
+  }, [t]);
 
   const {
     lastUpdated,
@@ -103,7 +104,7 @@ export default function DashboardPage() {
   } = useRealtimeCorridors({
     enablePaymentStream: true,
     onCorridorUpdate: (update) => {
-      console.log("Received corridor update:", update);
+      logger.debug("Received corridor update:", { update: JSON.stringify(update) });
       markUpdated();
       setData((prevData) => {
         if (!prevData) return prevData;
@@ -115,14 +116,14 @@ export default function DashboardPage() {
       });
     },
     onHealthAlert: (alert) => {
-      console.log("Health alert:", alert);
+      logger.debug("Health alert:", { alert: JSON.stringify(alert) });
     },
   });
 
   const { isConnected: anchorsConnected, reconnect: reconnectAnchors } =
     useRealtimeAnchors({
       onAnchorUpdate: (update) => {
-        console.log("Received anchor update:", update);
+        logger.debug("Received anchor update:", { update: JSON.stringify(update) });
         markUpdated();
       },
     });
@@ -141,7 +142,7 @@ export default function DashboardPage() {
         const errorMessage =
           err instanceof Error ? err.message : "An error occurred";
         setError(errorMessage);
-        if (!isNetworkError) console.error("Dashboard API error:", err);
+        if (!isNetworkError) logger.error("Dashboard API error:", err);
       } finally {
         setLoading(false);
       }

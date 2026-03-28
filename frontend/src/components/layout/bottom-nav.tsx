@@ -58,7 +58,7 @@ export function BottomNav() {
               className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] touch-manipulation ${
                 active
                   ? "text-blue-500"
-                  : "text-gray-600 dark:text-gray-400 active:bg-gray-100 dark:active:bg-slate-800"
+                  : "text-muted-foreground dark:text-muted-foreground active:bg-gray-100 dark:active:bg-slate-800"
               }`}
               aria-current={active ? "page" : undefined}
               aria-label={item.name}

@@ -1,4 +1,7 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
 
 use super::*;
 use crate::events::{SnapshotSubmitted, SNAPSHOT_LIFECYCLE, SNAPSHOT_SUBMITTED};
@@ -128,8 +131,8 @@ fn test_unauthorized_caller_fails() {
     // Unauthorized user tries to submit
     let result = client.try_submit_snapshot(&epoch, &hash, &unauthorized);
 
-    // Should fail with UnauthorizedCaller error
-    assert_eq!(result, Err(Ok(Error::UnauthorizedCaller)));
+    // Should fail with Unauthorized error
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
 
 #[test]
@@ -172,7 +175,7 @@ fn test_invalid_epoch_zero_fails() {
 
     let result = client.try_submit_snapshot(&epoch, &hash, &admin);
 
-    assert_eq!(result, Err(Ok(Error::InvalidEpoch)));
+    assert_eq!(result, Err(Ok(Error::InvalidEpochZero)));
 }
 
 #[test]
@@ -415,4 +418,206 @@ fn test_admin_not_set_error() {
     let result = client.try_submit_snapshot(&1, &create_test_hash(&env, 123), &caller);
 
     assert_eq!(result, Err(Ok(Error::AdminNotSet)));
+}
+
+// ============================================================================
+// Error Message Tests
+// ============================================================================
+
+#[test]
+fn test_error_codes_are_unique() {
+    let mut codes = [
+        Error::AlreadyInitialized as u32,
+        Error::NotInitialized as u32,
+        Error::Unauthorized as u32,
+        Error::InvalidEpoch as u32,
+        Error::InvalidEpochZero as u32,
+        Error::InvalidEpochTooLarge as u32,
+        Error::DuplicateEpoch as u32,
+        Error::EpochMonotonicityViolated as u32,
+        Error::ContractPaused as u32,
+        Error::ContractNotPaused as u32,
+        Error::InvalidHash as u32,
+        Error::InvalidHashZero as u32,
+        Error::SnapshotNotFound as u32,
+        Error::AdminNotSet as u32,
+        Error::GovernanceNotSet as u32,
+        Error::RateLimitExceeded as u32,
+        Error::TimelockNotExpired as u32,
+        Error::ActionNotFound as u32,
+        Error::ActionExpired as u32,
+        Error::ActionAlreadyExecuted as u32,
+        Error::UnauthorizedCaller as u32,
+        Error::InvalidHashSize as u32,
+    ];
+    codes.sort();
+    let unique = codes.windows(2).all(|w| w[0] != w[1]);
+    assert!(unique, "All error codes must be unique");
+}
+
+#[test]
+fn test_error_descriptions_are_non_empty() {
+    let errors = [
+        Error::AlreadyInitialized,
+        Error::NotInitialized,
+        Error::Unauthorized,
+        Error::InvalidEpoch,
+        Error::InvalidEpochZero,
+        Error::InvalidEpochTooLarge,
+        Error::DuplicateEpoch,
+        Error::EpochMonotonicityViolated,
+        Error::ContractPaused,
+        Error::ContractNotPaused,
+        Error::InvalidHash,
+        Error::InvalidHashZero,
+        Error::SnapshotNotFound,
+        Error::AdminNotSet,
+        Error::GovernanceNotSet,
+        Error::RateLimitExceeded,
+        Error::TimelockNotExpired,
+        Error::ActionNotFound,
+        Error::ActionExpired,
+        Error::ActionAlreadyExecuted,
+        Error::UnauthorizedCaller,
+        Error::InvalidHashSize,
+    ];
+    for e in errors {
+        assert!(
+            !e.description().is_empty(),
+            "Error {:?} has empty description",
+            e
+        );
+    }
+}
+
+#[test]
+fn test_error_code_matches_repr() {
+    assert_eq!(Error::AlreadyInitialized.code(), 1);
+    assert_eq!(Error::NotInitialized.code(), 2);
+    assert_eq!(Error::Unauthorized.code(), 3);
+    assert_eq!(Error::InvalidEpoch.code(), 4);
+    assert_eq!(Error::InvalidEpochZero.code(), 5);
+    assert_eq!(Error::InvalidEpochTooLarge.code(), 6);
+    assert_eq!(Error::DuplicateEpoch.code(), 7);
+    assert_eq!(Error::EpochMonotonicityViolated.code(), 8);
+    assert_eq!(Error::ContractPaused.code(), 9);
+    assert_eq!(Error::ContractNotPaused.code(), 10);
+    assert_eq!(Error::InvalidHash.code(), 11);
+    assert_eq!(Error::InvalidHashZero.code(), 12);
+    assert_eq!(Error::SnapshotNotFound.code(), 13);
+    assert_eq!(Error::AdminNotSet.code(), 14);
+    assert_eq!(Error::GovernanceNotSet.code(), 15);
+    assert_eq!(Error::RateLimitExceeded.code(), 16);
+    assert_eq!(Error::TimelockNotExpired.code(), 17);
+    assert_eq!(Error::ActionNotFound.code(), 18);
+    assert_eq!(Error::ActionExpired.code(), 19);
+    assert_eq!(Error::ActionAlreadyExecuted.code(), 20);
+    assert_eq!(Error::UnauthorizedCaller.code(), 21);
+    assert_eq!(Error::InvalidHashSize.code(), 22);
+}
+
+#[test]
+fn test_error_messages_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    client.initialize(&admin);
+
+    let result = client.try_submit_snapshot(&1, &create_test_hash(&env, 1), &attacker);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert_eq!(
+        Error::Unauthorized.description(),
+        "Caller is not authorized"
+    );
+    assert_eq!(Error::Unauthorized.code(), 3);
+}
+
+#[test]
+fn test_error_messages_invalid_epoch_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let result = client.try_submit_snapshot(&0, &create_test_hash(&env, 1), &admin);
+    assert_eq!(result, Err(Ok(Error::InvalidEpochZero)));
+    assert_eq!(
+        Error::InvalidEpochZero.description(),
+        "Epoch must be greater than 0"
+    );
+    assert_eq!(Error::InvalidEpochZero.code(), 5);
+}
+
+#[test]
+fn test_error_messages_duplicate_epoch() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.submit_snapshot(&1, &create_test_hash(&env, 1), &admin);
+    let result = client.try_submit_snapshot(&1, &create_test_hash(&env, 2), &admin);
+    assert_eq!(result, Err(Ok(Error::DuplicateEpoch)));
+    assert_eq!(
+        Error::DuplicateEpoch.description(),
+        "Snapshot for this epoch already exists"
+    );
+    assert_eq!(Error::DuplicateEpoch.code(), 7);
+}
+
+#[test]
+fn test_error_messages_snapshot_not_found() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let result = client.try_get_snapshot(&999);
+    assert_eq!(result, Err(Ok(Error::SnapshotNotFound)));
+    assert_eq!(
+        Error::SnapshotNotFound.description(),
+        "No snapshot found for the requested epoch"
+    );
+    assert_eq!(Error::SnapshotNotFound.code(), 13);
+}
+
+#[test]
+fn test_error_messages_admin_not_set() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let caller = Address::generate(&env);
+    let result = client.try_submit_snapshot(&1, &create_test_hash(&env, 1), &caller);
+    assert_eq!(result, Err(Ok(Error::AdminNotSet)));
+    assert_eq!(
+        Error::AdminNotSet.description(),
+        "Admin address has not been initialized"
+    );
+    assert_eq!(Error::AdminNotSet.code(), 14);
+}
+
+#[test]
+fn test_error_log_context_returns_self() {
+    let env = Env::default();
+    let err = Error::Unauthorized;
+    // log_context must return the same error variant
+    assert_eq!(err.log_context(&env, "test context"), Error::Unauthorized);
 }

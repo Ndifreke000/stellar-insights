@@ -73,6 +73,7 @@ struct SetMyCommandsRequest<'a> {
 }
 
 impl TelegramClient {
+    #[must_use]
     pub fn new(token: &str) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(35))
@@ -81,14 +82,11 @@ impl TelegramClient {
 
         Self {
             client,
-            base_url: format!("https://api.telegram.org/bot{}", token),
+            base_url: format!("https://api.telegram.org/bot{token}"),
         }
     }
 
-    pub async fn get_updates(
-        &self,
-        offset: Option<i64>,
-    ) -> anyhow::Result<Vec<Update>> {
+    pub async fn get_updates(&self, offset: Option<i64>) -> anyhow::Result<Vec<Update>> {
         let body = GetUpdatesRequest {
             offset,
             timeout: 30,

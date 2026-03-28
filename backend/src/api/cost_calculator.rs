@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::error::DomainError;
 use crate::http_cache::cached_json_response;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -29,7 +30,7 @@ impl PaymentRoute {
         vec![Self::StellarDex, Self::AnchorDirect, Self::LiquidityPool]
     }
 
-    fn as_key(&self) -> &'static str {
+    const fn as_key(&self) -> &'static str {
         match self {
             Self::StellarDex => "stellar_dex",
             Self::AnchorDirect => "anchor_direct",
@@ -37,7 +38,7 @@ impl PaymentRoute {
         }
     }
 
-    fn label(&self) -> &'static str {
+    const fn label(&self) -> &'static str {
         match self {
             Self::StellarDex => "Stellar DEX",
             Self::AnchorDirect => "Anchor Direct",
@@ -54,7 +55,7 @@ pub struct CostCalculationRequest {
     pub destination_currency: String,
     #[schema(example = 1000.0)]
     pub source_amount: f64,
-    #[schema(example = 1550000.0)]
+    #[schema(example = 1_550_000.0)]
     pub destination_amount: Option<f64>,
     pub routes: Option<Vec<PaymentRoute>>,
 }
@@ -111,7 +112,7 @@ struct RouteFees {
 }
 
 impl RouteFees {
-    fn for_route(route: PaymentRoute) -> Self {
+    const fn for_route(route: PaymentRoute) -> Self {
         match route {
             PaymentRoute::StellarDex => Self {
                 spread_bps: 35.0,
@@ -193,12 +194,12 @@ pub async fn estimate_costs(
 
     let source_usd_rate = match resolve_usd_rate(&price_feed, &source_currency).await {
         Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error),
+        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
     let destination_usd_rate = match resolve_usd_rate(&price_feed, &destination_currency).await {
         Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error),
+        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
     if destination_usd_rate <= 0.0 {
@@ -282,8 +283,8 @@ fn estimate_route(
     mid_market_rate: f64,
 ) -> RouteEstimate {
     let fees = RouteFees::for_route(route);
-    let slippage_bps = (fees.slippage_base_bps
-        + (source_amount / 10_000.0) * fees.slippage_per_10k_bps)
+    let slippage_bps = (source_amount / 10_000.0)
+        .mul_add(fees.slippage_per_10k_bps, fees.slippage_base_bps)
         .min(200.0);
 
     let destination_before_fees = source_amount * mid_market_rate;
@@ -351,7 +352,10 @@ fn estimate_route(
     }
 }
 
-async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Result<f64, String> {
+async fn resolve_usd_rate(
+    price_feed: &PriceFeedClient,
+    currency: &str,
+) -> Result<f64, DomainError> {
     if currency.contains(':') {
         if let Ok(rate) = price_feed.get_price(currency).await {
             if rate > 0.0 && rate.is_finite() {
@@ -365,7 +369,7 @@ async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Resul
             }
         }
 
-        return Err(format!("Unsupported currency or asset: {currency}"));
+        return Err(DomainError::UnsupportedCurrency(currency.to_string()));
     }
 
     if let Some(asset_id) = price_feed_asset_id(currency) {
@@ -376,7 +380,8 @@ async fn resolve_usd_rate(price_feed: &PriceFeedClient, currency: &str) -> Resul
         }
     }
 
-    fallback_usd_rate(currency).ok_or_else(|| format!("Unsupported currency or asset: {currency}"))
+    fallback_usd_rate(currency)
+        .ok_or_else(|| DomainError::UnsupportedCurrency(currency.to_string()))
 }
 
 fn price_feed_asset_id(currency: &str) -> Option<&'static str> {

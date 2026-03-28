@@ -93,7 +93,7 @@ export const useNotificationSound = () => {
         }, 100);
       }
     } catch (error) {
-      console.warn('Failed to play notification sound:', error);
+      logger.warn('Failed to play notification sound:', error);
     }
   }, [initAudioContext]);
 

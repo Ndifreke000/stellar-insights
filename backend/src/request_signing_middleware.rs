@@ -32,13 +32,13 @@ pub async fn request_signing_middleware(
         .headers()
         .get("X-Signature")
         .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .ok_or(SigningError::MissingSignature)?;
     let timestamp = req
         .headers()
         .get("X-Timestamp")
         .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .ok_or(SigningError::MissingTimestamp)?;
 
     // Prevent replay: check timestamp is recent (within 5 min)
@@ -93,21 +93,13 @@ pub enum SigningError {
 impl IntoResponse for SigningError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            SigningError::MissingSignature => {
-                (StatusCode::UNAUTHORIZED, "Missing X-Signature header")
-            }
-            SigningError::MissingTimestamp => {
-                (StatusCode::UNAUTHORIZED, "Missing X-Timestamp header")
-            }
-            SigningError::InvalidTimestamp => (StatusCode::BAD_REQUEST, "Invalid timestamp"),
-            SigningError::ReplayDetected => (StatusCode::UNAUTHORIZED, "Replay attack detected"),
-            SigningError::InvalidSignature => {
-                (StatusCode::UNAUTHORIZED, "Invalid request signature")
-            }
-            SigningError::BodyTooLarge => {
-                (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large")
-            }
-            SigningError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+            Self::MissingSignature => (StatusCode::UNAUTHORIZED, "Missing X-Signature header"),
+            Self::MissingTimestamp => (StatusCode::UNAUTHORIZED, "Missing X-Timestamp header"),
+            Self::InvalidTimestamp => (StatusCode::BAD_REQUEST, "Invalid timestamp"),
+            Self::ReplayDetected => (StatusCode::UNAUTHORIZED, "Replay attack detected"),
+            Self::InvalidSignature => (StatusCode::UNAUTHORIZED, "Invalid request signature"),
+            Self::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large"),
+            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
         };
         let body = json!({"error": message});
         (status, axum::response::Json(body)).into_response()

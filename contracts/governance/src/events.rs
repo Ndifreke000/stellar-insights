@@ -100,6 +100,46 @@ impl ProposalFinalizedEvent {
     }
 }
 
+/// Event emitted when the governance contract is initialized.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernanceInitialized {
+    pub admin: Address,
+    pub quorum: u64,
+    pub voting_period: u64,
+}
+
+impl GovernanceInitialized {
+    pub fn publish(env: &Env, admin: Address, quorum: u64, voting_period: u64) {
+        let event = GovernanceInitialized {
+            admin,
+            quorum,
+            voting_period,
+        };
+        env.events().publish((GOV_LIFECYCLE,), event);
+    }
+}
+
+/// Event emitted when a proposal is executed.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalExecutedEvent {
+    pub proposal_id: u64,
+    pub executor: Address,
+    pub target_contract: Address,
+}
+
+impl ProposalExecutedEvent {
+    pub fn publish(env: &Env, proposal_id: u64, executor: Address, target_contract: Address) {
+        let event = ProposalExecutedEvent {
+            proposal_id,
+            executor,
+            target_contract,
+        };
+        env.events().publish((GOV_LIFECYCLE,), event);
+    }
+}
+
 // ============================================================================
 // Event Helper Functions
 // ============================================================================
@@ -134,4 +174,17 @@ pub fn emit_proposal_finalized(
         votes_against,
         total_voters,
     );
+}
+
+pub fn emit_governance_initialized(env: &Env, admin: Address, quorum: u64, voting_period: u64) {
+    GovernanceInitialized::publish(env, admin, quorum, voting_period);
+}
+
+pub fn emit_proposal_executed(
+    env: &Env,
+    proposal_id: u64,
+    executor: Address,
+    target_contract: Address,
+) {
+    ProposalExecutedEvent::publish(env, proposal_id, executor, target_contract);
 }

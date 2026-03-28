@@ -1,17 +1,11 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
-import {
-  Trophy,
-  Star,
-  Target,
-  Award,
-  ChevronDown,
-} from "lucide-react";
-import { MetricCard } from "@/components/dashboard/MetricCard";
-import { QuestCard } from "@/components/QuestCard";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import { Trophy, Star, Target, Award, ChevronDown } from 'lucide-react';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { QuestCard } from '@/components/QuestCard';
+import { Badge } from '@/components/ui/badge';
 import {
   QUESTS,
   ACHIEVEMENTS,
@@ -21,7 +15,7 @@ import {
   getUnlockedAchievements,
   getLeaderboard,
   checkPathCompletion,
-} from "@/lib/quests";
+} from '@/lib/quests';
 
 export default function QuestsPage() {
   const pathname = usePathname();
@@ -30,7 +24,8 @@ export default function QuestsPage() {
 
   useEffect(() => {
     checkPathCompletion(pathname);
-    setProgress(getProgress());
+    const newProgress = getProgress();
+    setProgress((prev) => (prev !== newProgress ? newProgress : prev));
   }, [pathname]);
 
   const completedCount = getCompletedCount();
@@ -132,8 +127,8 @@ export default function QuestsPage() {
                 key={a.id}
                 className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
                   unlocked
-                    ? "border-amber-500/40 bg-amber-500/10"
-                    : "border-border/30 bg-slate-900/20 opacity-60"
+                    ? 'border-amber-500/40 bg-amber-500/10'
+                    : 'border-border/30 bg-slate-900/20 opacity-60'
                 }`}
               >
                 <span className="text-2xl">{a.badge}</span>
@@ -166,7 +161,7 @@ export default function QuestsPage() {
           </div>
           <ChevronDown
             className={`h-5 w-5 text-muted-foreground transition-transform ${
-              showLeaderboard ? "rotate-180" : ""
+              showLeaderboard ? 'rotate-180' : ''
             }`}
           />
         </button>
@@ -194,12 +189,10 @@ export default function QuestsPage() {
                   <tr
                     key={entry.rank}
                     className={`border-b border-border/10 ${
-                      entry.name === "You" ? "bg-accent/10" : ""
+                      entry.name === 'You' ? 'bg-accent/10' : ''
                     }`}
                   >
-                    <td className="py-3 font-bold">
-                      #{entry.rank}
-                    </td>
+                    <td className="py-3 font-bold">#{entry.rank}</td>
                     <td className="py-3">
                       <span className="mr-2">{entry.avatar}</span>
                       {entry.name}

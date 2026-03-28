@@ -2,7 +2,7 @@ use crate::models::corridor::{compute_median, CorridorMetrics, PaymentRecord};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct CorridorTransaction {
+pub struct CorridorPayment {
     pub successful: bool,
     pub settlement_latency_ms: Option<i32>,
     pub amount_usd: f64,
@@ -22,18 +22,19 @@ pub struct OrderBookSnapshot {
 }
 
 /// Compute total liquidity in USD within a max slippage percent
+#[must_use]
 pub fn compute_liquidity_depth(order_book: &OrderBookSnapshot, max_slippage_percent: f64) -> f64 {
     if order_book.bids.is_empty() && order_book.asks.is_empty() {
         return 0.0;
     }
 
-    let best_bid = order_book.bids.first().map(|b| b.price).unwrap_or(0.0);
-    let best_ask = order_book.asks.first().map(|a| a.price).unwrap_or(0.0);
+    let best_bid = order_book.bids.first().map_or(0.0, |b| b.price);
+    let best_ask = order_book.asks.first().map_or(0.0, |a| a.price);
     if best_bid == 0.0 || best_ask == 0.0 {
         return 0.0;
     }
 
-    let mid_price = (best_bid + best_ask) / 2.0;
+    let mid_price = f64::midpoint(best_bid, best_ask);
     let max_buy_price = mid_price * (1.0 + max_slippage_percent / 100.0);
     let min_sell_price = mid_price * (1.0 - max_slippage_percent / 100.0);
 
@@ -57,8 +58,9 @@ pub fn compute_liquidity_depth(order_book: &OrderBookSnapshot, max_slippage_perc
 }
 
 /// Computes corridor metrics from transactions, calculating average and median settlement latency with optional liquidity depth.
+#[must_use]
 pub fn compute_corridor_metrics(
-    txns: &[CorridorTransaction],
+    txns: &[CorridorPayment],
     order_book: Option<&OrderBookSnapshot>, // Optional snapshot for liquidity depth
     slippage_percent: f64,                  // e.g., 1.0 = 1% slippage
 ) -> CorridorMetrics {
@@ -66,10 +68,10 @@ pub fn compute_corridor_metrics(
         return CorridorMetrics {
             id: uuid::Uuid::nil().to_string(),
             corridor_key: String::new(),
-            asset_a_code: String::new(),
-            asset_a_issuer: String::new(),
-            asset_b_code: String::new(),
-            asset_b_issuer: String::new(),
+            source_asset_code: String::new(),
+            source_asset_issuer: String::new(),
+            destination_asset_code: String::new(),
+            destination_asset_issuer: String::new(),
             date: chrono::Utc::now(),
             success_rate: 0.0,
             avg_settlement_latency_ms: None,
@@ -97,8 +99,8 @@ pub fn compute_corridor_metrics(
             volume_usd += t.amount_usd.max(0.0);
             if let Some(ms) = t.settlement_latency_ms {
                 if ms >= 0 {
-                    latency_sum += ms as i64;
-                    latency_values.push(ms as i64);
+                    latency_sum += i64::from(ms);
+                    latency_values.push(i64::from(ms));
                 }
             }
         } else {
@@ -107,25 +109,24 @@ pub fn compute_corridor_metrics(
     }
 
     let success_rate = (successful_transactions as f64 / total_transactions as f64) * 100.0;
-    let avg_settlement_latency_ms = if !latency_values.is_empty() {
-        Some((latency_sum / latency_values.len() as i64) as i32)
-    } else {
+    let avg_settlement_latency_ms = if latency_values.is_empty() {
         None
+    } else {
+        Some((latency_sum / latency_values.len() as i64) as i32)
     };
     let median_settlement_latency_ms = compute_median(&mut latency_values).map(|v| v as i32);
 
     // Compute liquidity depth using order book snapshot if provided
-    let liquidity_depth_usd = order_book
-        .map(|ob| compute_liquidity_depth(ob, slippage_percent))
-        .unwrap_or(0.0);
+    let liquidity_depth_usd =
+        order_book.map_or(0.0, |ob| compute_liquidity_depth(ob, slippage_percent));
 
     CorridorMetrics {
         id: uuid::Uuid::nil().to_string(),
         corridor_key: String::new(),
-        asset_a_code: String::new(),
-        asset_a_issuer: String::new(),
-        asset_b_code: String::new(),
-        asset_b_issuer: String::new(),
+        source_asset_code: String::new(),
+        source_asset_issuer: String::new(),
+        destination_asset_code: String::new(),
+        destination_asset_issuer: String::new(),
         date: chrono::Utc::now(),
         total_transactions,
         successful_transactions,
@@ -141,6 +142,7 @@ pub fn compute_corridor_metrics(
 }
 
 /// Computes corridor metrics from payment records, aggregating settlement latency (both average and median) per corridor.
+#[must_use]
 pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<CorridorMetrics> {
     let mut corridor_map: HashMap<String, Vec<&PaymentRecord>> = HashMap::new();
 
@@ -189,20 +191,20 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
             0.0
         };
 
-        let avg_settlement_latency_ms = if !latency_values.is_empty() {
-            Some((latency_sum / latency_values.len() as i64) as i32)
-        } else {
+        let avg_settlement_latency_ms = if latency_values.is_empty() {
             None
+        } else {
+            Some((latency_sum / latency_values.len() as i64) as i32)
         };
         let median_settlement_latency_ms = compute_median(&mut latency_values).map(|v| v as i32);
 
         results.push(CorridorMetrics {
             id: uuid::Uuid::new_v4().to_string(), // Generate new ID for this snapshot
             corridor_key: key,
-            asset_a_code: corridor.asset_a_code,
-            asset_a_issuer: corridor.asset_a_issuer,
-            asset_b_code: corridor.asset_b_code,
-            asset_b_issuer: corridor.asset_b_issuer,
+            source_asset_code: corridor.source_asset_code,
+            source_asset_issuer: corridor.source_asset_issuer,
+            destination_asset_code: corridor.destination_asset_code,
+            destination_asset_issuer: corridor.destination_asset_issuer,
             date: chrono::Utc::now(),
             total_transactions,
             successful_transactions,
@@ -221,6 +223,7 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
 }
 
 /// Filter payments by time window and compute metrics
+#[must_use]
 pub fn compute_metrics_by_window(
     payments: &[PaymentRecord],
     start: chrono::DateTime<chrono::Utc>,
@@ -300,7 +303,7 @@ mod tests {
         // Find USDC -> EURC metrics
         let usdc_metrics = metrics
             .iter()
-            .find(|m| m.asset_a_code == "EURC" || m.asset_a_code == "USDC") // Normalized
+            .find(|m| m.source_asset_code == "EURC" || m.source_asset_code == "USDC") // Normalized
             .expect("Should find USDC/EURC metrics");
 
         assert_eq!(usdc_metrics.total_transactions, 2);
@@ -333,17 +336,17 @@ mod tests {
     #[test]
     fn test_compute_corridor_metrics_basic() {
         let txns = vec![
-            CorridorTransaction {
+            CorridorPayment {
                 successful: true,
                 settlement_latency_ms: Some(1000),
                 amount_usd: 100.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: true,
                 settlement_latency_ms: Some(3000),
                 amount_usd: 200.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 50.0,
@@ -396,12 +399,12 @@ mod tests {
     #[test]
     fn test_compute_corridor_metrics_all_failed() {
         let txns = vec![
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 10.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 20.0,

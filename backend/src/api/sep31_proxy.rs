@@ -10,6 +10,7 @@ use axum::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,7 +35,14 @@ pub struct Sep31State {
     pub client: Arc<Client>,
 }
 
+impl Default for Sep31State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sep31State {
+    #[must_use]
     pub fn new() -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
@@ -50,12 +58,26 @@ fn base_url(transfer_server: &str) -> String {
     transfer_server.trim().trim_end_matches('/').to_string()
 }
 
-/// GET /api/sep31/info?transfer_server=<url>
+/// GET /`api/sep31/info?transfer_server`=<url>
 #[derive(Debug, Deserialize)]
 pub struct InfoQuery {
     pub transfer_server: String,
 }
 
+/// GET /api/sep31/info - Get SEP-31 anchor info
+#[utoipa::path(
+    get,
+    path = "/api/sep31/info",
+    params(
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL")
+    ),
+    responses(
+        (status = 200, description = "SEP-31 anchor info"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn get_info(
     State(state): State<Sep31State>,
     Query(q): Query<InfoQuery>,
@@ -95,6 +117,18 @@ pub struct QuoteBody {
     pub payload: Value,
 }
 
+/// POST /api/sep31/quote - Create a SEP-31 payment quote
+#[utoipa::path(
+    post,
+    path = "/api/sep31/quote",
+    request_body = QuoteBody,
+    responses(
+        (status = 200, description = "Quote created successfully"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn post_quote(
     State(state): State<Sep31State>,
     Json(body): Json<QuoteBody>,
@@ -107,7 +141,7 @@ pub async fn post_quote(
     let url = format!("{}/quote", base_url(&body.transfer_server));
     let mut req = state.client.post(&url);
     if let Some(jwt) = &body.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .json(&body.payload)
@@ -137,6 +171,18 @@ pub struct CreateTransactionBody {
     pub payload: Value,
 }
 
+/// POST /api/sep31/transactions - Create a SEP-31 transaction
+#[utoipa::path(
+    post,
+    path = "/api/sep31/transactions",
+    request_body = CreateTransactionBody,
+    responses(
+        (status = 200, description = "Transaction created successfully"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn post_transaction(
     State(state): State<Sep31State>,
     Json(body): Json<CreateTransactionBody>,
@@ -149,7 +195,7 @@ pub async fn post_transaction(
     let url = format!("{}/transactions", base_url(&body.transfer_server));
     let mut req = state.client.post(&url);
     if let Some(jwt) = &body.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .json(&body.payload)
@@ -169,7 +215,7 @@ pub async fn post_transaction(
     Ok(Json(data))
 }
 
-/// GET /api/sep31/transactions?transfer_server=&jwt=&...
+/// GET /`api/sep31/transactions?transfer_server=&jwt`=&...
 #[derive(Debug, Deserialize)]
 pub struct ListTransactionsQuery {
     pub transfer_server: String,
@@ -183,6 +229,24 @@ pub struct ListTransactionsQuery {
     pub cursor: Option<String>,
 }
 
+/// GET /api/sep31/transactions - List SEP-31 transactions
+#[utoipa::path(
+    get,
+    path = "/api/sep31/transactions",
+    params(
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT authentication token"),
+        ("status" = Option<String>, Query, description = "Filter by transaction status"),
+        ("limit" = Option<u32>, Query, description = "Maximum number of transactions to return"),
+        ("cursor" = Option<String>, Query, description = "Pagination cursor")
+    ),
+    responses(
+        (status = 200, description = "List of transactions"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn get_transactions(
     State(state): State<Sep31State>,
     Query(q): Query<ListTransactionsQuery>,
@@ -193,21 +257,21 @@ pub async fn get_transactions(
         ));
     }
     let base = base_url(&q.transfer_server);
-    let mut url = format!("{}/transactions?", base);
+    let mut url = format!("{base}/transactions?");
     if let Some(s) = &q.status {
-        url.push_str(&format!("status={}&", urlencoding::encode(s)));
+        write!(url, "status={}&", urlencoding::encode(s)).unwrap();
     }
     if let Some(l) = q.limit {
-        url.push_str(&format!("limit={}&", l));
+        write!(url, "limit={l}&").unwrap();
     }
     if let Some(c) = &q.cursor {
-        url.push_str(&format!("cursor={}&", urlencoding::encode(c)));
+        write!(url, "cursor={}&", urlencoding::encode(c)).unwrap();
     }
     let url = url.trim_end_matches('&').trim_end_matches('?');
 
     let mut req = state.client.get(url);
     if let Some(jwt) = &q.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .send()
@@ -226,7 +290,7 @@ pub async fn get_transactions(
     Ok(Json(data))
 }
 
-/// GET /api/sep31/transactions/:id?transfer_server=&jwt=
+/// GET /`api/sep31/transactions/:id?transfer_server=&jwt`=
 #[derive(Debug, Deserialize)]
 pub struct GetTransactionQuery {
     pub transfer_server: String,
@@ -234,6 +298,23 @@ pub struct GetTransactionQuery {
     pub jwt: Option<String>,
 }
 
+/// GET /api/sep31/transactions/{id} - Get a specific SEP-31 transaction
+#[utoipa::path(
+    get,
+    path = "/api/sep31/transactions/{id}",
+    params(
+        ("id" = String, Path, description = "Transaction ID"),
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT authentication token")
+    ),
+    responses(
+        (status = 200, description = "Transaction details"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 404, description = "Transaction not found"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn get_transaction(
     State(state): State<Sep31State>,
     Path(id): Path<String>,
@@ -252,7 +333,7 @@ pub async fn get_transaction(
 
     let mut req = state.client.get(&url);
     if let Some(jwt) = &q.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .send()
@@ -271,7 +352,7 @@ pub async fn get_transaction(
     Ok(Json(data))
 }
 
-/// GET /api/sep31/customer?transfer_server=&jwt=&id= - KYC customer fetch
+/// GET /`api/sep31/customer?transfer_server=&jwt=&id`= - KYC customer fetch
 #[derive(Debug, Deserialize)]
 pub struct CustomerQuery {
     pub transfer_server: String,
@@ -280,6 +361,22 @@ pub struct CustomerQuery {
     pub id: String,
 }
 
+/// GET /api/sep31/customer - Get KYC customer information
+#[utoipa::path(
+    get,
+    path = "/api/sep31/customer",
+    params(
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT authentication token"),
+        ("id" = String, Query, description = "Customer ID")
+    ),
+    responses(
+        (status = 200, description = "Customer information"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn get_customer(
     State(state): State<Sep31State>,
     Query(q): Query<CustomerQuery>,
@@ -297,7 +394,7 @@ pub async fn get_customer(
 
     let mut req = state.client.get(&url);
     if let Some(jwt) = &q.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .send()
@@ -326,6 +423,18 @@ pub struct PutCustomerBody {
     pub payload: Value,
 }
 
+/// PUT /api/sep31/customer - Update KYC customer information
+#[utoipa::path(
+    put,
+    path = "/api/sep31/customer",
+    request_body = PutCustomerBody,
+    responses(
+        (status = 200, description = "Customer updated successfully"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn put_customer(
     State(state): State<Sep31State>,
     Json(body): Json<PutCustomerBody>,
@@ -338,7 +447,7 @@ pub async fn put_customer(
     let url = format!("{}/customer", base_url(&body.transfer_server));
     let mut req = state.client.put(&url);
     if let Some(jwt) = &body.jwt {
-        req = req.header("Authorization", format!("Bearer {}", jwt));
+        req = req.header("Authorization", format!("Bearer {jwt}"));
     }
     let resp = req
         .json(&body.payload)
@@ -366,6 +475,15 @@ pub struct Sep31AnchorInfo {
     pub home_domain: Option<String>,
 }
 
+/// GET /api/sep31/anchors - List configured SEP-31 anchors
+#[utoipa::path(
+    get,
+    path = "/api/sep31/anchors",
+    responses(
+        (status = 200, description = "List of configured SEP-31 anchors")
+    ),
+    tag = "SEP-31"
+)]
 pub async fn list_anchors() -> Json<Value> {
     let anchors: Vec<Sep31AnchorInfo> = if let Ok(s) = std::env::var("SEP31_ANCHORS") {
         serde_json::from_str(&s).unwrap_or_default()
@@ -385,15 +503,15 @@ pub enum Sep31Error {
 impl IntoResponse for Sep31Error {
     fn into_response(self) -> axum::response::Response {
         let (status, body) = match &self {
-            Sep31Error::Forbidden(msg) => (
+            Self::Forbidden(msg) => (
                 StatusCode::FORBIDDEN,
                 serde_json::json!({ "error": "forbidden", "message": msg }),
             ),
-            Sep31Error::Proxy(msg) => (
+            Self::Proxy(msg) => (
                 StatusCode::BAD_GATEWAY,
                 serde_json::json!({ "error": "proxy", "message": msg }),
             ),
-            Sep31Error::Anchor(code, data) => {
+            Self::Anchor(code, data) => {
                 let status = StatusCode::from_u16(*code).unwrap_or(StatusCode::BAD_GATEWAY);
                 (status, data.clone())
             }

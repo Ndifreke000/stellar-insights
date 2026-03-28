@@ -1,4 +1,7 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic)]
 
 use super::*;
 use analytics::AnalyticsContractClient;
@@ -249,7 +252,8 @@ fn test_parameter_proposal_set_paused_execution() {
     analytics_client.initialize(&admin);
     gov_client.initialize(&admin, &2, &1000);
 
-    analytics_client.set_governance(&admin, &governance_id);
+    analytics_client
+        .set_governance(&admin, &governance_id);
 
     assert!(!analytics_client.is_paused());
 
@@ -290,7 +294,7 @@ fn test_create_parameter_proposal() {
         &admin,
         &title,
         &target,
-        &ParameterAction::SetAdmin(new_admin),
+        &ParameterAction::SetAdmin(new_admin.clone()),
     );
     assert_eq!(proposal_id, 1);
 

@@ -87,7 +87,7 @@ export function ConsentManager({ onClose }: ConsentManagerProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
           >
             <svg
               className="w-6 h-6"
@@ -136,11 +136,11 @@ export function ConsentManager({ onClose }: ConsentManagerProps) {
                 <h3 className="font-medium text-gray-900 dark:text-white">
                   {labels.title}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
                   {labels.description}
                 </p>
                 {consent.granted_at && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
                     Granted on:{" "}
                     {new Date(consent.granted_at).toLocaleDateString()}
                   </p>

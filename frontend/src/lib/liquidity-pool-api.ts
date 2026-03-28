@@ -2,6 +2,7 @@
  * Liquidity Pool API Client
  * Handles all liquidity pool data fetching from the backend
  */
+import { logger } from "@/lib/logger";
 
 export interface LiquidityPool {
   pool_id: string;
@@ -70,7 +71,7 @@ async function safeFetch<T>(url: string, fallback: T): Promise<T> {
       (error.message.includes("Failed to fetch") ||
         error.message.includes("Network request failed"));
     if (!isNetworkError) {
-      console.error(`Failed to fetch ${url}:`, error);
+      logger.error(`Failed to fetch ${url}:`, error);
     }
     return fallback;
   }

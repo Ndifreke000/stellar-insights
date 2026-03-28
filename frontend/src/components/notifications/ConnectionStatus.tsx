@@ -56,7 +56,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
     return {
       icon: WifiOff,
       label: 'Disconnected',
-      color: 'text-gray-400',
+      color: 'text-muted-foreground',
       bgColor: 'bg-gray-100 dark:bg-gray-800',
       borderColor: 'border-gray-200 dark:border-gray-700',
       animate: false,

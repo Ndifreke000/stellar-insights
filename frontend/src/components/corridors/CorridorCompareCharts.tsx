@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import {
   LineChart,
   Line,
@@ -13,7 +12,7 @@ import {
   BarChart,
   Bar,
 } from "recharts";
-import { CorridorDetailData } from "@/lib/api";
+import { CorridorDetailData } from "@/lib/api/corridors";
 
 interface CompareChartsProps {
   corridors: CorridorDetailData[];

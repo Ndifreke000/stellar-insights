@@ -19,6 +19,7 @@ import {
   fetchTrustlineRankings,
   fetchTrustlineHistory,
 } from "@/lib/trustline-api";
+import { logger } from "@/lib/logger";
 
 export default function TrustlinesPage() {
   const [stats, setStats] = useState<TrustlineMetrics | null>(null);
@@ -51,7 +52,7 @@ export default function TrustlinesPage() {
           setHistory(historyData);
         }
       } catch (error) {
-        console.error("Error loading trustline data:", error);
+        logger.error("Error loading trustline data:", error);
       } finally {
         setLoading(false);
       }

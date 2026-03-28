@@ -1,24 +1,33 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { 
-  BaseNotification, 
-  NotificationContextType, 
-  NotificationPreferences, 
+import React, {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  BaseNotification,
+  NotificationContextType,
+  NotificationPreferences,
   ToastNotification,
   WebSocketNotificationPayload,
-  NotificationPriority
-} from '@/types/notifications';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { useNotificationSound } from '@/hooks/useNotificationSound';
-import { useWebSocket } from '@/hooks/useWebSocket';
+  NotificationPriority,
+} from "@/types/notifications";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useNotificationSound } from "@/hooks/useNotificationSound";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { logger } from "@/lib/logger";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   enabled: true,
   sound: {
     enabled: true,
     volume: 0.5,
-    soundType: 'default',
+    soundType: "default",
   },
   showOnDesktop: true,
   autoHide: true,
@@ -31,7 +40,9 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   },
 };
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+const NotificationContext = createContext<NotificationContextType | undefined>(
+  undefined,
+);
 
 interface NotificationProviderProps {
   children: React.ReactNode;
@@ -40,15 +51,27 @@ interface NotificationProviderProps {
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   children,
-  websocketUrl = process.env.NEXT_PUBLIC_WS_URL || '' // Disable WebSocket by default
+  websocketUrl = process.env.NEXT_PUBLIC_WS_URL || "", // Disable WebSocket by default
 }) => {
-  const [notifications, setNotifications] = useLocalStorage<BaseNotification[]>('stellar-notifications', []);
-  const [preferences, setPreferences] = useLocalStorage<NotificationPreferences>('stellar-notification-preferences', DEFAULT_PREFERENCES);
+  const [notifications, setNotifications] = useLocalStorage<BaseNotification[]>(
+    "stellar-notifications",
+    [],
+  );
+  const [preferences, setPreferences] =
+    useLocalStorage<NotificationPreferences>(
+      "stellar-notification-preferences",
+      DEFAULT_PREFERENCES,
+    );
   const { playSound } = useNotificationSound();
   const [isClient, setIsClient] = useState(false);
 
   // Ref to hold showToast function to break circular dependency
-  const showToastRef = useRef<((notification: Omit<ToastNotification, 'id' | 'timestamp' | 'read'>) => string) | null>(null);
+  const showToastRef = useRef<
+    | ((
+        notification: Omit<ToastNotification, "id" | "timestamp" | "read">,
+      ) => string)
+    | null
+  >(null);
 
   // Only initialize client-side features after hydration
   useEffect(() => {
@@ -61,54 +84,62 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     return `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
-  const showToast = useCallback((
-    notification: Omit<ToastNotification, 'id' | 'timestamp' | 'read'>
-  ): string => {
-    if (!isClient) return ''; // Don't show toasts during SSR
-    
-    const id = generateId();
-    const newNotification: BaseNotification = {
-      ...notification,
-      id,
-      timestamp: new Date(),
-      read: false,
-    };
+  const showToast = useCallback(
+    (
+      notification: Omit<ToastNotification, "id" | "timestamp" | "read">,
+    ): string => {
+      if (!isClient) return ""; // Don't show toasts during SSR
 
-    setNotifications(prev => [newNotification, ...prev]);
+      const id = generateId();
+      const newNotification: BaseNotification = {
+        ...notification,
+        id,
+        timestamp: new Date(),
+        read: false,
+      };
 
-    // Play sound if enabled
-    if (preferences.sound.enabled) {
-      playSound(preferences.sound, notification.type, notification.priority);
-    }
+      setNotifications((prev) => [newNotification, ...prev]);
 
-    // Show desktop notification if enabled and permission granted
-    if (preferences.showOnDesktop && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        const desktopNotification = new Notification(notification.title, {
-          body: notification.message,
-          icon: '/icon.svg',
-          tag: id,
-          requireInteraction: notification.priority === 'critical',
-        });
-
-        desktopNotification.onclick = () => {
-          window.focus();
-          desktopNotification.close();
-        };
-
-        // Auto-close desktop notification
-        if (notification.priority !== 'critical') {
-          setTimeout(() => {
-            desktopNotification.close();
-          }, preferences.autoHideDelay);
-        }
-      } catch (error) {
-        console.warn('Failed to show desktop notification:', error);
+      // Play sound if enabled
+      if (preferences.sound.enabled) {
+        playSound(preferences.sound, notification.type, notification.priority);
       }
-    }
 
-    return id;
-  }, [generateId, preferences, setNotifications, playSound, isClient]);
+      // Show desktop notification if enabled and permission granted
+      if (
+        preferences.showOnDesktop &&
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        try {
+          const desktopNotification = new Notification(notification.title, {
+            body: notification.message,
+            icon: "/icon.svg",
+            tag: id,
+            requireInteraction: notification.priority === "critical",
+          });
+
+          desktopNotification.onclick = () => {
+            window.focus();
+            desktopNotification.close();
+          };
+
+          // Auto-close desktop notification
+          if (notification.priority !== "critical") {
+            setTimeout(() => {
+              desktopNotification.close();
+            }, preferences.autoHideDelay);
+          }
+        } catch (error) {
+          logger.warn("Failed to show desktop notification:", error);
+        }
+      }
+
+      return id;
+    },
+    [generateId, preferences, setNotifications, playSound, isClient],
+  );
 
   // Keep ref updated with latest showToast
   useEffect(() => {
@@ -116,89 +147,108 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, [showToast]);
 
   // WebSocket connection for real-time notifications
-  const handleWebSocketMessage = useCallback((payload: WebSocketNotificationPayload) => {
-    if (!isClient) return; // Don't handle messages during SSR
+  const handleWebSocketMessage = useCallback(
+    (payload: WebSocketNotificationPayload) => {
+      if (!isClient) return; // Don't handle messages during SSR
 
-    const categoryMap = {
-      'payment_failed': 'payments' as const,
-      'low_liquidity': 'liquidity' as const,
-      'new_snapshot': 'snapshots' as const,
-      'system_alert': 'system' as const,
-    };
+      const categoryMap = {
+        payment_failed: "payments" as const,
+        low_liquidity: "liquidity" as const,
+        new_snapshot: "snapshots" as const,
+        system_alert: "system" as const,
+      };
 
-    const typeMap = {
-      'payment_failed': 'error' as const,
-      'low_liquidity': 'warning' as const,
-      'new_snapshot': 'info' as const,
-      'system_alert': 'warning' as const,
-    };
+      const typeMap = {
+        payment_failed: "error" as const,
+        low_liquidity: "warning" as const,
+        new_snapshot: "info" as const,
+        system_alert: "warning" as const,
+      };
 
-    const category = categoryMap[payload.type];
-    const type = typeMap[payload.type];
+      const category = categoryMap[payload.type];
+      const type = typeMap[payload.type];
 
-    // Check if this category is enabled
-    if (!preferences.enabled || !preferences.categories[category]) {
-      return;
-    }
+      // Check if this category is enabled
+      if (!preferences.enabled || !preferences.categories[category]) {
+        return;
+      }
 
-    // Use ref to avoid circular dependency
-    showToastRef.current?.({
-      type,
-      priority: payload.data.priority,
-      title: payload.data.title,
-      message: payload.data.message,
-      category,
-      metadata: payload.data.metadata,
-    });
-  }, [preferences, isClient]);
+      // Use ref to avoid circular dependency
+      showToastRef.current?.({
+        type,
+        priority: payload.data.priority,
+        title: payload.data.title,
+        message: payload.data.message,
+        category,
+        metadata: payload.data.metadata,
+      });
+    },
+    [preferences, isClient],
+  );
 
   const { isConnected, reconnectCount } = useWebSocket({
     url: websocketUrl,
     onMessage: handleWebSocketMessage,
     onConnect: () => {
-      if (isClient) console.log('WebSocket connected for notifications');
+      if (isClient) logger.debug("WebSocket connected for notifications");
     },
     onDisconnect: () => {
-      if (isClient) console.log('WebSocket disconnected');
+      if (isClient) logger.debug("WebSocket disconnected");
     },
     onError: (error) => {
-      if (isClient) console.error('WebSocket error:', error);
+      if (isClient) logger.error("WebSocket error:", error);
     },
   });
 
-  const dismissToast = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, [setNotifications]);
+  const dismissToast = useCallback(
+    (id: string) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    },
+    [setNotifications],
+  );
 
-  const markAsRead = useCallback((id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-  }, [setNotifications]);
+  const markAsRead = useCallback(
+    (id: string) => {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+    },
+    [setNotifications],
+  );
 
   const markAllAsRead = useCallback(() => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, [setNotifications]);
 
-  const clearNotification = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, [setNotifications]);
+  const clearNotification = useCallback(
+    (id: string) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    },
+    [setNotifications],
+  );
 
   const clearAllNotifications = useCallback(() => {
     setNotifications([]);
   }, [setNotifications]);
 
-  const updatePreferences = useCallback((newPreferences: Partial<NotificationPreferences>) => {
-    setPreferences(prev => ({ ...prev, ...newPreferences }));
-  }, [setPreferences]);
+  const updatePreferences = useCallback(
+    (newPreferences: Partial<NotificationPreferences>) => {
+      setPreferences((prev) => ({ ...prev, ...newPreferences }));
+    },
+    [setPreferences],
+  );
 
   // Request notification permission on mount (client-side only)
   useEffect(() => {
     if (!isClient) return;
-    
-    if (preferences.showOnDesktop && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'denied') {
+
+    if (
+      preferences.showOnDesktop &&
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "denied") {
           updatePreferences({ showOnDesktop: false });
         }
       });
@@ -207,28 +257,32 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // Clean up old notifications (keep last 100) - use a ref to avoid infinite loops
   const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   useEffect(() => {
     if (!isClient) return;
-    
+
     if (notifications.length > 100) {
       // Debounce the cleanup to avoid excessive operations
       if (cleanupTimeoutRef.current) {
         clearTimeout(cleanupTimeoutRef.current);
       }
-      
+
       cleanupTimeoutRef.current = setTimeout(() => {
-        setNotifications(prev => {
+        setNotifications((prev) => {
           if (prev.length > 100) {
             return [...prev]
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              .sort(
+                (a, b) =>
+                  new Date(b.timestamp).getTime() -
+                  new Date(a.timestamp).getTime(),
+              )
               .slice(0, 100);
           }
           return prev;
         });
       }, 1000);
     }
-    
+
     return () => {
       if (cleanupTimeoutRef.current) {
         clearTimeout(cleanupTimeoutRef.current);
@@ -239,21 +293,21 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // Show connection status notifications only if WebSocket URL is provided (client-side only)
   useEffect(() => {
     if (!isClient) return;
-    
+
     if (websocketUrl && reconnectCount > 0) {
       showToast({
-        type: 'warning',
-        priority: 'medium',
-        title: 'Connection Issues',
+        type: "warning",
+        priority: "medium",
+        title: "Connection Issues",
         message: `Attempting to reconnect... (${reconnectCount}/5)`,
-        category: 'system',
+        category: "system",
         duration: 3000,
       });
     }
   }, [reconnectCount, showToast, websocketUrl, isClient]);
 
   const unreadCount = useMemo(() => {
-    return notifications.filter(n => !n.read).length;
+    return notifications.filter((n) => !n.read).length;
   }, [notifications]);
 
   const contextValue: NotificationContextType = {
@@ -281,7 +335,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 export const useNotifications = (): NotificationContextType => {
   const context = useContext(NotificationContext);
   if (context === undefined) {
-    throw new Error('useNotifications must be used within a NotificationProvider');
+    throw new Error(
+      "useNotifications must be used within a NotificationProvider",
+    );
   }
   return context;
 };

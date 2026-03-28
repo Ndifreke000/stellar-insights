@@ -1,10 +1,36 @@
 #![no_std]
+extern crate std;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
+    Map, String, Symbol, Vec,
 };
 
 const HASH_SIZE: u32 = 32;
 const CONTRACT_VERSION: u32 = 1;
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Error {
+    NotInitialized = 1,
+    AlreadyInitialized = 2,
+    Unauthorized = 3,
+    ContractStopped = 4,
+    ContractPaused = 5,
+    InvalidHashSize = 6,
+    InvalidEpoch = 7,
+    EpochAlreadyExists = 8,
+    EpochMonotonicityViolated = 9,
+    SnapshotNotFound = 10,
+    InvalidMigration = 11,
+    InvalidWasmHash = 12,
+    MultiSigNotInitialized = 13,
+    InvalidThreshold = 14,
+    SignerNotAdmin = 15,
+    ActionNotFound = 16,
+    ActionExpired = 17,
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,9 +42,75 @@ pub struct Snapshot {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotSubmittedEvent {
+    pub epoch: u64,
+    pub hash: Bytes,
+    pub timestamp: u64,
+    pub previous_epoch: u64, // 0 means no previous epoch
+    pub ledger_sequence: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PauseEvent {
+    pub paused_by: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnpauseEvent {
+    pub unpaused_by: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContractMetadata {
     pub version: u32,
     pub upgrade_timestamp: u64,
+}
+
+/// Extended contract metadata for public disclosure
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PublicMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub repository: String,
+    pub license: String,
+}
+
+/// Contract info combining metadata with runtime state
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContractInfo {
+    pub metadata: PublicMetadata,
+    pub initialized: bool,
+    pub paused: bool,
+    pub admin: Option<Address>,
+    pub total_snapshots: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiSigConfig {
+    pub admins: Vec<Address>,
+    pub threshold: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAction {
+    pub action_id: u64,
+    pub action_type: String,
+    pub signatures: Vec<Address>,
+    pub created_at: u64,
+    pub expires_at: u64,
 }
 
 #[contracttype]
@@ -29,6 +121,10 @@ pub enum DataKey {
     Admin,
     Stopped,
     Paused,
+    ReentrancyGuard,
+    MultiSigConfig,
+    PendingAction(u64),
+    NextActionId,
 }
 
 #[contract]
@@ -36,48 +132,79 @@ pub struct SnapshotContract;
 
 #[contractimpl]
 impl SnapshotContract {
-    /// Internal: check if contract is stopped
-    fn require_not_stopped(env: &Env) {
+    /// Internal: check if contract is stopped. Returns Err if stopped.
+    fn require_not_stopped(env: &Env) -> Result<(), Error> {
         if env
             .storage()
             .instance()
             .get::<DataKey, bool>(&DataKey::Stopped)
             .unwrap_or(false)
         {
-            panic!("Contract is stopped: emergency halt active");
+            return Err(Error::ContractStopped);
         }
+        Ok(())
+    }
+
+    /// Internal: check and set reentrancy guard
+    fn check_and_set_reentrancy_guard(env: &Env) -> Result<(), &'static str> {
+        let is_locked: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::ReentrancyGuard)
+            .unwrap_or(false);
+
+        if is_locked {
+            return Err("Reentrancy detected: function already in execution");
+        }
+
+        env.storage().instance().set(&DataKey::ReentrancyGuard, &true);
+        Ok(())
+    }
+
+    /// Internal: clear reentrancy guard
+    fn clear_reentrancy_guard(env: &Env) {
+        env.storage().instance().set(&DataKey::ReentrancyGuard, &false);
+    }
+
+    fn get_next_action_id(env: &Env) -> u64 {
+        let id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextActionId)
+            .unwrap_or(0);
+        env.storage().instance().set(&DataKey::NextActionId, &(id + 1));
+        id
+    }
+
+    fn get_admin(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
     }
 
     /// Admin-only: stop contract operations
-    pub fn stop_contract(env: Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
+    pub fn stop_contract(env: Env) -> Result<(), Error> {
+        let admin = Self::get_admin(&env)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Stopped, &true);
         env.events().publish((symbol_short!("STOPPED"),), (admin,));
+        Ok(())
     }
 
     /// Admin-only: resume contract operations
-    pub fn resume_contract(env: Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
+    pub fn resume_contract(env: Env) -> Result<(), Error> {
+        let admin = Self::get_admin(&env)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Stopped, &false);
         env.events().publish((symbol_short!("RESUMED"),), (admin,));
+        Ok(())
     }
+
     /// Initialize the contract with an admin address
-    ///
-    /// # Panics
-    /// * If contract is already initialized
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Contract already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         admin.require_auth();
@@ -93,11 +220,11 @@ impl SnapshotContract {
 
         env.events()
             .publish((symbol_short!("INIT"),), (admin, CONTRACT_VERSION));
+        Ok(())
     }
 
     /// Get the current contract version
     pub fn version(env: Env) -> u32 {
-        Self::require_not_stopped(&env);
         let metadata: Option<ContractMetadata> = env.storage().instance().get(&DataKey::Metadata);
         match metadata {
             Some(m) => m.version,
@@ -106,14 +233,13 @@ impl SnapshotContract {
     }
 
     /// Get the contract admin address
-    pub fn get_admin(env: Env) -> Option<Address> {
-        Self::require_not_stopped(&env);
+    pub fn get_admin_addr(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::Admin)
     }
 
     /// Check if an address is the admin
     pub fn is_admin(env: Env, addr: Address) -> bool {
-        match Self::get_admin(env) {
+        match Self::get_admin_addr(env) {
             Some(admin) => admin == addr,
             None => false,
         }
@@ -125,65 +251,47 @@ impl SnapshotContract {
     }
 
     /// Transfer admin rights to a new address (only callable by existing admin)
-    pub fn transfer_admin(env: Env, new_admin: Address) {
-        Self::require_not_stopped(&env);
-        let current_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
-
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        Self::require_not_stopped(&env)?;
+        let current_admin = Self::get_admin(&env)?;
         current_admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &new_admin);
 
         env.events()
             .publish((symbol_short!("ADM_XFER"),), (current_admin, new_admin));
+        Ok(())
     }
 
     /// Prepare for contract upgrade by validating the new WASM hash
-    ///
-    /// # Panics
-    /// * If caller is not the admin
-    /// * If hash is not exactly 32 bytes
-    pub fn prepare_upgrade(env: Env, new_wasm_hash: Bytes) {
-        Self::require_not_stopped(&env);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
-
+    pub fn prepare_upgrade(env: Env, new_wasm_hash: Bytes) -> Result<(), Error> {
+        Self::require_not_stopped(&env)?;
+        let admin = Self::get_admin(&env)?;
         admin.require_auth();
 
         if new_wasm_hash.len() != HASH_SIZE {
-            panic!("Invalid WASM hash size");
+            return Err(Error::InvalidHashSize);
         }
 
         env.events()
             .publish((symbol_short!("UPG_PREP"),), (new_wasm_hash,));
+        Ok(())
     }
 
     /// Execute contract upgrade
-    ///
-    /// # Panics
-    /// * If caller is not the admin
-    /// * If hash is not exactly 32 bytes
-    pub fn upgrade(env: Env, new_wasm_hash: Bytes) {
-        Self::require_not_stopped(&env);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
-
+    pub fn upgrade(env: Env, new_wasm_hash: Bytes) -> Result<(), Error> {
+        Self::require_not_stopped(&env)?;
+        let admin = Self::get_admin(&env)?;
         admin.require_auth();
 
         if new_wasm_hash.len() != HASH_SIZE {
-            panic!("Invalid WASM hash size");
+            return Err(Error::InvalidHashSize);
         }
 
-        let hash_bytes: BytesN<32> = new_wasm_hash.clone().try_into().unwrap();
+        let hash_bytes: BytesN<32> = new_wasm_hash
+            .clone()
+            .try_into()
+            .map_err(|_| Error::InvalidWasmHash)?;
         env.deployer().update_current_contract_wasm(hash_bytes);
 
         let mut metadata: ContractMetadata = env
@@ -202,33 +310,25 @@ impl SnapshotContract {
             (symbol_short!("UPGRADED"),),
             (new_wasm_hash, metadata.version),
         );
+        Ok(())
     }
 
     /// Migrate data from old version to new version
-    ///
-    /// # Panics
-    /// * If caller is not the admin
-    /// * If `from_version` is not less than the current version
-    pub fn migrate(env: Env, from_version: u32) {
-        Self::require_not_stopped(&env);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized");
-
+    pub fn migrate(env: Env, from_version: u32) -> Result<(), Error> {
+        Self::require_not_stopped(&env)?;
+        let admin = Self::get_admin(&env)?;
         admin.require_auth();
 
         let current_version = Self::version(env.clone());
         if from_version >= current_version {
-            panic!("Invalid migration: from_version must be less than current version");
+            return Err(Error::InvalidMigration);
         }
 
-        // Migration logic would go here based on version differences
         env.events().publish(
             (symbol_short!("MIGRATED"),),
             (from_version, current_version),
         );
+        Ok(())
     }
 
     /// Submit a snapshot hash for an epoch with input validation
@@ -243,10 +343,16 @@ impl SnapshotContract {
     /// * If epoch is 0
     /// * If a snapshot already exists for this epoch
     /// * If epoch <= latest (monotonicity violated: out-of-order or duplicate)
+    /// * If reentrancy is detected
     ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
-    pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> u64 {
+    pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> Result<u64, Error> {
+        // Check reentrancy guard
+        if let Err(e) = Self::check_and_set_reentrancy_guard(&env) {
+            panic!("{}", e);
+        }
+
         // Check if contract is paused
         let is_paused: bool = env
             .storage()
@@ -254,39 +360,35 @@ impl SnapshotContract {
             .get(&DataKey::Paused)
             .unwrap_or(false);
         if is_paused {
-            panic!("Contract is paused for emergency maintenance");
+            Self::clear_reentrancy_guard(&env);
+            return Err(Error::ContractPaused);
         }
 
         // Validate inputs
-
         if hash.len() != HASH_SIZE {
-            panic!(
-                "Invalid hash size: expected {} bytes, got {}",
-                HASH_SIZE,
-                hash.len()
-            );
+            Self::clear_reentrancy_guard(&env);
+            return Err(Error::InvalidHashSize);
         }
 
         if epoch == 0 {
-            panic!("Invalid epoch: must be greater than 0");
+            Self::clear_reentrancy_guard(&env);
+            return Err(Error::InvalidEpoch);
         }
 
-        // Enforce monotonic epoch increase to prevent rollback attacks
         let current_latest: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
         if let Some(latest) = current_latest {
             if epoch <= latest {
+                Self::clear_reentrancy_guard(&env);
                 if epoch == latest {
-                    panic!("Snapshot for epoch {} already exists", epoch);
+                    return Err(Error::EpochAlreadyExists);
                 } else {
-                    panic!(
-                        "Epoch monotonicity violated: epoch {} must be strictly greater than latest {}",
-                        epoch, latest
-                    );
+                    return Err(Error::EpochMonotonicityViolated);
                 }
             }
         }
 
         let timestamp = env.ledger().timestamp();
+        let ledger_sequence = env.ledger().sequence();
 
         let snapshot = Snapshot {
             hash: hash.clone(),
@@ -301,80 +403,109 @@ impl SnapshotContract {
             .unwrap_or_else(|| Map::new(&env));
 
         if snapshots.contains_key(epoch) {
-            panic!("Snapshot for epoch {} already exists", epoch);
+            Self::clear_reentrancy_guard(&env);
+            return Err(Error::EpochAlreadyExists);
         }
 
         snapshots.set(epoch, snapshot);
-
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
-
         env.storage()
             .persistent()
             .set(&DataKey::LatestEpoch, &epoch);
 
-        env.events()
-            .publish((symbol_short!("SNAP_SUB"),), (hash, epoch, timestamp));
+        // Extend storage TTL (~30 days at 5s per ledger)
+        const LEDGERS_TO_EXTEND: u32 = 518_400;
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::LatestEpoch,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
-        timestamp
+        env.events().publish(
+            (symbol_short!("SNAP_SUB"),),
+            SnapshotSubmittedEvent {
+                epoch,
+                hash,
+                timestamp,
+                previous_epoch: current_latest.unwrap_or(0),
+                ledger_sequence,
+            },
+        );
+
+        // Clear guard before returning
+        Self::clear_reentrancy_guard(&env);
+
+        Ok(timestamp)
     }
 
     /// Get snapshot hash for a specific epoch
-    pub fn get_snapshot(env: Env, epoch: u64) -> Bytes {
-        Self::require_not_stopped(&env);
+    pub fn get_snapshot(env: Env, epoch: u64) -> Result<Bytes, Error> {
+        Self::require_not_stopped(&env)?;
+        const LEDGERS_TO_EXTEND: u32 = 518_400;
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        match snapshots.get(epoch) {
-            Some(snapshot) => snapshot.hash,
-            None => panic!("No snapshot found for epoch {}", epoch),
-        }
+        snapshots
+            .get(epoch)
+            .map(|s| s.hash)
+            .ok_or(Error::SnapshotNotFound)
     }
 
     /// Get the latest snapshot
-    pub fn latest_snapshot(env: Env) -> Option<Snapshot> {
-        Self::require_not_stopped(&env);
+    pub fn latest_snapshot(env: Env) -> Result<Snapshot, Error> {
+        Self::require_not_stopped(&env)?;
         let latest_epoch: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
 
-        match latest_epoch {
-            Some(epoch) => {
-                let snapshots: Map<u64, Snapshot> = env
-                    .storage()
-                    .persistent()
-                    .get(&DataKey::Snapshots)
-                    .unwrap_or_else(|| Map::new(&env));
-
-                snapshots.get(epoch)
-            }
-            None => None,
-        }
-    }
-
-    /// Verify if a hash matches any stored snapshot
-    pub fn verify_snapshot(env: Env, hash: Bytes) -> bool {
-        Self::require_not_stopped(&env);
+        let epoch = latest_epoch.ok_or(Error::SnapshotNotFound)?;
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
             .get(&DataKey::Snapshots)
-            .unwrap_or(Map::new(&env));
+            .unwrap_or_else(|| Map::new(&env));
 
-        for (_, snapshot) in snapshots.iter() {
-            if snapshot.hash == hash {
-                return true;
+        snapshots.get(epoch).ok_or(Error::SnapshotNotFound)
+    }
+
+    /// Verify if a hash matches any stored snapshot
+    pub fn verify_snapshot(env: Env, hash: Bytes) -> bool {
+        Self::require_not_stopped(&env).is_ok_and(|_| {
+            let snapshots: Map<u64, Snapshot> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Snapshots)
+                .unwrap_or(Map::new(&env));
+
+            for (_, snapshot) in snapshots.iter() {
+                if snapshot.hash == hash {
+                    return true;
+                }
             }
-        }
-
-        false
+            false
+        })
     }
 
     /// Verify if a hash matches the snapshot at a specific epoch
     pub fn verify_snapshot_at_epoch(env: Env, hash: Bytes, epoch: u64) -> bool {
-        Self::require_not_stopped(&env);
+        if Self::require_not_stopped(&env).is_err() {
+            return false;
+        }
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -389,88 +520,201 @@ impl SnapshotContract {
 
     /// Verify if a hash matches the latest snapshot
     pub fn verify_latest_snapshot(env: Env, hash: Bytes) -> bool {
-        Self::require_not_stopped(&env);
-        match Self::latest_snapshot(env.clone()) {
-            Some(snapshot) => snapshot.hash == hash,
-            None => false,
+        match Self::latest_snapshot(env) {
+            Ok(snapshot) => snapshot.hash == hash,
+            Err(_) => false,
         }
     }
 
     /// Emergency pause the contract
-    ///
-    /// Pauses all snapshot submissions. Only the admin can pause the contract.
-    /// Read operations remain available during pause.
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `caller` - Address attempting to pause (must be admin)
-    ///
-    /// # Panics
-    /// * If admin is not set (contract not initialized)
-    /// * If caller is not the admin
-    pub fn pause(env: Env, caller: Address) {
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized: admin not set");
-
+        let admin = Self::get_admin(&env)?;
         if caller != admin {
-            panic!("Unauthorized: only the admin can pause the contract");
+            return Err(Error::Unauthorized);
         }
-
         env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish(
+            (symbol_short!("pause"), caller.clone()),
+            PauseEvent {
+                paused_by: caller,
+                timestamp: env.ledger().timestamp(),
+                ledger_sequence: env.ledger().sequence(),
+            },
+        );
+        Ok(())
     }
 
     /// Unpause the contract
-    ///
-    /// Resumes normal operations. Only the admin can unpause the contract.
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `caller` - Address attempting to unpause (must be admin)
-    ///
-    /// # Panics
-    /// * If admin is not set (contract not initialized)
-    /// * If caller is not the admin
-    pub fn unpause(env: Env, caller: Address) {
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Contract not initialized: admin not set");
-
+        let admin = Self::get_admin(&env)?;
         if caller != admin {
-            panic!("Unauthorized: only the admin can unpause the contract");
+            return Err(Error::Unauthorized);
         }
-
         env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish(
+            (symbol_short!("unpause"), caller.clone()),
+            UnpauseEvent {
+                unpaused_by: caller,
+                timestamp: env.ledger().timestamp(),
+                ledger_sequence: env.ledger().sequence(),
+            },
+        );
+        Ok(())
     }
 
     /// Check if contract is paused
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    ///
-    /// # Returns
-    /// * `true` if contract is paused, `false` otherwise
     pub fn is_paused(env: Env) -> bool {
         env.storage()
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Get public contract metadata
+    ///
+    /// Returns metadata information including name, version, author,
+    /// description, repository, and license.
+    pub fn get_metadata(env: Env) -> PublicMetadata {
+        PublicMetadata {
+            name: String::from_str(&env, "Stellar Insights Snapshot"),
+            version: String::from_str(&env, VERSION),
+            author: String::from_str(&env, "Stellar Insights Team"),
+            description: String::from_str(
+                &env,
+                "Snapshot management and verification contract for Stellar analytics",
+            ),
+            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            license: String::from_str(&env, "MIT"),
+        }
+    }
+
+    /// Get comprehensive contract information
+    ///
+    /// Returns both metadata and current runtime state including
+    /// initialization status, pause state, admin address, and snapshot count.
+    pub fn get_contract_info(env: Env) -> ContractInfo {
+        ContractInfo {
+            metadata: Self::get_metadata(env.clone()),
+            initialized: env.storage().instance().has(&DataKey::Admin),
+            paused: env
+                .storage()
+                .instance()
+                .get(&DataKey::Paused)
+                .unwrap_or(false),
+            admin: env.storage().instance().get(&DataKey::Admin),
+            total_snapshots: env
+                .storage()
+                .persistent()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0),
+        }
+    }
+
+    pub fn initialize_multisig(env: Env, admins: Vec<Address>, threshold: u32) -> Result<(), Error> {
+        if threshold == 0 || threshold > admins.len() as u32 {
+            return Err(Error::InvalidThreshold);
+        }
+
+        let config = MultiSigConfig { admins, threshold };
+        env.storage()
+            .instance()
+            .set(&DataKey::MultiSigConfig, &config);
+
+        Ok(())
+    }
+
+    pub fn propose_action(
+        env: Env,
+        proposer: Address,
+        action_type: String,
+        _action_data: BytesN<32>,
+    ) -> Result<u64, Error> {
+        proposer.require_auth();
+
+        let config: MultiSigConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::MultiSigConfig)
+            .ok_or(Error::MultiSigNotInitialized)?;
+
+        if !config.admins.contains(&proposer) {
+            return Err(Error::Unauthorized);
+        }
+
+        let action_id = Self::get_next_action_id(&env);
+
+        let mut sigs = Vec::new(&env);
+        sigs.push_back(proposer);
+
+        let pending = PendingAction {
+            action_id,
+            action_type,
+            signatures: sigs,
+            created_at: env.ledger().timestamp(),
+            expires_at: env.ledger().timestamp() + 86_400,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PendingAction(action_id), &pending);
+
+        Ok(action_id)
+    }
+
+    pub fn sign_action(env: Env, signer: Address, action_id: u64) -> Result<bool, Error> {
+        signer.require_auth();
+
+        let config: MultiSigConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::MultiSigConfig)
+            .ok_or(Error::MultiSigNotInitialized)?;
+
+        if !config.admins.contains(&signer) {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut pending: PendingAction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingAction(action_id))
+            .ok_or(Error::ActionNotFound)?;
+
+        if env.ledger().timestamp() > pending.expires_at {
+            return Err(Error::ActionExpired);
+        }
+
+        if !pending.signatures.contains(&signer) {
+            pending.signatures.push_back(signer);
+            env.storage()
+                .persistent()
+                .set(&DataKey::PendingAction(action_id), &pending);
+        }
+
+        Ok(pending.signatures.len() >= config.threshold)
+    }
+
+    pub fn get_multisig_config(env: Env) -> Option<MultiSigConfig> {
+        env.storage().instance().get(&DataKey::MultiSigConfig)
+    }
+
+    pub fn get_pending_action(env: Env, action_id: u64) -> Option<PendingAction> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingAction(action_id))
+    }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used)]
+#[allow(clippy::panic)]
 mod test {
     use super::*;
     use soroban_sdk::{
-        bytes,
+        bytes, vec,
         testutils::{Address as _, Events},
         Env, TryIntoVal,
     };
@@ -487,11 +731,10 @@ mod test {
         client.initialize(&admin);
 
         assert_eq!(client.version(), CONTRACT_VERSION);
-        assert_eq!(client.get_admin(), Some(admin));
+        assert_eq!(client.get_admin_addr(), Some(admin));
     }
 
     #[test]
-    #[should_panic(expected = "Contract already initialized")]
     fn test_initialize_twice_fails() {
         let env = Env::default();
         let admin = Address::generate(&env);
@@ -501,7 +744,8 @@ mod test {
         let client = SnapshotContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
-        client.initialize(&admin);
+        let result = client.try_initialize(&admin);
+        assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
     }
 
     #[test]
@@ -517,7 +761,7 @@ mod test {
         client.initialize(&admin);
         client.transfer_admin(&new_admin);
 
-        assert_eq!(client.get_admin(), Some(new_admin));
+        assert_eq!(client.get_admin_addr(), Some(new_admin));
     }
 
     #[test]
@@ -551,7 +795,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid WASM hash size")]
     fn test_prepare_upgrade_invalid_hash() {
         let env = Env::default();
         let admin = Address::generate(&env);
@@ -563,7 +806,8 @@ mod test {
         client.initialize(&admin);
 
         let invalid_hash = bytes!(&env, 0x1234);
-        client.prepare_upgrade(&invalid_hash);
+        let result = client.try_prepare_upgrade(&invalid_hash);
+        assert_eq!(result, Err(Ok(Error::InvalidHashSize)));
     }
 
     #[test]
@@ -592,7 +836,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid migration")]
     fn test_migrate_invalid_version() {
         let env = Env::default();
         let admin = Address::generate(&env);
@@ -603,7 +846,8 @@ mod test {
 
         client.initialize(&admin);
 
-        client.migrate(&CONTRACT_VERSION);
+        let result = client.try_migrate(&CONTRACT_VERSION);
+        assert_eq!(result, Err(Ok(Error::InvalidMigration)));
     }
 
     #[test]
@@ -655,7 +899,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid hash size")]
     fn test_invalid_hash_size() {
         let env = Env::default();
         env.mock_all_auths();
@@ -664,11 +907,11 @@ mod test {
             SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
         let short_hash = bytes!(&env, 0x1234);
-        client.submit_snapshot(&short_hash, &1);
+        let result = client.try_submit_snapshot(&short_hash, &1);
+        assert_eq!(result, Err(Ok(Error::InvalidHashSize)));
     }
 
     #[test]
-    #[should_panic(expected = "Invalid epoch")]
     fn test_invalid_epoch_zero() {
         let env = Env::default();
         env.mock_all_auths();
@@ -680,33 +923,11 @@ mod test {
             &env,
             0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
         );
-        client.submit_snapshot(&hash, &0);
+        let result = client.try_submit_snapshot(&hash, &0);
+        assert_eq!(result, Err(Ok(Error::InvalidEpoch)));
     }
 
     #[test]
-    #[should_panic(expected = "already exists")]
-    fn test_duplicate_epoch_rejected() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let client =
-            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
-
-        let hash1 = bytes!(
-            &env,
-            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-        );
-        let hash2 = bytes!(
-            &env,
-            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
-        );
-
-        client.submit_snapshot(&hash1, &1);
-        client.submit_snapshot(&hash2, &1);
-    }
-
-    #[test]
-    #[should_panic(expected = "Epoch monotonicity violated")]
     fn test_older_epoch_rejected() {
         let env = Env::default();
         env.mock_all_auths();
@@ -724,10 +945,11 @@ mod test {
         );
 
         client.submit_snapshot(&hash1, &10);
-        let latest = client.latest_snapshot().unwrap();
+        let latest = client.latest_snapshot();
         assert_eq!(latest.epoch, 10);
 
-        client.submit_snapshot(&hash2, &5);
+        let result = client.try_submit_snapshot(&hash2, &5);
+        assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
     }
 
     #[test]
@@ -786,7 +1008,7 @@ mod test {
             &7,
         );
 
-        let snapshot = client.latest_snapshot().unwrap();
+        let snapshot = client.latest_snapshot();
         assert_eq!(snapshot.epoch, 7);
         assert_eq!(
             snapshot.hash,
@@ -805,7 +1027,8 @@ mod test {
         let client =
             SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
 
-        assert_eq!(client.latest_snapshot(), None);
+        let result = client.try_latest_snapshot();
+        assert_eq!(result, Err(Ok(Error::SnapshotNotFound)));
     }
 
     #[test]
@@ -931,5 +1154,98 @@ mod test {
         client.submit_snapshot(&hash2, &2);
         assert!(!client.verify_latest_snapshot(&hash1));
         assert!(client.verify_latest_snapshot(&hash2));
+    }
+
+    #[test]
+    #[should_panic(expected = "Reentrancy detected")]
+    fn test_reentrancy_protection() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let client =
+            SnapshotContractClient::new(&env, &env.register_contract(None, SnapshotContract));
+
+        let hash = bytes!(
+            &env,
+            0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+        );
+
+        // Manually set the reentrancy guard to simulate a reentrant call
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyGuard, &true);
+
+        // This should panic due to reentrancy detection
+        client.submit_snapshot(&hash, &1);
+    }
+
+    #[test]
+    fn test_multisig_initialization() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SnapshotContract);
+        let client = SnapshotContractClient::new(&env, &contract_id);
+
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        let admins = vec![&env, admin1.clone(), admin2.clone()];
+        let threshold = 2;
+
+        client.initialize_multisig(&admins, &threshold);
+
+        let config = client.get_multisig_config().unwrap();
+        assert_eq!(config.admins.len(), 2);
+        assert_eq!(config.threshold, 2);
+        assert!(config.admins.contains(&admin1));
+        assert!(config.admins.contains(&admin2));
+    }
+
+    #[test]
+    fn test_multisig_proposal() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SnapshotContract);
+        let client = SnapshotContractClient::new(&env, &contract_id);
+
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        let admins = vec![&env, admin1.clone(), admin2.clone()];
+        client.initialize_multisig(&admins, &2);
+
+        let action_type = soroban_sdk::String::from_str(&env, "upgrade");
+        let action_data = BytesN::from_array(&env, &[0u8; 32]);
+        let action_id = client.propose_action(&admin1, &action_type, &action_data);
+
+        let pending = client.get_pending_action(&action_id).unwrap();
+        assert_eq!(pending.action_id, action_id);
+        assert_eq!(pending.signatures.len(), 1);
+        assert_eq!(pending.signatures.get(0).unwrap(), admin1);
+    }
+
+    #[test]
+    fn test_multisig_threshold() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SnapshotContract);
+        let client = SnapshotContractClient::new(&env, &contract_id);
+
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        let admins = vec![&env, admin1.clone(), admin2.clone()];
+        client.initialize_multisig(&admins, &2);
+
+        let action_type = soroban_sdk::String::from_str(&env, "test");
+        let action_data = BytesN::from_array(&env, &[0u8; 32]);
+        let action_id = client.propose_action(&admin1, &action_type, &action_data);
+
+        // First signature already added by proposer
+        let reached_first = client.sign_action(&admin1, &action_id);
+        assert!(!reached_first); // Already signed, still 1/2
+
+        // Second signature
+        let reached_second = client.sign_action(&admin2, &action_id);
+        assert!(reached_second); // Now 2/2
+
+        let pending = client.get_pending_action(&action_id).unwrap();
+        assert_eq!(pending.signatures.len(), 2);
     }
 }

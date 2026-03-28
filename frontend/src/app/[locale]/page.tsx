@@ -173,6 +173,6 @@ export default function Home() {
           {t("footer.copyright")}
         </p>
       </footer>
-    </div>
+    </main>
   );
 }

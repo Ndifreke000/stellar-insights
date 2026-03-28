@@ -33,6 +33,15 @@ pub struct SwitchNetworkResponse {
 }
 
 /// Get current network information
+#[utoipa::path(
+    get,
+    path = "/api/network/info",
+    responses(
+        (status = 200, description = "Current network information", body = NetworkInfo),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Network"
+)]
 pub async fn get_network_info() -> Result<Json<NetworkInfo>, StatusCode> {
     let network_config = NetworkConfig::from_env();
 
@@ -51,6 +60,15 @@ pub async fn get_network_info() -> Result<Json<NetworkInfo>, StatusCode> {
 }
 
 /// Get available networks
+#[utoipa::path(
+    get,
+    path = "/api/network/available",
+    responses(
+        (status = 200, description = "List of available networks", body = Vec<NetworkInfo>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Network"
+)]
 pub async fn get_available_networks() -> Json<Vec<NetworkInfo>> {
     let networks = vec![
         NetworkConfig::for_network(StellarNetwork::Mainnet),
@@ -75,6 +93,17 @@ pub async fn get_available_networks() -> Json<Vec<NetworkInfo>> {
 }
 
 /// Switch network (Note: This is a placeholder - actual switching would require server restart)
+#[utoipa::path(
+    post,
+    path = "/api/network/switch",
+    request_body = SwitchNetworkRequest,
+    responses(
+        (status = 200, description = "Network switch response", body = SwitchNetworkResponse),
+        (status = 400, description = "Invalid network"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Network"
+)]
 pub async fn switch_network(
     Json(request): Json<SwitchNetworkRequest>,
 ) -> Result<Json<SwitchNetworkResponse>, StatusCode> {

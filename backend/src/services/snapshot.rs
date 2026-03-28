@@ -14,6 +14,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::contract::{ContractService, SubmissionResult};
+use super::event_indexer::{EventIndexer, VerificationSummary};
 
 /// Result of snapshot generation and submission process
 #[derive(Debug, Clone, Serialize)]
@@ -37,17 +38,25 @@ pub struct SnapshotGenerationResult {
 /// 3. SHA-256 hashes are computed and stored
 /// 4. Hashes are submitted to smart contracts
 /// 5. Submission success is verified
+/// 6. On-chain verification is performed
 pub struct SnapshotService {
     db: Arc<Database>,
     contract_service: Option<Arc<ContractService>>,
+    event_indexer: Option<Arc<EventIndexer>>,
 }
 
 impl SnapshotService {
     /// Create a new snapshot service
-    pub fn new(db: Arc<Database>, contract_service: Option<Arc<ContractService>>) -> Self {
+    #[must_use]
+    pub const fn new(
+        db: Arc<Database>,
+        contract_service: Option<Arc<ContractService>>,
+        event_indexer: Option<Arc<EventIndexer>>,
+    ) -> Self {
         Self {
             db,
             contract_service,
+            event_indexer,
         }
     }
 
@@ -84,7 +93,7 @@ impl SnapshotService {
 
         // Step 3: Compute SHA-256 hash
         let hash = Self::compute_sha256_hash_bytes(&canonical_json);
-        let hash_hex = hex::encode(&hash);
+        let hash_hex = hex::encode(hash);
 
         info!("Generated snapshot hash: {}", hash_hex);
 
@@ -125,8 +134,8 @@ impl SnapshotService {
         Ok(SnapshotGenerationResult {
             snapshot_id,
             epoch,
-            hash: hash_hex,
-            canonical_json,
+            hash: hash_hex.clone(),
+            canonical_json: canonical_json.clone(),
             anchor_count: snapshot.anchor_metrics.len(),
             corridor_count: snapshot.corridor_metrics.len(),
             submission_result,
@@ -165,8 +174,8 @@ impl SnapshotService {
 
     /// Aggregate anchor metrics from database
     async fn aggregate_anchor_metrics(&self) -> Result<Vec<SnapshotAnchorMetrics>> {
-        let query = r#"
-            SELECT 
+        let query = r"
+            SELECT
                 id,
                 name,
                 stellar_account,
@@ -180,7 +189,7 @@ impl SnapshotService {
             FROM anchors
             WHERE status != 'inactive'
             ORDER BY id
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .fetch_all(self.db.pool())
@@ -231,8 +240,8 @@ impl SnapshotService {
 
     /// Aggregate corridor metrics from database
     async fn aggregate_corridor_metrics(&self) -> Result<Vec<SnapshotCorridorMetrics>> {
-        let query = r#"
-            SELECT 
+        let query = r"
+            SELECT
                 cm.id,
                 cm.corridor_key,
                 cm.asset_a_code,
@@ -251,7 +260,7 @@ impl SnapshotService {
             GROUP BY cm.corridor_key
             HAVING cm.date = MAX(cm.date)
             ORDER BY cm.corridor_key
-        "#;
+        ";
 
         let rows = sqlx::query(query)
             .fetch_all(self.db.pool())
@@ -265,10 +274,10 @@ impl SnapshotService {
                 id: Uuid::parse_str(&row.get::<String, _>("id"))
                     .context("Invalid corridor metrics ID format")?,
                 corridor_key: row.get("corridor_key"),
-                asset_a_code: row.get("asset_a_code"),
-                asset_a_issuer: row.get("asset_a_issuer"),
-                asset_b_code: row.get("asset_b_code"),
-                asset_b_issuer: row.get("asset_b_issuer"),
+                source_asset_code: row.get("asset_a_code"),
+                source_asset_issuer: row.get("asset_a_issuer"),
+                destination_asset_code: row.get("asset_b_code"),
+                destination_asset_issuer: row.get("asset_b_issuer"),
                 total_transactions: row.get("total_transactions"),
                 successful_transactions: row.get("successful_transactions"),
                 failed_transactions: row.get("failed_transactions"),
@@ -294,11 +303,11 @@ impl SnapshotService {
     ) -> Result<String> {
         let snapshot_id = Uuid::new_v4().to_string();
 
-        let query = r#"
+        let query = r"
             INSERT INTO snapshots (
                 id, entity_id, entity_type, data, hash, epoch, timestamp, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        "#;
+        ";
 
         sqlx::query(query)
             .bind(&snapshot_id)
@@ -318,7 +327,7 @@ impl SnapshotService {
 
     /// Verify that the submission was successful by querying the contract
     /// Verify that a snapshot submission was successful by checking on-chain
-    /// 
+    ///
     /// Note: The submission parameter is intentionally unused as we verify directly
     /// from the contract rather than trusting the submission result.
     async fn verify_submission_success(
@@ -493,20 +502,20 @@ impl SnapshotService {
             Value::String(metrics.corridor_key.clone()),
         );
         map.insert(
-            "asset_a_code".to_string(),
-            Value::String(metrics.asset_a_code.clone()),
+            "source_asset_code".to_string(),
+            Value::String(metrics.source_asset_code.clone()),
         );
         map.insert(
-            "asset_a_issuer".to_string(),
-            Value::String(metrics.asset_a_issuer.clone()),
+            "source_asset_issuer".to_string(),
+            Value::String(metrics.source_asset_issuer.clone()),
         );
         map.insert(
-            "asset_b_code".to_string(),
-            Value::String(metrics.asset_b_code.clone()),
+            "destination_asset_code".to_string(),
+            Value::String(metrics.destination_asset_code.clone()),
         );
         map.insert(
-            "asset_b_issuer".to_string(),
-            Value::String(metrics.asset_b_issuer.clone()),
+            "destination_asset_issuer".to_string(),
+            Value::String(metrics.destination_asset_issuer.clone()),
         );
         map.insert(
             "total_transactions".to_string(),
@@ -555,7 +564,7 @@ impl SnapshotService {
     /// Serialize f64 to a deterministic JSON number representation
     ///
     /// This ensures that floating point numbers are always serialized
-    /// in the same way. serde_json handles this deterministically,
+    /// in the same way. `serde_json` handles this deterministically,
     /// but we ensure special cases are handled consistently.
     fn serialize_f64(value: f64) -> Value {
         if value.is_finite() {
@@ -632,7 +641,7 @@ impl SnapshotService {
     /// * `snapshot` - The analytics snapshot to version and hash
     ///
     /// # Returns
-    /// A tuple containing (hash_bytes, hash_hex, schema_version)
+    /// A tuple containing (`hash_bytes`, `hash_hex`, `schema_version`)
     pub fn version_and_hash(
         snapshot: AnalyticsSnapshot,
     ) -> Result<([u8; 32], String, u32), serde_json::Error> {
@@ -655,7 +664,7 @@ impl SnapshotService {
     /// * `contract_service` - Contract service for blockchain submission
     ///
     /// # Returns
-    /// Tuple of (hash_bytes, hash_hex, schema_version, submission_result)
+    /// Tuple of (`hash_bytes`, `hash_hex`, `schema_version`, `submission_result`)
     pub async fn version_hash_and_submit(
         snapshot: AnalyticsSnapshot,
         contract_service: &ContractService,
@@ -667,7 +676,7 @@ impl SnapshotService {
 
         // Generate hash
         let (hash_bytes, hash_hex, version) = Self::version_and_hash(snapshot)
-            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to hash snapshot: {e}"))?;
 
         info!("Generated snapshot hash for epoch {}: {}", epoch, hash_hex);
 
@@ -682,6 +691,228 @@ impl SnapshotService {
         );
 
         Ok((hash_bytes, hash_hex, version, submission))
+    }
+
+    /// Verify snapshot hash against backend data
+    ///
+    /// This method compares the on-chain hash with the calculated hash
+    /// from backend analytics data to ensure data integrity.
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch to verify
+    ///
+    /// # Returns
+    /// Result containing verification status
+    pub async fn verify_snapshot_hash(&self, epoch: u64) -> Result<bool> {
+        info!("Verifying snapshot hash for epoch {}", epoch);
+
+        // Get backend snapshot data
+        let query = r"
+            SELECT hash, canonical_json
+            FROM snapshots
+            WHERE epoch = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        ";
+
+        let row = sqlx::query(query)
+            .bind(epoch as i64)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to query snapshot from database")?;
+
+        if let Some(row) = row {
+            let backend_hash: String = row.get("hash");
+            let canonical_json: String = row.get("canonical_json");
+
+            // Get on-chain hash if contract service is available
+            if let Some(contract_service) = &self.contract_service {
+                if let Some(on_chain_hash) = contract_service.get_snapshot_by_epoch(epoch).await? {
+                    let is_verified = backend_hash == on_chain_hash;
+
+                    if is_verified {
+                        info!("✓ Snapshot verification passed for epoch {}", epoch);
+                    } else {
+                        warn!(
+                            "✗ Snapshot verification failed for epoch {} - hash mismatch",
+                            epoch
+                        );
+                        warn!(
+                            "Backend hash: {}, On-chain hash: {}",
+                            backend_hash, on_chain_hash
+                        );
+                    }
+
+                    // Update verification status in database
+                    self.update_verification_status(epoch, is_verified).await?;
+
+                    Ok(is_verified)
+                } else {
+                    warn!("No snapshot found on-chain for epoch {}", epoch);
+                    Ok(false)
+                }
+            } else {
+                warn!("Contract service not available for on-chain verification");
+                Ok(false)
+            }
+        } else {
+            warn!("No snapshot found in database for epoch {}", epoch);
+            Ok(false)
+        }
+    }
+
+    /// Update verification status in database
+    async fn update_verification_status(&self, epoch: u64, is_verified: bool) -> Result<()> {
+        let query = r"
+            UPDATE snapshots
+            SET verification_status = ?, verified_at = ?
+            WHERE epoch = ?
+        ";
+
+        sqlx::query(query)
+            .bind(if is_verified { "verified" } else { "failed" })
+            .bind(Utc::now())
+            .bind(epoch as i64)
+            .execute(self.db.pool())
+            .await
+            .context("Failed to update verification status")?;
+
+        // Also update event indexer if available
+        if let Some(event_indexer) = &self.event_indexer {
+            // Find the corresponding event and update its status
+            let events = event_indexer.get_events_for_epoch(epoch).await?;
+            for event in events {
+                if event.event_type == "SNAP_SUB" {
+                    event_indexer
+                        .update_verification_status(
+                            &event.id,
+                            if is_verified { "verified" } else { "failed" },
+                        )
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get verification summary for recent epochs
+    pub async fn get_verification_summary(&self, limit: i64) -> Result<Vec<VerificationSummary>> {
+        if let Some(event_indexer) = &self.event_indexer {
+            event_indexer.get_verification_summary(limit).await
+        } else {
+            // Fallback to database query if no event indexer
+            let query = r"
+                SELECT
+                    epoch,
+                    hash,
+                    ledger,
+                    verification_status,
+                    created_at,
+                    transaction_hash
+                FROM contract_events
+                WHERE event_type = 'SNAP_SUB'
+                AND epoch IS NOT NULL
+                ORDER BY epoch DESC
+                LIMIT ?
+            ";
+
+            let rows = sqlx::query(query)
+                .bind(limit)
+                .fetch_all(self.db.pool())
+                .await
+                .context("Failed to get verification summary")?;
+
+            let mut summaries = Vec::new();
+
+            for row in rows {
+                let summary = VerificationSummary {
+                    epoch: row.get::<i64, _>("epoch") as u64,
+                    hash: row.get("hash"),
+                    ledger: row.get::<i64, _>("ledger") as u64,
+                    verification_status: row
+                        .try_get("verification_status")
+                        .ok()
+                        .unwrap_or_else(|| "pending".to_string()),
+                    created_at: row.get("created_at"),
+                    transaction_hash: row.get("transaction_hash"),
+                };
+                summaries.push(summary);
+            }
+
+            Ok(summaries)
+        }
+    }
+
+    /// Get latest verified epoch
+    pub async fn get_latest_verified_epoch(&self) -> Result<Option<u64>> {
+        let query = r"
+            SELECT epoch
+            FROM snapshots
+            WHERE verification_status = 'verified'
+            ORDER BY epoch DESC
+            LIMIT 1
+        ";
+
+        let row = sqlx::query(query)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to get latest verified epoch")?;
+
+        Ok(row.map(|r| r.get::<i64, _>("epoch") as u64))
+    }
+
+    /// Check if epoch needs verification
+    pub async fn needs_verification(&self, epoch: u64) -> Result<bool> {
+        let query = r"
+            SELECT verification_status
+            FROM snapshots
+            WHERE epoch = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        ";
+
+        let row = sqlx::query(query)
+            .bind(epoch as i64)
+            .fetch_optional(self.db.pool())
+            .await
+            .context("Failed to check verification status")?;
+
+        match row {
+            Some(row) => {
+                let status: Option<String> = row.get("verification_status");
+                Ok(status.is_none() || status.as_deref() == Some("pending"))
+            }
+            None => Ok(false), // No snapshot exists for this epoch
+        }
+    }
+
+    /// Batch verify multiple epochs
+    pub async fn batch_verify_epochs(&self, epochs: Vec<u64>) -> Result<Vec<(u64, bool)>> {
+        info!("Batch verifying {} epochs", epochs.len());
+
+        let mut results = Vec::new();
+
+        for epoch in epochs {
+            match self.verify_snapshot_hash(epoch).await {
+                Ok(verified) => {
+                    results.push((epoch, verified));
+                }
+                Err(e) => {
+                    error!("Failed to verify epoch {}: {}", epoch, e);
+                    results.push((epoch, false));
+                }
+            }
+        }
+
+        let verified_count = results.iter().filter(|(_, v)| *v).count();
+        info!(
+            "Batch verification complete: {}/{} epochs verified",
+            verified_count,
+            results.len()
+        );
+
+        Ok(results)
     }
 }
 
@@ -713,10 +944,10 @@ mod tests {
         SnapshotCorridorMetrics {
             id,
             corridor_key: key.to_string(),
-            asset_a_code: "USDC".to_string(),
-            asset_a_issuer: "issuer1".to_string(),
-            asset_b_code: "EURC".to_string(),
-            asset_b_issuer: "issuer2".to_string(),
+            source_asset_code: "USDC".to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: "EURC".to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
             total_transactions: 500,
             successful_transactions: 475,
             failed_transactions: 25,

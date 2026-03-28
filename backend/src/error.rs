@@ -7,6 +7,31 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Domain-specific errors for business logic and validation rules.
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum DomainError {
+    #[error("Corridor not found: {0}")]
+    CorridorNotFound(String),
+
+    #[error("Anchor not found: {0}")]
+    AnchorNotFound(String),
+
+    #[error("Invalid asset format: {0}")]
+    InvalidAsset(String),
+
+    #[error("Invalid time range: {start} to {end}")]
+    InvalidTimeRange { start: String, end: String },
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+
+    #[error("Unsupported currency or asset: {0}")]
+    UnsupportedCurrency(String),
+
+    #[error("Calculation error: {0}")]
+    CalculationError(String),
+}
+
 /// Structured error response format
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
@@ -49,10 +74,15 @@ pub enum ApiError {
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
+    ServiceUnavailable {
+        code: String,
+        message: String,
+        details: Option<HashMap<String, serde_json::Value>>,
+    },
 }
 
 impl ApiError {
-    /// Create a NotFound error with a specific code
+    /// Create a `NotFound` error with a specific code
     pub fn not_found(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::NotFound {
             code: code.into(),
@@ -61,7 +91,7 @@ impl ApiError {
         }
     }
 
-    /// Create a NotFound error with details
+    /// Create a `NotFound` error with details
     pub fn not_found_with_details(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -74,7 +104,7 @@ impl ApiError {
         }
     }
 
-    /// Create a BadRequest error
+    /// Create a `BadRequest` error
     pub fn bad_request(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::BadRequest {
             code: code.into(),
@@ -83,7 +113,7 @@ impl ApiError {
         }
     }
 
-    /// Create a BadRequest error with details
+    /// Create a `BadRequest` error with details
     pub fn bad_request_with_details(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -96,7 +126,7 @@ impl ApiError {
         }
     }
 
-    /// Create an InternalError
+    /// Create an `InternalError`
     pub fn internal(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::InternalError {
             code: code.into(),
@@ -115,13 +145,24 @@ impl ApiError {
         }
     }
 
+    /// Create a ServiceUnavailable error
+    pub fn service_unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::ServiceUnavailable {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
     /// Add details to any error variant
+    #[must_use]
     pub fn with_details(mut self, details: HashMap<String, serde_json::Value>) -> Self {
         match &mut self {
             Self::NotFound { details: d, .. }
             | Self::BadRequest { details: d, .. }
             | Self::InternalError { details: d, .. }
-            | Self::Unauthorized { details: d, .. } => {
+            | Self::Unauthorized { details: d, .. }
+            | Self::ServiceUnavailable { details: d, .. } => {
                 *d = Some(details);
             }
         }
@@ -129,16 +170,18 @@ impl ApiError {
     }
 
     /// Get the HTTP status code for this error
-    fn status_code(&self) -> StatusCode {
+    const fn status_code(&self) -> StatusCode {
         match self {
             Self::NotFound { .. } => StatusCode::NOT_FOUND,
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
             Self::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
-    /// Convert to ErrorResponse with optional request ID
+    /// Convert to `ErrorResponse` with optional request ID
+    #[must_use]
     pub fn to_error_response(&self, request_id: Option<String>) -> ErrorResponse {
         let include_stack_trace = cfg!(debug_assertions);
 
@@ -165,6 +208,11 @@ impl ApiError {
                 source.clone(),
             ),
             Self::Unauthorized {
+                code,
+                message,
+                details,
+            } => (code.clone(), message.clone(), details.clone(), None),
+            Self::ServiceUnavailable {
                 code,
                 message,
                 details,
@@ -202,7 +250,7 @@ pub fn error_response_with_request_id(error: ApiError, req: &Request) -> Respons
     (status, Json(error_response)).into_response()
 }
 
-/// Convert from anyhow::Error
+/// Convert from `anyhow::Error`
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         Self::InternalError {
@@ -214,27 +262,87 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
-/// Convert from sqlx::Error
+/// Convert from `sqlx::Error`
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
-        let (code, message) = match &err {
+        let (code, message, status) = match &err {
             sqlx::Error::RowNotFound => (
                 "NOT_FOUND".to_string(),
                 "The requested resource was not found".to_string(),
+                None,
+            ),
+            sqlx::Error::PoolTimedOut => (
+                "DB_POOL_EXHAUSTED".to_string(),
+                "Database pool exhausted. Please try again later.".to_string(),
+                Some(StatusCode::SERVICE_UNAVAILABLE),
             ),
             sqlx::Error::Database(db_err) => (
                 "DATABASE_ERROR".to_string(),
                 format!("Database error: {}", db_err.message()),
+                None,
             ),
             _ => (
                 "INTERNAL_ERROR".to_string(),
                 "An internal error occurred".to_string(),
+                None,
             ),
         };
+
+        if let Some(StatusCode::SERVICE_UNAVAILABLE) = status {
+            tracing::error!("Database pool exhausted");
+            return Self::ServiceUnavailable {
+                code,
+                message,
+                details: None,
+            };
+        }
 
         Self::InternalError {
             code,
             message,
+            details: None,
+            source: Some(err.to_string()),
+        }
+    }
+}
+
+/// Convert domain errors into API errors with stable error codes.
+impl From<DomainError> for ApiError {
+    fn from(err: DomainError) -> Self {
+        match err {
+            DomainError::CorridorNotFound(id) => Self::NotFound {
+                code: "CORRIDOR_NOT_FOUND".to_string(),
+                message: format!("Corridor not found: {id}"),
+                details: None,
+            },
+            DomainError::AnchorNotFound(id) => Self::NotFound {
+                code: "ANCHOR_NOT_FOUND".to_string(),
+                message: format!("Anchor not found: {id}"),
+                details: None,
+            },
+            DomainError::InvalidAsset(msg)
+            | DomainError::InvalidConfiguration(msg)
+            | DomainError::UnsupportedCurrency(msg)
+            | DomainError::CalculationError(msg) => Self::BadRequest {
+                code: "DOMAIN_VALIDATION_ERROR".to_string(),
+                message: msg,
+                details: None,
+            },
+            DomainError::InvalidTimeRange { start, end } => Self::BadRequest {
+                code: "INVALID_TIME_RANGE".to_string(),
+                message: format!("Invalid time range: {start} to {end}"),
+                details: None,
+            },
+        }
+    }
+}
+
+/// Convert RPC errors into API errors so handlers can use `?` consistently.
+impl From<crate::rpc::error::RpcError> for ApiError {
+    fn from(err: crate::rpc::error::RpcError) -> Self {
+        Self::InternalError {
+            code: "RPC_ERROR".to_string(),
+            message: "External service error".to_string(),
             details: None,
             source: Some(err.to_string()),
         }

@@ -70,7 +70,8 @@ pub struct VerificationRewardsService {
 
 impl VerificationRewardsService {
     /// Create a new verification rewards service
-    pub fn new(db: Arc<Database>) -> Self {
+    #[must_use]
+    pub const fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 
@@ -132,10 +133,7 @@ impl VerificationRewardsService {
             .await?;
 
         let message = if is_match {
-            format!(
-                "Verification successful! You earned {} points.",
-                reward_points
-            )
+            format!("Verification successful! You earned {reward_points} points.")
         } else {
             "Verification failed. Hash does not match.".to_string()
         };
@@ -157,8 +155,8 @@ impl VerificationRewardsService {
     /// Get user reward statistics
     pub async fn get_user_stats(&self, user_id: &str) -> Result<UserRewardStats> {
         let row = sqlx::query(
-            r#"
-            SELECT 
+            r"
+            SELECT
                 u.id,
                 u.username,
                 COALESCE(ur.total_points, 0) as total_points,
@@ -168,7 +166,7 @@ impl VerificationRewardsService {
             FROM users u
             LEFT JOIN user_rewards ur ON u.id = ur.user_id
             WHERE u.id = ?
-            "#,
+            ",
         )
         .bind(user_id)
         .fetch_one(self.db.pool())
@@ -179,7 +177,7 @@ impl VerificationRewardsService {
         let failed: i32 = row.try_get("failed_verifications")?;
         let total_attempts = successful + failed;
         let success_rate = if total_attempts > 0 {
-            (successful as f64 / total_attempts as f64) * 100.0
+            (f64::from(successful) / f64::from(total_attempts)) * 100.0
         } else {
             0.0
         };
@@ -198,16 +196,16 @@ impl VerificationRewardsService {
     /// Get leaderboard of top verifiers
     pub async fn get_leaderboard(&self, limit: i32) -> Result<Vec<LeaderboardEntry>> {
         let rows = sqlx::query(
-            r#"
-            SELECT 
+            r"
+            SELECT
                 username,
                 total_points,
                 successful_verifications,
-                CAST(successful_verifications AS REAL) / 
+                CAST(successful_verifications AS REAL) /
                     NULLIF(successful_verifications + failed_verifications, 0) * 100 AS success_rate
             FROM verification_leaderboard
             LIMIT ?
-            "#,
+            ",
         )
         .bind(limit)
         .fetch_all(self.db.pool())
@@ -235,8 +233,8 @@ impl VerificationRewardsService {
         limit: i32,
     ) -> Result<Vec<VerificationRecord>> {
         let rows = sqlx::query(
-            r#"
-            SELECT 
+            r"
+            SELECT
                 id,
                 snapshot_id,
                 epoch,
@@ -249,7 +247,7 @@ impl VerificationRewardsService {
             WHERE user_id = ?
             ORDER BY verified_at DESC
             LIMIT ?
-            "#,
+            ",
         )
         .bind(user_id)
         .bind(limit)
@@ -278,12 +276,12 @@ impl VerificationRewardsService {
 
     async fn check_daily_limit(&self, user_id: &str) -> Result<()> {
         let count: i32 = sqlx::query_scalar(
-            r#"
+            r"
             SELECT COUNT(*)
             FROM snapshot_verifications
             WHERE user_id = ?
             AND DATE(verified_at) = DATE('now')
-            "#,
+            ",
         )
         .bind(user_id)
         .fetch_one(self.db.pool())
@@ -292,9 +290,7 @@ impl VerificationRewardsService {
 
         if count >= MAX_VERIFICATIONS_PER_DAY {
             return Err(anyhow!(
-                "Daily verification limit reached ({}/{})",
-                count,
-                MAX_VERIFICATIONS_PER_DAY
+                "Daily verification limit reached ({count}/{MAX_VERIFICATIONS_PER_DAY})"
             ));
         }
 
@@ -303,11 +299,11 @@ impl VerificationRewardsService {
 
     async fn fetch_snapshot(&self, snapshot_id: &str) -> Result<SnapshotRecord> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT id, hash, epoch, created_at
             FROM snapshots
             WHERE id = ?
-            "#,
+            ",
         )
         .bind(snapshot_id)
         .fetch_one(self.db.pool())
@@ -349,11 +345,11 @@ impl VerificationRewardsService {
         reward_points: i32,
     ) -> Result<()> {
         sqlx::query(
-            r#"
-            INSERT INTO snapshot_verifications 
+            r"
+            INSERT INTO snapshot_verifications
             (id, user_id, snapshot_id, epoch, submitted_hash, expected_hash, is_match, reward_points, verified_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(verification_id)
         .bind(user_id)
@@ -379,7 +375,7 @@ impl VerificationRewardsService {
     ) -> Result<i32> {
         // Insert or update user rewards
         sqlx::query(
-            r#"
+            r"
             INSERT INTO user_rewards (user_id, total_points, successful_verifications, failed_verifications, last_verification_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
@@ -388,17 +384,17 @@ impl VerificationRewardsService {
                 failed_verifications = failed_verifications + ?,
                 last_verification_at = ?,
                 updated_at = ?
-            "#,
+            ",
         )
         .bind(user_id)
         .bind(reward_points)
-        .bind(if is_match { 1 } else { 0 })
-        .bind(if is_match { 0 } else { 1 })
+        .bind(i32::from(is_match))
+        .bind(i32::from(!is_match))
         .bind(Utc::now().to_rfc3339())
         .bind(Utc::now().to_rfc3339())
         .bind(reward_points)
-        .bind(if is_match { 1 } else { 0 })
-        .bind(if is_match { 0 } else { 1 })
+        .bind(i32::from(is_match))
+        .bind(i32::from(!is_match))
         .bind(Utc::now().to_rfc3339())
         .bind(Utc::now().to_rfc3339())
         .execute(self.db.pool())
@@ -407,11 +403,11 @@ impl VerificationRewardsService {
 
         // Fetch updated total
         let total: i32 = sqlx::query_scalar(
-            r#"
+            r"
             SELECT total_points
             FROM user_rewards
             WHERE user_id = ?
-            "#,
+            ",
         )
         .bind(user_id)
         .fetch_one(self.db.pool())

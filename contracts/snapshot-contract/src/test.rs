@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 #[test]
 fn test_initialize_multiple_admins_and_permissions() {
     let env = Env::default();
@@ -40,7 +42,6 @@ fn test_initialize_multiple_admins_and_permissions() {
     });
     assert!(result.is_err());
 }
-#![cfg(test)]
 
 use super::*;
 use soroban_sdk::{
@@ -82,7 +83,10 @@ fn test_snapshot_submitted_event() {
     let events = env.events().all();
     assert_eq!(events.len(), 1);
 
-    let ev = events.get(0).unwrap();
+    let ev = match events.get(0) {
+        Some(e) => e,
+        None => panic!("No events found"),
+    };
     assert_eq!(ev.0, contract_id); // contract address
 
     let topics = ev.1;
@@ -361,13 +365,19 @@ fn test_get_latest_snapshot() {
 
     // Submit first snapshot
     client.submit_snapshot(&hash1, &1u64);
-    let latest = client.get_latest_snapshot().unwrap();
+    let latest = match client.get_latest_snapshot() {
+        Ok(s) => s,
+        Err(_) => panic!("Failed to get latest snapshot"),
+    };
     assert_eq!(latest.hash, hash1);
     assert_eq!(latest.epoch, 1u64);
 
     // Submit second snapshot with higher epoch
     client.submit_snapshot(&hash2, &5u64);
-    let latest = client.get_latest_snapshot().unwrap();
+    let latest = match client.get_latest_snapshot() {
+        Ok(s) => s,
+        Err(_) => panic!("Failed to get latest snapshot"),
+    };
     assert_eq!(latest.hash, hash2);
     assert_eq!(latest.epoch, 5u64);
 }
@@ -384,7 +394,10 @@ fn test_older_epoch_rejected() {
 
     // Submit snapshot at epoch 10
     client.submit_snapshot(&hash1, &10u64);
-    let latest = client.get_latest_snapshot().unwrap();
+    let latest = match client.get_latest_snapshot() {
+        Ok(s) => s,
+        Err(_) => panic!("Failed to get latest snapshot"),
+    };
     assert_eq!(latest.epoch, 10u64);
 
     // Submit snapshot at earlier epoch (should panic - rollback attack prevented)
