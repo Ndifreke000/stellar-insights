@@ -1511,22 +1511,6 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        if let Some(ref k) = key {
-            if let Some(ref expires_at) = k.expires_at {
-                match DateTime::parse_from_rfc3339(expires_at) {
-                    Ok(exp) => {
-                        if exp < Utc::now() {
-                            return Ok(None);
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "API key {} has malformed expires_at '{}': {}. Treating as expired.",
-                            k.id,
-                            expires_at,
-                            e
-                        );
-                        return Ok(None);
             if let Some(ref k) = key {
                 if let Some(ref expires_at) = k.expires_at {
                     match DateTime::parse_from_rfc3339(expires_at) {
@@ -1547,16 +1531,6 @@ impl Database {
                     }
                 }
 
-            // last_used_at update is best-effort; a failure here should not block validation
-            if let Err(e) = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
-                .bind(Utc::now().to_rfc3339())
-                .bind(&k.id)
-                .execute(&self.pool)
-                .await
-            {
-                log::warn!("Failed to update last_used_at for API key {}: {}", k.id, e);
-            }
-        }
                 // last_used_at update is best-effort; a failure here should not block validation
                 if let Err(e) = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
                     .bind(Utc::now().to_rfc3339())
