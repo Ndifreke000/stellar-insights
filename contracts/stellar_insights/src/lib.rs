@@ -1,4 +1,5 @@
 #![no_std]
+extern crate std;
 
 mod errors;
 mod events;

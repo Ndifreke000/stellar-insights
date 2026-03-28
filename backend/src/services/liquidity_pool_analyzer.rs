@@ -279,20 +279,20 @@ impl LiquidityPoolAnalyzer {
 
     /// Compute impermanent loss given initial and current reserves.
     /// IL = 2 * `sqrt(price_ratio)` / (1 + `price_ratio`) - 1
-    /// where `price_ratio` = (`current_a/current_b`) / (`initial_a/initial_b`)
+    /// where `price_ratio` = (`current_base_reserve/current_quote_reserve`) / (`initial_base_reserve/initial_quote_reserve`)
     #[must_use]
     pub fn compute_impermanent_loss(
-        initial_a: f64,
-        initial_b: f64,
-        current_a: f64,
-        current_b: f64,
+        initial_base_reserve: f64,
+        initial_quote_reserve: f64,
+        current_base_reserve: f64,
+        current_quote_reserve: f64,
     ) -> f64 {
-        if initial_a <= 0.0 || initial_b <= 0.0 || current_a <= 0.0 || current_b <= 0.0 {
+        if initial_base_reserve <= 0.0 || initial_quote_reserve <= 0.0 || current_base_reserve <= 0.0 || current_quote_reserve <= 0.0 {
             return 0.0;
         }
 
-        let initial_ratio = initial_a / initial_b;
-        let current_ratio = current_a / current_b;
+        let initial_ratio = initial_base_reserve / initial_quote_reserve;
+        let current_ratio = current_base_reserve / current_quote_reserve;
         let price_ratio = current_ratio / initial_ratio;
 
         let sqrt_ratio = price_ratio.sqrt();
@@ -306,8 +306,8 @@ impl LiquidityPoolAnalyzer {
     async fn compute_impermanent_loss_for_pool(
         &self,
         pool_id: &str,
-        current_a: f64,
-        current_b: f64,
+        current_base_reserve: f64,
+        current_quote_reserve: f64,
     ) -> f64 {
         let initial = sqlx::query_as::<_, (f64, f64)>(
             r"
@@ -325,8 +325,8 @@ impl LiquidityPoolAnalyzer {
         .flatten();
 
         match initial {
-            Some((initial_a, initial_b)) => {
-                Self::compute_impermanent_loss(initial_a, initial_b, current_a, current_b)
+            Some((initial_base_reserve, initial_quote_reserve)) => {
+                Self::compute_impermanent_loss(initial_base_reserve, initial_quote_reserve, current_base_reserve, current_quote_reserve)
             }
             None => 0.0, // No historical data yet
         }

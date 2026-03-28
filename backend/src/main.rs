@@ -1,13 +1,17 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::timeout::TimeoutLayer;
 
 use anyhow::Context;
 use axum::http::{
     header::{AUTHORIZATION, CONTENT_TYPE},
     HeaderValue, Method,
 };
+use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
+    timeout::TimeoutLayer,
+};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use stellar_insights_backend::{
     api::v1::routes,
@@ -29,8 +33,6 @@ use stellar_insights_backend::{
     state::AppState,
     websocket::WsState,
 };
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -183,13 +185,10 @@ async fn main() -> anyhow::Result<()> {
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
-    // Configure request timeout
-    let timeout_seconds = std::env::var("REQUEST_TIMEOUT_SECONDS")
+    let timeout_seconds: u64 = std::env::var("REQUEST_TIMEOUT_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
-    let timeout_duration = Duration::from_secs(timeout_seconds);
-    tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
     let app = routes(
         app_state,
@@ -204,8 +203,12 @@ async fn main() -> anyhow::Result<()> {
         pool,
         cache,
     )
-    .layer(TimeoutLayer::new(timeout_duration))
-    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+    .merge(
+        SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()),
+    )
+    .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)));
+
+    tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);

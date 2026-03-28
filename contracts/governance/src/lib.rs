@@ -1,4 +1,5 @@
 #![no_std]
+extern crate std;
 
 mod errors;
 mod events;
@@ -511,12 +512,13 @@ impl GovernanceContract {
         // Upgrade proposals: execution is off-chain (deploy new WASM); we only mark executed here.
 
         proposal.status = ProposalStatus::Executed;
+        let target_contract = proposal.target_contract.clone();
         proposals.set(proposal_id, proposal);
         env.storage()
             .persistent()
             .set(&DataKey::Proposals, &proposals);
 
-        emit_proposal_executed(&env, proposal_id, caller, proposal.target_contract);
+        emit_proposal_executed(&env, proposal_id, caller, target_contract);
 
         Ok(())
     }

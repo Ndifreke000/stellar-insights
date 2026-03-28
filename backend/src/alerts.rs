@@ -146,7 +146,7 @@ impl AlertManager {
             tokio::spawn({
                 let webhook_service = webhook_service.clone();
                 let anchor_id = anchor_id.to_string();
-                let message_clone = message;
+                let message_clone = message.clone();
                 async move {
                     if let Err(e) = webhook_service
                         .trigger_anchor_status_changed(
@@ -156,7 +156,11 @@ impl AlertManager {
                         )
                         .await
                     {
-                        tracing::error!("Failed to trigger anchor status webhook: {}", e);
+                        tracing::error!(
+                            error = %e,
+                            alert_message = %message_clone,
+                            "Failed to trigger anchor status webhook"
+                        );
                     }
                 }
             });

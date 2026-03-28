@@ -116,7 +116,7 @@ impl GovernanceInitialized {
             quorum,
             voting_period,
         };
-        env.events().publish(GOV_LIFECYCLE, event);
+        env.events().publish((GOV_LIFECYCLE,), event);
     }
 }
 
@@ -136,7 +136,7 @@ impl ProposalExecutedEvent {
             executor,
             target_contract,
         };
-        env.events().publish(GOV_LIFECYCLE, event);
+        env.events().publish((GOV_LIFECYCLE,), event);
     }
 }
 

@@ -16,9 +16,7 @@ use std::sync::Arc;
 use tower::util::ServiceExt;
 
 use stellar_insights_backend::database::Database;
-use stellar_insights_backend::handlers::{
-    health_check, list_anchors, pool_metrics,
-};
+use stellar_insights_backend::handlers::{health_check, list_anchors, pool_metrics};
 use stellar_insights_backend::ingestion::DataIngestionService;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::state::AppState;
@@ -50,7 +48,9 @@ CREATE TABLE IF NOT EXISTS anchors (
 "#;
 
 async fn setup_db() -> Arc<Database> {
-    let pool = SqlitePool::connect(":memory:").await.expect("in-memory pool");
+    let pool = SqlitePool::connect(":memory:")
+        .await
+        .expect("in-memory pool");
     sqlx::query(MINIMAL_SCHEMA)
         .execute(&pool)
         .await
@@ -62,7 +62,11 @@ fn make_app_state(db: Arc<Database>) -> AppState {
     let ws_state = Arc::new(WsState::new());
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let ingestion = Arc::new(DataIngestionService::new(rpc_client, Arc::clone(&db)));
-    AppState { db, ws_state, ingestion }
+    AppState {
+        db,
+        ws_state,
+        ingestion,
+    }
 }
 
 fn app_state_router(db: Arc<Database>) -> Router {
@@ -86,7 +90,12 @@ async fn test_health_check_returns_200() {
     let db = setup_db().await;
     let app = app_state_router(db);
     let resp = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -97,7 +106,12 @@ async fn test_health_check_body_has_status_healthy() {
     let db = setup_db().await;
     let app = app_state_router(db);
     let resp = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -111,7 +125,12 @@ async fn test_health_check_body_includes_api_version() {
     let db = setup_db().await;
     let app = app_state_router(db);
     let resp = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -229,7 +248,9 @@ async fn test_pool_metrics_response_is_json() {
         .await
         .unwrap();
     assert_eq!(
-        resp.headers().get("content-type").map(|v| v.to_str().unwrap_or("")),
+        resp.headers()
+            .get("content-type")
+            .map(|v| v.to_str().unwrap_or("")),
         Some("application/json")
     );
 }

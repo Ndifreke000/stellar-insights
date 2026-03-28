@@ -1,15 +1,11 @@
 #![no_std]
+extern crate std;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, symbol_short, Address, Env, String,
-    Symbol, Vec,
-};
-
-const VERSION: &str = env!("CARGO_PKG_VERSION");
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
     Symbol, Vec,
 };
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -261,19 +257,19 @@ impl AccessControlContract {
     }
 
     fn require_role(env: &Env, user: &Address, role: Role) -> Result<(), Error> {
-        if !Self::has_role(env.clone(), user.clone(), role) {
-            return Err(Error::Unauthorized);
+        let required_level = role_level(&role);
+        if let Some(roles) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
+        {
+            for r in roles.iter() {
+                if role_level(&r) >= required_level {
+                    return Ok(());
+                }
+            }
         }
-        Ok(())
-    }
-
-    fn roles_equal(a: &Role, b: &Role) -> bool {
-        matches!(
-            (a, b),
-            (Role::Admin, Role::Admin)
-                | (Role::Operator, Role::Operator)
-                | (Role::Viewer, Role::Viewer)
-        )
+        Err(Error::Unauthorized)
     }
 
     /// Get public contract metadata
@@ -294,13 +290,32 @@ impl AccessControlContract {
     /// Get comprehensive contract information
     pub fn get_contract_info(env: Env) -> ContractInfo {
         // Check if contract is initialized by looking for the version key
-        let initialized = env.storage().persistent().has(&DataKey::Version);
+        let initialized = env.storage().instance().has(&DataKey::Version);
         
         ContractInfo {
             metadata: Self::get_metadata(env),
             initialized,
             total_roles: 0, 
         }
+    }
+}
+
+fn roles_equal(a: &Role, b: &Role) -> bool {
+    matches!(
+        (a, b),
+        (Role::SuperAdmin, Role::SuperAdmin)
+            | (Role::Admin, Role::Admin)
+            | (Role::Operator, Role::Operator)
+            | (Role::Viewer, Role::Viewer)
+    )
+}
+
+fn role_level(role: &Role) -> u32 {
+    match role {
+        Role::Viewer => 1,
+        Role::Operator => 2,
+        Role::Admin => 3,
+        Role::SuperAdmin => 4,
     }
 }
 

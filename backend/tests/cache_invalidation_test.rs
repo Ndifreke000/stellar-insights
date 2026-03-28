@@ -75,8 +75,8 @@ fn test_cache_key_patterns() {
 fn test_cache_config_default_ttls() {
     let config = CacheConfig::default();
     assert_eq!(config.corridor_metrics_ttl, 300); // 5 minutes
-    assert_eq!(config.anchor_data_ttl, 600);       // 10 minutes
-    assert_eq!(config.dashboard_stats_ttl, 60);    // 1 minute
+    assert_eq!(config.anchor_data_ttl, 600); // 10 minutes
+    assert_eq!(config.dashboard_stats_ttl, 60); // 1 minute
 }
 
 #[test]

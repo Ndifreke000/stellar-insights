@@ -72,7 +72,6 @@ struct RpcError {
     message: String,
 }
 
-
 pub struct ContractEventListener {
     client: Client,
     config: ListenerConfig,
@@ -631,4 +630,3 @@ mod tests {
         std::env::remove_var("CONTRACT_EVENT_START_LEDGER");
     }
 }
-

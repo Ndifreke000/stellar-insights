@@ -75,16 +75,16 @@ pub struct CorridorMetrics {
     pub corridor_key: String,
     #[serde(rename = "asset_a_code")]
     #[sqlx(rename = "asset_a_code")]
-    pub reserve_asset_a_code: String,
+    pub source_asset_code: String,
     #[serde(rename = "asset_a_issuer")]
     #[sqlx(rename = "asset_a_issuer")]
-    pub reserve_asset_a_issuer: String,
+    pub source_asset_issuer: String,
     #[serde(rename = "asset_b_code")]
     #[sqlx(rename = "asset_b_code")]
-    pub reserve_asset_b_code: String,
+    pub destination_asset_code: String,
     #[serde(rename = "asset_b_issuer")]
     #[sqlx(rename = "asset_b_issuer")]
-    pub reserve_asset_b_issuer: String,
+    pub destination_asset_issuer: String,
     pub date: DateTime<Utc>,
     pub total_transactions: i64,
     pub successful_transactions: i64,

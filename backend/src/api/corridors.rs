@@ -706,12 +706,12 @@ fn find_related_corridors(
     tag = "Corridors"
 )]
 #[tracing::instrument(
-    skip(db, cache, rpc_client, price_feed),
+    skip(_db, cache, rpc_client, price_feed),
     fields(request_id = %request_id.0, corridor_key = %corridor_key)
 )]
 pub async fn get_corridor_detail(
     Extension(request_id): Extension<RequestId>,
-    State((db, cache, rpc_client, price_feed)): State<(
+    State((_db, cache, rpc_client, price_feed)): State<(
         Arc<Database>,
         Arc<CacheManager>,
         Arc<StellarRpcClient>,

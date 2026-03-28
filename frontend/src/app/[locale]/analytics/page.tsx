@@ -11,6 +11,7 @@ import {
 import { Link } from "@/i18n/navigation";
 import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
 import dynamic from "next/dynamic";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const ChartSkeleton = () => (
   <div className="h-64 w-full rounded-xl bg-white/5 animate-pulse" />
@@ -122,115 +123,114 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
-        <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
-            Deep Analytics // 03
+    <ErrorBoundary>
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+          <div>
+            <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+              Deep Analytics // 03
+            </div>
+            <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
+              Network Intelligence
+            </h2>
           </div>
-          <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
-            Network Intelligence
-          </h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            Last Sync: {lastUpdated?.toLocaleTimeString()}
-          </div>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
-          >
-            <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-            Re-Scan
-          </button>
-        </div>
-      </div>
-
-      {/* Error State */}
-      {error && (
-        <div className="glass border-red-500/50 p-4 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500" />
-            <p className="text-[10px] font-mono text-red-500 uppercase tracking-widest">
-              Emergency Shutdown Avoided // Running on Local Cache (Mock Data)
-            </p>
+            <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Last Sync: {lastUpdated?.toLocaleTimeString()}
+            </div>
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
+            >
+              <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+              Re-Scan
+            </button>
           </div>
-          <Badge
-            variant="outline"
-            className="border-red-500/30 text-red-500 text-[10px]"
-          >
-            FIX_REQUIRED
-          </Badge>
         </div>
-      )}
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <MetricCard
-          label="Cumulative Volume"
-          value={metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
-          subLabel="Total Network Flow"
-        />
-        <MetricCard
-          label="Success Probability"
-          value={metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
-          trend={1.2}
-          trendDirection="up"
-        />
-        <MetricCard
-          label="Active Routing Nodes"
-          value={metrics ? metrics.active_corridors : "0"}
-          subLabel="Online Corridors"
-        />
-        <MetricCard
-          label="Aggregated Liquidity"
-          value={
-            metrics
-              ? formatCurrency(
-                  metrics.top_corridors.reduce(
-                    (sum, c) => sum + c.liquidity_depth_usd,
-                    0,
-                  ),
-                )
-              : "$0"
-          }
-          subLabel="Available Capital"
-        />
-      </div>
+        {error && (
+          <div className="glass border-red-500/50 p-4 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <p className="text-[10px] font-mono text-red-500 uppercase tracking-widest">
+                Emergency Shutdown Avoided // Running on Local Cache (Mock Data)
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className="border-red-500/30 text-red-500 text-[10px]"
+            >
+              FIX_REQUIRED
+            </Badge>
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 space-y-6">
-          <div className="glass-card rounded-2xl p-1">
-            {metrics && <LiquidityChart data={metrics.liquidity_history} />}
-          </div>
-          <div className="glass-card rounded-2xl p-1">
-            {metrics && <TVLChart data={metrics.tvl_history} />}
-          </div>
-          <div className="glass-card rounded-2xl p-1">
-            {metrics && (
-              <SettlementLatencyChart
-                data={metrics.settlement_latency_history}
-              />
-            )}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <MetricCard
+            label="Cumulative Volume"
+            value={metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
+            subLabel="Total Network Flow"
+          />
+          <MetricCard
+            label="Success Probability"
+            value={metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
+            trend={1.2}
+            trendDirection="up"
+          />
+          <MetricCard
+            label="Active Routing Nodes"
+            value={metrics ? metrics.active_corridors : "0"}
+            subLabel="Online Corridors"
+          />
+          <MetricCard
+            label="Aggregated Liquidity"
+            value={
+              metrics
+                ? formatCurrency(
+                    metrics.top_corridors.reduce(
+                      (sum, c) => sum + c.liquidity_depth_usd,
+                      0,
+                    ),
+                  )
+                : "$0"
+            }
+            subLabel="Available Capital"
+          />
         </div>
-        <div className="lg:col-span-4 space-y-6">
-          <div className="glass-card rounded-2xl p-1">
-            {metrics && <TopCorridors corridors={metrics.top_corridors} />}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 space-y-6">
+            <div className="glass-card rounded-2xl p-1">
+              {metrics && <LiquidityChart data={metrics.liquidity_history} />}
+            </div>
+            <div className="glass-card rounded-2xl p-1">
+              {metrics && <TVLChart data={metrics.tvl_history} />}
+            </div>
+            <div className="glass-card rounded-2xl p-1">
+              {metrics && (
+                <SettlementLatencyChart
+                  data={metrics.settlement_latency_history}
+                />
+              )}
+            </div>
           </div>
-          <div className="glass-card rounded-2xl p-1">
-            {metrics && (
-              <LiquidityHeatmap
-                corridors={metrics.top_corridors}
-                onTimePeriodChange={handleRefresh}
-              />
-            )}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="glass-card rounded-2xl p-1">
+              {metrics && <TopCorridors corridors={metrics.top_corridors} />}
+            </div>
+            <div className="glass-card rounded-2xl p-1">
+              {metrics && (
+                <LiquidityHeatmap
+                  corridors={metrics.top_corridors}
+                  onTimePeriodChange={handleRefresh}
+                />
+              )}
+            </div>
+            <MuxedAccountCard />
+            <OnChainVerification />
           </div>
-          <MuxedAccountCard />
-          <OnChainVerification />
         </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

@@ -63,28 +63,38 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     // otel_layer must be added directly on registry() (before other layers) so that
     // the S: LookupSpan bound is satisfied.
     if otel_enabled {
-        let otel_layer = tracing_opentelemetry::layer()
-            .with_tracer(init_otel_tracer(service_name)?);
-        let base = tracing_subscriber::registry().with(otel_layer).with(env_filter);
+        let otel_layer =
+            tracing_opentelemetry::layer().with_tracer(init_otel_tracer(service_name)?);
+        let base = tracing_subscriber::registry()
+            .with(otel_layer)
+            .with(env_filter);
 
         if use_json {
             let fmt = tracing_subscriber::fmt::layer()
-                .json().with_target(true).with_level(true);
+                .json()
+                .with_target(true)
+                .with_level(true);
             match file_writer {
                 Some(w) => {
                     let file = tracing_subscriber::fmt::layer()
-                        .json().with_writer(w).with_target(true).with_level(true);
+                        .json()
+                        .with_writer(w)
+                        .with_target(true)
+                        .with_level(true);
                     base.with(fmt).with(file).init();
                 }
                 None => base.with(fmt).init(),
             }
         } else {
             let fmt = tracing_subscriber::fmt::layer()
-                .with_target(true).with_level(true);
+                .with_target(true)
+                .with_level(true);
             match file_writer {
                 Some(w) => {
                     let file = tracing_subscriber::fmt::layer()
-                        .with_writer(w).with_target(true).with_level(true);
+                        .with_writer(w)
+                        .with_target(true)
+                        .with_level(true);
                     base.with(fmt).with(file).init();
                 }
                 None => base.with(fmt).init(),
@@ -95,22 +105,30 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
         let base = tracing_subscriber::registry().with(env_filter);
         if use_json {
             let fmt = tracing_subscriber::fmt::layer()
-                .json().with_target(true).with_level(true);
+                .json()
+                .with_target(true)
+                .with_level(true);
             match file_writer {
                 Some(w) => {
                     let file = tracing_subscriber::fmt::layer()
-                        .json().with_writer(w).with_target(true).with_level(true);
+                        .json()
+                        .with_writer(w)
+                        .with_target(true)
+                        .with_level(true);
                     base.with(fmt).with(file).init();
                 }
                 None => base.with(fmt).init(),
             }
         } else {
             let fmt = tracing_subscriber::fmt::layer()
-                .with_target(true).with_level(true);
+                .with_target(true)
+                .with_level(true);
             match file_writer {
                 Some(w) => {
                     let file = tracing_subscriber::fmt::layer()
-                        .with_writer(w).with_target(true).with_level(true);
+                        .with_writer(w)
+                        .with_target(true)
+                        .with_level(true);
                     base.with(fmt).with(file).init();
                 }
                 None => base.with(fmt).init(),

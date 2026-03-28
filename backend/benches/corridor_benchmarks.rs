@@ -80,19 +80,17 @@ fn bench_payment_record_operations(c: &mut Criterion) {
     let dest_issuer = "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y3IEMRRVXNWLSFYWM5V2J7LT".to_string();
 
     group.bench_function("create_payment_record", |b| {
-        b.iter(|| {
-            PaymentRecord {
-                id: Uuid::new_v4(),
-                source_asset_code: black_box(source_asset.clone()),
-                source_asset_issuer: black_box(source_issuer.clone()),
-                destination_asset_code: black_box(dest_asset.clone()),
-                destination_asset_issuer: black_box(dest_issuer.clone()),
-                amount: black_box(100.0),
-                successful: black_box(true),
-                timestamp: chrono::Utc::now(),
-                submission_time: None,
-                confirmation_time: None,
-            }
+        b.iter(|| PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: black_box(source_asset.clone()),
+            source_asset_issuer: black_box(source_issuer.clone()),
+            destination_asset_code: black_box(dest_asset.clone()),
+            destination_asset_issuer: black_box(dest_issuer.clone()),
+            amount: black_box(100.0),
+            successful: black_box(true),
+            timestamp: chrono::Utc::now(),
+            submission_time: None,
+            confirmation_time: None,
         });
     });
 
@@ -126,9 +124,7 @@ fn bench_median_computation(c: &mut Criterion) {
 
     // Test with different dataset sizes
     for size in [10, 100, 1000, 10000].iter() {
-        let mut values: Vec<i64> = (0..*size)
-            .map(|i| (i % 5000) as i64)
-            .collect();
+        let mut values: Vec<i64> = (0..*size).map(|i| (i % 5000) as i64).collect();
 
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("size_{}", size)),

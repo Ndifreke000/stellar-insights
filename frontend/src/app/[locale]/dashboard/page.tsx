@@ -82,7 +82,7 @@ export default function DashboardPage() {
     if (!response.ok) throw new Error(t("failedToFetch"));
     const result = await response.json();
     setData(result);
-  }, []);
+  }, [t]);
 
   const {
     lastUpdated,

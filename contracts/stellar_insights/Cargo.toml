@@ -8,6 +8,9 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
@@ -18,13 +21,3 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-
-[profile.release]
-opt-level = "z"
-overflow-checks = true
-debug = 0
-strip = "symbols"
-debug-assertions = false
-panic = "abort"
-codegen-units = 1
-lto = true

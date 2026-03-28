@@ -1,7 +1,8 @@
 #![no_std]
+extern crate std;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
-    Map, String, Symbol,
+    Map, String, Symbol, Vec,
 };
 
 const HASH_SIZE: u32 = 32;
@@ -165,9 +166,6 @@ impl SnapshotContract {
         env.storage().instance().set(&DataKey::ReentrancyGuard, &false);
     }
 
-    /// Admin-only: stop contract operations
-    pub fn stop_contract(env: Env) {
-        let admin: Address = env
     fn get_next_action_id(env: &Env) -> u64 {
         let id: u64 = env
             .storage()
@@ -178,7 +176,6 @@ impl SnapshotContract {
         id
     }
 
-    /// Internal: get admin or return NotInitialized error.
     fn get_admin(env: &Env) -> Result<Address, Error> {
         env.storage()
             .instance()
@@ -350,14 +347,13 @@ impl SnapshotContract {
     ///
     /// # Returns
     /// * Ledger timestamp when snapshot was recorded
-    pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> u64 {
+    pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> Result<u64, Error> {
         // Check reentrancy guard
         if let Err(e) = Self::check_and_set_reentrancy_guard(&env) {
             panic!("{}", e);
         }
 
         // Check if contract is paused
-    pub fn submit_snapshot(env: Env, hash: Bytes, epoch: u64) -> Result<u64, Error> {
         let is_paused: bool = env
             .storage()
             .instance()
@@ -365,30 +361,17 @@ impl SnapshotContract {
             .unwrap_or(false);
         if is_paused {
             Self::clear_reentrancy_guard(&env);
-            panic!("Contract is paused for emergency maintenance");
+            return Err(Error::ContractPaused);
         }
 
         // Validate inputs
         if hash.len() != HASH_SIZE {
             Self::clear_reentrancy_guard(&env);
-            panic!(
-                "Invalid hash size: expected {} bytes, got {}",
-                HASH_SIZE,
-                hash.len()
-            );
-        }
-
-        if epoch == 0 {
-            Self::clear_reentrancy_guard(&env);
-            panic!("Invalid epoch: must be greater than 0");
-            return Err(Error::ContractPaused);
-        }
-
-        if hash.len() != HASH_SIZE {
             return Err(Error::InvalidHashSize);
         }
 
         if epoch == 0 {
+            Self::clear_reentrancy_guard(&env);
             return Err(Error::InvalidEpoch);
         }
 
@@ -421,7 +404,6 @@ impl SnapshotContract {
 
         if snapshots.contains_key(epoch) {
             Self::clear_reentrancy_guard(&env);
-            panic!("Snapshot for epoch {} already exists", epoch);
             return Err(Error::EpochAlreadyExists);
         }
 
@@ -460,7 +442,6 @@ impl SnapshotContract {
         // Clear guard before returning
         Self::clear_reentrancy_guard(&env);
 
-        timestamp
         Ok(timestamp)
     }
 
@@ -733,7 +714,7 @@ impl SnapshotContract {
 mod test {
     use super::*;
     use soroban_sdk::{
-        bytes,
+        bytes, vec,
         testutils::{Address as _, Events},
         Env, TryIntoVal,
     };
@@ -886,7 +867,7 @@ mod test {
         let _timestamp = client.submit_snapshot(&hash, &epoch);
 
         let retrieved_hash = client.get_snapshot(&epoch);
-        assert_eq!(retrieved_hash, Ok(hash));
+        assert_eq!(retrieved_hash, hash);
     }
 
     #[test]
@@ -964,7 +945,7 @@ mod test {
         );
 
         client.submit_snapshot(&hash1, &10);
-        let latest = client.latest_snapshot().unwrap();
+        let latest = client.latest_snapshot();
         assert_eq!(latest.epoch, 10);
 
         let result = client.try_submit_snapshot(&hash2, &5);
@@ -993,8 +974,8 @@ mod test {
         let epoch2 = 2u64;
         client.submit_snapshot(&hash2, &epoch2);
 
-        assert_eq!(client.get_snapshot(&epoch1), Ok(hash1));
-        assert_eq!(client.get_snapshot(&epoch2), Ok(hash2));
+        assert_eq!(client.get_snapshot(&epoch1), hash1);
+        assert_eq!(client.get_snapshot(&epoch2), hash2);
     }
 
     #[test]
@@ -1027,7 +1008,7 @@ mod test {
             &7,
         );
 
-        let snapshot = client.latest_snapshot().unwrap();
+        let snapshot = client.latest_snapshot();
         assert_eq!(snapshot.epoch, 7);
         assert_eq!(
             snapshot.hash,
@@ -1121,7 +1102,7 @@ mod test {
         );
         client.prepare_upgrade(&wasm_hash);
 
-        assert_eq!(client.get_snapshot(&1), Ok(hash1));
+        assert_eq!(client.get_snapshot(&1), hash1);
         assert!(client.verify_snapshot(&hash1));
     }
 
@@ -1196,6 +1177,9 @@ mod test {
 
         // This should panic due to reentrancy detection
         client.submit_snapshot(&hash, &1);
+    }
+
+    #[test]
     fn test_multisig_initialization() {
         let env = Env::default();
         let contract_id = env.register_contract(None, SnapshotContract);

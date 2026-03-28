@@ -1,20 +1,11 @@
 // #![no_std]
 extern crate std;
 
-
-
-
-
-
-
-
-
 mod errors;
 
 pub use errors::Error;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String,
-    Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
 };
 
 #[contracttype]
@@ -76,7 +67,6 @@ const RATE_LIMIT_WINDOW: u64 = 3600; // 1 hour
 const MAX_CALLS_PER_WINDOW: u32 = 100;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 
 // ── Event payloads ────────────────────────────────────────────────────────────
 
@@ -220,7 +210,7 @@ pub struct SnapshotsPrunedEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelockAction {
     pub action_type: String,
-    pub action_data: BytesN<32>,
+    pub action_data: Address,
     pub proposer: Address,
     pub proposed_at: u64,
     pub executable_at: u64,
@@ -286,8 +276,6 @@ pub enum DataKey {
     PendingAction(u64),
 }
 
-
-
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 fn check_rate_limit(env: &Env, caller: &Address) -> Result<(), Error> {
@@ -334,11 +322,12 @@ fn require_admin(env: &Env) -> Result<Address, Error> {
 /// Check if contract has been initialized.
 fn require_initialized(env: &Env) -> Result<(), Error> {
     if !env.storage().instance().has(&DataKey::Admin) {
-        return Err(Error::NotInitialized.log_context(env, "require_initialized: contract not initialized"));
+        return Err(
+            Error::NotInitialized.log_context(env, "require_initialized: contract not initialized")
+        );
     }
     Ok(())
 }
-
 
 /// Validate epoch ordering; returns the current latest epoch on success.
 fn validate_epoch(env: &Env, epoch: u64) -> Result<u64, Error> {
@@ -400,7 +389,9 @@ fn get_next_action_id(env: &Env) -> u64 {
         .instance()
         .get(&DataKey::NextActionId)
         .unwrap_or(0);
-    env.storage().instance().set(&DataKey::NextActionId, &(id + 1));
+    env.storage()
+        .instance()
+        .set(&DataKey::NextActionId, &(id + 1));
     id
 }
 
@@ -483,6 +474,16 @@ impl AnalyticsContract {
         }
 
         let latest = validate_epoch(&env, epoch)?;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Validate hash is not all zeros (security-critical)
+        // ─────────────────────────────────────────────────────────────────────
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if hash == zero_hash {
+            return Err(
+                Error::InvalidHashZero.log_context(&env, "submit_snapshot: hash must not be all zeros")
+            );
+        }
 
         let timestamp = env.ledger().timestamp();
         let ledger_sequence = env.ledger().sequence();
@@ -692,7 +693,6 @@ impl AnalyticsContract {
         }
     }
 
-
     /// Get snapshot metadata for a specific epoch
     ///
     /// # Arguments
@@ -728,7 +728,8 @@ impl AnalyticsContract {
         if latest_epoch == 0 {
             return Ok(None);
         }
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .persistent()
             .get(&DataKey::Snapshot(latest_epoch)))
     }
@@ -736,7 +737,8 @@ impl AnalyticsContract {
     /// Get the entire snapshot history.
     pub fn get_snapshot_history(env: Env) -> Result<Map<u64, SnapshotMetadata>, Error> {
         require_initialized(&env)?;
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .persistent()
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env)))
@@ -745,7 +747,8 @@ impl AnalyticsContract {
     /// Get the latest epoch submitted.
     pub fn get_latest_epoch(env: Env) -> Result<u64, Error> {
         require_initialized(&env)?;
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .instance()
             .get(&DataKey::LatestEpoch)
             .unwrap_or(0))
@@ -761,7 +764,6 @@ impl AnalyticsContract {
         }
         Ok(epochs)
     }
-
 
     /// Returns a paginated page of snapshots ordered by epoch.
     pub fn get_snapshots_paginated(
@@ -800,7 +802,7 @@ impl AnalyticsContract {
 
         Ok(PaginatedSnapshots {
             snapshots: results,
-            total_count: latest_epoch,
+            total_count: u64::from(snapshots.len()),
             has_more: next_cursor.is_some(),
             next_cursor,
         })
@@ -826,22 +828,21 @@ impl AnalyticsContract {
                 Error::Unauthorized.log_context(&env, "set_admin: caller is not the current admin")
             );
         }
-        
-        let previous_admin = admin;
+
+        let previous_admin = old_admin.clone();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
-        
+
         // ✅ EMIT DETAILED EVENT for audit trail
         env.events().publish(
             (symbol_short!("admin"), new_admin.clone()),
             AdminTransferEvent {
                 previous_admin: previous_admin.clone(),
                 new_admin: new_admin.clone(),
-                transferred_by: current_admin,
+                transferred_by: current_admin.clone(),
                 timestamp: env.ledger().timestamp(),
                 ledger_sequence: env.ledger().sequence(),
             },
         );
-        
 
         env.events().publish(
             (symbol_short!("admin"), new_admin.clone()),
@@ -924,6 +925,40 @@ impl AnalyticsContract {
         Ok(())
     }
 
+    /// Upgrade the contract Wasm. Admin-only.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        // Only admin can upgrade
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        admin.require_auth();
+
+        // Verify contract is not paused
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+
+        if paused {
+            return Err(Error::ContractPaused);
+        }
+
+        // Perform upgrade
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (admin, new_wasm_hash),
+        );
+
+        Ok(())
+    }
+
     pub fn set_governance(env: Env, caller: Address, governance: Address) -> Result<(), Error> {
         caller.require_auth();
         let admin = require_admin(&env)?;
@@ -992,7 +1027,7 @@ impl AnalyticsContract {
         Ok(())
     }
 
-     pub fn set_paused_by_governance(env: Env, caller: Address, paused: bool) -> Result<(), Error> {
+    pub fn set_paused_by_governance(env: Env, caller: Address, paused: bool) -> Result<(), Error> {
         let governance: Address = env
             .storage()
             .instance()
@@ -1114,9 +1149,11 @@ impl AnalyticsContract {
     /// # Panics
     /// * If contract is not initialized
 
-
     /// Batch get multiple snapshots by epoch.
-    pub fn batch_get_snapshots(env: Env, epochs: Vec<u64>) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
+    pub fn batch_get_snapshots(
+        env: Env,
+        epochs: Vec<u64>,
+    ) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
         require_initialized(&env)?;
         let snapshots: Map<u64, SnapshotMetadata> = env
             .storage()
@@ -1145,24 +1182,26 @@ impl AnalyticsContract {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
-        
+
         if proposer != admin {
             return Err(Error::Unauthorized);
         }
 
         let action_id = get_next_action_id(&env);
         let now = env.ledger().timestamp();
-        
+
         let action = TimelockAction {
             action_type: String::from_str(&env, "set_admin"),
-            action_data: new_admin.to_bytes(),
+            action_data: new_admin.clone(),
             proposer: proposer.clone(),
             proposed_at: now,
             executable_at: now + TIMELOCK_DELAY,
             executed: false,
         };
-        
-        env.storage().persistent().set(&DataKey::TimelockAction(action_id), &action);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::TimelockAction(action_id), &action);
 
         // Emit event
         env.events().publish(
@@ -1179,78 +1218,75 @@ impl AnalyticsContract {
         action_id: u64,
     ) -> Result<(), Error> {
         executor.require_auth();
-        
+
         let mut action: TimelockAction = env
             .storage()
             .persistent()
             .get(&DataKey::TimelockAction(action_id))
             .ok_or(Error::ActionNotFound)?;
-        
+
         // ✅ Check timelock has passed
         if env.ledger().timestamp() < action.executable_at {
             return Err(Error::TimelockNotExpired);
         }
-        
+
         // Check not already executed
         if action.executed {
             return Err(Error::ActionAlreadyExecuted);
         }
-        
+
         // Execute action based on type
         // Use == instead of .as_str() because soroban_sdk::String does not have .as_str()
         if action.action_type == String::from_str(&env, "set_admin") {
-            let new_admin = Address::from_bytes(&action.action_data);
+            let new_admin = action.action_data.clone();
             env.storage().instance().set(&DataKey::Admin, &new_admin);
         } else {
             return Err(Error::UnknownActionType);
         }
-        
+
         // Mark as executed
         action.executed = true;
-        env.storage().persistent().set(&DataKey::TimelockAction(action_id), &action);
-        
+        env.storage()
+            .persistent()
+            .set(&DataKey::TimelockAction(action_id), &action);
+
         // Emit event
-        env.events().publish(
-            (symbol_short!("execute"), executor),
-            action_id,
-        );
-        
+        env.events()
+            .publish((symbol_short!("execute"), executor), action_id);
+
         Ok(())
     }
 
-    pub fn cancel_timelock_action(
-        env: Env,
-        admin: Address,
-        action_id: u64,
-    ) -> Result<(), Error> {
+    pub fn cancel_timelock_action(env: Env, admin: Address, action_id: u64) -> Result<(), Error> {
         admin.require_auth();
-        
+
         // Only admin can cancel
         let stored_admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
-        
+
         if admin != stored_admin {
             return Err(Error::Unauthorized);
         }
-        
+
         // Remove action
-        env.storage().persistent().remove(&DataKey::TimelockAction(action_id));
-        
+        env.storage()
+            .persistent()
+            .remove(&DataKey::TimelockAction(action_id));
+
         // Emit event
-        env.events().publish(
-            (symbol_short!("cancel"), admin),
-            action_id,
-        );
-        
+        env.events()
+            .publish((symbol_short!("cancel"), admin), action_id);
+
         Ok(())
     }
 
     pub fn get_timelock_action(env: Env, action_id: u64) -> Result<Option<TimelockAction>, Error> {
         require_initialized(&env)?;
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .persistent()
             .get(&DataKey::TimelockAction(action_id)))
     }
@@ -1310,7 +1346,8 @@ impl AnalyticsContract {
 
     pub fn is_paused(env: Env) -> Result<bool, Error> {
         require_initialized(&env)?;
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false))
@@ -1327,7 +1364,11 @@ impl AnalyticsContract {
     // =========================================================================
 
     /// Initialize multi-sig configuration.
-    pub fn initialize_multisig(env: Env, admins: Vec<Address>, threshold: u32) -> Result<(), Error> {
+    pub fn initialize_multisig(
+        env: Env,
+        admins: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), Error> {
         if threshold == 0 || threshold > admins.len() {
             return Err(Error::InvalidThreshold.log_context(
                 &env,
@@ -1449,7 +1490,8 @@ impl AnalyticsContract {
     /// Get a pending action by ID.
     pub fn get_pending_action(env: Env, action_id: u64) -> Result<Option<PendingAction>, Error> {
         require_initialized(&env)?;
-        Ok(env.storage()
+        Ok(env
+            .storage()
             .persistent()
             .get(&DataKey::PendingAction(action_id)))
     }
@@ -1496,5 +1538,3 @@ mod tests;
 
 #[cfg(test)]
 mod fuzz_tests;
-
-

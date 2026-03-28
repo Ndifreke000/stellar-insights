@@ -5,8 +5,8 @@
 //! with additional edge cases and boundary conditions.
 
 use stellar_insights_backend::services::analytics::{
-    compute_corridor_metrics, compute_liquidity_depth, OrderBookEntry, OrderBookSnapshot,
-    CorridorTransaction,
+    compute_corridor_metrics, compute_liquidity_depth, CorridorTransaction, OrderBookEntry,
+    OrderBookSnapshot,
 };
 
 // ── compute_liquidity_depth ───────────────────────────────────────────────────
@@ -250,7 +250,8 @@ fn test_metrics_success_rate_is_percentage() {
 
 #[test]
 fn test_metrics_large_dataset_100_transactions() {
-    let mut txns: Vec<CorridorTransaction> = (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
+    let mut txns: Vec<CorridorTransaction> =
+        (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
     txns.extend((0..20).map(|_| failed_txn()));
 
     let m = compute_corridor_metrics(&txns, None, 1.0);
