@@ -81,7 +81,10 @@ impl ContractEventListenerJob {
         loop {
             interval.tick().await;
 
-            match self.check_for_missed_events(&event_indexer, &listener_config).await {
+            match self
+                .check_for_missed_events(&event_indexer, &listener_config)
+                .await
+            {
                 Ok(events_processed) => {
                     if events_processed > 0 {
                         info!("Processed {} missed contract events", events_processed);
@@ -96,7 +99,11 @@ impl ContractEventListenerJob {
     }
 
     /// Check for missed events and process them
-    async fn check_for_missed_events(&self, event_indexer: &Arc<EventIndexer>, listener_config: &ListenerConfig) -> Result<usize> {
+    async fn check_for_missed_events(
+        &self,
+        event_indexer: &Arc<EventIndexer>,
+        listener_config: &ListenerConfig,
+    ) -> Result<usize> {
         // Get the latest event from the database
         let recent_events = event_indexer.get_event_stats().await?;
 
@@ -114,8 +121,10 @@ impl ContractEventListenerJob {
         // Current behavior uses: listener_config.rpc_url and listener_config.poll_interval_secs
 
         // For now, we'll just log that we're checking
-        debug!("Checking for events since ledger {} with poll interval {} seconds", 
-               start_ledger, listener_config.poll_interval_secs);
+        debug!(
+            "Checking for events since ledger {} with poll interval {} seconds",
+            start_ledger, listener_config.poll_interval_secs
+        );
 
         // Return 0 events processed for now
         // In a real implementation, this would return the actual count

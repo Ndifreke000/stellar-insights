@@ -6,11 +6,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use hex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use hex;
-use sha2::{Sha256, Digest};
 
 use crate::auth::oauth::{OAuthService, TokenResponse};
 use crate::auth_middleware::AuthUser;

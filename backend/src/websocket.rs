@@ -135,7 +135,10 @@ impl WsState {
         for connection_id in target_connections {
             if let Some(sender) = self.connections.get(&connection_id) {
                 if sender.try_send(message.clone()).is_err() {
-                    warn!("Outgoing queue full for connection {}, dropping message", connection_id);
+                    warn!(
+                        "Outgoing queue full for connection {}, dropping message",
+                        connection_id
+                    );
                 }
             }
         }
@@ -145,7 +148,10 @@ impl WsState {
         let mut subscription_set = self.subscriptions.entry(connection_id).or_default();
         for channel in channels {
             subscription_set.insert(channel.clone());
-            info!("Connection {} subscribed to channel: {}", connection_id, channel);
+            info!(
+                "Connection {} subscribed to channel: {}",
+                connection_id, channel
+            );
         }
     }
 
@@ -153,7 +159,10 @@ impl WsState {
         if let Some(mut subscription_set) = self.subscriptions.get_mut(&connection_id) {
             for channel in channels {
                 subscription_set.remove(&channel);
-                info!("Connection {} unsubscribed from channel: {}", connection_id, channel);
+                info!(
+                    "Connection {} unsubscribed from channel: {}",
+                    connection_id, channel
+                );
             }
         }
     }
@@ -190,7 +199,11 @@ impl WsState {
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
-                Ok(_) => return Some(ConnectionPermit { state: Arc::clone(self) }),
+                Ok(_) => {
+                    return Some(ConnectionPermit {
+                        state: Arc::clone(self),
+                    })
+                }
                 Err(actual) => current = actual,
             }
         }
@@ -201,12 +214,13 @@ impl WsState {
     }
 
     fn check_message_rate_limit_at(&self, connection_id: Uuid, now: Instant) -> bool {
-        let mut rate_limit = self.message_rate_limits
-            .entry(connection_id)
-            .or_insert(MessageRateLimit {
-                window_started_at: now,
-                message_count: 0,
-            });
+        let mut rate_limit =
+            self.message_rate_limits
+                .entry(connection_id)
+                .or_insert(MessageRateLimit {
+                    window_started_at: now,
+                    message_count: 0,
+                });
 
         if now.duration_since(rate_limit.window_started_at) >= MESSAGE_RATE_LIMIT_WINDOW {
             rate_limit.window_started_at = now;
@@ -284,15 +298,34 @@ pub enum WsMessage {
         message: String,
         timestamp: String,
     },
-    Subscribe { channels: Vec<String> },
-    Unsubscribe { channels: Vec<String> },
-    SubscriptionConfirm { channels: Vec<String>, status: String },
-    Ping { timestamp: i64 },
-    Pong { timestamp: i64 },
-    Connected { connection_id: String },
-    ConnectionStatus { status: String },
-    Error { message: String },
-    ServerShutdown { message: String },
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
+    SubscriptionConfirm {
+        channels: Vec<String>,
+        status: String,
+    },
+    Ping {
+        timestamp: i64,
+    },
+    Pong {
+        timestamp: i64,
+    },
+    Connected {
+        connection_id: String,
+    },
+    ConnectionStatus {
+        status: String,
+    },
+    Error {
+        message: String,
+    },
+    ServerShutdown {
+        message: String,
+    },
 }
 
 // ── Query params ──────────────────────────────────────────────────────────────
@@ -355,7 +388,11 @@ fn validate_token(token: &str) -> bool {
     }
 }
 
-async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit: ConnectionPermit) {
+async fn handle_socket(
+    socket: WebSocket,
+    state: Arc<WsState>,
+    connection_permit: ConnectionPermit,
+) {
     let connection_id = Uuid::new_v4();
     let client_id = connection_id.to_string();
     info!("New WebSocket connection: {}", connection_id);
@@ -369,9 +406,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit
 
     let mut broadcast_rx = state.tx.subscribe();
 
-    let _ = send_ws_message(&sender, &WsMessage::Connected {
-        connection_id: client_id.clone(),
-    }).await;
+    let _ = send_ws_message(
+        &sender,
+        &WsMessage::Connected {
+            connection_id: client_id.clone(),
+        },
+    )
+    .await;
 
     let send_sender = Arc::clone(&sender);
     let recv_sender = Arc::clone(&sender);
@@ -400,10 +441,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit
                 };
 
                 if is_oversized_message(&msg) {
-                    warn!("Oversized WebSocket message received from {}", connection_id);
-                    let _ = send_ws_message(&recv_sender, &WsMessage::Error {
-                        message: "Message size exceeds allowed limit.".to_string(),
-                    }).await;
+                    warn!(
+                        "Oversized WebSocket message received from {}",
+                        connection_id
+                    );
+                    let _ = send_ws_message(
+                        &recv_sender,
+                        &WsMessage::Error {
+                            message: "Message size exceeds allowed limit.".to_string(),
+                        },
+                    )
+                    .await;
                     let mut guard = recv_sender.lock().await;
                     let _ = guard.send(Message::Close(None)).await;
                     break;
@@ -413,13 +461,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit
                     && !state_clone.check_message_rate_limit(connection_id)
                 {
                     warn!("WebSocket rate limit exceeded for {}", connection_id);
-                    let _ = send_ws_message(&recv_sender, &WsMessage::Error {
-                        message: format!(
-                            "Rate limit exceeded. Maximum {} messages per {} seconds.",
-                            MAX_MESSAGES_PER_WINDOW,
-                            MESSAGE_RATE_LIMIT_WINDOW.as_secs()
-                        ),
-                    }).await;
+                    let _ = send_ws_message(
+                        &recv_sender,
+                        &WsMessage::Error {
+                            message: format!(
+                                "Rate limit exceeded. Maximum {} messages per {} seconds.",
+                                MAX_MESSAGES_PER_WINDOW,
+                                MESSAGE_RATE_LIMIT_WINDOW.as_secs()
+                            ),
+                        },
+                    )
+                    .await;
                     let mut guard = recv_sender.lock().await;
                     let _ = guard.send(Message::Close(None)).await;
                     break;
@@ -442,23 +494,43 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit
                             match ws_msg {
                                 WsMessage::Ping { timestamp } => {
                                     info!("Received ping from {}", connection_id);
-                                    let _ = send_ws_message(&recv_sender, &WsMessage::Pong { timestamp }).await;
+                                    let _ = send_ws_message(
+                                        &recv_sender,
+                                        &WsMessage::Pong { timestamp },
+                                    )
+                                    .await;
                                 }
                                 WsMessage::Subscribe { channels } => {
-                                    info!("Connection {} subscribing to: {:?}", connection_id, channels);
-                                    state_clone.subscribe_connection(connection_id, channels.clone());
-                                    let _ = send_ws_message(&recv_sender, &WsMessage::SubscriptionConfirm {
-                                        channels,
-                                        status: "subscribed".to_string(),
-                                    }).await;
+                                    info!(
+                                        "Connection {} subscribing to: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .subscribe_connection(connection_id, channels.clone());
+                                    let _ = send_ws_message(
+                                        &recv_sender,
+                                        &WsMessage::SubscriptionConfirm {
+                                            channels,
+                                            status: "subscribed".to_string(),
+                                        },
+                                    )
+                                    .await;
                                 }
                                 WsMessage::Unsubscribe { channels } => {
-                                    info!("Connection {} unsubscribing from: {:?}", connection_id, channels);
-                                    state_clone.unsubscribe_connection(connection_id, channels.clone());
-                                    let _ = send_ws_message(&recv_sender, &WsMessage::SubscriptionConfirm {
-                                        channels,
-                                        status: "unsubscribed".to_string(),
-                                    }).await;
+                                    info!(
+                                        "Connection {} unsubscribing from: {:?}",
+                                        connection_id, channels
+                                    );
+                                    state_clone
+                                        .unsubscribe_connection(connection_id, channels.clone());
+                                    let _ = send_ws_message(
+                                        &recv_sender,
+                                        &WsMessage::SubscriptionConfirm {
+                                            channels,
+                                            status: "unsubscribed".to_string(),
+                                        },
+                                    )
+                                    .await;
                                 }
                                 _ => {
                                     warn!("Unexpected message type from client: {:?}", ws_msg);
@@ -529,7 +601,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, connection_permit
     state.cleanup_connection(connection_id);
     drop(connection_permit);
     crate::observability::metrics::set_active_connections(state.connection_count() as i64);
-    info!("WebSocket connection {} closed. Active: {}", connection_id, state.connection_count());
+    info!(
+        "WebSocket connection {} closed. Active: {}",
+        connection_id,
+        state.connection_count()
+    );
 }
 
 fn should_rate_limit_message(message: &Message) -> bool {
@@ -649,7 +725,10 @@ mod tests {
         let state = WsState::new();
         let client_id = "test-client-1";
         for _ in 0..MAX_MESSAGES_PER_WINDOW {
-            assert!(state.check_rate_limit(client_id), "message within limit should be allowed");
+            assert!(
+                state.check_rate_limit(client_id),
+                "message within limit should be allowed"
+            );
         }
     }
 
@@ -660,7 +739,10 @@ mod tests {
         for _ in 0..MAX_MESSAGES_PER_WINDOW {
             state.check_rate_limit(client_id);
         }
-        assert!(!state.check_rate_limit(client_id), "message beyond limit should be blocked");
+        assert!(
+            !state.check_rate_limit(client_id),
+            "message beyond limit should be blocked"
+        );
     }
 
     #[test]
@@ -672,7 +754,10 @@ mod tests {
             state.check_rate_limit(client_a);
         }
         assert!(!state.check_rate_limit(client_a));
-        assert!(state.check_rate_limit(client_b), "independent client should not be affected");
+        assert!(
+            state.check_rate_limit(client_b),
+            "independent client should not be affected"
+        );
     }
 
     #[test]
@@ -699,6 +784,9 @@ mod tests {
         state.connections.insert(connection_id, tx);
 
         state.cleanup_connection(connection_id);
-        assert!(!state.rate_limits.contains_key(&client_id), "rate limit entry should be removed on cleanup");
+        assert!(
+            !state.rate_limits.contains_key(&client_id),
+            "rate limit entry should be removed on cleanup"
+        );
     }
 }

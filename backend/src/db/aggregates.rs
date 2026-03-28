@@ -290,7 +290,10 @@ impl CorridorAggregates {
         .bind(cutoff_datetime)
         .execute(&self.pool)
         .await
-        .context(format!("Failed to delete metrics older than: {}", cutoff_date))?;
+        .context(format!(
+            "Failed to delete metrics older than: {}",
+            cutoff_date
+        ))?;
 
         Ok(result.rows_affected())
     }

@@ -287,7 +287,11 @@ impl LiquidityPoolAnalyzer {
         current_base_reserve: f64,
         current_quote_reserve: f64,
     ) -> f64 {
-        if initial_base_reserve <= 0.0 || initial_quote_reserve <= 0.0 || current_base_reserve <= 0.0 || current_quote_reserve <= 0.0 {
+        if initial_base_reserve <= 0.0
+            || initial_quote_reserve <= 0.0
+            || current_base_reserve <= 0.0
+            || current_quote_reserve <= 0.0
+        {
             return 0.0;
         }
 
@@ -325,9 +329,12 @@ impl LiquidityPoolAnalyzer {
         .flatten();
 
         match initial {
-            Some((initial_base_reserve, initial_quote_reserve)) => {
-                Self::compute_impermanent_loss(initial_base_reserve, initial_quote_reserve, current_base_reserve, current_quote_reserve)
-            }
+            Some((initial_base_reserve, initial_quote_reserve)) => Self::compute_impermanent_loss(
+                initial_base_reserve,
+                initial_quote_reserve,
+                current_base_reserve,
+                current_quote_reserve,
+            ),
             None => 0.0, // No historical data yet
         }
     }

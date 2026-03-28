@@ -2,8 +2,8 @@ use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::cache::{keys, CacheManager};
 use crate::cache::helpers::cached_query;
+use crate::cache::{keys, CacheManager};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CachedMetricsSummary {

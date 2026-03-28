@@ -250,8 +250,7 @@ fn test_metrics_success_rate_is_percentage() {
 
 #[test]
 fn test_metrics_large_dataset_100_transactions() {
-    let mut txns: Vec<CorridorPayment> =
-        (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
+    let mut txns: Vec<CorridorPayment> = (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
     txns.extend((0..20).map(|_| failed_txn()));
 
     let m = compute_corridor_metrics(&txns, None, 1.0);

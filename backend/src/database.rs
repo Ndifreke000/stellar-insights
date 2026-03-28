@@ -8,6 +8,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::analytics::compute_anchor_metrics;
+use crate::cache::CacheManager;
 use crate::models::api_key::{
     generate_api_key, hash_api_key, ApiKey, ApiKeyInfo, CreateApiKeyRequest, CreateApiKeyResponse,
 };
@@ -15,7 +16,6 @@ use crate::models::{
     Anchor, AnchorDetailResponse, AnchorMetricsHistory, Asset, CorridorRecord, CreateAnchorRequest,
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
-use crate::cache::CacheManager;
 
 /// Configuration for database connection pool
 #[derive(Debug, Clone)]
@@ -880,19 +880,18 @@ impl Database {
     }
 
     pub async fn get_anchor_detail(&self, anchor_id: Uuid) -> Result<Option<AnchorDetailResponse>> {
-        let anchor = match self
-            .get_anchor_by_id(anchor_id)
-            .await
-            .context(format!("Failed to fetch anchor for detail view: {}", anchor_id))?
-        {
+        let anchor = match self.get_anchor_by_id(anchor_id).await.context(format!(
+            "Failed to fetch anchor for detail view: {}",
+            anchor_id
+        ))? {
             Some(a) => a,
             None => return Ok(None),
         };
 
-        let assets = self
-            .get_assets_by_anchor(anchor_id)
-            .await
-            .context(format!("Failed to fetch assets for anchor detail: {}", anchor_id))?;
+        let assets = self.get_assets_by_anchor(anchor_id).await.context(format!(
+            "Failed to fetch assets for anchor detail: {}",
+            anchor_id
+        ))?;
         let metrics_history = self
             .get_anchor_metrics_history(anchor_id, 30)
             .await
@@ -1042,7 +1041,11 @@ impl Database {
             // Invalidate cache
             let corridor_key = corridor.to_string_key();
             let _ = cache.invalidate_corridor(&corridor_key).await.map_err(|e| {
-                tracing::warn!("Failed to invalidate cache for corridor {}: {}", corridor_key, e);
+                tracing::warn!(
+                    "Failed to invalidate cache for corridor {}: {}",
+                    corridor_key,
+                    e
+                );
             });
 
             Ok(corridor)
@@ -1732,7 +1735,10 @@ impl Database {
 
         self.revoke_api_key(id, wallet_address)
             .await
-            .context(format!("Failed to revoke old API key during rotation: {}", id))?;
+            .context(format!(
+                "Failed to revoke old API key during rotation: {}",
+                id
+            ))?;
 
         let new_key = self
             .create_api_key(
