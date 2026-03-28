@@ -1,8 +1,13 @@
 "use client";
 
 import React from "react";
+import dynamic from "next/dynamic";
 import { Send } from "lucide-react";
-import { Sep31PaymentFlow } from "@/components/Sep31PaymentFlow";
+
+const Sep31PaymentFlow = dynamic(
+  () => import("@/components/Sep31PaymentFlow").then((m) => ({ default: m.Sep31PaymentFlow })),
+  { ssr: false }
+);
 
 export default function SendPaymentPage() {
   return (

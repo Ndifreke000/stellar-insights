@@ -9,6 +9,13 @@ const analyzer = withBundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Optimise package imports to avoid pulling in entire icon/chart libraries
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "framer-motion",
+      "@stellar/stellar-sdk",
   turbopack: {
     root: '../',
   },
