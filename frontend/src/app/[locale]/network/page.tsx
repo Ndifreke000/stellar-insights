@@ -13,6 +13,20 @@ const NetworkGraph = dynamic(() => import('@/components/charts/NetworkGraph'), {
     ),
 });
 import { Badge } from '@/components/ui/badge';
+
+// Lazy-load the force-graph canvas component — it pulls in react-force-graph-2d
+// and d3-force-3d which are large and require a browser environment.
+const NetworkGraph = dynamic(() => import('@/components/charts/NetworkGraph'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full glass rounded-3xl flex flex-col items-center justify-center gap-4">
+      <div className="w-12 h-12 border-4 border-accent/20 border-t-accent rounded-full animate-spin" />
+      <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground animate-pulse">
+        Loading Graph Engine...
+      </p>
+    </div>
+  ),
+});
 import { Activity, Share2, Info } from 'lucide-react';
 
 export default function NetworkPage() {

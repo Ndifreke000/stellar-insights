@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
-use crate::services::aggregation::HourlyCorridorMetrics;
+use crate::models::corridor::HourlyCorridorMetrics;
 
 pub struct AggregationDb {
     pool: SqlitePool,

@@ -516,7 +516,11 @@ impl Database {
             update.avg_settlement_time_ms,
         );
 
-        // Update anchor
+        // Wrap the UPDATE + INSERT history in a single transaction so that
+        // a failure recording history cannot leave the anchor row updated
+        // without a corresponding history entry.
+        let mut tx = self.pool.begin().await?;
+
         let anchor = sqlx::query_as::<_, Anchor>(
             r"
             UPDATE anchors
@@ -540,6 +544,34 @@ impl Database {
         .bind(metrics.status.as_str())
         .bind(update.volume_usd.unwrap_or(0.0))
         .bind(Utc::now())
+        .bind(anchor_id.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let history_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO anchor_metrics_history (
+                id, anchor_id, timestamp, success_rate, failure_rate, reliability_score,
+                total_transactions, successful_transactions, failed_transactions,
+                avg_settlement_time_ms, volume_usd
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            "#,
+        )
+        .bind(history_id)
+        .bind(anchor_id.to_string())
+        .bind(Utc::now())
+        .bind(metrics.success_rate)
+        .bind(metrics.failure_rate)
+        .bind(metrics.reliability_score)
+        .bind(total_transactions)
+        .bind(successful_transactions)
+        .bind(failed_transactions)
+        .bind(avg_settlement_time_ms.unwrap_or(0))
+        .bind(volume_usd.unwrap_or(0.0))
+        .execute(&mut *tx)
+        .await?;
         .bind(update.anchor_id.to_string())
         .fetch_one(&self.pool)
         .await
@@ -565,6 +597,8 @@ impl Database {
             "Failed to record metrics history for anchor during update: {}",
             update.anchor_id
         ))?;
+
+        tx.commit().await?;
 
         Ok(anchor)
     }
@@ -1205,6 +1239,15 @@ impl Database {
     }
 
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
+        let start = Instant::now();
+
+        // Wrap the entire batch in a transaction so a mid-batch failure
+        // doesn't leave a partial set of payments persisted.
+        let mut tx = self.pool.begin().await?;
+
+        for payment in payments {
+            sqlx::query(
+                r#"
         self.execute_with_timing("save_payments", async {
             for payment in payments {
                 sqlx::query(
@@ -1215,6 +1258,29 @@ impl Database {
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (id) DO NOTHING
+                "#,
+            )
+            .bind(&payment.id)
+            .bind(&payment.transaction_hash)
+            .bind(&payment.source_account)
+            .bind(&payment.destination_account)
+            .bind(&payment.asset_type)
+            .bind(&payment.asset_code)
+            .bind(&payment.asset_issuer)
+            .bind(payment.amount)
+            .bind(payment.created_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        crate::observability::metrics::observe_db_query(
+            "save_payments",
+            "success",
+            start.elapsed().as_secs_f64(),
+        );
+        Ok(())
                 ",
                 )
                 .bind(&payment.id)
@@ -1254,7 +1320,7 @@ impl Database {
 
     pub async fn upsert_hourly_corridor_metric(
         &self,
-        metric: &crate::services::aggregation::HourlyCorridorMetrics,
+        metric: &crate::models::corridor::HourlyCorridorMetrics,
     ) -> Result<()> {
         self.aggregation_db()
             .upsert_hourly_corridor_metric(metric)
@@ -1265,7 +1331,7 @@ impl Database {
         &self,
         start_time: chrono::DateTime<chrono::Utc>,
         end_time: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Vec<crate::services::aggregation::HourlyCorridorMetrics>> {
+    ) -> Result<Vec<crate::models::corridor::HourlyCorridorMetrics>> {
         self.aggregation_db()
             .fetch_hourly_metrics_by_timerange(start_time, end_time)
             .await
@@ -1730,6 +1796,51 @@ impl Database {
             None => return Ok(None),
         };
 
+        // Revoke the old key and create the new one atomically so we never
+        // end up with the old key revoked but no replacement issued.
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            r#"
+            UPDATE api_keys
+            SET status = 'revoked', revoked_at = $1
+            WHERE id = $2 AND wallet_address = $3 AND status = 'active'
+            "#,
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .bind(wallet_address)
+        .execute(&mut *tx)
+        .await?;
+
+        let new_id = Uuid::new_v4().to_string();
+        let (plain_key, prefix, key_hash) = generate_api_key();
+        let scopes = old_key.scopes.clone();
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            INSERT INTO api_keys (id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
+            "#,
+        )
+        .bind(&new_id)
+        .bind(&old_key.name)
+        .bind(&prefix)
+        .bind(&key_hash)
+        .bind(wallet_address)
+        .bind(&scopes)
+        .bind(&now)
+        .bind(&old_key.expires_at)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        let new_key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+            .bind(&new_id)
+            .fetch_one(&self.pool)
+            .await?;
         self.revoke_api_key(id, wallet_address)
             .await
             .context(format!("Failed to revoke old API key during rotation: {}", id))?;
@@ -1749,7 +1860,10 @@ impl Database {
                 wallet_address
             ))?;
 
-        Ok(Some(new_key))
+        Ok(Some(CreateApiKeyResponse {
+            key: ApiKeyInfo::from(new_key),
+            plain_key,
+        }))
     }
 
     pub async fn get_recent_anchor_performance(

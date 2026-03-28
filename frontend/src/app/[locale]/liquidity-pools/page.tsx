@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import {
   Waves,
   Droplets,
@@ -14,7 +15,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { PoolPerformanceChart } from "@/components/charts/PoolPerformanceChart";
 import { Badge } from "@/components/ui/badge";
 import {
   LiquidityPool,
@@ -24,6 +24,12 @@ import {
   fetchPoolStats,
   fetchPoolSnapshots,
 } from "@/lib/liquidity-pool-api";
+
+// Lazy-load the chart — recharts is large and only needed after a pool is selected.
+const PoolPerformanceChart = dynamic(
+  () => import("@/components/charts/PoolPerformanceChart").then((m) => ({ default: m.PoolPerformanceChart })),
+  { ssr: false }
+);
 
 type SortKey =
   | "apy"

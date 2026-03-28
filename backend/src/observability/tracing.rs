@@ -1,7 +1,11 @@
 use anyhow::Result;
+use axum::{body::Body, extract::Request, middleware::Next, response::Response};
+use opentelemetry::propagation::TextMapPropagator;
+use opentelemetry::sdk::propagation::TraceContextPropagator;
 use opentelemetry::sdk::{trace as sdktrace, Resource};
-use opentelemetry::KeyValue;
+use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -28,6 +32,10 @@ fn init_otel_tracer(service_name: &str) -> Result<sdktrace::Tracer> {
     Ok(tracer)
 }
 
+pub fn init_tracing(service_name: &str) -> Result<()> {
+    // Register W3C TraceContext as the global propagator so that
+    // `traceparent` / `tracestate` headers are used for context propagation.
+    global::set_text_map_propagator(TraceContextPropagator::new());
 /// Initialize tracing. When `LOG_DIR` is set, logs are also written to a rotating file
 /// (daily rotation, up to 30 files retained). The returned guard must be held for the
 /// process lifetime so that file logs are flushed; drop it only at shutdown.
@@ -140,7 +148,117 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
 }
 
 pub fn shutdown_tracing() {
-    opentelemetry::global::shutdown_tracer_provider();
+    global::shutdown_tracer_provider();
+}
+
+/// Axum middleware that extracts W3C TraceContext headers (`traceparent`, `tracestate`)
+/// from incoming requests and sets them as the parent context on the current span.
+///
+/// This must be placed *after* `TraceLayer` in the middleware stack so that a span
+/// already exists when this middleware runs.
+pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Response {
+    // Build a simple header-map view that the OTel propagator can read from.
+    let headers = req.headers();
+    let carrier: std::collections::HashMap<String, String> = headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|v| (name.as_str().to_owned(), v.to_owned()))
+        })
+        .collect();
+
+    // Extract the remote context using the globally registered propagator.
+    let propagator = TraceContextPropagator::new();
+    let parent_cx = propagator.extract(&carrier);
+
+    // Attach the remote context to the current tracing span so that child spans
+    // created during this request are correctly parented.
+    let span = tracing::Span::current();
+    span.set_parent(parent_cx);
+
+    next.run(req).await
+}
+
+/// Inject the current trace context into an outbound `reqwest::RequestBuilder`.
+///
+/// Call this on every outbound HTTP request to propagate `traceparent` /
+/// `tracestate` headers to downstream services.
+///
+/// # Example
+/// ```rust
+/// let response = inject_trace_context(client.get(&url)).send().await?;
+/// ```
+pub fn inject_trace_context(
+    builder: reqwest::RequestBuilder,
+) -> reqwest::RequestBuilder {
+    let mut carrier = std::collections::HashMap::new();
+    let propagator = TraceContextPropagator::new();
+    let cx = opentelemetry::Context::current();
+    propagator.inject_context(&cx, &mut carrier);
+
+    let mut builder = builder;
+    for (key, value) in carrier {
+        builder = builder.header(key, value);
+    }
+    builder
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        middleware,
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn propagation_middleware_does_not_break_requests() {
+        let app = Router::new()
+            .route("/ping", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(trace_propagation_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ping")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn propagation_middleware_accepts_traceparent_header() {
+        let app = Router::new()
+            .route("/ping", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(trace_propagation_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ping")
+                    // Valid W3C traceparent header
+                    .header(
+                        "traceparent",
+                        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }
 
 /// Re-export redaction utilities for use throughout the application

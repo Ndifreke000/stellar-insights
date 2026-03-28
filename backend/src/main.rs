@@ -13,6 +13,53 @@ use tower_http::{
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use stellar_insights_backend::api::account_merges;
+use stellar_insights_backend::api::anchors_cached::get_anchors;
+use stellar_insights_backend::api::api_analytics;
+use stellar_insights_backend::api::api_keys;
+use stellar_insights_backend::api::cache_stats;
+use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
+use stellar_insights_backend::api::cost_calculator;
+use stellar_insights_backend::api::fee_bump;
+use stellar_insights_backend::api::liquidity_pools;
+use stellar_insights_backend::api::metrics_cached;
+use stellar_insights_backend::api::oauth;
+use stellar_insights_backend::api::verification_rewards;
+use stellar_insights_backend::api::webhooks;
+use stellar_insights_backend::auth::AuthService;
+use stellar_insights_backend::auth_middleware::auth_middleware;
+use stellar_insights_backend::cache::{CacheConfig, CacheManager};
+use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
+use stellar_insights_backend::database::Database;
+use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
+use stellar_insights_backend::handlers::*;
+use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
+use stellar_insights_backend::ingestion::DataIngestionService;
+use stellar_insights_backend::ip_whitelist_middleware::{ip_whitelist_middleware, IpWhitelistConfig};
+use stellar_insights_backend::jobs::JobScheduler;
+use stellar_insights_backend::network::NetworkConfig;
+use stellar_insights_backend::openapi::ApiDoc;
+use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
+use stellar_insights_backend::observability::tracing::trace_propagation_middleware;
+use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
+use stellar_insights_backend::request_id::request_id_middleware;
+use stellar_insights_backend::rpc::StellarRpcClient;
+use stellar_insights_backend::rpc_handlers;
+use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
+use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
+use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use stellar_insights_backend::services::price_feed::{
+    default_asset_mapping, PriceFeedClient, PriceFeedConfig,
+};
+use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
+use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
+use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
+use stellar_insights_backend::alerts::AlertManager;
+use stellar_insights_backend::monitor::CorridorMonitor;
+use stellar_insights_backend::telegram;
+use stellar_insights_backend::shutdown::{
+    flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
+    shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
 use stellar_insights_backend::{
     api::v1::routes,
     backup::{BackupConfig, BackupManager},
@@ -208,6 +255,15 @@ async fn main() -> anyhow::Result<()> {
     )
     .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)));
 
+        .layer(middleware::from_fn_with_state(
+            db.clone(),
+            stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
+        ))
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(trace_propagation_middleware))
+        .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
+        .layer(middleware::from_fn(request_id_middleware))
+        .layer(compression); // Apply compression to all routes
     tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());

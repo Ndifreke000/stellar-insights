@@ -6,7 +6,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::database::Database;
-use crate::models::corridor::CorridorMetrics;
+use crate::models::corridor::{CorridorMetrics, HourlyCorridorMetrics, VolumeTrend};
 use crate::services::analytics::compute_metrics_from_payments;
 
 const MAX_RETRIES: i32 = 3;
