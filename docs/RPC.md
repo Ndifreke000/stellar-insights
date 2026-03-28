@@ -33,6 +33,16 @@ http://localhost:8080
 https://your-domain.com
 ```
 
+### API Versioning
+
+- **Current API version:** `v1`
+- **Supported versions:** `v1`, `v2`
+- **Status endpoint:** `GET /api/version`
+- **Versioned base paths:**
+  - `v1`: `GET /api/v1/...`
+  - `v2`: `GET /api/v2/status` (reserved, not implemented yet)
+- Unversioned `GET /api/...` routes are preserved for backward compatibility with existing clients.
+
 ### Start the Backend
 
 ```bash
@@ -56,6 +66,15 @@ curl http://localhost:8080/api/rpc/ledger/latest
 
 # Get recent payments
 curl http://localhost:8080/api/rpc/payments?limit=10
+
+# API version status
+curl http://localhost:8080/api/version
+
+# Versioned v1 route example
+curl http://localhost:8080/api/v1/rpc/health
+
+# Reserved v2 status route
+curl http://localhost:8080/api/v2/status
 ```
 
 ---
