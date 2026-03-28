@@ -191,6 +191,20 @@ impl AggregationService {
             metric.total_transactions,
         );
 
+        // Merge average slippage (weighted by transaction counts)
+        if previous_total + metric.total_transactions > 0 {
+            let existing_avg = existing.avg_slippage_bps;
+            let existing_weight = previous_total as f64;
+            let new_avg = metric.avg_slippage_bps;
+            let new_weight = metric.total_transactions as f64;
+
+            existing.avg_slippage_bps = ((existing_avg * existing_weight)
+                + (new_avg * new_weight))
+                / (existing_weight + new_weight);
+        } else {
+            existing.avg_slippage_bps = metric.avg_slippage_bps;
+        }
+
         // Calculate midpoint for liquidity depth manually as f64 doesn't have .midpoint()
         existing.liquidity_depth_usd =
             (existing.liquidity_depth_usd + metric.liquidity_depth_usd) / 2.0;
@@ -231,7 +245,7 @@ impl AggregationService {
             failed_transactions: metric.failed_transactions,
             success_rate: metric.success_rate,
             volume_usd: metric.volume_usd,
-            avg_slippage_bps: 0.0,
+            avg_slippage_bps: metric.avg_slippage_bps,
             avg_settlement_latency_ms: metric.avg_settlement_latency_ms,
             liquidity_depth_usd: metric.liquidity_depth_usd,
         }
@@ -450,20 +464,15 @@ pub struct VolumeTrend {
     pub data_points: usize,
 }
 
-// Tests commented out - require mock database implementation
-// TODO: Add Database::new_mock() or use a test database
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::Database;
 
-    #[test]
-    #[ignore = "Requires Database::new_mock implementation"]
-    fn test_truncate_to_hour() {
-        let service = AggregationService::new(
-            Arc::new(Database::new_mock()),
-            AggregationConfig::default(),
-        );
+    #[tokio::test]
+    async fn test_truncate_to_hour() {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let service = AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
 
         let dt = Utc::now();
         let truncated = service.truncate_to_hour(dt);
@@ -473,12 +482,10 @@ mod tests {
         assert_eq!(truncated.nanosecond(), 0);
     }
 
-    #[test]
-    fn test_compute_volume_trends() {
-        let service = AggregationService::new(
-            Arc::new(Database::new_mock()),
-            AggregationConfig::default(),
-        );
+    #[tokio::test]
+    async fn test_compute_volume_trends() {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let service = AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
 
         let now = Utc::now();
         let metrics = vec![
@@ -525,4 +532,3 @@ mod tests {
         assert_eq!(trends[0].data_points, 2);
     }
 }
-*/
