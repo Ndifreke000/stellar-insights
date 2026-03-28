@@ -17,7 +17,7 @@ pub mod fee_bump;
 pub mod governance;
 pub mod liquidity_pools;
 pub mod metrics;
-// pub mod metrics_cached;  // Missing file
+pub mod metrics_cached;
 pub mod ml;
 pub mod network;
 pub mod oauth;
