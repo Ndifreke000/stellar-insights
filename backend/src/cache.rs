@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[cfg(test)]
+use std::collections::HashMap;
+
 #[path = "cache/helpers.rs"]
 pub mod helpers;
 
@@ -64,6 +67,9 @@ pub struct CacheManager {
     hits: Arc<AtomicU64>,
     misses: Arc<AtomicU64>,
     invalidations: Arc<AtomicU64>,
+
+    #[cfg(test)]
+    in_memory_store: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl CacheManager {
@@ -93,7 +99,22 @@ impl CacheManager {
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
             invalidations: Arc::new(AtomicU64::new(0)),
+
+            #[cfg(test)]
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    #[cfg(test)]
+    pub fn new_in_memory_for_tests(config: CacheConfig) -> Self {
+        Self {
+            redis_connection: Arc::new(RwLock::new(None)),
+            config,
+            hits: Arc::new(AtomicU64::new(0)),
+            misses: Arc::new(AtomicU64::new(0)),
+            invalidations: Arc::new(AtomicU64::new(0)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     /// Check if Redis connection is healthy
@@ -111,6 +132,26 @@ impl CacheManager {
 
     /// Get value from cache, returns None if not found or Redis unavailable
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> anyhow::Result<Option<T>> {
+        #[cfg(test)]
+        {
+            if let Some(payload) = self.in_memory_store.read().await.get(key).cloned() {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                crate::observability::metrics::record_cache_lookup(true);
+                tracing::debug!("In-memory cache hit for key: {}", key);
+                match serde_json::from_str::<T>(&payload) {
+                    Ok(data) => return Ok(Some(data)),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to deserialize in-memory cached value for {}: {}",
+                            key,
+                            e
+                        );
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             match redis::cmd("GET")
@@ -157,6 +198,29 @@ impl CacheManager {
         value: &T,
         ttl_seconds: usize,
     ) -> anyhow::Result<()> {
+        #[cfg(test)]
+        {
+            if self.redis_connection.read().await.is_none() {
+                match serde_json::to_string(value) {
+                    Ok(serialized) => {
+                        self.in_memory_store
+                            .write()
+                            .await
+                            .insert(key.to_string(), serialized);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to serialize value for in-memory cache key {}: {}",
+                            key,
+                            e
+                        );
+                    }
+                }
+                let _ = ttl_seconds;
+                return Ok(());
+            }
+        }
+
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             match serde_json::to_string(value) {
