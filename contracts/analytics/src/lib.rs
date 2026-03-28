@@ -1,5 +1,5 @@
-// #![no_std]
-extern crate std;
+#![no_std]
+// extern crate std;
 
 mod errors;
 
@@ -79,6 +79,16 @@ pub struct SnapshotMetadata {
     pub submitter: Address,
     pub ledger_sequence: u32,
     pub expires_at: Option<u64>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotDiff {
+    pub epoch_a: u64,
+    pub epoch_b: u64,
+    pub hash_match: bool,
+    pub timestamp_diff: i64,
+    pub submitter_match: bool,
 }
 
 #[contracttype]
@@ -526,13 +536,22 @@ impl AnalyticsContract {
         snapshots_input: Vec<(u64, BytesN<32>)>,
         caller: Address,
     ) -> Result<Vec<u64>, Error> {
+        Self::batch_submit_snapshots(env, caller, snapshots_input)
+    }
+
+    /// Batch submit multiple snapshots
+    pub fn batch_submit_snapshots(
+        env: Env,
+        caller: Address,
+        snapshots: Vec<(u64, BytesN<32>)>,
+    ) -> Result<Vec<u64>, Error> {
         let is_paused: bool = env
             .storage()
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
         if is_paused {
-            return Err(Error::ContractPaused.log_context(&env, "batch_submit: contract is paused"));
+            return Err(Error::ContractPaused.log_context(&env, "batch_submit_snapshots: contract is paused"));
         }
 
         caller.require_auth();
@@ -541,19 +560,26 @@ impl AnalyticsContract {
         let admin = require_admin(&env)?;
         if caller != admin {
             return Err(
-                Error::Unauthorized.log_context(&env, "batch_submit: caller is not the admin")
+                Error::Unauthorized.log_context(&env, "batch_submit_snapshots: caller is not the admin")
             );
         }
 
-        let mut snapshots: Map<u64, SnapshotMetadata> = env
+        let mut snapshots_map: Map<u64, SnapshotMetadata> = env
             .storage()
             .persistent()
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
         let mut results = Vec::new(&env);
-        for (epoch, hash) in snapshots_input.iter() {
+        for (epoch, hash) in snapshots.iter() {
             let previous_epoch = validate_epoch(&env, epoch)?;
+            let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+            if hash == zero_hash {
+                return Err(
+                    Error::InvalidHashZero.log_context(&env, "batch_submit_snapshots: hash must not be all zeros")
+                );
+            }
+
             let timestamp = env.ledger().timestamp();
             let ledger_sequence = env.ledger().sequence();
             let metadata = SnapshotMetadata {
@@ -564,7 +590,7 @@ impl AnalyticsContract {
                 ledger_sequence,
                 expires_at: None,
             };
-            write_snapshot(&env, epoch, &metadata, &mut snapshots);
+            write_snapshot(&env, epoch, &metadata, &mut snapshots_map);
             env.events().publish(
                 (symbol_short!("snapshot"), caller.clone()),
                 SnapshotSubmittedEvent {
@@ -578,6 +604,13 @@ impl AnalyticsContract {
             );
             results.push_back(timestamp);
         }
+
+        // Emit batch event
+        env.events().publish(
+            (symbol_short!("batch"), caller),
+            snapshots.len(),
+        );
+
         Ok(results)
     }
 
@@ -693,18 +726,6 @@ impl AnalyticsContract {
         }
     }
 
-    /// Get snapshot metadata for a specific epoch
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `epoch` - Epoch to retrieve
-    ///
-    /// # Returns
-    /// * Snapshot metadata for the epoch, or None if not found
-    ///
-    /// # Panics
-    /// * If contract is not initialized
-    /// Get snapshot metadata for a specific epoch.
     pub fn get_snapshot(env: Env, epoch: u64) -> Result<Option<SnapshotMetadata>, Error> {
         require_initialized(&env)?;
         if env.storage().persistent().has(&DataKey::Snapshot(epoch)) {
@@ -763,6 +784,74 @@ impl AnalyticsContract {
             epochs.push_back(epoch);
         }
         Ok(epochs)
+    }
+
+    /// Comparison functionality for snapshots
+    pub fn compare_snapshots(
+        env: Env,
+        epoch_a: u64,
+        epoch_b: u64,
+    ) -> Result<SnapshotDiff, Error> {
+        require_initialized(&env)?;
+        let snapshots: Map<u64, SnapshotMetadata> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .ok_or(Error::NotInitialized)?;
+        
+        let snapshot_a = snapshots.get(epoch_a).ok_or(Error::SnapshotNotFound)?;
+        let snapshot_b = snapshots.get(epoch_b).ok_or(Error::SnapshotNotFound)?;
+        
+        Ok(SnapshotDiff {
+            epoch_a,
+            epoch_b,
+            hash_match: snapshot_a.hash == snapshot_b.hash,
+            timestamp_diff: (snapshot_b.timestamp as i64) - (snapshot_a.timestamp as i64),
+            submitter_match: snapshot_a.submitter == snapshot_b.submitter,
+        })
+    }
+
+    /// Verify monotonicity and integrity of snapshot chain
+    pub fn verify_snapshot_chain(
+        env: Env,
+        start_epoch: u64,
+        end_epoch: u64,
+    ) -> Result<bool, Error> {
+        require_initialized(&env)?;
+        for epoch in start_epoch..end_epoch {
+            let current = Self::get_snapshot(env.clone(), epoch)?
+                .ok_or(Error::SnapshotNotFound)?;
+            let next = Self::get_snapshot(env.clone(), epoch + 1)?
+                .ok_or(Error::SnapshotNotFound)?;
+            
+            if next.timestamp <= current.timestamp {
+                return Ok(false);
+            }
+        }
+        
+        Ok(true)
+    }
+
+    /// Batch get multiple snapshots
+    pub fn batch_get_snapshots(
+        env: Env,
+        epochs: Vec<u64>,
+    ) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
+        require_initialized(&env)?;
+        let snapshots: Map<u64, SnapshotMetadata> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let mut results = Vec::new(&env);
+        
+        for epoch in epochs.iter() {
+            let metadata = snapshots.get(epoch);
+            results.push_back(metadata);
+        }
+        
+        Ok(results)
     }
 
     /// Returns a paginated page of snapshots ordered by epoch.
@@ -1067,105 +1156,6 @@ impl AnalyticsContract {
         }
 
         Ok(())
-    }
-
-    /// Batch submit multiple snapshots in a single transaction.
-    pub fn batch_submit_snapshots(
-        env: Env,
-        caller: Address,
-        snapshots: Vec<(u64, BytesN<32>)>,
-    ) -> Result<Vec<u64>, Error> {
-        let is_paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if is_paused {
-            return Err(Error::ContractPaused
-                .log_context(&env, "batch_submit_snapshots: contract is paused"));
-        }
-
-        caller.require_auth();
-        check_rate_limit(&env, &caller)?;
-
-        let admin = require_admin(&env)?;
-        if caller != admin {
-            return Err(Error::Unauthorized
-                .log_context(&env, "batch_submit_snapshots: caller is not the admin"));
-        }
-
-        let mut snapshots_map: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut timestamps = Vec::new(&env);
-        for (epoch, hash) in snapshots.iter() {
-            validate_epoch(&env, epoch)?;
-            let timestamp = env.ledger().timestamp();
-            let metadata = SnapshotMetadata {
-                epoch,
-                timestamp,
-                hash,
-                submitter: caller.clone(),
-                ledger_sequence: env.ledger().sequence(),
-                expires_at: None,
-            };
-            write_snapshot(&env, epoch, &metadata, &mut snapshots_map);
-            timestamps.push_back(timestamp);
-        }
-
-        let last_epoch: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::LatestEpoch)
-            .unwrap_or(0);
-        let first_epoch = snapshots.get(0).map(|(e, _)| e).unwrap_or(0);
-        env.events().publish(
-            (symbol_short!("batch"), caller.clone()),
-            BatchSubmitEvent {
-                count: snapshots.len(),
-                first_epoch,
-                last_epoch,
-                submitter: caller,
-                timestamp: env.ledger().timestamp(),
-                ledger_sequence: env.ledger().sequence(),
-            },
-        );
-
-        Ok(timestamps)
-    }
-
-    /// Batch get multiple snapshots by epoch in a single call.
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `epochs` - Vector of epoch numbers to retrieve
-    ///
-    /// # Returns
-    /// * Vector of Option<SnapshotMetadata> (None for epochs not found)
-    ///
-    /// # Panics
-    /// * If contract is not initialized
-
-    /// Batch get multiple snapshots by epoch.
-    pub fn batch_get_snapshots(
-        env: Env,
-        epochs: Vec<u64>,
-    ) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
-        require_initialized(&env)?;
-        let snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut results = Vec::new(&env);
-        for epoch in epochs.iter() {
-            results.push_back(snapshots.get(epoch));
-        }
-        Ok(results)
     }
 
     /// Propose an admin change with a 48-hour timelock.

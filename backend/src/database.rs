@@ -15,6 +15,7 @@ use crate::models::{
     Anchor, AnchorDetailResponse, AnchorMetricsHistory, Asset, CorridorRecord, CreateAnchorRequest,
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
+use crate::cache::CacheManager;
 
 /// Configuration for database connection pool
 #[derive(Debug, Clone)]
@@ -559,7 +560,11 @@ impl Database {
             avg_settlement_time_ms: update.avg_settlement_time_ms,
             volume_usd: update.volume_usd,
         })
-        .await?;
+        .await
+        .context(format!(
+            "Failed to record metrics history for anchor during update: {}",
+            update.anchor_id
+        ))?;
 
         Ok(anchor)
     }
@@ -875,13 +880,26 @@ impl Database {
     }
 
     pub async fn get_anchor_detail(&self, anchor_id: Uuid) -> Result<Option<AnchorDetailResponse>> {
-        let anchor = match self.get_anchor_by_id(anchor_id).await? {
+        let anchor = match self
+            .get_anchor_by_id(anchor_id)
+            .await
+            .context(format!("Failed to fetch anchor for detail view: {}", anchor_id))?
+        {
             Some(a) => a,
             None => return Ok(None),
         };
 
-        let assets = self.get_assets_by_anchor(anchor_id).await?;
-        let metrics_history = self.get_anchor_metrics_history(anchor_id, 30).await?;
+        let assets = self
+            .get_assets_by_anchor(anchor_id)
+            .await
+            .context(format!("Failed to fetch assets for anchor detail: {}", anchor_id))?;
+        let metrics_history = self
+            .get_anchor_metrics_history(anchor_id, 30)
+            .await
+            .context(format!(
+                "Failed to fetch metrics history for anchor detail: {}",
+                anchor_id
+            ))?;
 
         Ok(Some(AnchorDetailResponse {
             anchor,
@@ -996,6 +1014,7 @@ impl Database {
         &self,
         id: Uuid,
         metrics: crate::models::corridor::CorridorMetrics,
+        cache: &CacheManager,
     ) -> Result<crate::models::corridor::Corridor> {
         self.execute_with_timing("update_corridor_metrics", async {
             let record = sqlx::query_as::<_, CorridorRecord>(
@@ -1013,12 +1032,20 @@ impl Database {
             .await
             .context(format!("Failed to update corridor metrics for id: {}", id))?;
 
-            Ok(crate::models::corridor::Corridor::new(
+            let corridor = crate::models::corridor::Corridor::new(
                 record.source_asset_code,
                 record.source_asset_issuer,
                 record.destination_asset_code,
                 record.destination_asset_issuer,
-            ))
+            );
+
+            // Invalidate cache
+            let corridor_key = corridor.to_string_key();
+            let _ = cache.invalidate_corridor(&corridor_key).await.map_err(|e| {
+                tracing::warn!("Failed to invalidate cache for corridor {}: {}", corridor_key, e);
+            });
+
+            Ok(corridor)
         })
         .await
     }
@@ -1703,7 +1730,9 @@ impl Database {
             None => return Ok(None),
         };
 
-        self.revoke_api_key(id, wallet_address).await?;
+        self.revoke_api_key(id, wallet_address)
+            .await
+            .context(format!("Failed to revoke old API key during rotation: {}", id))?;
 
         let new_key = self
             .create_api_key(
@@ -1714,7 +1743,11 @@ impl Database {
                     expires_at: old_key.expires_at,
                 },
             )
-            .await?;
+            .await
+            .context(format!(
+                "Failed to create new API key during rotation for wallet: {}",
+                wallet_address
+            ))?;
 
         Ok(Some(new_key))
     }

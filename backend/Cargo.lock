@@ -1260,12 +1260,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
-
-[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2409,12 +2403,6 @@ dependencies = [
  "cfg-if",
  "digest",
 ]
-
-[[package]]
-name = "md5"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
@@ -4291,7 +4279,6 @@ dependencies = [
  "csv",
  "dashmap",
  "data-encoding",
- "dotenv",
  "dotenvy",
  "futures",
  "hex",
@@ -4301,7 +4288,6 @@ dependencies = [
  "lazy_static",
  "lettre",
  "log",
- "md5",
  "ndarray",
  "opentelemetry",
  "opentelemetry-otlp",
