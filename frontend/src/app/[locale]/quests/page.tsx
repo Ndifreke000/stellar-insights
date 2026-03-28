@@ -30,7 +30,8 @@ export default function QuestsPage() {
 
   useEffect(() => {
     checkPathCompletion(pathname);
-    setProgress(getProgress());
+    const newProgress = getProgress();
+    setProgress((prev) => (prev !== newProgress ? newProgress : prev));
   }, [pathname]);
 
   const completedCount = getCompletedCount();
