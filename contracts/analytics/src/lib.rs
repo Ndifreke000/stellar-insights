@@ -545,6 +545,13 @@ impl AnalyticsContract {
 
         write_snapshot(&env, epoch, &metadata, &mut snapshots);
 
+        const LEDGERS_TO_EXTEND: u32 = 518_400; // ~30 days
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
         env.events().publish(
             (symbol_short!("snapshot"), caller),
             SnapshotSubmittedEvent {
