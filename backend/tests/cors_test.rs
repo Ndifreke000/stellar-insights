@@ -4,7 +4,7 @@
 /// - Allowed origin receives correct CORS response headers
 /// - Preflight (OPTIONS) requests return the expected headers and 200/204 status
 /// - Non-matching origin does NOT receive Access-Control-Allow-Origin
-/// - Wildcard "*" origin configuration reflects properly
+/// - Wildcard "*" origin configuration mirrors the request origin
 /// - max-age header is present on preflight responses
 /// - Only specific headers (Authorization, Content-Type) are advertised
 /// - Credentials flag is respected
@@ -16,7 +16,7 @@ use axum::{
 };
 use std::time::Duration;
 use tower::util::ServiceExt;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,7 +53,7 @@ fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
         .max_age(Duration::from_secs(3600));
 
     if cors_allowed_origins.trim() == "*" {
-        base.allow_origin(Any)
+        base.allow_origin(AllowOrigin::mirror_request())
     } else {
         let origins: Vec<axum::http::HeaderValue> = cors_allowed_origins
             .split(',')
@@ -350,7 +350,10 @@ async fn test_cors_wildcard_allows_any_origin() {
         .get("access-control-allow-origin")
         .expect("Wildcard CORS should set Access-Control-Allow-Origin");
 
-    assert_eq!(acao, "*", "Wildcard config should respond with ACAO: *");
+    assert_eq!(
+        acao, "https://some-random-domain.io",
+        "Wildcard config should mirror the request origin when credentials are enabled"
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -248,7 +248,7 @@ pub async fn shutdown_websockets(
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Close all connections
-        ws_state.close_all_connections().await;
+        ws_state.close_all_connections();
 
         info!("All WebSocket connections closed");
     };

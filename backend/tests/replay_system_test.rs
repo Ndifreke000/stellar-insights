@@ -11,16 +11,12 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use stellar_insights_backend::replay::{
     checkpoint::{Checkpoint, CheckpointManager},
-    config::{ReplayConfig, ReplayMode, ReplayRange},
-    engine::ReplayEngine,
-    event_processor::{
-        CompositeEventProcessor, EventProcessor, ProcessingContext, SnapshotEventProcessor,
-    },
-    state_builder::{ApplicationState, StateBuilder},
+    config::ReplayConfig,
+    event_processor::{EventProcessor, ProcessingContext, SnapshotEventProcessor},
+    state_builder::StateBuilder,
     storage::{EventStorage, ReplayStorage},
     ContractEvent, EventFilter,
 };

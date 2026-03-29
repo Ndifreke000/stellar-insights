@@ -6,6 +6,7 @@ pub mod rate_limiter;
 pub mod stellar;
 
 pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+pub use failsafe::futures::CircuitBreaker as FailsafeCircuitBreaker;
 pub use rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
 pub use stellar::{
     Asset, FeeBumpTransactionInfo, GetLedgersResult, HealthResponse, HorizonAsset, HorizonEffect,

@@ -1,3 +1,9 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, HeaderValue},
@@ -127,10 +133,11 @@ pub async fn export_corridors(
                 "Latest Date",
             ];
 
-            headers.iter().enumerate().try_for_each(|(i, h)| {
-                worksheet.write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
-            })?;
+            for (i, h) in headers.iter().enumerate() {
+                worksheet
+                    .write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+            }
 
             for (row, m) in corridors.iter().enumerate() {
                 let row = (row + 1) as u32;
@@ -290,10 +297,11 @@ pub async fn export_anchors(
                 "Last Updated",
             ];
 
-            headers.iter().enumerate().try_for_each(|(i, h)| {
-                worksheet.write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
-            })?;
+            for (i, h) in headers.iter().enumerate() {
+                worksheet
+                    .write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+            }
 
             for (row, a) in anchors.iter().enumerate() {
                 let row = (row + 1) as u32;
@@ -366,8 +374,10 @@ pub async fn export_payments(
     // Based on database.rs, it doesn't seem to have list_payments yet.
     // I will implement a quick query here.
 
-    let start_date = params.start_date.unwrap_or(Utc::now() - Duration::days(30));
-    let end_date = params.end_date.unwrap_or(Utc::now());
+    let start_date = params
+        .start_date
+        .unwrap_or_else(|| Utc::now() - Duration::days(30));
+    let end_date = params.end_date.unwrap_or_else(Utc::now);
 
     let payments = sqlx::query_as::<_, PaymentRecord>(
         r"
@@ -467,10 +477,11 @@ pub async fn export_payments(
                 "Timestamp",
             ];
 
-            headers.iter().enumerate().try_for_each(|(i, h)| {
-                worksheet.write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
-            })?;
+            for (i, h) in headers.iter().enumerate() {
+                worksheet
+                    .write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+            }
 
             for (row, p) in payments.iter().enumerate() {
                 let row = (row + 1) as u32;

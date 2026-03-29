@@ -241,7 +241,7 @@ async fn snooze_rule_from_history(
 }
 // WebSocket Handler for real-time alerts
 
-pub async fn alert_websocket_handler(
+pub fn alert_websocket_handler(
     ws: WebSocketUpgrade,
     State(alert_manager): State<Arc<AlertManager>>,
 ) -> Response {

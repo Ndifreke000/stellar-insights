@@ -138,11 +138,8 @@ pub fn routes(
         .nest("/prices", price_feed_api::routes(price_feed.clone()))
         .nest("/cost-calculator", cost_calculator::routes(price_feed))
         .nest("/cache/stats", cache_stats::routes(cache.clone()))
-        .nest("/metrics", metrics::routes(cache))
-        .nest(
-            "/analytics",
-            stellar_insights_backend::api::analytics_dashboard::routes(cache),
-        );
+        .nest("/metrics", metrics::routes(cache.clone()))
+        .nest("/analytics", crate::api::analytics_dashboard::routes(cache));
 
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool);

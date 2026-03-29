@@ -5,9 +5,9 @@ use opentelemetry::sdk::propagation::TraceContextPropagator;
 use opentelemetry::sdk::{trace as sdktrace, Resource};
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const MAX_LOG_FILES: usize = 30;
@@ -190,9 +190,7 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
 /// ```rust
 /// let response = inject_trace_context(client.get(&url)).send().await?;
 /// ```
-pub fn inject_trace_context(
-    builder: reqwest::RequestBuilder,
-) -> reqwest::RequestBuilder {
+pub fn inject_trace_context(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     let mut carrier = std::collections::HashMap::new();
     let propagator = TraceContextPropagator::new();
     let cx = opentelemetry::Context::current();
@@ -224,12 +222,7 @@ mod tests {
             .layer(middleware::from_fn(trace_propagation_middleware));
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/ping")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/ping").body(Body::empty()).unwrap())
             .await
             .unwrap();
 

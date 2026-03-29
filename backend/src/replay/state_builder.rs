@@ -133,8 +133,8 @@ impl StateBuilder {
 
         // Process based on event type
         match event.event_type.as_str() {
-            "snapshot_submitted" => self.apply_snapshot_submission(event).await,
-            "snapshot_verified" => self.apply_snapshot_verification(event).await,
+            "snapshot_submitted" => self.apply_snapshot_submission(event),
+            "snapshot_verified" => self.apply_snapshot_verification(event),
             _ => {
                 debug!("Unknown event type: {}", event.event_type);
                 Ok(ProcessingResult::success())
@@ -143,7 +143,7 @@ impl StateBuilder {
     }
 
     /// Apply snapshot submission event
-    async fn apply_snapshot_submission(
+    fn apply_snapshot_submission(
         &mut self,
         event: &ContractEvent,
     ) -> Result<ProcessingResult> {
@@ -181,7 +181,7 @@ impl StateBuilder {
     }
 
     /// Apply snapshot verification event
-    async fn apply_snapshot_verification(
+    fn apply_snapshot_verification(
         &mut self,
         event: &ContractEvent,
     ) -> Result<ProcessingResult> {

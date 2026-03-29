@@ -83,7 +83,10 @@ mod tests {
 
     #[test]
     fn display_vault_unavailable() {
-        assert_eq!(VaultError::VaultUnavailable.to_string(), "Vault is unavailable");
+        assert_eq!(
+            VaultError::VaultUnavailable.to_string(),
+            "Vault is unavailable"
+        );
     }
 
     #[test]

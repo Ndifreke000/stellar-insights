@@ -17,6 +17,7 @@ pub struct VaultClient {
 }
 
 /// Information about an active Vault lease
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct LeaseInfo {
     lease_id: String,
@@ -26,6 +27,7 @@ struct LeaseInfo {
 }
 
 /// Response from Vault KV v2 read operation
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct KvReadResponse {
     request_id: String,
@@ -35,6 +37,7 @@ struct KvReadResponse {
     data: KvData,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct KvData {
     data: HashMap<String, serde_json::Value>,
@@ -50,6 +53,7 @@ pub struct DatabaseCredentials {
 }
 
 /// Response from Vault secret read
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct VaultSecretResponse {
     request_id: String,

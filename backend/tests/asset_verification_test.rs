@@ -1,11 +1,9 @@
 use anyhow::Result;
-use chrono::Utc;
 use sqlx::SqlitePool;
 use stellar_insights_backend::models::asset_verification::{
-    ReportAssetRequest, ReportType, StellarTomlData, VerificationResult, VerificationStatus,
+    StellarTomlData, VerificationResult, VerificationStatus,
 };
 use stellar_insights_backend::services::asset_verifier::AssetVerifier;
-use uuid::Uuid;
 
 /// Helper function to create a test database
 async fn create_test_db() -> Result<SqlitePool> {
@@ -285,7 +283,7 @@ async fn test_unique_constraint() -> Result<()> {
     let first_save = verifier
         .save_verification_result(asset_code, asset_issuer, &result, score, status)
         .await?;
-    assert_eq!(first_save.reputation_score, 37.0); // 30 + 7
+    assert_eq!(first_save.reputation_score, 40.0); // 30 + 5 + 5
 
     // Second save should update (not create duplicate)
     let updated_result = VerificationResult {

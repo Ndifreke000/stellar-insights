@@ -7,8 +7,58 @@ use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
 use tower::util::ServiceExt;
 
-#[sqlx::test]
-async fn test_account_merge_detector_process_and_stats(pool: SqlitePool) {
+async fn setup_account_merge_pool() -> SqlitePool {
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ledgers (
+            sequence INTEGER PRIMARY KEY,
+            hash TEXT NOT NULL,
+            close_time TEXT NOT NULL,
+            transaction_count INTEGER DEFAULT 0,
+            operation_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS account_merges (
+            operation_id TEXT PRIMARY KEY,
+            transaction_hash TEXT NOT NULL,
+            ledger_sequence INTEGER NOT NULL,
+            source_account TEXT NOT NULL,
+            destination_account TEXT NOT NULL,
+            merged_balance REAL NOT NULL DEFAULT 0.0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ledger_sequence) REFERENCES ledgers(sequence)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for index_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_account_merges_ledger ON account_merges(ledger_sequence)",
+        "CREATE INDEX IF NOT EXISTS idx_account_merges_source ON account_merges(source_account)",
+        "CREATE INDEX IF NOT EXISTS idx_account_merges_destination ON account_merges(destination_account)",
+        "CREATE INDEX IF NOT EXISTS idx_account_merges_created_at ON account_merges(created_at DESC)",
+    ] {
+        sqlx::query(index_sql).execute(&pool).await.unwrap();
+    }
+
+    pool
+}
+
+#[tokio::test]
+async fn test_account_merge_detector_process_and_stats() {
+    let pool = setup_account_merge_pool().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = AccountMergeDetector::new(pool.clone(), rpc_client);
 
@@ -40,8 +90,9 @@ async fn test_account_merge_detector_process_and_stats(pool: SqlitePool) {
     assert_eq!(patterns[0].merge_count, 1);
 }
 
-#[sqlx::test]
-async fn test_account_merge_detector_is_idempotent(pool: SqlitePool) {
+#[tokio::test]
+async fn test_account_merge_detector_is_idempotent() {
+    let pool = setup_account_merge_pool().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = AccountMergeDetector::new(pool.clone(), rpc_client);
 
@@ -62,8 +113,9 @@ async fn test_account_merge_detector_is_idempotent(pool: SqlitePool) {
     assert_eq!(stats.total_merges, 2);
 }
 
-#[sqlx::test]
-async fn test_account_merge_routes(pool: SqlitePool) {
+#[tokio::test]
+async fn test_account_merge_routes() {
+    let pool = setup_account_merge_pool().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let detector = Arc::new(AccountMergeDetector::new(pool.clone(), rpc_client));
 

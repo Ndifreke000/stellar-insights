@@ -36,7 +36,7 @@ impl AnchorMonitor {
     }
 
     async fn check_anchors(&self) -> Result<()> {
-        let anchors = self.db.get_all_anchors().await?;
+        let anchors = self.db.list_anchors(1000, 0).await?;
 
         for anchor in anchors {
             // Get metrics from anchor_metrics_history or calculate from transactions

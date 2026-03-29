@@ -165,7 +165,7 @@ mod tests {
         let info = parse_muxed_address(m);
         if let Some(ref i) = info {
             assert!(i.muxed_address == m);
-            assert!(i.base_account.as_ref().map_or(true, |g| g.starts_with('G')));
+            assert!(i.base_account.as_ref().is_none_or(|g| g.starts_with('G')));
         }
         // Too short M string
         assert!(parse_muxed_address("M").is_none());

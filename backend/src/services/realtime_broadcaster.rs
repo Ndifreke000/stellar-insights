@@ -302,7 +302,7 @@ impl RealtimeBroadcaster {
     }
 
     /// Broadcast health alert to all clients
-    pub async fn broadcast_health_alert(
+    pub fn broadcast_health_alert(
         &self,
         corridor_id: String,
         severity: String,

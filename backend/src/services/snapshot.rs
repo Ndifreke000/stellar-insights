@@ -723,7 +723,7 @@ impl SnapshotService {
 
         if let Some(row) = row {
             let backend_hash: String = row.get("hash");
-            let canonical_json: String = row.get("canonical_json");
+            let _canonical_json: String = row.get("canonical_json");
 
             // Get on-chain hash if contract service is available
             if let Some(contract_service) = &self.contract_service {
@@ -954,7 +954,7 @@ mod tests {
             success_rate: 95.0,
             volume_usd: 50000.0,
             avg_settlement_latency_ms: Some(250),
-            liquidity_depth_usd: 100000.0,
+            liquidity_depth_usd: 100_000.0,
         }
     }
 

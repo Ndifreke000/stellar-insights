@@ -98,7 +98,7 @@ pub struct ModelStatusResponse {
     ),
     tag = "ML"
 )]
-pub async fn get_model_status(
+pub fn get_model_status(
     Extension(_ml_service): Extension<Arc<RwLock<MLService>>>,
 ) -> Json<ModelStatusResponse> {
     Json(ModelStatusResponse {

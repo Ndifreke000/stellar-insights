@@ -402,7 +402,7 @@ impl RateLimiter {
         }
 
         let remaining = limit.saturating_sub(new_count);
-        Ok((new_count < limit, remaining, 60))
+        Ok((new_count <= limit, remaining, 60))
     }
 
     /// Check rate limit in memory (fallback)
@@ -426,7 +426,7 @@ impl RateLimiter {
             let new_count = count + 1;
             store.insert(key.to_string(), (new_count, expiry));
             let remaining = limit.saturating_sub(new_count);
-            (new_count < limit, remaining, (expiry - now) as u32)
+            (new_count <= limit, remaining, (expiry - now) as u32)
         }
     }
 }
@@ -446,6 +446,7 @@ pub struct RateLimitInfo {
 #[derive(Debug, sqlx::FromRow)]
 struct UserSubscriptionRecord {
     pub tier: String,
+    #[allow(dead_code)]
     pub expires_at: Option<String>,
 }
 
@@ -589,7 +590,6 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::Row;
 
     async fn setup_test_db() -> sqlx::SqlitePool {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();

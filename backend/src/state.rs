@@ -3,7 +3,7 @@ use crate::database::Database;
 use crate::ingestion::DataIngestionService;
 use crate::rpc::StellarRpcClient;
 use crate::websocket::WsState;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{atomic::AtomicU64, Arc};
 use std::time::SystemTime;
 
 /// Shared application state for handlers
@@ -33,7 +33,10 @@ impl AppState {
             ingestion,
             rpc_client,
             server_start_time: Arc::new(AtomicU64::new(
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
             )),
         }
     }

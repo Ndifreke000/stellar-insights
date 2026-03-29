@@ -6,8 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
-use tracing::{error, info, instrument, warn};
+use std::sync::Arc;
+use tracing::{error, info, warn};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -17,11 +17,11 @@ use crate::cache::keys;
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
-use crate::models::corridor::{Corridor, CorridorMetrics};
+use crate::models::corridor::Corridor;
 use crate::models::{CreateCorridorRequest, SortBy};
 use crate::request_id::RequestId;
 use crate::rpc::{
-    circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
+    circuit_breaker::rpc_circuit_breaker,
     error::{with_retry, RetryConfig, RpcError},
     StellarRpcClient,
 };
@@ -80,7 +80,7 @@ fn extract_asset_pair_from_payment(payment: &crate::rpc::Payment) -> Option<Asse
                 destination_asset,
             })
         }
-        "payment" | _ => {
+        _ => {
             // Regular payments: same asset for source and destination
             let asset = if payment.asset_type == "native" {
                 "XLM:native".to_string()
@@ -276,18 +276,6 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
     }
 }
 
-fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
-    static CIRCUIT_BREAKER: OnceLock<Arc<CircuitBreaker>> = OnceLock::new();
-    CIRCUIT_BREAKER
-        .get_or_init(|| {
-            Arc::new(CircuitBreaker::new(
-                CircuitBreakerConfig::default(),
-                "horizon",
-            ))
-        })
-        .clone()
-}
-
 /// Generate cache key for corridor list with filters
 fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     let filter_str = format!(
@@ -385,7 +373,6 @@ pub async fn list_corridors(
 
             // Group payments by asset pairs to identify corridors
             use std::collections::HashMap;
-            use std::sync::{Arc, OnceLock};
             let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
 
             for payment in &payments {
@@ -910,7 +897,15 @@ pub async fn get_corridor_detail(
             related_corridors,
         })
     })
-    .await?;
+    .await
+    .map_err(|error| {
+        let message = error.to_string();
+        if message.contains("No payment data found for corridor") {
+            ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found")
+        } else {
+            ApiError::from(error)
+        }
+    })?;
 
     // Log successful corridor fetch
     info!(
@@ -1259,7 +1254,7 @@ mod tests {
     #[test]
     fn test_calculate_liquidity_trends_empty() {
         let payments = vec![];
-        let result = calculate_liquidity_trends(&payments, 1000000.0);
+        let result = calculate_liquidity_trends(&payments, 1_000_000.0);
         assert_eq!(result.len(), 0);
     }
 
@@ -1279,8 +1274,8 @@ mod tests {
                 median_latency_ms: 300.0,
                 p95_latency_ms: 1000.0,
                 p99_latency_ms: 1200.0,
-                liquidity_depth_usd: 1000000.0,
-                liquidity_volume_24h_usd: 100000.0,
+                liquidity_depth_usd: 1_000_000.0,
+                liquidity_volume_24h_usd: 100_000.0,
                 liquidity_trend: "stable".to_string(),
                 health_score: 95.0,
                 last_updated: "2026-01-15T10:00:00Z".to_string(),
@@ -1297,7 +1292,7 @@ mod tests {
                 median_latency_ms: 310.0,
                 p95_latency_ms: 1050.0,
                 p99_latency_ms: 1250.0,
-                liquidity_depth_usd: 900000.0,
+                liquidity_depth_usd: 900_000.0,
                 liquidity_volume_24h_usd: 90000.0,
                 liquidity_trend: "stable".to_string(),
                 health_score: 94.0,

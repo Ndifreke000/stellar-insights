@@ -273,18 +273,10 @@ impl GovernanceService {
         // the check and the insert.
         let mut tx = self.db.pool().begin().await?;
 
-        let status: String = sqlx::query_scalar(
-            "SELECT status FROM governance_proposals WHERE id = ?",
-        )
-        .bind(proposal_id)
-        .fetch_one(&mut *tx)
-        .await
-        .context("Proposal not found")?;
-        // Verify proposal is active
         let status: String =
             sqlx::query_scalar("SELECT status FROM governance_proposals WHERE id = ?")
                 .bind(proposal_id)
-                .fetch_one(self.db.pool())
+                .fetch_one(&mut *tx)
                 .await
                 .context("Proposal not found")?;
 

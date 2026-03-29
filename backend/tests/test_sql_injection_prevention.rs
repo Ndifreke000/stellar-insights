@@ -1,10 +1,10 @@
 use sqlx::SqlitePool;
-use stellar_insights_backend::services::asset_verifier::AssetVerifier;
 use stellar_insights_backend::models::asset_verification::VerificationStatus;
+use stellar_insights_backend::services::asset_verifier::AssetVerifier;
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();
-    
+
     // Create only the tables we need for testing
     sqlx::query(
         r"
@@ -39,7 +39,7 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .unwrap();
-    
+
     sqlx::query(
         r"
         CREATE TABLE IF NOT EXISTS asset_verification_history (
@@ -58,7 +58,7 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .unwrap();
-    
+
     sqlx::query(
         r"
         CREATE TABLE IF NOT EXISTS payments (
@@ -77,7 +77,7 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .unwrap();
-    
+
     pool
 }
 
@@ -85,34 +85,27 @@ async fn setup_test_db() -> SqlitePool {
 async fn test_sql_injection_prevention_in_asset_verifier() {
     let pool = setup_test_db().await;
     let verifier = AssetVerifier::new(pool.clone()).unwrap();
-    
+
     // Test 1: SQL injection attempt in status filter
     let malicious_status = Some(VerificationStatus::Verified);
     let result = verifier
         .list_verified_assets(malicious_status, None, 10, 0)
         .await;
-    
+
     // Should not panic or cause SQL errors
     assert!(result.is_ok());
-    
+
     // Test 2: SQL injection attempt in min_reputation filter
     // This should be safe as it's a numeric type, but test anyway
-    let result = verifier
-        .list_verified_assets(None, Some(50.0), 10, 0)
-        .await;
-    
+    let result = verifier.list_verified_assets(None, Some(50.0), 10, 0).await;
+
     assert!(result.is_ok());
-    
+
     // Test 3: Combined filters
     let result = verifier
-        .list_verified_assets(
-            Some(VerificationStatus::Verified),
-            Some(75.0),
-            10,
-            0,
-        )
+        .list_verified_assets(Some(VerificationStatus::Verified), Some(75.0), 10, 0)
         .await;
-    
+
     assert!(result.is_ok());
 }
 
@@ -120,7 +113,7 @@ async fn test_sql_injection_prevention_in_asset_verifier() {
 async fn test_parameterized_queries_work_correctly() {
     let pool = setup_test_db().await;
     let verifier = AssetVerifier::new(pool.clone()).unwrap();
-    
+
     // Insert test data
     sqlx::query(
         r"
@@ -147,29 +140,29 @@ async fn test_parameterized_queries_work_correctly() {
     .execute(&pool)
     .await
     .unwrap();
-    
+
     // Test filtering by status
     let assets = verifier
         .list_verified_assets(Some(VerificationStatus::Verified), None, 10, 0)
         .await
         .unwrap();
-    
+
     assert_eq!(assets.len(), 1);
     assert_eq!(assets[0].asset_code, "USDC");
-    
+
     // Test filtering by min reputation
     let assets = verifier
         .list_verified_assets(None, Some(80.0), 10, 0)
         .await
         .unwrap();
-    
+
     assert_eq!(assets.len(), 1);
-    
+
     // Test filtering with threshold that excludes the asset
     let assets = verifier
         .list_verified_assets(None, Some(90.0), 10, 0)
         .await
         .unwrap();
-    
+
     assert_eq!(assets.len(), 0);
 }
