@@ -7,7 +7,7 @@ use axum::http::{
     HeaderValue, Method,
 };
 use tower_http::{
-    cors::{AllowOrigin, CorsLayer},
+    cors::{AllowOrigin, Any, CorsLayer},
     timeout::TimeoutLayer,
 };
 use utoipa::OpenApi;
@@ -169,7 +169,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3000,https://stellar-insights.com".to_string());
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     let origins: Vec<HeaderValue> = allowed_origins
         .split(',')
@@ -206,10 +206,8 @@ async fn main() -> anyhow::Result<()> {
             Method::POST,
             Method::PUT,
             Method::DELETE,
-            Method::OPTIONS,
-            Method::PATCH,
         ])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
