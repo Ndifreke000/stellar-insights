@@ -698,12 +698,17 @@ impl Database {
             .iter()
             .map(std::string::ToString::to_string)
             .collect();
-        let placeholders = anchor_id_strs
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("?{}", i + 1))
-            .collect::<Vec<_>>()
-            .join(", ");
+
+        // Build "?1, ?2, ?3, ..." with a single pre-allocated String to avoid
+        // repeated small allocations from format! inside a collect+join chain.
+        let mut placeholders = String::with_capacity(anchor_id_strs.len() * 4);
+        for i in 0..anchor_id_strs.len() {
+            if i > 0 {
+                placeholders.push_str(", ");
+            }
+            use std::fmt::Write as _;
+            let _ = write!(placeholders, "?{}", i + 1);
+        }
 
         let query_str = format!(
             "SELECT * FROM assets WHERE anchor_id IN ({placeholders}) ORDER BY anchor_id, asset_code ASC"
