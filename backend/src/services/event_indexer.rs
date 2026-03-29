@@ -42,14 +42,23 @@ pub struct EventQuery {
     pub order_by: Option<EventOrderBy>,
 }
 
-/// Event ordering options
+/// Controls the sort order of event query results.
+///
+/// Used in [`EventQuery::order_by`] to specify how results are sorted.
+/// Defaults to [`EventOrderBy::CreatedAtDesc`] (newest first).
 #[derive(Debug, Clone)]
 pub enum EventOrderBy {
+    /// Sort by insertion time, oldest first.
     CreatedAtAsc,
+    /// Sort by insertion time, newest first (default).
     CreatedAtDesc,
+    /// Sort by ledger sequence number, ascending.
     LedgerAsc,
+    /// Sort by ledger sequence number, descending.
     LedgerDesc,
+    /// Sort by epoch number, ascending.
     EpochAsc,
+    /// Sort by epoch number, descending.
     EpochDesc,
 }
 
