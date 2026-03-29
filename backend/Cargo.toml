@@ -28,6 +28,9 @@ legacy_sep10_tests = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["ws", "tower-bridge"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace"] }
 axum = { version = "0.7", features = ["ws"] }
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }

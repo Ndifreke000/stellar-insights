@@ -1,3 +1,15 @@
+use anyhow::{Context, Result};
+use axum::{
+    http::Method,
+    routing::{get, put},
+    Router,
+};
+use dotenvy::dotenv;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::task::JoinHandle;
+use tower::timeout::TimeoutLayer;
+use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
@@ -296,6 +308,18 @@ async fn main() -> anyhow::Result<()> {
         compression_min_size
     );
 
+    // Request timeout configuration
+    let request_timeout_seconds = std::env::var("REQUEST_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60)
+        .clamp(5, 300); // Enforce 5s minimum, 300s maximum
+
+    tracing::info!(
+        "Request timeout configured: {} seconds",
+        request_timeout_seconds
+    );
+
     // Import middleware
     use axum::middleware;
     use tower::ServiceBuilder;
@@ -455,12 +479,35 @@ async fn main() -> anyhow::Result<()> {
     // Merge routers
     let swagger_routes =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
+
+    // Build WebSocket routes (excluded from request timeout — long-lived connections)
     
     // Build WebSocket routes
     let ws_routes = Router::new()
         .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
+
+    let alert_ws_routes = Router::new()
+        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .with_state(Arc::clone(&alert_manager))
+        .layer(cors.clone());
+
+    // Timeout + JSON error handler for non-WebSocket routes
+    let timeout_layer = tower::ServiceBuilder::new()
+        .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
+            (
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                axum::Json(serde_json::json!({
+                    "error": "REQUEST_TIMEOUT",
+                    "message": "Request exceeded the maximum allowed time"
+                }))
+            )
+        }))
+        .layer(TimeoutLayer::new(Duration::from_secs(request_timeout_seconds)));
+
+
+
     
     let app = Router::new()
         .merge(swagger_routes)
@@ -506,6 +553,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(middleware::from_fn(trace_propagation_middleware))
         .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
         .layer(middleware::from_fn(request_id_middleware))
+        .layer(timeout_layer) // Apply request timeout to all non-WS routes
         .layer(compression); // Apply compression to all routes
     tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
