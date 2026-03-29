@@ -335,7 +335,7 @@ async fn main() -> anyhow::Result<()> {
     // Build non-cached anchor routes with app state
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/metrics", get(get_prometheus_metrics))
+        .route("/metrics", get(obs_metrics::metrics_handler))
         .route("/api/anchors/:id", get(get_anchor))
         .route(
             "/api/anchors/account/:stellar_account",
