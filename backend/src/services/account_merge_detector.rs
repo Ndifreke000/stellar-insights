@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
@@ -129,7 +129,6 @@ impl AccountMergeDetector {
                 .map_err(|e| anyhow::anyhow!(e.to_string()))
         }).await {
             Ok(effects) => {
-            Ok(effects) => {
                 let credited_amount: f64 = effects
                     .into_iter()
                     .filter(|effect| effect.effect_type == "account_credited")
@@ -176,7 +175,8 @@ impl AccountMergeDetector {
         .bind(event.merged_balance)
         .bind(event.created_at)
         .execute(&self.pool)
-        .await?;
+        .await
+        .context("Failed to persist account merge event")?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -192,7 +192,8 @@ impl AccountMergeDetector {
         )
         .bind(limit)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .context("Failed to fetch recent account merge events")?;
 
         Ok(rows)
     }
@@ -208,8 +209,9 @@ impl AccountMergeDetector {
             FROM account_merges
             ",
         )
-        .fetch_one(&self.pool)
-        .await?;
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to fetch account merge statistics")?;
 
         Ok(AccountMergeStats {
             total_merges: row.0,
@@ -235,9 +237,10 @@ impl AccountMergeDetector {
             LIMIT $1
             ",
         )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .context("Failed to fetch destination account patterns")?;
 
         Ok(rows)
     }
