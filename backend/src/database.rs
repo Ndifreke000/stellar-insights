@@ -427,194 +427,84 @@ impl Database {
     /// * `limit` - Maximum number of anchors to return
     /// * `offset` - Number of anchors to skip (for pagination)
     ///
-    /// # Returns
-    ///
-    /// Vector of anchors sorted by `reliability_score` DESC, then `updated_at` DESC.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// // Get first page (10 anchors)
-    /// let anchors = db.list_anchors(10, 0).await?;
-    ///
-    /// // Get second page
-    /// let anchors = db.list_anchors(10, 10).await?;
-    /// ```
-    ///
-    /// # Performance
-    ///
-    /// Query is indexed and metrics are recorded. Typical response time <10ms for limit ≤ 100.
-    #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
-    pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("list_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>(
-                r"
-            SELECT * FROM anchors
-            ORDER BY reliability_score DESC, updated_at DESC
-            LIMIT $1 OFFSET $2
-            ",
-            )
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await
-            .context(format!(
-                "Failed to list anchors (limit={}, offset={})",
-                limit, offset
-            ))?;
-            Ok(anchors)
-        })
-        .await
-    }
-
-    /// Retrieves all anchors from the database, sorted by name.
-    pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("get_all_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
-                .fetch_all(&self.pool)
-                .await
-                .context("Failed to get all anchors")?;
-            Ok(anchors)
-        })
-        .await
-    }
-
-    /// Updates anchor metrics and records history.
-    ///
-    /// Computes reliability score and status from transaction metrics, updates the anchor,
-    /// and records a history entry for trend analysis.
-    ///
-    /// # Arguments
-    ///
-    /// * `anchor_id` - UUID of the anchor to update
-    /// * `total_transactions` - Total number of transactions processed
-    /// * `successful_transactions` - Number of successful transactions
-    /// * `failed_transactions` - Number of failed transactions
-    /// * `avg_settlement_time_ms` - Average settlement time in milliseconds (optional)
-    /// * `volume_usd` - Total volume in USD (optional, preserves existing if None)
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Anchor)` - Updated anchor with new metrics
-    /// * `Err(_)` - Database update failed or anchor not found
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let updated = db.update_anchor_metrics(
-    ///     anchor_id,
-    ///     1000,  // total
-    ///     980,   // successful
-    ///     20,    // failed
-    ///     Some(2500),  // avg settlement time
-    ///     Some(1_000_000.0),  // volume
-    /// ).await?;
-    ///
-    /// println!("New reliability score: {}", updated.reliability_score);
-    /// ```
-    ///
-    /// # Side Effects
-    ///
-    /// - Updates anchor's `updated_at` timestamp
-    /// - Records entry in `anchor_metrics_history` table
-    /// - Computes and updates `reliability_score` and status
+/// Updates anchor metrics and records history.
     #[tracing::instrument(skip(self, update), fields(anchor_id = %update.anchor_id))]
     pub async fn update_anchor_metrics(&self, update: AnchorMetricsUpdate) -> Result<Anchor> {
-        // Compute metrics
-        let metrics = compute_anchor_metrics(
-            update.total_transactions,
-            update.successful_transactions,
-            update.failed_transactions,
-            update.avg_settlement_time_ms,
-        );
+        self.execute_with_timing("update_anchor_metrics", async {
+            // 1. Compute derived metrics (reliability, status, etc.)
+            let metrics = compute_anchor_metrics(
+                update.total_transactions,
+                update.successful_transactions,
+                update.failed_transactions,
+                update.avg_settlement_time_ms,
+            );
 
-        // Wrap the UPDATE + INSERT history in a single transaction so that
-        // a failure recording history cannot leave the anchor row updated
-        // without a corresponding history entry.
-        let mut tx = self.pool.begin().await?;
+            // 2. Start a transaction to ensure atomic updates
+            let mut tx = self.pool.begin().await.context("Failed to begin database transaction")?;
 
-        let anchor = sqlx::query_as::<_, Anchor>(
-            r"
-            UPDATE anchors
-            SET total_transactions = $1,
-                successful_transactions = $2,
-                failed_transactions = $3,
-                avg_settlement_time_ms = $4,
-                reliability_score = $5,
-                status = $6,
-                total_volume_usd = COALESCE($7, total_volume_usd),
-                updated_at = $8
-            WHERE id = $9
-            RETURNING *
-            ",
-        )
-        .bind(update.total_transactions)
-        .bind(update.successful_transactions)
-        .bind(update.failed_transactions)
-        .bind(update.avg_settlement_time_ms.unwrap_or(0))
-        .bind(metrics.reliability_score)
-        .bind(metrics.status.as_str())
-        .bind(update.volume_usd.unwrap_or(0.0))
-        .bind(Utc::now())
-        .bind(anchor_id.to_string())
-        .fetch_one(&mut *tx)
-        .await?;
-
-        let history_id = Uuid::new_v4().to_string();
-        sqlx::query(
-            r#"
-            INSERT INTO anchor_metrics_history (
-                id, anchor_id, timestamp, success_rate, failure_rate, reliability_score,
-                total_transactions, successful_transactions, failed_transactions,
-                avg_settlement_time_ms, volume_usd
+            // 3. Update the main anchor record
+            let anchor = sqlx::query_as::<_, Anchor>(
+                r"
+                UPDATE anchors
+                SET total_transactions = $1,
+                    successful_transactions = $2,
+                    failed_transactions = $3,
+                    avg_settlement_time_ms = $4,
+                    reliability_score = $5,
+                    status = $6,
+                    total_volume_usd = COALESCE($7, total_volume_usd),
+                    updated_at = $8
+                WHERE id = $9
+                RETURNING *
+                ",
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            "#,
-        )
-        .bind(history_id)
-        .bind(anchor_id.to_string())
-        .bind(Utc::now())
-        .bind(metrics.success_rate)
-        .bind(metrics.failure_rate)
-        .bind(metrics.reliability_score)
-        .bind(total_transactions)
-        .bind(successful_transactions)
-        .bind(failed_transactions)
-        .bind(avg_settlement_time_ms.unwrap_or(0))
-        .bind(volume_usd.unwrap_or(0.0))
-        .execute(&mut *tx)
-        .await?;
-        .bind(update.anchor_id.to_string())
-        .fetch_one(&self.pool)
-        .await
-        .context(format!(
-            "Failed to update metrics for anchor: {}",
-            update.anchor_id
-        ))?;
+            .bind(update.total_transactions)
+            .bind(update.successful_transactions)
+            .bind(update.failed_transactions)
+            .bind(update.avg_settlement_time_ms.unwrap_or(0))
+            .bind(metrics.reliability_score)
+            .bind(metrics.status.as_str())
+            .bind(update.volume_usd)
+            .bind(Utc::now())
+            .bind(update.anchor_id.to_string())
+            .fetch_one(&mut *tx)
+            .await
+            .context("Failed to update anchor metrics")?;
 
-        // Record metrics history
-        self.record_anchor_metrics_history(AnchorMetricsParams {
-            anchor_id: update.anchor_id,
-            success_rate: metrics.success_rate,
-            failure_rate: metrics.failure_rate,
-            reliability_score: metrics.reliability_score,
-            total_transactions: update.total_transactions,
-            successful_transactions: update.successful_transactions,
-            failed_transactions: update.failed_transactions,
-            avg_settlement_time_ms: update.avg_settlement_time_ms,
-            volume_usd: update.volume_usd,
+            // 4. Record the entry in history table
+            let history_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                r#"
+                INSERT INTO anchor_metrics_history (
+                    id, anchor_id, timestamp, success_rate, failure_rate, reliability_score,
+                    total_transactions, successful_transactions, failed_transactions,
+                    avg_settlement_time_ms, volume_usd
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                "#,
+            )
+            .bind(history_id)
+            .bind(update.anchor_id.to_string())
+            .bind(Utc::now())
+            .bind(metrics.success_rate)
+            .bind(metrics.failure_rate)
+            .bind(metrics.reliability_score)
+            .bind(update.total_transactions)
+            .bind(update.successful_transactions)
+            .bind(update.failed_transactions)
+            .bind(update.avg_settlement_time_ms.unwrap_or(0))
+            .bind(update.volume_usd.unwrap_or(0.0))
+            .execute(&mut *tx)
+            .await
+            .context("Failed to record anchor metrics history")?;
+
+            // 5. Commit the transaction
+            tx.commit().await.context("Failed to commit anchor update transaction")?;
+
+            Ok(anchor)
         })
         .await
-        .context(format!(
-            "Failed to record metrics history for anchor during update: {}",
-            update.anchor_id
-        ))?;
-
-        tx.commit().await?;
-
-        Ok(anchor)
     }
-
     // Asset operations
 
     /// Creates a new asset or updates existing asset's anchor association.
@@ -1241,49 +1131,19 @@ impl Database {
     }
 
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
-        let start = Instant::now();
-
-        // Wrap the entire batch in a transaction so a mid-batch failure
-        // doesn't leave a partial set of payments persisted.
-        let mut tx = self.pool.begin().await?;
-
-        for payment in payments {
-            sqlx::query(
-                r#"
         self.execute_with_timing("save_payments", async {
+            let mut tx = self.pool.begin().await.context("Failed to begin transaction for save_payments")?;
+
             for payment in payments {
                 sqlx::query(
                     r"
-                INSERT INTO payments (
-                    id, transaction_hash, source_account, destination_account,
-                    asset_type, asset_code, asset_issuer, amount, created_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ON CONFLICT (id) DO NOTHING
-                "#,
-            )
-            .bind(&payment.id)
-            .bind(&payment.transaction_hash)
-            .bind(&payment.source_account)
-            .bind(&payment.destination_account)
-            .bind(&payment.asset_type)
-            .bind(&payment.asset_code)
-            .bind(&payment.asset_issuer)
-            .bind(payment.amount)
-            .bind(payment.created_at)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-
-        crate::observability::metrics::observe_db_query(
-            "save_payments",
-            "success",
-            start.elapsed().as_secs_f64(),
-        );
-        Ok(())
-                ",
+                    INSERT INTO payments (
+                        id, transaction_hash, source_account, destination_account,
+                        asset_type, asset_code, asset_issuer, amount, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (id) DO NOTHING
+                    ",
                 )
                 .bind(&payment.id)
                 .bind(&payment.transaction_hash)
@@ -1294,10 +1154,12 @@ impl Database {
                 .bind(&payment.asset_issuer)
                 .bind(payment.amount)
                 .bind(payment.created_at)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await
                 .context(format!("Failed to save payment id: {}", payment.id))?;
             }
+
+            tx.commit().await.context("Failed to commit transaction for save_payments")?;
             Ok(())
         })
         .await
@@ -1729,7 +1591,7 @@ impl Database {
                             }
                         }
                         Err(e) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "API key {} has malformed expires_at '{}': {}. Treating as expired.",
                                 k.id,
                                 expires_at,
@@ -1740,135 +1602,18 @@ impl Database {
                     }
                 }
 
-                // last_used_at update is best-effort; a failure here should not block validation
+                // last_used_at update is best-effort
                 let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
                     .bind(Utc::now().to_rfc3339())
                     .bind(&k.id)
                     .execute(&self.pool)
                     .await
-                    .map_err(|e| {
-                        tracing::warn!("Failed to update last_used_at for API key {}: {}", k.id, e);
-                    });
+                    .context("Failed to update API key last_used_at timestamp");
             }
 
             Ok(key)
         })
         .await
-    }
-
-    pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
-        self.execute_with_timing("revoke_api_key", async {
-            let result = sqlx::query(
-                r"
-            UPDATE api_keys
-            SET status = 'revoked', revoked_at = $1
-            WHERE id = $2 AND wallet_address = $3 AND status = 'active'
-            ",
-            )
-            .bind(Utc::now().to_rfc3339())
-            .bind(id)
-            .bind(wallet_address)
-            .execute(&self.pool)
-            .await
-            .context(format!(
-                "Failed to revoke API key id: {} for wallet: {}",
-                id, wallet_address
-            ))?;
-            Ok(result.rows_affected() > 0)
-        })
-        .await
-    }
-
-    pub async fn rotate_api_key(
-        &self,
-        id: &str,
-        wallet_address: &str,
-    ) -> Result<Option<CreateApiKeyResponse>> {
-        let old_key = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE id = $1 AND wallet_address = $2 AND status = 'active'",
-        )
-        .bind(id)
-        .bind(wallet_address)
-        .fetch_optional(&self.pool)
-        .await
-        .context(format!("Failed to fetch API key id: {} for rotation", id))?;
-
-        let old_key = match old_key {
-            Some(k) => k,
-            None => return Ok(None),
-        };
-
-        // Revoke the old key and create the new one atomically so we never
-        // end up with the old key revoked but no replacement issued.
-        let mut tx = self.pool.begin().await?;
-
-        sqlx::query(
-            r#"
-            UPDATE api_keys
-            SET status = 'revoked', revoked_at = $1
-            WHERE id = $2 AND wallet_address = $3 AND status = 'active'
-            "#,
-        )
-        .bind(Utc::now().to_rfc3339())
-        .bind(id)
-        .bind(wallet_address)
-        .execute(&mut *tx)
-        .await?;
-
-        let new_id = Uuid::new_v4().to_string();
-        let (plain_key, prefix, key_hash) = generate_api_key();
-        let scopes = old_key.scopes.clone();
-        let now = Utc::now().to_rfc3339();
-
-        sqlx::query(
-            r#"
-            INSERT INTO api_keys (id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
-            "#,
-        )
-        .bind(&new_id)
-        .bind(&old_key.name)
-        .bind(&prefix)
-        .bind(&key_hash)
-        .bind(wallet_address)
-        .bind(&scopes)
-        .bind(&now)
-        .bind(&old_key.expires_at)
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-
-        let new_key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
-            .bind(&new_id)
-            .fetch_one(&self.pool)
-            .await?;
-        self.revoke_api_key(id, wallet_address)
-            .await
-            .context(format!(
-                "Failed to revoke old API key during rotation: {}",
-                id
-            ))?;
-
-        let new_key = self
-            .create_api_key(
-                wallet_address,
-                CreateApiKeyRequest {
-                    name: old_key.name,
-                    scopes: Some(old_key.scopes),
-                    expires_at: old_key.expires_at,
-                },
-            )
-            .await
-            .context(format!(
-                "Failed to create new API key during rotation for wallet: {}",
-                wallet_address
-            ))?;
-
-        Ok(Some(CreateApiKeyResponse {
-            key: ApiKeyInfo::from(new_key),
-            plain_key,
-        }))
     }
 
     pub async fn get_recent_anchor_performance(

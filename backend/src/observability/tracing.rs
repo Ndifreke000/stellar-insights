@@ -32,14 +32,14 @@ fn init_otel_tracer(service_name: &str) -> Result<sdktrace::Tracer> {
     Ok(tracer)
 }
 
-pub fn init_tracing(service_name: &str) -> Result<()> {
-    // Register W3C TraceContext as the global propagator so that
-    // `traceparent` / `tracestate` headers are used for context propagation.
-    global::set_text_map_propagator(TraceContextPropagator::new());
 /// Initialize tracing. When `LOG_DIR` is set, logs are also written to a rotating file
 /// (daily rotation, up to 30 files retained). The returned guard must be held for the
 /// process lifetime so that file logs are flushed; drop it only at shutdown.
 pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
+    // Register W3C TraceContext as the global propagator so that
+    // `traceparent` / `tracestate` headers are used for context propagation.
+    global::set_text_map_propagator(TraceContextPropagator::new());
+
     let _ = tracing_log::LogTracer::init();
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()

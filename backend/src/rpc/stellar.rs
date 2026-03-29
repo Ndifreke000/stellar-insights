@@ -854,10 +854,6 @@ impl StellarRpcClient {
         let result = self
             .execute_with_retry(|| self.fetch_payments_internal(limit, cursor))
             .await;
-
-        if let Some(cursor) = cursor {
-            write!(url, "&cursor={}", cursor).unwrap();
-        }
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
         })
@@ -938,7 +934,7 @@ impl StellarRpcClient {
             .embedded
             .map(|e| e.records)
             .unwrap_or_default())
-    }
+    }}
 
     /// Fetch order book for a trading pair
     pub async fn fetch_order_book(
@@ -1244,7 +1240,9 @@ impl StellarRpcClient {
         while fetched < max_records {
             let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
 
-            let payments = self.fetch_payments_page(limit, cursor.as_deref()).await?;
+            let payments = self.fetch_payments_page(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch payments page during pagination")?;
 
             if payments.is_empty() {
                 info!("No more payments available, stopping pagination");
@@ -1986,8 +1984,6 @@ impl StellarRpcClient {
             self.horizon_url, limit
         );
 
-        if let Some(cursor) = cursor {
-            write!(url, "&cursor={}", cursor).unwrap();
         if let Some(c) = cursor {
             write!(url, "&cursor={c}").unwrap();
         }
@@ -2800,4 +2796,4 @@ mod tests {
             }
         }
     }
-}
+    
