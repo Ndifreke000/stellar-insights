@@ -83,7 +83,16 @@ use stellar_insights_backend::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = dotenvy::dotenv();
+    // Load .env if present. A missing file is fine (production/CI uses real env vars).
+    // Any other error — malformed syntax, permission denied — is logged as a warning
+    // so it doesn't silently corrupt configuration.
+    match dotenvy::dotenv() {
+        Ok(path) => tracing::debug!("Loaded environment from {}", path.display()),
+        Err(dotenvy::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::debug!(".env file not found, using environment variables only");
+        }
+        Err(e) => tracing::warn!("Failed to load .env file: {}", e),
+    }
     env_config::log_env_config();
     let _tracing_guard =
         stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
