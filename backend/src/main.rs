@@ -502,37 +502,17 @@ async fn main() -> anyhow::Result<()> {
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
-    tracing::info!(address = %addr, "Server listening");
+    tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let start_shutdown = std::time::Instant::now();
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(stellar_insights_backend::shutdown::wait_for_signal())
         .await?;
+    
+    stellar_insights_backend::shutdown::log_shutdown_summary(start_shutdown);
+    tracing::info!("Server shutdown complete");
     stellar_insights_backend::observability::tracing::shutdown_tracing();
 
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => { tracing::info!("Received Ctrl+C, shutting down"); },
-        _ = terminate => { tracing::info!("Received SIGTERM, shutting down"); },
-    }
 }

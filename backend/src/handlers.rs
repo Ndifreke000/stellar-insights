@@ -1,3 +1,7 @@
+use axum::{extract::State, response::IntoResponse, Json};
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     http::header,
@@ -9,127 +13,136 @@ use axum::{extract::State, response::IntoResponse, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::Ordering;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use sqlx::Pool;
 
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+use std::time::Instant;
+
+#[derive(Serialize)]
 pub struct HealthStatus {
     pub status: String,
-    pub timestamp: String,
+    pub timestamp: DateTime<Utc>,
+use chrono::{DateTime, Utc};
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthStatus {
+    pub status: String,
+    pub timestamp: DateTime<Utc>,
     pub version: String,
     pub uptime_seconds: u64,
     pub checks: HealthChecks,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize)]
 pub struct HealthChecks {
     pub database: ComponentHealth,
     pub cache: ComponentHealth,
     pub rpc: ComponentHealth,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize)]
 pub struct ComponentHealth {
-    pub status: String, // "healthy", "degraded", "unhealthy"
+    pub healthy: bool,
     pub response_time_ms: Option<u64>,
     pub message: Option<String>,
 }
 
 /// Check database health
-async fn check_database_health(db: &Arc<Database>) -> ComponentHealth {
+async fn check_database(db: &Arc<Database>) -> ComponentHealth {
     let start = Instant::now();
-
     match sqlx::query("SELECT 1").fetch_one(db.pool()).await {
+
+    match sqlx::query("SELECT 1").fetch_one(&**db.pool()).await {
         Ok(_) => ComponentHealth {
-            status: "healthy".to_string(),
+            healthy: true,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
             message: None,
         },
         Err(e) => ComponentHealth {
-            status: "unhealthy".to_string(),
+            healthy: false,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("Database error: {}", e)),
+            message: Some(format!("Database connection failed: {}", e)),
         },
     }
 }
 
 /// Check cache health
-async fn check_cache_health(cache: &Arc<CacheManager>) -> ComponentHealth {
+async fn check_cache(cache: &Arc<CacheManager>) -> ComponentHealth {
     let start = Instant::now();
-
     match cache.ping().await {
         Ok(_) => ComponentHealth {
-            status: "healthy".to_string(),
+            healthy: true,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
             message: None,
         },
         Err(e) => ComponentHealth {
-            status: "degraded".to_string(),
+            healthy: false,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("Cache error: {}", e)),
+            message: Some(format!("Cache connection failed: {}", e)),
         },
     }
 }
 
 /// Check RPC health
-async fn check_rpc_health(rpc: &Arc<StellarRpcClient>) -> ComponentHealth {
+async fn check_rpc(rpc: &Arc<StellarRpcClient>) -> ComponentHealth {
     let start = Instant::now();
-
     match rpc.check_health().await {
         Ok(_) => ComponentHealth {
-            status: "healthy".to_string(),
+            healthy: true,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
             message: None,
         },
         Err(e) => ComponentHealth {
-            status: "degraded".to_string(),
+            healthy: false,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("RPC error: {}", e)),
+            message: Some(format!("RPC connection failed: {}", e)),
         },
     }
 }
 
 /// Detailed health check endpoint
-pub async fn health_check(State(app_state): State<AppState>) -> impl IntoResponse {
-    let start_time = Instant::now();
+pub async fn health_check(
+    State(db): State<Arc<Database>>,
+    State(cache): State<Arc<CacheManager>>,
+    State(rpc): State<Arc<StellarRpcClient>>,
+) -> Json<HealthStatus> {
+    let db_health = check_database(&db).await;
+    let cache_health = check_cache(&cache).await;
+    let rpc_health = check_rpc(&rpc).await;
 
-    // Check database
-    let db_health = check_database_health(&app_state.db).await;
-
-    // Check cache
-    let cache_health = check_cache_health(&app_state.cache).await;
-
-    // Check RPC
-    let rpc_health = check_rpc_health(&app_state.rpc_client).await;
-
-    // Overall status
-    let overall_status = if db_health.status == "healthy"
-        && cache_health.status != "unhealthy"
-        && rpc_health.status != "unhealthy"
-    {
+    let overall = if db_health.healthy && cache_health.healthy {
         "healthy"
-    } else if db_health.status == "unhealthy" {
-        "unhealthy"
     } else {
         "degraded"
     };
 
-    if req.stellar_account.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Stellar account cannot be empty".to_string(),
-        ));
-    }
+    Json(HealthStatus {
+        status: overall.to_string(),
+        timestamp: Utc::now(),
+    let start_epoch = app_state.server_start_time.load(Ordering::Relaxed);
+    let now_epoch = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let uptime_seconds = now_epoch.saturating_sub(start_epoch);
 
-    let anchor = app_state.db.create_anchor(req).await?;
+    let health_status = HealthStatus {
+        status: overall_status.to_string(),
+        timestamp: Utc::now(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_seconds,
+        checks: HealthChecks {
+            database: db_health,
+            cache: cache_health,
+            rpc: rpc_health,
+        },
+    };
 
-    // Broadcast the new anchor to WebSocket clients
-    broadcast_anchor_update(&app_state.ws_state, &anchor);
-
-    Ok(Json(anchor))
+    Json(health_status)
 }
 
 /// PUT /api/anchors/:id/metrics - Update anchor metrics
@@ -219,14 +232,7 @@ pub async fn create_anchor_asset(
     Ok(Json(asset))
 }
 
-/// Health check endpoint
-pub async fn health_check() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "healthy",
-        "service": "stellar-insights-backend",
-        "version": env!("CARGO_PKG_VERSION")
-    }))
-}
+
 
 /// GET /api/admin/pool-metrics - Return current database pool metrics
 pub async fn get_pool_metrics(
@@ -314,9 +320,7 @@ pub struct UpdateCorridorMetricsFromTxns {
             cache: cache_health,
             rpc: rpc_health,
         },
-    };
-
-    Json(health_status)
+    })
 }
 
 /// Database pool metrics endpoint
