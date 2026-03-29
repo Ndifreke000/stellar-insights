@@ -29,8 +29,8 @@ impl EventStorage {
         sqlx::query(
             r"
             INSERT INTO contract_events (
-                id, ledger_sequence, transaction_hash, contract_id,
-                event_type, data, timestamp, network
+                id, ledger, transaction_hash, contract_id,
+                event_type, data, timestamp_dt, network
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO NOTHING
@@ -66,10 +66,10 @@ impl EventStorage {
 
         let mut query = String::from(
             r"
-            SELECT id, ledger_sequence, transaction_hash, contract_id,
-                   event_type, data, timestamp, network
+            SELECT id, ledger, transaction_hash, contract_id,
+                   event_type, data, timestamp_dt, network
             FROM contract_events
-            WHERE ledger_sequence >= $1 AND ledger_sequence <= $2
+            WHERE ledger >= $1 AND ledger <= $2
             ",
         );
 
@@ -78,7 +78,7 @@ impl EventStorage {
             query.push_str(" AND network = $3");
         }
 
-        query.push_str(" ORDER BY ledger_sequence ASC, id ASC");
+        query.push_str(" ORDER BY ledger ASC, id ASC");
 
         if let Some(lim) = limit {
             write!(query, " LIMIT {lim}").unwrap();
@@ -147,13 +147,13 @@ impl EventStorage {
         &self,
         start_ledger: u64,
         end_ledger: u64,
-        filter: &EventFilter,
+        _filter: &EventFilter,
     ) -> Result<u64> {
         let count: i64 = sqlx::query_scalar(
             r"
             SELECT COUNT(*)
             FROM contract_events
-            WHERE ledger_sequence >= $1 AND ledger_sequence <= $2
+            WHERE ledger >= $1 AND ledger <= $2
             ",
         )
         .bind(start_ledger as i64)
@@ -167,7 +167,7 @@ impl EventStorage {
     /// Get the latest ledger with events
     pub async fn get_latest_ledger(&self) -> Result<Option<u64>> {
         let ledger: Option<i64> =
-            sqlx::query_scalar("SELECT MAX(ledger_sequence) FROM contract_events")
+            sqlx::query_scalar("SELECT MAX(ledger) FROM contract_events")
                 .fetch_optional(&self.pool)
                 .await?;
 

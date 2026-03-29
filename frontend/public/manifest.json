@@ -1,21 +1,23 @@
 {
   "name": "Stellar Insights",
-  "short_name": "StellarInsights",
-  "description": "Advanced Stellar network analytics and insights",
+  "short_name": "Stellar Insights",
+  "description": "Real-time payment analytics and reliability metrics for the Stellar network.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
-  "theme_color": "#3b82f6",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "icon-192x192.png",
-      "sizes": "192x192",
+      "src": "/icon-light-32x32.png",
+      "sizes": "32x32",
       "type": "image/png"
     },
     {
-      "src": "icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

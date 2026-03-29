@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect, useMemo } from "react";
 import {
   getSep24Info,
   startDepositInteractive,
@@ -12,6 +12,13 @@ import {
   type Sep24Transaction,
   Sep24Error,
 } from "@/services/sep24";
+import {
+  validateUrl,
+  validateAmount,
+  validateStellarAccount,
+  validateJwt,
+  getFieldErrorId,
+} from "../lib/validation";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -45,6 +52,19 @@ export function Sep24Flow() {
   const [error, setError] = useState<string | null>(null);
   const [interactiveUrl, setInteractiveUrl] = useState<string | null>(null);
   const [startingFlow, setStartingFlow] = useState(false);
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const updateError = (field: string, result: ReturnType<typeof validateUrl>) => {
+    setErrors((prev) => ({
+      ...prev,
+      [field]: result.error,
+    }));
+  };
+
+  const isFormValid = useMemo(() => {
+    return !Object.values(errors).some((error) => error);
+  }, [errors]);
 
   const loadAnchors = useCallback(async () => {
     setLoadingAnchors(true);
@@ -126,6 +146,9 @@ export function Sep24Flow() {
   const assetCodes = assets ? Object.keys(assets) : [];
 
   const startFlow = async () => {
+    if (!isFormValid) {
+      return;
+    }
     if (!transferServer) {
       setError("Select an anchor or enter a transfer server URL");
       return;
@@ -227,11 +250,22 @@ export function Sep24Flow() {
             placeholder="https://api.anchor.example/sep24"
             className="w-full rounded-xl bg-background/80 border border-border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-accent/50"
             value={customTransferServer}
+            id="transferServer"
+            aria-describedby={errors.transferServer ? getFieldErrorId('transferServer') : undefined}
+            aria-invalid={!!errors.transferServer}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              setCustomTransferServer(e.target.value);
+              const value = e.target.value;
+              setCustomTransferServer(value);
               setSelectedAnchor(null);
+              updateError('transferServer', validateUrl(value));
             }}
           />
+          {errors.transferServer && (
+            <div id={getFieldErrorId('transferServer')} className="mt-1 text-xs text-red-400 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              {errors.transferServer}
+            </div>
+          )}
         </div>
       </section>
 
@@ -291,12 +325,25 @@ export function Sep24Flow() {
                   Amount (optional)
                 </label>
                 <input
+                  id="amount"
+                  aria-describedby={errors.amount ? getFieldErrorId('amount') : undefined}
+                  aria-invalid={!!errors.amount}
                   type="text"
                   placeholder="0.00"
-                  className="w-full rounded-xl bg-background/80 border border-border px-4 py-2.5 text-foreground placeholder:text-muted-foreground"
+                  className={`w-full rounded-xl bg-background/80 border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-accent/50 \${errors.amount ? 'border-red-500' : 'border-border'}`}
                   value={amount}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const value = e.target.value;
+                    setAmount(value);
+                    updateError('amount', validateAmount(value));
+                  }}
                 />
+                {errors.amount && (
+                  <div id={getFieldErrorId('amount')} className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errors.amount}
+                  </div>
+                )}
               </div>
             </div>
             <div className="mb-4">
@@ -304,24 +351,50 @@ export function Sep24Flow() {
                 Stellar account (optional)
               </label>
               <input
+                id="account"
+                aria-describedby={errors.account ? getFieldErrorId('account') : undefined}
+                aria-invalid={!!errors.account}
                 type="text"
                 placeholder="G..."
-                className="w-full rounded-xl bg-background/80 border border-border px-4 py-2.5 text-foreground placeholder:text-muted-foreground font-mono text-sm"
+                className={`w-full rounded-xl bg-background/80 border px-4 py-2.5 text-foreground placeholder:text-muted-foreground font-mono text-sm focus:ring-2 focus:ring-accent/50 \${errors.account ? 'border-red-500' : 'border-border'}`}
                 value={account}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAccount(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const value = e.target.value;
+                  setAccount(value);
+                  updateError('account', validateStellarAccount(value));
+                }}
               />
+              {errors.account && (
+                <div id={getFieldErrorId('account')} className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.account}
+                </div>
+              )}
             </div>
             <div className="mb-4">
               <label className="block text-sm font-medium text-muted-foreground mb-1">
                 JWT (optional, from SEP-10)
               </label>
               <input
+                id="jwt"
+                aria-describedby={errors.jwt ? getFieldErrorId('jwt') : undefined}
+                aria-invalid={!!errors.jwt}
                 type="password"
                 placeholder="For authenticated flows"
-                className="w-full rounded-xl bg-background/80 border border-border px-4 py-2.5 text-foreground placeholder:text-muted-foreground font-mono text-sm"
+                className={`w-full rounded-xl bg-background/80 border px-4 py-2.5 text-foreground placeholder:text-muted-foreground font-mono text-sm focus:ring-2 focus:ring-accent/50 \${errors.jwt ? 'border-red-500' : 'border-border'}`}
                 value={jwt}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setJwt(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const value = e.target.value;
+                  setJwt(value);
+                  updateError('jwt', validateJwt(value));
+                }}
               />
+              {errors.jwt && (
+                <div id={getFieldErrorId('jwt')} className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.jwt}
+                </div>
+              )}
             </div>
             {error && (
               <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-red-400 text-sm">

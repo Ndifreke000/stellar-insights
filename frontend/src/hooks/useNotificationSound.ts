@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { logger } from '@/lib/logger';
 import { NotificationSound, NotificationType, NotificationPriority } from '@/types/notifications';
 
 interface SoundConfig {

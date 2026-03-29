@@ -9,16 +9,19 @@ use super::circuit_breaker::CircuitBreakerConfig;
 pub fn circuit_breaker_config_from_env() -> CircuitBreakerConfig {
     let failure_threshold = std::env::var("RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(5);
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(5)
+        .clamp(1, 100);
     let success_threshold = std::env::var("RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(2);
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(2)
+        .clamp(1, 100);
     let timeout_secs = std::env::var("RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(30);
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(30)
+        .clamp(1, 3600);
     CircuitBreakerConfig {
         failure_threshold,
         success_threshold,
@@ -32,8 +35,9 @@ pub fn circuit_breaker_config_from_env() -> CircuitBreakerConfig {
 pub fn max_retries_from_env() -> u32 {
     std::env::var("RPC_MAX_RETRIES")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(3)
+        .clamp(0, 20)
 }
 
 /// Initial backoff duration (from `RPC_INITIAL_BACKOFF_MS`, default 100).
@@ -41,8 +45,9 @@ pub fn max_retries_from_env() -> u32 {
 pub fn initial_backoff_from_env() -> Duration {
     let ms = std::env::var("RPC_INITIAL_BACKOFF_MS")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(100)
+        .clamp(10, 10_000);
     Duration::from_millis(ms)
 }
 
@@ -51,7 +56,8 @@ pub fn initial_backoff_from_env() -> Duration {
 pub fn max_backoff_from_env() -> Duration {
     let ms = std::env::var("RPC_MAX_BACKOFF_MS")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(5000);
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(5000)
+        .clamp(100, 60_000);
     Duration::from_millis(ms)
 }

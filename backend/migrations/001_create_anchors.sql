@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS assets (
     asset_issuer TEXT NOT NULL,
     total_supply REAL,
     num_holders INTEGER DEFAULT 0,
+    blockchain_chain TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(asset_code, asset_issuer)

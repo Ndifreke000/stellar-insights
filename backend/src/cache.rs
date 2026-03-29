@@ -445,6 +445,11 @@ pub mod keys {
         "metrics:overview".to_string()
     }
 
+    #[must_use]
+    pub fn analytics_dashboard() -> String {
+        "analytics:dashboard".to_string()
+    }
+
     /// Pattern for invalidating all anchor-related caches
     #[must_use]
     pub fn anchor_pattern() -> String {

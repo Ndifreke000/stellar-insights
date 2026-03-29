@@ -32,7 +32,7 @@ fn test_initialization() {
 }
 
 #[test]
-#[should_panic(expected = "Contract already initialized")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn test_cannot_reinitialize() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarInsightsContract);

@@ -8,10 +8,41 @@ use tokio::time::Instant;
 
 const DEFAULT_RETRY_AFTER_SECONDS: u64 = 5;
 
+/// Configuration for the RPC rate limiter.
+///
+/// Controls how many requests per minute are allowed, how large the burst
+/// allowance is, and how many requests can queue while waiting for a token.
+///
+/// All fields can be overridden at runtime via environment variables —
+/// see [`RpcRateLimitConfig::from_env`].
 #[derive(Debug, Clone)]
 pub struct RpcRateLimitConfig {
+    /// Maximum sustained request rate in requests per minute.
+    ///
+    /// This sets the token bucket refill rate. For example, `90.0` means
+    /// one token is added every ~0.67 seconds.
+    ///
+    /// Environment variable: `RPC_RATE_LIMIT_REQUESTS_PER_MINUTE`
+    /// Default: `90.0`
     pub requests_per_minute: f64,
+
+    /// Maximum number of tokens the bucket can hold (burst capacity).
+    ///
+    /// Allows short bursts above the sustained rate. A value of `10.0`
+    /// means up to 10 requests can fire immediately before throttling kicks in.
+    ///
+    /// Environment variable: `RPC_RATE_LIMIT_BURST_SIZE`
+    /// Default: `10.0`
     pub burst_size: f64,
+
+    /// Maximum number of requests that can wait in the queue for a token.
+    ///
+    /// Requests beyond this limit are rejected immediately with
+    /// [`RpcRateLimitError::QueueFull`]. Tune this to control memory usage
+    /// under heavy load.
+    ///
+    /// Environment variable: `RPC_RATE_LIMIT_QUEUE_SIZE`
+    /// Default: `100`
     pub queue_size: usize,
 }
 
@@ -26,6 +57,14 @@ impl Default for RpcRateLimitConfig {
 }
 
 impl RpcRateLimitConfig {
+    /// Constructs a [`RpcRateLimitConfig`] from environment variables,
+    /// falling back to [`Default`] values for any that are missing or invalid.
+    ///
+    /// | Variable                              | Field                  | Default |
+    /// |---------------------------------------|------------------------|---------|
+    /// | `RPC_RATE_LIMIT_REQUESTS_PER_MINUTE`  | `requests_per_minute`  | `90.0`  |
+    /// | `RPC_RATE_LIMIT_BURST_SIZE`           | `burst_size`           | `10.0`  |
+    /// | `RPC_RATE_LIMIT_QUEUE_SIZE`           | `queue_size`           | `100`   |
     #[must_use]
     pub fn from_env() -> Self {
         let default = Self::default();

@@ -91,11 +91,68 @@ impl CacheInvalidationService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::CacheConfig;
+
+    fn make_service() -> CacheInvalidationService {
+        let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
+        CacheInvalidationService::new(cache)
+    }
 
     #[test]
     fn test_cache_key_patterns() {
         assert_eq!(keys::anchor_pattern(), "anchor:*");
         assert_eq!(keys::corridor_pattern(), "corridor:*");
         assert_eq!(keys::dashboard_pattern(), "dashboard:*");
+    }
+
+    #[tokio::test]
+    async fn invalidate_anchors_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_anchors().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_anchor_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_anchor("anchor-123").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_anchor_by_account_succeeds() {
+        let svc = make_service();
+        assert!(svc
+            .invalidate_anchor_by_account("GABC1234")
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_corridors_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_corridors().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_corridor_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_corridor("USD-EUR").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_dashboard_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_dashboard().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_metrics_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_metrics().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_all_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_all().await.is_ok());
     }
 }

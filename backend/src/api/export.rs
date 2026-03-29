@@ -127,11 +127,10 @@ pub async fn export_corridors(
                 "Latest Date",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
+            headers.iter().enumerate().try_for_each(|(i, h)| {
+                worksheet.write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
+            })?;
 
             for (row, m) in corridors.iter().enumerate() {
                 let row = (row + 1) as u32;
@@ -291,11 +290,10 @@ pub async fn export_anchors(
                 "Last Updated",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
+            headers.iter().enumerate().try_for_each(|(i, h)| {
+                worksheet.write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
+            })?;
 
             for (row, a) in anchors.iter().enumerate() {
                 let row = (row + 1) as u32;
@@ -469,11 +467,10 @@ pub async fn export_payments(
                 "Timestamp",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
+            headers.iter().enumerate().try_for_each(|(i, h)| {
+                worksheet.write_with_format(0, i as u16, *h, &header_format)
+                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
+            })?;
 
             for (row, p) in payments.iter().enumerate() {
                 let row = (row + 1) as u32;

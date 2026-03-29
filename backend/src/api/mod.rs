@@ -1,6 +1,7 @@
 pub mod account_merges;
 pub mod achievements;
 pub mod alerts;
+pub mod analytics_dashboard;
 pub mod anchors;
 pub mod api_keys;
 pub mod asset_verification;

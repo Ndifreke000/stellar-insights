@@ -103,7 +103,7 @@ async fn test_new_payment_message_serialization() {
     assert!(json.contains("true"));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_websocket_rate_limit_enforcement() {
     use stellar_insights_backend::websocket::WsState;
 

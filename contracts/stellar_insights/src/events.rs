@@ -10,6 +10,9 @@ pub const SNAPSHOT_SUBMITTED: Symbol = symbol_short!("SNAP_SUB");
 /// Topic for snapshot lifecycle events (for filtering)
 pub const SNAPSHOT_LIFECYCLE: Symbol = symbol_short!("SNAP_LFE");
 
+/// Topic for contract lifecycle events (init, pause, unpause)
+pub const CONTRACT_LIFECYCLE: Symbol = symbol_short!("CTR_LFE");
+
 // ============================================================================
 // Event Structures
 // ============================================================================
@@ -121,4 +124,22 @@ pub fn emit_snapshot_submitted(
     submitter: Address,
 ) {
     SnapshotSubmitted::publish(env, hash, epoch, timestamp, submitter);
+}
+
+/// Emit an event when the contract is initialized.
+pub fn emit_contract_initialized(env: &Env, admin: Address) {
+    env.events()
+        .publish((symbol_short!("init"), CONTRACT_LIFECYCLE), admin);
+}
+
+/// Emit an event when the contract is paused.
+pub fn emit_contract_paused(env: &Env, caller: Address) {
+    env.events()
+        .publish((symbol_short!("paused"), CONTRACT_LIFECYCLE), caller);
+}
+
+/// Emit an event when the contract is unpaused.
+pub fn emit_contract_unpaused(env: &Env, caller: Address) {
+    env.events()
+        .publish((symbol_short!("unpaused"), CONTRACT_LIFECYCLE), caller);
 }

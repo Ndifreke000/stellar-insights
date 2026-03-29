@@ -1,25 +1,32 @@
 -- Migration: Create Replay System Tables
 -- Description: Tables for contract event replay, checkpoints, and state management
 
--- Contract events storage
+-- Contract events storage (Unified for Replay and Indexing)
 CREATE TABLE IF NOT EXISTS contract_events (
     id TEXT PRIMARY KEY,
-    ledger_sequence INTEGER NOT NULL,
-    transaction_hash TEXT NOT NULL,
     contract_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
-    data TEXT NOT NULL, -- JSON-encoded event data
-    timestamp TIMESTAMP NOT NULL,
-    network TEXT NOT NULL,
+    epoch INTEGER,
+    hash TEXT,
+    timestamp INTEGER, -- Unix timestamp used by Indexing
+    timestamp_dt TIMESTAMP, -- ISO8601 timestamp used by Replay
+    ledger INTEGER NOT NULL, -- Ledger number
+    transaction_hash TEXT NOT NULL,
+    data TEXT, -- JSON-encoded event data
+    network TEXT,
+    verification_status TEXT DEFAULT 'pending',
+    verified_at TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(ledger_sequence, transaction_hash, event_type)
+    UNIQUE(ledger, transaction_hash, event_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contract_events_ledger ON contract_events(ledger_sequence);
+CREATE INDEX IF NOT EXISTS idx_contract_events_ledger ON contract_events(ledger DESC);
 CREATE INDEX IF NOT EXISTS idx_contract_events_contract ON contract_events(contract_id);
 CREATE INDEX IF NOT EXISTS idx_contract_events_type ON contract_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_contract_events_network ON contract_events(network);
-CREATE INDEX IF NOT EXISTS idx_contract_events_timestamp ON contract_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_contract_events_epoch ON contract_events(epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_events_verification_status ON contract_events(verification_status);
+CREATE INDEX IF NOT EXISTS idx_contract_events_timestamp ON contract_events(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_events_created_at ON contract_events(created_at DESC);
 
 -- Replay sessions
 CREATE TABLE IF NOT EXISTS replay_sessions (
@@ -74,18 +81,9 @@ CREATE TABLE IF NOT EXISTS processed_events (
 CREATE INDEX IF NOT EXISTS idx_processed_events_ledger ON processed_events(ledger_sequence);
 CREATE INDEX IF NOT EXISTS idx_processed_events_processed ON processed_events(processed_at);
 
--- Snapshots table (if not exists from previous migrations)
-CREATE TABLE IF NOT EXISTS snapshots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    epoch INTEGER NOT NULL UNIQUE,
-    hash TEXT NOT NULL,
-    ledger_sequence INTEGER,
-    transaction_hash TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- Snapshots table is managed in migration 002
 
-CREATE INDEX IF NOT EXISTS idx_snapshots_epoch ON snapshots(epoch);
-CREATE INDEX IF NOT EXISTS idx_snapshots_ledger ON snapshots(ledger_sequence);
+-- Snapshots indexes are managed in migration 002
 
 -- Add comments for documentation
 -- contract_events: Stores all contract events from the blockchain for replay

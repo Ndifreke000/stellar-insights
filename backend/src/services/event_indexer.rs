@@ -42,14 +42,23 @@ pub struct EventQuery {
     pub order_by: Option<EventOrderBy>,
 }
 
-/// Event ordering options
+/// Controls the sort order of event query results.
+///
+/// Used in [`EventQuery::order_by`] to specify how results are sorted.
+/// Defaults to [`EventOrderBy::CreatedAtDesc`] (newest first).
 #[derive(Debug, Clone)]
 pub enum EventOrderBy {
+    /// Sort by insertion time, oldest first.
     CreatedAtAsc,
+    /// Sort by insertion time, newest first (default).
     CreatedAtDesc,
+    /// Sort by ledger sequence number, ascending.
     LedgerAsc,
+    /// Sort by ledger sequence number, descending.
     LedgerDesc,
+    /// Sort by epoch number, ascending.
     EpochAsc,
+    /// Sort by epoch number, descending.
     EpochDesc,
 }
 
@@ -515,14 +524,16 @@ impl EventIndexer {
     pub async fn cleanup_old_events(&self, days_to_keep: i64) -> Result<i64> {
         info!("Cleaning up events older than {} days", days_to_keep);
 
-        let query = format!(
-            "DELETE FROM contract_events WHERE created_at < datetime('now', '-{days_to_keep} days')"
-        );
-
-        let result = sqlx::query(&query)
-            .execute(self.db.pool())
-            .await
-            .context("Failed to cleanup old events")?;
+        // Use a static query with a bound parameter instead of format! to avoid
+        // a per-call String allocation and to keep user-supplied values out of
+        // the SQL string itself.
+        let result = sqlx::query(
+            "DELETE FROM contract_events WHERE created_at < datetime('now', '-' || ? || ' days')",
+        )
+        .bind(days_to_keep)
+        .execute(self.db.pool())
+        .await
+        .context("Failed to cleanup old events")?;
 
         let deleted_count = result.rows_affected();
         info!("Cleaned up {} old events", deleted_count);

@@ -18,6 +18,7 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("RPC_MAX_RECORDS_PER_REQUEST", validate_positive_number),
     ("RPC_MAX_TOTAL_RECORDS", validate_positive_number),
     ("RPC_PAGINATION_DELAY_MS", validate_positive_number),
+    ("JWT_SECRET", validate_jwt_secret),
 ];
 
 /// Validates all required environment variables are set
@@ -160,6 +161,18 @@ fn validate_positive_number(value: &str) -> bool {
     value.parse::<u32>().map(|n| n > 0).unwrap_or(false)
 }
 
+/// Validate JWT secret
+/// Must not be the placeholder value and should be at least 32 characters
+fn validate_jwt_secret(value: &str) -> bool {
+    // Check if it's the placeholder value
+    if value == "CHANGE_ME_generate_with_openssl_rand_base64_48" {
+        return false;
+    }
+
+    // Ensure minimum length of 32 characters for security
+    value.len() >= 32
+}
+
 /// Validate Stellar public key format
 /// Must start with 'G' and be exactly 56 characters (Ed25519 public key in base32)
 fn validate_stellar_public_key(value: &str) -> bool {
@@ -213,6 +226,24 @@ mod tests {
         assert!(!validate_port("70000"));
         assert!(!validate_port("abc"));
         assert!(!validate_port("-1"));
+    }
+
+    #[test]
+    fn test_validate_jwt_secret() {
+        // Valid secrets
+        assert!(validate_jwt_secret("a".repeat(32).as_str()));
+        assert!(validate_jwt_secret(
+            "this_is_a_very_secure_jwt_secret_key_12345"
+        ));
+
+        // Invalid - placeholder
+        assert!(!validate_jwt_secret(
+            "CHANGE_ME_generate_with_openssl_rand_base64_48"
+        ));
+
+        // Invalid - too short
+        assert!(!validate_jwt_secret("short"));
+        assert!(!validate_jwt_secret("only_31_chars_long_x"));
     }
 
     #[test]

@@ -23,71 +23,77 @@ const AnchorList = ({
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
               Health Status
             </th>
-            <th
-              className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
-              onClick={() =>
-                handleSort(
-                  "reliability",
-                  sortBy,
-                  sortOrder,
-                  setSortBy,
-                  setSortOrder,
-                )
-              }
-            >
-              <div className="flex items-center gap-1">
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <button
+                type="button"
+                className="w-full text-left cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none flex items-center gap-1"
+                onClick={() =>
+                  handleSort(
+                    "reliability",
+                    sortBy,
+                    sortOrder,
+                    setSortBy,
+                    setSortOrder,
+                  )
+                }
+                aria-label="Sort by reliability score"
+              >
                 Reliability Score
                 <SortIndicator
                   column="reliability"
                   currentSort={sortBy}
                   direction={sortOrder}
                 />
-              </div>
+              </button>
             </th>
-            <th
-              className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
-              onClick={() =>
-                handleSort(
-                  "failure_rate",
-                  sortBy,
-                  sortOrder,
-                  setSortBy,
-                  setSortOrder,
-                )
-              }
-            >
-              <div className="flex items-center gap-1">
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <button
+                type="button"
+                className="w-full text-left cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none flex items-center gap-1"
+                onClick={() =>
+                  handleSort(
+                    "failure_rate",
+                    sortBy,
+                    sortOrder,
+                    setSortBy,
+                    setSortOrder,
+                  )
+                }
+                aria-label="Sort by success rate"
+              >
                 Success Rate
                 <SortIndicator
                   column="failure_rate"
                   currentSort={sortBy}
                   direction={sortOrder}
                 />
-              </div>
+              </button>
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
               Asset Coverage
             </th>
-            <th
-              className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none"
-              onClick={() =>
-                handleSort(
-                  "transactions",
-                  sortBy,
-                  sortOrder,
-                  setSortBy,
-                  setSortOrder,
-                )
-              }
-            >
-              <div className="flex items-center gap-1">
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <button
+                type="button"
+                className="w-full text-left cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 select-none flex items-center gap-1"
+                onClick={() =>
+                  handleSort(
+                    "transactions",
+                    sortBy,
+                    sortOrder,
+                    setSortBy,
+                    setSortOrder,
+                  )
+                }
+                aria-label="Sort by total transactions"
+              >
                 Total Transactions
                 <SortIndicator
                   column="transactions"
                   currentSort={sortBy}
                   direction={sortOrder}
                 />
-              </div>
+              </button>
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
               30-Day Trend
@@ -111,9 +117,16 @@ const AnchorList = ({
               <tr
                 key={anchor.id}
                 className="hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
-                onClick={() =>
-                  router.push(`/anchors/${anchor.stellar_account}`)
-                }
+                role="button"
+                tabIndex={0}
+                aria-label={`Open anchor details for ${anchor.name}`}
+                onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    router.push(`/anchors/${anchor.stellar_account}`);
+                  }
+                }}
               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
