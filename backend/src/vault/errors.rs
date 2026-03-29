@@ -52,3 +52,82 @@ impl fmt::Display for VaultError {
 }
 
 impl std::error::Error for VaultError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_config_error() {
+        let e = VaultError::ConfigError("VAULT_ADDR not set".to_string());
+        assert_eq!(e.to_string(), "Vault config error: VAULT_ADDR not set");
+    }
+
+    #[test]
+    fn display_client_error() {
+        let e = VaultError::ClientError("tls failure".to_string());
+        assert_eq!(e.to_string(), "Vault client error: tls failure");
+    }
+
+    #[test]
+    fn display_request_error() {
+        let e = VaultError::RequestError("timeout".to_string());
+        assert_eq!(e.to_string(), "Vault request error: timeout");
+    }
+
+    #[test]
+    fn display_parse_error() {
+        let e = VaultError::ParseError("missing field".to_string());
+        assert_eq!(e.to_string(), "Vault parse error: missing field");
+    }
+
+    #[test]
+    fn display_vault_unavailable() {
+        assert_eq!(VaultError::VaultUnavailable.to_string(), "Vault is unavailable");
+    }
+
+    #[test]
+    fn display_secret_not_found() {
+        let e = VaultError::SecretNotFound("secret/myapp".to_string());
+        assert_eq!(e.to_string(), "Secret not found: secret/myapp");
+    }
+
+    #[test]
+    fn display_field_not_found() {
+        let e = VaultError::FieldNotFound("api_key".to_string());
+        assert_eq!(e.to_string(), "Field not found: api_key");
+    }
+
+    #[test]
+    fn display_no_data_in_secret() {
+        assert_eq!(VaultError::NoDataInSecret.to_string(), "No data in secret");
+    }
+
+    #[test]
+    fn display_credentials_failed() {
+        let e = VaultError::CredentialsFailed("stellar-app".to_string());
+        assert_eq!(
+            e.to_string(),
+            "Failed to get credentials for role: stellar-app"
+        );
+    }
+
+    #[test]
+    fn display_lease_renewal_failed() {
+        let e = VaultError::LeaseRenewalFailed("lease/abc123".to_string());
+        assert_eq!(e.to_string(), "Failed to renew lease: lease/abc123");
+    }
+
+    #[test]
+    fn display_lease_revoke_failed() {
+        let e = VaultError::LeaseRevokeFailed("lease/abc123".to_string());
+        assert_eq!(e.to_string(), "Failed to revoke lease: lease/abc123");
+    }
+
+    #[test]
+    fn vault_error_implements_std_error() {
+        // Ensure the trait bound is satisfied — compile-time check.
+        fn assert_error<E: std::error::Error>(_: &E) {}
+        assert_error(&VaultError::VaultUnavailable);
+    }
+}
