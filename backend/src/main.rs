@@ -535,6 +535,9 @@ async fn main() -> anyhow::Result<()> {
         pool,
         cache,
     )
+    .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))
+    .layer(TimeoutLayer::new(timeout_duration))
+    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
     .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
     .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)))
     .layer(middleware::from_fn_with_state(
