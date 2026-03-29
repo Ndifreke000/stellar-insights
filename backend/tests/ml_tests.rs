@@ -1,17 +1,16 @@
-use crate::ml::PredictionFeatures;
+use stellar_insights_backend::ml::PredictionFeatures;
 
 #[tokio::test]
 async fn test_ml_prediction() {
     let features = PredictionFeatures {
         corridor_hash: 0.5,
-        amount_usd: 2.0,      // log10(100)
-        hour_of_day: 0.5,     // 12 PM
-        day_of_week: 0.3,     // Tuesday
-        liquidity_depth: 3.0, // log10(1000)
+        amount_usd: 2.0,
+        hour_of_day: 0.5,
+        day_of_week: 0.3,
+        liquidity_depth: 3.0,
         recent_success_rate: 0.85,
     };
 
-    // Test that features are in expected ranges
     assert!(features.corridor_hash >= 0.0 && features.corridor_hash <= 1.0);
     assert!(features.hour_of_day >= 0.0 && features.hour_of_day <= 1.0);
     assert!(features.day_of_week >= 0.0 && features.day_of_week <= 1.0);
@@ -20,8 +19,8 @@ async fn test_ml_prediction() {
 
 #[test]
 fn test_prediction_result_risk_levels() {
-    use crate::api::ml::PredictionResponse;
-    use crate::ml::PredictionResult;
+    use stellar_insights_backend::api::ml::PredictionResponse;
+    use stellar_insights_backend::ml::PredictionResult;
 
     let high_prob = PredictionResult {
         success_probability: 0.9,
@@ -46,7 +45,7 @@ fn test_prediction_result_risk_levels() {
 
 #[test]
 fn test_simple_model_prediction() {
-    use crate::ml::SimpleMLModel;
+    use stellar_insights_backend::ml::{PredictionFeatures, SimpleMLModel};
 
     let model = SimpleMLModel::new();
     let features = PredictionFeatures {

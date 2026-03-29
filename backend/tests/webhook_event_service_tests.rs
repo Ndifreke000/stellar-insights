@@ -1,0 +1,241 @@
+use sqlx::SqlitePool;
+use std::sync::Arc;
+use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
+use stellar_insights_backend::webhooks::events::CorridorMetrics;
+use uuid::Uuid;
+
+async fn setup_test_db() -> SqlitePool {
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        "CREATE TABLE webhooks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            url TEXT NOT NULL,
+            event_types TEXT NOT NULL,
+            filters TEXT,
+            secret TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_fired_at TEXT
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "CREATE TABLE webhook_events (
+            id TEXT PRIMARY KEY,
+            webhook_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            retries INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    pool
+}
+
+fn insert_webhook_sql() -> &'static str {
+    "INSERT INTO webhooks (id, user_id, url, event_types, secret, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)"
+}
+
+#[tokio::test]
+async fn test_webhook_registration_and_triggering() {
+    let pool = setup_test_db().await;
+    let svc = Arc::new(WebhookEventService::new(pool.clone()));
+    let webhook_id = Uuid::new_v4().to_string();
+
+    sqlx::query(insert_webhook_sql())
+        .bind(&webhook_id)
+        .bind(Uuid::new_v4().to_string())
+        .bind("https://example.com/webhook")
+        .bind("anchor.status_changed")
+        .bind("test_secret")
+        .bind(true)
+        .bind("2023-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let result = svc
+        .trigger_anchor_status_changed(&webhook_id, "test_anchor", "healthy", "degraded", 85.0, 5)
+        .await;
+    assert!(result.is_ok());
+
+    let events: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
+    )
+    .bind(&webhook_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].1, webhook_id);
+    assert_eq!(events[0].2, "anchor.status_changed");
+}
+
+fn test_corridor_metrics() -> (CorridorMetrics, CorridorMetrics) {
+    let old = CorridorMetrics {
+        success_rate: 0.95,
+        avg_latency_ms: 100.0,
+        p95_latency_ms: 150.0,
+        p99_latency_ms: 200.0,
+        liquidity_depth_usd: 1_000_000.0,
+        liquidity_volume_24h_usd: 500_000.0,
+        total_attempts: 1000,
+        successful_payments: 950,
+        failed_payments: 50,
+    };
+    let new = CorridorMetrics {
+        success_rate: 0.84,
+        avg_latency_ms: 180.0,
+        p95_latency_ms: 250.0,
+        p99_latency_ms: 350.0,
+        liquidity_depth_usd: 800_000.0,
+        liquidity_volume_24h_usd: 400_000.0,
+        total_attempts: 1000,
+        successful_payments: 840,
+        failed_payments: 160,
+    };
+    (old, new)
+}
+
+#[tokio::test]
+async fn test_corridor_health_webhook() {
+    let pool = setup_test_db().await;
+    let svc = Arc::new(WebhookEventService::new(pool.clone()));
+    let webhook_id = Uuid::new_v4().to_string();
+
+    sqlx::query(insert_webhook_sql())
+        .bind(&webhook_id)
+        .bind(Uuid::new_v4().to_string())
+        .bind("https://example.com/webhook")
+        .bind("corridor.health_degraded")
+        .bind("test_secret")
+        .bind(true)
+        .bind("2023-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (old, new) = test_corridor_metrics();
+    let result = svc
+        .trigger_corridor_health_degraded(
+            "USDC:GA5Z->XLM:native",
+            &old,
+            &new,
+            "warning",
+            vec!["success_rate_dropped: 95.0% -> 84.0%".to_string()],
+        )
+        .await;
+    assert!(result.is_ok());
+
+    let events: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
+    )
+    .bind(&webhook_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].2, "corridor.health_degraded");
+}
+
+#[tokio::test]
+async fn test_payment_created_webhook() {
+    let pool = setup_test_db().await;
+    let svc = Arc::new(WebhookEventService::new(pool.clone()));
+    let webhook_id = Uuid::new_v4().to_string();
+
+    sqlx::query(insert_webhook_sql())
+        .bind(&webhook_id)
+        .bind(Uuid::new_v4().to_string())
+        .bind("https://example.com/webhook")
+        .bind("payment.created")
+        .bind("test_secret")
+        .bind(true)
+        .bind("2023-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let result = svc
+        .trigger_payment_created(
+            "payment_123",
+            "GABC...",
+            "GXYZ...",
+            "USDC",
+            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+            100.50,
+            "2023-01-01T12:00:00Z",
+        )
+        .await;
+    assert!(result.is_ok());
+
+    let events: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
+    )
+    .bind(&webhook_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].2, "payment.created");
+}
+
+#[tokio::test]
+async fn test_webhook_filters() {
+    let pool = setup_test_db().await;
+    let svc = Arc::new(WebhookEventService::new(pool.clone()));
+    let webhook_id = Uuid::new_v4().to_string();
+
+    sqlx::query(
+        "INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&webhook_id)
+    .bind(Uuid::new_v4().to_string())
+    .bind("https://example.com/webhook")
+    .bind("corridor.health_degraded")
+    .bind(r#"{"severity": "critical"}"#)
+    .bind("test_secret")
+    .bind(true)
+    .bind("2023-01-01T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (old, new) = test_corridor_metrics();
+    let result = svc
+        .trigger_corridor_health_degraded(
+            "USDC:GA5Z->XLM:native",
+            &old,
+            &new,
+            "warning",
+            vec!["success_rate_dropped: 95.0% -> 84.0%".to_string()],
+        )
+        .await;
+    assert!(result.is_ok());
+
+    let events: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
+    )
+    .bind(&webhook_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(events.len(), 0);
+}
