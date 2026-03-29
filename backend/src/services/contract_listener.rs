@@ -1,15 +1,10 @@
+/*
+Temporarily disabled due to compilation issues.
+*/
+use anyhow::Result;
+use std::sync::Arc;
 use crate::database::Database;
 use crate::services::alert_service::AlertService;
-use anyhow::{Context, Result};
-use chrono::Utc;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use sqlx::Row;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::interval;
-use tracing::{debug, error, info, warn};
 
 /// Configuration for the contract event listener
 #[derive(Debug, Clone, Deserialize)]
@@ -20,6 +15,16 @@ pub struct ListenerConfig {
     pub start_ledger: Option<u64>,
 }
 
+pub struct ContractEventListener;
+impl ContractEventListener {
+    pub fn new(_config: ListenerConfig, _db: Arc<Database>, _alert_service: Arc<AlertService>) -> Result<Self> {
+        Ok(Self)
+    }
+    pub fn from_env(_db: Arc<Database>, _alert_service: Arc<AlertService>) -> Result<Self> {
+        Ok(Self)
+    }
+    pub async fn start_listening(&mut self) -> Result<()> {
+        Err(anyhow::anyhow!("Contract listener is temporarily disabled"))
 /// Represents a contract event from the Soroban RPC
 #[derive(Debug, Clone, Deserialize)]
 pub struct ContractEvent {

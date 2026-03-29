@@ -12,6 +12,11 @@ use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tower::timeout::TimeoutLayer;
 use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
+use std::sync::Arc;
+use std::time::Duration;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
@@ -24,6 +29,26 @@ use axum::http::{
     header::{AUTHORIZATION, CONTENT_TYPE},
     HeaderValue, Method,
 };
+
+use stellar_insights_backend::{
+    api::v1::routes,
+    backup::{BackupConfig, BackupManager},
+    cache::{CacheConfig, CacheManager},
+    database::{Database, PoolConfig},
+    env_config,
+    ingestion::DataIngestionService,
+    openapi::ApiDoc,
+    rate_limit::RateLimiter,
+    rpc::StellarRpcClient,
+    services::{
+        account_merge_detector::AccountMergeDetector,
+        fee_bump_tracker::FeeBumpTrackerService,
+        liquidity_pool_analyzer::LiquidityPoolAnalyzer,
+        price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
+        webhook_dispatcher::WebhookDispatcher,
+    },
+    state::AppState,
+    websocket::WsState,
 use tower_http::{
     cors::{AllowOrigin, Any, CorsLayer},
     timeout::TimeoutLayer,
@@ -535,6 +560,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         cache,
     )
+    .layer(TimeoutLayer::new(timeout_duration))
     .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))
     .layer(TimeoutLayer::new(timeout_duration))
     .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));

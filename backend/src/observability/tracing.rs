@@ -8,7 +8,7 @@ use opentelemetry_otlp::WithExportConfig;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 const MAX_LOG_FILES: usize = 30;
 
@@ -78,6 +78,22 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             .with(env_filter);
 
         if use_json {
+            Some(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_writer(writer)
+                    .with_target(true)
+                    .with_level(true)
+                    .boxed(),
+            )
+        } else {
+            Some(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(writer)
+                    .with_target(true)
+                    .with_level(true)
+                    .boxed(),
+            )
             let fmt = tracing_subscriber::fmt::layer()
                 .json()
                 .with_target(true)
@@ -110,6 +126,27 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
         }
         tracing::info!("OpenTelemetry tracing enabled");
     } else {
+        None
+    };
+
+    // Add optional OpenTelemetry layer
+    let otel_layer = if otel_enabled {
+        let tracer = init_otel_tracer(service_name)?;
+        Some(tracing_opentelemetry::layer().with_tracer(tracer).boxed())
+    } else {
+        None
+    };
+
+    // Initialize the registry with all layers
+    // Option<Layer> implements Layer, so we can chain them directly
+    registry
+        .with(fmt_layer)
+        .with(otel_layer)
+        .with(file_layer)
+        .init();
+
+    if otel_enabled {
+        tracing::info!("OpenTelemetry tracing enabled");
         let base = tracing_subscriber::registry().with(env_filter);
         if use_json {
             let fmt = tracing_subscriber::fmt::layer()

@@ -13,7 +13,7 @@ use std::time::Duration;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use anyhow::Context;
+// use anyhow::Context;
 
 use crate::broadcast::broadcast_anchor_update;
 use crate::cache::helpers::cached_query;
@@ -297,6 +297,7 @@ use crate::cache::keys;
 use crate::database::Database;
 use crate::rpc::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
+    error::{RpcError},
     circuit_breaker::{rpc_circuit_breaker, CircuitBreaker},
     error::{with_retry, RetryConfig, RpcError},
     StellarRpcClient,
@@ -321,6 +322,55 @@ const fn default_limit() -> i64 {
     50
 }
 
+pub(crate) fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
+    static CIRCUIT_BREAKER: OnceLock<Arc<CircuitBreaker>> = OnceLock::new();
+    CIRCUIT_BREAKER
+        .get_or_init(|| {
+            Arc::new(CircuitBreaker::new(
+                CircuitBreakerConfig {
+                    failure_threshold: 5,
+                    success_threshold: 2,
+                    timeout_duration: Duration::from_secs(30),
+                    half_open_max_calls: 3,
+                },
+                "horizon",
+            ))
+        })
+        .clone()
+}
+
+pub fn rpc_circuit_breaker_instance() -> Arc<CircuitBreaker> {
+    rpc_circuit_breaker()
+}
+
+// Add retry helper
+async fn with_retry<F, Fut, T>(
+    mut operation: F,
+    max_retries: u32,
+    initial_backoff: Duration,
+) -> Result<T, RpcError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, RpcError>>,
+{
+    let mut backoff = initial_backoff;
+    let mut last_error = None;
+    
+    for attempt in 0..=max_retries {
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = Some(e);
+                if attempt < max_retries {
+                    tokio::time::sleep(backoff).await;
+                    backoff *= 2;  // Exponential backoff
+                }
+            }
+        }
+    }
+    
+    Err(last_error.unwrap())
+}
 // Shared circuit breaker is now managed in crate::rpc::circuit_breaker
 
 pub async fn get_anchor_metrics_with_rpc(
@@ -335,6 +385,20 @@ pub async fn get_anchor_metrics_with_rpc(
             rpc_client
                 .fetch_anchor_metrics(anchor_id)
                 .await
+                .map_err(|e| RpcError::categorize(&e.to_string()))
+        },
+        3,
+        Duration::from_secs(1),
+    )
+    .await;
+
+    let metrics = match result {
+        Ok(metrics) => metrics,
+        Err(RpcError::CircuitBreakerOpen) => {
+            return Err(anyhow::anyhow!("Circuit breaker open - RPC service unavailable"));
+        }
+        Err(err) => return Err(anyhow::anyhow!(err.to_string())),
+    };
                 .context("RPC call failed")
         })
         .await
