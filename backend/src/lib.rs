@@ -1,6 +1,6 @@
 pub mod admin_audit_log;
 pub mod alerts;
-pub mod analytics;
+
 pub mod api;
 pub mod api_analytics_middleware;
 pub mod api_v1_middleware;
@@ -10,16 +10,18 @@ pub mod auth;
 pub mod auth_middleware;
 pub mod backup;
 pub mod broadcast;
-pub mod cache;
+
+pub mod features;
+pub mod shared;
 pub mod cache_invalidation;
 // cache_middleware removed in favor of cache helper APIs
 pub mod crypto;
-pub mod database;
+pub mod infrastructure;
 
 pub mod db;
 pub mod email;
 pub mod env_config;
-pub mod error;
+
 pub mod handlers; // Core handlers (pool_metrics, health_check, ingestion_status)
 pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod ingestion;
@@ -44,7 +46,7 @@ pub mod state;
 pub mod validation;
 pub mod vault;
 pub mod webhooks;
-pub mod websocket;
+
 
 pub mod rpc;
 
