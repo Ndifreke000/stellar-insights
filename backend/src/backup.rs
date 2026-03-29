@@ -199,4 +199,123 @@ mod tests {
         );
         assert_eq!(sqlite_path_from_database_url("sqlite::memory:"), None);
     }
+
+    #[test]
+    fn parses_sqlite_memory_variants() {
+        assert_eq!(sqlite_path_from_database_url("sqlite://memory:"), None);
+        assert_eq!(sqlite_path_from_database_url("sqlite:memory:"), None);
+    }
+
+    #[test]
+    fn parses_unknown_url_scheme_returns_none() {
+        assert_eq!(sqlite_path_from_database_url("postgres://localhost/db"), None);
+        assert_eq!(sqlite_path_from_database_url(""), None);
+    }
+
+    #[test]
+    fn backup_config_defaults() {
+        let config = BackupConfig {
+            enabled: false,
+            db_path: "test.db".to_string(),
+            backup_dir: "./backups".to_string(),
+            keep_days: 30,
+            schedule_hour_utc: 2,
+        };
+        assert!(!config.enabled);
+        assert_eq!(config.keep_days, 30);
+        assert_eq!(config.schedule_hour_utc, 2);
+    }
+
+    #[test]
+    fn duration_until_next_hour_is_positive() {
+        // Whatever the current time, the wait should always be > 0 and <= 24h.
+        let wait = duration_until_next_hour(3);
+        assert!(wait.as_secs() > 0);
+        assert!(wait.as_secs() <= 86_400);
+    }
+
+    #[test]
+    fn duration_until_next_hour_all_hours() {
+        // Smoke-test every valid hour value.
+        for h in 0u32..24 {
+            let wait = duration_until_next_hour(h);
+            assert!(wait.as_secs() <= 86_400, "hour {h} produced wait > 24h");
+        }
+    }
+
+    #[tokio::test]
+    async fn create_backup_copies_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("source.db");
+        let backup_dir = dir.path().join("backups");
+
+        tokio::fs::write(&db_path, b"sqlite-data").await.unwrap();
+
+        let config = BackupConfig {
+            enabled: true,
+            db_path: db_path.to_str().unwrap().to_string(),
+            backup_dir: backup_dir.to_str().unwrap().to_string(),
+            keep_days: 7,
+            schedule_hour_utc: 2,
+        };
+
+        let manager = BackupManager::new(config);
+        let result = manager.create_backup().await;
+        assert!(result.is_ok());
+
+        let backup_path = result.unwrap();
+        assert!(backup_path.exists());
+        let contents = tokio::fs::read(&backup_path).await.unwrap();
+        assert_eq!(contents, b"sqlite-data");
+    }
+
+    #[tokio::test]
+    async fn create_backup_fails_when_source_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = BackupConfig {
+            enabled: true,
+            db_path: dir.path().join("nonexistent.db").to_str().unwrap().to_string(),
+            backup_dir: dir.path().join("backups").to_str().unwrap().to_string(),
+            keep_days: 7,
+            schedule_hour_utc: 2,
+        };
+
+        let manager = BackupManager::new(config);
+        assert!(manager.create_backup().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cleanup_old_backups_returns_zero_when_dir_missing() {
+        let config = BackupConfig {
+            enabled: true,
+            db_path: "test.db".to_string(),
+            backup_dir: "/tmp/nonexistent_backup_dir_xyz".to_string(),
+            keep_days: 30,
+            schedule_hour_utc: 2,
+        };
+
+        let manager = BackupManager::new(config);
+        let removed = manager.cleanup_old_backups().await.unwrap();
+        assert_eq!(removed, 0);
+    }
+
+    #[tokio::test]
+    async fn run_once_creates_backup_and_cleans_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("source.db");
+        let backup_dir = dir.path().join("backups");
+
+        tokio::fs::write(&db_path, b"data").await.unwrap();
+
+        let config = BackupConfig {
+            enabled: true,
+            db_path: db_path.to_str().unwrap().to_string(),
+            backup_dir: backup_dir.to_str().unwrap().to_string(),
+            keep_days: 30,
+            schedule_hour_utc: 2,
+        };
+
+        let manager = BackupManager::new(config);
+        assert!(manager.run_once().await.is_ok());
+    }
 }

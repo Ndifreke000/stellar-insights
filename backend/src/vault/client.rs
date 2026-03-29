@@ -241,14 +241,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lease_info_creation() {
+    fn lease_info_fields() {
         let lease = LeaseInfo {
-            lease_id: "test".to_string(),
+            lease_id: "lease/db/abc123".to_string(),
             lease_duration: 3600,
             renewable: true,
             created_at: std::time::Instant::now(),
         };
+        assert_eq!(lease.lease_id, "lease/db/abc123");
         assert_eq!(lease.lease_duration, 3600);
         assert!(lease.renewable);
+    }
+
+    #[test]
+    fn database_credentials_fields() {
+        let creds = DatabaseCredentials {
+            username: "v-user-abc".to_string(),
+            password: "s3cr3t".to_string(),
+            ttl: 3600,
+        };
+        assert_eq!(creds.username, "v-user-abc");
+        assert_eq!(creds.ttl, 3600);
+    }
+
+    #[tokio::test]
+    async fn new_returns_vault_unavailable_when_no_server() {
+        let config = VaultConfig::new(
+            "http://127.0.0.1:19999".to_string(), // nothing listening here
+            "s.fake".to_string(),
+            "stellar-app".to_string(),
+        );
+        let result = VaultClient::new(config).await;
+        assert!(matches!(result, Err(VaultError::VaultUnavailable)));
     }
 }
