@@ -288,6 +288,10 @@ pub enum DataKey {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
+/// Ledgers covering one rate-limit window plus a small buffer so the entry
+/// is never evicted before the window resets (~1 hour at 5 s/ledger = 720 ledgers).
+const RATE_LIMIT_TTL_LEDGERS: u32 = 800;
+
 fn check_rate_limit(env: &Env, caller: &Address) -> Result<(), Error> {
     let now = env.ledger().timestamp();
 
@@ -317,6 +321,12 @@ fn check_rate_limit(env: &Env, caller: &Address) -> Result<(), Error> {
     env.storage()
         .temporary()
         .set(&DataKey::RateLimit(caller.clone()), &rate_info);
+    // Keep the temporary entry alive for the full rate-limit window.
+    env.storage().temporary().extend_ttl(
+        &DataKey::RateLimit(caller.clone()),
+        RATE_LIMIT_TTL_LEDGERS,
+        RATE_LIMIT_TTL_LEDGERS,
+    );
 
     Ok(())
 }
@@ -365,7 +375,18 @@ fn validate_epoch(env: &Env, epoch: u64) -> Result<u64, Error> {
 }
 
 /// Write one snapshot to per-epoch persistent storage and update the shared map + latest epoch.
-const LEDGERS_TO_EXTEND: u32 = 518_400; // ~30 days at 5s per ledger
+/// All persistent entries are extended to LEDGERS_TO_EXTEND; instance storage is bumped
+/// on every write so the contract itself never expires while it is actively used.
+const LEDGERS_TO_EXTEND: u32 = 518_400; // ~30 days at 5s/ledger
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000; // bump instance when TTL falls below ~6 days
+const INSTANCE_TTL_EXTEND: u32 = 518_400; // extend instance to ~30 days
+
+/// Bump instance storage TTL so admin/config keys never expire while the contract is in use.
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
 
 fn write_snapshot(
     env: &Env,
@@ -391,6 +412,7 @@ fn write_snapshot(
         LEDGERS_TO_EXTEND,
     );
     env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
+    bump_instance(env);
 }
 
 fn get_next_action_id(env: &Env) -> u64 {
@@ -448,9 +470,18 @@ impl AnalyticsContract {
         storage.set(&DataKey::LatestEpoch, &0u64);
         storage.set(&DataKey::Paused, &false);
         storage.set(&DataKey::Version, &VERSION);
+        // Extend instance TTL so admin/config keys survive from the start.
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         env.storage().persistent().set(
             &DataKey::Snapshots,
             &Map::<u64, SnapshotMetadata>::new(&env),
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
         );
         Ok(())
     }
@@ -745,6 +776,17 @@ impl AnalyticsContract {
         if latest_epoch == 0 {
             return Ok(None);
         }
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Snapshot(latest_epoch))
+        {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshot(latest_epoch),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         Ok(env
             .storage()
             .persistent()
@@ -754,6 +796,13 @@ impl AnalyticsContract {
     /// Get the entire snapshot history.
     pub fn get_snapshot_history(env: Env) -> Result<Map<u64, SnapshotMetadata>, Error> {
         require_initialized(&env)?;
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         Ok(env
             .storage()
             .persistent()
@@ -829,6 +878,13 @@ impl AnalyticsContract {
         epochs: Vec<u64>,
     ) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
         require_initialized(&env)?;
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         let snapshots: Map<u64, SnapshotMetadata> = env
             .storage()
             .persistent()
@@ -911,6 +967,7 @@ impl AnalyticsContract {
 
         let previous_admin = old_admin.clone();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
 
         // ✅ EMIT DETAILED EVENT for audit trail
         env.events().publish(
@@ -958,6 +1015,7 @@ impl AnalyticsContract {
             .instance()
             .set(&DataKey::PauseInfo, &pause_info);
         env.storage().instance().set(&DataKey::Paused, &true);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("pause"), caller.clone()),
@@ -992,6 +1050,7 @@ impl AnalyticsContract {
             .instance()
             .set(&DataKey::PauseInfo, &pause_info);
         env.storage().instance().set(&DataKey::Paused, &false);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("unpause"), caller.clone()),
@@ -1030,6 +1089,7 @@ impl AnalyticsContract {
         // Perform upgrade
         env.deployer()
             .update_current_contract_wasm(new_wasm_hash.clone());
+        bump_instance(&env);
 
         // Emit event
         env.events()
@@ -1051,6 +1111,7 @@ impl AnalyticsContract {
         env.storage()
             .instance()
             .set(&DataKey::Governance, &governance);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("gov"), governance.clone()),
@@ -1092,6 +1153,7 @@ impl AnalyticsContract {
 
         let old_admin = require_admin(&env)?;
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("admin"), new_admin.clone()),
@@ -1122,6 +1184,7 @@ impl AnalyticsContract {
             ));
         }
         env.storage().instance().set(&DataKey::Paused, &paused);
+        bump_instance(&env);
 
         if paused {
             env.events().publish(
@@ -1182,6 +1245,12 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .set(&DataKey::TimelockAction(action_id), &action);
+        env.storage().persistent().extend_ttl(
+            &DataKey::TimelockAction(action_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
 
         // Emit event
         env.events().publish(
@@ -1229,6 +1298,11 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .set(&DataKey::TimelockAction(action_id), &action);
+        env.storage().persistent().extend_ttl(
+            &DataKey::TimelockAction(action_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         // Emit event
         env.events()
@@ -1311,6 +1385,11 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         env.events().publish(
             (symbol_short!("prune"), caller.clone()),
@@ -1363,6 +1442,7 @@ impl AnalyticsContract {
         env.storage()
             .instance()
             .set(&DataKey::MultiSigConfig, &config);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("multisig"), symbol_short!("init")),
@@ -1422,6 +1502,11 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .set(&DataKey::PendingAction(action_id), &pending);
+        env.storage().persistent().extend_ttl(
+            &DataKey::PendingAction(action_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         Ok(action_id)
     }
@@ -1462,6 +1547,11 @@ impl AnalyticsContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::PendingAction(action_id), &pending);
+            env.storage().persistent().extend_ttl(
+                &DataKey::PendingAction(action_id),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
         }
 
         Ok(pending.signatures.len() >= config.threshold)
