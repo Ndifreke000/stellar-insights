@@ -5,7 +5,11 @@ use tokio::sync::RwLock;
 
 use crate::vault::{VaultConfig, VaultError};
 
-/// Vault Client for secret operations
+/// Vault Client for secret operations.
+///
+/// Wraps an HTTP client and Vault configuration to provide methods for
+/// reading static secrets (KV v2), generating dynamic database credentials,
+/// and managing lease lifecycle (renew / revoke).
 pub struct VaultClient {
     http_client: reqwest::Client,
     config: VaultConfig,

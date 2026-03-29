@@ -490,8 +490,9 @@ impl AnalyticsContract {
         // ─────────────────────────────────────────────────────────────────────
         let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
         if hash == zero_hash {
-            return Err(Error::InvalidHashZero
-                .log_context(&env, "submit_snapshot: hash must not be all zeros"));
+            return Err(
+                Error::InvalidHashZero.log_context(&env, "submit_snapshot: hash must not be all zeros")
+            );
         }
 
         let timestamp = env.ledger().timestamp();
@@ -550,8 +551,7 @@ impl AnalyticsContract {
             .get(&DataKey::Paused)
             .unwrap_or(false);
         if is_paused {
-            return Err(Error::ContractPaused
-                .log_context(&env, "batch_submit_snapshots: contract is paused"));
+            return Err(Error::ContractPaused.log_context(&env, "batch_submit_snapshots: contract is paused"));
         }
 
         caller.require_auth();
@@ -559,8 +559,9 @@ impl AnalyticsContract {
 
         let admin = require_admin(&env)?;
         if caller != admin {
-            return Err(Error::Unauthorized
-                .log_context(&env, "batch_submit_snapshots: caller is not the admin"));
+            return Err(
+                Error::Unauthorized.log_context(&env, "batch_submit_snapshots: caller is not the admin")
+            );
         }
 
         let mut snapshots_map: Map<u64, SnapshotMetadata> = env
@@ -574,8 +575,9 @@ impl AnalyticsContract {
             let previous_epoch = validate_epoch(&env, epoch)?;
             let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
             if hash == zero_hash {
-                return Err(Error::InvalidHashZero
-                    .log_context(&env, "batch_submit_snapshots: hash must not be all zeros"));
+                return Err(
+                    Error::InvalidHashZero.log_context(&env, "batch_submit_snapshots: hash must not be all zeros")
+                );
             }
 
             let timestamp = env.ledger().timestamp();
@@ -604,8 +606,10 @@ impl AnalyticsContract {
         }
 
         // Emit batch event
-        env.events()
-            .publish((symbol_short!("batch"), caller), snapshots.len());
+        env.events().publish(
+            (symbol_short!("batch"), caller),
+            snapshots.len(),
+        );
 
         Ok(results)
     }
@@ -685,19 +689,18 @@ impl AnalyticsContract {
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        for epoch in 1..=latest_epoch {
-            if cleaned >= max_to_clean {
-                break;
-            }
-            if let Some(metadata) = snapshots.get(epoch) {
-                if let Some(expires_at) = metadata.expires_at {
-                    if now > expires_at {
-                        snapshots.remove(epoch);
-                        env.storage().persistent().remove(&DataKey::Snapshot(epoch));
-                        cleaned += 1;
-                    }
-                }
-            }
+        let expired: Vec<u64> = (1..=latest_epoch)
+            .filter(|&e| {
+                snapshots.get(e)
+                    .and_then(|m| m.expires_at)
+                    .map_or(false, |exp| now > exp)
+            })
+            .take(max_to_clean as usize)
+            .collect();
+        cleaned = expired.len() as u32;
+        for epoch in expired {
+            snapshots.remove(epoch);
+            env.storage().persistent().remove(&DataKey::Snapshot(epoch));
         }
 
         env.storage()
@@ -775,25 +778,26 @@ impl AnalyticsContract {
     pub fn get_all_epochs(env: Env) -> Result<Vec<u64>, Error> {
         require_initialized(&env)?;
         let snapshots = Self::get_snapshot_history(env.clone())?;
-        let mut epochs = Vec::new(&env);
-        for (epoch, _) in snapshots.iter() {
-            epochs.push_back(epoch);
-        }
+        let epochs = snapshots.keys();
         Ok(epochs)
     }
 
     /// Comparison functionality for snapshots
-    pub fn compare_snapshots(env: Env, epoch_a: u64, epoch_b: u64) -> Result<SnapshotDiff, Error> {
+    pub fn compare_snapshots(
+        env: Env,
+        epoch_a: u64,
+        epoch_b: u64,
+    ) -> Result<SnapshotDiff, Error> {
         require_initialized(&env)?;
         let snapshots: Map<u64, SnapshotMetadata> = env
             .storage()
             .persistent()
             .get(&DataKey::Snapshots)
             .ok_or(Error::NotInitialized)?;
-
+        
         let snapshot_a = snapshots.get(epoch_a).ok_or(Error::SnapshotNotFound)?;
         let snapshot_b = snapshots.get(epoch_b).ok_or(Error::SnapshotNotFound)?;
-
+        
         Ok(SnapshotDiff {
             epoch_a,
             epoch_b,
@@ -811,15 +815,16 @@ impl AnalyticsContract {
     ) -> Result<bool, Error> {
         require_initialized(&env)?;
         for epoch in start_epoch..end_epoch {
-            let current = Self::get_snapshot(env.clone(), epoch)?.ok_or(Error::SnapshotNotFound)?;
-            let next =
-                Self::get_snapshot(env.clone(), epoch + 1)?.ok_or(Error::SnapshotNotFound)?;
-
+            let current = Self::get_snapshot(env.clone(), epoch)?
+                .ok_or(Error::SnapshotNotFound)?;
+            let next = Self::get_snapshot(env.clone(), epoch + 1)?
+                .ok_or(Error::SnapshotNotFound)?;
+            
             if next.timestamp <= current.timestamp {
                 return Ok(false);
             }
         }
-
+        
         Ok(true)
     }
 
@@ -834,14 +839,8 @@ impl AnalyticsContract {
             .persistent()
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
-
-        let mut results = Vec::new(&env);
-
-        for epoch in epochs.iter() {
-            let metadata = snapshots.get(epoch);
-            results.push_back(metadata);
-        }
-
+        
+        let results = epochs.iter().map(|epoch| snapshots.get(epoch)).collect::<Vec<_>>();
         Ok(results)
     }
 
@@ -1028,12 +1027,13 @@ impl AnalyticsContract {
         }
 
         // Perform upgrade
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash.clone());
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
 
         // Emit event
-        env.events()
-            .publish((symbol_short!("upgrade"),), (admin, new_wasm_hash));
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (admin, new_wasm_hash),
+        );
 
         Ok(())
     }
@@ -1299,13 +1299,13 @@ impl AnalyticsContract {
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut removed = 0u32;
-        for epoch in 1..=cutoff_epoch {
-            if snapshots.contains_key(epoch) {
-                snapshots.remove(epoch);
-                env.storage().persistent().remove(&DataKey::Snapshot(epoch));
-                removed += 1;
-            }
+        let epochs_to_remove: Vec<u64> = (1..=cutoff_epoch)
+            .filter(|&e| snapshots.contains_key(e))
+            .collect();
+        let removed = epochs_to_remove.len() as u32;
+        for epoch in epochs_to_remove {
+            snapshots.remove(epoch);
+            env.storage().persistent().remove(&DataKey::Snapshot(epoch));
         }
 
         env.storage()
