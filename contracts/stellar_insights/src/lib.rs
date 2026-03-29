@@ -4,7 +4,7 @@ mod errors;
 mod events;
 
 use errors::Error;
-use events::emit_snapshot_submitted;
+use events::{emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -112,6 +112,9 @@ impl StellarInsightsContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
+        emit_contract_initialized(&env, admin);
+
         Ok(())
     }
 
@@ -368,6 +371,9 @@ impl StellarInsightsContract {
 
         env.storage().instance().set(&DataKey::Paused, &true);
         bump_instance(&env);
+
+        emit_contract_paused(&env, caller);
+
         Ok(())
     }
 
@@ -397,6 +403,9 @@ impl StellarInsightsContract {
 
         env.storage().instance().set(&DataKey::Paused, &false);
         bump_instance(&env);
+
+        emit_contract_unpaused(&env, caller);
+
         Ok(())
     }
 

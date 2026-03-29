@@ -572,6 +572,13 @@ impl AnalyticsContract {
             LEDGERS_TO_EXTEND,
             LEDGERS_TO_EXTEND,
         );
+
+        // Emit initialization event
+        env.events().publish(
+            (symbol_short!("init"), symbol_short!("admin")),
+            admin,
+        );
+
         Ok(())
     }
 
@@ -583,6 +590,12 @@ impl AnalyticsContract {
             return Err(Error::Unauthorized.log_context(&env, "update_config: caller is not the admin"));
         }
         env.storage().instance().set(&DataKey::Config, &config);
+
+        env.events().publish(
+            (symbol_short!("cfg_upd"), admin),
+            config,
+        );
+
         Ok(())
     }
 
@@ -779,12 +792,13 @@ impl AnalyticsContract {
 
         let timestamp = env.ledger().timestamp();
         let ttl = ttl_seconds.unwrap_or(DEFAULT_SNAPSHOT_TTL);
+        let ledger_sequence = env.ledger().sequence();
         let metadata = SnapshotMetadata {
             epoch,
             timestamp,
-            hash,
-            submitter: caller,
-            ledger_sequence: env.ledger().sequence(),
+            hash: hash.clone(),
+            submitter: caller.clone(),
+            ledger_sequence,
             expires_at: Some(timestamp + ttl),
         };
 
@@ -800,6 +814,18 @@ impl AnalyticsContract {
             &DataKey::Snapshot(epoch),
             ledgers_to_live,
             ledgers_to_live,
+        );
+
+        env.events().publish(
+            (symbol_short!("snapshot"), caller.clone()),
+            SnapshotSubmittedEvent {
+                epoch,
+                hash,
+                submitter: caller,
+                timestamp,
+                previous_epoch: 0,
+                ledger_sequence,
+            },
         );
 
         Ok(timestamp)
@@ -851,6 +877,12 @@ impl AnalyticsContract {
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
+
+        env.events().publish(
+            (symbol_short!("cleanup"), admin),
+            cleaned,
+        );
+
         Ok(cleaned)
     }
 
@@ -1744,6 +1776,11 @@ impl AnalyticsContract {
             .persistent()
             .set(&DataKey::CompactSnapshot(epoch), &compact);
         env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
+
+        env.events().publish(
+            (symbol_short!("snapshot"), caller),
+            (epoch, compact.hash, timestamp),
+        );
 
         Ok(timestamp)
     }
