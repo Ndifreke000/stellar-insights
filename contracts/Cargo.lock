@@ -41,6 +41,7 @@ dependencies = [
  "bolero",
  "bolero-generator",
  "soroban-sdk",
+ "soroban-token-sdk",
 ]
 
 [[package]]
@@ -1650,6 +1651,15 @@ dependencies = [
  "stellar-xdr",
  "syn",
  "thiserror",
+]
+
+[[package]]
+name = "soroban-token-sdk"
+version = "21.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3f0338d16da18acc9da2e4c67f56f5880b5f1411892cb5bb8430ec15c69076d"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
