@@ -168,7 +168,7 @@ async fn list_proposals(
     State(service): State<Arc<GovernanceService>>,
     Query(query): Query<ListProposalsQuery>,
 ) -> Result<Response, GovernanceError> {
-    let limit = query.limit.min(100).max(1);
+    let limit = query.limit.clamp(1, 100);
     let offset = query.offset.max(0);
 
     let response = service
@@ -256,7 +256,7 @@ async fn get_votes(
     Path(id): Path<String>,
     Query(query): Query<VotesQuery>,
 ) -> Result<Response, GovernanceError> {
-    let limit = query.limit.min(100).max(1);
+    let limit = query.limit.clamp(1, 100);
 
     let response = service
         .get_votes(&id, limit)
@@ -340,7 +340,7 @@ async fn get_comments(
     Path(id): Path<String>,
     Query(query): Query<CommentsQuery>,
 ) -> Result<Response, GovernanceError> {
-    let limit = query.limit.min(100).max(1);
+    let limit = query.limit.clamp(1, 100);
 
     let response = service
         .get_comments(&id, limit)

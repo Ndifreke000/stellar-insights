@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -208,7 +208,10 @@ mod tests {
 
     #[test]
     fn parses_unknown_url_scheme_returns_none() {
-        assert_eq!(sqlite_path_from_database_url("postgres://localhost/db"), None);
+        assert_eq!(
+            sqlite_path_from_database_url("postgres://localhost/db"),
+            None
+        );
         assert_eq!(sqlite_path_from_database_url(""), None);
     }
 
@@ -274,7 +277,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = BackupConfig {
             enabled: true,
-            db_path: dir.path().join("nonexistent.db").to_str().unwrap().to_string(),
+            db_path: dir
+                .path()
+                .join("nonexistent.db")
+                .to_str()
+                .unwrap()
+                .to_string(),
             backup_dir: dir.path().join("backups").to_str().unwrap().to_string(),
             keep_days: 7,
             schedule_hour_utc: 2,

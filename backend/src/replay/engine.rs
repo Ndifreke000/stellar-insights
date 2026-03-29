@@ -121,7 +121,7 @@ impl ReplayEngine {
                 error!("Replay failed: {}", e);
                 metadata.status = ReplayStatus::Failed {
                     error: e.to_string(),
-                    last_ledger: self.get_current_ledger(&metadata).await,
+                    last_ledger: self.get_current_ledger(&metadata),
                 };
                 metadata.ended_at = Some(Utc::now());
             }
@@ -309,7 +309,7 @@ impl ReplayEngine {
     }
 
     /// Get current ledger from metadata
-    async fn get_current_ledger(&self, metadata: &ReplayMetadata) -> Option<u64> {
+    fn get_current_ledger(&self, metadata: &ReplayMetadata) -> Option<u64> {
         match &metadata.status {
             ReplayStatus::InProgress { current_ledger, .. } => Some(*current_ledger),
             ReplayStatus::Paused { last_ledger, .. } => Some(*last_ledger),
@@ -318,14 +318,14 @@ impl ReplayEngine {
     }
 
     /// Pause the replay
-    pub async fn pause(&self) -> Result<()> {
+    pub fn pause(&self) -> Result<()> {
         info!("Pausing replay session {}", self.session_id);
         // Implementation would set a flag that the execute loop checks
         Ok(())
     }
 
     /// Resume a paused replay
-    pub async fn resume(&self) -> Result<()> {
+    pub fn resume(&self) -> Result<()> {
         info!("Resuming replay session {}", self.session_id);
         // Implementation would clear the pause flag
         Ok(())
@@ -342,8 +342,6 @@ impl ReplayEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_replay_engine_creation() {
         // Placeholder for actual tests

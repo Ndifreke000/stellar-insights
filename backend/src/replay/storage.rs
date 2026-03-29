@@ -147,7 +147,7 @@ impl EventStorage {
         &self,
         start_ledger: u64,
         end_ledger: u64,
-        filter: &EventFilter,
+        _filter: &EventFilter,
     ) -> Result<u64> {
         let count: i64 = sqlx::query_scalar(
             r"
@@ -319,8 +319,6 @@ impl ReplayStorage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_event_storage() {
         // This would require a test database setup

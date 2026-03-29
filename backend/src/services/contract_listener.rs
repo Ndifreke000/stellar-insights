@@ -618,7 +618,8 @@ mod tests {
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         let db = Arc::new(Database::new(pool));
-        let listener = ContractEventListener::from_env(db).unwrap();
+        let alert_service = Arc::new(AlertService::default());
+        let listener = ContractEventListener::from_env(db, alert_service).unwrap();
 
         assert_eq!(listener.config.contract_id, "test-contract-id");
         assert_eq!(listener.config.poll_interval_secs, 15);

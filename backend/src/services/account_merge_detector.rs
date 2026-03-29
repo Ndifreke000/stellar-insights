@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use failsafe::futures::CircuitBreaker as _;
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::rpc::{HorizonOperation, StellarRpcClient, circuit_breaker::rpc_circuit_breaker};
+use crate::rpc::{circuit_breaker::rpc_circuit_breaker, HorizonOperation, StellarRpcClient};
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct AccountMergeEvent {
@@ -47,16 +48,18 @@ impl AccountMergeDetector {
     /// Fetches operations for a ledger, extracts account merges, and persists merge events.
     pub async fn process_ledger_operations(&self, ledger_sequence: u64) -> Result<u64> {
         let circuit_breaker = rpc_circuit_breaker();
-        let operations = circuit_breaker.call(|| async {
-            self.rpc_client
-                .fetch_operations_for_ledger(ledger_sequence)
-                .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-        }).await
-        .map_err(|e| match e {
-            failsafe::Error::Rejected => anyhow::anyhow!("Circuit breaker open"),
-            failsafe::Error::Inner(err) => err,
-        })?;
+        let operations: Vec<HorizonOperation> = circuit_breaker
+            .call(async {
+                self.rpc_client
+                    .fetch_operations_for_ledger(ledger_sequence)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .await
+            .map_err(|e| match e {
+                failsafe::Error::Rejected => anyhow::anyhow!("Circuit breaker open"),
+                failsafe::Error::Inner(err) => err,
+            })?;
 
         let mut inserted = 0_u64;
 
@@ -124,10 +127,15 @@ impl AccountMergeDetector {
 
     async fn resolve_merged_balance(&self, operation_id: &str, destination: &str) -> f64 {
         let circuit_breaker = rpc_circuit_breaker();
-        match circuit_breaker.call(|| async {
-            self.rpc_client.fetch_operation_effects(operation_id).await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-        }).await {
+        match circuit_breaker
+            .call(async {
+                self.rpc_client
+                    .fetch_operation_effects(operation_id)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .await
+        {
             Ok(effects) => {
                 let credited_amount: f64 = effects
                     .into_iter()
@@ -209,9 +217,9 @@ impl AccountMergeDetector {
             FROM account_merges
             ",
         )
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to fetch account merge statistics")?;
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to fetch account merge statistics")?;
 
         Ok(AccountMergeStats {
             total_merges: row.0,
@@ -237,10 +245,10 @@ impl AccountMergeDetector {
             LIMIT $1
             ",
         )
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await
-            .context("Failed to fetch destination account patterns")?;
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to fetch destination account patterns")?;
 
         Ok(rows)
     }

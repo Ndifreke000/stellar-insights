@@ -257,8 +257,6 @@ pub fn routes(price_feed: Arc<PriceFeedClient>) -> Router {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_parse_assets() {
         let assets_str = "XLM:native,USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";

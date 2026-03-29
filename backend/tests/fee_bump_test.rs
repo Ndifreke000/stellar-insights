@@ -3,8 +3,59 @@ use sqlx::SqlitePool;
 use stellar_insights_backend::rpc::{FeeBumpTransactionInfo, HorizonTransaction, InnerTransaction};
 use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
 
-#[sqlx::test]
-async fn test_fee_bump_tracker_process_transactions(pool: SqlitePool) {
+async fn setup_fee_bump_pool() -> SqlitePool {
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ledgers (
+            sequence INTEGER PRIMARY KEY,
+            hash TEXT NOT NULL,
+            close_time TEXT NOT NULL,
+            transaction_count INTEGER DEFAULT 0,
+            operation_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fee_bump_transactions (
+            transaction_hash TEXT PRIMARY KEY,
+            ledger_sequence INTEGER NOT NULL,
+            fee_source TEXT NOT NULL,
+            fee_charged INTEGER NOT NULL,
+            max_fee INTEGER NOT NULL,
+            inner_transaction_hash TEXT NOT NULL,
+            inner_max_fee INTEGER NOT NULL,
+            signatures_count INTEGER NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ledger_sequence) REFERENCES ledgers(sequence)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for index_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_fee_bump_ledger_sequence ON fee_bump_transactions(ledger_sequence)",
+        "CREATE INDEX IF NOT EXISTS idx_fee_bump_fee_source ON fee_bump_transactions(fee_source)",
+        "CREATE INDEX IF NOT EXISTS idx_fee_bump_created_at ON fee_bump_transactions(created_at)",
+    ] {
+        sqlx::query(index_sql).execute(&pool).await.unwrap();
+    }
+
+    pool
+}
+
+#[tokio::test]
+async fn test_fee_bump_tracker_process_transactions() {
+    let pool = setup_fee_bump_pool().await;
     // Initialize service
     let service = FeeBumpTrackerService::new(pool.clone());
 

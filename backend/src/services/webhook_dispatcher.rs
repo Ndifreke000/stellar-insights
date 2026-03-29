@@ -193,8 +193,6 @@ impl WebhookDispatcher {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_webhook_dispatcher_creation() {
         // This is a smoke test for basic creation

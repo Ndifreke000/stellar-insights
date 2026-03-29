@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    Router,
+    middleware, Router,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -12,22 +12,18 @@ use tower::util::ServiceExt;
 use stellar_insights_backend::api::corridors::{get_corridor_detail, list_corridors};
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::request_id::request_id_middleware;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
 
 async fn setup_test_db() -> SqlitePool {
-    let pool = SqlitePool::connect(":memory:").await.unwrap();
-
-    // Run migrations
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-
-    pool
+    SqlitePool::connect(":memory:").await.unwrap()
 }
 
 async fn create_test_router(db: Arc<Database>) -> Router {
-    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+    let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let price_feed = Arc::new(PriceFeedClient::new(
         PriceFeedConfig::default(),
@@ -43,6 +39,7 @@ async fn create_test_router(db: Arc<Database>) -> Router {
             axum::routing::get(get_corridor_detail),
         )
         .with_state(state)
+        .layer(middleware::from_fn(request_id_middleware))
 }
 
 #[tokio::test]
@@ -67,9 +64,9 @@ async fn test_list_corridors_success() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert!(json.is_array());
-    // Empty array is expected since we have no data
     let corridors = json.as_array().unwrap();
-    assert_eq!(corridors.len(), 0);
+    assert!(!corridors.is_empty());
+    assert!(corridors[0].get("id").is_some());
 }
 
 #[tokio::test]
@@ -79,17 +76,21 @@ async fn test_get_corridor_detail_success() {
 
     let app = create_test_router(db).await;
 
-    // Use URL encoded corridor key
-    let corridor_key = "EURC%3Aissuer2-%3EUSDC%3Aissuer1";
+    // This corridor exists in the mock Stellar RPC payment stream.
+    let corridor_key = "XLM%3Anative-%3EXLM%3Anative";
     let request = Request::builder()
-        .uri(&format!("/api/corridors/{}", corridor_key))
+        .uri(format!("/api/corridors/{corridor_key}"))
         .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 
-    // Should return 404 since no data exists
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["corridor"]["id"], "XLM:native->XLM:native");
 }
 
 #[tokio::test]
@@ -102,7 +103,7 @@ async fn test_get_corridor_detail_not_found() {
     // Use URL encoded corridor key
     let corridor_key = "NONEXISTENT%3Aissuer-%3EFAKE%3Aissuer";
     let request = Request::builder()
-        .uri(&format!("/api/corridors/{}", corridor_key))
+        .uri(format!("/api/corridors/{corridor_key}"))
         .body(Body::empty())
         .unwrap();
 
@@ -118,7 +119,7 @@ async fn test_get_corridor_detail_invalid_format() {
 
     let invalid_key = "INVALID_FORMAT";
     let request = Request::builder()
-        .uri(&format!("/api/corridors/{}", invalid_key))
+        .uri(format!("/api/corridors/{invalid_key}"))
         .body(Body::empty())
         .unwrap();
 

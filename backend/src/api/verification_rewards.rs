@@ -130,7 +130,7 @@ pub async fn get_leaderboard(
     State(service): State<Arc<VerificationRewardsService>>,
     Query(query): Query<LeaderboardQuery>,
 ) -> Result<Response, VerificationError> {
-    let limit = query.limit.min(100).max(1); // Cap between 1 and 100
+    let limit = query.limit.clamp(1, 100); // Cap between 1 and 100
 
     let leaderboard = service
         .get_leaderboard(limit)
@@ -158,7 +158,7 @@ pub async fn get_user_verifications(
     sep10_user: axum::Extension<Sep10User>,
     Query(query): Query<VerificationsQuery>,
 ) -> Result<Response, VerificationError> {
-    let limit = query.limit.min(100).max(1); // Cap between 1 and 100
+    let limit = query.limit.clamp(1, 100); // Cap between 1 and 100
 
     let verifications = service
         .get_user_verifications(&sep10_user.account, limit)

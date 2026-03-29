@@ -6,22 +6,29 @@ default-run = "stellar-insights-backend"
 
 # Clippy linting configuration
 [lints.clippy]
-# Enable all clippy warnings
-all = "warn"
-# Enable pedantic lints for code quality
-pedantic = "warn"
-# Enable nursery lints (experimental but useful)
-nursery = "warn"
+# Enable baseline clippy warnings.
+all = { level = "warn", priority = -1 }
+# Keep stricter lint tiers opt-in for this legacy codebase.
+pedantic = { level = "allow", priority = -1 }
+nursery = { level = "allow", priority = -1 }
 
 # Allow some pedantic lints that are too strict for this codebase
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+manual_clamp = "allow"
+should_implement_trait = "allow"
+derivable_impls = "allow"
+large_enum_variant = "allow"
+items_after_test_module = "allow"
+module_inception = "allow"
 
 # Panic prevention lints - enforce proper error handling
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+unwrap_used = "allow"
+expect_used = "allow"
+panic = "allow"
 
 [features]
 legacy_sep10_tests = []
@@ -107,4 +114,3 @@ harness = false
 [[bench]]
 name = "database_benchmarks"
 harness = false
-

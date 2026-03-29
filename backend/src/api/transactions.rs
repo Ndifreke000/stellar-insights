@@ -124,7 +124,10 @@ pub async fn add_signature(
     // inside a single transaction to prevent races between concurrent signers.
     let mut tx = state.db.pool().begin().await.map_err(|e| {
         tracing::error!("Failed to begin transaction: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error".to_string(),
+        )
     })?;
 
     // Re-read the transaction and its signatures inside the transaction so
@@ -135,7 +138,12 @@ pub async fn add_signature(
     .bind(&id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error".to_string(),
+        )
+    })?
     .ok_or((StatusCode::NOT_FOUND, "Transaction not found".to_string()))?;
 
     let existing_sigs = sqlx::query_as::<_, crate::models::Signature>(
@@ -144,10 +152,18 @@ pub async fn add_signature(
     .bind(&id)
     .fetch_all(&mut *tx)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error".to_string(),
+        )
+    })?;
 
     if existing_sigs.iter().any(|s| s.signer == req.signer) {
-        return Err((StatusCode::BAD_REQUEST, "Signature already exists from this signer".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Signature already exists from this signer".to_string(),
+        ));
     }
 
     let sig_id = Uuid::new_v4().to_string();
@@ -182,7 +198,10 @@ pub async fn add_signature(
 
     tx.commit().await.map_err(|e| {
         tracing::error!("Failed to commit signature transaction: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error".to_string(),
+        )
     })?;
 
     Ok(StatusCode::CREATED)

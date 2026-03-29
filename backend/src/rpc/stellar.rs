@@ -1,10 +1,6 @@
-use anyhow::{Context, Result};
 use crate::network::{NetworkConfig, StellarNetwork};
-use crate::rpc::circuit_breaker::CircuitBreaker;
-use crate::rpc::config::{
-    circuit_breaker_config_from_env, initial_backoff_from_env, max_backoff_from_env,
-    max_retries_from_env,
-};
+use crate::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreaker};
+use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
 use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
@@ -266,7 +262,10 @@ impl Payment {
         }
         self.asset_issuer.clone()
     }
+}
 
+// Horizon API Response Structures
+// ==========================================
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorizonOperation {
     pub id: String,
@@ -301,7 +300,7 @@ pub struct HorizonTransaction {
     #[serde(rename = "fee_account")]
     pub fee_account: Option<String>,
     #[serde(rename = "fee_charged")]
-    pub fee_charged: Option<String>, // Can be number or string, Horizon usually string
+    pub fee_charged: Option<String>,
     #[serde(rename = "max_fee")]
     pub max_fee: Option<String>,
     pub operation_count: u32,
@@ -363,7 +362,6 @@ pub struct OrderBook {
 pub struct OrderBookEntry {
     pub price: String,
     pub amount: String,
-    pub price_r: Price,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,7 +384,6 @@ pub struct EmbeddedRecords<T> {
     pub records: Vec<T>,
 }
 
-// I'm adding structs for getLedgers RPC method as required by issue #2
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcLedger {
     pub hash: String,
@@ -500,8 +497,7 @@ impl StellarRpcClient {
         };
 
         let network_config = NetworkConfig::for_network(network);
-        let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+        let circuit_breaker = rpc_circuit_breaker();
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -584,8 +580,7 @@ impl StellarRpcClient {
             .build()
             .expect("Failed to build HTTP client");
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
-        let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+        let circuit_breaker = rpc_circuit_breaker();
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -906,8 +901,6 @@ impl StellarRpcClient {
         })
     }
 
-        if let Some(cursor) = cursor {
-            write!(url, "&cursor={}", cursor).unwrap();
     async fn fetch_trades_internal(
         &self,
         limit: u32,
@@ -916,7 +909,7 @@ impl StellarRpcClient {
         let mut url = format!("{}/trades?order=desc&limit={}", self.horizon_url, limit);
         if let Some(c) = cursor {
             write!(url, "&cursor={c}").unwrap();
-        }}
+        }
         let response = self
             .client
             .get(&url)
@@ -1240,7 +1233,8 @@ impl StellarRpcClient {
         while fetched < max_records {
             let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
 
-            let payments = self.fetch_payments_page(limit, cursor.as_deref())
+            let payments = self
+                .fetch_payments_page(limit, cursor.as_deref())
                 .await
                 .context("Failed to fetch payments page during pagination")?;
 
@@ -1790,17 +1784,14 @@ impl StellarRpcClient {
             OrderBookEntry {
                 price: "0.9950".to_string(),
                 amount: "1000.0000000".to_string(),
-                price_r: Price { n: 199, d: 200 },
             },
             OrderBookEntry {
                 price: "0.9900".to_string(),
                 amount: "2500.0000000".to_string(),
-                price_r: Price { n: 99, d: 100 },
             },
             OrderBookEntry {
                 price: "0.9850".to_string(),
                 amount: "5000.0000000".to_string(),
-                price_r: Price { n: 197, d: 200 },
             },
         ];
 
@@ -1808,17 +1799,14 @@ impl StellarRpcClient {
             OrderBookEntry {
                 price: "1.0050".to_string(),
                 amount: "1200.0000000".to_string(),
-                price_r: Price { n: 201, d: 200 },
             },
             OrderBookEntry {
                 price: "1.0100".to_string(),
                 amount: "3000.0000000".to_string(),
-                price_r: Price { n: 101, d: 100 },
             },
             OrderBookEntry {
                 price: "1.0150".to_string(),
                 amount: "4500.0000000".to_string(),
-                price_r: Price { n: 203, d: 200 },
             },
         ];
 
@@ -2148,7 +2136,7 @@ impl StellarRpcClient {
     // ============================================================================
 
     fn mock_liquidity_pools(limit: u32) -> Vec<HorizonLiquidityPool> {
-        let pool_configs = vec![
+        let pool_configs = [
             (
                 "USDC",
                 "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
@@ -2292,7 +2280,7 @@ impl StellarRpcClient {
 
     /// Fetch anchor metrics from Horizon API by querying payment statistics
     /// for the anchor's Stellar account.
-    pub async fn fetch_anchor_metrics(
+    pub fn fetch_anchor_metrics(
         &self,
         _anchor_id: Uuid,
     ) -> Result<crate::api::anchors::AnchorMetrics, RpcError> {
@@ -2314,6 +2302,12 @@ impl StellarRpcClient {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(
+    clippy::assertions_on_constants,
+    clippy::branches_sharing_code,
+    clippy::uninlined_format_args,
+    clippy::unwrap_used
+)]
 mod tests {
     use super::*;
 
@@ -2798,5 +2792,4 @@ mod tests {
             }
         }
     }
-}
 }

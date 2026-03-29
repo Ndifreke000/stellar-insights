@@ -1,5 +1,5 @@
+use failsafe::futures::CircuitBreaker as _;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -119,9 +119,7 @@ where
 
         // Failsafe-wrapped call. Failsafe treats Error::Inner as a failure for the circuit.
         // We'll map RpcError into failsafe's error tracking.
-        let result = circuit_breaker.call(|| async {
-            operation().await
-        }).await;
+        let result: Result<T, failsafe::Error<RpcError>> = circuit_breaker.call(operation()).await;
 
         match result {
             Ok(val) => return Ok(val),

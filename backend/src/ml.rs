@@ -96,12 +96,12 @@ impl MLService {
     }
 
     pub async fn train_model(&mut self) -> anyhow::Result<()> {
-        let training_data = self.prepare_training_data().await?;
+        let training_data = self.prepare_training_data()?;
         self.model.train(&training_data);
         Ok(())
     }
 
-    async fn prepare_training_data(&self) -> anyhow::Result<Vec<(Vec<f32>, f32)>> {
+    fn prepare_training_data(&self) -> anyhow::Result<Vec<(Vec<f32>, f32)>> {
         // Mock training data for now
         let mut training_data = Vec::new();
 
@@ -148,9 +148,8 @@ impl MLService {
 
         let liquidity = self
             .get_corridor_liquidity(corridor)
-            .await
             .unwrap_or(1000.0);
-        let recent_success = self.get_recent_success_rate(corridor).await.unwrap_or(0.8);
+        let recent_success = self.get_recent_success_rate(corridor).unwrap_or(0.8);
 
         let features = PredictionFeatures {
             corridor_hash,
@@ -164,12 +163,12 @@ impl MLService {
         Ok(self.model.predict(features))
     }
 
-    async fn get_corridor_liquidity(&self, corridor: &str) -> Option<f64> {
+    fn get_corridor_liquidity(&self, corridor: &str) -> Option<f64> {
         // Mock data for now - in production this would query the database
         Some((corridor.len() as f64).mul_add(100.0, 1000.0))
     }
 
-    async fn get_recent_success_rate(&self, corridor: &str) -> Option<f32> {
+    fn get_recent_success_rate(&self, corridor: &str) -> Option<f32> {
         // Mock data for now - in production this would query the database
         Some(0.8 + (corridor.len() as f32 * 0.01) % 0.2)
     }

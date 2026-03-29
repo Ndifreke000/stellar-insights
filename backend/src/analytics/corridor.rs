@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(corridor_analytics.total_transactions, 3);
         assert_eq!(corridor_analytics.successful_transactions, 2);
         assert_eq!(corridor_analytics.failed_transactions, 1);
-        assert!((corridor_analytics.success_rate - 66.66666666666667).abs() < 0.0001);
+        assert!((corridor_analytics.success_rate - 66.666_666_666_666_67).abs() < 0.0001);
         assert_eq!(corridor_analytics.volume_usd, 150.0);
     }
 

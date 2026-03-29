@@ -100,7 +100,7 @@ impl VerificationRewardsService {
             let mut points = BASE_REWARD_POINTS;
 
             // Add early verification bonus
-            if self.is_early_verification(&snapshot.created_at).await? {
+            if self.is_early_verification(&snapshot.created_at)? {
                 points += EARLY_VERIFICATION_BONUS;
                 debug!(
                     "Early verification bonus applied: +{}",
@@ -318,7 +318,7 @@ impl VerificationRewardsService {
         })
     }
 
-    async fn is_early_verification(&self, snapshot_created_at: &str) -> Result<bool> {
+    fn is_early_verification(&self, snapshot_created_at: &str) -> Result<bool> {
         // Parse the timestamp and check if verification is within 1 hour
         let created = chrono::DateTime::parse_from_rfc3339(snapshot_created_at)
             .or_else(|_| {
@@ -420,6 +420,7 @@ impl VerificationRewardsService {
 
 #[derive(Debug)]
 struct SnapshotRecord {
+    #[allow(dead_code)]
     id: String,
     hash: String,
     epoch: i64,

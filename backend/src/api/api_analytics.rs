@@ -13,6 +13,7 @@ use std::sync::Arc;
     ),
     tag = "Analytics"
 )]
+#[allow(clippy::cast_precision_loss)]
 pub async fn get_analytics_overview(State(db): State<Arc<Database>>) -> Json<ApiAnalyticsOverview> {
     // 1. Total Requests
     let total_requests: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_usage_stats")

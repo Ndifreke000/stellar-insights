@@ -186,6 +186,21 @@ pub async fn start_contract_event_listener_job(
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::db::schema::Schema;
+
+    async fn setup_contract_event_db() -> Arc<Database> {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        Arc::new(Database::new(pool))
+    }
 
     #[tokio::test]
     async fn test_contract_event_listener_job_config() {
@@ -199,8 +214,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contract_event_listener_job_creation() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let config = ContractEventListenerConfig::default();
 
         let job = ContractEventListenerJob::new(db, config);
@@ -211,8 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_stats() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let config = ContractEventListenerConfig::default();
         let job = ContractEventListenerJob::new(db, config);
 

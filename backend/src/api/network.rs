@@ -154,7 +154,6 @@ pub fn routes() -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::StatusCode;
 
     #[tokio::test]
     async fn test_get_network_info() {

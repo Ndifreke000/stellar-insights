@@ -175,6 +175,7 @@ fn validate_jwt_secret(value: &str) -> bool {
 
 /// Validate Stellar public key format
 /// Must start with 'G' and be exactly 56 characters (Ed25519 public key in base32)
+#[allow(dead_code)]
 fn validate_stellar_public_key(value: &str) -> bool {
     if !value.starts_with('G') || value.len() != 56 {
         return false;
