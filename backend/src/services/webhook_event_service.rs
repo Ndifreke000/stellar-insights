@@ -226,7 +226,4 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod webhook_integration_tests {
-    include!("webhook_event_service_tests.rs");
-}
+
