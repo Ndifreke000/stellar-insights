@@ -80,6 +80,7 @@ use stellar_insights_backend::api::v1::routes;
 use stellar_insights_backend::backup::{BackupConfig, BackupManager};
 use stellar_insights_backend::state::AppState;
 use stellar_insights_backend::websocket::WsState;
+use stellar_insights_backend::env_config;
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
@@ -97,6 +98,11 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => tracing::warn!("Failed to load .env file: {}", e),
     }
     env_config::log_env_config();
+    
+    // Validate critical environment variables before proceeding
+    env_config::validate_env()
+        .context("Environment validation failed - please check your configuration")?;
+    
     let _tracing_guard =
         stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
     stellar_insights_backend::observability::metrics::init_metrics();
