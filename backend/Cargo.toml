@@ -59,7 +59,7 @@ redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager
 async-lock = "3.3"
 futures = "0.3"
 tokio-tungstenite = "0.21"
-dashmap = "5.5"
+dashmap = "6.1"
 stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
 stellar_sdk = "0.1"
 base64 = "0.22"
