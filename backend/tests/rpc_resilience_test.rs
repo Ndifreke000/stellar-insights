@@ -12,7 +12,6 @@ use stellar_insights_backend::cache::{CacheConfig, CacheManager};
 use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_rpc, AnchorMetrics};
 use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::models::asset_verification::VerificationResult;
 use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
 use stellar_insights_backend::rpc::stellar::StellarRpcClient;
@@ -57,7 +56,7 @@ async fn test_circuit_breaker_opens_on_failures() {
     let circuit_breaker = Arc::new(CircuitBreaker::new(
         CircuitBreakerConfig {
             failure_threshold: 2,
-            timeout_duration: Duration::from_millis(1000),
+            timeout_duration: Duration::from_millis(100),
             ..Default::default()
         },
         "test",
@@ -81,8 +80,8 @@ async fn test_circuit_breaker_opens_on_failures() {
         .await;
     assert!(result3.is_err());
 
-    // Wait for recovery timeout
-    sleep(Duration::from_millis(1100)).await;
+    // Wait for recovery timeout with generous margin
+    sleep(Duration::from_millis(300)).await;
 
     // Should allow call again
     let result4: Result<String, RpcError> = circuit_breaker

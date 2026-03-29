@@ -305,11 +305,6 @@ async fn main() -> anyhow::Result<()> {
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
-    let timeout_seconds: u64 = std::env::var("REQUEST_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(1024);
-
     // Compression configuration
     let compression_min_size: usize = std::env::var("COMPRESSION_MIN_SIZE")
         .ok()
@@ -566,6 +561,9 @@ async fn main() -> anyhow::Result<()> {
         cache,
     )
     .layer(TimeoutLayer::new(timeout_duration))
+    .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))
+    .layer(TimeoutLayer::new(timeout_duration))
+    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
     .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
     .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)))
     .layer(middleware::from_fn_with_state(

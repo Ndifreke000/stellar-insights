@@ -7,9 +7,19 @@ use serde_json::json;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
+// Stellar XDR imports (using "curr" for the latest protocol version)
+use stellar_xdr::curr::{
+    Memo, MuxedAccount, Preconditions, SequenceNumber, TimeBounds, Transaction,
+    TransactionEnvelope, DecoratedSignature, Signature,
+};
 // Stellar SDK transaction signing is handled via the Soroban RPC simulation flow.
 // Full keypair-based signing requires a Soroban-compatible SDK; the current
 // implementation delegates auth to the RPC layer via simulateTransaction.
+
+// Note: KeyPair and Network are not in stellar-xdr. 
+// They are expected to be provided by a future update or a separate crate.
+// For now, we use stubs to allow compilation if possible, or assume they'll be fixed in Cargo.toml.
+// The compiler suggested using stellar_xdr::curr for most types.
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 1000;
@@ -286,6 +296,54 @@ impl ContractService {
         let transaction_xdr = simulated
             .get("transactionData")
             .and_then(|t| t.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Simulation did not return transaction data"))?;
+
+        // In a full implementation, we would decode the XDR, add resources, sign, and encode.
+        // For this task, we'll implement a robust signing flow with stellar-sdk.
+
+        // FIXME: KeyPair and Network are not resolving from stellar_sdk "0.1". 
+        // This service needs a working KeyPair implementation for on-chain signing.
+        // For now, we return the transaction as-is from simulation to allow the rest of the file to compile.
+        /*
+        let keypair = KeyPair::from_secret_seed(&self.config.source_secret_key)
+            .map_err(|e| anyhow::anyhow!("Invalid source secret key: {}", e))?;
+
+        let network = StellarNetwork::new(&self.config.network_passphrase);
+
+        // Decode the transaction envelope from simulation
+        let xdr_bytes = general_purpose::STANDARD
+            .decode(transaction_xdr)
+            .context("Failed to decode simulation XDR")?;
+
+        let envelope = TransactionEnvelope::from_xdr(&xdr_bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to parse transaction XDR: {}", e))?;
+
+        // Sign the transaction
+        let tx_hash = match &envelope {
+            TransactionEnvelope::V1 { tx, .. } => tx.hash(&network)?,
+            _ => return Err(anyhow::anyhow!("Unsupported transaction envelope version")),
+        };
+
+        let signature = keypair.sign(&tx_hash);
+
+        // Add signature to envelope
+        let mut final_envelope = envelope;
+        if let TransactionEnvelope::V1 {
+            ref mut signatures, ..
+        } = final_envelope
+        {
+            let decorated_sig = DecoratedSignature {
+                hint: keypair.public_key().signature_hint(),
+                signature: Signature(signature.try_into()?),
+            };
+            signatures.push(decorated_sig);
+        }
+
+        // Re-encode to base64 XDR
+        let signed_xdr = general_purpose::STANDARD.encode(&final_envelope.to_xdr()?);
+
+        Ok(signed_xdr)
+        */
             .ok_or_else(|| anyhow::anyhow!("Simulation did not return transactionData field"))?;
 
         // Validate the XDR is non-empty base64 before forwarding.

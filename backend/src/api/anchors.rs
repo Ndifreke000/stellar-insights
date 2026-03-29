@@ -27,6 +27,8 @@ use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 use crate::state::AppState;
+use crate::rpc::error::{RetryConfig, with_retry, RpcError};
+use tracing::warn;
 use tracing::{error, info, warn};
 
 
@@ -301,7 +303,6 @@ use crate::rpc::{
     StellarRpcClient,
 };
 use crate::services::price_feed::PriceFeedClient;
-use std::future::Future;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize, IntoParams)]

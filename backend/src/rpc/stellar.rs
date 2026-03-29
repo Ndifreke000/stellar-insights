@@ -18,9 +18,6 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-const MAX_RETRIES: u32 = 3;
-const INITIAL_BACKOFF_MS: u64 = 100;
-const BACKOFF_MULTIPLIER: u64 = 2;
 const MOCK_OLDEST_LEDGER: u64 = 51_565_760;
 const MOCK_LATEST_LEDGER: u64 = 51_565_820;
 
@@ -1499,9 +1496,9 @@ impl StellarRpcClient {
         Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
     {
         let retry_config = RetryConfig {
-            max_attempts: MAX_RETRIES + 1,
-            base_delay_ms: INITIAL_BACKOFF_MS,
-            max_delay_ms: INITIAL_BACKOFF_MS * BACKOFF_MULTIPLIER.pow(MAX_RETRIES),
+            max_attempts: self.max_retries + 1,
+            base_delay_ms: self.initial_backoff.as_millis() as u64,
+            max_delay_ms: self.max_backoff.as_millis() as u64,
         };
 
         with_retry(
