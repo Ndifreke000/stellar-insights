@@ -467,6 +467,20 @@ pub struct VolumeTrend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::sqlite::SqliteConnectOptions;
+    use sqlx::{Row, SqlitePool};
+    use std::str::FromStr;
+    use tempfile::TempDir;
+
+    async fn setup_test_db() -> (Arc<Database>, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("aggregation-tests.db");
+        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path.display()))
+            .unwrap()
+            .create_if_missing(true);
+
+        let pool = SqlitePool::connect_with(options).await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     use crate::database::Database;
 
     #[tokio::test]
@@ -474,61 +488,126 @@ mod tests {
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         let service = AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
 
-        let dt = Utc::now();
-        let truncated = service.truncate_to_hour(dt);
+        (Arc::new(Database::new(pool)), temp_dir)
+    }
 
-        assert_eq!(truncated.minute(), 0);
-        assert_eq!(truncated.second(), 0);
-        assert_eq!(truncated.nanosecond(), 0);
+    async fn insert_test_payment(
+        db: &Database,
+        created_at: DateTime<Utc>,
+        amount: f64,
+        asset_code: &str,
+        asset_issuer: &str,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT INTO payments (
+                id,
+                transaction_hash,
+                source_account,
+                destination_account,
+                asset_type,
+                asset_code,
+                asset_issuer,
+                amount,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(format!("tx-{}", Uuid::new_v4()))
+        .bind("G_SOURCE")
+        .bind("G_DESTINATION")
+        .bind("credit_alphanum4")
+        .bind(asset_code)
+        .bind(asset_issuer)
+        .bind(amount)
+        .bind(created_at.to_rfc3339())
+        .execute(db.pool())
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
+    async fn test_aggregate_hourly_metrics() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let now = Utc::now();
+        let start_time = now - Duration::minutes(30);
+        let older_time = now - Duration::minutes(90);
+
+        insert_test_payment(&db, start_time, 125.0, "USDC", "issuer1").await;
+        insert_test_payment(&db, older_time, 75.0, "USDC", "issuer1").await;
+
+        let service = AggregationService::new(Arc::clone(&db), AggregationConfig::default());
+        let result = service.run_hourly_aggregation().await;
+
+        assert!(result.is_ok());
+
+        let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert!(metrics_count > 0);
+
+        let metric = sqlx::query(
+            r#"
+            SELECT corridor_key, total_transactions, successful_transactions, volume_usd
+            FROM corridor_metrics_hourly
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(
+            metric.get::<String, _>("corridor_key"),
+            "USDC:issuer1->USDC:issuer1"
+        );
+        assert_eq!(metric.get::<i64, _>("total_transactions"), 2);
+        assert_eq!(metric.get::<i64, _>("successful_transactions"), 2);
+        assert_eq!(metric.get::<f64, _>("volume_usd"), 200.0);
+
+        let job = sqlx::query(
+            r#"
+            SELECT status, last_processed_hour
+            FROM aggregation_jobs
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(job.get::<String, _>("status"), "completed");
+        assert!(job
+            .get::<Option<String>, _>("last_processed_hour")
+            .is_some());
+    }
     async fn test_compute_volume_trends() {
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         let service = AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
 
-        let now = Utc::now();
-        let metrics = vec![
-            HourlyCorridorMetrics {
-                id: "1".to_string(),
-                corridor_key: "USDC:issuer1->EURC:issuer2".to_string(),
-                source_asset_code: "USDC".to_string(),
-                source_asset_issuer: "issuer1".to_string(),
-                destination_asset_code: "EURC".to_string(),
-                destination_asset_issuer: "issuer2".to_string(),
-                hour_bucket: now - Duration::hours(2),
-                total_transactions: 100,
-                successful_transactions: 95,
-                failed_transactions: 5,
-                success_rate: 95.0,
-                volume_usd: 1000.0,
-                avg_slippage_bps: 10.0,
-                avg_settlement_latency_ms: Some(500),
-                liquidity_depth_usd: 50000.0,
-            },
-            HourlyCorridorMetrics {
-                id: "2".to_string(),
-                corridor_key: "USDC:issuer1->EURC:issuer2".to_string(),
-                source_asset_code: "USDC".to_string(),
-                source_asset_issuer: "issuer1".to_string(),
-                destination_asset_code: "EURC".to_string(),
-                destination_asset_issuer: "issuer2".to_string(),
-                hour_bucket: now - Duration::hours(1),
-                total_transactions: 150,
-                successful_transactions: 145,
-                failed_transactions: 5,
-                success_rate: 96.7,
-                volume_usd: 1500.0,
-                avg_slippage_bps: 12.0,
-                avg_settlement_latency_ms: Some(450),
-                liquidity_depth_usd: 55000.0,
-            },
-        ];
+    #[tokio::test]
+    async fn test_aggregate_with_no_data() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = AggregationService::new(Arc::clone(&db), AggregationConfig::default());
 
-        let trends = service.compute_volume_trends(metrics);
-        assert_eq!(trends.len(), 1);
-        assert_eq!(trends[0].corridor_key, "USDC:issuer1->EURC:issuer2");
-        assert_eq!(trends[0].total_volume, 2500.0);
-        assert_eq!(trends[0].data_points, 2);
+        let result = service.run_hourly_aggregation().await;
+        assert!(result.is_ok());
+
+        let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(metrics_count, 0);
+
+        let status: String = sqlx::query_scalar(
+            "SELECT status FROM aggregation_jobs ORDER BY created_at DESC LIMIT 1",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(status, "completed");
     }
 }

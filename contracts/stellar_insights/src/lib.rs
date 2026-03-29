@@ -11,6 +11,17 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Ma
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// ~30 days at 5 s/ledger
+const LEDGERS_TO_EXTEND: u32 = 518_400;
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
+const INSTANCE_TTL_EXTEND: u32 = 518_400;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
 /// Storage keys for persistent contract data
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -92,6 +103,9 @@ impl StellarInsightsContract {
         env.storage()
             .instance()
             .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         Ok(())
     }
 
@@ -273,6 +287,14 @@ impl StellarInsightsContract {
             return Err(Error::SnapshotNotFound);
         }
 
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -341,6 +363,7 @@ impl StellarInsightsContract {
         }
 
         env.storage().instance().set(&DataKey::Paused, &true);
+        bump_instance(&env);
         Ok(())
     }
 
@@ -369,6 +392,7 @@ impl StellarInsightsContract {
         }
 
         env.storage().instance().set(&DataKey::Paused, &false);
+        bump_instance(&env);
         Ok(())
     }
 

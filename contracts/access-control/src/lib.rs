@@ -1,11 +1,21 @@
 #![no_std]
-extern crate std;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
     Symbol, Vec,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// ~30 days at 5 s/ledger
+const LEDGERS_TO_EXTEND: u32 = 518_400;
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
+const INSTANCE_TTL_EXTEND: u32 = 518_400;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
 
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,10 +107,18 @@ impl AccessControlContract {
         roles.push_back(Role::SuperAdmin);
         env.storage()
             .persistent()
-            .set(&DataKey::Roles(admin), &roles);
+            .set(&DataKey::Roles(admin.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(admin),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
         env.storage()
             .instance()
             .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn get_version(env: Env) -> String {
@@ -123,6 +141,12 @@ impl AccessControlContract {
         env.storage()
             .persistent()
             .set(&DataKey::Roles(user.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(user.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("role_grnt"), user.clone()),
@@ -153,6 +177,12 @@ impl AccessControlContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Roles(user.clone()), &new_roles);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Roles(user.clone()),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+            bump_instance(&env);
 
             env.events().publish(
                 (symbol_short!("role_rvk"), user.clone()),
@@ -199,6 +229,12 @@ impl AccessControlContract {
         env.storage()
             .persistent()
             .set(&DataKey::Permissions(role.clone()), &perms);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Permissions(role.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("perm_grnt"), role.clone()),

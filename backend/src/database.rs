@@ -1,3 +1,7 @@
+use anyhow::Result;
+use chrono::Utc;
+use serde::Serialize;
+use sqlx::SqlitePool;
 use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -227,6 +231,20 @@ pub struct Database {
     slow_query_threshold_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct PoolMetrics {
+    pub size: u32,
+    pub idle: usize,
+    pub active: u32,
+}
+
+impl PoolMetrics {
+    #[must_use]
+    pub const fn new(size: u32, idle: usize, active: u32) -> Self {
+        Self { size, idle, active }
+    }
+}
+
 impl Database {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
@@ -273,6 +291,14 @@ impl Database {
     }
 
     #[must_use]
+    pub fn pool_metrics(&self) -> PoolMetrics {
+        let size = self.pool.size();
+        let idle = self.pool.num_idle();
+        let active = size.saturating_sub(idle as u32);
+
+        PoolMetrics::new(size, idle, active)
+    }
+
     pub fn corridor_aggregates(&self) -> crate::db::aggregates::CorridorAggregates {
         crate::db::aggregates::CorridorAggregates::new(self.pool.clone())
     }

@@ -241,4 +241,64 @@ mod tests {
 
         assert!(text.contains("http_requests_total 1"));
     }
+
+    #[tokio::test]
+    async fn metrics_handler_returns_prometheus_content_type() {
+        init_metrics();
+
+        let response = metrics_handler().await;
+        let content_type = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        assert!(
+            content_type.contains("text/plain"),
+            "Expected text/plain content type, got: {content_type}"
+        );
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics_route_is_scrapeable_via_router() {
+        init_metrics();
+
+        let app = Router::new().route("/metrics", get(metrics_handler));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        // Verify standard Prometheus metric families are present
+        assert!(text.contains("http_requests_total"));
+        assert!(text.contains("# HELP"));
+        assert!(text.contains("# TYPE"));
+    }
+
+    #[tokio::test]
+    async fn metrics_handler_is_safe_for_concurrent_access() {
+        init_metrics();
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| tokio::spawn(async { metrics_handler().await }))
+            .collect();
+
+        for handle in handles {
+            let response = handle.await.unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+    }
 }

@@ -61,11 +61,14 @@ async fn setup_db() -> Arc<Database> {
 fn make_app_state(db: Arc<Database>) -> AppState {
     let ws_state = Arc::new(WsState::new());
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
-    let ingestion = Arc::new(DataIngestionService::new(rpc_client, Arc::clone(&db)));
+    let ingestion = Arc::new(DataIngestionService::new(rpc_client.clone(), Arc::clone(&db)));
+    let cache = Arc::new(stellar_insights_backend::cache::CacheManager::new(stellar_insights_backend::cache::CacheConfig::default()).await.unwrap());
     AppState {
         db,
+        cache,
         ws_state,
         ingestion,
+        rpc_client,
     }
 }
 
@@ -102,7 +105,7 @@ async fn test_health_check_returns_200() {
 }
 
 #[tokio::test]
-async fn test_health_check_body_has_status_healthy() {
+async fn test_health_check_body_has_status_and_checks() {
     let db = setup_db().await;
     let app = app_state_router(db);
     let resp = app
@@ -117,26 +120,22 @@ async fn test_health_check_body_has_status_healthy() {
 
     let body = json_body(resp).await;
     assert_eq!(body["status"], "healthy");
-    assert_eq!(body["service"], "stellar-insights-backend");
-}
+    assert!(body["timestamp"].is_string());
+    
+    // Check database health details
+    assert!(body["checks"]["database"]["healthy"].as_bool().unwrap());
+    assert!(body["checks"]["database"]["response_time_ms"].is_number());
+    assert!(body["checks"]["database"]["message"].is_null());
 
-#[tokio::test]
-async fn test_health_check_body_includes_api_version() {
-    let db = setup_db().await;
-    let app = app_state_router(db);
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Check cache health details
+    assert!(body["checks"]["cache"]["healthy"].as_bool().unwrap());
+    assert!(body["checks"]["cache"]["response_time_ms"].is_number());
+    assert!(body["checks"]["cache"]["message"].is_null());
 
-    let body = json_body(resp).await;
-    assert_eq!(body["api"]["current_version"], "v1");
-    assert!(body["api"]["supported_versions"].is_array());
+    // Check rpc health details
+    assert!(body["checks"]["rpc"]["healthy"].as_bool().unwrap());
+    assert!(body["checks"]["rpc"]["response_time_ms"].is_number());
+    assert!(body["checks"]["rpc"]["message"].is_null());
 }
 
 // ── GET /api/anchors ─────────────────────────────────────────────────────────

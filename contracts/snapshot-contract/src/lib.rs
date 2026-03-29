@@ -9,6 +9,17 @@ const HASH_SIZE: u32 = 32;
 const CONTRACT_VERSION: u32 = 1;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// ~30 days at 5 s/ledger
+const LEDGERS_TO_EXTEND: u32 = 518_400;
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
+const INSTANCE_TTL_EXTEND: u32 = 518_400;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -194,6 +205,7 @@ impl SnapshotContract {
         let admin = Self::get_admin(&env)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Stopped, &true);
+        bump_instance(&env);
         env.events().publish((symbol_short!("STOPPED"),), (admin,));
         Ok(())
     }
@@ -203,6 +215,7 @@ impl SnapshotContract {
         let admin = Self::get_admin(&env)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Stopped, &false);
+        bump_instance(&env);
         env.events().publish((symbol_short!("RESUMED"),), (admin,));
         Ok(())
     }
@@ -223,6 +236,9 @@ impl SnapshotContract {
         };
         env.storage().instance().set(&DataKey::Metadata, &metadata);
         env.storage().instance().set(&DataKey::Stopped, &false);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events()
             .publish((symbol_short!("INIT"),), (admin, CONTRACT_VERSION));
@@ -263,6 +279,7 @@ impl SnapshotContract {
         current_admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
 
         env.events()
             .publish((symbol_short!("ADM_XFER"),), (current_admin, new_admin));
@@ -311,6 +328,7 @@ impl SnapshotContract {
         metadata.version += 1;
         metadata.upgrade_timestamp = env.ledger().timestamp();
         env.storage().instance().set(&DataKey::Metadata, &metadata);
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("UPGRADED"),),
@@ -329,6 +347,8 @@ impl SnapshotContract {
         if from_version >= current_version {
             return Err(Error::InvalidMigration);
         }
+
+        bump_instance(&env);
 
         env.events().publish(
             (symbol_short!("MIGRATED"),),
@@ -477,9 +497,23 @@ impl SnapshotContract {
     /// Get the latest snapshot
     pub fn latest_snapshot(env: Env) -> Result<Snapshot, Error> {
         Self::require_not_stopped(&env)?;
+        if env.storage().persistent().has(&DataKey::LatestEpoch) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::LatestEpoch,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         let latest_epoch: Option<u64> = env.storage().persistent().get(&DataKey::LatestEpoch);
 
         let epoch = latest_epoch.ok_or(Error::SnapshotNotFound)?;
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -540,6 +574,7 @@ impl SnapshotContract {
             return Err(Error::Unauthorized);
         }
         env.storage().instance().set(&DataKey::Paused, &true);
+        bump_instance(&env);
         env.events().publish(
             (symbol_short!("pause"), caller.clone()),
             PauseEvent {
@@ -559,6 +594,7 @@ impl SnapshotContract {
             return Err(Error::Unauthorized);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
+        bump_instance(&env);
         env.events().publish(
             (symbol_short!("unpause"), caller.clone()),
             UnpauseEvent {
@@ -631,6 +667,7 @@ impl SnapshotContract {
         env.storage()
             .instance()
             .set(&DataKey::MultiSigConfig, &config);
+        bump_instance(&env);
 
         Ok(())
     }
@@ -669,6 +706,11 @@ impl SnapshotContract {
         env.storage()
             .persistent()
             .set(&DataKey::PendingAction(action_id), &pending);
+        env.storage().persistent().extend_ttl(
+            &DataKey::PendingAction(action_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         Ok(action_id)
     }
@@ -701,6 +743,11 @@ impl SnapshotContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::PendingAction(action_id), &pending);
+            env.storage().persistent().extend_ttl(
+                &DataKey::PendingAction(action_id),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
         }
 
         Ok(pending.signatures.len() >= config.threshold)

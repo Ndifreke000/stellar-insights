@@ -1,5 +1,24 @@
+use anyhow::{Context, Result};
+use axum::{
+    http::Method,
+    routing::{get, put},
+    Router,
+};
+use dotenvy::dotenv;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
+use tower::timeout::TimeoutLayer;
+use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
+use std::sync::Arc;
+use std::time::Duration;
+use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
+use tower_http::cors::{Any, CorsLayer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
 
 use anyhow::Context;
 use axum::http::{
@@ -62,9 +81,21 @@ use stellar_insights_backend::backup::{BackupConfig, BackupManager};
 use stellar_insights_backend::state::AppState;
 use stellar_insights_backend::websocket::WsState;
 
+const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
+const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = dotenvy::dotenv();
+    // Load .env if present. A missing file is fine (production/CI uses real env vars).
+    // Any other error — malformed syntax, permission denied — is logged as a warning
+    // so it doesn't silently corrupt configuration.
+    match dotenvy::dotenv() {
+        Ok(path) => tracing::debug!("Loaded environment from {}", path.display()),
+        Err(dotenvy::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::debug!(".env file not found, using environment variables only");
+        }
+        Err(e) => tracing::warn!("Failed to load .env file: {}", e),
+    }
     env_config::log_env_config();
     let _tracing_guard =
         stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
@@ -87,6 +118,36 @@ async fn main() -> anyhow::Result<()> {
 
     let db = Arc::new(Database::new(pool.clone()));
 
+    let pool_metrics_db = Arc::clone(&db);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(DB_POOL_LOG_INTERVAL);
+        loop {
+            interval.tick().await;
+            let metrics = pool_metrics_db.pool_metrics();
+            tracing::info!(
+                pool_size = metrics.size,
+                pool_idle = metrics.idle,
+                pool_active = metrics.active,
+                "Database pool metrics"
+            );
+
+            if metrics.idle <= DB_POOL_IDLE_LOW_WATERMARK {
+                tracing::warn!(
+                    pool_size = metrics.size,
+                    pool_idle = metrics.idle,
+                    pool_active = metrics.active,
+                    low_watermark = DB_POOL_IDLE_LOW_WATERMARK,
+                    "Database pool idle connections are low"
+                );
+            }
+        }
+    });
+
+    // Initialize Stellar RPC Client
+    let mock_mode = std::env::var("RPC_MOCK_MODE")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse::<bool>()
+        .unwrap_or(false);
     // Pool exhaustion monitoring: warn at >90% utilization, update Prometheus gauges
     {
         let monitor_pool = pool.clone();
@@ -215,6 +276,237 @@ async fn main() -> anyhow::Result<()> {
 
     let timeout_seconds: u64 = std::env::var("REQUEST_TIMEOUT_SECONDS")
         .ok()
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(1024);
+    
+    let compression = CompressionLayer::new()
+        .gzip(true)
+        .br(true)
+        .compress_when(SizeAbove::new(compression_min_size));
+    
+    tracing::info!(
+        "Compression enabled (gzip, brotli) for responses > {} bytes",
+        compression_min_size
+    );
+
+    // Request timeout configuration
+    let request_timeout_seconds = std::env::var("REQUEST_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60)
+        .clamp(5, 300); // Enforce 5s minimum, 300s maximum
+
+    tracing::info!(
+        "Request timeout configured: {} seconds",
+        request_timeout_seconds
+    );
+
+    // Import middleware
+    use axum::middleware;
+    use tower::ServiceBuilder;
+
+    // Build auth router
+    let auth_routes = stellar_insights_backend::api::auth::routes(auth_service.clone());
+
+    // Build cached routes (anchors list, corridors list/detail) with cache state
+    let cached_routes = Router::new()
+        .route("/api/anchors", get(get_anchors))
+        .route("/api/corridors", get(list_corridors))
+        .route("/api/corridors/:corridor_key", get(get_corridor_detail))
+        .with_state(cached_state.clone())
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build non-cached anchor routes with app state
+    let anchor_routes = Router::new()
+        .route("/health", get(health_check))
+        .route("/metrics", get(get_prometheus_metrics))
+        .route("/api/anchors/:id", get(get_anchor))
+        .route(
+            "/api/anchors/account/:stellar_account",
+            get(get_anchor_by_account),
+        )
+        .route("/api/anchors/:id/assets", get(get_anchor_assets))
+        .route("/api/analytics/muxed", get(get_muxed_analytics))
+        .with_state(app_state.clone())
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build protected anchor routes (require authentication)
+    let protected_anchor_routes = Router::new()
+        .route("/api/admin/pool-metrics", get(get_pool_metrics))
+        .route("/api/anchors", axum::routing::post(create_anchor))
+        .route("/api/anchors/:id/metrics", put(update_anchor_metrics))
+        .route(
+            "/api/anchors/:id/assets",
+            axum::routing::post(create_anchor_asset),
+        )
+        .route("/api/corridors", axum::routing::post(create_corridor))
+        .route(
+            "/api/corridors/:id/metrics-from-transactions",
+            put(update_corridor_metrics_from_transactions),
+        )
+        .with_state(app_state.clone())
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn(auth_middleware))
+                .layer(middleware::from_fn_with_state(
+                    rate_limiter.clone(),
+                    rate_limit_middleware,
+                )),
+        )
+        .layer(cors.clone());
+
+    // Build cache stats and metrics routes
+    let cache_routes = cache_stats::routes(Arc::clone(&cache));
+    let metrics_routes = metrics_cached::routes(Arc::clone(&cache));
+
+    // Build RPC router
+    let rpc_routes = Router::new()
+        .route("/api/rpc/health", get(rpc_handlers::rpc_health_check))
+        .route(
+            "/api/rpc/ledger/latest",
+            get(rpc_handlers::get_latest_ledger),
+        )
+        .route("/api/rpc/payments", get(rpc_handlers::get_payments))
+        .route(
+            "/api/rpc/payments/account/:account_id",
+            get(rpc_handlers::get_account_payments),
+        )
+        .route("/api/rpc/trades", get(rpc_handlers::get_trades))
+        .route("/api/rpc/orderbook", get(rpc_handlers::get_order_book))
+        .with_state(rpc_client)
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build fee bump routes
+    let fee_bump_routes = Router::new()
+        .nest(
+            "/api/fee-bumps",
+            fee_bump::routes(Arc::clone(&fee_bump_tracker)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build account merge routes
+    let account_merge_routes = Router::new()
+        .nest(
+            "/api/account-merges",
+            account_merges::routes(Arc::clone(&account_merge_detector)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build liquidity pool routes
+    let lp_routes = Router::new()
+        .nest(
+            "/api/liquidity-pools",
+            liquidity_pools::routes(Arc::clone(&lp_analyzer)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build price feed routes
+    let price_routes = Router::new()
+        .nest(
+            "/api/prices",
+            stellar_insights_backend::api::price_feed::routes(Arc::clone(&price_feed)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build network routes
+    let network_routes = Router::new()
+        .nest("/api/network", stellar_insights_backend::api::network::routes())
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Build trustline routes
+    let trustline_routes = Router::new()
+        .nest(
+            "/api/trustlines",
+            stellar_insights_backend::api::trustlines::routes(Arc::clone(&trustline_analyzer)),
+        )
+        .layer(ServiceBuilder::new().layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        )))
+        .layer(cors.clone());
+
+    // Merge routers
+    let swagger_routes =
+        SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
+
+    // Build WebSocket routes (excluded from request timeout — long-lived connections)
+    
+    // Build WebSocket routes
+    let ws_routes = Router::new()
+        .route("/ws", get(stellar_insights_backend::websocket::ws_handler))
+        .with_state(Arc::clone(&ws_state))
+        .layer(cors.clone());
+
+    let alert_ws_routes = Router::new()
+        .route("/ws/alerts", get(stellar_insights_backend::alert_handlers::alert_websocket_handler))
+        .with_state(Arc::clone(&alert_manager))
+        .layer(cors.clone());
+
+    // Timeout + JSON error handler for non-WebSocket routes
+    let timeout_layer = tower::ServiceBuilder::new()
+        .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
+            (
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                axum::Json(serde_json::json!({
+                    "error": "REQUEST_TIMEOUT",
+                    "message": "Request exceeded the maximum allowed time"
+                }))
+            )
+        }))
+        .layer(TimeoutLayer::new(Duration::from_secs(request_timeout_seconds)));
+
+
+
+    
+    let app = Router::new()
+        .merge(swagger_routes)
+        .merge(auth_routes)
+        .merge(cached_routes)
+        .merge(anchor_routes)
+        .merge(protected_anchor_routes)
+        .merge(rpc_routes)
+        .merge(fee_bump_routes)
+        .merge(account_merge_routes)
+        .merge(lp_routes)
+        .merge(price_routes)
+        .merge(trustline_routes)
+        .merge(network_routes)
+        .merge(cache_routes)
+        .merge(metrics_routes)
+        .merge(ws_routes);
+        .layer(compression); // Apply compression to all routes
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
@@ -241,41 +533,27 @@ async fn main() -> anyhow::Result<()> {
     .layer(middleware::from_fn(trace_propagation_middleware))
     .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
     .layer(middleware::from_fn(request_id_middleware));
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(trace_propagation_middleware))
+        .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
+        .layer(middleware::from_fn(request_id_middleware))
+        .layer(timeout_layer) // Apply request timeout to all non-WS routes
+        .layer(compression); // Apply compression to all routes
     tracing::info!("Request timeout set to {} seconds", timeout_seconds);
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
-    tracing::info!(address = %addr, "Server listening");
+    tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let start_shutdown = std::time::Instant::now();
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(stellar_insights_backend::shutdown::wait_for_signal())
         .await?;
+    
+    stellar_insights_backend::shutdown::log_shutdown_summary(start_shutdown);
+    tracing::info!("Server shutdown complete");
     stellar_insights_backend::observability::tracing::shutdown_tracing();
 
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => { tracing::info!("Received Ctrl+C, shutting down"); },
-        _ = terminate => { tracing::info!("Received SIGTERM, shutting down"); },
-    }
 }

@@ -3,16 +3,27 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum VaultError {
+    /// Invalid or missing Vault configuration (e.g. missing env vars).
     ConfigError(String),
+    /// Failed to build or initialize the HTTP client.
     ClientError(String),
+    /// HTTP request to Vault failed.
     RequestError(String),
+    /// Failed to parse the Vault response.
     ParseError(String),
+    /// Vault cluster is unreachable or returned an unhealthy status.
     VaultUnavailable,
+    /// Secret at the given path was not found.
     SecretNotFound(String),
+    /// A required field was absent in the secret data.
     FieldNotFound(String),
+    /// Secret response contained no data payload.
     NoDataInSecret,
+    /// Dynamic credentials could not be generated for the given role.
     CredentialsFailed(String),
+    /// Lease renewal request failed for the given lease ID.
     LeaseRenewalFailed(String),
+    /// Lease revocation request failed for the given lease ID.
     LeaseRevokeFailed(String),
 }
 
