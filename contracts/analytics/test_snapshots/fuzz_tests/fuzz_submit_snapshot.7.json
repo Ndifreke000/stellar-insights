@@ -15,10 +15,10 @@
               "function_name": "submit_snapshot",
               "args": [
                 {
-                  "u64": 2622823036225186089
+                  "u64": 3178076199846947158
                 },
                 {
-                  "bytes": "17ea5fb03a138a7e6ae5a0aeb904bdb8e31ca6c0531b1aecbae1abb8ccd68890"
+                  "bytes": "1f07fd171deff0b13a02cfb16f7c96d188a4c6e80bff776a4fb2e7679637091c"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -121,7 +121,7 @@
                   "symbol": "Snapshot"
                 },
                 {
-                  "u64": 2622823036225186089
+                  "u64": 3178076199846947158
                 }
               ]
             },
@@ -141,7 +141,7 @@
                       "symbol": "Snapshot"
                     },
                     {
-                      "u64": 2622823036225186089
+                      "u64": 3178076199846947158
                     }
                   ]
                 },
@@ -153,7 +153,7 @@
                         "symbol": "epoch"
                       },
                       "val": {
-                        "u64": 2622823036225186089
+                        "u64": 3178076199846947158
                       }
                     },
                     {
@@ -167,7 +167,7 @@
                         "symbol": "hash"
                       },
                       "val": {
-                        "bytes": "17ea5fb03a138a7e6ae5a0aeb904bdb8e31ca6c0531b1aecbae1abb8ccd68890"
+                        "bytes": "1f07fd171deff0b13a02cfb16f7c96d188a4c6e80bff776a4fb2e7679637091c"
                       }
                     },
                     {
@@ -236,7 +236,7 @@
                   "map": [
                     {
                       "key": {
-                        "u64": 2622823036225186089
+                        "u64": 3178076199846947158
                       },
                       "val": {
                         "map": [
@@ -245,7 +245,7 @@
                               "symbol": "epoch"
                             },
                             "val": {
-                              "u64": 2622823036225186089
+                              "u64": 3178076199846947158
                             }
                           },
                           {
@@ -259,7 +259,7 @@
                               "symbol": "hash"
                             },
                             "val": {
-                              "bytes": "17ea5fb03a138a7e6ae5a0aeb904bdb8e31ca6c0531b1aecbae1abb8ccd68890"
+                              "bytes": "1f07fd171deff0b13a02cfb16f7c96d188a4c6e80bff776a4fb2e7679637091c"
                             }
                           },
                           {
@@ -342,7 +342,7 @@
                           ]
                         },
                         "val": {
-                          "u64": 2622823036225186089
+                          "u64": 3178076199846947158
                         }
                       },
                       {
@@ -504,10 +504,10 @@
             "data": {
               "vec": [
                 {
-                  "u64": 2622823036225186089
+                  "u64": 3178076199846947158
                 },
                 {
-                  "bytes": "17ea5fb03a138a7e6ae5a0aeb904bdb8e31ca6c0531b1aecbae1abb8ccd68890"
+                  "bytes": "1f07fd171deff0b13a02cfb16f7c96d188a4c6e80bff776a4fb2e7679637091c"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -541,7 +541,7 @@
                     "symbol": "epoch"
                   },
                   "val": {
-                    "u64": 2622823036225186089
+                    "u64": 3178076199846947158
                   }
                 },
                 {
@@ -549,7 +549,7 @@
                     "symbol": "hash"
                   },
                   "val": {
-                    "bytes": "17ea5fb03a138a7e6ae5a0aeb904bdb8e31ca6c0531b1aecbae1abb8ccd68890"
+                    "bytes": "1f07fd171deff0b13a02cfb16f7c96d188a4c6e80bff776a4fb2e7679637091c"
                   }
                 },
                 {

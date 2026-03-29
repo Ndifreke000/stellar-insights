@@ -417,7 +417,7 @@ fn test_submit_snapshot_valid_after_edge_cases() {
 
     // Should succeed
     assert!(result.is_ok());
-    let timestamp = result.unwrap();
+    let timestamp = result.unwrap().unwrap();
     assert_eq!(timestamp, 5000);
 
     // Verify snapshot was stored correctly

@@ -15,10 +15,10 @@
               "function_name": "submit_snapshot",
               "args": [
                 {
-                  "u64": 13028427451040836013
+                  "u64": 11050817453655271336
                 },
                 {
-                  "bytes": "97f518f63903d860aaa4af785a4939cd00580cf2830770d1a115cbc8a8ada9e9"
+                  "bytes": "03d90bbb8cc1eafad63d803426117603d8c67e4b810b9ce82b9c52a453d82a14"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -123,7 +123,7 @@
                   "symbol": "Snapshot"
                 },
                 {
-                  "u64": 13028427451040836013
+                  "u64": 11050817453655271336
                 }
               ]
             },
@@ -143,7 +143,7 @@
                       "symbol": "Snapshot"
                     },
                     {
-                      "u64": 13028427451040836013
+                      "u64": 11050817453655271336
                     }
                   ]
                 },
@@ -155,7 +155,7 @@
                         "symbol": "epoch"
                       },
                       "val": {
-                        "u64": 13028427451040836013
+                        "u64": 11050817453655271336
                       }
                     },
                     {
@@ -169,7 +169,7 @@
                         "symbol": "hash"
                       },
                       "val": {
-                        "bytes": "97f518f63903d860aaa4af785a4939cd00580cf2830770d1a115cbc8a8ada9e9"
+                        "bytes": "03d90bbb8cc1eafad63d803426117603d8c67e4b810b9ce82b9c52a453d82a14"
                       }
                     },
                     {
@@ -238,7 +238,7 @@
                   "map": [
                     {
                       "key": {
-                        "u64": 13028427451040836013
+                        "u64": 11050817453655271336
                       },
                       "val": {
                         "map": [
@@ -247,7 +247,7 @@
                               "symbol": "epoch"
                             },
                             "val": {
-                              "u64": 13028427451040836013
+                              "u64": 11050817453655271336
                             }
                           },
                           {
@@ -261,7 +261,7 @@
                               "symbol": "hash"
                             },
                             "val": {
-                              "bytes": "97f518f63903d860aaa4af785a4939cd00580cf2830770d1a115cbc8a8ada9e9"
+                              "bytes": "03d90bbb8cc1eafad63d803426117603d8c67e4b810b9ce82b9c52a453d82a14"
                             }
                           },
                           {
@@ -344,7 +344,7 @@
                           ]
                         },
                         "val": {
-                          "u64": 13028427451040836013
+                          "u64": 11050817453655271336
                         }
                       },
                       {
@@ -506,10 +506,10 @@
             "data": {
               "vec": [
                 {
-                  "u64": 13028427451040836013
+                  "u64": 11050817453655271336
                 },
                 {
-                  "bytes": "97f518f63903d860aaa4af785a4939cd00580cf2830770d1a115cbc8a8ada9e9"
+                  "bytes": "03d90bbb8cc1eafad63d803426117603d8c67e4b810b9ce82b9c52a453d82a14"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -543,7 +543,7 @@
                     "symbol": "epoch"
                   },
                   "val": {
-                    "u64": 13028427451040836013
+                    "u64": 11050817453655271336
                   }
                 },
                 {
@@ -551,7 +551,7 @@
                     "symbol": "hash"
                   },
                   "val": {
-                    "bytes": "97f518f63903d860aaa4af785a4939cd00580cf2830770d1a115cbc8a8ada9e9"
+                    "bytes": "03d90bbb8cc1eafad63d803426117603d8c67e4b810b9ce82b9c52a453d82a14"
                   }
                 },
                 {
@@ -637,10 +637,10 @@
             "data": {
               "vec": [
                 {
-                  "u64": 11472053270315979953
+                  "u64": 4062194342669401153
                 },
                 {
-                  "bytes": "cd35b82e68cd1e478f6fe32beb7adb71fb470b1188b06c0807a66e0fbb18ec21"
+                  "bytes": "fb45fb623038f8f06c80d361af48eb4b2795e78620b679008d8566c9a4f6965e"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -765,10 +765,10 @@
                 {
                   "vec": [
                     {
-                      "u64": 11472053270315979953
+                      "u64": 4062194342669401153
                     },
                     {
-                      "bytes": "cd35b82e68cd1e478f6fe32beb7adb71fb470b1188b06c0807a66e0fbb18ec21"
+                      "bytes": "fb45fb623038f8f06c80d361af48eb4b2795e78620b679008d8566c9a4f6965e"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -822,7 +822,7 @@
               }
             ],
             "data": {
-              "u64": 13028427451040836013
+              "u64": 11050817453655271336
             }
           }
         }
