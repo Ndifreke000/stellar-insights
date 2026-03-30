@@ -1,10 +1,10 @@
 #[cfg(test)]
 #[allow(clippy::needless_raw_string_hashes, clippy::unreadable_literal)]
 mod webhook_integration_tests {
-    use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
-    use stellar_insights_backend::webhooks::events::CorridorMetrics;
     use sqlx::SqlitePool;
     use std::sync::Arc;
+    use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
+    use stellar_insights_backend::webhooks::events::CorridorMetrics;
     use uuid::Uuid;
 
     async fn setup_test_db() -> SqlitePool {

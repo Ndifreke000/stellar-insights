@@ -21,19 +21,6 @@ fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCirc
     let breaker: CircuitBreaker = Config::new().failure_policy(policy).build();
     Arc::new(breaker)
 }
-use stellar_insights_backend::api::anchors::{
-    get_anchor_metrics_with_fallback, get_anchor_metrics_with_rpc, rpc_circuit_breaker_instance,
-    AnchorMetrics,
-};
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
-use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_rpc, AnchorMetrics};
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
-use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
-use stellar_insights_backend::rpc::stellar::StellarRpcClient;
-use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
-use stellar_insights_backend::rpc::{CircuitBreaker, CircuitBreakerConfig};
 
 #[tokio::test]
 async fn test_rpc_retry_on_failure() {

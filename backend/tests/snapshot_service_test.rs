@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use stellar_insights_backend::services::snapshot::SnapshotService;
     use stellar_insights_backend::snapshot::schema::AnalyticsSnapshot;
-    use chrono::Utc;
 
     #[test]
     fn test_deterministic_serialization_unit() {
