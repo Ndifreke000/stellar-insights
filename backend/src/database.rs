@@ -213,7 +213,6 @@ pub struct AnchorMetricsParams {
 }
 
 /// Connection pool metrics
-#[derive(Debug, Clone, Copy, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct PoolMetrics {
     pub size: u32,
