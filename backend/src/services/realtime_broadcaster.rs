@@ -499,10 +499,6 @@ mod tests {
             "test".to_string(),
             true,
         ));
-        // Note: This test would need a mock CacheManager
-        // let cache = Arc::new(CacheManager::new_mock());
-        // let broadcaster = RealtimeBroadcaster::new(ws_state, rpc_client, cache);
-
-        // Test subscription logic here
+        // Note: This test would need a mock CacheManager before testing subscription logic.
     }
 }

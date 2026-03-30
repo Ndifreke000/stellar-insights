@@ -94,6 +94,13 @@ impl Sep10Service {
             return Err(anyhow!("Invalid server public key format"));
         }
 
+        // Reject placeholder keys (e.g. GXXX...XXX) where all non-G chars are identical
+        if server_public_key.chars().skip(1).all(|c| c == server_public_key.chars().nth(1).unwrap_or('X')) {
+            return Err(anyhow!(
+                "SEP10_SERVER_PUBLIC_KEY is a placeholder. Set a real Stellar public key."
+            ));
+        }
+
         Ok(Self {
             server_public_key,
             network_passphrase,
