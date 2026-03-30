@@ -5,9 +5,8 @@ mod errors;
 
 pub use errors::Error;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, Map, String, Vec,
 };
-use soroban_token::token;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -698,7 +697,7 @@ impl AnalyticsContract {
                 timestamp,
                 previous_epoch: latest,
                 ledger_sequence,
-            ),
+            },
         );
 
         Ok(timestamp)
@@ -877,15 +876,20 @@ impl AnalyticsContract {
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        let expired: Vec<u64> = (1..=latest_epoch)
-            .filter(|&e| {
-                snapshots.get(e)
-                    .and_then(|m| m.expires_at)
-                    .map_or(false, |exp| now > exp)
-            })
-            .take(max_to_clean as usize)
-            .collect();
-        cleaned = expired.len() as u32;
+        let mut expired = Vec::new(&env);
+        for e in 1..=latest_epoch {
+            if let Some(m) = snapshots.get(e) {
+                if let Some(exp) = m.expires_at {
+                    if now > exp {
+                        expired.push_back(e);
+                        if expired.len() >= max_to_clean {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        cleaned = expired.len();
         for epoch in expired {
             snapshots.remove(epoch);
             env.storage().persistent().remove(&DataKey::Snapshot(epoch));
@@ -1059,7 +1063,10 @@ impl AnalyticsContract {
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
         
-        let results = epochs.iter().map(|epoch| snapshots.get(epoch)).collect::<Vec<_>>();
+        let mut results = Vec::new(&env);
+        for epoch in epochs.iter() {
+            results.push_back(snapshots.get(epoch));
+        }
         Ok(results)
     }
 
@@ -1574,10 +1581,13 @@ impl AnalyticsContract {
             .get(&DataKey::Snapshots)
             .unwrap_or_else(|| Map::new(&env));
 
-        let epochs_to_remove: Vec<u64> = (1..=cutoff_epoch)
-            .filter(|&e| snapshots.contains_key(e))
-            .collect();
-        let removed = epochs_to_remove.len() as u32;
+        let mut epochs_to_remove = Vec::new(&env);
+        for e in 1..=cutoff_epoch {
+            if snapshots.contains_key(e) {
+                epochs_to_remove.push_back(e);
+            }
+        }
+        let removed = epochs_to_remove.len();
         for epoch in epochs_to_remove {
             snapshots.remove(epoch);
             env.storage().persistent().remove(&DataKey::Snapshot(epoch));
@@ -1911,4 +1921,5 @@ impl AnalyticsContract {
 mod tests;
 
 #[cfg(test)]
+mod fuzz_tests;
 mod fuzz_tests;

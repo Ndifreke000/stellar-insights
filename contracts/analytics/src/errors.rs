@@ -28,6 +28,38 @@ pub enum Error {
     InvalidThreshold = 22,
     SignerNotAdmin = 23,
     UnknownActionType = 24,
+
+    // Authorization errors (10-19)
+    Unauthorized = 10,
+    AdminNotSet = 11,
+    GovernanceNotSet = 12,
+
+    // Epoch errors (20-29)
+    InvalidEpoch = 20,
+    DuplicateEpoch = 21,
+    EpochMonotonicityViolated = 22,
+    SnapshotNotFound = 23,
+
+    // State errors (30-39)
+    ContractPaused = 30,
+
+    // Validation errors (40-49)
+    InvalidHash = 40,
+
+    // Legancy and secondary errors (50+)
+    InvalidEpochZero = 50,
+    InvalidEpochTooLarge = 51,
+    ContractNotPaused = 52,
+    InvalidHashZero = 53,
+    RateLimitExceeded = 54,
+    TimelockNotExpired = 55,
+    ActionNotFound = 56,
+    ActionExpired = 57,
+    ActionAlreadyExecuted = 58,
+    MultiSigNotInitialized = 59,
+    InvalidThreshold = 60,
+    SignerNotAdmin = 61,
+    UnknownActionType = 62,
 }
 
 impl Error {
