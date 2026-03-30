@@ -1,16 +1,33 @@
 use soroban_sdk::{contracterror, log, Env};
 
-/// Contract-specific errors for the Analytics Contract.
-///
-/// Each variant maps to a stable `u32` discriminant that is returned on-chain
-/// and can be matched by off-chain clients for precise error handling.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
-    // Initialization errors (1-9)
     AlreadyInitialized = 1,
     NotInitialized = 2,
+    Unauthorized = 3,
+    InvalidEpoch = 4,
+    InvalidEpochZero = 5,
+    InvalidEpochTooLarge = 6,
+    DuplicateEpoch = 7,
+    EpochMonotonicityViolated = 8,
+    ContractPaused = 9,
+    ContractNotPaused = 10,
+    InvalidHash = 11,
+    InvalidHashZero = 12,
+    SnapshotNotFound = 13,
+    AdminNotSet = 14,
+    GovernanceNotSet = 15,
+    RateLimitExceeded = 16,
+    TimelockNotExpired = 17,
+    ActionNotFound = 18,
+    ActionExpired = 19,
+    ActionAlreadyExecuted = 20,
+    MultiSigNotInitialized = 21,
+    InvalidThreshold = 22,
+    SignerNotAdmin = 23,
+    UnknownActionType = 24,
 
     // Authorization errors (10-19)
     Unauthorized = 10,
@@ -46,18 +63,11 @@ pub enum Error {
 }
 
 impl Error {
-    /// Log contextual information alongside the error for easier debugging.
-    ///
-    /// Returns `self` so it can be used inline:
-    /// ```ignore
-    /// return Err(Error::Unauthorized.log_context(&env, "submit_snapshot: caller is not admin"));
-    /// ```
     pub fn log_context(self, env: &Env, context: &str) -> Self {
         log!(env, "[Error #{}] {:?} - {}", self as u32, self, context);
         self
     }
 
-    /// Human-readable description of the error code.
     pub fn description(self) -> &'static str {
         match self {
             Error::AlreadyInitialized => "Contract has already been initialized",
@@ -87,7 +97,6 @@ impl Error {
         }
     }
 
-    /// Numeric discriminant for the error, useful for off-chain indexing.
     pub fn code(self) -> u32 {
         self as u32
     }

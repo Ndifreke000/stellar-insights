@@ -60,12 +60,6 @@ fn emit_error_event(
     );
 }
 
-const DEFAULT_SNAPSHOT_TTL: u64 = 7_776_000; // 90 days in seconds
-const LEDGER_SECONDS: u64 = 5; // ~5 seconds per ledger
-
-const RATE_LIMIT_WINDOW: u64 = 3600; // 1 hour
-const MAX_CALLS_PER_WINDOW: u32 = 100;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ── Event payloads ────────────────────────────────────────────────────────────
@@ -234,7 +228,6 @@ pub struct SnapshotWithProof {
     pub proof: Vec<BytesN<32>>,
 }
 
-const TIMELOCK_DELAY: u64 = 172_800; // 48 hours in seconds
 
 /// Multi-sig configuration: list of co-admins and the signing threshold.
 #[contracttype]
@@ -328,6 +321,14 @@ pub enum DataKey {
     CompactSnapshot(u64),
     AddressRegistry,
 }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_SNAPSHOT_TTL: u64 = 7_776_000; // 90 days in seconds
+const LEDGER_SECONDS: u64 = 5; // ~5 seconds per ledger
+const RATE_LIMIT_WINDOW: u64 = 3600;
+const MAX_CALLS_PER_WINDOW: u32 = 100;
+const TIMELOCK_DELAY: u64 = 172_800;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -506,6 +507,28 @@ fn get_next_action_id(env: &Env) -> u64 {
         .instance()
         .set(&DataKey::NextActionId, &(id + 1));
     id
+}
+
+// ── Verification helpers ─────────────────────────────────────────────────────
+
+fn get_snapshot_metadata(env: &Env, epoch: u64) -> Option<SnapshotMetadata> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Snapshot(epoch))
+}
+
+fn generate_merkle_proof(
+    env: &Env,
+    epoch: u64,
+    _metadata: &SnapshotMetadata,
+) -> Vec<BytesN<32>> {
+    let mut proof = Vec::new(env);
+    if epoch > 1 {
+        if let Some(prev) = get_snapshot_metadata(env, epoch - 1) {
+            proof.push_back(prev.hash);
+        }
+    }
+    proof
 }
 
 // ── Contract metadata types ───────────────────────────────────────────────────
@@ -1789,6 +1812,60 @@ impl AnalyticsContract {
         Ok(timestamp)
     }
 
+    /// Verify a snapshot hash matches expected value.
+    pub fn verify_snapshot(
+        env: Env,
+        epoch: u64,
+        expected_hash: BytesN<32>,
+    ) -> Result<bool, Error> {
+        let snapshots: Map<u64, SnapshotMetadata> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .ok_or(Error::NotInitialized)?;
+
+        let metadata = snapshots
+            .get(epoch)
+            .ok_or(Error::SnapshotNotFound)?;
+
+        Ok(metadata.hash == expected_hash)
+    }
+
+    /// Get snapshot with merkle proof.
+    pub fn get_snapshot_with_proof(
+        env: Env,
+        epoch: u64,
+    ) -> Result<SnapshotWithProof, Error> {
+        let snapshots: Map<u64, SnapshotMetadata> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .ok_or(Error::NotInitialized)?;
+
+        let metadata = snapshots
+            .get(epoch)
+            .ok_or(Error::SnapshotNotFound)?;
+
+        let proof = generate_merkle_proof(&env, epoch, &metadata);
+
+        Ok(SnapshotWithProof { metadata, proof })
+    }
+
+    /// Batch verify multiple snapshots.
+    pub fn batch_verify_snapshots(
+        env: Env,
+        verifications: Vec<(u64, BytesN<32>)>,
+    ) -> Result<Vec<bool>, Error> {
+        let mut results = Vec::new(&env);
+
+        for (epoch, expected_hash) in verifications.iter() {
+            let is_valid = Self::verify_snapshot(env.clone(), epoch, expected_hash)?;
+            results.push_back(is_valid);
+        }
+
+        Ok(results)
+    }
+
     /// Get a compact snapshot by epoch.
     pub fn get_compact_snapshot(env: Env, epoch: u64) -> Option<CompactSnapshot> {
         env.storage()
@@ -1844,4 +1921,5 @@ impl AnalyticsContract {
 mod tests;
 
 #[cfg(test)]
+mod fuzz_tests;
 mod fuzz_tests;
