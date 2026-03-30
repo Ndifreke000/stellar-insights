@@ -1,17 +1,12 @@
-use anyhow::Result;
-use chrono::Utc;
-use serde::Serialize;
-use sqlx::SqlitePool;
-use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::{Context, Result};
-use crate::admin_audit_log::AdminAuditLogger;
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, SqlitePool};
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use crate::admin_audit_log::AdminAuditLogger;
 use crate::analytics::compute_anchor_metrics;
 use crate::cache::CacheManager;
 use crate::models::api_key::{
@@ -217,21 +212,6 @@ pub struct AnchorMetricsParams {
     pub volume_usd: Option<f64>,
 }
 
-/// Connection pool metrics
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct PoolMetrics {
-    pub size: u32,
-    pub idle: usize,
-}
-
-pub struct Database {
-    pool: SqlitePool,
-    pub admin_audit_logger: AdminAuditLogger,
-    /// Threshold in milliseconds above which a query is logged as slow at WARN level.
-    /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
-    slow_query_threshold_ms: u64,
-}
-
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct PoolMetrics {
     pub size: u32,
@@ -244,6 +224,14 @@ impl PoolMetrics {
     pub const fn new(size: u32, idle: usize, active: u32) -> Self {
         Self { size, idle, active }
     }
+}
+
+pub struct Database {
+    pool: SqlitePool,
+    pub admin_audit_logger: AdminAuditLogger,
+    /// Threshold in milliseconds above which a query is logged as slow at WARN level.
+    /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
+    slow_query_threshold_ms: u64,
 }
 
 impl Database {
@@ -292,6 +280,15 @@ impl Database {
         &self.pool
     }
 
+    /// Performs a basic connectivity check against the database.
+    pub async fn health_check(&self) -> Result<()> {
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .context("Database health check failed")?;
+        Ok(())
+    }
+
     #[must_use]
     pub fn pool_metrics(&self) -> PoolMetrics {
         let size = self.pool.size();
@@ -303,15 +300,6 @@ impl Database {
 
     pub fn corridor_aggregates(&self) -> crate::db::aggregates::CorridorAggregates {
         crate::db::aggregates::CorridorAggregates::new(self.pool.clone())
-    }
-
-    /// Get connection pool metrics
-    #[must_use]
-    pub fn pool_metrics(&self) -> PoolMetrics {
-        PoolMetrics {
-            size: self.pool.size(),
-            idle: self.pool.num_idle(),
-        }
     }
 
     // Anchor operations

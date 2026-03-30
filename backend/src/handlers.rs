@@ -1,149 +1,29 @@
-use axum::{extract::State, response::IntoResponse, Json};
-use chrono::{DateTime, Utc};
-use serde::Serialize;
-use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
-    http::header,
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use axum::{extract::State, response::IntoResponse, Json};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use std::sync::atomic::Ordering;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
-use sqlx::Pool;
-
+use crate::broadcast::{broadcast_anchor_update, broadcast_corridor_update};
+use crate::error::{ApiError, ApiResult};
+use crate::models::corridor::Corridor;
+use crate::models::{CreateAnchorRequest, CreateCorridorRequest, ListCorridorsQuery, ListCorridorsResponse};
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
-
-use std::time::Instant;
-
-#[derive(Serialize)]
-pub struct HealthStatus {
-    pub status: String,
-    pub timestamp: DateTime<Utc>,
-use chrono::{DateTime, Utc};
-#[derive(Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthStatus {
-    pub status: String,
-    pub timestamp: DateTime<Utc>,
-    pub version: String,
-    pub uptime_seconds: u64,
-    pub checks: HealthChecks,
-}
-
-#[derive(Serialize)]
-pub struct HealthChecks {
-    pub database: ComponentHealth,
-    pub cache: ComponentHealth,
-    pub rpc: ComponentHealth,
-}
 
 #[derive(Serialize)]
 pub struct ComponentHealth {
     pub healthy: bool,
     pub response_time_ms: Option<u64>,
     pub message: Option<String>,
-}
-
-/// Check database health
-async fn check_database(db: &Arc<Database>) -> ComponentHealth {
-    let start = Instant::now();
-    match sqlx::query("SELECT 1").fetch_one(db.pool()).await {
-
-    match sqlx::query("SELECT 1").fetch_one(&**db.pool()).await {
-        Ok(_) => ComponentHealth {
-            healthy: true,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: None,
-        },
-        Err(e) => ComponentHealth {
-            healthy: false,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("Database connection failed: {}", e)),
-        },
-    }
-}
-
-/// Check cache health
-async fn check_cache(cache: &Arc<CacheManager>) -> ComponentHealth {
-    let start = Instant::now();
-    match cache.ping().await {
-        Ok(_) => ComponentHealth {
-            healthy: true,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: None,
-        },
-        Err(e) => ComponentHealth {
-            healthy: false,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("Cache connection failed: {}", e)),
-        },
-    }
-}
-
-/// Check RPC health
-async fn check_rpc(rpc: &Arc<StellarRpcClient>) -> ComponentHealth {
-    let start = Instant::now();
-    match rpc.check_health().await {
-        Ok(_) => ComponentHealth {
-            healthy: true,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: None,
-        },
-        Err(e) => ComponentHealth {
-            healthy: false,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            message: Some(format!("RPC connection failed: {}", e)),
-        },
-    }
-}
-
-/// Detailed health check endpoint
-pub async fn health_check(
-    State(db): State<Arc<Database>>,
-    State(cache): State<Arc<CacheManager>>,
-    State(rpc): State<Arc<StellarRpcClient>>,
-) -> Json<HealthStatus> {
-    let db_health = check_database(&db).await;
-    let cache_health = check_cache(&cache).await;
-    let rpc_health = check_rpc(&rpc).await;
-
-    let overall = if db_health.healthy && cache_health.healthy {
-        "healthy"
-    } else {
-        "degraded"
-    };
-
-    Json(HealthStatus {
-        status: overall.to_string(),
-        timestamp: Utc::now(),
-    let start_epoch = app_state.server_start_time.load(Ordering::Relaxed);
-    let now_epoch = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let uptime_seconds = now_epoch.saturating_sub(start_epoch);
-
-    let health_status = HealthStatus {
-        status: overall_status.to_string(),
-        timestamp: Utc::now(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_seconds,
-        checks: HealthChecks {
-            database: db_health,
-            cache: cache_health,
-            rpc: rpc_health,
-        },
-    };
-
-    Json(health_status)
 }
 
 /// PUT /api/anchors/:id/metrics - Update anchor metrics
@@ -171,14 +51,14 @@ pub async fn update_anchor_metrics(
 
     let anchor = app_state
         .db
-        .update_anchor_metrics(
-            id,
-            req.total_transactions,
-            req.successful_transactions,
-            req.failed_transactions,
-            req.avg_settlement_time_ms,
-            req.volume_usd,
-        )
+        .update_anchor_metrics(crate::database::AnchorMetricsUpdate {
+            anchor_id: id,
+            total_transactions: req.total_transactions,
+            successful_transactions: req.successful_transactions,
+            failed_transactions: req.failed_transactions,
+            avg_settlement_time_ms: req.avg_settlement_time_ms,
+            volume_usd: req.volume_usd,
+        })
         .await?;
 
     // Broadcast the anchor update to WebSocket clients
@@ -233,6 +113,36 @@ pub async fn create_anchor_asset(
     Ok(Json(asset))
 }
 
+/// GET /api/anchors/:id - Get anchor by ID
+pub async fn get_anchor(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.get_anchor_by_id(id).await?
+        .ok_or_else(|| ApiError::NotFound(format!("Anchor {} not found", id)))?;
+    Ok(Json(anchor))
+}
+
+/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account
+pub async fn get_anchor_by_account(
+    State(app_state): State<AppState>,
+    Path(stellar_account): Path<String>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.get_anchor_by_stellar_account(&stellar_account).await?
+        .ok_or_else(|| ApiError::NotFound(format!("Anchor for account {} not found", stellar_account)))?;
+    Ok(Json(anchor))
+}
+
+/// GET /api/analytics/muxed - Get muxed account analytics
+pub async fn get_muxed_analytics(
+    State(app_state): State<AppState>,
+    Query(params): Query<crate::models::ListCorridorsQuery>,
+) -> ApiResult<Json<crate::models::MuxedAccountAnalytics>> {
+    let limit = params.limit.unwrap_or(10);
+    let analytics = app_state.db.get_muxed_analytics(limit).await?;
+    Ok(Json(analytics))
+}
+
 
 
 /// GET /api/admin/pool-metrics - Return current database pool metrics
@@ -276,51 +186,33 @@ pub async fn list_corridors(
     Ok(Json(ListCorridorsResponse { corridors, total }))
 }
 
+/// POST /api/anchors - Create a new anchor
+pub async fn create_anchor(
+    State(app_state): State<AppState>,
+    Json(req): Json<CreateAnchorRequest>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.create_anchor(req).await?;
+    Ok(Json(anchor))
+}
+
 /// POST /api/corridors - Create a new corridor
 pub async fn create_corridor(
     State(app_state): State<AppState>,
     Json(req): Json<CreateCorridorRequest>,
 ) -> ApiResult<Json<Corridor>> {
-    if req.source_asset_code.is_empty() || req.dest_asset_code.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Asset codes cannot be empty".to_string(),
-        ));
-    }
-    if req.source_asset_issuer.is_empty() || req.dest_asset_issuer.is_empty() {
-        return Err(ApiError::BadRequest(
-            "Asset issuers cannot be empty".to_string(),
-        ));
-    }
     let corridor = app_state.db.create_corridor(req).await?;
-
     // Broadcast the new corridor to WebSocket clients
     broadcast_corridor_update(&app_state.ws_state, &corridor);
-
     Ok(Json(corridor))
 }
 
-/// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
-#[derive(Debug, Deserialize)]
-pub struct UpdateCorridorMetricsFromTxns {
-    pub transactions: Vec<CorridorTransactionDto>,
-}
-    let health_status = HealthStatus {
-        status: overall_status.to_string(),
-        timestamp: Utc::now().to_rfc3339(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_seconds: start_time.elapsed().as_secs(),
-        checks: HealthChecks {
-            database: db_health,
-            cache: cache_health,
-            rpc: rpc_health,
-        },
-    })
-}
-
-/// Database pool metrics endpoint
-pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
-    let metrics = state.db.pool_metrics();
-    Json(metrics)
+/// PUT /api/corridors/:id/metrics-from-transactions - Placeholder for updating metrics from batch transactions
+pub async fn update_corridor_metrics_from_transactions(
+    State(_app_state): State<AppState>,
+    Path(_id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Implementation for processing transaction batch logic goes here
+    Ok(Json(serde_json::json!({ "status": "not_implemented" })))
 }
 
 pub async fn ingestion_status(
