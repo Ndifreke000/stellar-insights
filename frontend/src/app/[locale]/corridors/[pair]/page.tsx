@@ -46,12 +46,10 @@ export default function CorridorDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // Initialize WebSocket connection for real-time corridor updates
   const {
     isConnected,
     isConnecting,
     connectionAttempts,
-    corridorUpdates,
     healthAlerts,
     recentPayments,
     reconnect,
@@ -62,7 +60,6 @@ export default function CorridorDetailPage() {
       logger.debug("Received real-time corridor update:", update as unknown as Record<string, unknown>);
       setLastUpdate(new Date());
 
-      // Update the corridor data with real-time information
       setData((prevData) => {
         if (!prevData || update.corridor_key !== corridorPair) return prevData;
 
@@ -82,11 +79,9 @@ export default function CorridorDetailPage() {
     },
     onHealthAlert: (alert) => {
       logger.debug("Health alert for corridor:", alert as unknown as Record<string, unknown>);
-      // You could show a toast notification here
     },
     onNewPayment: (payment) => {
       logger.debug("New payment in corridor:", payment as unknown as Record<string, unknown>);
-      // Update payment-related metrics
     },
   });
 
@@ -94,13 +89,11 @@ export default function CorridorDetailPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        // Try to fetch from API first
         try {
           const result = await getCorridorDetail(corridorPair);
           setData(result);
         } catch {
           logger.debug("API not available, using mock data");
-          // Fallback to mock data
           const mockData = generateMockCorridorData(corridorPair);
           setData(mockData);
         }
@@ -186,7 +179,6 @@ export default function CorridorDetailPage() {
   return (
     <MainLayout>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-        {/* Breadcrumbs */}
         <nav className="flex items-center gap-2 text-sm text-muted-foreground dark:text-muted-foreground mb-6 overflow-x-auto whitespace-nowrap pb-2">
           <Link
             href="/dashboard"
@@ -208,7 +200,6 @@ export default function CorridorDetailPage() {
           </span>
         </nav>
 
-        {/* Page Header */}
         <div className="mb-8">
           <button
             onClick={() => router.push("/corridors")}
@@ -248,7 +239,6 @@ export default function CorridorDetailPage() {
           </div>
         </div>
 
-        {/* Real-time Alerts */}
         {healthAlerts.length > 0 && (
           <div className="mb-8">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -281,7 +271,6 @@ export default function CorridorDetailPage() {
           </div>
         )}
 
-        {/* Recent Payments */}
         {recentPayments.length > 0 && (
           <div className="mb-8">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -313,9 +302,7 @@ export default function CorridorDetailPage() {
           </div>
         )}
 
-        {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Success Rate */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
@@ -331,7 +318,6 @@ export default function CorridorDetailPage() {
             </p>
           </div>
 
-          {/* Average Latency */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
@@ -349,7 +335,6 @@ export default function CorridorDetailPage() {
             </p>
           </div>
 
-          {/* Liquidity Depth */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
@@ -368,7 +353,6 @@ export default function CorridorDetailPage() {
             </div>
           </div>
 
-          {/* 24h Volume */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 hover:border-blue-500 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
@@ -385,35 +369,24 @@ export default function CorridorDetailPage() {
           </div>
         </div>
 
-        {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Success Rate Chart */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm">
             <SuccessRateChart data={data.historical_success_rate} />
           </div>
-
-          {/* Volume Chart */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm">
             <VolumeTrendChart data={data.historical_volume} />
           </div>
-
-          {/* Slippage Chart */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm">
             <SlippageTrendChart data={data.historical_slippage} />
           </div>
-
-          {/* Latency Distribution */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm">
             <LatencyDistributionChart data={data.latency_distribution} />
           </div>
-
-          {/* Liquidity Trends */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm lg:col-span-2">
             <LiquidityTrendChart data={data.liquidity_trends} />
           </div>
         </div>
 
-        {/* Related Corridors */}
         {data.related_corridors && data.related_corridors.length > 0 && (
           <div className="mt-8">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
@@ -464,7 +437,6 @@ export default function CorridorDetailPage() {
           </div>
         )}
 
-        {/* Footer Info */}
         <div className="mt-8 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-400 text-sm">
           <p>Last updated: {lastUpdate.toLocaleString()}</p>
           <p className="mt-2 text-xs">

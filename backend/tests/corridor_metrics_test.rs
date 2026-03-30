@@ -4,10 +4,8 @@
 //! These extend the inline `#[cfg(test)]` suite inside `services/analytics.rs`
 //! with additional edge cases and boundary conditions.
 
-use stellar_insights_backend::services::analytics::{
-    compute_corridor_metrics, compute_liquidity_depth, CorridorTransaction, OrderBookEntry,
+    compute_corridor_metrics, compute_liquidity_depth, CorridorPayment, OrderBookEntry,
     OrderBookSnapshot,
-};
 
 // ── compute_liquidity_depth ───────────────────────────────────────────────────
 
@@ -134,16 +132,16 @@ fn test_liquidity_depth_zero_slippage_excludes_all() {
 
 // ── compute_corridor_metrics – settlement latency edge cases ──────────────────
 
-fn successful_txn(latency_ms: Option<i32>, amount: f64) -> CorridorTransaction {
-    CorridorTransaction {
+fn successful_txn(latency_ms: Option<i32>, amount: f64) -> CorridorPayment {
+    CorridorPayment {
         successful: true,
         settlement_latency_ms: latency_ms,
         amount_usd: amount,
     }
 }
 
-fn failed_txn() -> CorridorTransaction {
-    CorridorTransaction {
+fn failed_txn() -> CorridorPayment {
+    CorridorPayment {
         successful: false,
         settlement_latency_ms: None,
         amount_usd: 50.0,
@@ -248,10 +246,7 @@ fn test_metrics_success_rate_is_percentage() {
     assert!((m.success_rate - expected_rate).abs() < 0.001);
 }
 
-#[test]
-fn test_metrics_large_dataset_100_transactions() {
-    let mut txns: Vec<CorridorTransaction> =
-        (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
+    let mut txns: Vec<CorridorPayment> = (0..80).map(|_| successful_txn(Some(500), 10.0)).collect();
     txns.extend((0..20).map(|_| failed_txn()));
 
     let m = compute_corridor_metrics(&txns, None, 1.0);

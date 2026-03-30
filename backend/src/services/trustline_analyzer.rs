@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::models::{TrustlineMetrics, TrustlineSnapshot, TrustlineStat};
-use crate::rpc::StellarRpcClient;
+use crate::rpc::{StellarRpcClient, circuit_breaker::rpc_circuit_breaker};
 
 pub struct TrustlineAnalyzer {
     pool: Pool<Sqlite>,
@@ -24,8 +24,17 @@ impl TrustlineAnalyzer {
     /// Fetch top assets from Horizon and upsert trustline stats
     pub async fn sync_assets(&self) -> Result<u64> {
         info!("Starting trustline stats sync from Horizon...");
+        let circuit_breaker = rpc_circuit_breaker();
         // Fetch top 200 assets (by rating)
-        let assets = self.rpc_client.fetch_assets(200, true).await?;
+        // Wrapped in circuit breaker for resilience
+        let assets = circuit_breaker.call(|| async {
+            self.rpc_client.fetch_assets(200, true).await
+                .map_err(|e| anyhow::anyhow!(e.to_string()))
+        }).await
+        .map_err(|e| match e {
+            failsafe::Error::Rejected => anyhow::anyhow!("Circuit breaker open"),
+            failsafe::Error::Inner(err) => err,
+        })?;
 
         let mut synced_count = 0;
         let mut tx = self.pool.begin().await?;

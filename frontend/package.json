@@ -17,6 +17,7 @@
     "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
   },
   "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@prisma/client": "^6.19.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@stellar/stellar-sdk": "^14.5.0",
@@ -39,7 +40,6 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@axe-core/cli": "^4.11.1",
     "@axe-core/react": "^4.10.2",
     "@next/bundle-analyzer": "^16.1.6",
     "@tailwindcss/postcss": "^4",

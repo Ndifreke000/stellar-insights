@@ -26,7 +26,8 @@ fn setup() -> (Env, GovernanceContractClient<'static>, Address) {
 
     let admin = Address::generate(&env);
     // quorum=2, voting_period=1000 seconds
-    client.initialize(&admin, &2, &1000).unwrap();
+    client.try_initialize(&admin, &2, &1000).unwrap();
+    client.initialize(&admin, &2, &1000);
 
     (env, client, admin)
 }
@@ -38,7 +39,8 @@ fn test_initialization() {
     let client = GovernanceContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &3, &500).unwrap();
+    client.try_initialize(&admin, &3, &500).unwrap();
+    client.initialize(&admin, &3, &500);
 
     let (config_admin, quorum, voting_period, proposal_count) = client.get_config();
     assert_eq!(config_admin, admin);
@@ -249,12 +251,16 @@ fn test_parameter_proposal_set_paused_execution() {
     let analytics_client = AnalyticsContractClient::new(&env, &analytics_id);
 
     let admin = Address::generate(&env);
-    analytics_client.initialize(&admin).unwrap();
-    gov_client.initialize(&admin, &2, &1000).unwrap();
+    analytics_client.try_initialize(&admin).unwrap();
+    gov_client.try_initialize(&admin, &2, &1000).unwrap();
 
     analytics_client
-        .set_governance(&admin, &governance_id)
+        .try_set_governance(&admin, &governance_id)
         .unwrap();
+    analytics_client.initialize(&admin);
+    gov_client.initialize(&admin, &2, &1000);
+
+    analytics_client.set_governance(&admin, &governance_id);
 
     assert!(!analytics_client.is_paused());
 

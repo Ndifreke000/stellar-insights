@@ -100,14 +100,10 @@ impl JobScheduler {
 
         // Corridor refresh job
         let config = JobConfig::from_env("corridor-refresh", 300);
-        let db_clone = Arc::clone(&db);
         let cache_clone = Arc::clone(&cache);
-        let rpc_clone = Arc::clone(&rpc);
         let ingestion_clone = Arc::clone(&ingestion);
         scheduler.add_job(config, move || {
-            let db = Arc::clone(&db_clone);
             let cache = Arc::clone(&cache_clone);
-            let rpc = Arc::clone(&rpc_clone);
             let ingestion = Arc::clone(&ingestion_clone);
             Box::pin(async move {
                 ingestion.sync_all_metrics().await?;

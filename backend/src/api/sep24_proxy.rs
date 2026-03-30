@@ -331,6 +331,7 @@ pub async fn get_transactions(
         write!(url, "kind={}&", urlencoding::encode(k)).unwrap();
     }
     if let Some(l) = q.limit {
+        write!(url, "limit={}&", l).unwrap();
         write!(url, "limit={l}&").unwrap();
     }
     if let Some(c) = &q.cursor {

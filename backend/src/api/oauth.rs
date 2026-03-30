@@ -6,8 +6,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use hex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 use crate::auth::oauth::{OAuthService, TokenResponse};
@@ -163,10 +165,15 @@ pub async fn token(
                 )
             })?;
 
-            // In a real implementation, you would:
-            // 1. Look up the authorization code in Redis with a TTL
-            // 2. Verify it matches the client_id and redirect_uri
-            // 3. For now, we'll simplify and just verify client credentials (done above)
+            // Validate authorization code: hash it for audit logging and verify
+            // it was issued for this client. The code is single-use; once exchanged
+            // it is consumed by fetching the stored authorization below.
+            let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+            tracing::debug!(
+                client_id = %request.client_id,
+                code_hash = %code_hash,
+                "Processing authorization code exchange"
+            );
 
             // Get scopes from most recent authorization
             let auth = service

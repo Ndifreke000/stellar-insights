@@ -1,6 +1,6 @@
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 use bolero::TypeGenerator;
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
 #[derive(TypeGenerator, Debug)]
 struct FuzzInput {
@@ -21,24 +21,22 @@ struct TwoEpochInput {
 // -----------------------------------------------------------------------
 #[test]
 fn fuzz_submit_snapshot() {
-    bolero::check!()
-        .with_type::<FuzzInput>()
-        .for_each(|input| {
-            let env = Env::default();
-            let contract_id = env.register_contract(None, AnalyticsContract);
-            let client = AnalyticsContractClient::new(&env, &contract_id);
-            
-            let admin = Address::generate(&env);
-            env.mock_all_auths();
-            client.initialize(&admin);
-            
-            let hash = BytesN::from_array(&env, &input.hash);
-            
-            // try_submit_snapshot returns Result – domain errors (epoch=0,
-            // monotonicity violated) are acceptable; the contract must
-            // never crash in an uncontrolled/unexpected way.
-            let _ = client.try_submit_snapshot(&input.epoch, &hash, &admin);
-        });
+    bolero::check!().with_type::<FuzzInput>().for_each(|input| {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, AnalyticsContract);
+        let client = AnalyticsContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        let hash = BytesN::from_array(&env, &input.hash);
+
+        // try_submit_snapshot returns Result – domain errors (epoch=0,
+        // monotonicity violated) are acceptable; the contract must
+        // never crash in an uncontrolled/unexpected way.
+        let _ = client.try_submit_snapshot(&input.epoch, &hash, &admin);
+    });
 }
 
 // -----------------------------------------------------------------------
@@ -46,24 +44,22 @@ fn fuzz_submit_snapshot() {
 // -----------------------------------------------------------------------
 #[test]
 fn fuzz_get_snapshot() {
-    bolero::check!()
-        .with_type::<u64>()
-        .for_each(|epoch| {
-            let env = Env::default();
-            let contract_id = env.register_contract(None, AnalyticsContract);
-            let client = AnalyticsContractClient::new(&env, &contract_id);
+    bolero::check!().with_type::<u64>().for_each(|epoch| {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, AnalyticsContract);
+        let client = AnalyticsContractClient::new(&env, &contract_id);
 
-            let admin = Address::generate(&env);
-            env.mock_all_auths();
-            client.initialize(&admin);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
 
-            // Seeding with one known snapshot so storage is non-empty
-            let hash = BytesN::from_array(&env, &[42u8; 32]);
-            let _ = client.try_submit_snapshot(&1u64, &hash, &admin);
+        // Seeding with one known snapshot so storage is non-empty
+        let hash = BytesN::from_array(&env, &[42u8; 32]);
+        let _ = client.try_submit_snapshot(&1u64, &hash, &admin);
 
-            // Any arbitrary epoch lookup should return Some or None, never panic
-            let _ = client.get_snapshot(epoch);
-        });
+        // Any arbitrary epoch lookup should return Some or None, never panic
+        let _ = client.get_snapshot(epoch);
+    });
 }
 
 // -----------------------------------------------------------------------
@@ -88,10 +84,7 @@ fn fuzz_sequential_submits() {
                 let hash = BytesN::from_array(&env, hash_bytes);
                 // Every call with a strictly greater epoch MUST succeed
                 let result = client.try_submit_snapshot(epoch, &hash, &admin);
-                assert!(
-                    result.is_ok(),
-                    "Expected Ok for epoch {epoch} but got Err"
-                );
+                assert!(result.is_ok(), "Expected Ok for epoch {epoch} but got Err");
             }
 
             // Monotonicity invariant: latest epoch equals the last submitted

@@ -34,7 +34,7 @@ export function WebSocketStatus({
   const getStatusIcon = () => {
     if (isConnected) {
       return (
-        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="6" />
         </svg>
       );
@@ -42,7 +42,7 @@ export function WebSocketStatus({
     
     if (isConnecting) {
       return (
-        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
           <circle
             className="opacity-25"
             cx="12"
@@ -61,7 +61,7 @@ export function WebSocketStatus({
     }
 
     return (
-      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="10" cy="10" r="6" />
       </svg>
     );
@@ -78,6 +78,7 @@ export function WebSocketStatus({
         <button
           onClick={onReconnect}
           className="text-xs text-blue-600 hover:text-blue-800 underline"
+          aria-label={t("reconnect")}
         >
           {t("reconnect")}
         </button>

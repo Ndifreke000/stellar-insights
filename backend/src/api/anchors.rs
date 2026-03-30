@@ -7,20 +7,26 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use anyhow::Context;
+// use anyhow::Context;
 
 use crate::broadcast::broadcast_anchor_update;
-use crate::cache::CacheManager;
-use crate::error::{ApiError, ApiResult};
-use crate::models::corridor::Corridor;
-use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
-use crate::rpc::error::{with_retry, RetryConfig, RpcError};
-use crate::state::AppState;
 use tracing::{error, info, warn};
+
+use crate::cache::helpers::cached_query;
+use crate::cache::{keys, CacheManager, CacheConfig};
+use crate::database::Database;
+use crate::rpc::{
+    circuit_breaker::rpc_circuit_breaker,
+    error::RpcError,
+    StellarRpcClient,
+};
+use crate::services::price_feed::PriceFeedClient;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnchorMetrics {
@@ -282,17 +288,7 @@ pub async fn create_anchor_asset(
     Ok(Json(asset))
 }
 
-use crate::cache::helpers::cached_query;
-use crate::cache::keys;
-use crate::database::Database;
-use crate::rpc::{
-    circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
-    error::with_retry as other_with_retry,
-    StellarRpcClient,
-};
-use crate::services::price_feed::PriceFeedClient;
-use std::future::Future;
-use std::time::Duration;
+
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -311,56 +307,28 @@ const fn default_limit() -> i64 {
     50
 }
 
-pub(crate) fn rpc_circuit_breaker() -> Arc<CircuitBreaker> {
-    static CIRCUIT_BREAKER: OnceLock<Arc<CircuitBreaker>> = OnceLock::new();
-    CIRCUIT_BREAKER
-        .get_or_init(|| {
-            Arc::new(CircuitBreaker::new(
-                CircuitBreakerConfig {
-                    failure_threshold: 5,
-                    success_threshold: 2,
-                    timeout_duration: Duration::from_secs(30),
-                    half_open_max_calls: 3,
-                },
-                "horizon",
-            ))
-        })
-        .clone()
-}
-
-#[cfg(test)]
-pub(crate) fn rpc_circuit_breaker_instance() -> Arc<CircuitBreaker> {
-    rpc_circuit_breaker()
-}
-
+// Shared circuit breaker is now managed in crate::rpc::circuit_breaker
 pub async fn get_anchor_metrics_with_rpc(
     anchor_id: Uuid,
     rpc_client: Arc<StellarRpcClient>,
 ) -> anyhow::Result<AnchorMetrics> {
     let circuit_breaker = rpc_circuit_breaker();
 
-    // Use with_retry with circuit_breaker for resilience
-    let result = with_retry(
-        || async {
+    // Wrap call in circuit breaker as requested in Issue #671
+    let metrics = circuit_breaker
+        .call(|| async {
             rpc_client
                 .fetch_anchor_metrics(anchor_id)
                 .await
                 .map_err(|e| RpcError::categorize(&e.to_string()))
-        },
-        RetryConfig::default(),
-        circuit_breaker,
-    )
-    .await;
-
-    let metrics = match result {
-        Ok(metrics) => metrics,
-        Err(RpcError::CircuitBreakerOpen) => {
-            return Err(anyhow::anyhow!(
-                "Circuit breaker open - RPC service unavailable"
-            ));
-        }
-        Err(err) => return Err(anyhow::anyhow!(err.to_string())),
-    };
+        })
+        .await
+        .map_err(|e| match e {
+            failsafe::Error::Rejected => {
+                anyhow::anyhow!("Circuit breaker open - RPC service unavailable")
+            }
+            failsafe::Error::Inner(err) => anyhow::anyhow!(err.to_string()),
+        })?;
 
     Ok(metrics)
 }
@@ -488,27 +456,33 @@ pub async fn get_anchors(
 
             // Process anchors with pre-fetched data
             for anchor in anchors {
-                let anchor_id =
-                    uuid::Uuid::parse_str(&anchor.id).unwrap_or_else(|_| uuid::Uuid::nil());
-
                 // Get pre-fetched assets (no additional query needed)
                 let assets = asset_map.get(&anchor.id).cloned().unwrap_or_default();
 
                 // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
-                let payments = match rpc_client
-                    .fetch_all_account_payments(&anchor.stellar_account, Some(500))
+                // Wrapped in circuit breaker as requested in Issue #671
+                let payments = circuit_breaker
+                    .call(|| async {
+                        rpc_client
+                            .fetch_all_account_payments(&anchor.stellar_account, Some(500))
+                            .await
+                            .map_err(|e| anyhow::anyhow!(e.to_string()))
+                    })
                     .await
-                {
-                    Ok(p) => p,
-                    Err(e) => {
+                    .map_err(|e| match e {
+                        failsafe::Error::Rejected => {
+                            anyhow::anyhow!("Circuit breaker open - RPC service unavailable")
+                        }
+                        failsafe::Error::Inner(err) => err,
+                    })
+                    .unwrap_or_else(|e| {
                         tracing::warn!(
                             "Failed to fetch payments for anchor {}: {}",
                             anchor.stellar_account,
                             e
                         );
                         vec![]
-                    }
-                };
+                    });
 
                 // Calculate metrics from RPC payment data
                 let (total_transactions, successful_transactions, failed_transactions) =
@@ -581,6 +555,54 @@ pub async fn get_anchors(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::StellarRpcClient;
+    use crate::cache::CacheManager;
+    use crate::cache::CacheConfig;
+    
+    #[tokio::test]
+    async fn test_circuit_breaker_opens_on_failures() {
+        let rpc_client = Arc::new(StellarRpcClient::new("http://invalid".to_string()));
+        let anchor_id = Uuid::new_v4();
+        
+        // The circuit breaker is shared, but for testing we want to ensure it opens.
+        // failsafe::Config::new().failure_threshold(5)
+        
+        for _ in 0..5 {
+            let _ = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
+        }
+        
+        let result = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Circuit breaker open"));
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker_fallback() {
+        let rpc_client = Arc::new(StellarRpcClient::new("http://invalid".to_string()));
+        let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+        let anchor_id = Uuid::new_v4();
+        
+        // Pre-fill cache
+        let metrics = AnchorMetrics {
+            anchor_id,
+            total_payments: 100,
+            successful_payments: 95,
+            failed_payments: 5,
+            total_volume: 1000.0,
+        };
+        cache.set(&format!("anchor_metrics:{}", anchor_id), &metrics, Duration::from_secs(60)).await.unwrap();
+        
+        // Trigger circuit breaker
+        for _ in 0..6 {
+            let _ = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
+        }
+        
+        // Verify fallback works
+        let result = get_anchor_metrics_with_fallback(anchor_id, rpc_client, cache).await;
+        assert!(result.is_ok());
+        let returned_metrics = result.unwrap();
+        assert_eq!(returned_metrics.total_payments, 100);
+    }
 
     #[test]
     fn test_cache_key_generation() {

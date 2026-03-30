@@ -89,17 +89,13 @@ function sendToErrorTracking(error: Error, metadata?: LogMetadata): void {
     userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
   };
   
-  // TODO: Send to actual error tracking service
-  // This prevents errors from being lost in production
-  if (typeof window !== 'undefined') {
-    // Store in sessionStorage as fallback
-    try {
-      const errors = JSON.parse(sessionStorage.getItem('app_errors') || '[]');
-      errors.push(errorData);
-      // Keep only last 10 errors
-      sessionStorage.setItem('app_errors', JSON.stringify(errors.slice(-10)));
-    } catch {
-      // Ignore storage errors
+  const endpoint = process.env.NEXT_PUBLIC_ERROR_TRACKING_URL;
+  if (typeof window !== 'undefined' && endpoint) {
+    const payload = JSON.stringify(errorData);
+    // sendBeacon is fire-and-forget and works during page unload
+    if (!navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }))) {
+      // Fallback to fetch if sendBeacon fails (e.g. payload too large)
+      fetch(endpoint, { method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => {});
     }
   }
 }
@@ -120,9 +116,9 @@ export const logger = {
     const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
     
     if (redactedMetadata) {
-      console.log(formatMessage('DEBUG', message), redactedMetadata);
+      console.debug(formatMessage('DEBUG', message), redactedMetadata);
     } else {
-      console.log(formatMessage('DEBUG', message));
+      console.debug(formatMessage('DEBUG', message));
     }
   },
 
@@ -198,7 +194,7 @@ export const logger = {
     }
     
     const redactedData = data ? redactSensitiveData(data) : undefined;
-    console.log(formatMessage('WS', `WebSocket ${event}`), redactedData);
+    console.debug(formatMessage('WS', `WebSocket ${event}`), redactedData);
   },
 
   /**
@@ -210,7 +206,7 @@ export const logger = {
     }
     
     const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
-    console.log(formatMessage('API', `${method} ${url}`), redactedMetadata);
+    console.debug(formatMessage('API', `${method} ${url}`), redactedMetadata);
   },
 
   /**
@@ -222,7 +218,7 @@ export const logger = {
     }
     
     const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
-    console.log(
+    console.debug(
       formatMessage('PERF', `${label}: ${duration.toFixed(2)}ms`),
       redactedMetadata
     );

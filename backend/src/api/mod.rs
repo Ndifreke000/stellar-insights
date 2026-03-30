@@ -1,6 +1,7 @@
 pub mod account_merges;
 pub mod achievements;
 pub mod alerts;
+pub mod analytics_dashboard;
 pub mod anchors;
 pub mod api_keys;
 pub mod asset_verification;
@@ -17,7 +18,7 @@ pub mod fee_bump;
 pub mod governance;
 pub mod liquidity_pools;
 pub mod metrics;
-// pub mod metrics_cached;  // Missing file
+pub mod metrics_cached;
 pub mod ml;
 pub mod network;
 pub mod oauth;

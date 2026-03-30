@@ -1,21 +1,19 @@
-use stellar_insights_backend::services::analytics::{
-    compute_corridor_metrics, CorridorTransaction,
-};
+use stellar_insights_backend::services::analytics::{compute_corridor_metrics, CorridorPayment};
 
 #[test]
 fn test_corridor_metrics_basic() {
     let txns = vec![
-        CorridorTransaction {
+        CorridorPayment {
             successful: true,
             settlement_latency_ms: Some(1000),
             amount_usd: 100.0,
         },
-        CorridorTransaction {
+        CorridorPayment {
             successful: true,
             settlement_latency_ms: Some(3000),
             amount_usd: 200.0,
         },
-        CorridorTransaction {
+        CorridorPayment {
             successful: false,
             settlement_latency_ms: None,
             amount_usd: 50.0,
@@ -44,12 +42,12 @@ fn test_corridor_metrics_empty() {
 #[test]
 fn test_corridor_metrics_all_success_no_latency() {
     let txns = vec![
-        CorridorTransaction {
+        CorridorPayment {
             successful: true,
             settlement_latency_ms: None,
             amount_usd: 10.0,
         },
-        CorridorTransaction {
+        CorridorPayment {
             successful: true,
             settlement_latency_ms: None,
             amount_usd: 20.0,

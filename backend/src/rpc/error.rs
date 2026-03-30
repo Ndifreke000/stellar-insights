@@ -84,7 +84,7 @@ impl RpcError {
     }
 }
 
-use crate::rpc::circuit_breaker::CircuitBreaker;
+use crate::rpc::circuit_breaker::SharedCircuitBreaker;
 
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -106,7 +106,7 @@ impl Default for RetryConfig {
 pub async fn with_retry<F, Fut, T>(
     operation: F,
     config: RetryConfig,
-    circuit_breaker: Arc<CircuitBreaker>,
+    circuit_breaker: SharedCircuitBreaker,
 ) -> Result<T, RpcError>
 where
     F: Fn() -> Fut,
@@ -117,11 +117,16 @@ where
     loop {
         attempt += 1;
 
-        let result = circuit_breaker.call(&operation).await;
+        // Failsafe-wrapped call. Failsafe treats Error::Inner as a failure for the circuit.
+        // We'll map RpcError into failsafe's error tracking.
+        let result = circuit_breaker.call(|| async {
+            operation().await
+        }).await;
 
         match result {
             Ok(val) => return Ok(val),
-            Err(e) => {
+            Err(failsafe::Error::Rejected) => return Err(RpcError::CircuitBreakerOpen),
+            Err(failsafe::Error::Inner(e)) => {
                 if !e.is_transient() || attempt >= config.max_attempts {
                     return Err(e);
                 }

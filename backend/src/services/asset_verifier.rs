@@ -564,31 +564,32 @@ impl AssetVerifier {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<VerifiedAsset>> {
-        let mut sql = String::from("SELECT * FROM verified_assets WHERE 1=1");
+        use sqlx::QueryBuilder;
 
-        let status_str = status.as_ref().map(|s| s.as_str().to_owned());
+        let mut query_builder = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
 
-        if status_str.is_some() {
-            sql.push_str(" AND verification_status = ?");
+        if let Some(status) = status {
+            let status_str = status.as_str().to_string();
+            query_builder.push(" AND verification_status = ");
+            query_builder.push_bind(status_str);
         }
-        if min_reputation.is_some() {
-            sql.push_str(" AND reputation_score >= ?");
-        }
 
-        sql.push_str(" ORDER BY reputation_score DESC, updated_at DESC LIMIT ? OFFSET ?");
-
-        let mut query = sqlx::query_as::<_, VerifiedAsset>(&sql);
-
-        if let Some(ref s) = status_str {
-            query = query.bind(s.clone());
-        }
         if let Some(min_rep) = min_reputation {
-            query = query.bind(min_rep);
+            query_builder.push(" AND reputation_score >= ");
+            query_builder.push_bind(min_rep);
         }
 
-        query = query.bind(limit).bind(offset);
+        query_builder.push(" ORDER BY reputation_score DESC, updated_at DESC");
+        query_builder.push(" LIMIT ");
+        query_builder.push_bind(limit);
+        query_builder.push(" OFFSET ");
+        query_builder.push_bind(offset);
 
-        let assets = query.fetch_all(&self.pool).await?;
+        let assets = query_builder
+            .build_query_as::<VerifiedAsset>()
+            .fetch_all(&self.pool)
+            .await?;
+
         Ok(assets)
     }
 }

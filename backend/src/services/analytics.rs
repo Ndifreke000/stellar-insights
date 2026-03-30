@@ -2,7 +2,7 @@ use crate::models::corridor::{compute_median, CorridorMetrics, PaymentRecord};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct CorridorTransaction {
+pub struct CorridorPayment {
     pub successful: bool,
     pub settlement_latency_ms: Option<i32>,
     pub amount_usd: f64,
@@ -60,7 +60,7 @@ pub fn compute_liquidity_depth(order_book: &OrderBookSnapshot, max_slippage_perc
 /// Computes corridor metrics from transactions, calculating average and median settlement latency with optional liquidity depth.
 #[must_use]
 pub fn compute_corridor_metrics(
-    txns: &[CorridorTransaction],
+    txns: &[CorridorPayment],
     order_book: Option<&OrderBookSnapshot>, // Optional snapshot for liquidity depth
     slippage_percent: f64,                  // e.g., 1.0 = 1% slippage
 ) -> CorridorMetrics {
@@ -68,10 +68,10 @@ pub fn compute_corridor_metrics(
         return CorridorMetrics {
             id: uuid::Uuid::nil().to_string(),
             corridor_key: String::new(),
-            reserve_asset_a_code: String::new(),
-            reserve_asset_a_issuer: String::new(),
-            reserve_asset_b_code: String::new(),
-            reserve_asset_b_issuer: String::new(),
+            source_asset_code: String::new(),
+            source_asset_issuer: String::new(),
+            destination_asset_code: String::new(),
+            destination_asset_issuer: String::new(),
             date: chrono::Utc::now(),
             success_rate: 0.0,
             avg_settlement_latency_ms: None,
@@ -123,10 +123,10 @@ pub fn compute_corridor_metrics(
     CorridorMetrics {
         id: uuid::Uuid::nil().to_string(),
         corridor_key: String::new(),
-        reserve_asset_a_code: String::new(),
-        reserve_asset_a_issuer: String::new(),
-        reserve_asset_b_code: String::new(),
-        reserve_asset_b_issuer: String::new(),
+        source_asset_code: String::new(),
+        source_asset_issuer: String::new(),
+        destination_asset_code: String::new(),
+        destination_asset_issuer: String::new(),
         date: chrono::Utc::now(),
         total_transactions,
         successful_transactions,
@@ -201,10 +201,10 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
         results.push(CorridorMetrics {
             id: uuid::Uuid::new_v4().to_string(), // Generate new ID for this snapshot
             corridor_key: key,
-            reserve_asset_a_code: corridor.source_asset_code,
-            reserve_asset_a_issuer: corridor.source_asset_issuer,
-            reserve_asset_b_code: corridor.destination_asset_code,
-            reserve_asset_b_issuer: corridor.destination_asset_issuer,
+            source_asset_code: corridor.source_asset_code,
+            source_asset_issuer: corridor.source_asset_issuer,
+            destination_asset_code: corridor.destination_asset_code,
+            destination_asset_issuer: corridor.destination_asset_issuer,
             date: chrono::Utc::now(),
             total_transactions,
             successful_transactions,
@@ -303,7 +303,7 @@ mod tests {
         // Find USDC -> EURC metrics
         let usdc_metrics = metrics
             .iter()
-            .find(|m| m.reserve_asset_a_code == "EURC" || m.reserve_asset_a_code == "USDC") // Normalized
+            .find(|m| m.source_asset_code == "EURC" || m.source_asset_code == "USDC") // Normalized
             .expect("Should find USDC/EURC metrics");
 
         assert_eq!(usdc_metrics.total_transactions, 2);
@@ -336,17 +336,17 @@ mod tests {
     #[test]
     fn test_compute_corridor_metrics_basic() {
         let txns = vec![
-            CorridorTransaction {
+            CorridorPayment {
                 successful: true,
                 settlement_latency_ms: Some(1000),
                 amount_usd: 100.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: true,
                 settlement_latency_ms: Some(3000),
                 amount_usd: 200.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 50.0,
@@ -399,12 +399,12 @@ mod tests {
     #[test]
     fn test_compute_corridor_metrics_all_failed() {
         let txns = vec![
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 10.0,
             },
-            CorridorTransaction {
+            CorridorPayment {
                 successful: false,
                 settlement_latency_ms: None,
                 amount_usd: 20.0,

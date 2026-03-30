@@ -1,8 +1,13 @@
 "use client";
 
 import React from "react";
+import dynamic from "next/dynamic";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
-import { Sep24Flow } from "@/components/Sep24Flow";
+
+const Sep24Flow = dynamic(
+  () => import("@/components/Sep24Flow").then((m) => ({ default: m.Sep24Flow })),
+  { ssr: false }
+);
 
 export default function DepositWithdrawPage() {
   return (

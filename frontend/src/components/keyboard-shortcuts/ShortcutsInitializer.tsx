@@ -44,7 +44,7 @@ export function ShortcutsInitializer() {
         if (searchInput) {
           searchInput.focus();
         } else {
-          console.log('Search functionality not yet implemented');
+          // Search functionality not yet implemented
         }
       },
       toggleSidebar: () => {

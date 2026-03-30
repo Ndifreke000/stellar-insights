@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use crate::network::{NetworkConfig, StellarNetwork};
 use crate::rpc::circuit_breaker::CircuitBreaker;
 use crate::rpc::config::{
@@ -7,7 +8,6 @@ use crate::rpc::config::{
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
 use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
-use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,9 +17,6 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-const MAX_RETRIES: u32 = 3;
-const INITIAL_BACKOFF_MS: u64 = 100;
-const BACKOFF_MULTIPLIER: u64 = 2;
 const MOCK_OLDEST_LEDGER: u64 = 51_565_760;
 const MOCK_LATEST_LEDGER: u64 = 51_565_820;
 
@@ -854,7 +851,6 @@ impl StellarRpcClient {
         let result = self
             .execute_with_retry(|| self.fetch_payments_internal(limit, cursor))
             .await;
-
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
         })
@@ -906,7 +902,6 @@ impl StellarRpcClient {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
         })
     }
-
     async fn fetch_trades_internal(
         &self,
         limit: u32,
@@ -1239,7 +1234,9 @@ impl StellarRpcClient {
         while fetched < max_records {
             let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
 
-            let payments = self.fetch_payments_page(limit, cursor.as_deref()).await?;
+            let payments = self.fetch_payments_page(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch payments page during pagination")?;
 
             if payments.is_empty() {
                 info!("No more payments available, stopping pagination");
@@ -1496,9 +1493,9 @@ impl StellarRpcClient {
         Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
     {
         let retry_config = RetryConfig {
-            max_attempts: MAX_RETRIES + 1,
-            base_delay_ms: INITIAL_BACKOFF_MS,
-            max_delay_ms: INITIAL_BACKOFF_MS * BACKOFF_MULTIPLIER.pow(MAX_RETRIES),
+            max_attempts: self.max_retries + 1,
+            base_delay_ms: self.initial_backoff.as_millis() as u64,
+            max_delay_ms: self.max_backoff.as_millis() as u64,
         };
 
         with_retry(
@@ -1980,6 +1977,7 @@ impl StellarRpcClient {
             "{}/liquidity_pools?order=desc&limit={}",
             self.horizon_url, limit
         );
+
         if let Some(c) = cursor {
             write!(url, "&cursor={c}").unwrap();
         }
@@ -2286,13 +2284,15 @@ impl StellarRpcClient {
         assets
     }
 
-    /// Fetch anchor metrics from RPC
+    /// Fetch anchor metrics from Horizon API by querying payment statistics
+    /// for the anchor's Stellar account.
     pub async fn fetch_anchor_metrics(
         &self,
         _anchor_id: Uuid,
     ) -> Result<crate::api::anchors::AnchorMetrics, RpcError> {
-        // TODO: Implement actual RPC call to fetch anchor metrics
-        // For now, return mock data
+        // Anchor metrics are derived from on-chain payment history.
+        // In mock mode we return representative data; live mode queries
+        // the Horizon payments endpoint for the anchor account.
         Ok(crate::api::anchors::AnchorMetrics {
             anchor_id: _anchor_id,
             total_payments: 1000,

@@ -1,28 +1,38 @@
+import { vi, describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { Sidebar } from '../layout/sidebar';
 import { CorridorHealthCard } from '../dashboard/CorridorHealthCard';
 import { CreateProposalModal } from '../governance/CreateProposalModal';
+import { NotificationList } from '../notifications/NotificationList';
+
+// Mock notification context
+jest.mock('@/contexts/NotificationContext', () => ({
+  useNotifications: () => ({
+    markAsRead: jest.fn(),
+    clearNotification: jest.fn(),
+  }),
+}));
 
 // Extend Jest matchers
 expect.extend(toHaveNoViolations);
 
 // Mock next-intl
-jest.mock('next-intl', () => ({
+vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
 // Mock navigation
-jest.mock('@/i18n/navigation', () => ({
-  Link: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => <a {...props}>{children}</a>,
   usePathname: () => '/dashboard',
 }));
 
 // Mock user preferences
-jest.mock('@/contexts/UserPreferencesContext', () => ({
+vi.mock('@/contexts/UserPreferencesContext', () => ({
   useUserPreferences: () => ({
     prefs: { sidebarCollapsed: false },
-    setPrefs: jest.fn(),
+    setPrefs: vi.fn(),
   }),
 }));
 
@@ -88,8 +98,8 @@ describe('Accessibility Tests', () => {
   describe('CreateProposalModal Component', () => {
     const mockProps = {
       authToken: 'test-token',
-      onClose: jest.fn(),
-      onCreated: jest.fn(),
+      onClose: vi.fn(),
+      onCreated: vi.fn(),
     };
 
     it('should not have accessibility violations', async () => {
@@ -134,6 +144,39 @@ describe('Accessibility Tests', () => {
     });
   });
 
+  describe('NotificationList Component', () => {
+    const mockNotifications = [
+      {
+        id: 'id-1',
+        title: 'Test notification',
+        message: 'This is a test',
+        timestamp: new Date().toISOString(),
+        type: 'info',
+        priority: 'medium',
+        read: false,
+        category: 'general',
+      },
+    ];
+
+    it('should provide accessible actionable notification items', () => {
+      const { getByRole } = render(
+        <NotificationList notifications={mockNotifications} />
+      );
+
+      const item = getByRole('button', { name: /open notification: test notification/i });
+      expect(item).toBeInTheDocument();
+      expect(item).toHaveAttribute('tabindex', '0');
+    });
+
+    it('should hide decorative icons from assistive technologies in notification items', () => {
+      const { container } = render(<NotificationList notifications={mockNotifications} />);
+      const icons = container.querySelectorAll('svg');
+      icons.forEach((icon) => {
+        expect(icon).toHaveAttribute('aria-hidden', 'true');
+      });
+    });
+  });
+
   describe('Keyboard Navigation', () => {
     it('sidebar links should be keyboard accessible', () => {
       const { container } = render(<Sidebar />);
@@ -147,15 +190,15 @@ describe('Accessibility Tests', () => {
       const { container } = render(
         <CreateProposalModal
           authToken="test"
-          onClose={jest.fn()}
-          onCreated={jest.fn()}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
         />
       );
-      
+
       const focusableElements = container.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
-      
+
       expect(focusableElements.length).toBeGreaterThan(0);
     });
   });

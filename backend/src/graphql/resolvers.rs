@@ -1,5 +1,5 @@
 use async_graphql::*;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 use std::sync::Arc;
 
 use super::types::*;
@@ -48,64 +48,69 @@ impl QueryRoot {
             .min(100);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let mut data_sql = String::from(
-            "SELECT id, name, stellar_account, home_domain, total_transactions, \
-             successful_transactions, failed_transactions, total_volume_usd, \
-             avg_settlement_time_ms, reliability_score, status, created_at, updated_at \
-             FROM anchors WHERE 1=1",
+        // Build parameterized query for data
+        let mut query_builder = QueryBuilder::new(
+            "SELECT id, name, stellar_account, home_domain, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status, created_at, updated_at FROM anchors WHERE 1=1"
         );
-        let mut count_sql =
-            String::from("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
-
-        let mut status_val: Option<String> = None;
-        let mut min_score_val: Option<f64> = None;
-        let mut search_pattern: Option<String> = None;
 
         if let Some(f) = &filter {
             if let Some(status) = &f.status {
-                data_sql.push_str(" AND status = ?");
-                count_sql.push_str(" AND status = ?");
-                status_val = Some(status.clone());
+                query_builder.push(" AND status = ");
+                query_builder.push_bind(status);
             }
             if let Some(min_score) = f.min_reliability_score {
-                data_sql.push_str(" AND reliability_score >= ?");
-                count_sql.push_str(" AND reliability_score >= ?");
-                min_score_val = Some(min_score);
+                query_builder.push(" AND reliability_score >= ");
+                query_builder.push_bind(min_score);
             }
             if let Some(search) = &f.search {
-                data_sql.push_str(" AND (name LIKE ? OR stellar_account LIKE ?)");
-                count_sql.push_str(" AND (name LIKE ? OR stellar_account LIKE ?)");
-                search_pattern = Some(format!("%{search}%"));
+                query_builder.push(" AND (name LIKE ");
+                query_builder.push_bind(format!("%{}%", search));
+                query_builder.push(" OR stellar_account LIKE ");
+                query_builder.push_bind(format!("%{}%", search));
+                query_builder.push(")");
             }
         }
 
-        data_sql.push_str(" ORDER BY reliability_score DESC LIMIT ? OFFSET ?");
+        query_builder.push(" ORDER BY reliability_score DESC LIMIT ");
+        query_builder.push_bind(limit);
+        query_builder.push(" OFFSET ");
+        query_builder.push_bind(offset);
 
-        let mut data_query = sqlx::query_as::<_, AnchorType>(&data_sql);
-        let mut count_query = sqlx::query_as::<_, (i32,)>(&count_sql);
+        let anchors = query_builder
+            .build_query_as::<AnchorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
 
-        if let Some(ref s) = status_val {
-            data_query = data_query.bind(s.clone());
-            count_query = count_query.bind(s.clone());
+        // Build parameterized query for count
+        let mut count_builder = QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
+
+        if let Some(f) = &filter {
+            if let Some(status) = &f.status {
+                count_builder.push(" AND status = ");
+                count_builder.push_bind(status);
+            }
+            if let Some(min_score) = f.min_reliability_score {
+                count_builder.push(" AND reliability_score >= ");
+                count_builder.push_bind(min_score);
+            }
+            if let Some(search) = &f.search {
+                count_builder.push(" AND (name LIKE ");
+                count_builder.push_bind(format!("%{}%", search));
+                count_builder.push(" OR stellar_account LIKE ");
+                count_builder.push_bind(format!("%{}%", search));
+                count_builder.push(")");
+            }
         }
-        if let Some(score) = min_score_val {
-            data_query = data_query.bind(score);
-            count_query = count_query.bind(score);
-        }
-        if let Some(ref p) = search_pattern {
-            data_query = data_query.bind(p.clone()).bind(p.clone());
-            count_query = count_query.bind(p.clone()).bind(p.clone());
-        }
 
-        data_query = data_query.bind(limit).bind(offset);
-
-        let anchors = data_query.fetch_all(pool.as_ref()).await?;
-        let total: (i32,) = count_query.fetch_one(pool.as_ref()).await?;
+        let (total,): (i64,) = count_builder
+            .build_query_as()
+            .fetch_one(pool.as_ref())
+            .await?;
 
         Ok(AnchorsConnection {
             nodes: anchors,
-            total_count: total.0,
-            has_next_page: (offset + limit) < total.0,
+            total_count: total,
+            has_next_page: (offset + limit) < total,
         })
     }
 
@@ -151,73 +156,71 @@ impl QueryRoot {
             .min(100);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let mut data_sql = String::from(
-            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, \
-             destination_asset_issuer, reliability_score, status, created_at, updated_at \
-             FROM corridors WHERE 1=1",
+        // Build parameterized query for data
+        let mut query_builder = QueryBuilder::new(
+            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, reliability_score, status, created_at, updated_at FROM corridors WHERE 1=1"
         );
-        let mut count_sql =
-            String::from("SELECT COUNT(*) as count FROM corridors WHERE 1=1");
-
-        let mut source_val: Option<String> = None;
-        let mut dest_val: Option<String> = None;
-        let mut status_val: Option<String> = None;
-        let mut min_score_val: Option<f64> = None;
 
         if let Some(f) = &filter {
             if let Some(source) = &f.source_asset_code {
-                data_sql.push_str(" AND source_asset_code = ?");
-                count_sql.push_str(" AND source_asset_code = ?");
-                source_val = Some(source.clone());
+                query_builder.push(" AND source_asset_code = ");
+                query_builder.push_bind(source);
             }
             if let Some(dest) = &f.destination_asset_code {
-                data_sql.push_str(" AND destination_asset_code = ?");
-                count_sql.push_str(" AND destination_asset_code = ?");
-                dest_val = Some(dest.clone());
+                query_builder.push(" AND destination_asset_code = ");
+                query_builder.push_bind(dest);
             }
             if let Some(status) = &f.status {
-                data_sql.push_str(" AND status = ?");
-                count_sql.push_str(" AND status = ?");
-                status_val = Some(status.clone());
+                query_builder.push(" AND status = ");
+                query_builder.push_bind(status);
             }
             if let Some(min_score) = f.min_reliability_score {
-                data_sql.push_str(" AND reliability_score >= ?");
-                count_sql.push_str(" AND reliability_score >= ?");
-                min_score_val = Some(min_score);
+                query_builder.push(" AND reliability_score >= ");
+                query_builder.push_bind(min_score);
             }
         }
 
-        data_sql.push_str(" ORDER BY reliability_score DESC LIMIT ? OFFSET ?");
+        query_builder.push(" ORDER BY reliability_score DESC LIMIT ");
+        query_builder.push_bind(limit);
+        query_builder.push(" OFFSET ");
+        query_builder.push_bind(offset);
 
-        let mut data_query = sqlx::query_as::<_, CorridorType>(&data_sql);
-        let mut count_query = sqlx::query_as::<_, (i32,)>(&count_sql);
+        let corridors = query_builder
+            .build_query_as::<CorridorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
 
-        if let Some(ref s) = source_val {
-            data_query = data_query.bind(s.clone());
-            count_query = count_query.bind(s.clone());
-        }
-        if let Some(ref d) = dest_val {
-            data_query = data_query.bind(d.clone());
-            count_query = count_query.bind(d.clone());
-        }
-        if let Some(ref s) = status_val {
-            data_query = data_query.bind(s.clone());
-            count_query = count_query.bind(s.clone());
-        }
-        if let Some(score) = min_score_val {
-            data_query = data_query.bind(score);
-            count_query = count_query.bind(score);
+        // Build parameterized query for count
+        let mut count_builder = QueryBuilder::new("SELECT COUNT(*) as count FROM corridors WHERE 1=1");
+
+        if let Some(f) = &filter {
+            if let Some(source) = &f.source_asset_code {
+                count_builder.push(" AND source_asset_code = ");
+                count_builder.push_bind(source);
+            }
+            if let Some(dest) = &f.destination_asset_code {
+                count_builder.push(" AND destination_asset_code = ");
+                count_builder.push_bind(dest);
+            }
+            if let Some(status) = &f.status {
+                count_builder.push(" AND status = ");
+                count_builder.push_bind(status);
+            }
+            if let Some(min_score) = f.min_reliability_score {
+                count_builder.push(" AND reliability_score >= ");
+                count_builder.push_bind(min_score);
+            }
         }
 
-        data_query = data_query.bind(limit).bind(offset);
-
-        let corridors = data_query.fetch_all(pool.as_ref()).await?;
-        let total: (i32,) = count_query.fetch_one(pool.as_ref()).await?;
+        let (total,): (i64,) = count_builder
+            .build_query_as()
+            .fetch_one(pool.as_ref())
+            .await?;
 
         Ok(CorridorsConnection {
             nodes: corridors,
-            total_count: total.0,
-            has_next_page: (offset + limit) < total.0,
+            total_count: total,
+            has_next_page: (offset + limit) < total,
         })
     }
 
@@ -265,50 +268,35 @@ impl QueryRoot {
             .min(1000);
         let offset = pagination.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
-        let mut sql = String::from(
-            "SELECT id, name, value, entity_id, entity_type, timestamp, created_at \
-             FROM metrics WHERE 1=1",
+        // Build parameterized query
+        let mut query_builder = QueryBuilder::new(
+            "SELECT id, name, value, entity_id, entity_type, timestamp, created_at FROM metrics WHERE 1=1"
         );
 
-        let mut entity_id_val: Option<String> = None;
-        let mut entity_type_val: Option<String> = None;
-        let mut time_start = None;
-        let mut time_end = None;
-
-        if let Some(eid) = entity_id {
-            sql.push_str(" AND entity_id = ?");
-            entity_id_val = Some(eid);
+        if let Some(eid) = &entity_id {
+            query_builder.push(" AND entity_id = ");
+            query_builder.push_bind(eid);
         }
-        if let Some(etype) = entity_type {
-            sql.push_str(" AND entity_type = ?");
-            entity_type_val = Some(etype);
+        if let Some(etype) = &entity_type {
+            query_builder.push(" AND entity_type = ");
+            query_builder.push_bind(etype);
         }
-        if let Some(tr) = time_range {
-            sql.push_str(" AND timestamp >= ? AND timestamp <= ?");
-            time_start = Some(tr.start);
-            time_end = Some(tr.end);
+        if let Some(tr) = &time_range {
+            query_builder.push(" AND timestamp >= ");
+            query_builder.push_bind(&tr.start);
+            query_builder.push(" AND timestamp <= ");
+            query_builder.push_bind(&tr.end);
         }
 
-        sql.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
+        query_builder.push(" ORDER BY timestamp DESC LIMIT ");
+        query_builder.push_bind(limit);
+        query_builder.push(" OFFSET ");
+        query_builder.push_bind(offset);
 
-        let mut query = sqlx::query_as::<_, MetricType>(&sql);
-
-        if let Some(eid) = entity_id_val {
-            query = query.bind(eid);
-        }
-        if let Some(etype) = entity_type_val {
-            query = query.bind(etype);
-        }
-        if let Some(start) = time_start {
-            query = query.bind(start);
-        }
-        if let Some(end) = time_end {
-            query = query.bind(end);
-        }
-
-        query = query.bind(limit).bind(offset);
-
-        let metrics = query.fetch_all(pool.as_ref()).await?;
+        let metrics = query_builder
+            .build_query_as::<MetricType>()
+            .fetch_all(pool.as_ref())
+            .await?;
         Ok(metrics)
     }
 
@@ -350,30 +338,37 @@ impl QueryRoot {
     ) -> Result<SearchResults> {
         let pool = &self.pool;
         let search_limit = limit.unwrap_or(10).min(50);
-        let pattern = format!("%{query}%");
+        let search_pattern = format!("%{}%", query);
 
-        let anchors = sqlx::query_as::<_, AnchorType>(
-            "SELECT id, name, stellar_account, home_domain, total_transactions, \
-             successful_transactions, failed_transactions, total_volume_usd, \
-             avg_settlement_time_ms, reliability_score, status, created_at, updated_at \
-             FROM anchors WHERE name LIKE ? OR stellar_account LIKE ? LIMIT ?",
-        )
-        .bind(pattern.clone())
-        .bind(pattern.clone())
-        .bind(search_limit)
-        .fetch_all(pool.as_ref())
-        .await?;
+        // Build parameterized query for anchors
+        let mut anchor_builder = QueryBuilder::new(
+            "SELECT id, name, stellar_account, home_domain, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status, created_at, updated_at FROM anchors WHERE name LIKE "
+        );
+        anchor_builder.push_bind(&search_pattern);
+        anchor_builder.push(" OR stellar_account LIKE ");
+        anchor_builder.push_bind(&search_pattern);
+        anchor_builder.push(" LIMIT ");
+        anchor_builder.push_bind(search_limit);
 
-        let corridors = sqlx::query_as::<_, CorridorType>(
-            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, \
-             destination_asset_issuer, reliability_score, status, created_at, updated_at \
-             FROM corridors WHERE source_asset_code LIKE ? OR destination_asset_code LIKE ? LIMIT ?",
-        )
-        .bind(pattern.clone())
-        .bind(pattern)
-        .bind(search_limit)
-        .fetch_all(pool.as_ref())
-        .await?;
+        let anchors = anchor_builder
+            .build_query_as::<AnchorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
+
+        // Build parameterized query for corridors
+        let mut corridor_builder = QueryBuilder::new(
+            "SELECT id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, reliability_score, status, created_at, updated_at FROM corridors WHERE source_asset_code LIKE "
+        );
+        corridor_builder.push_bind(&search_pattern);
+        corridor_builder.push(" OR destination_asset_code LIKE ");
+        corridor_builder.push_bind(&search_pattern);
+        corridor_builder.push(" LIMIT ");
+        corridor_builder.push_bind(search_limit);
+
+        let corridors = corridor_builder
+            .build_query_as::<CorridorType>()
+            .fetch_all(pool.as_ref())
+            .await?;
 
         Ok(SearchResults { anchors, corridors })
     }

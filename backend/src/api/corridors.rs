@@ -25,7 +25,7 @@ use crate::rpc::{
     error::{with_retry, RetryConfig, RpcError},
     StellarRpcClient,
 };
-use crate::services::analytics::{compute_corridor_metrics, CorridorTransaction};
+use crate::services::analytics::{compute_corridor_metrics, CorridorPayment};
 use crate::services::price_feed::PriceFeedClient;
 use crate::state::AppState;
 use crate::validation;
@@ -706,12 +706,12 @@ fn find_related_corridors(
     tag = "Corridors"
 )]
 #[tracing::instrument(
-    skip(db, cache, rpc_client, price_feed),
+    skip(_db, cache, rpc_client, price_feed),
     fields(request_id = %request_id.0, corridor_key = %corridor_key)
 )]
 pub async fn get_corridor_detail(
     Extension(request_id): Extension<RequestId>,
-    State((db, cache, rpc_client, price_feed)): State<(
+    State((_db, cache, rpc_client, price_feed)): State<(
         Arc<Database>,
         Arc<CacheManager>,
         Arc<StellarRpcClient>,
@@ -945,11 +945,11 @@ pub async fn create_corridor(
 /// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
 #[derive(Debug, Deserialize)]
 pub struct UpdateCorridorMetricsFromTxns {
-    pub transactions: Vec<CorridorTransactionDto>,
+    pub transactions: Vec<CorridorPaymentDto>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CorridorTransactionDto {
+pub struct CorridorPaymentDto {
     pub successful: bool,
     pub settlement_latency_ms: Option<i32>,
     pub amount_usd: f64,
@@ -970,10 +970,10 @@ pub async fn update_corridor_metrics_from_transactions(
         ));
     }
 
-    let txs: Vec<CorridorTransaction> = req
+    let txs: Vec<CorridorPayment> = req
         .transactions
         .into_iter()
-        .map(|t| CorridorTransaction {
+        .map(|t| CorridorPayment {
             successful: t.successful,
             settlement_latency_ms: t.settlement_latency_ms,
             amount_usd: t.amount_usd,
@@ -981,10 +981,9 @@ pub async fn update_corridor_metrics_from_transactions(
         .collect();
 
     let metrics = compute_corridor_metrics(&txs, None, 1.0);
-    let corridor = app_state.db.update_corridor_metrics(id, metrics).await?;
-    app_state
-        .cache
-        .invalidate_corridor(&corridor.to_string_key())
+    let corridor = app_state
+        .db
+        .update_corridor_metrics(id, metrics, &app_state.cache)
         .await?;
 
     // Broadcast the corridor update to WebSocket clients

@@ -83,7 +83,6 @@ export function ShortcutExample() {
     defaultBinding: { key: 'Delete' },
     handler: () => {
       if (selectedItem !== null) {
-        console.log(`Deleting item ${selectedItem}`);
         setSelectedItem(null);
       }
     },
@@ -102,9 +101,7 @@ export function ShortcutExample() {
       mac: { key: 's', modifiers: ['meta'] },
     },
     handler: async () => {
-      console.log('Saving...');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log('Saved!');
     },
   });
 

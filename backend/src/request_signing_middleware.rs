@@ -50,10 +50,13 @@ pub async fn request_signing_middleware(
         return Err(SigningError::ReplayDetected);
     }
 
-    // Compute expected signature (limit body to 10MB to prevent DoS - SEC-005)
-    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB
+    // Compute expected signature (limit body size to prevent DoS - SEC-005)
+    let max_body_size: usize = std::env::var("MAX_REQUEST_BODY_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10 * 1024 * 1024); // default 10MB
     let (parts, body) = req.into_parts();
-    let body_bytes = axum::body::to_bytes(body, MAX_BODY_SIZE)
+    let body_bytes = axum::body::to_bytes(body, max_body_size)
         .await
         .map_err(|_| SigningError::BodyTooLarge)?;
 

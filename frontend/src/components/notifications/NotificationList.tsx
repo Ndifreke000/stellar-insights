@@ -80,7 +80,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   const typeColor = TYPE_COLORS[notification.type];
 
   return (
-    <div
+    <article
       className={`
         relative p-4 rounded-lg border transition-all cursor-pointer
         ${notification.read 
@@ -89,7 +89,16 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         }
         hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600
       `}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open notification: ${notification.title}`}
       onClick={handleSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleSelect();
+        }
+      }}
     >
       {/* Priority Indicator */}
       {notification.priority === 'critical' && (
@@ -100,6 +109,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         {/* Icon */}
         <div className="shrink-0 mt-0.5">
           {React.createElement(IconComponent, { 
+            'aria-hidden': true,
             className: `h-5 w-5 ${typeColor}` 
           })}
         </div>
@@ -156,14 +166,14 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   e.stopPropagation();
                   handleMarkAsRead();
                 }}>
-                  <Eye className="h-4 w-4 mr-2" />
+                  <Eye aria-hidden="true" className="h-4 w-4 mr-2" />
                   Mark as Read
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={(e) => {
                   e.stopPropagation();
                   handleCopy();
                 }}>
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy aria-hidden="true" className="h-4 w-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
                 {notification.metadata?.url && (
@@ -171,7 +181,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                     e.stopPropagation();
                     window.open(notification.metadata.url as string, '_blank');
                   }}>
-                    <ExternalLink className="h-4 w-4 mr-2" />
+                    <ExternalLink aria-hidden="true" className="h-4 w-4 mr-2" />
                     Open Link
                   </DropdownMenuItem>
                 )}
@@ -195,7 +205,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   }}
                   className="text-red-600"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <Trash2 aria-hidden="true" className="h-4 w-4 mr-2" />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>

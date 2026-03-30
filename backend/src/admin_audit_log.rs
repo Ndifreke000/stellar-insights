@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -45,7 +46,9 @@ impl AdminAuditLogger {
             Some(h) => format!("{h}|{data}"),
             None => data.clone(),
         };
-        let hash = format!("{:x}", md5::compute(hash_input));
+        let mut hasher = Sha256::new();
+        hasher.update(hash_input.as_bytes());
+        let hash = hex::encode(hasher.finalize());
 
         sqlx::query(
             r"

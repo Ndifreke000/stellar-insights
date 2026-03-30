@@ -7,7 +7,9 @@ import {
 } from '@stellar/stellar-sdk';
 import { logger } from '@/lib/logger';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import { config } from '@/config';
+
+const API_BASE_URL = config.apiUrl;
 
 export interface ChallengeRequest {
   account: string;

@@ -1,6 +1,4 @@
-// pub mod sep10;  // Deprecated - has dependency issues with stellar SDK. Use sep10_simple instead.
 pub mod oauth;
-// pub mod sep10_middleware;  // Consolidated into main auth.rs
 pub mod sep10_simple;
 
 use anyhow::{anyhow, Result};
