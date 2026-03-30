@@ -86,6 +86,17 @@ use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
 use stellar_insights_backend::state::AppState;
 use stellar_insights_backend::websocket::WsState;
 
+use stellar_insights_backend::api::health::health_check as detailed_health_check;
+use stellar_insights_backend::api::metrics::get_pool_metrics;
+use stellar_insights_backend::api::anchors::{
+    create_anchor, create_anchor_asset, get_anchor, get_anchor_assets, get_anchor_by_account,
+    get_anchors, get_muxed_analytics, update_anchor_metrics,
+};
+use stellar_insights_backend::api::corridors::{
+    create_corridor, get_corridor_detail, list_corridors,
+    update_corridor_metrics_from_transactions,
+};
+
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
 
@@ -379,6 +390,7 @@ async fn main() -> anyhow::Result<()> {
     // Build non-cached anchor routes with app state
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
+        .route("/health/detailed", get(detailed_health_check))
         .route("/metrics", get(obs_metrics::metrics_handler))
         .route("/api/anchors/:id", get(get_anchor))
         .route(

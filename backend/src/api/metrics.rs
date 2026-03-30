@@ -96,3 +96,48 @@ mod tests {
         assert_eq!(overview.corridor_count, 5);
     }
 }
+
+/// GET /api/admin/pool-metrics - Return current database pool metrics
+pub fn get_pool_metrics(State(app_state): State<AppState>) -> Json<crate::database::PoolMetrics> {
+    Json(app_state.db.pool_metrics())
+}
+
+/// GET /metrics/pool - Pool metrics as JSON (async variant)
+pub async fn pool_metrics(
+    State(state): State<AppState>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    Json(state.db.pool_metrics()).into_response()
+}
+
+#[cfg(test)]
+fn render_pool_metrics_prometheus(metrics: &crate::database::PoolMetrics) -> String {
+    format!(
+        "# HELP stellar_insights_db_pool_size Database pool size\n\
+# TYPE stellar_insights_db_pool_size gauge\n\
+stellar_insights_db_pool_size {}\n\
+# HELP stellar_insights_db_pool_idle Database pool idle connections\n\
+# TYPE stellar_insights_db_pool_idle gauge\n\
+stellar_insights_db_pool_idle {}\n\
+# HELP stellar_insights_db_pool_active Database pool active connections\n\
+# TYPE stellar_insights_db_pool_active gauge\n\
+stellar_insights_db_pool_active {}\n",
+        metrics.size, metrics.idle, metrics.active
+    )
+}
+
+#[cfg(test)]
+mod pool_metrics_tests {
+    use super::*;
+
+    #[test]
+    fn test_render_pool_metrics_prometheus() {
+        let metrics = crate::database::PoolMetrics::new(12, 3, 9);
+        let rendered = render_pool_metrics_prometheus(&metrics);
+
+        assert!(rendered.contains("stellar_insights_db_pool_size 12"));
+        assert!(rendered.contains("stellar_insights_db_pool_idle 3"));
+        assert!(rendered.contains("stellar_insights_db_pool_active 9"));
+        assert!(rendered.contains("# TYPE stellar_insights_db_pool_size gauge"));
+    }
+}

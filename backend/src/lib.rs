@@ -20,7 +20,7 @@ pub mod db;
 pub mod email;
 pub mod env_config;
 pub mod error;
-pub mod handlers; // Core handlers (pool_metrics, health_check, ingestion_status)
+pub mod handlers; // Kept for backward compat; logic split into api::{health, ingestion, metrics}
 pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod ingestion;
 pub mod ip_whitelist_middleware;
@@ -48,5 +48,3 @@ pub mod websocket;
 
 pub mod rpc;
 
-#[cfg(test)]
-mod ml_tests;

@@ -5,8 +5,9 @@ pub mod analytics_dashboard;
 pub mod anchors;
 pub mod api_keys;
 pub mod asset_verification;
-
 pub mod auth;
+pub mod health;
+pub mod ingestion;
 pub mod cache_stats;
 pub mod corridors;
 pub mod cost_calculator;
