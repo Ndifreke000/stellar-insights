@@ -3,26 +3,22 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::time::Instant;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::broadcast::{broadcast_anchor_update, broadcast_corridor_update};
+use crate::cache::CacheManager;
+use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::Corridor;
 use crate::models::{CreateAnchorRequest, CreateCorridorRequest, ListCorridorsQuery, ListCorridorsResponse};
-use crate::cache::CacheManager;
-use crate::database::Database;
-use crate::error::ApiResult;
 use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 use crate::websocket::WsState;
-
-use std::time::Instant;
 
 /// DTO for corridor transaction data
 #[derive(Debug, Deserialize, Clone)]
@@ -49,7 +45,6 @@ pub struct HealthChecks {
 }
 
 #[derive(Serialize, Debug, Clone)]
-#[derive(Serialize)]
 pub struct ComponentHealth {
     pub healthy: bool,
     pub response_time_ms: Option<u64>,
@@ -259,13 +254,6 @@ pub async fn get_muxed_analytics(
 
 
 
-/// GET /api/admin/pool-metrics - Return current database pool metrics
-pub fn get_pool_metrics(
-    State(app_state): State<AppState>,
-) -> Json<crate::database::PoolMetrics> {
-    Json(app_state.db.pool_metrics())
-}
-
 /// GET /metrics - Prometheus metrics endpoint (all registered metrics via global registry)
 pub async fn get_prometheus_metrics() -> impl IntoResponse {
     crate::observability::metrics::metrics_handler()
@@ -287,10 +275,15 @@ stellar_insights_db_pool_active {}\n",
     )
 }
 
-/// Database pool metrics endpoint
+/// GET /db/pool-metrics - Return current database pool metrics as JSON
 pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
     let metrics = state.db.pool_metrics();
+    crate::observability::metrics::set_pool_size(metrics.size as i64);
+    crate::observability::metrics::set_pool_idle(metrics.idle as i64);
+    crate::observability::metrics::set_pool_active(metrics.active as i64);
     Json(metrics)
+}
+
 /// GET /api/corridors - List all corridors
 pub async fn list_corridors(
     State(app_state): State<AppState>,
@@ -330,10 +323,6 @@ pub struct UpdateCorridorMetricsFromTxns {
     pub transactions: Vec<CorridorTransactionDto>,
 }
 
-/// Database pool metrics endpoint
-pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
-    let metrics = state.db.pool_metrics();
-    Json(metrics)
 /// PUT /api/corridors/:id/metrics-from-transactions - Placeholder for updating metrics from batch transactions
 pub async fn update_corridor_metrics_from_transactions(
     State(_app_state): State<AppState>,

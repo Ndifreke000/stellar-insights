@@ -1,65 +1,20 @@
 use anyhow::Context;
-use axum::http::{
-    header::{AUTHORIZATION, CONTENT_TYPE},
-    HeaderValue,
-use anyhow::{Context, Result};
 use axum::{
     extract::State,
-    http::{Method, StatusCode},
+    http::{header::{AUTHORIZATION, CONTENT_TYPE}, HeaderValue, Method, StatusCode},
+    middleware, Json, Router,
     response::IntoResponse,
     routing::{get, put},
-    middleware, Json, Router,
 };
-use axum::{http::Method, middleware};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use axum::http::HeaderValue;
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use tower::ServiceBuilder;
-use tower::timeout::TimeoutLayer;
-use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
-use std::sync::Arc;
-use std::time::Duration;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
-use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
-
-use anyhow::Context;
-use axum::http::{
-    header::{AUTHORIZATION, CONTENT_TYPE},
-    HeaderValue, Method,
-};
-
-use stellar_insights_backend::{
-    api::v1::routes,
-    backup::{BackupConfig, BackupManager},
-    cache::{CacheConfig, CacheManager},
-    database::{Database, PoolConfig},
-    env_config,
-    ingestion::DataIngestionService,
-    openapi::ApiDoc,
-    rate_limit::RateLimiter,
-    rpc::StellarRpcClient,
-    services::{
-        account_merge_detector::AccountMergeDetector,
-        fee_bump_tracker::FeeBumpTrackerService,
-        liquidity_pool_analyzer::LiquidityPoolAnalyzer,
-        price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
-        webhook_dispatcher::WebhookDispatcher,
-    },
-    state::AppState,
-    websocket::WsState,
 use tower_http::{
     compression::{predicate::SizeAbove, CompressionLayer},
     cors::{AllowOrigin, CorsLayer},
-    trace::TraceLayer,
     timeout::TimeoutLayer,
+    trace::TraceLayer,
 };
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -180,11 +135,6 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Initialize Stellar RPC Client
-    let _mock_mode = std::env::var("RPC_MOCK_MODE")
-        .unwrap_or_else(|_| "false".to_string())
-        .parse::<bool>()
-        .unwrap_or(false);
     // Pool exhaustion monitoring: warn at >90% utilization, update Prometheus gauges
     let pool_exhaustion_handle = {
         let monitor_pool = pool.clone();
@@ -209,15 +159,19 @@ async fn main() -> anyhow::Result<()> {
         })
     };
 
+    // Initialize cache manager
+    let cache = Arc::new(
+        CacheManager::new(CacheConfig::default())
+            .await
+            .context("Failed to initialize cache manager - check Redis connection")?,
+    );
+
     // Initialize Stellar RPC Client
     let mock_mode = std::env::var("RPC_MOCK_MODE")
         .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap_or(false);
-        CacheManager::new(CacheConfig::default())
-            .await
-            .context("Failed to initialize cache manager - check Redis connection")?,
-    );
+    let _ = mock_mode;
 
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
 
@@ -396,7 +350,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Build protected anchor routes (require authentication)
     let protected_anchor_routes = Router::new()
-        .route("/api/admin/pool-metrics", get(get_pool_metrics))
         .route("/api/anchors", axum::routing::post(create_anchor))
         .route("/api/anchors/:id/metrics", put(update_anchor_metrics))
         .route(
@@ -553,8 +506,6 @@ async fn main() -> anyhow::Result<()> {
             request_timeout_seconds,
         )));
 
-    let app = routes(
-        app_state,
     let base_routes = routes(
         app_state.clone(),
         cached_state,
@@ -565,31 +516,25 @@ async fn main() -> anyhow::Result<()> {
         price_feed,
         rate_limiter,
         cors,
-        pool.clone(),
-        cache.clone(),
         pool,
         cache,
     );
 
     let app = base_routes
-        .merge(anchor_routes) // Includes /health
+        .merge(ws_routes)
+        .merge(alert_ws_routes)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-    )
-    .layer(TimeoutLayer::new(timeout_duration))
-    .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))
-    .layer(TimeoutLayer::new(timeout_duration))
-    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
-    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-    .layer(middleware::from_fn_with_state(
-        db.clone(),
-        stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
-    ))
-    .layer(TraceLayer::new_for_http())
-    .layer(middleware::from_fn(trace_propagation_middleware))
-    .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
-    .layer(middleware::from_fn(request_id_middleware))
-    .layer(timeout_layer) // Apply request timeout to all non-WS routes
-    .layer(compression); // Apply compression to all routes
+        .layer(middleware::from_fn_with_state(
+            db.clone(),
+            stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
+        ))
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(trace_propagation_middleware))
+        .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
+        .layer(middleware::from_fn(request_id_middleware))
+        .layer(timeout_layer)
+        .layer(compression);
+
     tracing::info!("Request timeout set to {} seconds", request_timeout_seconds);
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());

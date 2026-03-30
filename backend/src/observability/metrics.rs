@@ -9,11 +9,7 @@ use axum::{
 use lazy_static::lazy_static;
 use prometheus::{
     gather, register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge,
-    Histogram, Registry, TextEncoder,
-    register_counter_vec, register_gauge, register_histogram_vec, CounterVec, Encoder, Gauge,
-    HistogramOpts, HistogramVec, Registry, TextEncoder,
-    register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge, Histogram,
-    HistogramOpts, Registry, TextEncoder,
+    Histogram, HistogramOpts, Registry, TextEncoder,
 };
 
 lazy_static! {
@@ -108,58 +104,6 @@ lazy_static! {
         "Active database pool connections"
     )
     .unwrap();
-    pub static ref HTTP_REQUESTS_TOTAL: Counter = register_counter!(
-        "http_requests_total",
-        "Total number of HTTP requests processed"
-    )
-    .unwrap();
-    pub static ref HTTP_REQUEST_DURATION_SECONDS: Histogram = register_histogram!(
-        "http_request_duration_seconds",
-        "HTTP request duration in seconds",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
-    )
-    .unwrap();
-    pub static ref RPC_CALLS_TOTAL: Counter =
-        register_counter!("rpc_calls_total", "Total number of RPC calls made").unwrap();
-    pub static ref RPC_CALL_DURATION_SECONDS: Histogram = register_histogram!(
-        "rpc_call_duration_seconds",
-        "RPC call duration in seconds",
-        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
-    )
-    .unwrap();
-    pub static ref DB_QUERY_DURATION_SECONDS: Histogram = register_histogram!(
-        "db_query_duration_seconds",
-        "Database query duration in seconds",
-        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
-    )
-    .unwrap();
-    pub static ref CACHE_OPERATIONS_TOTAL: Counter =
-        register_counter!("cache_operations_total", "Total number of cache operations").unwrap();
-    pub static ref ERRORS_TOTAL: Counter =
-        register_counter!("errors_total", "Total number of errors encountered").unwrap();
-    pub static ref BACKGROUND_JOBS_TOTAL: Counter = register_counter!(
-        "background_jobs_total",
-        "Total number of background jobs executed"
-    )
-    .unwrap();
-    pub static ref ACTIVE_CONNECTIONS: Gauge = register_gauge!(
-        "active_connections",
-        "Number of active websocket connections"
-    )
-    .unwrap();
-    pub static ref CORRIDORS_TRACKED: Gauge =
-        register_gauge!("corridors_tracked", "Number of tracked corridors").unwrap();
-    pub static ref HTTP_IN_FLIGHT_REQUESTS: Gauge = register_gauge!(
-        "http_in_flight_requests",
-        "Number of in-flight HTTP requests"
-    )
-    .unwrap();
-    pub static ref DB_POOL_SIZE: Gauge =
-        register_gauge!("db_pool_size", "Total database pool connections").unwrap();
-    pub static ref DB_POOL_IDLE: Gauge =
-        register_gauge!("db_pool_idle", "Idle database pool connections").unwrap();
-    pub static ref DB_POOL_ACTIVE: Gauge =
-        register_gauge!("db_pool_active", "Active database pool connections").unwrap();
 }
 
 pub fn init_metrics() {
@@ -266,9 +210,7 @@ mod tests {
         record_cache_lookup(true);
         set_active_connections(3);
 
-        let response = metrics_handler().await;
         let response = metrics_handler();
-        let response = metrics_handler().await.into_response();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
@@ -298,9 +240,7 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let metrics_response = metrics_handler().await;
         let metrics_response = metrics_handler();
-        let metrics_response = metrics_handler().await.into_response();
         let body = to_bytes(metrics_response.into_body(), usize::MAX)
             .await
             .unwrap();

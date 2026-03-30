@@ -24,5 +24,3 @@ pub mod verification_rewards;
 pub mod webhook_dispatcher;
 pub mod webhook_event_service;
 
-#[cfg(test)]
-mod snapshot_test;
