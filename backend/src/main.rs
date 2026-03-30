@@ -156,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
     let db = Arc::new(Database::new(pool.clone()));
 
     let pool_metrics_db = Arc::clone(&db);
-    tokio::spawn(async move {
+    let pool_metrics_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(DB_POOL_LOG_INTERVAL);
         loop {
             interval.tick().await;
@@ -186,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
         .parse::<bool>()
         .unwrap_or(false);
     // Pool exhaustion monitoring: warn at >90% utilization, update Prometheus gauges
-    {
+    let pool_exhaustion_handle = {
         let monitor_pool = pool.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
@@ -206,10 +206,14 @@ async fn main() -> anyhow::Result<()> {
                 stellar_insights_backend::observability::metrics::set_pool_idle(idle as i64);
                 stellar_insights_backend::observability::metrics::set_pool_active(active as i64);
             }
-        });
-    }
+        })
+    };
 
-    let cache = Arc::new(
+    // Initialize Stellar RPC Client
+    let mock_mode = std::env::var("RPC_MOCK_MODE")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse::<bool>()
+        .unwrap_or(false);
         CacheManager::new(CacheConfig::default())
             .await
             .context("Failed to initialize cache manager - check Redis connection")?,
@@ -269,7 +273,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start webhook dispatcher as a background task
     let webhook_pool = pool.clone();
-    tokio::spawn(async move {
+    let webhook_dispatcher_handle = tokio::spawn(async move {
         let dispatcher = WebhookDispatcher::new(webhook_pool);
         if let Err(e) = dispatcher.run().await {
             tracing::error!("Webhook dispatcher stopped: {}", e);
@@ -602,6 +606,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Track background tasks for graceful shutdown
     let mut background_tasks = Vec::<JoinHandle<()>>::new();
+    background_tasks.push(pool_metrics_handle);
+    background_tasks.push(pool_exhaustion_handle);
+    background_tasks.push(webhook_dispatcher_handle);
+    
 
     // Clone references for shutdown tasks
     let shutdown_pool = pool.clone();
