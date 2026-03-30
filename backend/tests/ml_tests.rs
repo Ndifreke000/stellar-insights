@@ -1,4 +1,4 @@
-use crate::ml::PredictionFeatures;
+use stellar_insights_backend::ml::PredictionFeatures;
 
 #[tokio::test]
 async fn test_ml_prediction() {
@@ -20,8 +20,8 @@ async fn test_ml_prediction() {
 
 #[test]
 fn test_prediction_result_risk_levels() {
-    use crate::api::ml::PredictionResponse;
-    use crate::ml::PredictionResult;
+    use stellar_insights_backend::api::ml::PredictionResponse;
+    use stellar_insights_backend::ml::PredictionResult;
 
     let high_prob = PredictionResult {
         success_probability: 0.9,
@@ -46,7 +46,7 @@ fn test_prediction_result_risk_levels() {
 
 #[test]
 fn test_simple_model_prediction() {
-    use crate::ml::SimpleMLModel;
+    use stellar_insights_backend::ml::SimpleMLModel;
 
     let model = SimpleMLModel::new();
     let features = PredictionFeatures {

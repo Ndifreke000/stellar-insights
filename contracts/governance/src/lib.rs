@@ -574,8 +574,14 @@ impl GovernanceContract {
                     let _ = client.set_paused_by_governance(&governance, &p);
                 }
             }
+        } else {
+            // Upgrade proposal: invoke upgrade on the target contract with the approved wasm hash.
+            let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+            if proposal.new_wasm_hash != zero_hash {
+                let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+                let _ = client.upgrade(&proposal.new_wasm_hash);
+            }
         }
-        // Upgrade proposals: execution is off-chain (deploy new WASM); we only mark executed here.
 
         proposal.status = ProposalStatus::Executed;
         let target_contract = proposal.target_contract.clone();

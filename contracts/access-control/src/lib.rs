@@ -1,7 +1,6 @@
 #![no_std]
-use soroban_sdk::testutils::Events;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String,
     Symbol, Vec,
 };
 
@@ -304,17 +303,11 @@ impl AccessControlContract {
             .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
         {
             for r in roles.iter() {
-                if Self::roles_equal(&r, &role) {
-                    return Ok(());
-                }
-            }
-            return Err(Error::PermissionDenied);
-        }
-        Err(Error::RoleNotFound)
                 if role_level(&r) >= required_level {
                     return Ok(());
                 }
             }
+            return Err(Error::PermissionDenied);
         }
         Err(Error::Unauthorized)
     }
@@ -347,6 +340,34 @@ impl AccessControlContract {
             initialized,
             total_roles: 0,
         }
+    }
+
+    /// Upgrade the contract Wasm. SuperAdmin-only.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address of the caller (must be SuperAdmin)
+    /// * `new_wasm_hash` - 32-byte hash of the new Wasm blob (must be uploaded first)
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller does not have SuperAdmin role
+    pub fn upgrade(env: Env, caller: Address, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        caller.require_auth();
+
+        // Only SuperAdmin can upgrade
+        Self::require_role(&env, &caller, Role::SuperAdmin)?;
+
+        // Perform upgrade
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        bump_instance(&env);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (caller, new_wasm_hash),
+        );
+
+        Ok(())
     }
 }
 

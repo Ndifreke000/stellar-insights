@@ -5,7 +5,7 @@ mod events;
 
 use errors::Error;
 use events::{emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -405,6 +405,53 @@ impl StellarInsightsContract {
         bump_instance(&env);
 
         emit_contract_unpaused(&env, caller);
+
+        Ok(())
+    }
+
+    /// Upgrade the contract Wasm. Admin-only.
+    ///
+    /// The contract must not be paused to perform an upgrade.
+    /// After a successful upgrade the new Wasm is active immediately.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `new_wasm_hash` - 32-byte hash of the new Wasm blob (must be uploaded first)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::ContractPaused` - If contract is currently paused
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        // Only admin can upgrade
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        admin.require_auth();
+
+        // Verify contract is not paused
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+
+        if paused {
+            return Err(Error::ContractPaused);
+        }
+
+        // Perform upgrade
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        bump_instance(&env);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (admin, new_wasm_hash),
+        );
 
         Ok(())
     }
