@@ -580,12 +580,26 @@ pub struct VerificationSummary {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::db::schema::Schema;
     use std::sync::Arc;
+
+    async fn setup_contract_event_db() -> Arc<Database> {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        Arc::new(Database::new(pool))
+    }
 
     #[tokio::test]
     async fn test_event_indexing() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -594,7 +608,7 @@ mod tests {
             event_type: "SNAP_SUB".to_string(),
             epoch: Some(42),
             hash: Some("abcd1234".to_string()),
-            timestamp: Some(1234567890),
+            timestamp: Some(1_234_567_890),
             ledger: 12345,
             transaction_hash: "tx-hash-1".to_string(),
             created_at: Utc::now(),
@@ -620,8 +634,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_verification_status_update() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -630,7 +643,7 @@ mod tests {
             event_type: "SNAP_SUB".to_string(),
             epoch: Some(43),
             hash: Some("efgh5678".to_string()),
-            timestamp: Some(1234567891),
+            timestamp: Some(1_234_567_891),
             ledger: 12346,
             transaction_hash: "tx-hash-2".to_string(),
             created_at: Utc::now(),

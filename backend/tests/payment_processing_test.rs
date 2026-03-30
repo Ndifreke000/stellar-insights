@@ -73,8 +73,8 @@ fn corridor_orders_assets_lexicographically() {
         "USDC".into(),
         "issuerA".into(),
     );
-    assert_eq!(c.asset_a_code, "USDC");
-    assert_eq!(c.asset_b_code, "XLM");
+    assert_eq!(c.source_asset_code, "USDC");
+    assert_eq!(c.destination_asset_code, "XLM");
 }
 
 #[test]
@@ -85,8 +85,8 @@ fn corridor_preserves_order_when_already_canonical() {
         "NGN".into(),
         "issuer2".into(),
     );
-    assert_eq!(c.asset_a_code, "EUR");
-    assert_eq!(c.asset_b_code, "NGN");
+    assert_eq!(c.source_asset_code, "EUR");
+    assert_eq!(c.destination_asset_code, "NGN");
 }
 
 #[test]
@@ -97,8 +97,8 @@ fn corridor_same_code_different_issuer_ordered_by_issuer() {
         "USDC".into(),
         "issuer1".into(),
     );
-    assert_eq!(c.asset_a_issuer, "issuer1");
-    assert_eq!(c.asset_b_issuer, "issuer2");
+    assert_eq!(c.source_asset_issuer, "issuer1");
+    assert_eq!(c.destination_asset_issuer, "issuer2");
 }
 
 #[test]
@@ -159,8 +159,8 @@ fn get_corridor_extracts_normalized_corridor() {
     let p = payment("NGN", "issB", "USDC", "issA", 100.0, true, 0);
     let c = p.get_corridor();
     // "NGN:issB" < "USDC:issA" lexicographically (N < U), so NGN is asset_a
-    assert_eq!(c.asset_a_code, "NGN");
-    assert_eq!(c.asset_b_code, "USDC");
+    assert_eq!(c.source_asset_code, "NGN");
+    assert_eq!(c.destination_asset_code, "USDC");
 }
 
 // ── compute_median ────────────────────────────────────────────────────────────

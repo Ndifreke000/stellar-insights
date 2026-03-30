@@ -150,10 +150,10 @@ impl AggregationDb {
         )
         .bind(&metric.id)
         .bind(&metric.corridor_key)
-        .bind(&metric.source_asset_code)
-        .bind(&metric.source_asset_issuer)
-        .bind(&metric.destination_asset_code)
-        .bind(&metric.destination_asset_issuer)
+        .bind(&metric.asset_a_code)
+        .bind(&metric.asset_a_issuer)
+        .bind(&metric.asset_b_code)
+        .bind(&metric.asset_b_issuer)
         .bind(metric.hour_bucket.to_rfc3339())
         .bind(metric.total_transactions)
         .bind(metric.successful_transactions)
@@ -208,20 +208,20 @@ impl AggregationDb {
         .await
         .context("Failed to fetch hourly metrics by timerange")?;
 
-        let metrics: Vec<HourlyCorridorMetrics> = rows
+        let metrics: Vec<crate::models::corridor::HourlyCorridorMetrics> = rows
             .into_iter()
             .filter_map(|row| {
                 let hour_bucket = DateTime::parse_from_rfc3339(&row.hour_bucket)
                     .ok()?
                     .with_timezone(&Utc);
 
-                Some(HourlyCorridorMetrics {
+                Some(crate::models::corridor::HourlyCorridorMetrics {
                     id: row.id,
                     corridor_key: row.corridor_key,
-                    source_asset_code: row.source_asset_code,
-                    source_asset_issuer: row.source_asset_issuer,
-                    destination_asset_code: row.destination_asset_code,
-                    destination_asset_issuer: row.destination_asset_issuer,
+                    asset_a_code: row.source_asset_code,
+                    asset_a_issuer: row.source_asset_issuer,
+                    asset_b_code: row.destination_asset_code,
+                    asset_b_issuer: row.destination_asset_issuer,
                     hour_bucket,
                     total_transactions: row.total_transactions,
                     successful_transactions: row.successful_transactions,

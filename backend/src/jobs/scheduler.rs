@@ -89,10 +89,10 @@ impl JobScheduler {
         self.handles.push(handle);
     }
 
-    pub async fn start(
-        db: Arc<Database>,
+    pub fn start(
+        _db: Arc<Database>,
         cache: Arc<CacheManager>,
-        rpc: Arc<StellarRpcClient>,
+        _rpc: Arc<StellarRpcClient>,
         ingestion: Arc<DataIngestionService>,
         price_feed: Arc<PriceFeedClient>,
     ) -> Self {
@@ -140,7 +140,7 @@ impl JobScheduler {
         scheduler.add_job(config, move || {
             let cache = Arc::clone(&cache_clone);
             Box::pin(async move {
-                cache.cleanup_expired().await?;
+                cache.cleanup_expired()?;
                 Ok(())
             })
         });
@@ -148,7 +148,7 @@ impl JobScheduler {
         scheduler
     }
 
-    pub async fn shutdown(self) {
+    pub fn shutdown(self) {
         info!("Shutting down job scheduler");
         for handle in self.handles {
             handle.abort();

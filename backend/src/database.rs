@@ -1,17 +1,12 @@
-use anyhow::Result;
-use chrono::Utc;
-use serde::Serialize;
-use sqlx::SqlitePool;
-use crate::admin_audit_log::AdminAuditLogger;
 use anyhow::{Context, Result};
-use crate::admin_audit_log::AdminAuditLogger;
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, SqlitePool};
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use crate::admin_audit_log::AdminAuditLogger;
 use crate::analytics::compute_anchor_metrics;
 use crate::cache::CacheManager;
 use crate::models::api_key::{
@@ -218,20 +213,7 @@ pub struct AnchorMetricsParams {
 }
 
 /// Connection pool metrics
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct PoolMetrics {
-    pub size: u32,
-    pub idle: usize,
-}
-
-pub struct Database {
-    pool: SqlitePool,
-    pub admin_audit_logger: AdminAuditLogger,
-    /// Threshold in milliseconds above which a query is logged as slow at WARN level.
-    /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
-    slow_query_threshold_ms: u64,
-}
-
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct PoolMetrics {
     pub size: u32,
@@ -244,6 +226,14 @@ impl PoolMetrics {
     pub const fn new(size: u32, idle: usize, active: u32) -> Self {
         Self { size, idle, active }
     }
+}
+
+pub struct Database {
+    pool: SqlitePool,
+    pub admin_audit_logger: AdminAuditLogger,
+    /// Threshold in milliseconds above which a query is logged as slow at WARN level.
+    /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
+    slow_query_threshold_ms: u64,
 }
 
 impl Database {
@@ -263,7 +253,6 @@ impl Database {
     }
 
     /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log
-    /// if the duration exceeds `slow_query_threshold_ms`.
     async fn execute_with_timing<T, F>(&self, operation: &str, f: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,
@@ -292,6 +281,15 @@ impl Database {
         &self.pool
     }
 
+    /// Performs a basic connectivity check against the database.
+    pub async fn health_check(&self) -> Result<()> {
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .context("Database health check failed")?;
+        Ok(())
+    }
+
     #[must_use]
     pub fn pool_metrics(&self) -> PoolMetrics {
         let size = self.pool.size();
@@ -303,15 +301,6 @@ impl Database {
 
     pub fn corridor_aggregates(&self) -> crate::db::aggregates::CorridorAggregates {
         crate::db::aggregates::CorridorAggregates::new(self.pool.clone())
-    }
-
-    /// Get connection pool metrics
-    #[must_use]
-    pub fn pool_metrics(&self) -> PoolMetrics {
-        PoolMetrics {
-            size: self.pool.size(),
-            idle: self.pool.num_idle(),
-        }
     }
 
     // Anchor operations
@@ -354,10 +343,12 @@ impl Database {
             .bind(&req.home_domain)
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to create anchor: name={}, stellar_account={}",
-                req.name, req.stellar_account
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to create anchor: name={}, stellar_account={}",
+                    req.name, req.stellar_account
+                )
+            })?;
             Ok(anchor)
         })
         .await
@@ -439,10 +430,12 @@ impl Database {
             .bind(stellar_account)
             .fetch_optional(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to fetch anchor by stellar_account: {}",
-                stellar_account
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to fetch anchor by stellar_account: {}",
+                    stellar_account
+                )
+            })?;
             Ok(anchor)
         })
         .await
@@ -480,7 +473,7 @@ impl Database {
         .await
     }
 
-/// Updates anchor metrics and records history.
+    /// Updates anchor metrics and records history.
     #[tracing::instrument(skip(self, update), fields(anchor_id = %update.anchor_id))]
     pub async fn update_anchor_metrics(&self, update: AnchorMetricsUpdate) -> Result<Anchor> {
         self.execute_with_timing("update_anchor_metrics", async {
@@ -493,7 +486,12 @@ impl Database {
             );
 
             // 2. Start a transaction to ensure atomic updates
-            let mut tx = self.pool.begin().await.with_context(|| format!("Failed to begin database transaction for anchor: {}", update.anchor_id))?;
+            let mut tx = self.pool.begin().await.with_context(|| {
+                format!(
+                    "Failed to begin database transaction for anchor: {}",
+                    update.anchor_id
+                )
+            })?;
 
             // 3. Update the main anchor record
             let anchor = sqlx::query_as::<_, Anchor>(
@@ -522,19 +520,24 @@ impl Database {
             .bind(update.anchor_id.to_string())
             .fetch_one(&mut *tx)
             .await
-            .with_context(|| format!("Failed to update anchor metrics for ID: {}", update.anchor_id))?;
+            .with_context(|| {
+                format!(
+                    "Failed to update anchor metrics for ID: {}",
+                    update.anchor_id
+                )
+            })?;
 
             // 4. Record the entry in history table
             let history_id = Uuid::new_v4().to_string();
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO anchor_metrics_history (
                     id, anchor_id, timestamp, success_rate, failure_rate, reliability_score,
                     total_transactions, successful_transactions, failed_transactions,
                     avg_settlement_time_ms, volume_usd
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                "#,
+                ",
             )
             .bind(history_id)
             .bind(update.anchor_id.to_string())
@@ -549,10 +552,20 @@ impl Database {
             .bind(update.volume_usd.unwrap_or(0.0))
             .execute(&mut *tx)
             .await
-            .with_context(|| format!("Failed to record anchor metrics history for ID: {}", update.anchor_id))?;
+            .with_context(|| {
+                format!(
+                    "Failed to record anchor metrics history for ID: {}",
+                    update.anchor_id
+                )
+            })?;
 
             // 5. Commit the transaction
-            tx.commit().await.with_context(|| format!("Failed to commit anchor update transaction for ID: {}", update.anchor_id))?;
+            tx.commit().await.with_context(|| {
+                format!(
+                    "Failed to commit anchor update transaction for ID: {}",
+                    update.anchor_id
+                )
+            })?;
 
             Ok(anchor)
         })
@@ -614,10 +627,12 @@ impl Database {
             .bind(&asset_issuer)
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to create asset: code={}, issuer={}, anchor_id={}",
-                asset_code, asset_issuer, anchor_id
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to create asset: code={}, issuer={}, anchor_id={}",
+                    asset_code, asset_issuer, anchor_id
+                )
+            })?;
             Ok(asset)
         })
         .await
@@ -739,10 +754,10 @@ impl Database {
             query = query.bind(id);
         }
 
-        let assets = query.fetch_all(&self.pool).await.with_context(|| format!(
-            "Failed to get assets for {} anchor ids",
-            anchor_ids.len()
-        ))?;
+        let assets = query
+            .fetch_all(&self.pool)
+            .await
+            .with_context(|| format!("Failed to get assets for {} anchor ids", anchor_ids.len()))?;
 
         let mut result: std::collections::HashMap<String, Vec<Asset>> =
             std::collections::HashMap::new();
@@ -768,10 +783,7 @@ impl Database {
             .bind(anchor_id.to_string())
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to count assets for anchor_id: {}",
-                anchor_id
-            ))?;
+            .with_context(|| format!("Failed to count assets for anchor_id: {}", anchor_id))?;
             Ok(count.0)
         })
         .await
@@ -806,10 +818,12 @@ impl Database {
             .bind(&params.stellar_account)
             .execute(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to update anchor from RPC for stellar_account: {}",
-                params.stellar_account
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to update anchor from RPC for stellar_account: {}",
+                    params.stellar_account
+                )
+            })?;
             Ok(())
         })
         .await
@@ -849,10 +863,12 @@ impl Database {
             .bind(params.volume_usd.unwrap_or(0.0))
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to record metrics history for anchor_id: {}",
-                params.anchor_id
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to record metrics history for anchor_id: {}",
+                    params.anchor_id
+                )
+            })?;
             Ok(history)
         })
         .await
@@ -878,10 +894,12 @@ impl Database {
             .bind(limit)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to get metrics history for anchor_id: {} (limit={})",
-                anchor_id, limit
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to get metrics history for anchor_id: {} (limit={})",
+                    anchor_id, limit
+                )
+            })?;
             Ok(history)
         })
         .await
@@ -890,25 +908,28 @@ impl Database {
     /// Retrieves detailed information about an anchor, including its assets and metrics history.
     #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id))]
     pub async fn get_anchor_detail(&self, anchor_id: Uuid) -> Result<Option<AnchorDetailResponse>> {
-        let anchor = match self.get_anchor_by_id(anchor_id).await.with_context(|| format!(
-            "Failed to fetch anchor for detail view: {}",
-            anchor_id
-        ))? {
+        let anchor = match self
+            .get_anchor_by_id(anchor_id)
+            .await
+            .with_context(|| format!("Failed to fetch anchor for detail view: {}", anchor_id))?
+        {
             Some(a) => a,
             None => return Ok(None),
         };
 
-        let assets = self.get_assets_by_anchor(anchor_id).await.with_context(|| format!(
-            "Failed to fetch assets for anchor detail: {}",
-            anchor_id
-        ))?;
+        let assets = self
+            .get_assets_by_anchor(anchor_id)
+            .await
+            .with_context(|| format!("Failed to fetch assets for anchor detail: {}", anchor_id))?;
         let metrics_history = self
             .get_anchor_metrics_history(anchor_id, 30)
             .await
-            .with_context(|| format!(
-                "Failed to fetch metrics history for anchor detail: {}",
-                anchor_id
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to fetch metrics history for anchor detail: {}",
+                    anchor_id
+                )
+            })?;
 
         Ok(Some(AnchorDetailResponse {
             anchor,
@@ -971,10 +992,12 @@ impl Database {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to list corridors (limit={}, offset={})",
-                limit, offset
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to list corridors (limit={}, offset={})",
+                    limit, offset
+                )
+            })?;
 
             let corridors = records
                 .into_iter()
@@ -1095,10 +1118,12 @@ impl Database {
             .bind(Utc::now())
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to record metric: name={}, entity_id={:?}",
-                name, entity_id
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to record metric: name={}, entity_id={:?}",
+                    name, entity_id
+                )
+            })?;
             Ok(metric)
         })
         .await
@@ -1134,10 +1159,12 @@ impl Database {
             .bind(Utc::now())
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to create snapshot: entity_id={}, entity_type={}",
-                entity_id, entity_type
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to create snapshot: entity_id={}, entity_type={}",
+                    entity_id, entity_type
+                )
+            })?;
             Ok(snapshot)
         })
         .await
@@ -1177,10 +1204,12 @@ impl Database {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to list snapshots (limit={}, offset={})",
-                limit, offset
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to list snapshots (limit={}, offset={})",
+                    limit, offset
+                )
+            })?;
             Ok(snapshots)
         })
         .await
@@ -1200,10 +1229,7 @@ impl Database {
             .bind(task_name)
             .fetch_optional(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to get ingestion cursor for task: {}",
-                task_name
-            ))?;
+            .with_context(|| format!("Failed to get ingestion cursor for task: {}", task_name))?;
             Ok(state.map(|s| s.last_cursor))
         })
         .await
@@ -1227,10 +1253,12 @@ impl Database {
             .bind(Utc::now())
             .execute(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to update ingestion cursor for task: {}, cursor: {}",
-                task_name, last_cursor
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to update ingestion cursor for task: {}, cursor: {}",
+                    task_name, last_cursor
+                )
+            })?;
             Ok(())
         })
         .await
@@ -1240,6 +1268,10 @@ impl Database {
     #[tracing::instrument(skip(self, payments), fields(payment_count = payments.len()))]
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
         self.execute_with_timing("save_payments", async {
+            let payment_count = payments.len();
+            let mut tx = self.pool.begin().await.with_context(|| {
+                format!("Failed to begin transaction for save_payments ({payment_count} payments)")
+            })?;
             if payments.is_empty() {
                 return Ok(());
             }
@@ -1247,7 +1279,7 @@ impl Database {
             let mut tx = self.pool.begin().await?;
             let mut tx = self.pool.begin().await.with_context(|| format!("Failed to begin transaction for save_payments ({} payments)", payments.len()))?;
 
-            for payment in payments {
+            for payment in &payments {
                 sqlx::query(
                     r"
                     INSERT INTO payments (
@@ -1275,7 +1307,9 @@ impl Database {
                 .with_context(|| format!("Failed to save payment id: {}", payment.id))?;
             }
 
-            tx.commit().await.with_context(|| format!("Failed to commit transaction for save_payments ({} payments)", payments.len()))?;
+            tx.commit().await.with_context(|| {
+                format!("Failed to commit transaction for save_payments ({payment_count} payments)")
+            })?;
             Ok(())
         })
         .await
@@ -1361,7 +1395,9 @@ impl Database {
             self.aggregation_db()
                 .update_aggregation_job_status(job_id, status, error_message)
                 .await
-                .with_context(|| format!("Failed to update aggregation job status for ID: {}", job_id))
+                .with_context(|| {
+                    format!("Failed to update aggregation job status for ID: {}", job_id)
+                })
         })
         .await
     }
@@ -1373,7 +1409,12 @@ impl Database {
             self.aggregation_db()
                 .update_last_processed_hour(job_id, last_hour)
                 .await
-                .with_context(|| format!("Failed to update last processed hour for job ID: {}", job_id))
+                .with_context(|| {
+                    format!(
+                        "Failed to update last processed hour for job ID: {}",
+                        job_id
+                    )
+                })
         })
         .await
     }
@@ -1639,10 +1680,12 @@ impl Database {
             .bind("pending")
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to create pending transaction for source_account: {}",
-                source_account
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to create pending transaction for source_account: {}",
+                    source_account
+                )
+            })?;
             Ok(pending_transaction)
         })
         .await
@@ -1662,10 +1705,7 @@ impl Database {
             .bind(id)
             .fetch_optional(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to fetch pending transaction with id: {}",
-                id
-            ))?;
+            .with_context(|| format!("Failed to fetch pending transaction with id: {}", id))?;
 
             if let Some(transaction) = pending_transaction {
                 let signatures = sqlx::query_as::<_, crate::models::Signature>(
@@ -1676,10 +1716,9 @@ impl Database {
                 .bind(id)
                 .fetch_all(&self.pool)
                 .await
-                .with_context(|| format!(
-                    "Failed to fetch signatures for transaction id: {}",
-                    id
-                ))?;
+                .with_context(|| {
+                    format!("Failed to fetch signatures for transaction id: {}", id)
+                })?;
 
                 Ok(Some(crate::models::PendingTransactionWithSignatures {
                     transaction,
@@ -1714,10 +1753,12 @@ impl Database {
             .bind(signature)
             .execute(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to add signature for transaction_id: {}, signer: {}",
-                transaction_id, signer
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to add signature for transaction_id: {}, signer: {}",
+                    transaction_id, signer
+                )
+            })?;
             Ok(())
         })
         .await
@@ -1738,10 +1779,12 @@ impl Database {
             .bind(id)
             .execute(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to update transaction status to '{}' for id: {}",
-                status, id
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to update transaction status to '{}' for id: {}",
+                    status, id
+                )
+            })?;
             Ok(())
         })
         .await
@@ -1808,10 +1851,7 @@ impl Database {
             .bind(wallet_address)
             .fetch_all(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to list API keys for wallet: {}",
-                wallet_address
-            ))?;
+            .with_context(|| format!("Failed to list API keys for wallet: {}", wallet_address))?;
             Ok(keys.into_iter().map(ApiKeyInfo::from).collect())
         })
         .await
@@ -1832,11 +1872,139 @@ impl Database {
             .bind(wallet_address)
             .fetch_optional(&self.pool)
             .await
+            .with_context(|| {
+                format!(
+                    "Failed to get API key id: {} for wallet: {}",
+                    id, wallet_address
+                )
+            })?;
+            Ok(key.map(ApiKeyInfo::from))
+        })
+        .await
+    }
+
+    pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
+        self.execute_with_timing("revoke_api_key", async {
+            let revoked_at = Utc::now().to_rfc3339();
+            let result = sqlx::query(
+                r"
+                UPDATE api_keys
+                SET status = 'revoked', revoked_at = $1
+                WHERE id = $2 AND wallet_address = $3 AND status = 'active'
+                ",
+            )
+            .bind(&revoked_at)
+            .bind(id)
+            .bind(wallet_address)
+            .execute(&self.pool)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to revoke API key id: {} for wallet: {}",
+                    id, wallet_address
+                )
+            })?;
+
+            Ok(result.rows_affected() > 0)
+        })
+        .await
+    }
+
+    pub async fn rotate_api_key(
+        &self,
+        id: &str,
+        wallet_address: &str,
+    ) -> Result<Option<CreateApiKeyResponse>> {
+        self.execute_with_timing("rotate_api_key", async {
+            let mut tx = self
+                .pool
+                .begin()
+                .await
+                .with_context(|| format!(
+                    "Failed to begin API key rotation transaction for id: {}",
+                    id
+                ))?;
+
+            let existing = sqlx::query_as::<_, ApiKey>(
+                r"
+                SELECT * FROM api_keys
+                WHERE id = $1 AND wallet_address = $2 AND status = 'active'
+                ",
+            )
+            .bind(id)
+            .bind(wallet_address)
+            .fetch_optional(&mut *tx)
+            .await
             .with_context(|| format!(
-                "Failed to get API key id: {} for wallet: {}",
+                "Failed to fetch API key id: {} for wallet: {} during rotation",
                 id, wallet_address
             ))?;
-            Ok(key.map(ApiKeyInfo::from))
+
+            let Some(existing) = existing else {
+                return Ok(None);
+            };
+
+            let revoked_at = Utc::now().to_rfc3339();
+            sqlx::query(
+                r"
+                UPDATE api_keys
+                SET status = 'revoked', revoked_at = $1
+                WHERE id = $2
+                ",
+            )
+            .bind(&revoked_at)
+            .bind(&existing.id)
+            .execute(&mut *tx)
+            .await
+            .with_context(|| format!(
+                "Failed to revoke existing API key during rotation for id: {}",
+                existing.id
+            ))?;
+
+            let new_id = Uuid::new_v4().to_string();
+            let (plain_key, prefix, key_hash) = generate_api_key();
+            let now = Utc::now().to_rfc3339();
+
+            sqlx::query(
+                r"
+                INSERT INTO api_keys (
+                    id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
+                ",
+            )
+            .bind(&new_id)
+            .bind(&existing.name)
+            .bind(&prefix)
+            .bind(&key_hash)
+            .bind(wallet_address)
+            .bind(&existing.scopes)
+            .bind(&now)
+            .bind(&existing.expires_at)
+            .execute(&mut *tx)
+            .await
+            .with_context(|| format!(
+                "Failed to insert rotated API key for wallet: {} from id: {}",
+                wallet_address, existing.id
+            ))?;
+
+            let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+                .bind(&new_id)
+                .fetch_one(&mut *tx)
+                .await
+                .with_context(|| format!(
+                    "Failed to fetch rotated API key with id: {}",
+                    new_id
+                ))?;
+
+            tx.commit().await.with_context(|| {
+                format!("Failed to commit API key rotation transaction for id: {}", id)
+            })?;
+
+            Ok(Some(CreateApiKeyResponse {
+                key: ApiKeyInfo::from(key),
+                plain_key,
+            }))
         })
         .await
     }
@@ -1986,10 +2154,12 @@ impl Database {
             .bind(start_time.to_rfc3339())
             .fetch_one(&self.pool)
             .await
-            .with_context(|| format!(
-                "Failed to get recent anchor performance for anchor_id: {}, minutes: {}",
-                anchor_id, minutes
-            ))?;
+            .with_context(|| {
+                format!(
+                    "Failed to get recent anchor performance for anchor_id: {}, minutes: {}",
+                    anchor_id, minutes
+                )
+            })?;
 
             let total_transactions = row.0;
             let successful_transactions = row.1;

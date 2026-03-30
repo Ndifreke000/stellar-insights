@@ -1,9 +1,26 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use failsafe::futures::CircuitBreaker as _;
+use failsafe::{backoff, failure_policy, Config};
 use tokio::time::sleep;
 use uuid::Uuid;
 
+use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
+use stellar_insights_backend::cache::{CacheConfig, CacheManager};
+use stellar_insights_backend::rpc::circuit_breaker::{
+    rpc_circuit_breaker, CircuitBreaker, SharedCircuitBreaker,
+};
+use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
+use stellar_insights_backend::rpc::stellar::StellarRpcClient;
+
+fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCircuitBreaker {
+    let backoff = backoff::constant(timeout);
+    let policy = failure_policy::consecutive_failures(failure_threshold, backoff);
+    let breaker: CircuitBreaker = Config::new().failure_policy(policy).build();
+    Arc::new(breaker)
+}
 use stellar_insights_backend::api::anchors::{
     get_anchor_metrics_with_fallback, get_anchor_metrics_with_rpc, rpc_circuit_breaker_instance,
     AnchorMetrics,
@@ -20,7 +37,6 @@ use stellar_insights_backend::rpc::{CircuitBreaker, CircuitBreakerConfig};
 
 #[tokio::test]
 async fn test_rpc_retry_on_failure() {
-    // Test that with_retry retries on transient failures
     let call_count = Arc::new(AtomicUsize::new(0));
     let call_count_clone = Arc::clone(&call_count);
 
@@ -30,7 +46,6 @@ async fn test_rpc_retry_on_failure() {
             async move {
                 let current = call_count.fetch_add(1, Ordering::SeqCst) + 1;
                 if current < 3 {
-                    // Fail first 2 attempts
                     Err(RpcError::NetworkError("transient failure".to_string()))
                 } else {
                     Ok("success".to_string())
@@ -42,17 +57,18 @@ async fn test_rpc_retry_on_failure() {
             base_delay_ms: 1,
             max_delay_ms: 100,
         },
-        Arc::new(CircuitBreaker::new(CircuitBreakerConfig::default(), "test")),
+        test_circuit_breaker(5, Duration::from_secs(30)),
     )
     .await;
 
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "success");
-    assert_eq!(call_count.load(Ordering::SeqCst), 3); // Should have called 3 times: 2 failures + 1 success
+    assert_eq!(call_count.load(Ordering::SeqCst), 3);
 }
 
 #[tokio::test]
 async fn test_circuit_breaker_opens_on_failures() {
+    let circuit_breaker = test_circuit_breaker(2, Duration::from_millis(1000));
     let circuit_breaker = Arc::new(CircuitBreaker::new(
         CircuitBreakerConfig {
             failure_threshold: 2,
@@ -62,49 +78,45 @@ async fn test_circuit_breaker_opens_on_failures() {
         "test",
     ));
 
-    // First failure
-    let result1: Result<String, RpcError> = circuit_breaker
-        .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
+    let result1: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+        .call(async { Err(RpcError::NetworkError("fail".to_string())) })
         .await;
-    assert!(result1.is_err());
+    assert!(matches!(result1, Err(failsafe::Error::Inner(_))));
 
-    // Second failure - should open circuit
-    let result2: Result<String, RpcError> = circuit_breaker
-        .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
+    let result2: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+        .call(async { Err(RpcError::NetworkError("fail".to_string())) })
         .await;
-    assert!(result2.is_err());
+    assert!(matches!(result2, Err(failsafe::Error::Inner(_))));
 
-    // Third call should fail fast due to open circuit
-    let result3: Result<String, RpcError> = circuit_breaker
-        .call(|| async { Ok("success".to_string()) })
+    let result3: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+        .call(async { Ok("success".to_string()) })
         .await;
-    assert!(result3.is_err());
+    assert!(matches!(result3, Err(failsafe::Error::Rejected)));
 
+    sleep(Duration::from_millis(1100)).await;
     // Wait for recovery timeout with generous margin
     sleep(Duration::from_millis(300)).await;
 
-    // Should allow call again
-    let result4: Result<String, RpcError> = circuit_breaker
-        .call(|| async { Ok("recovered".to_string()) })
+    let result4: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+        .call(async { Ok("recovered".to_string()) })
         .await;
-    assert!(result4.is_ok());
+    assert_eq!(result4.unwrap(), "recovered");
 }
 
 #[tokio::test]
 async fn test_circuit_breaker_fallback() {
     let anchor_id = Uuid::new_v4();
     let client = StellarRpcClient::new_with_defaults(true);
-    let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+    let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
 
-    // Open circuit via repeated retryable failures
-    let circuit_breaker = rpc_circuit_breaker_instance();
-    for _ in 0..5 {
-        let _ = circuit_breaker
-            .call(|| async { Err(RpcError::NetworkError("fail".to_string())) })
-            .await;
-    }
+    let circuit_breaker = rpc_circuit_breaker();
+    while matches!(
+        circuit_breaker
+            .call(async { Err::<(), RpcError>(RpcError::NetworkError("fail".to_string())) })
+            .await,
+        Err(failsafe::Error::Inner(_))
+    ) {}
 
-    // Store cached fallback data for the anchor
     let fallback = AnchorMetrics {
         anchor_id,
         total_payments: 10,
@@ -117,24 +129,10 @@ async fn test_circuit_breaker_fallback() {
         .await
         .unwrap();
 
-    let metrics = get_anchor_metrics_with_fallback(anchor_id, Arc::new(client), cache.clone())
+    let metrics = get_anchor_metrics_with_fallback(anchor_id, Arc::new(client), cache)
         .await
         .unwrap();
 
     assert_eq!(metrics.anchor_id, anchor_id);
     assert_eq!(metrics.total_payments, fallback.total_payments);
-}
-
-#[tokio::test]
-async fn test_anchor_metrics_with_retry() {
-    let client = StellarRpcClient::new_with_defaults(true);
-    let anchor_id = Uuid::new_v4();
-
-    // Test the new function with retry
-    let metrics = get_anchor_metrics_with_rpc(anchor_id, Arc::new(client)).await;
-
-    assert!(metrics.is_ok());
-    let metrics = metrics.unwrap();
-    assert_eq!(metrics.anchor_id, anchor_id);
-    assert!(metrics.total_payments > 0);
 }

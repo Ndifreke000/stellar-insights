@@ -120,10 +120,7 @@ mod tests {
     #[tokio::test]
     async fn invalidate_anchor_by_account_succeeds() {
         let svc = make_service();
-        assert!(svc
-            .invalidate_anchor_by_account("GABC1234")
-            .await
-            .is_ok());
+        assert!(svc.invalidate_anchor_by_account("GABC1234").await.is_ok());
     }
 
     #[tokio::test]

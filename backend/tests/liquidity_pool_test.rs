@@ -3,8 +3,79 @@ use std::sync::Arc;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
-#[sqlx::test]
-async fn test_liquidity_pool_sync_and_query(pool: SqlitePool) {
+async fn setup_liquidity_pool_test_db() -> SqlitePool {
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS liquidity_pools (
+            pool_id TEXT PRIMARY KEY,
+            pool_type TEXT NOT NULL DEFAULT 'constant_product',
+            fee_bp INTEGER NOT NULL DEFAULT 30,
+            total_trustlines INTEGER NOT NULL DEFAULT 0,
+            total_shares TEXT NOT NULL DEFAULT '0',
+            reserve_a_asset_code TEXT NOT NULL,
+            reserve_a_asset_issuer TEXT,
+            reserve_a_amount REAL NOT NULL DEFAULT 0.0,
+            reserve_b_asset_code TEXT NOT NULL,
+            reserve_b_asset_issuer TEXT,
+            reserve_b_amount REAL NOT NULL DEFAULT 0.0,
+            total_value_usd REAL NOT NULL DEFAULT 0.0,
+            volume_24h_usd REAL NOT NULL DEFAULT 0.0,
+            fees_earned_24h_usd REAL NOT NULL DEFAULT 0.0,
+            apy REAL NOT NULL DEFAULT 0.0,
+            impermanent_loss_pct REAL NOT NULL DEFAULT 0.0,
+            trade_count_24h INTEGER NOT NULL DEFAULT 0,
+            last_synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS liquidity_pool_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pool_id TEXT NOT NULL,
+            reserve_a_amount REAL NOT NULL,
+            reserve_b_amount REAL NOT NULL,
+            total_value_usd REAL NOT NULL DEFAULT 0.0,
+            volume_usd REAL NOT NULL DEFAULT 0.0,
+            fees_usd REAL NOT NULL DEFAULT 0.0,
+            apy REAL NOT NULL DEFAULT 0.0,
+            impermanent_loss_pct REAL NOT NULL DEFAULT 0.0,
+            trade_count INTEGER NOT NULL DEFAULT 0,
+            snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (pool_id) REFERENCES liquidity_pools(pool_id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for index_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_lp_apy ON liquidity_pools(apy DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_lp_volume ON liquidity_pools(volume_24h_usd DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_lp_total_value ON liquidity_pools(total_value_usd DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_lp_updated ON liquidity_pools(updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_lps_pool_id ON liquidity_pool_snapshots(pool_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lps_snapshot_at ON liquidity_pool_snapshots(snapshot_at)",
+        "CREATE INDEX IF NOT EXISTS idx_lps_pool_time ON liquidity_pool_snapshots(pool_id, snapshot_at)",
+    ] {
+        sqlx::query(index_sql).execute(&pool).await.unwrap();
+    }
+
+    pool
+}
+
+#[tokio::test]
+async fn test_liquidity_pool_sync_and_query() {
+    let pool = setup_liquidity_pool_test_db().await;
     // Create a mock RPC client
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = LiquidityPoolAnalyzer::new(pool.clone(), rpc_client);
@@ -31,8 +102,9 @@ async fn test_liquidity_pool_sync_and_query(pool: SqlitePool) {
     assert!(stats.total_value_locked_usd > 0.0);
 }
 
-#[sqlx::test]
-async fn test_liquidity_pool_rankings(pool: SqlitePool) {
+#[tokio::test]
+async fn test_liquidity_pool_rankings() {
+    let pool = setup_liquidity_pool_test_db().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = LiquidityPoolAnalyzer::new(pool.clone(), rpc_client);
 
@@ -52,8 +124,9 @@ async fn test_liquidity_pool_rankings(pool: SqlitePool) {
     assert!(by_tvl[0].total_value_usd >= by_tvl[1].total_value_usd);
 }
 
-#[sqlx::test]
-async fn test_liquidity_pool_snapshots(pool: SqlitePool) {
+#[tokio::test]
+async fn test_liquidity_pool_snapshots() {
+    let pool = setup_liquidity_pool_test_db().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = LiquidityPoolAnalyzer::new(pool.clone(), rpc_client);
 
@@ -74,8 +147,9 @@ async fn test_liquidity_pool_snapshots(pool: SqlitePool) {
     assert!(snapshots[0].total_value_usd > 0.0);
 }
 
-#[sqlx::test]
-async fn test_liquidity_pool_detail(pool: SqlitePool) {
+#[tokio::test]
+async fn test_liquidity_pool_detail() {
+    let pool = setup_liquidity_pool_test_db().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = LiquidityPoolAnalyzer::new(pool.clone(), rpc_client);
 

@@ -72,7 +72,6 @@ impl AssetVerifier {
         // Check anchor registry (placeholder - would integrate with actual registry)
         let anchor_registry_verified = self
             .check_anchor_registry(asset_code, asset_issuer)
-            .await
             .unwrap_or(false);
 
         // Get on-chain metrics
@@ -241,7 +240,7 @@ impl AssetVerifier {
     }
 
     /// Check anchor registry (placeholder implementation)
-    async fn check_anchor_registry(&self, _asset_code: &str, _asset_issuer: &str) -> Result<bool> {
+    fn check_anchor_registry(&self, _asset_code: &str, _asset_issuer: &str) -> Result<bool> {
         // Placeholder: Would integrate with actual anchor registry
         // For now, return false
         Ok(false)
@@ -298,6 +297,7 @@ impl AssetVerifier {
         struct AssetRecord {
             num_accounts: i64,
             #[serde(default)]
+            #[allow(dead_code)]
             num_claimable_balances: i64,
         }
 
@@ -610,7 +610,7 @@ mod tests {
             anchor_registry_verified: false,
             trustline_count: 5000,
             transaction_count: 50000,
-            total_volume_usd: 1000000.0,
+            total_volume_usd: 1_000_000.0,
         };
 
         let score = verifier.calculate_reputation_score(&result);

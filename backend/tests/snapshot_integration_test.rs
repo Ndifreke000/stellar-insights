@@ -44,10 +44,10 @@ async fn setup_test_database() -> Arc<Database> {
         CREATE TABLE corridor_metrics (
             id TEXT PRIMARY KEY,
             corridor_key TEXT NOT NULL,
-            source_asset_code TEXT NOT NULL,
-            source_asset_issuer TEXT NOT NULL,
-            destination_asset_code TEXT NOT NULL,
-            destination_asset_issuer TEXT NOT NULL,
+            asset_a_code TEXT NOT NULL,
+            asset_a_issuer TEXT NOT NULL,
+            asset_b_code TEXT NOT NULL,
+            asset_b_issuer TEXT NOT NULL,
             date TEXT NOT NULL,
             total_transactions INTEGER DEFAULT 0,
             successful_transactions INTEGER DEFAULT 0,
@@ -90,7 +90,7 @@ async fn setup_test_database() -> Arc<Database> {
     "#).execute(db.pool()).await.unwrap();
 
     let _: sqlx::sqlite::SqliteQueryResult = sqlx::query(r#"
-        INSERT INTO corridor_metrics (id, corridor_key, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, date, total_transactions, successful_transactions, failed_transactions, success_rate, volume_usd, avg_settlement_latency_ms, liquidity_depth_usd)
+        INSERT INTO corridor_metrics (id, corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer, date, total_transactions, successful_transactions, failed_transactions, success_rate, volume_usd, avg_settlement_latency_ms, liquidity_depth_usd)
         VALUES 
         ('00000000-0000-0000-0000-000000000003', 'USDC:ISSUER1->EURC:ISSUER2', 'USDC', 'ISSUER1', 'EURC', 'ISSUER2', datetime('now'), 500, 475, 25, 95.0, 50000.0, 250, 100000.0),
         ('00000000-0000-0000-0000-000000000004', 'USDC:ISSUER1->GBPC:ISSUER3', 'USDC', 'ISSUER1', 'GBPC', 'ISSUER3', datetime('now'), 300, 285, 15, 95.0, 30000.0, 300, 75000.0)
@@ -134,7 +134,7 @@ async fn test_acceptance_criteria_2_serialize_deterministic_json() {
     let db = setup_test_database().await;
     let service = SnapshotService::new(db, None, None);
 
-    let mut snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
+    let snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
     let mut snapshot2 = service.aggregate_all_metrics(2).await.unwrap();
 
     // Normalize timestamps so the hashes match exactly
@@ -263,7 +263,7 @@ async fn test_complete_workflow() {
     assert!(!result.snapshot_id.is_empty());
 
     // Verify determinism
-    let mut snapshot1 = service.aggregate_all_metrics(epoch).await.unwrap();
+    let snapshot1 = service.aggregate_all_metrics(epoch).await.unwrap();
     let mut snapshot2 = service.aggregate_all_metrics(epoch).await.unwrap();
 
     // Normalize timestamps

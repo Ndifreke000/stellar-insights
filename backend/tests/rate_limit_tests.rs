@@ -1,6 +1,20 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use stellar_insights_backend::rate_limit::{
     ClientIdentifier, ClientRateLimits, ClientTier, RateLimitConfig, RateLimiter,
 };
+
+fn unique_suffix() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    format!("{nanos}-{counter}")
+}
 
 #[tokio::test]
 async fn test_client_identifier_tier() {
@@ -50,11 +64,14 @@ async fn test_rate_limit_config_default() {
 #[tokio::test]
 async fn test_rate_limit_anonymous_client() {
     let limiter = RateLimiter::new().await.unwrap();
+    let suffix = unique_suffix();
+    let endpoint = format!("/test/endpoint-anon-{suffix}");
+    let ip = format!("192.168.1.{}", (suffix.len() % 200) + 1);
 
     // Register endpoint with client-specific limits
     limiter
         .register_endpoint(
-            "/test/endpoint".to_string(),
+            endpoint.clone(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -67,12 +84,12 @@ async fn test_rate_limit_anonymous_client() {
         )
         .await;
 
-    let client = ClientIdentifier::IpAddress("192.168.1.1".to_string());
+    let client = ClientIdentifier::IpAddress(ip.clone());
 
     // First 10 requests should succeed
     for i in 0..10 {
         let (allowed, info) = limiter
-            .check_rate_limit_for_client(&client, "/test/endpoint", "192.168.1.1")
+            .check_rate_limit_for_client(&client, &endpoint, &ip)
             .await;
         assert!(allowed, "Request {} should be allowed", i + 1);
         assert_eq!(info.limit, 10);
@@ -81,7 +98,7 @@ async fn test_rate_limit_anonymous_client() {
 
     // 11th request should be rate limited
     let (allowed, info) = limiter
-        .check_rate_limit_for_client(&client, "/test/endpoint", "192.168.1.1")
+        .check_rate_limit_for_client(&client, &endpoint, &ip)
         .await;
     assert!(!allowed, "Request 11 should be rate limited");
     assert_eq!(info.remaining, 0);
@@ -90,10 +107,13 @@ async fn test_rate_limit_anonymous_client() {
 #[tokio::test]
 async fn test_rate_limit_authenticated_client() {
     let limiter = RateLimiter::new().await.unwrap();
+    let suffix = unique_suffix();
+    let endpoint = format!("/test/endpoint-auth-{suffix}");
+    let client = ClientIdentifier::ApiKey(format!("test_api_key_{suffix}"));
 
     limiter
         .register_endpoint(
-            "/test/endpoint".to_string(),
+            endpoint.clone(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -106,12 +126,10 @@ async fn test_rate_limit_authenticated_client() {
         )
         .await;
 
-    let client = ClientIdentifier::ApiKey("test_api_key".to_string());
-
     // First 20 requests should succeed (authenticated limit)
     for i in 0..20 {
         let (allowed, info) = limiter
-            .check_rate_limit_for_client(&client, "/test/endpoint", "192.168.1.1")
+            .check_rate_limit_for_client(&client, &endpoint, "192.168.1.1")
             .await;
         assert!(allowed, "Request {} should be allowed", i + 1);
         assert_eq!(info.limit, 20);
@@ -119,7 +137,7 @@ async fn test_rate_limit_authenticated_client() {
 
     // 21st request should be rate limited
     let (allowed, _) = limiter
-        .check_rate_limit_for_client(&client, "/test/endpoint", "192.168.1.1")
+        .check_rate_limit_for_client(&client, &endpoint, "192.168.1.1")
         .await;
     assert!(!allowed, "Request 21 should be rate limited");
 }
@@ -127,10 +145,14 @@ async fn test_rate_limit_authenticated_client() {
 #[tokio::test]
 async fn test_rate_limit_different_clients_independent() {
     let limiter = RateLimiter::new().await.unwrap();
+    let suffix = unique_suffix();
+    let endpoint = format!("/test/endpoint-clients-{suffix}");
+    let client1_ip = format!("192.168.10.{}", (suffix.len() % 200) + 1);
+    let client2_ip = format!("192.168.20.{}", (suffix.len() % 200) + 1);
 
     limiter
         .register_endpoint(
-            "/test/endpoint".to_string(),
+            endpoint.clone(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -143,26 +165,26 @@ async fn test_rate_limit_different_clients_independent() {
         )
         .await;
 
-    let client1 = ClientIdentifier::IpAddress("192.168.1.1".to_string());
-    let client2 = ClientIdentifier::IpAddress("192.168.1.2".to_string());
+    let client1 = ClientIdentifier::IpAddress(client1_ip.clone());
+    let client2 = ClientIdentifier::IpAddress(client2_ip.clone());
 
     // Exhaust client1's limit
     for _ in 0..5 {
         let (allowed, _) = limiter
-            .check_rate_limit_for_client(&client1, "/test/endpoint", "192.168.1.1")
+            .check_rate_limit_for_client(&client1, &endpoint, &client1_ip)
             .await;
         assert!(allowed);
     }
 
     // Client1 should be rate limited
     let (allowed, _) = limiter
-        .check_rate_limit_for_client(&client1, "/test/endpoint", "192.168.1.1")
+        .check_rate_limit_for_client(&client1, &endpoint, &client1_ip)
         .await;
     assert!(!allowed);
 
     // Client2 should still be allowed
     let (allowed, _) = limiter
-        .check_rate_limit_for_client(&client2, "/test/endpoint", "192.168.1.2")
+        .check_rate_limit_for_client(&client2, &endpoint, &client2_ip)
         .await;
     assert!(allowed);
 }
@@ -201,10 +223,14 @@ async fn test_rate_limit_whitelist() {
 #[tokio::test]
 async fn test_rate_limit_different_endpoints() {
     let limiter = RateLimiter::new().await.unwrap();
+    let suffix = unique_suffix();
+    let endpoint1 = format!("/endpoint1-{suffix}");
+    let endpoint2 = format!("/endpoint2-{suffix}");
+    let ip = format!("192.168.30.{}", (suffix.len() % 200) + 1);
 
     limiter
         .register_endpoint(
-            "/endpoint1".to_string(),
+            endpoint1.clone(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -219,7 +245,7 @@ async fn test_rate_limit_different_endpoints() {
 
     limiter
         .register_endpoint(
-            "/endpoint2".to_string(),
+            endpoint2.clone(),
             RateLimitConfig {
                 requests_per_minute: 100,
                 whitelist_ips: vec![],
@@ -232,25 +258,25 @@ async fn test_rate_limit_different_endpoints() {
         )
         .await;
 
-    let client = ClientIdentifier::IpAddress("192.168.1.1".to_string());
+    let client = ClientIdentifier::IpAddress(ip.clone());
 
     // Exhaust endpoint1 limit
     for _ in 0..5 {
         let (allowed, _) = limiter
-            .check_rate_limit_for_client(&client, "/endpoint1", "192.168.1.1")
+            .check_rate_limit_for_client(&client, &endpoint1, &ip)
             .await;
         assert!(allowed);
     }
 
     // Endpoint1 should be rate limited
     let (allowed, _) = limiter
-        .check_rate_limit_for_client(&client, "/endpoint1", "192.168.1.1")
+        .check_rate_limit_for_client(&client, &endpoint1, &ip)
         .await;
     assert!(!allowed);
 
     // Endpoint2 should still be allowed (different limit)
     let (allowed, _) = limiter
-        .check_rate_limit_for_client(&client, "/endpoint2", "192.168.1.1")
+        .check_rate_limit_for_client(&client, &endpoint2, &ip)
         .await;
     assert!(allowed);
 }

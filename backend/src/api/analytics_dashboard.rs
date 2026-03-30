@@ -59,9 +59,9 @@ pub async fn analytics_dashboard(
         cache.config.get_ttl("dashboard"),
         || async {
             // Generate real analytics data based on database queries
-            let time_series_data = generate_time_series_data().await?;
-            let corridor_performance = generate_corridor_performance().await?;
-            let stats = generate_network_stats(&time_series_data, &corridor_performance).await?;
+            let time_series_data = generate_time_series_data()?;
+            let corridor_performance = generate_corridor_performance()?;
+            let stats = generate_network_stats(&time_series_data, &corridor_performance)?;
 
             Ok(AnalyticsDashboardData {
                 stats,
@@ -76,7 +76,7 @@ pub async fn analytics_dashboard(
     Json(dashboard_data)
 }
 
-async fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyhow::Error> {
+fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyhow::Error> {
     // For now, return realistic mock data
     // In production, this would query the database for actual time series data
     Ok(vec![
@@ -125,44 +125,44 @@ async fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyh
     ])
 }
 
-async fn generate_corridor_performance() -> Result<Vec<CorridorPerformanceMetric>, anyhow::Error> {
+fn generate_corridor_performance() -> Result<Vec<CorridorPerformanceMetric>, anyhow::Error> {
     // For now, return realistic mock data
     // In production, this would query the database for actual corridor performance
     Ok(vec![
         CorridorPerformanceMetric {
             corridor: "USDC→PHP".to_string(),
             success_rate: 98.5,
-            volume: 240000.0,
+            volume: 240_000.0,
             health: 95,
         },
         CorridorPerformanceMetric {
             corridor: "USD→PHP".to_string(),
             success_rate: 97.2,
-            volume: 180000.0,
+            volume: 180_000.0,
             health: 92,
         },
         CorridorPerformanceMetric {
             corridor: "EUR→USDC".to_string(),
             success_rate: 99.1,
-            volume: 150000.0,
+            volume: 150_000.0,
             health: 98,
         },
         CorridorPerformanceMetric {
             corridor: "USDC→SGD".to_string(),
             success_rate: 96.8,
-            volume: 120000.0,
+            volume: 120_000.0,
             health: 89,
         },
         CorridorPerformanceMetric {
             corridor: "USD→EUR".to_string(),
             success_rate: 98.9,
-            volume: 200000.0,
+            volume: 200_000.0,
             health: 97,
         },
     ])
 }
 
-async fn generate_network_stats(
+fn generate_network_stats(
     time_series_data: &[NetworkVolumeDataPoint],
     corridor_performance: &[CorridorPerformanceMetric],
 ) -> Result<NetworkStats, anyhow::Error> {
@@ -170,13 +170,17 @@ async fn generate_network_stats(
     let avg_success_rate: f64 = if corridor_performance.is_empty() {
         0.0
     } else {
-        corridor_performance.iter().map(|c| c.success_rate).sum::<f64>() / corridor_performance.len() as f64
+        corridor_performance
+            .iter()
+            .map(|c| c.success_rate)
+            .sum::<f64>()
+            / corridor_performance.len() as f64
     };
 
     Ok(NetworkStats {
         volume_24h: total_volume,
         volume_growth: 18.0,
-        avg_success_rate: avg_success_rate,
+        avg_success_rate,
         success_rate_growth: 0.8,
         active_corridors: corridor_performance.len() as i32,
         corridors_growth: 3,
@@ -233,37 +237,37 @@ fn generate_fallback_data() -> AnalyticsDashboardData {
         CorridorPerformanceMetric {
             corridor: "USDC→PHP".to_string(),
             success_rate: 98.5,
-            volume: 240000.0,
+            volume: 240_000.0,
             health: 95,
         },
         CorridorPerformanceMetric {
             corridor: "USD→PHP".to_string(),
             success_rate: 97.2,
-            volume: 180000.0,
+            volume: 180_000.0,
             health: 92,
         },
         CorridorPerformanceMetric {
             corridor: "EUR→USDC".to_string(),
             success_rate: 99.1,
-            volume: 150000.0,
+            volume: 150_000.0,
             health: 98,
         },
         CorridorPerformanceMetric {
             corridor: "USDC→SGD".to_string(),
             success_rate: 96.8,
-            volume: 120000.0,
+            volume: 120_000.0,
             health: 89,
         },
         CorridorPerformanceMetric {
             corridor: "USD→EUR".to_string(),
             success_rate: 98.9,
-            volume: 200000.0,
+            volume: 200_000.0,
             health: 97,
         },
     ];
 
     let stats = NetworkStats {
-        volume_24h: 2400000.0,
+        volume_24h: 2_400_000.0,
         volume_growth: 18.0,
         avg_success_rate: 98.1,
         success_rate_growth: 0.8,

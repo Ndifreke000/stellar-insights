@@ -282,6 +282,7 @@ fn parse_retry_after_seconds(headers: &HeaderMap) -> Option<u64> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;

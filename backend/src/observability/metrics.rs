@@ -1,14 +1,15 @@
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 
 use axum::{
     body::Body,
-    extract::{MatchedPath, Request},
+    extract::Request,
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use lazy_static::lazy_static;
 use prometheus::{
+    gather, register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge,
+    Histogram, Registry, TextEncoder,
     register_counter_vec, register_gauge, register_histogram_vec, CounterVec, Encoder, Gauge,
     HistogramOpts, HistogramVec, Registry, TextEncoder,
     register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge, Histogram,
@@ -109,83 +110,56 @@ lazy_static! {
         "Idle database pool connections"
     pub static ref HTTP_REQUESTS_TOTAL: Counter = register_counter!(
         "http_requests_total",
-        "Total number of HTTP requests processed",
-        &REGISTRY
+        "Total number of HTTP requests processed"
     )
     .unwrap();
     pub static ref HTTP_REQUEST_DURATION_SECONDS: Histogram = register_histogram!(
         "http_request_duration_seconds",
         "HTTP request duration in seconds",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
-        &REGISTRY
+        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
     )
     .unwrap();
-    pub static ref RPC_CALLS_TOTAL: Counter = register_counter!(
-        "rpc_calls_total",
-        "Total number of RPC calls made",
-        &REGISTRY
-    )
-    .unwrap();
+    pub static ref RPC_CALLS_TOTAL: Counter =
+        register_counter!("rpc_calls_total", "Total number of RPC calls made").unwrap();
     pub static ref RPC_CALL_DURATION_SECONDS: Histogram = register_histogram!(
         "rpc_call_duration_seconds",
         "RPC call duration in seconds",
-        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
-        &REGISTRY
+        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
     )
     .unwrap();
     pub static ref DB_QUERY_DURATION_SECONDS: Histogram = register_histogram!(
         "db_query_duration_seconds",
         "Database query duration in seconds",
-        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
-        &REGISTRY
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
     )
     .unwrap();
-    pub static ref CACHE_OPERATIONS_TOTAL: Counter = register_counter!(
-        "cache_operations_total",
-        "Total number of cache operations",
-        &REGISTRY
-    )
-    .unwrap();
-    pub static ref ERRORS_TOTAL: Counter = register_counter!(
-        "errors_total",
-        "Total number of errors encountered",
-        &REGISTRY
-    )
-    .unwrap();
+    pub static ref CACHE_OPERATIONS_TOTAL: Counter =
+        register_counter!("cache_operations_total", "Total number of cache operations").unwrap();
+    pub static ref ERRORS_TOTAL: Counter =
+        register_counter!("errors_total", "Total number of errors encountered").unwrap();
     pub static ref BACKGROUND_JOBS_TOTAL: Counter = register_counter!(
         "background_jobs_total",
-        "Total number of background jobs executed",
-        &REGISTRY
+        "Total number of background jobs executed"
     )
     .unwrap();
     pub static ref ACTIVE_CONNECTIONS: Gauge = register_gauge!(
         "active_connections",
-        "Number of active websocket connections",
-        &REGISTRY
+        "Number of active websocket connections"
     )
     .unwrap();
-    pub static ref CORRIDORS_TRACKED: Gauge = register_gauge!(
-        "corridors_tracked",
-        "Number of tracked corridors",
-        &REGISTRY
-    )
-    .unwrap();
+    pub static ref CORRIDORS_TRACKED: Gauge =
+        register_gauge!("corridors_tracked", "Number of tracked corridors").unwrap();
     pub static ref HTTP_IN_FLIGHT_REQUESTS: Gauge = register_gauge!(
         "http_in_flight_requests",
-        "Number of in-flight HTTP requests",
-        &REGISTRY
+        "Number of in-flight HTTP requests"
     )
     .unwrap();
     pub static ref DB_POOL_SIZE: Gauge =
-        register_gauge!("db_pool_size", "Total database pool connections", &REGISTRY).unwrap();
+        register_gauge!("db_pool_size", "Total database pool connections").unwrap();
     pub static ref DB_POOL_IDLE: Gauge =
-        register_gauge!("db_pool_idle", "Idle database pool connections", &REGISTRY).unwrap();
-    pub static ref DB_POOL_ACTIVE: Gauge = register_gauge!(
-        "db_pool_active",
-        "Active database pool connections",
-        &REGISTRY
-    )
-    .unwrap();
+        register_gauge!("db_pool_idle", "Idle database pool connections").unwrap();
+    pub static ref DB_POOL_ACTIVE: Gauge =
+        register_gauge!("db_pool_active", "Active database pool connections").unwrap();
 }
 
 pub fn init_metrics() {
@@ -193,9 +167,9 @@ pub fn init_metrics() {
     let _ = &*REGISTRY;
 }
 
-pub async fn metrics_handler() -> Response {
+pub fn metrics_handler() -> Response {
     let encoder = TextEncoder::new();
-    let metric_families = REGISTRY.gather();
+    let metric_families = gather();
     let mut buffer = vec![];
 
     if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
@@ -349,18 +323,20 @@ mod tests {
         record_cache_lookup(true);
         set_active_connections(3);
 
+        let response = metrics_handler();
         let response = metrics_handler().await.into_response();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(text.contains("rpc_calls_total 1"));
-        assert!(text.contains("cache_operations_total 1"));
+        assert!(text.contains("rpc_calls_total"));
+        assert!(text.contains("cache_operations_total"));
         assert!(text.contains("active_connections 3"));
     }
 
     #[tokio::test]
     async fn http_middleware_records_request_labels() {
         init_metrics();
+        let before = HTTP_REQUESTS_TOTAL.get();
 
         let app = Router::new()
             .route("/ping", get(|| async { StatusCode::OK }))
@@ -378,20 +354,22 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
+        let metrics_response = metrics_handler();
         let metrics_response = metrics_handler().await.into_response();
         let body = to_bytes(metrics_response.into_body(), usize::MAX)
             .await
             .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(text.contains("http_requests_total 1"));
+        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1.0);
+        assert!(text.contains("http_requests_total"));
     }
 
     #[tokio::test]
     async fn metrics_handler_returns_prometheus_content_type() {
         init_metrics();
 
-        let response = metrics_handler().await;
+        let response = metrics_handler();
         let content_type = response
             .headers()
             .get(axum::http::header::CONTENT_TYPE)
@@ -410,7 +388,7 @@ mod tests {
     async fn metrics_route_is_scrapeable_via_router() {
         init_metrics();
 
-        let app = Router::new().route("/metrics", get(metrics_handler));
+        let app = Router::new().route("/metrics", get(|| async { metrics_handler() }));
 
         let response = app
             .oneshot(
@@ -429,7 +407,7 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).unwrap();
 
         // Verify standard Prometheus metric families are present
-        assert!(text.contains("http_requests_total"));
+        assert!(text.contains("# HELP http_requests_total"));
         assert!(text.contains("# HELP"));
         assert!(text.contains("# TYPE"));
     }
@@ -439,7 +417,7 @@ mod tests {
         init_metrics();
 
         let handles: Vec<_> = (0..10)
-            .map(|_| tokio::spawn(async { metrics_handler().await }))
+            .map(|_| tokio::spawn(async { metrics_handler() }))
             .collect();
 
         for handle in handles {

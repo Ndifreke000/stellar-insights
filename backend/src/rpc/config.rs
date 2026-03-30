@@ -26,7 +26,6 @@ pub fn circuit_breaker_config_from_env() -> CircuitBreakerConfig {
         failure_threshold,
         success_threshold,
         timeout_duration: Duration::from_secs(timeout_secs),
-        half_open_max_calls: 3,
     }
 }
 

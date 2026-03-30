@@ -8,7 +8,7 @@ use axum::{
     Router,
 };
 use serde_json::Value;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tower::ServiceExt;

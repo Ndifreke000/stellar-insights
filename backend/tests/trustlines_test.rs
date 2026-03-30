@@ -3,8 +3,59 @@ use std::sync::Arc;
 use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
 
-#[sqlx::test]
-async fn test_trustlines_sync_and_query(pool: SqlitePool) {
+async fn setup_trustline_test_db() -> SqlitePool {
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS trustline_stats (
+            asset_code TEXT NOT NULL,
+            asset_issuer TEXT NOT NULL,
+            total_trustlines INTEGER NOT NULL DEFAULT 0,
+            authorized_trustlines INTEGER NOT NULL DEFAULT 0,
+            unauthorized_trustlines INTEGER NOT NULL DEFAULT 0,
+            total_supply REAL NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (asset_code, asset_issuer)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS trustline_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_code TEXT NOT NULL,
+            asset_issuer TEXT NOT NULL,
+            total_trustlines INTEGER NOT NULL,
+            authorized_trustlines INTEGER NOT NULL,
+            unauthorized_trustlines INTEGER NOT NULL,
+            total_supply REAL NOT NULL,
+            snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_trustline_snapshots_asset_time ON trustline_snapshots(asset_code, asset_issuer, snapshot_at DESC)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    pool
+}
+
+#[tokio::test]
+async fn test_trustlines_sync_and_query() {
+    let pool = setup_trustline_test_db().await;
     // Create a mock RPC client
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = TrustlineAnalyzer::new(pool.clone(), rpc_client);
@@ -24,8 +75,9 @@ async fn test_trustlines_sync_and_query(pool: SqlitePool) {
     assert_eq!(rankings[0].asset_code, "USDC"); // USDC has the most trustlines in mock
 }
 
-#[sqlx::test]
-async fn test_trustlines_snapshots(pool: SqlitePool) {
+#[tokio::test]
+async fn test_trustlines_snapshots() {
+    let pool = setup_trustline_test_db().await;
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let analyzer = TrustlineAnalyzer::new(pool.clone(), rpc_client);
 

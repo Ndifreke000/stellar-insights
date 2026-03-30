@@ -1,6 +1,6 @@
 #[cfg(test)]
+#[allow(clippy::needless_raw_string_hashes, clippy::unreadable_literal)]
 mod webhook_integration_tests {
-    use super::*;
     use crate::services::webhook_event_service::WebhookEventService;
     use crate::webhooks::events::CorridorMetrics;
     use sqlx::SqlitePool;

@@ -70,10 +70,6 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_returns_join_handle() {
-        use crate::vault::{VaultConfig, VaultClient};
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
-
         // LeaseManager::spawn requires a VaultClientRef but the spawned task
         // only uses it in a placeholder loop — we can't construct a real
         // VaultClient without a live Vault server, so we verify the handle is

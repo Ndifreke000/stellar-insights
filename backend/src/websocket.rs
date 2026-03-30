@@ -123,7 +123,7 @@ impl WsState {
         }
     }
 
-    pub async fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
+    pub fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
         let mut target_connections = Vec::new();
         for entry in self.subscriptions.iter() {
             let (connection_id, channels) = entry.pair();
@@ -235,7 +235,7 @@ impl WsState {
         true
     }
 
-    pub async fn close_all_connections(&self) {
+    pub fn close_all_connections(&self) {
         let connection_ids: Vec<Uuid> = self.connections.iter().map(|e| *e.key()).collect();
         for connection_id in connection_ids {
             self.cleanup_connection(connection_id);
@@ -341,7 +341,7 @@ pub struct WsQueryParams {
 ///
 /// Rejects with `503 Service Unavailable` when the server has reached
 /// `MAX_CONCURRENT_CONNECTIONS`, and with `401 Unauthorized` for invalid tokens.
-pub async fn ws_handler(
+pub fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQueryParams>,
     State(state): State<Arc<WsState>>,
@@ -625,6 +625,7 @@ async fn send_ws_message(sender: &SharedWebSocketSender, message: &WsMessage) ->
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::collection_is_never_read, clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::sync::Arc;
