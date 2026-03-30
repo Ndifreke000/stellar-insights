@@ -350,7 +350,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Build protected anchor routes (require authentication)
     let protected_anchor_routes = Router::new()
-        .route("/api/admin/pool-metrics", get(get_pool_metrics))
         .route("/api/anchors", axum::routing::post(create_anchor))
         .route("/api/anchors/:id/metrics", put(update_anchor_metrics))
         .route(
