@@ -30,8 +30,8 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_connections: 10,
-            min_connections: 2,
+            max_connections: 20,
+            min_connections: 5,
             connect_timeout_seconds: 30,
             idle_timeout_seconds: 600,
             max_lifetime_seconds: 1800,
@@ -112,11 +112,11 @@ impl PoolConfig {
             max_connections: std::env::var("DB_POOL_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(10),
+                .unwrap_or(20),
             min_connections: std::env::var("DB_POOL_MIN_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(2),
+                .unwrap_or(5),
             connect_timeout_seconds: std::env::var("DB_POOL_CONNECT_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -213,7 +213,6 @@ pub struct AnchorMetricsParams {
 }
 
 /// Connection pool metrics
-#[derive(Debug, Clone, Copy, serde::Serialize)]
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct PoolMetrics {
     pub size: u32,

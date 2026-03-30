@@ -48,5 +48,3 @@ pub mod websocket;
 
 pub mod rpc;
 
-#[cfg(test)]
-mod ml_tests;

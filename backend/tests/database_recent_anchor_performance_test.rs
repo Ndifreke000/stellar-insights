@@ -21,10 +21,13 @@ async fn test_get_recent_anchor_performance_from_payments_without_successful_col
             id: "payment_1".to_string(),
             transaction_hash: "tx_1".to_string(),
             source_account: anchor_account.to_string(),
-            destination_account: "GDESTINATIONACCOUNT000000000000000000000000000000000000001".to_string(),
+            destination_account: "GDESTINATIONACCOUNT000000000000000000000000000000000000001"
+                .to_string(),
             asset_type: "credit_alphanum4".to_string(),
             asset_code: Some("USDC".to_string()),
-            asset_issuer: Some("GISSUERACCOUNT000000000000000000000000000000000000000000001".to_string()),
+            asset_issuer: Some(
+                "GISSUERACCOUNT000000000000000000000000000000000000000000001".to_string(),
+            ),
             source_asset_code: String::new(),
             source_asset_issuer: String::new(),
             destination_asset_code: String::new(),
@@ -39,11 +42,14 @@ async fn test_get_recent_anchor_performance_from_payments_without_successful_col
         PaymentRecord {
             id: "payment_2".to_string(),
             transaction_hash: "tx_2".to_string(),
-            source_account: "GSOURCEACCOUNT000000000000000000000000000000000000000000001".to_string(),
+            source_account: "GSOURCEACCOUNT000000000000000000000000000000000000000000001"
+                .to_string(),
             destination_account: anchor_account.to_string(),
             asset_type: "credit_alphanum4".to_string(),
             asset_code: Some("USDC".to_string()),
-            asset_issuer: Some("GISSUERACCOUNT000000000000000000000000000000000000000000001".to_string()),
+            asset_issuer: Some(
+                "GISSUERACCOUNT000000000000000000000000000000000000000000001".to_string(),
+            ),
             source_asset_code: String::new(),
             source_asset_issuer: String::new(),
             destination_asset_code: String::new(),

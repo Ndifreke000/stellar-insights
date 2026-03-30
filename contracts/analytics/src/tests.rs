@@ -1516,3 +1516,77 @@ fn test_storage_size_comparison() {
     // submitter stored as u32 ID instead of full Address
     assert_eq!(compact.submitter_id, 1u32);
 }
+
+// ============================================================================
+// Snapshot Verification Tests
+// ============================================================================
+
+#[test]
+fn test_snapshot_verification() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+    env.ledger().set_timestamp(1000);
+
+    let hash = create_test_hash(&env, 42);
+    client.submit_snapshot(&1u64, &hash, &admin);
+
+    let result = client.verify_snapshot(&1u64, &hash);
+    assert!(result, "verify_snapshot should return true for matching hash");
+}
+
+#[test]
+fn test_snapshot_verification_invalid_hash() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+    env.ledger().set_timestamp(1000);
+
+    let hash = create_test_hash(&env, 42);
+    let wrong_hash = create_test_hash(&env, 99);
+    client.submit_snapshot(&1u64, &hash, &admin);
+
+    let result = client.verify_snapshot(&1u64, &wrong_hash);
+    assert!(!result, "verify_snapshot should return false for mismatched hash");
+}
+
+#[test]
+fn test_batch_verification() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+    env.ledger().set_timestamp(1000);
+
+    let hash1 = create_test_hash(&env, 1);
+    let hash2 = create_test_hash(&env, 2);
+    let wrong_hash = create_test_hash(&env, 99);
+
+    client.submit_snapshot(&1u64, &hash1, &admin);
+    client.submit_snapshot(&2u64, &hash2, &admin);
+
+    let mut verifications = Vec::new(&env);
+    verifications.push_back((1u64, hash1.clone()));   // correct
+    verifications.push_back((2u64, wrong_hash));       // wrong
+    verifications.push_back((2u64, hash2.clone()));    // correct
+
+    let results = client.batch_verify_snapshots(&verifications);
+    assert_eq!(results.len(), 3);
+    assert!(results.get(0).unwrap(),  "epoch 1 correct hash should verify");
+    assert!(!results.get(1).unwrap(), "epoch 2 wrong hash should not verify");
+    assert!(results.get(2).unwrap(),  "epoch 2 correct hash should verify");
+}

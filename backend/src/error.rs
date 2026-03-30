@@ -351,6 +351,32 @@ impl From<crate::rpc::error::RpcError> for ApiError {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+/// Typed database error for pool exhaustion and other DB-level failures.
+#[derive(Debug, thiserror::Error)]
+pub enum DatabaseError {
+    #[error("Database pool exhausted. Please try again later.")]
+    PoolExhausted,
+
+    #[error("Database error: {0}")]
+    Other(#[from] sqlx::Error),
+}
+
+impl From<DatabaseError> for ApiError {
+    fn from(err: DatabaseError) -> Self {
+        match err {
+            DatabaseError::PoolExhausted => {
+                tracing::error!("Database pool exhausted");
+                Self::ServiceUnavailable {
+                    code: "DB_POOL_EXHAUSTED".to_string(),
+                    message: "Database pool exhausted. Please try again later.".to_string(),
+                    details: None,
+                }
+            }
+            DatabaseError::Other(e) => ApiError::from(e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

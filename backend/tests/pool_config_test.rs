@@ -8,8 +8,8 @@ static ENV_MUTEX: Mutex<()> = Mutex::new(());
 fn test_pool_config_defaults() {
     let config = PoolConfig::default();
 
-    assert_eq!(config.max_connections, 10);
-    assert_eq!(config.min_connections, 2);
+    assert_eq!(config.max_connections, 20);
+    assert_eq!(config.min_connections, 5);
     assert_eq!(config.connect_timeout_seconds, 30);
     assert_eq!(config.idle_timeout_seconds, 600);
     assert_eq!(config.max_lifetime_seconds, 1800);
@@ -54,8 +54,8 @@ fn test_pool_config_from_env_with_defaults() {
     let config = PoolConfig::from_env();
 
     // Should use defaults
-    assert_eq!(config.max_connections, 10);
-    assert_eq!(config.min_connections, 2);
+    assert_eq!(config.max_connections, 20);
+    assert_eq!(config.min_connections, 5);
     assert_eq!(config.connect_timeout_seconds, 30);
     assert_eq!(config.idle_timeout_seconds, 600);
     assert_eq!(config.max_lifetime_seconds, 1800);
@@ -72,7 +72,7 @@ fn test_pool_config_from_env_partial() {
     let config = PoolConfig::from_env();
 
     assert_eq!(config.max_connections, 15);
-    assert_eq!(config.min_connections, 2); // default
+    assert_eq!(config.min_connections, 5); // default
     assert_eq!(config.connect_timeout_seconds, 45);
     assert_eq!(config.idle_timeout_seconds, 600); // default
     assert_eq!(config.max_lifetime_seconds, 1800); // default
@@ -113,15 +113,25 @@ async fn test_pool_metrics() {
     let metrics = db.pool_metrics();
 
     // Initial state
-    assert_eq!(metrics.size, 2);
-    assert_eq!(metrics.idle, 2);
+    assert_eq!(metrics.size, 5);
+    assert_eq!(metrics.idle, 5);
 }
 
 #[tokio::test]
 async fn test_pool_exhaustion_handling() {
-    use stellar_insights_backend::error::ApiError;
+    use stellar_insights_backend::error::{ApiError, DatabaseError};
 
-    // PoolTimedOut maps to ServiceUnavailable (503)
+    // DatabaseError::PoolExhausted maps to ServiceUnavailable (503)
+    let db_err = DatabaseError::PoolExhausted;
+    let api_err = ApiError::from(db_err);
+    match api_err {
+        ApiError::ServiceUnavailable { code, .. } => {
+            assert_eq!(code, "DB_POOL_EXHAUSTED");
+        }
+        other => panic!("Expected ServiceUnavailable, got {:?}", other),
+    }
+
+    // sqlx::Error::PoolTimedOut also maps to ServiceUnavailable via ApiError::from
     let err = ApiError::from(sqlx::Error::PoolTimedOut);
     match err {
         ApiError::ServiceUnavailable { code, .. } => {
