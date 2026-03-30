@@ -13,6 +13,8 @@ pub mod governance;
 pub mod indexing;
 pub mod liquidity_pool_analyzer;
 pub mod price_feed;
+pub mod broadcaster_port;
+pub mod data_port;
 pub mod realtime_broadcaster;
 pub mod slack_bot;
 pub mod snapshot;
