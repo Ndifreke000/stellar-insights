@@ -29,7 +29,7 @@ pub enum Error {
     // Validation errors (40-49)
     InvalidHash = 40,
 
-    // Legacy and secondary errors (50+)
+    // Legancy and secondary errors (50+)
     InvalidEpochZero = 50,
     InvalidEpochTooLarge = 51,
     ContractNotPaused = 52,
@@ -42,50 +42,7 @@ pub enum Error {
     MultiSigNotInitialized = 59,
     InvalidThreshold = 60,
     SignerNotAdmin = 61,
-    /// Caller is not authorized to perform this action
-    Unauthorized = 3,
-    /// Generic invalid epoch value
-    InvalidEpoch = 4,
-    /// Epoch must be greater than 0
-    InvalidEpochZero = 5,
-    /// Epoch exceeds the maximum allowed value
-    InvalidEpochTooLarge = 6,
-    /// A snapshot for this epoch already exists
-    DuplicateEpoch = 7,
-    /// Epoch must be strictly greater than the latest recorded epoch
-    EpochMonotonicityViolated = 8,
-    /// Contract is currently paused
-    ContractPaused = 9,
-    /// Contract is not paused
-    ContractNotPaused = 10,
-    /// Generic invalid hash
-    InvalidHash = 11,
-    /// Hash must not be all zeros
-    InvalidHashZero = 12,
-    /// No snapshot found for the requested epoch
-    SnapshotNotFound = 13,
-    /// Admin address has not been initialized
-    AdminNotSet = 14,
-    /// Governance address has not been set
-    GovernanceNotSet = 15,
-    /// Submission rate limit exceeded
-    RateLimitExceeded = 16,
-    /// Timelock period has not yet expired
-    TimelockNotExpired = 17,
-    /// Governance action not found
-    ActionNotFound = 18,
-    /// Governance action has expired
-    ActionExpired = 19,
-    /// Governance action has already been executed
-    ActionAlreadyExecuted = 20,
-    /// MultiSig configuration has not been initialized
-    MultiSigNotInitialized = 21,
-    /// Invalid multisig threshold value
-    InvalidThreshold = 22,
-    /// Signer is not a registered multisig admin
-    SignerNotAdmin = 23,
-    /// Unknown Governance Action Type
-    UnknownActionType = 24,
+    UnknownActionType = 62,
 }
 
 impl Error {
