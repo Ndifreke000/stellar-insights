@@ -1,5 +1,4 @@
 #![no_std]
-use soroban_sdk::testutils::Events;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String,
     Symbol, Vec,
@@ -304,17 +303,11 @@ impl AccessControlContract {
             .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
         {
             for r in roles.iter() {
-                if Self::roles_equal(&r, &role) {
-                    return Ok(());
-                }
-            }
-            return Err(Error::PermissionDenied);
-        }
-        Err(Error::RoleNotFound)
                 if role_level(&r) >= required_level {
                     return Ok(());
                 }
             }
+            return Err(Error::PermissionDenied);
         }
         Err(Error::Unauthorized)
     }

@@ -248,6 +248,19 @@ pub struct PendingAction {
     pub expires_at: u64,
 }
 
+/// Aggregate statistics over all submitted snapshots.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotStatistics {
+    pub total_snapshots: u64,
+    pub first_epoch: u64,
+    pub latest_epoch: u64,
+    pub unique_submitters: u32,
+    pub average_time_between_snapshots: u64,
+    pub oldest_snapshot_timestamp: u64,
+    pub newest_snapshot_timestamp: u64,
+}
+
 /// Paginated result for snapshot queries.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1894,6 +1907,73 @@ impl AnalyticsContract {
             repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
             license: String::from_str(&env, "MIT"),
         }
+    }
+
+    /// Get aggregate statistics over all submitted snapshots.
+    pub fn get_statistics(env: Env) -> Result<SnapshotStatistics, Error> {
+        require_initialized(&env)?;
+
+        let snapshots: Map<u64, SnapshotMetadata> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let latest_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+
+        if latest_epoch == 0 {
+            return Ok(SnapshotStatistics {
+                total_snapshots: 0,
+                first_epoch: 0,
+                latest_epoch: 0,
+                unique_submitters: 0,
+                average_time_between_snapshots: 0,
+                oldest_snapshot_timestamp: 0,
+                newest_snapshot_timestamp: 0,
+            });
+        }
+
+        let mut unique_submitters: Vec<Address> = Vec::new(&env);
+        let mut first_timestamp = u64::MAX;
+        let mut last_timestamp = 0u64;
+        let mut total_count = 0u64;
+
+        for epoch in 1..=latest_epoch {
+            if let Some(metadata) = snapshots.get(epoch) {
+                total_count += 1;
+
+                if !unique_submitters.contains(&metadata.submitter) {
+                    unique_submitters.push_back(metadata.submitter);
+                }
+
+                if metadata.timestamp < first_timestamp {
+                    first_timestamp = metadata.timestamp;
+                }
+                if metadata.timestamp > last_timestamp {
+                    last_timestamp = metadata.timestamp;
+                }
+            }
+        }
+
+        let avg_time = if total_count > 1 {
+            (last_timestamp - first_timestamp) / (total_count - 1)
+        } else {
+            0
+        };
+
+        Ok(SnapshotStatistics {
+            total_snapshots: total_count,
+            first_epoch: 1,
+            latest_epoch,
+            unique_submitters: unique_submitters.len(),
+            average_time_between_snapshots: avg_time,
+            oldest_snapshot_timestamp: first_timestamp,
+            newest_snapshot_timestamp: last_timestamp,
+        })
     }
 
     pub fn get_contract_info(env: Env) -> ContractInfo {

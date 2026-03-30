@@ -1590,3 +1590,59 @@ fn test_batch_verification() {
     assert!(!results.get(1).unwrap(), "epoch 2 wrong hash should not verify");
     assert!(results.get(2).unwrap(),  "epoch 2 correct hash should verify");
 }
+
+// ============================================================================
+// Snapshot Statistics Tests
+// ============================================================================
+
+#[test]
+fn test_statistics_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+
+    let stats = client.get_statistics();
+    assert_eq!(stats.total_snapshots, 0);
+    assert_eq!(stats.first_epoch, 0);
+    assert_eq!(stats.latest_epoch, 0);
+    assert_eq!(stats.unique_submitters, 0);
+    assert_eq!(stats.average_time_between_snapshots, 0);
+    assert_eq!(stats.oldest_snapshot_timestamp, 0);
+    assert_eq!(stats.newest_snapshot_timestamp, 0);
+}
+
+#[test]
+fn test_statistics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+
+    env.ledger().set_timestamp(1000);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
+
+    env.ledger().set_timestamp(2000);
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &admin);
+
+    env.ledger().set_timestamp(3000);
+    client.submit_snapshot(&3u64, &create_test_hash(&env, 3), &admin);
+
+    let stats = client.get_statistics();
+    assert_eq!(stats.total_snapshots, 3);
+    assert_eq!(stats.first_epoch, 1);
+    assert_eq!(stats.latest_epoch, 3);
+    assert_eq!(stats.unique_submitters, 1);
+    assert_eq!(stats.oldest_snapshot_timestamp, 1000);
+    assert_eq!(stats.newest_snapshot_timestamp, 3000);
+    // avg = (3000 - 1000) / (3 - 1) = 1000
+    assert_eq!(stats.average_time_between_snapshots, 1000);
+}
