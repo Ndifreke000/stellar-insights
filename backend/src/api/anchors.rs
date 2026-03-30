@@ -2,18 +2,13 @@ use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
-    routing::{get, post},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
-use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
-
-// use anyhow::Context;
 
 use crate::broadcast::broadcast_anchor_update;
 use tracing::{error, info, warn};
@@ -21,12 +16,15 @@ use tracing::{error, info, warn};
 use crate::cache::helpers::cached_query;
 use crate::cache::{keys, CacheManager, CacheConfig};
 use crate::database::Database;
+use crate::error::{ApiError, ApiResult};
+use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
 use crate::rpc::{
     circuit_breaker::rpc_circuit_breaker,
-    error::RpcError,
+    error::{RpcError, with_retry, RetryConfig},
     StellarRpcClient,
 };
 use crate::services::price_feed::PriceFeedClient;
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnchorMetrics {
@@ -288,8 +286,6 @@ pub async fn create_anchor_asset(
     Ok(Json(asset))
 }
 
-
-
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListAnchorsQuery {
@@ -315,12 +311,20 @@ pub async fn get_anchor_metrics_with_rpc(
     let circuit_breaker = rpc_circuit_breaker();
 
     // Wrap call in circuit breaker as requested in Issue #671
-    let metrics = circuit_breaker
+    let result: AnchorMetrics = circuit_breaker
         .call(|| async {
-            rpc_client
-                .fetch_anchor_metrics(anchor_id)
-                .await
-                .map_err(|e| RpcError::categorize(&e.to_string()))
+            with_retry(
+                || async {
+                    rpc_client
+                        .fetch_anchor_metrics(anchor_id)
+                        .await
+                        .map_err(|e| RpcError::categorize(&e.to_string()))
+                },
+                RetryConfig::default(),
+                circuit_breaker.clone(),
+            )
+            .await
+            .map_err(|e| RpcError::categorize(&e.to_string()))
         })
         .await
         .map_err(|e| match e {
@@ -330,7 +334,7 @@ pub async fn get_anchor_metrics_with_rpc(
             failsafe::Error::Inner(err) => anyhow::anyhow!(err.to_string()),
         })?;
 
-    Ok(metrics)
+    Ok(result)
 }
 
 pub async fn get_anchor_metrics_with_fallback(
@@ -343,7 +347,7 @@ pub async fn get_anchor_metrics_with_fallback(
         Err(e) if e.to_string().contains("Circuit breaker open") => {
             warn!("Circuit breaker open, using cached data");
             cache
-                .get(&format!("anchor_metrics:{}", anchor_id))
+                .get::<AnchorMetrics>(&format!("anchor_metrics:{}", anchor_id))
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("No cached data available"))
         }
@@ -395,13 +399,6 @@ pub struct AnchorsResponse {
 }
 
 /// List all anchors with key metrics
-///
-/// Returns a paginated list of all anchors with their performance metrics.
-/// Data is cached for improved performance.
-///
-/// **DATA SOURCE: RPC + Database**
-/// - Anchor metadata (name, account) from database
-/// - Transaction metrics calculated from RPC payment data
 #[utoipa::path(
     get,
     path = "/api/anchors",
@@ -430,8 +427,8 @@ pub async fn get_anchors(
         &cache_key,
         cache.config.get_ttl("anchor"),
         || async {
-            // Get anchor metadata from database (names, accounts, etc.)
-            let anchors = db.list_anchors(params.limit, params.offset).await?;
+            let anchors: Vec<crate::models::Anchor> =
+                db.list_anchors(params.limit, params.offset).await?;
 
             if anchors.is_empty() {
                 return Ok(AnchorsResponse {
@@ -440,13 +437,12 @@ pub async fn get_anchors(
                 });
             }
 
-            // OPTIMIZATION: Batch fetch all assets for these anchors (1 query instead of N)
             let anchor_ids: Vec<uuid::Uuid> = anchors
                 .iter()
                 .map(|a| uuid::Uuid::parse_str(&a.id).unwrap_or_else(|_| uuid::Uuid::nil()))
                 .collect();
 
-            let asset_map = db
+            let asset_map: HashMap<String, Vec<crate::models::Asset>> = db
                 .get_assets_by_anchors(&anchor_ids)
                 .await
                 .unwrap_or_default();
@@ -454,37 +450,30 @@ pub async fn get_anchors(
             let circuit_breaker = rpc_circuit_breaker();
             let mut anchor_responses = Vec::new();
 
-            // Process anchors with pre-fetched data
             for anchor in anchors {
-                // Get pre-fetched assets (no additional query needed)
                 let assets = asset_map.get(&anchor.id).cloned().unwrap_or_default();
 
-                // **RPC DATA**: Fetch real-time payment data for this anchor with pagination
-                // Wrapped in circuit breaker as requested in Issue #671
-                let payments = circuit_breaker
-                    .call(|| async {
+                let payments: Vec<crate::rpc::Payment> = with_retry(
+                    || async {
                         rpc_client
                             .fetch_all_account_payments(&anchor.stellar_account, Some(500))
                             .await
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))
-                    })
-                    .await
-                    .map_err(|e| match e {
-                        failsafe::Error::Rejected => {
-                            anyhow::anyhow!("Circuit breaker open - RPC service unavailable")
-                        }
-                        failsafe::Error::Inner(err) => err,
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::warn!(
-                            "Failed to fetch payments for anchor {}: {}",
-                            anchor.stellar_account,
-                            e
-                        );
-                        vec![]
-                    });
+                            .map_err(|e| RpcError::categorize(&e.to_string()))
+                    },
+                    RetryConfig::default(),
+                    circuit_breaker.clone(),
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!(e.to_string()))
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to fetch payments for anchor {}: {}",
+                        anchor.stellar_account,
+                        e
+                    );
+                    vec![]
+                });
 
-                // Calculate metrics from RPC payment data
                 let (total_transactions, successful_transactions, failed_transactions) =
                     if payments.is_empty() {
                         (
@@ -494,8 +483,6 @@ pub async fn get_anchors(
                         )
                     } else {
                         let total = payments.len() as i64;
-                        // In Stellar, if a payment appears in the ledger, it was successful
-                        // Failed payments don't appear in the payment stream
                         let successful = total;
                         let failed = 0;
                         (total, successful, failed)
@@ -537,11 +524,9 @@ pub async fn get_anchors(
                 anchor_responses.push(anchor_response);
             }
 
-            let total = anchor_responses.len();
-
             Ok(AnchorsResponse {
                 anchors: anchor_responses,
-                total,
+                total: anchor_responses.len(),
             })
         },
     )
@@ -555,33 +540,40 @@ pub async fn get_anchors(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CacheConfig, CacheManager};
+    use crate::rpc::circuit_breaker::rpc_circuit_breaker;
     use crate::rpc::StellarRpcClient;
-    use crate::cache::CacheManager;
-    use crate::cache::CacheConfig;
-    
+    use failsafe::CircuitBreaker as _;
+
     #[tokio::test]
     async fn test_circuit_breaker_opens_on_failures() {
-        let rpc_client = Arc::new(StellarRpcClient::new("http://invalid".to_string()));
+        let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(false));
         let anchor_id = Uuid::new_v4();
-        
-        // The circuit breaker is shared, but for testing we want to ensure it opens.
-        // failsafe::Config::new().failure_threshold(5)
-        
+
+        let circuit_breaker = rpc_circuit_breaker();
+        while matches!(
+            circuit_breaker.call(|| Err::<(), anyhow::Error>(anyhow::anyhow!("forced failure"))),
+            Err(failsafe::Error::Inner(_))
+        ) {}
+
         for _ in 0..5 {
             let _ = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
         }
-        
+
         let result = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Circuit breaker open"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Circuit breaker open"));
     }
 
     #[tokio::test]
     async fn test_circuit_breaker_fallback() {
-        let rpc_client = Arc::new(StellarRpcClient::new("http://invalid".to_string()));
-        let cache = Arc::new(CacheManager::new(CacheConfig::default()).await.unwrap());
+        let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(false));
+        let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
         let anchor_id = Uuid::new_v4();
-        
+
         // Pre-fill cache
         let metrics = AnchorMetrics {
             anchor_id,
@@ -590,13 +582,16 @@ mod tests {
             failed_payments: 5,
             total_volume: 1000.0,
         };
-        cache.set(&format!("anchor_metrics:{}", anchor_id), &metrics, Duration::from_secs(60)).await.unwrap();
-        
+        cache
+            .set(&format!("anchor_metrics:{}", anchor_id), &metrics, 60)
+            .await
+            .unwrap();
+
         // Trigger circuit breaker
         for _ in 0..6 {
             let _ = get_anchor_metrics_with_rpc(anchor_id, rpc_client.clone()).await;
         }
-        
+
         // Verify fallback works
         let result = get_anchor_metrics_with_fallback(anchor_id, rpc_client, cache).await;
         assert!(result.is_ok());
