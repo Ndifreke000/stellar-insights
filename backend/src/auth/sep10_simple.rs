@@ -7,11 +7,25 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// SEP-10 challenge transaction validity duration (5 minutes)
-const CHALLENGE_EXPIRY_SECONDS: i64 = 300;
+/// SEP-10 challenge transaction validity duration (default: 5 minutes)
+const DEFAULT_CHALLENGE_EXPIRY_SECONDS: i64 = 300;
 
-/// SEP-10 session expiry (7 days)
-const SESSION_EXPIRY_DAYS: i64 = 7;
+/// SEP-10 session expiry (default: 7 days)
+const DEFAULT_SESSION_EXPIRY_DAYS: i64 = 7;
+
+fn challenge_expiry_seconds() -> i64 {
+    std::env::var("SEP10_CHALLENGE_EXPIRY_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_CHALLENGE_EXPIRY_SECONDS)
+}
+
+fn session_expiry_days() -> i64 {
+    std::env::var("SEP10_SESSION_EXPIRY_DAYS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_SESSION_EXPIRY_DAYS)
+}
 
 /// SEP-10 Challenge Request
 #[derive(Debug, Deserialize)]
@@ -118,7 +132,7 @@ impl Sep10Service {
             "client_domain": request.client_domain,
             "memo": request.memo,
             "timestamp": Utc::now().timestamp(),
-            "expires_at": Utc::now().timestamp() + CHALLENGE_EXPIRY_SECONDS,
+            "expires_at": Utc::now().timestamp() + challenge_expiry_seconds(),
             "network_passphrase": self.network_passphrase,
         });
 
@@ -127,7 +141,7 @@ impl Sep10Service {
         let transaction_xdr = BASE64.encode(challenge_json.as_bytes());
 
         // Store challenge in Redis for validation
-        self.store_challenge(&request.account, &nonce, CHALLENGE_EXPIRY_SECONDS)
+        self.store_challenge(&request.account, &nonce, challenge_expiry_seconds())
             .await?;
 
         Ok(ChallengeResponse {
@@ -198,14 +212,14 @@ impl Sep10Service {
             account: client_account,
             client_domain,
             created_at: Utc::now().timestamp(),
-            expires_at: Utc::now().timestamp() + (SESSION_EXPIRY_DAYS * 24 * 60 * 60),
+            expires_at: Utc::now().timestamp() + (session_expiry_days() * 24 * 60 * 60),
         };
 
         self.store_session(&token, &session).await?;
 
         Ok(VerificationResponse {
             token,
-            expires_in: SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+            expires_in: session_expiry_days() * 24 * 60 * 60,
         })
     }
 
@@ -296,7 +310,7 @@ impl Sep10Service {
             let mut conn = conn.clone();
             let key = format!("sep10:session:{token}");
             let session_json = serde_json::to_string(session)?;
-            let expiry = SESSION_EXPIRY_DAYS * 24 * 60 * 60;
+            let expiry = session_expiry_days() * 24 * 60 * 60;
 
             conn.set_ex::<_, _, ()>(&key, session_json, expiry as u64)
                 .await

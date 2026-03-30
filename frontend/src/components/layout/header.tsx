@@ -119,7 +119,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
             {isConnected ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-slate-800 rounded-lg">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <div className="w-2 h-2 bg-green-500 rounded-full" aria-hidden="true"></div>
                   <span className="text-sm text-gray-700 dark:text-gray-300">
                     {displayAddress}
                   </span>
@@ -128,20 +128,27 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
                   onClick={() => setShowWalletMenu(!showWalletMenu)}
                   className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                   aria-label="Wallet menu"
+                  aria-expanded={showWalletMenu}
+                  aria-haspopup="true"
                 >
-                  <Wallet className="w-5 h-5" />
+                  <Wallet className="w-5 h-5" aria-hidden="true" />
                 </button>
 
                 {showWalletMenu && (
-                  <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg py-2 min-w-[180px]">
+                  <div
+                    className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg py-2 min-w-[180px]"
+                    role="menu"
+                  >
                     <button
                       onClick={() => {
                         disconnectWallet();
                         setShowWalletMenu(false);
                       }}
                       className="w-full px-4 py-2 flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 transition-colors"
+                      role="menuitem"
+                      aria-label="Disconnect wallet"
                     >
-                      <LogOut className="w-4 h-4" />
+                      <LogOut className="w-4 h-4" aria-hidden="true" />
                       Disconnect
                     </button>
                   </div>
@@ -151,8 +158,9 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               <button
                 onClick={connectWallet}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-sm flex items-center gap-2"
+                aria-label="Connect wallet"
               >
-                <Wallet className="w-4 h-4" />
+                <Wallet className="w-4 h-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Connect Wallet</span>
                 <span className="sm:hidden">Connect</span>
               </button>

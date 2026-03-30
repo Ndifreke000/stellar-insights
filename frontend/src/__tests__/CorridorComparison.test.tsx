@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CorridorComparisonTable } from '../components/CorridorComparisonTable';
-import { CorridorMetrics } from '../lib/api';
+import { CorridorMetrics } from '../lib/api/corridors';
 
 // Mock corridor data
 const mockCorridors: CorridorMetrics[] = [

@@ -12,6 +12,46 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use axum::http::HeaderValue;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use tower::ServiceBuilder;
+use tower::timeout::TimeoutLayer;
+use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
+use std::sync::Arc;
+use std::time::Duration;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::compression::{CompressionLayer, predicate::SizeAbove};
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+use anyhow::Context;
+use axum::http::{
+    header::{AUTHORIZATION, CONTENT_TYPE},
+    HeaderValue, Method,
+};
+
+use stellar_insights_backend::{
+    api::v1::routes,
+    backup::{BackupConfig, BackupManager},
+    cache::{CacheConfig, CacheManager},
+    database::{Database, PoolConfig},
+    env_config,
+    ingestion::DataIngestionService,
+    openapi::ApiDoc,
+    rate_limit::RateLimiter,
+    rpc::StellarRpcClient,
+    services::{
+        account_merge_detector::AccountMergeDetector,
+        fee_bump_tracker::FeeBumpTrackerService,
+        liquidity_pool_analyzer::LiquidityPoolAnalyzer,
+        price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
+        webhook_dispatcher::WebhookDispatcher,
+    },
+    state::AppState,
+    websocket::WsState,
 use tower_http::{
     compression::{predicate::SizeAbove, CompressionLayer},
     cors::{AllowOrigin, CorsLayer},
@@ -350,7 +390,7 @@ async fn main() -> anyhow::Result<()> {
     // Build non-cached anchor routes with app state
     let anchor_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/metrics", get(get_prometheus_metrics))
+        .route("/metrics", get(obs_metrics::metrics_handler))
         .route("/api/anchors/:id", get(get_anchor))
         .route(
             "/api/anchors/account/:stellar_account",
@@ -541,6 +581,13 @@ async fn main() -> anyhow::Result<()> {
     let app = base_routes
         .merge(anchor_routes) // Includes /health
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    )
+    .layer(TimeoutLayer::new(timeout_duration))
+    .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))
+    .layer(TimeoutLayer::new(timeout_duration))
+    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)))
     .layer(middleware::from_fn_with_state(
         db.clone(),
         stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

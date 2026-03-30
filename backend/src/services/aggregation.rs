@@ -235,6 +235,10 @@ impl AggregationService {
         HourlyCorridorMetrics {
             id: Uuid::new_v4().to_string(),
             corridor_key: metric.corridor_key.clone(),
+            source_asset_code: metric.reserve_asset_a_code.clone(),
+            source_asset_issuer: metric.reserve_asset_a_issuer.clone(),
+            destination_asset_code: metric.reserve_asset_b_code.clone(),
+            destination_asset_issuer: metric.reserve_asset_b_issuer.clone(),
             source_asset_code: metric.source_asset_code.clone(),
             source_asset_issuer: metric.source_asset_issuer.clone(),
             destination_asset_code: metric.destination_asset_code.clone(),

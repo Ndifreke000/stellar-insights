@@ -240,8 +240,9 @@ impl Database {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         let slow_query_threshold_ms = std::env::var("SLOW_QUERY_THRESHOLD_MS")
             .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(100);
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(100)
+            .clamp(1, 60_000); // 1ms minimum, 60s maximum
         Self {
             pool,
             admin_audit_logger,
@@ -674,6 +675,25 @@ impl Database {
     /// # Performance
     ///
     /// Uses dynamic SQL with IN clause. Efficient for batch operations.
+    /// Retrieves all anchors from the database.
+    ///
+    /// # Returns
+    /// Vector of all anchors sorted by name alphabetically.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
+        self.execute_with_timing("get_all_anchors", async {
+            let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
+                .fetch_all(&self.pool)
+                .await?;
+            Ok(anchors)
+        })
+        .await
+    }
+
+    /// Retrieves assets for multiple anchors in a single query.
+    ///
+    /// Returns empty `HashMap` if `anchor_ids` is empty.
+    #[tracing::instrument(skip(self), fields(anchor_count = anchor_ids.len()))]
     pub async fn get_assets_by_anchors(
         &self,
         anchor_ids: &[Uuid],
@@ -724,6 +744,8 @@ impl Database {
         Ok(result)
     }
 
+    /// Counts the number of assets associated with a given anchor.
+    #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id))]
     pub async fn count_assets_by_anchor(&self, anchor_id: Uuid) -> Result<i64> {
         self.execute_with_timing("count_assets_by_anchor", async {
             let count: (i64,) = sqlx::query_as(
@@ -743,7 +765,8 @@ impl Database {
         .await
     }
 
-    // Update anchor metrics from RPC ingestion
+    /// Update anchor metrics from RPC ingestion.
+    #[tracing::instrument(skip(self, params), fields(stellar_account = %params.stellar_account))]
     pub async fn update_anchor_from_rpc(&self, params: AnchorRpcUpdate) -> Result<()> {
         self.execute_with_timing("update_anchor_from_rpc", async {
             sqlx::query(
@@ -781,6 +804,9 @@ impl Database {
     }
 
     // Metrics history operations
+    
+    /// Records a new metric point for an anchor's history.
+    #[tracing::instrument(skip(self, params), fields(anchor_id = %params.anchor_id))]
     pub async fn record_anchor_metrics_history(
         &self,
         params: AnchorMetricsParams,
@@ -820,6 +846,8 @@ impl Database {
         .await
     }
 
+    /// Retrieves the most recent metrics history entries for an anchor.
+    #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id, limit = limit))]
     pub async fn get_anchor_metrics_history(
         &self,
         anchor_id: Uuid,
@@ -847,6 +875,8 @@ impl Database {
         .await
     }
 
+    /// Retrieves detailed information about an anchor, including its assets and metrics history.
+    #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id))]
     pub async fn get_anchor_detail(&self, anchor_id: Uuid) -> Result<Option<AnchorDetailResponse>> {
         let anchor = match self.get_anchor_by_id(anchor_id).await.with_context(|| format!(
             "Failed to fetch anchor for detail view: {}",
@@ -912,6 +942,7 @@ impl Database {
         .await
     }
 
+    /// Lists all corridors with pagination, sorted by reliability score.
     #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_corridors(
         &self,
@@ -949,6 +980,7 @@ impl Database {
         .await
     }
 
+    /// Retrieves a corridor by its ID.
     #[tracing::instrument(skip(self), fields(corridor_id = %id))]
     pub async fn get_corridor_by_id(
         &self,
@@ -977,6 +1009,8 @@ impl Database {
         .await
     }
 
+    /// Updates the metrics for a corridor.
+    #[tracing::instrument(skip(self))]
     pub async fn update_corridor_metrics(
         &self,
         id: Uuid,
@@ -1022,6 +1056,9 @@ impl Database {
     }
 
     // Generic Metric operations
+    
+    /// Records a generic system or entity metric.
+    #[tracing::instrument(skip(self), fields(metric_name = %name))]
     pub async fn record_metric(
         &self,
         name: &str,
@@ -1056,6 +1093,9 @@ impl Database {
     }
 
     // Snapshot operations
+    
+    /// Creates a snapshot of an entity's state at a specific point in time or epoch.
+    #[tracing::instrument(skip(self, data), fields(entity_id = %entity_id, entity_type = %entity_type))]
     pub async fn create_snapshot(
         &self,
         entity_id: &str,
@@ -1091,6 +1131,8 @@ impl Database {
         .await
     }
 
+    /// Retrieves a snapshot by its epoch number.
+    #[tracing::instrument(skip(self), fields(epoch = epoch))]
     pub async fn get_snapshot_by_epoch(&self, epoch: i64) -> Result<Option<SnapshotRecord>> {
         self.execute_with_timing("get_snapshot_by_epoch", async {
             let snapshot = sqlx::query_as::<_, SnapshotRecord>(
@@ -1107,6 +1149,8 @@ impl Database {
         .await
     }
 
+    /// Lists snapshots with pagination.
+    #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_snapshots(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotRecord>> {
         self.execute_with_timing("list_snapshots", async {
             let snapshots = sqlx::query_as::<_, SnapshotRecord>(
@@ -1131,6 +1175,9 @@ impl Database {
     }
 
     // Ingestion methods
+    
+    /// Retrieves the last processed cursor for a given ingestion task.
+    #[tracing::instrument(skip(self), fields(task_name = %task_name))]
     pub async fn get_ingestion_cursor(&self, task_name: &str) -> Result<Option<String>> {
         self.execute_with_timing("get_ingestion_cursor", async {
             let state = sqlx::query_as::<_, crate::models::IngestionState>(
@@ -1150,6 +1197,8 @@ impl Database {
         .await
     }
 
+    /// Updates the last processed cursor for a given ingestion task.
+    #[tracing::instrument(skip(self), fields(task_name = %task_name))]
     pub async fn update_ingestion_cursor(&self, task_name: &str, last_cursor: &str) -> Result<()> {
         self.execute_with_timing("update_ingestion_cursor", async {
             sqlx::query(
@@ -1175,8 +1224,15 @@ impl Database {
         .await
     }
 
+    /// Saves a batch of payment records to the database using a transaction.
+    #[tracing::instrument(skip(self, payments), fields(payment_count = payments.len()))]
     pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
         self.execute_with_timing("save_payments", async {
+            if payments.is_empty() {
+                return Ok(());
+            }
+
+            let mut tx = self.pool.begin().await?;
             let mut tx = self.pool.begin().await.with_context(|| format!("Failed to begin transaction for save_payments ({} payments)", payments.len()))?;
 
             for payment in payments {
@@ -1200,6 +1256,9 @@ impl Database {
                 .bind(payment.amount)
                 .bind(payment.created_at)
                 .execute(&mut *tx)
+                .await?;
+            }
+            tx.commit().await?;
                 .await
                 .with_context(|| format!("Failed to save payment id: {}", payment.id))?;
             }
@@ -1211,11 +1270,15 @@ impl Database {
     }
 
     // Aggregation methods
+    
+    /// Returns a handle to the aggregation database.
     #[must_use]
     pub fn aggregation_db(&self) -> crate::db::aggregation::AggregationDb {
         crate::db::aggregation::AggregationDb::new(self.pool.clone())
     }
 
+    /// Fetches payments within a specific timerange with a limit.
+    #[tracing::instrument(skip(self), fields(start_time = %start_time, end_time = %end_time, limit = limit))]
     pub async fn fetch_payments_by_timerange(
         &self,
         start_time: chrono::DateTime<chrono::Utc>,
@@ -1231,6 +1294,8 @@ impl Database {
         .await
     }
 
+    /// Upserts hourly corridor metrics.
+    #[tracing::instrument(skip(self, metric), fields(corridor_id = %metric.corridor_key, hour = %metric.hour_bucket))]
     pub async fn upsert_hourly_corridor_metric(
         &self,
         metric: &crate::models::corridor::HourlyCorridorMetrics,
@@ -1244,6 +1309,8 @@ impl Database {
         .await
     }
 
+    /// Fetches hourly metrics within a specific timerange.
+    #[tracing::instrument(skip(self), fields(start_time = %start_time, end_time = %end_time))]
     pub async fn fetch_hourly_metrics_by_timerange(
         &self,
         start_time: chrono::DateTime<chrono::Utc>,
@@ -1258,6 +1325,8 @@ impl Database {
         .await
     }
 
+    /// Creates a new aggregation job.
+    #[tracing::instrument(skip(self), fields(job_id = %job_id, job_type = %job_type))]
     pub async fn create_aggregation_job(&self, job_id: &str, job_type: &str) -> Result<()> {
         self.execute_with_timing("create_aggregation_job", async {
             self.aggregation_db()
@@ -1268,6 +1337,8 @@ impl Database {
         .await
     }
 
+    /// Updates the status of an aggregation job.
+    #[tracing::instrument(skip(self), fields(job_id = %job_id, status = %status))]
     pub async fn update_aggregation_job_status(
         &self,
         job_id: &str,
@@ -1283,6 +1354,8 @@ impl Database {
         .await
     }
 
+    /// Updates the last processed hour for an aggregation job.
+    #[tracing::instrument(skip(self), fields(job_id = %job_id, last_hour = %last_hour))]
     pub async fn update_last_processed_hour(&self, job_id: &str, last_hour: &str) -> Result<()> {
         self.execute_with_timing("update_last_processed_hour", async {
             self.aggregation_db()
@@ -1293,6 +1366,8 @@ impl Database {
         .await
     }
 
+    /// Retrieves the retry count for an aggregation job.
+    #[tracing::instrument(skip(self), fields(job_id = %job_id))]
     pub async fn get_job_retry_count(&self, job_id: &str) -> Result<i32> {
         self.execute_with_timing("get_job_retry_count", async {
             self.aggregation_db()
@@ -1303,6 +1378,8 @@ impl Database {
         .await
     }
 
+    /// Increments the retry count for an aggregation job.
+    #[tracing::instrument(skip(self), fields(job_id = %job_id))]
     pub async fn increment_job_retry_count(&self, job_id: &str) -> Result<()> {
         self.execute_with_timing("increment_job_retry_count", async {
             self.aggregation_db()
@@ -1315,10 +1392,99 @@ impl Database {
 
     /// Muxed account analytics: counts and top addresses from payments table.
     /// Uses M-address detection (starts with 'M', length 69).
+    #[tracing::instrument(skip(self), fields(top_limit = top_limit))]
     pub async fn get_muxed_analytics(&self, top_limit: i64) -> Result<MuxedAccountAnalytics> {
         self.execute_with_timing("get_muxed_analytics", async {
             use crate::muxed;
             const MUXED_LEN: i64 = 69;
+
+            let total_muxed_payments = sqlx::query_scalar::<_, i64>(
+                r"
+                SELECT COUNT(*) FROM payments
+                WHERE (source_account LIKE 'M%' AND LENGTH(source_account) = $1)
+                   OR (destination_account LIKE 'M%' AND LENGTH(destination_account) = $1)
+                ",
+            )
+            .bind(MUXED_LEN)
+            .fetch_one(&self.pool)
+            .await?;
+
+            #[derive(sqlx::FromRow)]
+            struct AddrCount {
+                addr: String,
+                cnt: i64,
+            }
+
+            let source_counts: Vec<AddrCount> = sqlx::query_as(
+                r"
+                SELECT source_account AS addr, COUNT(*) AS cnt FROM payments
+                WHERE source_account LIKE 'M%' AND LENGTH(source_account) = $1
+                GROUP BY source_account
+                ORDER BY cnt DESC
+                LIMIT $2
+                ",
+            )
+            .bind(MUXED_LEN)
+            .bind(top_limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let dest_counts: Vec<AddrCount> = sqlx::query_as(
+                r"
+                SELECT destination_account AS addr, COUNT(*) AS cnt FROM payments
+                WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = $1
+                GROUP BY destination_account
+                ORDER BY cnt DESC
+                LIMIT $2
+                ",
+            )
+            .bind(MUXED_LEN)
+            .bind(top_limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let mut by_addr: std::collections::HashMap<String, (i64, i64)> =
+                std::collections::HashMap::new();
+            for row in source_counts {
+                by_addr.entry(row.addr).or_insert((0, 0)).0 = row.cnt;
+            }
+            for row in dest_counts {
+                by_addr.entry(row.addr).or_insert((0, 0)).1 = row.cnt;
+            }
+
+            let mut top_muxed_by_activity: Vec<MuxedAccountUsage> = by_addr
+                .into_iter()
+                .map(|(account_address, (src, dest))| {
+                    let total = src + dest;
+                    let info = muxed::parse_muxed_address(&account_address);
+                    MuxedAccountUsage {
+                        account_address,
+                        base_account: info.as_ref().and_then(|i| i.base_account.clone()),
+                        muxed_id: info.and_then(|i| i.muxed_id),
+                        payment_count_as_source: src,
+                        payment_count_as_destination: dest,
+                        total_payments: total,
+                    }
+                })
+                .collect();
+            top_muxed_by_activity.sort_by(|a, b| b.total_payments.cmp(&a.total_payments));
+            
+            let limit = std::cmp::max(0, top_limit) as usize;
+            top_muxed_by_activity.truncate(limit);
+
+            let unique_muxed_addresses = sqlx::query_scalar::<_, i64>(
+                r"
+                SELECT COUNT(DISTINCT addr) FROM (
+                    SELECT source_account AS addr FROM payments WHERE source_account LIKE 'M%' AND LENGTH(source_account) = $1
+                    UNION
+                    SELECT destination_account AS addr FROM payments WHERE destination_account LIKE 'M%' AND LENGTH(destination_account) = $1
+                )
+                ",
+            )
+            .bind(MUXED_LEN)
+            .fetch_one(&self.pool)
+            .await?;
+
 
             let total_muxed_payments = sqlx::query_scalar::<_, i64>(
                 r"
@@ -1436,9 +1602,9 @@ impl Database {
     }
 
     // =========================
-    // Transaction Builder Methods
-    // =========================
 
+    /// Creates a new pending transaction with required signatures.
+    #[tracing::instrument(skip(self, xdr), fields(source_account = %source_account))]
     pub async fn create_pending_transaction(
         &self,
         source_account: &str,
@@ -1469,6 +1635,7 @@ impl Database {
         })
         .await
     }
+
 
     pub async fn get_pending_transaction(
         &self,
@@ -1513,6 +1680,8 @@ impl Database {
         .await
     }
 
+    /// Adds a signature to a pending transaction.
+    #[tracing::instrument(skip(self, signature), fields(transaction_id = %transaction_id, signer = %signer))]
     pub async fn add_transaction_signature(
         &self,
         transaction_id: &str,
@@ -1542,6 +1711,8 @@ impl Database {
         .await
     }
 
+    /// Updates the status of a pending transaction.
+    #[tracing::instrument(skip(self), fields(transaction_id = %id, status = %status))]
     pub async fn update_transaction_status(&self, id: &str, status: &str) -> Result<()> {
         self.execute_with_timing("update_transaction_status", async {
             sqlx::query(
@@ -1566,6 +1737,8 @@ impl Database {
 
     // API Key operations
 
+    /// Creates a new API key.
+    #[tracing::instrument(skip(self, req), fields(wallet_address = %wallet_address, key_name = %req.name))]
     pub async fn create_api_key(
         &self,
         wallet_address: &str,
@@ -1609,6 +1782,8 @@ impl Database {
         .await
     }
 
+    /// Lists all active API keys for a given wallet address.
+    #[tracing::instrument(skip(self), fields(wallet_address = %wallet_address))]
     pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
         self.execute_with_timing("list_api_keys", async {
             let keys = sqlx::query_as::<_, ApiKey>(
@@ -1630,6 +1805,8 @@ impl Database {
         .await
     }
 
+    /// Retrieves an API key by its ID for a specific wallet address.
+    #[tracing::instrument(skip(self), fields(key_id = %id, wallet_address = %wallet_address))]
     pub async fn get_api_key_by_id(
         &self,
         id: &str,
@@ -1652,6 +1829,8 @@ impl Database {
         .await
     }
 
+    /// Validates an API key using the plaintext key.
+    #[tracing::instrument(skip(self, plain_key))]
     pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
         self.execute_with_timing("validate_api_key", async {
             let key_hash = hash_api_key(plain_key);
@@ -1684,8 +1863,13 @@ impl Database {
                     }
                 }
 
+
+                // last_used_at update is best-effort; a failure here should not block validation
+                if let Err(e) = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
+
                 // last_used_at update is best-effort
                 let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
+
                     .bind(Utc::now().to_rfc3339())
                     .bind(&k.id)
                     .execute(&self.pool)
@@ -1698,6 +1882,65 @@ impl Database {
         .await
     }
 
+    /// Revokes an API key for a specific wallet address.
+    #[tracing::instrument(skip(self), fields(key_id = %id, wallet_address = %wallet_address))]
+    pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
+        self.execute_with_timing("revoke_api_key", async {
+            let result = sqlx::query(
+                r"
+            UPDATE api_keys
+            SET status = 'revoked', revoked_at = $1
+            WHERE id = $2 AND wallet_address = $3 AND status = 'active'
+            ",
+            )
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .bind(wallet_address)
+            .execute(&self.pool)
+            .await?;
+            Ok(result.rows_affected() > 0)
+        })
+        .await
+    }
+
+    /// Rotates an API key for a given wallet address.
+    #[tracing::instrument(skip(self), fields(key_id = %id, wallet_address = %wallet_address))]
+    pub async fn rotate_api_key(
+        &self,
+        id: &str,
+        wallet_address: &str,
+    ) -> Result<Option<CreateApiKeyResponse>> {
+        let old_key = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE id = $1 AND wallet_address = $2 AND status = 'active'",
+        )
+        .bind(id)
+        .bind(wallet_address)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let old_key = match old_key {
+            Some(k) => k,
+            None => return Ok(None),
+        };
+
+        self.revoke_api_key(id, wallet_address).await?;
+
+        let new_key = self
+            .create_api_key(
+                wallet_address,
+                CreateApiKeyRequest {
+                    name: old_key.name,
+                    scopes: Some(old_key.scopes),
+                    expires_at: old_key.expires_at,
+                },
+            )
+            .await?;
+
+        Ok(Some(new_key))
+    }
+
+    /// Retrieves the recent performance metrics for a specific anchor.
+    #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id, minutes = minutes))]
     pub async fn get_recent_anchor_performance(
         &self,
         anchor_id: &str,
@@ -1705,6 +1948,11 @@ impl Database {
     ) -> Result<crate::models::AnchorMetrics> {
         self.execute_with_timing("get_recent_anchor_performance", async {
             let start_time = Utc::now() - chrono::Duration::minutes(minutes);
+            
+            // Query aggregates from the normalized payments table.
+            // This table stores only successful payment operations, so success count equals total count.
+            // In a real system, we'd join with anchors/assets to filter by anchor_id.
+            
 
             // Query for aggregates from payments table
             // In a real system, we'd join with anchors/assets to filter by anchor_id
@@ -1713,11 +1961,12 @@ impl Database {
                 r"
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN successful = 1 THEN 1 ELSE 0 END) as successful,
+                    COUNT(*) as successful,
                     AVG(amount) as avg_latency
                 FROM payments
                 WHERE (source_account = $1 OR destination_account = $2)
                 AND created_at >= $3
+                "
                 ",
             )
             .bind(anchor_id)

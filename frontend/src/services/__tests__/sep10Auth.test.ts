@@ -1,14 +1,15 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { Sep10AuthService } from '../sep10Auth';
 
 // Mock fetch
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('Sep10AuthService', () => {
   let service: Sep10AuthService;
 
   beforeEach(() => {
     service = new Sep10AuthService('http://localhost:8080');
-    (global.fetch as jest.Mock).mockClear();
+    vi.mocked(global.fetch).mockClear();
   });
 
   describe('getInfo', () => {
@@ -20,10 +21,10 @@ describe('Sep10AuthService', () => {
         version: '1.0.0',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockInfo,
-      });
+      } as Response);
 
       const result = await service.getInfo();
 
@@ -34,9 +35,9 @@ describe('Sep10AuthService', () => {
     });
 
     it('should throw error on failed request', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: false,
-      });
+      } as Response);
 
       await expect(service.getInfo()).rejects.toThrow(
         'Failed to fetch SEP-10 info'
@@ -56,10 +57,10 @@ describe('Sep10AuthService', () => {
         network_passphrase: 'Test SDF Network ; September 2015',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.requestChallenge(mockRequest);
 
@@ -81,10 +82,10 @@ describe('Sep10AuthService', () => {
         account: 'INVALID',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: false,
         json: async () => ({ error: 'Invalid account' }),
-      });
+      } as Response);
 
       await expect(service.requestChallenge(mockRequest)).rejects.toThrow(
         'Invalid account'
@@ -100,10 +101,10 @@ describe('Sep10AuthService', () => {
         expires_in: 604800,
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.verifyChallenge(mockSignedXdr);
 
@@ -123,10 +124,10 @@ describe('Sep10AuthService', () => {
     });
 
     it('should throw error on failed verification', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: false,
         json: async () => ({ error: 'Invalid signature' }),
-      });
+      } as Response);
 
       await expect(service.verifyChallenge('invalid')).rejects.toThrow(
         'Invalid signature'
@@ -138,10 +139,10 @@ describe('Sep10AuthService', () => {
     it('should logout and invalidate session', async () => {
       const mockToken = 'jwt-token';
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ message: 'Logged out successfully' }),
-      });
+      } as Response);
 
       await service.logout(mockToken);
 
@@ -158,10 +159,10 @@ describe('Sep10AuthService', () => {
     });
 
     it('should throw error on failed logout', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: false,
         json: async () => ({ error: 'Session not found' }),
-      });
+      } as Response);
 
       await expect(service.logout('invalid-token')).rejects.toThrow(
         'Session not found'
@@ -173,11 +174,11 @@ describe('Sep10AuthService', () => {
     it('should sign challenge with Freighter wallet', async () => {
       const mockWindow = {
         freighter: {
-          signTransaction: jest.fn().mockResolvedValue('signed-xdr'),
+          signTransaction: vi.fn().mockResolvedValue('signed-xdr'),
         },
       };
 
-      (global as any).window = mockWindow;
+      (global as unknown as { window: typeof mockWindow }).window = mockWindow;
 
       const result = await service.signChallenge(
         'challenge-xdr',
@@ -197,7 +198,7 @@ describe('Sep10AuthService', () => {
     });
 
     it('should throw error when no wallet is available', async () => {
-      (global as any).window = {};
+      (global as unknown as { window: Record<string, unknown> }).window = {};
 
       await expect(
         service.signChallenge(
@@ -211,9 +212,6 @@ describe('Sep10AuthService', () => {
 
   describe('validateChallengeTransaction', () => {
     it('should validate a proper challenge transaction', () => {
-      // This would require mocking the Stellar SDK Transaction class
-      // For now, we'll test the error cases
-
       const result = service.validateChallengeTransaction(
         'invalid-xdr',
         'GSERVER',
@@ -247,30 +245,30 @@ describe('Sep10AuthService', () => {
       };
 
       // Mock getInfo
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockInfo,
-      });
+      } as Response);
 
       // Mock requestChallenge
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockChallenge,
-      });
+      } as Response);
 
       // Mock wallet signing
       const mockWindow = {
         freighter: {
-          signTransaction: jest.fn().mockResolvedValue('signed-xdr'),
+          signTransaction: vi.fn().mockResolvedValue('signed-xdr'),
         },
       };
-      (global as any).window = mockWindow;
+      (global as unknown as { window: typeof mockWindow }).window = mockWindow;
 
       // Mock verifyChallenge
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
         json: async () => mockVerification,
-      });
+      } as Response);
 
       const result = await service.authenticate(
         'GCLIENT',

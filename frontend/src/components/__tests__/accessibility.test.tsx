@@ -1,3 +1,4 @@
+import { vi, describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { Sidebar } from '../layout/sidebar';
@@ -17,21 +18,21 @@ jest.mock('@/contexts/NotificationContext', () => ({
 expect.extend(toHaveNoViolations);
 
 // Mock next-intl
-jest.mock('next-intl', () => ({
+vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
 // Mock navigation
-jest.mock('@/i18n/navigation', () => ({
-  Link: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => <a {...props}>{children}</a>,
   usePathname: () => '/dashboard',
 }));
 
 // Mock user preferences
-jest.mock('@/contexts/UserPreferencesContext', () => ({
+vi.mock('@/contexts/UserPreferencesContext', () => ({
   useUserPreferences: () => ({
     prefs: { sidebarCollapsed: false },
-    setPrefs: jest.fn(),
+    setPrefs: vi.fn(),
   }),
 }));
 
@@ -97,8 +98,8 @@ describe('Accessibility Tests', () => {
   describe('CreateProposalModal Component', () => {
     const mockProps = {
       authToken: 'test-token',
-      onClose: jest.fn(),
-      onCreated: jest.fn(),
+      onClose: vi.fn(),
+      onCreated: vi.fn(),
     };
 
     it('should not have accessibility violations', async () => {
@@ -189,15 +190,15 @@ describe('Accessibility Tests', () => {
       const { container } = render(
         <CreateProposalModal
           authToken="test"
-          onClose={jest.fn()}
-          onCreated={jest.fn()}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
         />
       );
-      
+
       const focusableElements = container.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
-      
+
       expect(focusableElements.length).toBeGreaterThan(0);
     });
   });

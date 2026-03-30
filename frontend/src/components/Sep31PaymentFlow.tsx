@@ -161,8 +161,7 @@ export function Sep31PaymentFlow() {
         source_asset: sourceAsset || undefined,
         destination_asset: destAsset || undefined,
       });
-      const tx = (res as { transaction?: Sep31Transaction }).transaction ?? res;
-      const id = (res as { id?: string }).id ?? (tx as Sep31Transaction).id;
+      const id = (res as { id?: string }).id ?? (res as { transaction?: Sep31Transaction }).transaction?.id;
       setSuccessMessage(
         id
           ? `Payment initiated. Transaction ID: ${id}. Complete KYC or sender/receiver flows on the anchor if required.`

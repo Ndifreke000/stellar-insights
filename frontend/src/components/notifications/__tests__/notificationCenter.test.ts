@@ -1,9 +1,9 @@
 // Notification Center Test Suite
 // This file contains test cases for the notification center functionality
 
-import { describe, it, expect, beforeEach } from '@jest/globals';
-import { NotificationService } from '../src/services/notificationService';
-import type { BaseNotification, NotificationType, NotificationPriority } from '../src/types/notifications';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { NotificationService } from '@/services/notificationService';
+import type { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
 
 describe('NotificationService', () => {
   let service: NotificationService;
@@ -227,29 +227,13 @@ describe('NotificationService', () => {
 // Integration Tests
 describe('Notification Center Integration', () => {
   it('should handle real-time updates', () => {
-    // Mock WebSocket connection
-    const mockWebSocket = {
-      send: jest.fn(),
-      close: jest.fn(),
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-    };
-
-    // Test WebSocket message handling
-    // This would require mocking the WebSocket hook
-    expect(true).toBe(true); // Placeholder
+    // Mock WebSocket connection (placeholder - requires WebSocket hook mock)
+    expect(true).toBe(true);
   });
 
   it('should persist notifications to localStorage', () => {
-    // Mock localStorage
-    const mockLocalStorage = {
-      getItem: jest.fn(),
-      setItem: jest.fn(),
-      removeItem: jest.fn(),
-    };
-
-    // Test localStorage persistence
-    expect(true).toBe(true); // Placeholder
+    // Mock localStorage persistence (placeholder - requires hook mock)
+    expect(true).toBe(true);
   });
 });
 
@@ -280,5 +264,4 @@ describe('Notification Center Performance', () => {
 
 export default {
   NotificationService,
-  sampleNotifications,
 };
