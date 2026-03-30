@@ -1,16 +1,15 @@
 #[cfg(test)]
 #[allow(clippy::needless_raw_string_hashes, clippy::unreadable_literal)]
 mod webhook_integration_tests {
-    use crate::services::webhook_event_service::WebhookEventService;
-    use crate::webhooks::events::CorridorMetrics;
     use sqlx::SqlitePool;
     use std::sync::Arc;
+    use stellar_insights_backend::services::webhook_event_service::WebhookEventService;
+    use stellar_insights_backend::webhooks::events::CorridorMetrics;
     use uuid::Uuid;
 
     async fn setup_test_db() -> SqlitePool {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
 
-        // Create webhook tables
         sqlx::query(
             r#"
             CREATE TABLE webhooks (
@@ -56,7 +55,6 @@ mod webhook_integration_tests {
         let pool = setup_test_db().await;
         let webhook_service = Arc::new(WebhookEventService::new(pool.clone()));
 
-        // Register a test webhook
         let webhook_id = Uuid::new_v4().to_string();
         let user_id = Uuid::new_v4().to_string();
 
@@ -77,7 +75,6 @@ mod webhook_integration_tests {
         .await
         .unwrap();
 
-        // Trigger anchor status change event
         let result = webhook_service
             .trigger_anchor_status_changed(
                 &webhook_id,
@@ -91,7 +88,6 @@ mod webhook_integration_tests {
 
         assert!(result.is_ok());
 
-        // Verify webhook event was created
         let events: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
         )
@@ -110,7 +106,6 @@ mod webhook_integration_tests {
         let pool = setup_test_db().await;
         let webhook_service = Arc::new(WebhookEventService::new(pool.clone()));
 
-        // Register a test webhook for corridor events
         let webhook_id = Uuid::new_v4().to_string();
         let user_id = Uuid::new_v4().to_string();
 
@@ -131,7 +126,6 @@ mod webhook_integration_tests {
         .await
         .unwrap();
 
-        // Create test corridor metrics
         let old_metrics = CorridorMetrics {
             success_rate: 0.95,
             avg_latency_ms: 100.0,
@@ -145,7 +139,7 @@ mod webhook_integration_tests {
         };
 
         let new_metrics = CorridorMetrics {
-            success_rate: 0.84, // 11% drop
+            success_rate: 0.84,
             avg_latency_ms: 180.0,
             p95_latency_ms: 250.0,
             p99_latency_ms: 350.0,
@@ -156,7 +150,6 @@ mod webhook_integration_tests {
             failed_payments: 160,
         };
 
-        // Trigger corridor health degradation event
         let result = webhook_service
             .trigger_corridor_health_degraded(
                 "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN->XLM:native",
@@ -169,7 +162,6 @@ mod webhook_integration_tests {
 
         assert!(result.is_ok());
 
-        // Verify webhook event was created
         let events: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
         )
@@ -187,7 +179,6 @@ mod webhook_integration_tests {
         let pool = setup_test_db().await;
         let webhook_service = Arc::new(WebhookEventService::new(pool.clone()));
 
-        // Register a test webhook for payment events
         let webhook_id = Uuid::new_v4().to_string();
         let user_id = Uuid::new_v4().to_string();
 
@@ -208,7 +199,6 @@ mod webhook_integration_tests {
         .await
         .unwrap();
 
-        // Trigger payment created event
         let result = webhook_service
             .trigger_payment_created(
                 "payment_123",
@@ -223,7 +213,6 @@ mod webhook_integration_tests {
 
         assert!(result.is_ok());
 
-        // Verify webhook event was created
         let events: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
         )
@@ -241,7 +230,6 @@ mod webhook_integration_tests {
         let pool = setup_test_db().await;
         let webhook_service = Arc::new(WebhookEventService::new(pool.clone()));
 
-        // Register a test webhook with filters
         let webhook_id = Uuid::new_v4().to_string();
         let user_id = Uuid::new_v4().to_string();
 
@@ -263,7 +251,6 @@ mod webhook_integration_tests {
         .await
         .unwrap();
 
-        // Create test corridor metrics for warning (should be filtered out)
         let old_metrics = CorridorMetrics {
             success_rate: 0.95,
             avg_latency_ms: 100.0,
@@ -277,7 +264,7 @@ mod webhook_integration_tests {
         };
 
         let new_metrics = CorridorMetrics {
-            success_rate: 0.84, // 11% drop - warning severity
+            success_rate: 0.84,
             avg_latency_ms: 180.0,
             p95_latency_ms: 250.0,
             p99_latency_ms: 350.0,
@@ -288,7 +275,6 @@ mod webhook_integration_tests {
             failed_payments: 160,
         };
 
-        // Trigger warning event (should be filtered out)
         let result = webhook_service
             .trigger_corridor_health_degraded(
                 "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN->XLM:native",
@@ -301,7 +287,6 @@ mod webhook_integration_tests {
 
         assert!(result.is_ok());
 
-        // Verify no webhook event was created due to filter
         let events: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT id, webhook_id, event_type FROM webhook_events WHERE webhook_id = ?",
         )
