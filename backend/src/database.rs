@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, SqlitePool};
 use std::time::{Duration, Instant};
@@ -213,6 +214,7 @@ pub struct AnchorMetricsParams {
 
 /// Connection pool metrics
 #[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct PoolMetrics {
     pub size: u32,
     pub idle: usize,
@@ -277,6 +279,15 @@ impl Database {
     #[must_use]
     pub const fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    /// Performs a basic connectivity check against the database.
+    pub async fn health_check(&self) -> Result<()> {
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .context("Database health check failed")?;
+        Ok(())
     }
 
     #[must_use]

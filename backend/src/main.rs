@@ -2,11 +2,21 @@ use anyhow::Context;
 use axum::http::{
     header::{AUTHORIZATION, CONTENT_TYPE},
     HeaderValue,
+use anyhow::{Context, Result};
+use axum::{
+    extract::State,
+    http::{Method, StatusCode},
+    response::IntoResponse,
+    routing::{get, put},
+    middleware, Json, Router,
 };
 use axum::{http::Method, middleware};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
+use axum::http::HeaderValue;
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use tower::ServiceBuilder;
 use tower::timeout::TimeoutLayer;
 use tower_http::compression::{predicate::SizeAbove, CompressionLayer};
 use std::sync::Arc;
@@ -46,7 +56,9 @@ use stellar_insights_backend::{
     state::AppState,
     websocket::WsState,
 use tower_http::{
-    cors::{AllowOrigin, Any, CorsLayer},
+    compression::{predicate::SizeAbove, CompressionLayer},
+    cors::{AllowOrigin, CorsLayer},
+    trace::TraceLayer,
     timeout::TimeoutLayer,
 };
 use utoipa::OpenApi;
@@ -76,6 +88,33 @@ use stellar_insights_backend::websocket::WsState;
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
+
+/// Improved health check that verifies database and cache connectivity.
+pub async fn health_check(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    // Verify core dependencies are responsive
+    let db_healthy = state.db.health_check().await.is_ok();
+    let cache_healthy = state.cache.health_check().await.is_ok();
+
+    let status = if db_healthy && cache_healthy {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    (
+        status,
+        Json(serde_json::json!({
+            "status": if db_healthy && cache_healthy { "ok" } else { "error" },
+            "version": env!("CARGO_PKG_VERSION"),
+            "services": {
+                "database": if db_healthy { "up" } else { "down" },
+                "cache": if cache_healthy { "up" } else { "down" },
+            }
+        })),
+    )
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -218,6 +257,15 @@ async fn main() -> anyhow::Result<()> {
             .await
             .context("Failed to initialize rate limiter")?,
     );
+
+    // Initialize auth service
+    let auth_service = Arc::new(AuthService::new(cache.connection().await, pool.clone()));
+
+    // Initialize alert manager
+    let (alert_manager_inner, _) = AlertManager::new();
+    let alert_manager = Arc::new(alert_manager_inner);
+
+    let trustline_analyzer = Arc::new(TrustlineAnalyzer::new(pool.clone(), rpc_client.clone()));
 
     // Start webhook dispatcher as a background task
     let webhook_pool = pool.clone();
@@ -503,6 +551,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = routes(
         app_state,
+    let base_routes = routes(
+        app_state.clone(),
         cached_state,
         rpc_client,
         fee_bump_tracker,
@@ -513,6 +563,13 @@ async fn main() -> anyhow::Result<()> {
         cors,
         pool.clone(),
         cache.clone(),
+        pool,
+        cache,
+    );
+
+    let app = base_routes
+        .merge(anchor_routes) // Includes /health
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
     )
     .layer(TimeoutLayer::new(timeout_duration))
     .route("/metrics", axum::routing::get(stellar_insights_backend::observability::metrics::metrics_handler))

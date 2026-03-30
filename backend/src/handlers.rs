@@ -1,23 +1,20 @@
-use axum::{extract::State, response::IntoResponse, Json};
-use chrono::{DateTime, Utc};
-use serde::Serialize;
-use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
-    http::header,
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use axum::{extract::State, response::IntoResponse, Json};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
+use crate::broadcast::{broadcast_anchor_update, broadcast_corridor_update};
+use crate::error::{ApiError, ApiResult};
+use crate::models::corridor::Corridor;
+use crate::models::{CreateAnchorRequest, CreateCorridorRequest, ListCorridorsQuery, ListCorridorsResponse};
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::error::ApiResult;
@@ -42,6 +39,7 @@ pub struct HealthChecks {
 }
 
 #[derive(Serialize, Debug, Clone)]
+#[derive(Serialize)]
 pub struct ComponentHealth {
     pub healthy: bool,
     pub response_time_ms: Option<u64>,
@@ -134,6 +132,125 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
     Json(health_status)
 }
 
+/// PUT /api/anchors/:id/metrics - Update anchor metrics
+#[derive(Debug, Deserialize)]
+pub struct UpdateMetricsRequest {
+    pub total_transactions: i64,
+    pub successful_transactions: i64,
+    pub failed_transactions: i64,
+    pub avg_settlement_time_ms: Option<i32>,
+    pub volume_usd: Option<f64>,
+}
+
+pub async fn update_anchor_metrics(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateMetricsRequest>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    // Verify anchor exists
+    if app_state.db.get_anchor_by_id(id).await?.is_none() {
+        return Err(ApiError::NotFound(format!(
+            "Anchor with id {} not found",
+            id
+        )));
+    }
+
+    let anchor = app_state
+        .db
+        .update_anchor_metrics(crate::database::AnchorMetricsUpdate {
+            anchor_id: id,
+            total_transactions: req.total_transactions,
+            successful_transactions: req.successful_transactions,
+            failed_transactions: req.failed_transactions,
+            avg_settlement_time_ms: req.avg_settlement_time_ms,
+            volume_usd: req.volume_usd,
+        })
+        .await?;
+
+    // Broadcast the anchor update to WebSocket clients
+    broadcast_anchor_update(&app_state.ws_state, &anchor);
+
+    Ok(Json(anchor))
+}
+
+/// GET /api/anchors/:id/assets - Get assets for an anchor
+pub async fn get_anchor_assets(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<crate::models::Asset>>> {
+    // Verify anchor exists
+    if app_state.db.get_anchor_by_id(id).await?.is_none() {
+        return Err(ApiError::NotFound(format!(
+            "Anchor with id {} not found",
+            id
+        )));
+    }
+
+    let assets = app_state.db.get_assets_by_anchor(id).await?;
+
+    Ok(Json(assets))
+}
+
+/// POST /api/anchors/:id/assets - Add asset to anchor
+#[derive(Debug, Deserialize)]
+pub struct CreateAssetRequest {
+    pub asset_code: String,
+    pub asset_issuer: String,
+}
+
+pub async fn create_anchor_asset(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CreateAssetRequest>,
+) -> ApiResult<Json<crate::models::Asset>> {
+    // Verify anchor exists
+    if app_state.db.get_anchor_by_id(id).await?.is_none() {
+        return Err(ApiError::NotFound(format!(
+            "Anchor with id {} not found",
+            id
+        )));
+    }
+
+    let asset = app_state
+        .db
+        .create_asset(id, req.asset_code, req.asset_issuer)
+        .await?;
+
+    Ok(Json(asset))
+}
+
+/// GET /api/anchors/:id - Get anchor by ID
+pub async fn get_anchor(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.get_anchor_by_id(id).await?
+        .ok_or_else(|| ApiError::NotFound(format!("Anchor {} not found", id)))?;
+    Ok(Json(anchor))
+}
+
+/// GET /api/anchors/account/:stellar_account - Get anchor by Stellar account
+pub async fn get_anchor_by_account(
+    State(app_state): State<AppState>,
+    Path(stellar_account): Path<String>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.get_anchor_by_stellar_account(&stellar_account).await?
+        .ok_or_else(|| ApiError::NotFound(format!("Anchor for account {} not found", stellar_account)))?;
+    Ok(Json(anchor))
+}
+
+/// GET /api/analytics/muxed - Get muxed account analytics
+pub async fn get_muxed_analytics(
+    State(app_state): State<AppState>,
+    Query(params): Query<crate::models::ListCorridorsQuery>,
+) -> ApiResult<Json<crate::models::MuxedAccountAnalytics>> {
+    let limit = params.limit.unwrap_or(10);
+    let analytics = app_state.db.get_muxed_analytics(limit).await?;
+    Ok(Json(analytics))
+}
+
+
+
 /// GET /api/admin/pool-metrics - Return current database pool metrics
 pub fn get_pool_metrics(
     State(app_state): State<AppState>,
@@ -166,6 +283,46 @@ stellar_insights_db_pool_active {}\n",
 pub async fn pool_metrics(State(state): State<AppState>) -> impl IntoResponse {
     let metrics = state.db.pool_metrics();
     Json(metrics)
+/// GET /api/corridors - List all corridors
+pub async fn list_corridors(
+    State(app_state): State<AppState>,
+    Query(params): Query<ListCorridorsQuery>,
+) -> ApiResult<Json<ListCorridorsResponse>> {
+    let corridors = app_state
+        .db
+        .list_corridors(params.limit, params.offset)
+        .await?;
+    let total = corridors.len();
+    Ok(Json(ListCorridorsResponse { corridors, total }))
+}
+
+/// POST /api/anchors - Create a new anchor
+pub async fn create_anchor(
+    State(app_state): State<AppState>,
+    Json(req): Json<CreateAnchorRequest>,
+) -> ApiResult<Json<crate::models::Anchor>> {
+    let anchor = app_state.db.create_anchor(req).await?;
+    Ok(Json(anchor))
+}
+
+/// POST /api/corridors - Create a new corridor
+pub async fn create_corridor(
+    State(app_state): State<AppState>,
+    Json(req): Json<CreateCorridorRequest>,
+) -> ApiResult<Json<Corridor>> {
+    let corridor = app_state.db.create_corridor(req).await?;
+    // Broadcast the new corridor to WebSocket clients
+    broadcast_corridor_update(&app_state.ws_state, &corridor);
+    Ok(Json(corridor))
+}
+
+/// PUT /api/corridors/:id/metrics-from-transactions - Placeholder for updating metrics from batch transactions
+pub async fn update_corridor_metrics_from_transactions(
+    State(_app_state): State<AppState>,
+    Path(_id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Implementation for processing transaction batch logic goes here
+    Ok(Json(serde_json::json!({ "status": "not_implemented" })))
 }
 
 pub async fn ingestion_status(

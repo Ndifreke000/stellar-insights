@@ -110,6 +110,16 @@ impl CacheManager {
         }
     }
 
+    /// Returns a clone of the underlying Redis connection handle.
+    pub async fn connection(&self) -> Arc<RwLock<Option<MultiplexedConnection>>> {
+        self.redis_connection.clone()
+    }
+
+    /// Health check for the cache dependency
+    pub async fn health_check(&self) -> anyhow::Result<()> {
+        self.ping().await
+    }
+
     /// Check if Redis connection is healthy
     pub async fn ping(&self) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
