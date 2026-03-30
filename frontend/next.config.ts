@@ -26,6 +26,18 @@ const withPWA = require('next-pwa')({
       },
     },
     {
+      urlPattern: /\.(?:png|jpg|jpeg|svg|webp|ico)$/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'images',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      urlPattern: /\.(?:js|css)$/,
       urlPattern: /\.(?:png|jpg|jpeg|svg|webp|ico|gif|avif|woff2?|ttf|eot)$/i,
       handler: 'CacheFirst',
       options: {
@@ -44,6 +56,7 @@ const withPWA = require('next-pwa')({
         cacheName: 'static-resources',
       },
     },
+  ],
     {
       // Cache critical home page and static assets
       urlPattern: /^\/(index\.html)?(?:$|\/)/,
