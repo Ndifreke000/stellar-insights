@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
 // ============================================================================
 // Event Topics - Short symbols for efficient on-chain storage
@@ -187,4 +187,40 @@ pub fn emit_proposal_executed(
     target_contract: Address,
 ) {
     ProposalExecutedEvent::publish(env, proposal_id, executor, target_contract);
+}
+
+// ============================================================================
+// Parameter Proposal Event (Requirements 4.1, 4.2)
+// ============================================================================
+
+/// Topic for parameter proposal creation events — distinct from upgrade proposals.
+pub const PARAM_PROPOSAL: Symbol = symbol_short!("PRM_PROP");
+
+/// Event emitted when a parameter-update proposal is created.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParameterProposalCreatedEvent {
+    pub proposal_id: u64,
+    pub proposer: Address,
+    pub target_contract: Address,
+    pub voting_ends_at: u64,
+    pub action_label: String,
+}
+
+pub fn emit_parameter_proposal_created(
+    env: &Env,
+    proposal_id: u64,
+    proposer: Address,
+    target_contract: Address,
+    voting_ends_at: u64,
+    action_label: String,
+) {
+    let event = ParameterProposalCreatedEvent {
+        proposal_id,
+        proposer,
+        target_contract,
+        voting_ends_at,
+        action_label,
+    };
+    env.events().publish((PARAM_PROPOSAL, GOV_LIFECYCLE), event);
 }

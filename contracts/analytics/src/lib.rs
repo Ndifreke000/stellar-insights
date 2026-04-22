@@ -1523,9 +1523,15 @@ impl AnalyticsContract {
             .persistent()
             .set(&DataKey::TimelockAction(action_id), &action);
 
-        // Emit event
-        env.events()
-            .publish((symbol_short!("execute"), executor), action_id);
+        // Emit structured event
+        env.events().publish(
+            (symbol_short!("tl_exec"), executor.clone()),
+            TimelockActionExecutedEvent {
+                action_id,
+                executor,
+                new_admin: action.action_data.clone(),
+            },
+        );
 
         Ok(())
     }
@@ -1549,9 +1555,14 @@ impl AnalyticsContract {
             .persistent()
             .remove(&DataKey::TimelockAction(action_id));
 
-        // Emit event
-        env.events()
-            .publish((symbol_short!("cancel"), admin), action_id);
+        // Emit structured event
+        env.events().publish(
+            (symbol_short!("tl_cncl"), admin.clone()),
+            TimelockActionCancelledEvent {
+                action_id,
+                admin,
+            },
+        );
 
         Ok(())
     }
@@ -1999,5 +2010,4 @@ impl AnalyticsContract {
 mod tests;
 
 #[cfg(test)]
-mod fuzz_tests;
 mod fuzz_tests;

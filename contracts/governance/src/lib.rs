@@ -7,8 +7,8 @@ mod events;
 use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{
-    emit_governance_initialized, emit_proposal_created, emit_proposal_executed,
-    emit_proposal_finalized, emit_vote_cast,
+    emit_governance_initialized, emit_parameter_proposal_created, emit_proposal_created,
+    emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
 
@@ -376,7 +376,11 @@ impl GovernanceContract {
             .set(&DataKey::ProposalCount, &count);
         bump_instance(&env);
 
-        emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
+        let action_label = match &action {
+            ParameterAction::SetAdmin(_) => String::from_str(&env, "set_admin"),
+            ParameterAction::SetPaused(_) => String::from_str(&env, "set_paused"),
+        };
+        emit_parameter_proposal_created(&env, count, caller, target_contract, voting_ends_at, action_label);
 
         Ok(count)
     }

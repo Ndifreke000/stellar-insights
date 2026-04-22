@@ -6,7 +6,7 @@
 use super::*;
 use analytics::AnalyticsContractClient;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Events as _, Ledger},
     Address, BytesN, Env, String,
 };
 
@@ -26,7 +26,6 @@ fn setup() -> (Env, GovernanceContractClient<'static>, Address) {
 
     let admin = Address::generate(&env);
     // quorum=2, voting_period=1000 seconds
-    client.try_initialize(&admin, &2, &1000).unwrap();
     client.initialize(&admin, &2, &1000);
 
     (env, client, admin)
@@ -39,7 +38,6 @@ fn test_initialization() {
     let client = GovernanceContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.try_initialize(&admin, &3, &500).unwrap();
     client.initialize(&admin, &3, &500);
 
     let (config_admin, quorum, voting_period, proposal_count) = client.get_config();
@@ -217,7 +215,8 @@ fn test_mark_executed() {
 
     let title = String::from_str(&env, "Test proposal");
     let target = Address::generate(&env);
-    let wasm_hash = create_test_hash(&env, 11111);
+    // Zero wasm hash: `mark_executed` skips `upgrade` (no uploaded Wasm required).
+    let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
     client.create_proposal(&admin, &title, &target, &wasm_hash);
 
     // Get enough votes to pass
@@ -251,13 +250,7 @@ fn test_parameter_proposal_set_paused_execution() {
     let analytics_client = AnalyticsContractClient::new(&env, &analytics_id);
 
     let admin = Address::generate(&env);
-    analytics_client.try_initialize(&admin).unwrap();
-    gov_client.try_initialize(&admin, &2, &1000).unwrap();
-
-    analytics_client
-        .try_set_governance(&admin, &governance_id)
-        .unwrap();
-    analytics_client.initialize(&admin);
+    analytics_client.initialize(&admin, &None);
     gov_client.initialize(&admin, &2, &1000);
 
     analytics_client.set_governance(&admin, &governance_id);
@@ -317,4 +310,96 @@ fn test_create_parameter_proposal() {
         ParameterAction::SetAdmin(addr) => assert_eq!(addr, new_admin),
         _ => panic!("expected SetAdmin"),
     }
+}
+
+// ============================================================================
+// Parameter Proposal Event Tests (Requirements 4.1, 4.2, 4.3)
+// ============================================================================
+
+#[test]
+fn test_create_parameter_proposal_emits_prm_prop_topic() {
+    let (env, client, admin) = setup();
+
+    let title = String::from_str(&env, "Set new admin");
+    let target = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.create_parameter_proposal(
+        &admin,
+        &title,
+        &target,
+        &ParameterAction::SetAdmin(new_admin.clone()),
+    );
+
+    use crate::events::{ParameterProposalCreatedEvent, PARAM_PROPOSAL};
+    use soroban_sdk::Symbol;
+
+    let events = env.events().all();
+    let raw = events.events();
+    let param_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == PARAM_PROPOSAL)
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(param_event.is_some(), "PRM_PROP event should be emitted for parameter proposals");
+
+    if let Some(e) = param_event {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: ParameterProposalCreatedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.proposal_id, 1);
+            assert_eq!(data.proposer, admin);
+            assert_eq!(data.target_contract, target);
+            assert_eq!(data.action_label, String::from_str(&env, "set_admin"));
+        }
+    }
+}
+
+#[test]
+fn test_create_proposal_upgrade_still_emits_prop_crt_topic() {
+    let (env, client, admin) = setup();
+
+    let title = String::from_str(&env, "Upgrade contract");
+    let target = Address::generate(&env);
+    let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.create_proposal(&admin, &title, &target, &wasm_hash);
+
+    use crate::events::PROPOSAL_CREATED;
+    use soroban_sdk::Symbol;
+
+    let events = env.events().all();
+    let raw = events.events();
+    let upgrade_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == PROPOSAL_CREATED)
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(upgrade_event.is_some(), "PROP_CRT event should still be emitted for upgrade proposals");
 }

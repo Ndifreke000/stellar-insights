@@ -28,7 +28,7 @@ fn fuzz_submit_snapshot() {
 
         let admin = Address::generate(&env);
         env.mock_all_auths();
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         let hash = BytesN::from_array(&env, &input.hash);
 
@@ -51,7 +51,7 @@ fn fuzz_get_snapshot() {
 
         let admin = Address::generate(&env);
         env.mock_all_auths();
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Seeding with one known snapshot so storage is non-empty
         let hash = BytesN::from_array(&env, &[42u8; 32]);
@@ -76,7 +76,7 @@ fn fuzz_sequential_submits() {
 
             let admin = Address::generate(&env);
             env.mock_all_auths();
-            client.initialize(&admin);
+            client.initialize(&admin, &None);
 
             // Submit three snapshots with guaranteed-increasing epochs
             let epochs = [1u64, 2u64, 3u64];
@@ -115,7 +115,7 @@ fn fuzz_monotonicity_invariant() {
 
             let admin = Address::generate(&env);
             env.mock_all_auths();
-            client.initialize(&admin);
+            client.initialize(&admin, &None);
 
             let hash_a = BytesN::from_array(&env, &input.hash_a);
             let hash_b = BytesN::from_array(&env, &input.hash_b);

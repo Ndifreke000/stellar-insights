@@ -4,7 +4,7 @@ mod errors;
 mod events;
 
 use errors::Error;
-use events::{emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
+use events::{emit_admin_transferred, emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -328,6 +328,34 @@ impl StellarInsightsContract {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)
+    }
+
+    /// Transfer admin ownership to a new address.
+    ///
+    /// Only the current admin can call this function.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Current admin address (must match stored admin)
+    /// * `new_admin` - Address to transfer admin rights to
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the current admin
+    pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != old_admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        emit_admin_transferred(&env, old_admin, new_admin);
+        Ok(())
     }
 
     /// Get the latest epoch number

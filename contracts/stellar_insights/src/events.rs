@@ -143,3 +143,29 @@ pub fn emit_contract_unpaused(env: &Env, caller: Address) {
     env.events()
         .publish((symbol_short!("unpaused"), CONTRACT_LIFECYCLE), caller);
 }
+
+// ============================================================================
+// Admin Transfer Event
+// ============================================================================
+
+/// Event emitted when the admin address is transferred to a new owner.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferredEvent {
+    pub old_admin: Address,
+    pub new_admin: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+/// Emit an event when admin ownership is transferred.
+pub fn emit_admin_transferred(env: &Env, old_admin: Address, new_admin: Address) {
+    let event = AdminTransferredEvent {
+        old_admin,
+        new_admin,
+        timestamp: env.ledger().timestamp(),
+        ledger_sequence: env.ledger().sequence(),
+    };
+    env.events()
+        .publish((symbol_short!("admin"), CONTRACT_LIFECYCLE), event);
+}

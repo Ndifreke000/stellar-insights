@@ -5,7 +5,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger},
-    vec, Address, BytesN, Env, Vec,
+    vec, symbol_short, Address, BytesN, Env, FromVal, Symbol, TryFromVal, Val, Vec,
 };
 
 fn create_test_hash(env: &Env, value: u8) -> BytesN<32> {
@@ -323,7 +323,7 @@ fn test_invalid_epoch_zero() {
 
     client.initialize(&admin, &None);
     let result = client.try_submit_snapshot(&0u64, &create_test_hash(&env, 1), &admin);
-    assert_eq!(result, Err(Ok(Error::InvalidEpoch)));
+    assert_eq!(result, Err(Ok(Error::InvalidEpochZero)));
 }
 
 #[test]
@@ -393,7 +393,7 @@ fn test_submit_snapshot_with_zero_hash() {
     let client = AnalyticsContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Attempt to submit with a zero hash (all bytes are 0x00)
     let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
@@ -412,7 +412,7 @@ fn test_submit_snapshot_epoch_zero_rejected() {
     let client = AnalyticsContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Attempt to submit with epoch 0
     // Note: valid non-zero hash should be used; validation should catch epoch=0 first
@@ -433,7 +433,7 @@ fn test_submit_snapshot_unauthorized_caller_rejected() {
     let admin = Address::generate(&env);
     let unauthorized_user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Attempt to submit with unauthorized caller
     let valid_hash = create_test_hash(&env, 42);
@@ -452,7 +452,7 @@ fn test_submit_snapshot_valid_after_edge_cases() {
     let client = AnalyticsContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     env.ledger().set_timestamp(5000);
 
     // After testing edge cases, verify a valid submission still works
@@ -522,8 +522,6 @@ fn test_get_admin() {
 
     let admin = Address::generate(&env);
     client.initialize(&admin, &None);
-    assert_eq!(client.get_admin(), Some(admin));
-    client.initialize(&admin);
     assert_eq!(client.get_admin(), admin);
 }
 
@@ -571,38 +569,52 @@ fn test_admin_transfer_event() {
     let admin1 = Address::generate(&env);
     let admin2 = Address::generate(&env);
 
-    client.initialize(&admin1);
+    client.initialize(&admin1, &None);
     env.ledger().set_timestamp(1000);
 
     // Transfer admin from admin1 to admin2
     client.set_admin(&admin1, &admin2);
 
-    // Verify new admin is set
+    // Capture events before any further contract calls — later invocations can
+    // mark earlier contract events as failed_call for rollback accounting, and
+    // `Events::all()` filters those out.
+    let events = env.events().all();
+
     assert_eq!(client.get_admin(), admin2.clone());
 
-    // Verify events were emitted
-    let events = env.events().all();
-    assert!(!events.is_empty(), "Events should have been published");
+    // Verify AdminTransferEvent was emitted (first of two admin-topic events)
+    let raw = events.events();
+    assert!(!raw.is_empty(), "Events should have been published");
 
-    // Check the event topics and data — soroban events are (contract_id, topics, data)
-    let (_contract_id, topics, event_data) = events.first_unchecked();
-    assert_eq!(topics.len(), 2u32, "Event should have 2 topics");
+    let transfer_event = raw.iter().find(|e| {
+        let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body;
+        if v0.topics.len() < 2 {
+            return false;
+        }
+        let t0 = <Symbol as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.topics[0])
+            .ok();
+        if t0 != Some(symbol_short!("admin")) {
+            return false;
+        }
+        let Ok(val) = <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data)
+        else {
+            return false;
+        };
+        let event: AdminTransferEvent = FromVal::from_val(&env, &val);
+        event.previous_admin == admin1
+            && event.new_admin == admin2
+            && event.transferred_by == admin1
+    });
+    assert!(transfer_event.is_some(), "AdminTransferEvent should be emitted");
 
-    // Verify the event data can be decoded as AdminTransferEvent
-    let event: AdminTransferEvent = soroban_sdk::FromVal::from_val(&env, &event_data);
-    assert_eq!(
-        event.previous_admin, admin1,
-        "Previous admin should be admin1"
-    );
-    assert_eq!(event.new_admin, admin2, "New admin should be admin2");
-    assert_eq!(
-        event.transferred_by, admin1,
-        "Transferred by should be admin1"
-    );
-    assert_eq!(
-        event.timestamp, 1000,
-        "Timestamp should match ledger timestamp"
-    );
+    if let Some(e) = transfer_event {
+        let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body;
+        let val =
+            <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data).unwrap();
+        let event: AdminTransferEvent = FromVal::from_val(&env, &val);
+        assert_eq!(event.timestamp, 1000);
+        assert_eq!(event.ledger_sequence, env.ledger().sequence());
+    }
 }
 
 #[test]
@@ -1311,18 +1323,20 @@ fn test_prune_old_snapshots() {
 
     client.initialize(&admin, &None);
 
-    for i in 1u64..=100 {
+    // Keep total ledger footprint within default test invocation limits (see
+    // Soroban resource limits for footprint / write entries).
+    for i in 1u64..=30 {
         client.submit_snapshot(&i, &create_test_hash(&env, (i % 255) as u8), &admin);
     }
 
-    assert_eq!(client.get_latest_epoch(), 100);
+    assert_eq!(client.get_latest_epoch(), 30);
     let removed = client.prune_old_snapshots(&admin, &10u32);
-    assert_eq!(removed, 90);
+    assert_eq!(removed, 20);
 
     assert!(client.get_snapshot(&1u64).is_none());
-    assert!(client.get_snapshot(&90u64).is_none());
-    assert!(client.get_snapshot(&91u64).is_some());
-    assert!(client.get_snapshot(&100u64).is_some());
+    assert!(client.get_snapshot(&20u64).is_none());
+    assert!(client.get_snapshot(&21u64).is_some());
+    assert!(client.get_snapshot(&30u64).is_some());
 }
 
 // ============================================================================
@@ -1645,4 +1659,112 @@ fn test_statistics() {
     assert_eq!(stats.newest_snapshot_timestamp, 3000);
     // avg = (3000 - 1000) / (3 - 1) = 1000
     assert_eq!(stats.average_time_between_snapshots, 1000);
+}
+
+// ============================================================================
+// Timelock Structured Event Tests (Requirements 3.1, 3.2, 3.3)
+// ============================================================================
+
+#[test]
+fn test_execute_timelock_action_emits_structured_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    env.ledger().set_timestamp(1000 + 172_800);
+    client.execute_timelock_action(&admin, &action_id);
+
+    // Find the tl_exec event
+    let events = env.events().all();
+    let raw = events.events();
+    let exec_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <soroban_sdk::Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == symbol_short!("tl_exec"))
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(exec_event.is_some(), "tl_exec event should be emitted");
+
+    if let Some(e) = exec_event {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: TimelockActionExecutedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.action_id, action_id);
+            assert_eq!(data.executor, admin);
+            assert_eq!(data.new_admin, new_admin);
+        }
+    }
+}
+
+#[test]
+fn test_cancel_timelock_action_emits_structured_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, AnalyticsContract);
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.initialize(&admin, &None);
+    env.ledger().set_timestamp(1000);
+
+    let action_id = client.propose_admin_change(&admin, &new_admin);
+    client.cancel_timelock_action(&admin, &action_id);
+
+    // Find the tl_cncl event
+    let events = env.events().all();
+    let raw = events.events();
+    let cancel_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <soroban_sdk::Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == symbol_short!("tl_cncl"))
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(cancel_event.is_some(), "tl_cncl event should be emitted");
+
+    if let Some(e) = cancel_event {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: TimelockActionCancelledEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.action_id, action_id);
+            assert_eq!(data.admin, admin);
+        }
+    }
 }
