@@ -398,13 +398,13 @@ mod test {
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Events},
-        Env, Val, Vec,
+        Env,
     };
 
     macro_rules! setup {
         ($env:ident, $client:ident, $admin:ident) => {
             let $env = Env::default();
-            let contract_id = $env.register_contract(None, AccessControlContract);
+            let contract_id = $env.register(AccessControlContract, ());
             let $client = AccessControlContractClient::new(&$env, &contract_id);
             let $admin = Address::generate(&$env);
             $env.mock_all_auths();
@@ -825,19 +825,30 @@ mod test {
         client.grant_role(&admin, &user, &Role::Operator);
 
         let events = env.events().all();
-        assert!(!events.is_empty());
-        // The last event should be the role_grnt event for the user grant
-        // (initialize emits nothing, so only the grant_role event is present)
-        let (topics, data): (soroban_sdk::Vec<Val>, RoleGrantedEvent) = events
-            .last()
-            .map(|(_, t, d)| (t, soroban_sdk::FromVal::from_val(&env, &d)))
-            .unwrap();
-        assert_eq!(data.user, user);
-        assert_eq!(data.admin, admin);
-        assert!(matches!(data.role, Role::Operator));
-        // First topic is the symbol "role_grnt"
-        let topic0: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
-        assert_eq!(topic0, symbol_short!("role_grnt"));
+        let raw = events.events();
+        assert!(!raw.is_empty());
+        // The last event should be the role_grnt event
+        let last = raw.last().unwrap();
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = last.body {
+            let topic0 =
+                <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env,
+                    &v0.topics[0],
+                )
+                .unwrap();
+            assert_eq!(topic0, symbol_short!("role_grnt"));
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: RoleGrantedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.user, user);
+            assert_eq!(data.admin, admin);
+            assert!(matches!(data.role, Role::Operator));
+        } else {
+            panic!("unexpected event body variant");
+        }
     }
 
     #[test]
@@ -845,24 +856,37 @@ mod test {
         setup!(env, client, admin);
         let user = Address::generate(&env);
         client.grant_role(&admin, &user, &Role::Operator);
-        env.events().all(); // clear snapshot reference point
 
         client.revoke_role(&admin, &user, &Role::Operator);
 
         let events = env.events().all();
-        let revoke_event = events.iter().find(|(_, topics, _)| {
-            if topics.is_empty() {
-                return false;
+        let revoke_event = events.events().iter().find(|e| {
+            if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+                if v0.topics.is_empty() {
+                    return false;
+                }
+                <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env,
+                    &v0.topics[0],
+                )
+                .map(|t| t == symbol_short!("role_rvk"))
+                .unwrap_or(false)
+            } else {
+                false
             }
-            let t: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
-            t == symbol_short!("role_rvk")
         });
         assert!(revoke_event.is_some(), "expected role_rvk event");
-        let (_, _, data_val) = revoke_event.unwrap();
-        let data: RoleRevokedEvent = soroban_sdk::FromVal::from_val(&env, &data_val);
-        assert_eq!(data.user, user);
-        assert_eq!(data.admin, admin);
-        assert!(matches!(data.role, Role::Operator));
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = revoke_event.unwrap().body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: RoleRevokedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.user, user);
+            assert_eq!(data.admin, admin);
+            assert!(matches!(data.role, Role::Operator));
+        }
     }
 
     #[test]
@@ -873,12 +897,20 @@ mod test {
         client.revoke_role(&admin, &user, &Role::Operator);
 
         let events = env.events().all();
-        let revoke_event = events.iter().find(|(_, topics, _)| {
-            if topics.is_empty() {
-                return false;
+        let revoke_event = events.events().iter().find(|e| {
+            if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+                if v0.topics.is_empty() {
+                    return false;
+                }
+                <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env,
+                    &v0.topics[0],
+                )
+                .map(|t| t == symbol_short!("role_rvk"))
+                .unwrap_or(false)
+            } else {
+                false
             }
-            let t: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
-            t == symbol_short!("role_rvk")
         });
         assert!(revoke_event.is_none(), "no event expected for no-op revoke");
     }
@@ -890,25 +922,39 @@ mod test {
         client.grant_permission(&admin, &Role::Operator, &func);
 
         let events = env.events().all();
-        let perm_event = events.iter().find(|(_, topics, _)| {
-            if topics.is_empty() {
-                return false;
+        let perm_event = events.events().iter().find(|e| {
+            if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+                if v0.topics.is_empty() {
+                    return false;
+                }
+                <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env,
+                    &v0.topics[0],
+                )
+                .map(|t| t == symbol_short!("perm_grnt"))
+                .unwrap_or(false)
+            } else {
+                false
             }
-            let t: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
-            t == symbol_short!("perm_grnt")
         });
         assert!(perm_event.is_some(), "expected perm_grnt event");
-        let (_, _, data_val) = perm_event.unwrap();
-        let data: PermissionGrantedEvent = soroban_sdk::FromVal::from_val(&env, &data_val);
-        assert_eq!(data.admin, admin);
-        assert_eq!(data.function, func);
-        assert!(matches!(data.role, Role::Operator));
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = perm_event.unwrap().body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: PermissionGrantedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.admin, admin);
+            assert_eq!(data.function, func);
+            assert!(matches!(data.role, Role::Operator));
+        }
     }
 
     #[test]
     fn test_grant_role_unauthorized_issue_689() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, AccessControlContract);
+        let contract_id = env.register(AccessControlContract, ());
         let client = AccessControlContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
