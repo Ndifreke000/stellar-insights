@@ -135,6 +135,43 @@ pub async fn wait_for_signal() {
     }
 }
 
+/// Shutdown signal future suitable for use with `axum::serve().with_graceful_shutdown()`.
+///
+/// Resolves when SIGTERM or SIGINT (Ctrl+C) is received. Errors installing
+/// signal handlers are logged as warnings rather than panicking, so the server
+/// continues to run and can still be stopped via other means.
+pub async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let sigterm = signal(SignalKind::terminate());
+        let sigint = signal(SignalKind::interrupt());
+
+        match (sigterm, sigint) {
+            (Ok(mut term), Ok(mut int)) => {
+                tokio::select! {
+                    _ = term.recv() => info!("Received SIGTERM, shutting down"),
+                    _ = int.recv()  => info!("Received SIGINT, shutting down"),
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                warn!("Failed to install signal handler: {}; falling back to Ctrl+C", e);
+                let _ = tokio::signal::ctrl_c().await;
+                info!("Received Ctrl+C, shutting down");
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => info!("Received Ctrl+C, shutting down"),
+            Err(e) => warn!("Failed to listen for Ctrl+C: {}", e),
+        }
+    }
+}
+
 /// Gracefully shutdown background tasks
 ///
 /// Waits for the given task handles to complete within the timeout period.

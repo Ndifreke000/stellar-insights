@@ -48,7 +48,7 @@ use stellar_insights_backend::{
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
-        shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
+        shutdown_signal, shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
     },
     state::AppState,
     websocket::WsState,
@@ -496,28 +496,20 @@ async fn main() -> anyhow::Result<()> {
         webhook_dispatcher_handle,
     ];
 
-    // Graceful shutdown handler task
-    let shutdown_handler: JoinHandle<()> = {
-        let shutdown_pool = pool.clone();
-        let shutdown_cache = cache.clone();
-        let shutdown_ws_state = ws_state.clone();
-        let coordinator = shutdown_coordinator.clone();
-        tokio::spawn(async move {
-            wait_for_signal().await;
-            coordinator.trigger_shutdown();
-            shutdown_websockets(shutdown_ws_state, coordinator.background_task_timeout()).await;
-            flush_cache(shutdown_cache, coordinator.background_task_timeout()).await;
-            shutdown_database(shutdown_pool, coordinator.db_close_timeout()).await;
-        })
-    };
-
-    background_tasks.push(shutdown_handler);
+    // Clone references needed inside the graceful shutdown future
+    let shutdown_pool = pool.clone();
+    let shutdown_cache = cache.clone();
+    let shutdown_ws_state = ws_state.clone();
 
     // ✅ GRACEFUL SHUTDOWN
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            let mut rx = shutdown_coordinator.clone().subscribe();
-            let _ = rx.recv().await;
+            shutdown_signal().await;
+            let coordinator = shutdown_coordinator.clone();
+            coordinator.trigger_shutdown();
+            shutdown_websockets(shutdown_ws_state, coordinator.background_task_timeout()).await;
+            flush_cache(shutdown_cache, coordinator.background_task_timeout()).await;
+            shutdown_database(shutdown_pool, coordinator.db_close_timeout()).await;
         })
         .await?;
 
