@@ -710,7 +710,8 @@ impl Database {
         self.execute_with_timing("get_all_anchors", async {
             let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
                 .fetch_all(&self.pool)
-                .await?;
+                .await
+                .context("Failed to fetch all anchors from database")?;
             Ok(anchors)
         })
         .await
@@ -1454,7 +1455,8 @@ impl Database {
             )
             .bind(MUXED_LEN)
             .fetch_one(&self.pool)
-            .await?;
+            .await
+            .context("Failed to count total muxed payments")?;
 
             #[derive(sqlx::FromRow)]
             struct AddrCount {
@@ -1474,7 +1476,8 @@ impl Database {
             .bind(MUXED_LEN)
             .bind(top_limit)
             .fetch_all(&self.pool)
-            .await?;
+            .await
+            .context("Failed to fetch top source muxed account counts")?;
 
             let dest_counts: Vec<AddrCount> = sqlx::query_as(
                 r"
@@ -1488,7 +1491,8 @@ impl Database {
             .bind(MUXED_LEN)
             .bind(top_limit)
             .fetch_all(&self.pool)
-            .await?;
+            .await
+            .context("Failed to fetch top destination muxed account counts")?;
 
             let mut by_addr: std::collections::HashMap<String, (i64, i64)> =
                 std::collections::HashMap::new();

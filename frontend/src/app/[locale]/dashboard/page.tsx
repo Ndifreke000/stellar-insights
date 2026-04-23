@@ -13,6 +13,12 @@ import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
 import { useRealtimeAnchors } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
 import { logger } from "@/lib/logger";
+import {
+  Skeleton,
+  SkeletonChart,
+  SkeletonCorridorCard,
+  SkeletonTable
+} from "@/components/ui/Skeleton";
 
 interface CorridorData {
   id: string;
@@ -151,9 +157,33 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest">
-          {t("loading")}
+      <div className="space-y-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-10 w-64" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-40" />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton className="h-32 w-full rounded-2xl" key={i} />
+          ))}
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-12">
+          <div className="lg:col-span-8 space-y-6">
+            <SkeletonChart height={300} />
+            <SkeletonTable rows={5} />
+          </div>
+          <div className="lg:col-span-4 space-y-6">
+            <SkeletonCorridorCard />
+            <SkeletonChart height={300} />
+          </div>
         </div>
       </div>
     );

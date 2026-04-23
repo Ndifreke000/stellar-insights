@@ -3,6 +3,7 @@ import { Home as AnchorIcon } from "lucide-react";
 import { MainLayout } from "@/components/layout";
 import AnchorsPageContent from "./components/AnchorsPageContent";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Skeleton, SkeletonTable } from "@/components/ui/Skeleton";
 
 const AnchorsPage = () => {
   return (
@@ -10,13 +11,15 @@ const AnchorsPage = () => {
       <Suspense
         fallback={
           <MainLayout>
-            <div className="flex items-center justify-center min-h-screen">
-              <div className="text-center">
-                <AnchorIcon className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-pulse" />
-                <p className="text-gray-600 dark:text-gray-400">
-                  Loading anchors...
-                </p>
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 mb-8">
+                <Skeleton variant="circle" className="w-12 h-12" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-48" />
+                </div>
               </div>
+              <SkeletonTable rows={10} />
             </div>
           </MainLayout>
         }
