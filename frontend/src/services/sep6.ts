@@ -3,10 +3,9 @@
  * Programmatic deposit/withdraw flows; requests go through backend proxy when configured.
  */
 
-const API_BASE =
-  typeof process !== "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080"
-    : "";
+import { config } from '@/config';
+
+const API_BASE = config.apiUrl;
 
 export class Sep6Error extends Error {
   constructor(
