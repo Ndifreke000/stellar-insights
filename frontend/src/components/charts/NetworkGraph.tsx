@@ -212,6 +212,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
           onClick={() => fgRef.current?.zoomToFit(400)}
           className="p-3 glass hover:bg-white/10 border border-white/10 rounded-xl transition-all active:scale-95 group"
           title="Recenter View"
+          aria-label="Recenter graph view"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

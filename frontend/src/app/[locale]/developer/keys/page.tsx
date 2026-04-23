@@ -170,6 +170,7 @@ export default function DeveloperKeysPage() {
             onClick={() => setError(null)}
             className="ml-auto text-destructive hover:opacity-80"
             title="Dismiss error"
+            aria-label="Dismiss error message"
           >
             <X className="w-4 h-4" />
           </button>

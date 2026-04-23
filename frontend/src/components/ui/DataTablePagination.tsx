@@ -78,6 +78,7 @@ export function DataTablePagination({
                         disabled={currentPage === 1}
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="First Page"
+                        aria-label="Go to first page"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </button>
@@ -86,6 +87,7 @@ export function DataTablePagination({
                         disabled={currentPage === 1}
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="Previous Page"
+                        aria-label="Go to previous page"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </button>
@@ -99,6 +101,7 @@ export function DataTablePagination({
                         disabled={currentPage === totalPages}
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="Next Page"
+                        aria-label="Go to next page"
                     >
                         <ChevronRight className="w-5 h-5" />
                     </button>
@@ -107,6 +110,7 @@ export function DataTablePagination({
                         disabled={currentPage === totalPages}
                         className="p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors"
                         title="Last Page"
+                        aria-label="Go to last page"
                     >
                         <ChevronRight className="w-5 h-5" />
                     </button>

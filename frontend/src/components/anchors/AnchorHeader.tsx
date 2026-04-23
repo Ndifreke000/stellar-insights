@@ -51,6 +51,7 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                         <button
                             className="p-1 hover:text-white transition-colors"
                             title="Copy Address"
+                            aria-label="Copy Stellar address to clipboard"
                             onClick={() => navigator.clipboard.writeText(anchor.stellar_account)}
                         >
                             <Copy className="w-3.5 h-3.5" />
