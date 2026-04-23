@@ -75,7 +75,7 @@ jsonwebtoken = "9.2"
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
 urlencoding = "2.1"
-toml = "0.8"
+toml = "1.0"
 prometheus = "0.13"
 ipnetwork = "0.20"
 argon2 = "0.5.3"
