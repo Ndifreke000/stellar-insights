@@ -46,6 +46,32 @@ impl CacheConfig {
             _ => 300,
         }
     }
+
+    /// Load TTL settings from environment variables, falling back to defaults.
+    ///
+    /// | Variable                        | Field                   | Default |
+    /// |---------------------------------|-------------------------|---------|
+    /// | `CACHE_CORRIDOR_METRICS_TTL`    | `corridor_metrics_ttl`  | 300 s   |
+    /// | `CACHE_ANCHOR_DATA_TTL`         | `anchor_data_ttl`       | 600 s   |
+    /// | `CACHE_DASHBOARD_STATS_TTL`     | `dashboard_stats_ttl`   | 60 s    |
+    #[must_use]
+    pub fn from_env() -> Self {
+        let default = Self::default();
+        Self {
+            corridor_metrics_ttl: std::env::var("CACHE_CORRIDOR_METRICS_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.corridor_metrics_ttl),
+            anchor_data_ttl: std::env::var("CACHE_ANCHOR_DATA_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.anchor_data_ttl),
+            dashboard_stats_ttl: std::env::var("CACHE_DASHBOARD_STATS_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.dashboard_stats_ttl),
+        }
+    }
 }
 
 impl Default for CacheConfig {

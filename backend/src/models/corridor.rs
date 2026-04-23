@@ -125,6 +125,11 @@ pub struct CorridorAnalytics {
     pub volume_usd: f64,
 }
 
+/// Analytics domain model for a payment record.
+///
+/// This is the in-memory representation used by the analytics and corridor
+/// computation layers. For the database row type (with `sqlx::FromRow`),
+/// see [`crate::models::PaymentRow`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentRecord {
     pub id: Uuid,

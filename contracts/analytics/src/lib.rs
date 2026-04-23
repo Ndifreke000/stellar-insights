@@ -333,6 +333,8 @@ pub enum DataKey {
     Config,
     CompactSnapshot(u64),
     AddressRegistry,
+    /// Reverse-lookup: Address → its registry ID (O(1) alternative to linear scan)
+    AddressId(Address),
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -358,6 +360,15 @@ fn get_config(env: &Env) -> ContractConfig {
 }
 
 fn get_or_create_address_id(env: &Env, address: &Address) -> u32 {
+    // O(1) reverse-lookup: check the per-address key before touching the registry map.
+    if let Some(id) = env
+        .storage()
+        .persistent()
+        .get::<DataKey, u32>(&DataKey::AddressId(address.clone()))
+    {
+        return id;
+    }
+
     let mut registry: AddressRegistry = env
         .storage()
         .persistent()
@@ -367,20 +378,26 @@ fn get_or_create_address_id(env: &Env, address: &Address) -> u32 {
             next_id: 1,
         });
 
-    for i in 1..registry.next_id {
-        if let Some(addr) = registry.addresses.get(i) {
-            if addr == *address {
-                return i;
-            }
-        }
-    }
-
     let id = registry.next_id;
     registry.addresses.set(id, address.clone());
     registry.next_id += 1;
     env.storage()
         .persistent()
         .set(&DataKey::AddressRegistry, &registry);
+    env.storage().persistent().extend_ttl(
+        &DataKey::AddressRegistry,
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
+    // Store the reverse mapping so future lookups are O(1).
+    env.storage()
+        .persistent()
+        .set(&DataKey::AddressId(address.clone()), &id);
+    env.storage().persistent().extend_ttl(
+        &DataKey::AddressId(address.clone()),
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
     id
 }
 // ── Private helpers ───────────────────────────────────────────────────────────

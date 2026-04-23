@@ -209,8 +209,10 @@ pub struct SnapshotRecord {
     pub created_at: DateTime<Utc>,
 }
 
+/// Database row for a payment fetched from the `payments` table.
+/// For the analytics domain model, see [`crate::models::corridor::PaymentRecord`].
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct PaymentRecord {
+pub struct PaymentRow {
     pub id: String,
     pub transaction_hash: String,
     pub source_account: String,
@@ -238,9 +240,7 @@ pub struct PaymentRecord {
     pub created_at: DateTime<Utc>,
 }
 
-impl PaymentRecord {
-    #[must_use]
-    pub fn get_corridor(&self) -> crate::models::corridor::Corridor {
+impl PaymentRow {
         let src_code = if self.source_asset_code.is_empty() {
             self.asset_code.clone().unwrap_or_default()
         } else {

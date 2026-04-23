@@ -163,6 +163,12 @@ pub async fn update_anchor_metrics(
         ));
     }
 
+    let computed = crate::analytics::compute_anchor_metrics(
+        req.total_transactions,
+        req.successful_transactions,
+        req.failed_transactions,
+        req.avg_settlement_time_ms,
+    );
     let anchor = app_state
         .db
         .update_anchor_metrics(crate::database::AnchorMetricsUpdate {
@@ -172,6 +178,10 @@ pub async fn update_anchor_metrics(
             failed_transactions: req.failed_transactions,
             avg_settlement_time_ms: req.avg_settlement_time_ms,
             volume_usd: req.volume_usd,
+            reliability_score: computed.reliability_score,
+            success_rate: computed.success_rate,
+            failure_rate: computed.failure_rate,
+            status: computed.status.as_str().to_string(),
         })
         .await?;
 

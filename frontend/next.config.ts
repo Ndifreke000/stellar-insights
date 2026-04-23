@@ -9,6 +9,21 @@ const analyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
 
+/**
+ * Code splitting strategy (#1136)
+ *
+ * Heavy chart/analytics components (recharts, framer-motion, NetworkGraph, etc.)
+ * are loaded on-demand via Next.js dynamic() in:
+ *   src/components/dynamic-imports.ts
+ *
+ * This keeps them out of the initial JS bundle, reducing Time-to-Interactive.
+ * `optimizePackageImports` below enables tree-shaking for the same libraries
+ * at the module level as a complementary optimisation.
+ *
+ * To analyse bundle sizes after a build:
+ *   ANALYZE=true npm run build
+ */
+
 const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: [

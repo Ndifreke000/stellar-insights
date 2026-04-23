@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::admin_audit_log::AdminAuditLogger;
-use crate::analytics::compute_anchor_metrics;
 use crate::cache::CacheManager;
 use crate::models::api_key::{
     generate_api_key, hash_api_key, ApiKey, ApiKeyInfo, CreateApiKeyRequest, CreateApiKeyResponse,
@@ -197,6 +196,15 @@ pub struct AnchorMetricsUpdate {
     pub failed_transactions: i64,
     pub avg_settlement_time_ms: Option<i32>,
     pub volume_usd: Option<f64>,
+    /// Pre-computed reliability score (0–100). Callers must compute this via
+    /// `analytics::compute_anchor_metrics` before calling `update_anchor_metrics`.
+    pub reliability_score: f64,
+    /// Pre-computed success rate (0–100).
+    pub success_rate: f64,
+    /// Pre-computed failure rate (0–100).
+    pub failure_rate: f64,
+    /// Pre-computed anchor status string ("green" | "yellow" | "red").
+    pub status: String,
 }
 
 /// Parameters for recording anchor metrics history
@@ -476,15 +484,9 @@ impl Database {
     #[tracing::instrument(skip(self, update), fields(anchor_id = %update.anchor_id))]
     pub async fn update_anchor_metrics(&self, update: AnchorMetricsUpdate) -> Result<Anchor> {
         self.execute_with_timing("update_anchor_metrics", async {
-            // 1. Compute derived metrics (reliability, status, etc.)
-            let metrics = compute_anchor_metrics(
-                update.total_transactions,
-                update.successful_transactions,
-                update.failed_transactions,
-                update.avg_settlement_time_ms,
-            );
-
-            // 2. Start a transaction to ensure atomic updates
+            // Metrics (reliability_score, success_rate, failure_rate, status) are
+            // pre-computed by the caller so database.rs has no dependency on the
+            // analytics service layer (fixes #1134 circular-dependency risk).
             let mut tx = self.pool.begin().await.with_context(|| {
                 format!(
                     "Failed to begin database transaction for anchor: {}",
@@ -492,7 +494,7 @@ impl Database {
                 )
             })?;
 
-            // 3. Update the main anchor record
+            // Update the main anchor record
             let anchor = sqlx::query_as::<_, Anchor>(
                 r"
                 UPDATE anchors
@@ -512,8 +514,8 @@ impl Database {
             .bind(update.successful_transactions)
             .bind(update.failed_transactions)
             .bind(update.avg_settlement_time_ms.unwrap_or(0))
-            .bind(metrics.reliability_score)
-            .bind(metrics.status.as_str())
+            .bind(update.reliability_score)
+            .bind(&update.status)
             .bind(update.volume_usd)
             .bind(Utc::now())
             .bind(update.anchor_id.to_string())
@@ -526,7 +528,7 @@ impl Database {
                 )
             })?;
 
-            // 4. Record the entry in history table
+            // Record the entry in history table
             let history_id = Uuid::new_v4().to_string();
             sqlx::query(
                 r"
@@ -541,9 +543,9 @@ impl Database {
             .bind(history_id)
             .bind(update.anchor_id.to_string())
             .bind(Utc::now())
-            .bind(metrics.success_rate)
-            .bind(metrics.failure_rate)
-            .bind(metrics.reliability_score)
+            .bind(update.success_rate)
+            .bind(update.failure_rate)
+            .bind(update.reliability_score)
             .bind(update.total_transactions)
             .bind(update.successful_transactions)
             .bind(update.failed_transactions)
@@ -1266,7 +1268,7 @@ impl Database {
 
     /// Saves a batch of payment records to the database using a transaction.
     #[tracing::instrument(skip(self, payments), fields(payment_count = payments.len()))]
-    pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRecord>) -> Result<()> {
+    pub async fn save_payments(&self, payments: Vec<crate::models::PaymentRow>) -> Result<()> {
         self.execute_with_timing("save_payments", async {
             let payment_count = payments.len();
             if payments.is_empty() {
@@ -1600,13 +1602,17 @@ impl Database {
         id: &str,
     ) -> Result<Option<crate::models::PendingTransactionWithSignatures>> {
         self.execute_with_timing("get_pending_transaction", async {
+            let mut tx = self.pool.begin().await.with_context(|| {
+                format!("Failed to begin transaction for get_pending_transaction id: {}", id)
+            })?;
+
             let pending_transaction = sqlx::query_as::<_, crate::models::PendingTransaction>(
                 r"
             SELECT * FROM pending_transactions WHERE id = $1
             ",
             )
             .bind(id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await
             .with_context(|| format!("Failed to fetch pending transaction with id: {}", id))?;
 
@@ -1617,10 +1623,14 @@ impl Database {
                 ",
                 )
                 .bind(id)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *tx)
                 .await
                 .with_context(|| {
                     format!("Failed to fetch signatures for transaction id: {}", id)
+                })?;
+
+                tx.commit().await.with_context(|| {
+                    format!("Failed to commit get_pending_transaction read for id: {}", id)
                 })?;
 
                 Ok(Some(crate::models::PendingTransactionWithSignatures {
@@ -1708,6 +1718,10 @@ impl Database {
             let scopes = req.scopes.unwrap_or_else(|| "read".to_string());
             let now = Utc::now().to_rfc3339();
 
+            let mut tx = self.pool.begin().await.with_context(|| {
+                format!("Failed to begin transaction for create_api_key for wallet: {}", wallet_address)
+            })?;
+
             sqlx::query(
                 r"
             INSERT INTO api_keys (id, name, key_prefix, key_hash, wallet_address, scopes, status, created_at, expires_at)
@@ -1722,15 +1736,19 @@ impl Database {
             .bind(&scopes)
             .bind(&now)
             .bind(&req.expires_at)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .with_context(|| format!("Failed to insert API key for wallet: {}, name: {}", wallet_address, req.name))?;
 
             let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
                 .bind(&id)
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *tx)
                 .await
                 .with_context(|| format!("Failed to fetch newly created API key with id: {}", id))?;
+
+            tx.commit().await.with_context(|| {
+                format!("Failed to commit create_api_key transaction for wallet: {}", wallet_address)
+            })?;
 
             Ok(CreateApiKeyResponse {
                 key: ApiKeyInfo::from(key),

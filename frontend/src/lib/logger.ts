@@ -4,7 +4,7 @@
  * Features:
  * - Environment-aware logging (development vs production)
  * - Structured logging with metadata
- * - Error tracking integration ready
+ * - Error tracking integration with Sentry
  * - Sensitive data redaction
  * - Type-safe logging methods
  * 
@@ -70,33 +70,79 @@ function formatMessage(level: string, message: string): string {
 }
 
 /**
- * Send error to tracking service (Sentry, LogRocket, etc.)
+ * Convert an arbitrary error payload to an Error for tracking.
  */
-function sendToErrorTracking(error: Error, metadata?: LogMetadata): void {
+function normalizeTrackingError(error: unknown, defaultMessage: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (typeof error === 'string') {
+    return new Error(error);
+  }
+
+  try {
+    return new Error(JSON.stringify(error));
+  } catch {
+    return new Error(defaultMessage);
+  }
+}
+
+/**
+ * Send error to tracking service (Sentry) and backend fallback.
+ */
+function sendToErrorTracking(error: unknown, metadata?: LogMetadata): void {
   if (isDevelopment || !isLoggingEnabled) {
     return;
   }
-  
-  // Integration point for error tracking services
-  // Example: Sentry.captureException(error, { extra: metadata });
-  
-  // For now, we'll just prepare the data structure
-  const errorData = {
-    message: error.message,
-    stack: error.stack,
-    metadata: redactSensitiveData(metadata),
-    timestamp: new Date().toISOString(),
-    userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
-  };
-  
-  const endpoint = process.env.NEXT_PUBLIC_ERROR_TRACKING_URL;
-  if (typeof window !== 'undefined' && endpoint) {
-    const payload = JSON.stringify(errorData);
-    // sendBeacon is fire-and-forget and works during page unload
-    if (!navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }))) {
-      // Fallback to fetch if sendBeacon fails (e.g. payload too large)
-      fetch(endpoint, { method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => {});
-    }
+
+  const normalizedError = normalizeTrackingError(error, 'Unknown frontend error');
+  const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
+
+  import("@sentry/nextjs")
+    .then((Sentry) => {
+      Sentry.captureException(normalizedError, {
+        tags: {
+          logger: "frontend",
+        },
+        extra: redactedMetadata,
+      });
+    })
+    .catch(() => {
+      sendErrorToBackend(normalizedError, redactedMetadata).catch(() => {
+        if (typeof window !== 'undefined') {
+          const errors = JSON.parse(sessionStorage.getItem('error_logs') || '[]');
+          errors.push({
+            message: normalizedError.message,
+            stack: normalizedError.stack,
+            metadata: redactedMetadata,
+            timestamp: new Date().toISOString(),
+          });
+          sessionStorage.setItem('error_logs', JSON.stringify(errors));
+        }
+      });
+    });
+}
+
+async function sendErrorToBackend(error: Error, metadata?: LogMetadata): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    await fetch('/api/error-log', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        metadata,
+      }),
+    });
+  } catch {
+    // Swallow network failures here; sessionStorage fallback is handled by sendToErrorTracking.
   }
 }
 
@@ -168,7 +214,8 @@ export const logger = {
     }
     
     const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
-    
+    const payload = error ?? message;
+
     if (isDevelopment) {
       if (error instanceof Error) {
         console.error(formatMessage('ERROR', message), error, redactedMetadata);
@@ -178,10 +225,9 @@ export const logger = {
         console.error(formatMessage('ERROR', message), redactedMetadata);
       }
     }
-    
-    // Send to error tracking in production
-    if (!isDevelopment && error instanceof Error) {
-      sendToErrorTracking(error, { message, ...redactedMetadata });
+
+    if (!isDevelopment) {
+      sendToErrorTracking(payload, { message, ...redactedMetadata });
     }
   },
 

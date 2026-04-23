@@ -7,7 +7,6 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::resource::Resource;
 use opentelemetry_sdk::runtime;
-use opentelemetry_sdk::trace::Config;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -16,7 +15,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 const MAX_LOG_FILES: usize = 30;
 
 fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Tracer> {
-    // HTTP/protobuf OTLP on 4318; OTLP 0.17+ avoids pulling `tonic`'s legacy `axum` into this crate graph.
+    // HTTP/protobuf OTLP on 4318; avoids pulling `tonic` into the crate graph.
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_else(|_| {
         "http://localhost:4318/v1/traces".to_string()
     });
@@ -26,15 +25,15 @@ fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Trac
         service_name.to_string(),
     )]);
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .http()
-                .with_endpoint(endpoint),
-        )
-        .with_trace_config(Config::default().with_resource(resource))
-        .install_batch(runtime::Tokio)?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_endpoint(endpoint)
+        .build()?;
+
+    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_batch_exporter(exporter, runtime::Tokio)
+        .with_config(opentelemetry_sdk::trace::Config::default().with_resource(resource))
+        .build();
 
     global::set_tracer_provider(provider.clone());
     Ok(provider.tracer("stellar-insights-backend"))

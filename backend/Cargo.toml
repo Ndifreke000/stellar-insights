@@ -34,60 +34,60 @@ panic = "allow"
 legacy_sep10_tests = []
 
 [dependencies]
-tokio = { version = "=1.49.0", features = ["full"] }
-axum = { version = "=0.7.9", features = ["ws"] }
-tower = { version = "=0.4.13", features = ["util", "timeout"] }
-tower-http = { version = "=0.6.8", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
-validator = { version = "=0.18.1", features = ["derive"] }
-sqlx = { version = "=0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
-log = "=0.4.29"
-chrono = { version = "=0.4.44", features = ["serde"] }
-uuid = { version = "=1.21.0", features = ["v4", "serde"] }
-reqwest = { version = "=0.13.2", features = ["json"] }
-anyhow = "=1.0.102"
-async-trait = "=0.1.89"
-thiserror = "=1.0.69"
-tracing = "=0.1.44"
-tracing-subscriber = { version = "=0.3.22", features = ["env-filter", "json"] }
-tracing-log = "=0.2.0"
-tracing-appender = "=0.2.4"
-tracing-logstash = "=0.2.0"
-opentelemetry = { version = "=0.24.0", features = ["trace"] }
-opentelemetry_sdk = { version = "=0.24.1", features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "=0.17.0", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
-tracing-opentelemetry = "=0.25.0"
-dotenvy = "=0.15.7"
-sha2 = "=0.10.9"
-hex = "=0.4.3"
-ndarray = "=0.15.6"
-rand = "=0.8.5"
-redis = { version = "=0.25.4", features = ["aio", "tokio-comp", "connection-manager"] }
-async-lock = "=3.4.2"
-futures = "=0.3.32"
-tokio-tungstenite = "=0.21.0"
-dashmap = "=5.5.3"
-stellar-xdr = { version = "=21.2.0", features = ["std", "curr"] }
-stellar_sdk = "=0.1.4"
-base64 = "=0.22.1"
-jsonwebtoken = "=9.3.1"
-utoipa = { version = "=4.2.3", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "=6.0.0", features = ["axum"] }
-urlencoding = "=2.1.3"
-toml = "=0.8.23"
-prometheus = "=0.13.4"
-ipnetwork = "=0.20.0"
-argon2 = "=0.5.3"
-url = "=2.5.8"
-aes-gcm = "=0.10.3"
-lettre = "=0.11.19"
-hmac = "=0.12.1"
-data-encoding = "=2.10.0"
-lazy_static = "=1.5.0"
-csv = "=1.4.0"
-rust_xlsxwriter = { version = "=0.83.0", features = ["chrono", "serde"] }
-failsafe = { version = "=1.3.0", features = ["futures-support"] }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+validator = { version = "0.18", features = ["derive"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
+log = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+reqwest = { version = "0.13", features = ["json"] }
+anyhow = "1.0"
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-log = "0.2"
+tracing-appender = "0.2"
+tracing-logstash = "0.2"
+opentelemetry = { version = "0.27", features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.28"
+dotenvy = "0.15"
+sha2 = "0.10"
+hex = "0.4"
+ndarray = "0.15"
+rand = "0.8"
+redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager"] }
+async-lock = "3.3"
+futures = "0.3"
+tokio-tungstenite = "0.21"
+dashmap = "5.5"
+stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
+stellar_sdk = "0.1"
+base64 = "0.22"
+jsonwebtoken = "9.2"
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+urlencoding = "2.1"
+toml = "0.8"
+prometheus = "0.13"
+ipnetwork = "0.20"
+argon2 = "0.5.3"
+url = "2.5"
+aes-gcm = "0.10"
+lettre = "0.11"
+hmac = "0.12"
+data-encoding = "2.5"
+lazy_static = "1.4"
+csv = "1.4"
+rust_xlsxwriter = { version = "0.83", features = ["chrono", "serde"] }
+failsafe = { version = "1.3", features = ["futures-support"] }
 
 
 

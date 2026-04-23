@@ -338,7 +338,7 @@ impl EventIndexer {
         Ok(())
     }
 
-    /// Get event statistics
+    /// Get event statistics. This is the canonical implementation; no legacy variant exists.
     pub async fn get_event_stats(&self) -> Result<EventStats> {
         let total_events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
             .fetch_one(self.db.pool())

@@ -18,7 +18,8 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("RPC_MAX_RECORDS_PER_REQUEST", validate_positive_number),
     ("RPC_MAX_TOTAL_RECORDS", validate_positive_number),
     ("RPC_PAGINATION_DELAY_MS", validate_positive_number),
-    ("REQUEST_TIMEOUT_SECONDS", validate_positive_number),
+    ("REQUEST_TIMEOUT_SECONDS", validate_request_timeout),
+    ("SLOW_QUERY_THRESHOLD_MS", validate_slow_query_threshold),
     ("JWT_SECRET", validate_jwt_secret),
 ];
 
@@ -60,6 +61,19 @@ pub fn validate_env() -> Result<()> {
                 Generate a secure secret with: openssl rand -base64 48",
                 jwt_secret.len()
             ));
+        }
+    }
+
+    // SEP10_SERVER_PUBLIC_KEY must be a valid Stellar public key when set
+    if let Ok(sep10_key) = env::var("SEP10_SERVER_PUBLIC_KEY") {
+        if !validate_stellar_public_key(&sep10_key) {
+            errors.push(
+                "SEP10_SERVER_PUBLIC_KEY is not a valid Stellar public key. \
+                It must start with 'G', be exactly 56 characters, use base32 encoding (A-Z, 2-7), \
+                and must not be a placeholder. \
+                Generate one with: stellar keys generate"
+                    .to_string(),
+            );
         }
     }
 
@@ -196,9 +210,18 @@ fn validate_jwt_secret(value: &str) -> bool {
     value.len() >= 32
 }
 
+/// Validate REQUEST_TIMEOUT_SECONDS: must be in range [1, 300]
+fn validate_request_timeout(value: &str) -> bool {
+    value.parse::<u64>().map(|n| (1..=300).contains(&n)).unwrap_or(false)
+}
+
+/// Validate SLOW_QUERY_THRESHOLD_MS: must be in range [1, 60000]
+fn validate_slow_query_threshold(value: &str) -> bool {
+    value.parse::<u64>().map(|n| (1..=60_000).contains(&n)).unwrap_or(false)
+}
+
 /// Validate Stellar public key format
 /// Must start with 'G' and be exactly 56 characters (Ed25519 public key in base32)
-#[allow(dead_code)]
 fn validate_stellar_public_key(value: &str) -> bool {
     if !value.starts_with('G') || value.len() != 56 {
         return false;

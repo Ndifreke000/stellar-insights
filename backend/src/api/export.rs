@@ -15,7 +15,7 @@ use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::models::PaymentRecord;
+use crate::models::PaymentRow;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -369,17 +369,12 @@ pub async fn export_payments(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    // We need a way to fetch payments. Looking at models.rs, PaymentRecord exists.
-    // Let's assume there's a list_payments method or we can query it directly.
-    // Based on database.rs, it doesn't seem to have list_payments yet.
-    // I will implement a quick query here.
-
     let start_date = params
         .start_date
         .unwrap_or_else(|| Utc::now() - Duration::days(30));
     let end_date = params.end_date.unwrap_or_else(Utc::now);
 
-    let payments = sqlx::query_as::<_, PaymentRecord>(
+    let payments = sqlx::query_as::<_, PaymentRow>(
         r"
         SELECT * FROM payments
         WHERE created_at BETWEEN $1 AND $2

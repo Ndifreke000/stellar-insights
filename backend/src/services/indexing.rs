@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::database::Database;
-use crate::models::PaymentRecord;
+use crate::models::PaymentRow;
 use crate::rpc::StellarRpcClient;
 
 pub struct IndexingService {
@@ -43,7 +43,7 @@ impl IndexingService {
         let last_paging_token = payments.last().map(|p| p.paging_token.clone());
 
         // Normalize payments
-        let records: Vec<PaymentRecord> = payments
+        let records: Vec<PaymentRow> = payments
             .into_iter()
             .filter_map(|p| {
                 let amount = p.amount.parse::<f64>().ok()?;
@@ -51,7 +51,7 @@ impl IndexingService {
                     .ok()?
                     .with_timezone(&chrono::Utc);
 
-                Some(PaymentRecord {
+                Some(PaymentRow {
                     id: p.id,
                     transaction_hash: p.transaction_hash,
                     source_account: p.source_account,

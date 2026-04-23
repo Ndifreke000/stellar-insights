@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize cache manager
     let cache = Arc::new(
-        CacheManager::new(CacheConfig::default())
+        CacheManager::new(CacheConfig::from_env())
             .await
             .context("Failed to initialize cache manager - check Redis connection")?,
     );
