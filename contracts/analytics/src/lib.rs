@@ -384,10 +384,20 @@ fn get_or_create_address_id(env: &Env, address: &Address) -> u32 {
     env.storage()
         .persistent()
         .set(&DataKey::AddressRegistry, &registry);
+    env.storage().persistent().extend_ttl(
+        &DataKey::AddressRegistry,
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
     // Store the reverse mapping so future lookups are O(1).
     env.storage()
         .persistent()
         .set(&DataKey::AddressId(address.clone()), &id);
+    env.storage().persistent().extend_ttl(
+        &DataKey::AddressId(address.clone()),
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
     id
 }
 // ── Private helpers ───────────────────────────────────────────────────────────

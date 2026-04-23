@@ -39,8 +39,20 @@ pub async fn create_api_key(
 ) -> Result<Response, ApiKeyError> {
     let wallet_address = extract_wallet_address(&headers)?;
 
-    if req.name.trim().is_empty() {
+    let name = req.name.trim();
+    if name.is_empty() {
         return Err(ApiKeyError::BadRequest("Key name is required".to_string()));
+    }
+    if name.len() > 100 {
+        return Err(ApiKeyError::BadRequest(
+            "Key name must not exceed 100 characters".to_string(),
+        ));
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ') {
+        return Err(ApiKeyError::BadRequest(
+            "Key name may only contain letters, digits, spaces, hyphens, and underscores"
+                .to_string(),
+        ));
     }
 
     let response = db
