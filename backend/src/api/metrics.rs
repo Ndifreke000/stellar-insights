@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::cache::helpers::cached_query;
 use crate::cache::{keys, CacheManager};
+use crate::observability::metrics as obs_metrics;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MetricsOverview {
@@ -71,8 +72,23 @@ pub async fn metrics_overview(
     }
 }
 
+/// Handler for GET /metrics (Prometheus metrics endpoint)
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    responses(
+        (status = 200, description = "Prometheus metrics in text format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Metrics"
+)]
+pub async fn prometheus_metrics() -> Response {
+    obs_metrics::metrics_handler()
+}
+
 pub fn routes(cache: Arc<CacheManager>) -> Router {
     Router::new()
+        .route("/metrics", get(prometheus_metrics))
         .route("/api/metrics/overview", get(metrics_overview))
         .with_state(cache)
 }
