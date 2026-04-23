@@ -73,7 +73,7 @@ stellar_sdk = "0.1"
 base64 = "0.22"
 jsonwebtoken = "9.2"
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 urlencoding = "2.1"
 toml = "0.8"
 prometheus = "0.13"
