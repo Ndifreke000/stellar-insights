@@ -1,4 +1,5 @@
 import { useNotifications } from "@/contexts/NotificationContext";
+import { logger } from '@/lib/logger';
 import {NotificationFilter } from "@/services/notificationService";
 import { BaseNotification, NotificationAction, NotificationPreferences } from "@/types/notifications";
 import { format, isToday, isWithinInterval, isYesterday, subDays } from "date-fns";
@@ -243,7 +244,7 @@ const useEnhancedNotificationCenter = () => {
           text: notification.message,
         });
       } catch (error) {
-        console.error('Error sharing notification:', error);
+        logger.error('Error sharing notification:', error instanceof Error ? error : new Error(String(error)));
       }
     } else {
       copyNotificationText(notification);

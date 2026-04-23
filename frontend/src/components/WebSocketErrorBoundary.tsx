@@ -3,6 +3,7 @@
 import React, { useState, ReactNode } from "react"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { WifiOff, RefreshCw, X } from "lucide-react"
+import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode
@@ -62,9 +63,7 @@ export function WebSocketErrorBoundary({ children, onError }: Props) {
       key={errorKey}
       fallback={fallback}
       onError={(error, errorInfo) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.error("WebSocket component error:", error, errorInfo)
-        }
+        logger.error("WebSocket component error:", error, { componentStack: errorInfo.componentStack });
         onError?.(error)
       }}
     >

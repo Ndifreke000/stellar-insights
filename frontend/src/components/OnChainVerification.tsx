@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -56,7 +57,7 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
         auditTrail: data.auditTrail || []
       });
     } catch (err) {
-      console.error('Error fetching verification data:', err);
+      logger.error('Error fetching verification data:', err instanceof Error ? err : new Error(String(err)));
       setError('Failed to load verification data');
       setVerificationData((prev: any) => ({ ...prev, status: 'failed' }));
     }

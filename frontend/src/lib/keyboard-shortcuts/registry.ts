@@ -5,6 +5,7 @@
 
 import type { ShortcutAction, ShortcutConflict, Platform } from '@/types/keyboard-shortcuts';
 import { bindingsConflict } from './utils';
+import { logger } from '@/lib/logger';
 
 export class ShortcutRegistry {
   private actions = new Map<string, ShortcutAction>();
@@ -19,7 +20,7 @@ export class ShortcutRegistry {
    */
   register(action: ShortcutAction): void {
     if (this.actions.has(action.id)) {
-      console.warn(`Shortcut action "${action.id}" is already registered. Overwriting.`);
+      logger.warn(`Shortcut action "${action.id}" is already registered. Overwriting.`);
     }
     this.actions.set(action.id, action);
   }

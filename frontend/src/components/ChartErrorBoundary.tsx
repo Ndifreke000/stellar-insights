@@ -2,6 +2,7 @@
 
 import React, { Component, ErrorInfo, ReactNode } from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
+import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode
@@ -32,10 +33,7 @@ export class ChartErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Only log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error("ChartErrorBoundary caught an error:", error, errorInfo)
-    }
+    logger.error("ChartErrorBoundary caught an error:", error, { componentStack: errorInfo.componentStack });
     
     // Call optional error callback
     this.props.onError?.(error, errorInfo)

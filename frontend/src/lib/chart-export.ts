@@ -34,7 +34,7 @@ export async function exportChart(
         link.href = dataUrl;
         link.click();
     } catch (error) {
-        console.error('Error exporting chart:', error);
+        logger.error('Error exporting chart:', error instanceof Error ? error : new Error(String(error)));
         throw new Error('Failed to export chart image');
     }
 }

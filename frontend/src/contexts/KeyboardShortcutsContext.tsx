@@ -141,7 +141,7 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
           try {
             action.handler(event);
           } catch (error) {
-            console.error(`Error executing shortcut "${action.id}":`, error);
+            logger.error(`Error executing shortcut "${action.id}":`, error instanceof Error ? error : new Error(String(error)));
           }
 
           // Only trigger first matching shortcut

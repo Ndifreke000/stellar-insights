@@ -120,7 +120,7 @@ export async function fetchApiUsageOverview(): Promise<ApiUsageOverview> {
         error.message.includes('Network request failed'));
 
     if (!isNetworkError) {
-      console.error("Failed to fetch API usage overview:", error);
+      logger.error("Failed to fetch API usage overview:", error instanceof Error ? error : new Error(String(error)));
     }
 
     return getMockApiUsageOverview();
