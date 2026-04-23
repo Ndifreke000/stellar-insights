@@ -50,7 +50,7 @@ pub struct Snapshot {
 
 /// Extended contract metadata for public disclosure
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct PublicMetadata {
     pub name: String,
     pub version: String,
@@ -62,7 +62,7 @@ pub struct PublicMetadata {
 
 /// Represents an optional admin address in contract info
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum MaybeAddress {
     None,
     Some(Address),
@@ -70,7 +70,7 @@ pub enum MaybeAddress {
 
 /// Contract info combining metadata with runtime state
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ContractInfo {
     pub metadata: PublicMetadata,
     pub initialized: bool,
