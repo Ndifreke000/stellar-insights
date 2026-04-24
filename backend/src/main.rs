@@ -143,7 +143,10 @@ async fn main() -> anyhow::Result<()> {
     let cache = Arc::new(
         CacheManager::new(CacheConfig::from_env())
             .await
-            .context("Failed to initialize cache manager - check Redis connection")?,
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to initialize cache manager, using in-memory fallback: {}", e);
+                CacheManager::new_in_memory_for_tests(CacheConfig::from_env())
+            }),
     );
 
     // Initialize Stellar RPC Client
