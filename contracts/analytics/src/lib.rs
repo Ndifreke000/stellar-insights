@@ -326,7 +326,6 @@ pub struct AddressRegistry {
 #[contracttype]
 pub enum DataKey {
     Admin,
-    Snapshots,
     LatestEpoch,
     Snapshot(u64),
     Paused,
@@ -523,22 +522,12 @@ fn write_snapshot(
     env: &Env,
     epoch: u64,
     metadata: &SnapshotMetadata,
-    snapshots: &mut Map<u64, SnapshotMetadata>,
 ) {
     env.storage()
         .persistent()
         .set(&DataKey::Snapshot(epoch), metadata);
     env.storage().persistent().extend_ttl(
         &DataKey::Snapshot(epoch),
-        LEDGERS_TO_EXTEND,
-        LEDGERS_TO_EXTEND,
-    );
-    snapshots.set(epoch, metadata.clone());
-    env.storage()
-        .persistent()
-        .set(&DataKey::Snapshots, snapshots);
-    env.storage().persistent().extend_ttl(
-        &DataKey::Snapshots,
         LEDGERS_TO_EXTEND,
         LEDGERS_TO_EXTEND,
     );
@@ -628,15 +617,6 @@ impl AnalyticsContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-        env.storage().persistent().set(
-            &DataKey::Snapshots,
-            &Map::<u64, SnapshotMetadata>::new(&env),
-        );
-        env.storage().persistent().extend_ttl(
-            &DataKey::Snapshots,
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
 
         // Emit initialization event
         env.events().publish(
@@ -729,19 +709,7 @@ impl AnalyticsContract {
             expires_at: None,
         };
 
-        let mut snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
-        write_snapshot(&env, epoch, &metadata, &mut snapshots);
-
-        env.storage().persistent().extend_ttl(
-            &DataKey::Snapshots,
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
+        write_snapshot(&env, epoch, &metadata);
 
         env.events().publish(
             (symbol_short!("snapshot"), caller),
@@ -793,12 +761,6 @@ impl AnalyticsContract {
             );
         }
 
-        let mut snapshots_map: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
         let mut results = Vec::new(&env);
         for (epoch, hash) in snapshots.iter() {
             let previous_epoch = validate_epoch(&env, epoch)?;
@@ -819,7 +781,7 @@ impl AnalyticsContract {
                 ledger_sequence,
                 expires_at: None,
             };
-            write_snapshot(&env, epoch, &metadata, &mut snapshots_map);
+            write_snapshot(&env, epoch, &metadata);
             env.events().publish(
                 (symbol_short!("snapshot"), caller.clone()),
                 SnapshotSubmittedEvent {
@@ -873,12 +835,7 @@ impl AnalyticsContract {
             expires_at: Some(timestamp + ttl),
         };
 
-        let mut snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-        write_snapshot(&env, epoch, &metadata, &mut snapshots);
+        write_snapshot(&env, epoch, &metadata);
 
         let ledgers_to_live = (ttl / LEDGER_SECONDS) as u32;
         env.storage().persistent().extend_ttl(
@@ -925,15 +882,13 @@ impl AnalyticsContract {
             .get(&DataKey::LatestEpoch)
             .unwrap_or(0);
 
-        let mut snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
         let mut expired = Vec::new(&env);
         for e in 1..=latest_epoch {
-            if let Some(m) = snapshots.get(e) {
+            if let Some(m) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, SnapshotMetadata>(&DataKey::Snapshot(e))
+            {
                 if let Some(exp) = m.expires_at {
                     if now > exp {
                         expired.push_back(e);
@@ -946,13 +901,8 @@ impl AnalyticsContract {
         }
         cleaned = expired.len();
         for epoch in expired {
-            snapshots.remove(epoch);
             env.storage().persistent().remove(&DataKey::Snapshot(epoch));
         }
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Snapshots, &snapshots);
 
         env.events().publish(
             (symbol_short!("cleanup"), admin),
@@ -1021,18 +971,22 @@ impl AnalyticsContract {
     /// Get the entire snapshot history.
     pub fn get_snapshot_history(env: Env) -> Result<Map<u64, SnapshotMetadata>, Error> {
         require_initialized(&env)?;
-        if env.storage().persistent().has(&DataKey::Snapshots) {
-            env.storage().persistent().extend_ttl(
-                &DataKey::Snapshots,
-                LEDGERS_TO_EXTEND,
-                LEDGERS_TO_EXTEND,
-            );
-        }
-        Ok(env
+        let latest_epoch: u64 = env
             .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env)))
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+        let mut map = Map::new(&env);
+        for epoch in 1..=latest_epoch {
+            if let Some(m) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, SnapshotMetadata>(&DataKey::Snapshot(epoch))
+            {
+                map.set(epoch, m);
+            }
+        }
+        Ok(map)
     }
 
     /// Get the latest epoch submitted.
@@ -1060,15 +1014,17 @@ impl AnalyticsContract {
         epoch_b: u64,
     ) -> Result<SnapshotDiff, Error> {
         require_initialized(&env)?;
-        let snapshots: Map<u64, SnapshotMetadata> = env
+        let snapshot_a: SnapshotMetadata = env
             .storage()
             .persistent()
-            .get(&DataKey::Snapshots)
-            .ok_or(Error::NotInitialized)?;
-        
-        let snapshot_a = snapshots.get(epoch_a).ok_or(Error::SnapshotNotFound)?;
-        let snapshot_b = snapshots.get(epoch_b).ok_or(Error::SnapshotNotFound)?;
-        
+            .get(&DataKey::Snapshot(epoch_a))
+            .ok_or(Error::SnapshotNotFound)?;
+        let snapshot_b: SnapshotMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshot(epoch_b))
+            .ok_or(Error::SnapshotNotFound)?;
+
         Ok(SnapshotDiff {
             epoch_a,
             epoch_b,
@@ -1105,22 +1061,13 @@ impl AnalyticsContract {
         epochs: Vec<u64>,
     ) -> Result<Vec<Option<SnapshotMetadata>>, Error> {
         require_initialized(&env)?;
-        if env.storage().persistent().has(&DataKey::Snapshots) {
-            env.storage().persistent().extend_ttl(
-                &DataKey::Snapshots,
-                LEDGERS_TO_EXTEND,
-                LEDGERS_TO_EXTEND,
-            );
-        }
-        let snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-        
         let mut results = Vec::new(&env);
         for epoch in epochs.iter() {
-            results.push_back(snapshots.get(epoch));
+            results.push_back(
+                env.storage()
+                    .persistent()
+                    .get::<DataKey, SnapshotMetadata>(&DataKey::Snapshot(epoch)),
+            );
         }
         Ok(results)
     }
@@ -1132,12 +1079,6 @@ impl AnalyticsContract {
         cursor: Option<u64>,
     ) -> Result<PaginatedSnapshots, Error> {
         require_initialized(&env)?;
-        let snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
         let start_epoch = cursor.unwrap_or(1);
         let latest_epoch: u64 = env
             .storage()
@@ -1154,7 +1095,11 @@ impl AnalyticsContract {
                 next_cursor = Some(epoch);
                 break;
             }
-            if let Some(metadata) = snapshots.get(epoch) {
+            if let Some(metadata) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, SnapshotMetadata>(&DataKey::Snapshot(epoch))
+            {
                 results.push_back(metadata);
                 count += 1;
             }
@@ -1162,7 +1107,7 @@ impl AnalyticsContract {
 
         Ok(PaginatedSnapshots {
             snapshots: results,
-            total_count: u64::from(snapshots.len()),
+            total_count: latest_epoch,
             has_more: next_cursor.is_some(),
             next_cursor,
         })
@@ -1639,27 +1584,16 @@ impl AnalyticsContract {
 
         let cutoff_epoch = latest_epoch - keep_last_n as u64;
 
-        let mut snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
         let mut epochs_to_remove = Vec::new(&env);
         for e in 1..=cutoff_epoch {
-            if snapshots.contains_key(e) {
+            if env.storage().persistent().has(&DataKey::Snapshot(e)) {
                 epochs_to_remove.push_back(e);
             }
         }
         let removed = epochs_to_remove.len();
         for epoch in epochs_to_remove {
-            snapshots.remove(epoch);
             env.storage().persistent().remove(&DataKey::Snapshot(epoch));
         }
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Snapshots, &snapshots);
 
         env.events().publish(
             (symbol_short!("prune"), caller.clone()),
@@ -1882,16 +1816,12 @@ impl AnalyticsContract {
         epoch: u64,
         expected_hash: BytesN<32>,
     ) -> Result<bool, Error> {
-        let snapshots: Map<u64, SnapshotMetadata> = env
+        require_initialized(&env)?;
+        let metadata: SnapshotMetadata = env
             .storage()
             .persistent()
-            .get(&DataKey::Snapshots)
-            .ok_or(Error::NotInitialized)?;
-
-        let metadata = snapshots
-            .get(epoch)
+            .get(&DataKey::Snapshot(epoch))
             .ok_or(Error::SnapshotNotFound)?;
-
         Ok(metadata.hash == expected_hash)
     }
 
@@ -1900,18 +1830,13 @@ impl AnalyticsContract {
         env: Env,
         epoch: u64,
     ) -> Result<SnapshotWithProof, Error> {
-        let snapshots: Map<u64, SnapshotMetadata> = env
+        require_initialized(&env)?;
+        let metadata: SnapshotMetadata = env
             .storage()
             .persistent()
-            .get(&DataKey::Snapshots)
-            .ok_or(Error::NotInitialized)?;
-
-        let metadata = snapshots
-            .get(epoch)
+            .get(&DataKey::Snapshot(epoch))
             .ok_or(Error::SnapshotNotFound)?;
-
         let proof = generate_merkle_proof(&env, epoch, &metadata);
-
         Ok(SnapshotWithProof { metadata, proof })
     }
 
@@ -1966,12 +1891,6 @@ impl AnalyticsContract {
     pub fn get_statistics(env: Env) -> Result<SnapshotStatistics, Error> {
         require_initialized(&env)?;
 
-        let snapshots: Map<u64, SnapshotMetadata> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Snapshots)
-            .unwrap_or_else(|| Map::new(&env));
-
         let latest_epoch: u64 = env
             .storage()
             .instance()
@@ -1996,7 +1915,11 @@ impl AnalyticsContract {
         let mut total_count = 0u64;
 
         for epoch in 1..=latest_epoch {
-            if let Some(metadata) = snapshots.get(epoch) {
+            if let Some(metadata) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, SnapshotMetadata>(&DataKey::Snapshot(epoch))
+            {
                 total_count += 1;
 
                 if !unique_submitters.contains(&metadata.submitter) {
