@@ -143,7 +143,10 @@ async fn main() -> anyhow::Result<()> {
     let cache = Arc::new(
         CacheManager::new(CacheConfig::from_env())
             .await
-            .context("Failed to initialize cache manager - check Redis connection")?,
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to initialize cache manager, using in-memory fallback: {}", e);
+                CacheManager::new_in_memory_for_tests(CacheConfig::from_env())
+            }),
     );
 
     // Initialize Stellar RPC Client
@@ -192,6 +195,64 @@ async fn main() -> anyhow::Result<()> {
             .await
             .context("Failed to initialize rate limiter")?,
     );
+
+    // Configure rate limits for expensive operations
+    use stellar_insights_backend::rate_limit::{ClientRateLimits, RateLimitConfig};
+    
+    // Export endpoints (CSV/Excel generation)
+    rate_limiter.register_endpoint(
+        "/api/export/csv".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 5,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 10,
+                premium: 20,
+                anonymous: 5,
+            }),
+        },
+    ).await;
+    
+    rate_limiter.register_endpoint(
+        "/api/export/excel".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 5,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 10,
+                premium: 20,
+                anonymous: 5,
+            }),
+        },
+    ).await;
+    
+    // Analytics aggregation queries
+    rate_limiter.register_endpoint(
+        "/api/analytics".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 20,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 40,
+                premium: 100,
+                anonymous: 20,
+            }),
+        },
+    ).await;
+    
+    // RPC proxy endpoints
+    rate_limiter.register_endpoint(
+        "/api/rpc".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 100,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 200,
+                premium: 500,
+                anonymous: 100,
+            }),
+        },
+    ).await;
 
     let webhook_dispatcher_handle: JoinHandle<()> = {
         let webhook_pool = pool.clone();
@@ -337,6 +398,9 @@ async fn main() -> anyhow::Result<()> {
     let app = base_routes
         .merge(ws_routes)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .layer(middleware::from_fn(
+            stellar_insights_backend::payload_limit::payload_limit_middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,

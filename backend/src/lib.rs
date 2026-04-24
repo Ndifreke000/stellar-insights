@@ -34,6 +34,7 @@ pub mod request_signing_middleware;
 pub mod network;
 pub mod observability;
 pub mod openapi;
+pub mod payload_limit;
 pub mod rate_limit;
 pub mod replay;
 pub mod request_id;
