@@ -7,7 +7,8 @@ mod events;
 use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{
-    emit_governance_initialized, emit_parameter_proposal_created, emit_proposal_created,
+    emit_governance_initialized, emit_governance_param_changed, emit_governance_admin_changed,
+    emit_parameter_proposal_created, emit_proposal_created,
     emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
@@ -602,6 +603,81 @@ impl GovernanceContract {
 
         emit_proposal_executed(&env, proposal_id, caller, target_contract);
 
+        Ok(())
+    }
+
+    // ========================================================================
+    // Admin Parameter Update Functions
+    // ========================================================================
+
+    /// Update the quorum threshold. Admin-only.
+    pub fn update_quorum(env: Env, caller: Address, new_quorum: u64) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        let old_quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+        env.storage().instance().set(&DataKey::Quorum, &new_quorum);
+        bump_instance(&env);
+        emit_governance_param_changed(
+            &env,
+            String::from_str(&env, "quorum"),
+            old_quorum,
+            new_quorum,
+            caller,
+        );
+        Ok(())
+    }
+
+    /// Update the voting period. Admin-only.
+    pub fn update_voting_period(env: Env, caller: Address, new_period: u64) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        let old_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::VotingPeriod, &new_period);
+        bump_instance(&env);
+        emit_governance_param_changed(
+            &env,
+            String::from_str(&env, "voting_period"),
+            old_period,
+            new_period,
+            caller,
+        );
+        Ok(())
+    }
+
+    /// Transfer governance admin to a new address. Admin-only.
+    pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != old_admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        emit_governance_admin_changed(&env, old_admin, new_admin, caller);
         Ok(())
     }
 

@@ -204,6 +204,16 @@ pub struct TimelockActionCancelledEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigUpdatedEvent {
+    pub old_config: ContractConfig,
+    pub new_config: ContractConfig,
+    pub updated_by: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotsPrunedEvent {
     pub removed_count: u32,
     pub cutoff_epoch: u64,
@@ -644,11 +654,18 @@ impl AnalyticsContract {
         if admin != stored_admin {
             return Err(Error::Unauthorized.log_context(&env, "update_config: caller is not the admin"));
         }
+        let old_config = get_config(&env);
         env.storage().instance().set(&DataKey::Config, &config);
 
         env.events().publish(
-            (symbol_short!("cfg_upd"), admin),
-            config,
+            (symbol_short!("cfg_upd"), admin.clone()),
+            ConfigUpdatedEvent {
+                old_config,
+                new_config: config,
+                updated_by: admin,
+                timestamp: env.ledger().timestamp(),
+                ledger_sequence: env.ledger().sequence(),
+            },
         );
 
         Ok(())
