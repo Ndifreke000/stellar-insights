@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct AlertRule {
@@ -34,11 +35,15 @@ pub struct AlertHistory {
     pub triggered_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateAlertRuleRequest {
+    #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
+    #[validate(length(min = 1, max = 64, message = "metric_type must be between 1 and 64 characters"))]
     pub metric_type: String,
+    #[validate(length(min = 1, max = 32, message = "condition must be between 1 and 32 characters"))]
     pub condition: String,
+    #[validate(range(min = 0.0, message = "threshold must be non-negative"))]
     pub threshold: f64,
     #[serde(default)]
     pub notify_email: bool,
@@ -48,11 +53,15 @@ pub struct CreateAlertRuleRequest {
     pub notify_in_app: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct UpdateAlertRuleRequest {
+    #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
+    #[validate(length(min = 1, max = 64, message = "metric_type must be between 1 and 64 characters"))]
     pub metric_type: Option<String>,
+    #[validate(length(min = 1, max = 32, message = "condition must be between 1 and 32 characters"))]
     pub condition: Option<String>,
+    #[validate(range(min = 0.0, message = "threshold must be non-negative"))]
     pub threshold: Option<f64>,
     pub notify_email: Option<bool>,
     pub notify_webhook: Option<bool>,

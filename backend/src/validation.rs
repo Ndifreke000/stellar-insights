@@ -1,7 +1,46 @@
 //! Request parameter validation to prevent invalid inputs (NaN, infinity, negative values, invalid ranges).
 
 use crate::error::{ApiError, ApiResult};
+use async_trait::async_trait;
+use axum::{
+    extract::{FromRequest, Request},
+    Json,
+};
 use validator::Validate;
+
+// ── ValidatedJson extractor ───────────────────────────────────────────────────
+
+/// Axum extractor that deserializes JSON and immediately runs `validator::Validate`.
+/// Handlers use `ValidatedJson<T>` instead of `Json<T>` to get automatic validation.
+pub struct ValidatedJson<T>(pub T);
+
+#[async_trait]
+impl<T, S> FromRequest<S> for ValidatedJson<T>
+where
+    T: serde::de::DeserializeOwned + Validate,
+    S: Send + Sync,
+    Json<T>: FromRequest<S>,
+{
+    type Rejection = axum::response::Response;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let Json(value) = Json::<T>::from_request(req, state)
+            .await
+            .map_err(|e| e.into_response())?;
+        validate_request(&value).map_err(|e| {
+            use axum::response::IntoResponse;
+            e.into_response()
+        })?;
+        Ok(ValidatedJson(value))
+    }
+}
+
+impl<T> std::ops::Deref for ValidatedJson<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
 
 /// Validates a single optional filter value: must be finite (no NaN/Infinity), and within [`min_allowed`, `max_allowed`].
 #[inline]

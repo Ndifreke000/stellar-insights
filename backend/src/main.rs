@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tower_http::{
-    compression::{predicate::SizeAbove, CompressionLayer},
+    compression::{predicate::{And, NotForContentType, SizeAbove}, CompressionLayer, CompressionLevel},
     cors::{AllowOrigin, CorsLayer},
     timeout::TimeoutLayer,
     trace::TraceLayer,
@@ -348,9 +348,24 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(1024);
 
+    // COMPRESSION_LEVEL: "fastest", "best", or a numeric quality (0-9). Default: "default".
+    let compression_level = match std::env::var("COMPRESSION_LEVEL")
+        .unwrap_or_default()
+        .to_lowercase()
+        .as_str()
+    {
+        "fastest" => CompressionLevel::Fastest,
+        "best" => CompressionLevel::Best,
+        s => s
+            .parse::<i32>()
+            .map(CompressionLevel::Precise)
+            .unwrap_or(CompressionLevel::Default),
+    };
+
     tracing::info!(
-        "Compression enabled (gzip, brotli) for responses > {} bytes",
-        compression_min_size
+        "Compression enabled (gzip, brotli) for responses > {} bytes, level={:?}",
+        compression_min_size,
+        compression_level
     );
 
     // Request timeout configuration — reads REQUEST_TIMEOUT_SECONDS from env,
@@ -418,7 +433,12 @@ async fn main() -> anyhow::Result<()> {
             CompressionLayer::new()
                 .gzip(true)
                 .br(true)
-                .compress_when(SizeAbove::new(compression_min_size)),
+                .quality(compression_level)
+                .compress_when(
+                    SizeAbove::new(compression_min_size)
+                        .and(NotForContentType::IMAGES)
+                        .and(NotForContentType::SSE),
+                ),
         );
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());

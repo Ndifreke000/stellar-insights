@@ -14,65 +14,8 @@ use crate::{
     error::{ApiError, ApiResult},
     models::alerts::{CreateAlertRuleRequest, SnoozeAlertRequest, UpdateAlertRuleRequest},
     state::AppState,
+    validation::ValidatedJson,
 };
-
-const VALID_METRIC_TYPES: &[&str] = &["success_rate", "latency", "liquidity", "volume"];
-const VALID_CONDITIONS: &[&str] = &["above", "below", "equals"];
-const MAX_CORRIDOR_ID_LEN: usize = 256;
-
-fn validate_metric_type(metric_type: &str) -> ApiResult<()> {
-    if !VALID_METRIC_TYPES.contains(&metric_type) {
-        return Err(ApiError::bad_request(
-            "INVALID_METRIC_TYPE",
-            format!("metric_type must be one of: {}", VALID_METRIC_TYPES.join(", ")),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_condition(condition: &str) -> ApiResult<()> {
-    if !VALID_CONDITIONS.contains(&condition) {
-        return Err(ApiError::bad_request(
-            "INVALID_CONDITION",
-            format!("condition must be one of: {}", VALID_CONDITIONS.join(", ")),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_threshold(threshold: f64) -> ApiResult<()> {
-    if !threshold.is_finite() {
-        return Err(ApiError::bad_request(
-            "INVALID_THRESHOLD",
-            "threshold must be a finite number",
-        ));
-    }
-    if threshold < 0.0 {
-        return Err(ApiError::bad_request(
-            "INVALID_THRESHOLD",
-            "threshold must be non-negative",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_corridor_id(corridor_id: &Option<String>) -> ApiResult<()> {
-    if let Some(id) = corridor_id {
-        if id.is_empty() {
-            return Err(ApiError::bad_request(
-                "INVALID_CORRIDOR_ID",
-                "corridor_id must not be empty if provided",
-            ));
-        }
-        if id.len() > MAX_CORRIDOR_ID_LEN {
-            return Err(ApiError::bad_request(
-                "INVALID_CORRIDOR_ID",
-                format!("corridor_id must not exceed {MAX_CORRIDOR_ID_LEN} characters"),
-            ));
-        }
-    }
-    Ok(())
-}
 
 // Route configuration
 pub fn router() -> Router<AppState> {
@@ -125,12 +68,8 @@ async fn list_rules(
 async fn create_rule(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Json(payload): Json<CreateAlertRuleRequest>,
+    ValidatedJson(payload): ValidatedJson<CreateAlertRuleRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    validate_corridor_id(&payload.corridor_id)?;
-    validate_metric_type(&payload.metric_type)?;
-    validate_condition(&payload.condition)?;
-    validate_threshold(payload.threshold)?;
     let rule = state
         .db
         .create_alert_rule(&auth_user.user_id, payload)
@@ -159,18 +98,8 @@ async fn update_rule(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(id): Path<String>,
-    Json(payload): Json<UpdateAlertRuleRequest>,
+    ValidatedJson(payload): ValidatedJson<UpdateAlertRuleRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    validate_corridor_id(&payload.corridor_id)?;
-    if let Some(ref mt) = payload.metric_type {
-        validate_metric_type(mt)?;
-    }
-    if let Some(ref cond) = payload.condition {
-        validate_condition(cond)?;
-    }
-    if let Some(t) = payload.threshold {
-        validate_threshold(t)?;
-    }
     let rule = state
         .db
         .update_alert_rule(&id, &auth_user.user_id, payload)

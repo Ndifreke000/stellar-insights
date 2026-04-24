@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+use validator::Validate;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ApiKey {
@@ -48,8 +49,9 @@ impl From<ApiKey> for ApiKeyInfo {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 pub struct CreateApiKeyRequest {
+    #[validate(length(min = 1, max = 100, message = "name must be between 1 and 100 characters"))]
     pub name: String,
     pub scopes: Option<String>,
     pub expires_at: Option<String>,

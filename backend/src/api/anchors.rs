@@ -159,11 +159,8 @@ pub async fn get_muxed_analytics(
 #[tracing::instrument(skip(app_state, req), fields(anchor_name = %req.name))]
 pub async fn create_anchor(
     State(app_state): State<AppState>,
-    Json(req): Json<CreateAnchorRequest>,
+    crate::validation::ValidatedJson(req): crate::validation::ValidatedJson<CreateAnchorRequest>,
 ) -> ApiResult<Json<crate::models::Anchor>> {
-    // Struct-level field validation (lengths)
-    crate::validation::validate_request(&req)?;
-
     // Business logic: stellar account must start with 'G'
     crate::validation::validate_stellar_account(&req.stellar_account)?;
 

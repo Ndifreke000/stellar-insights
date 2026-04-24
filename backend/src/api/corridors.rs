@@ -920,11 +920,8 @@ pub async fn get_corridor_detail(
 /// POST /api/corridors - Create a new corridor
 pub async fn create_corridor(
     State(app_state): State<AppState>,
-    Json(req): Json<CreateCorridorRequest>,
+    crate::validation::ValidatedJson(req): crate::validation::ValidatedJson<CreateCorridorRequest>,
 ) -> ApiResult<Json<Corridor>> {
-    // Struct-level field validation (lengths, formats)
-    crate::validation::validate_request(&req)?;
-
     // Business logic: source and destination must differ
     crate::validation::validate_corridor_not_self_referential(
         &req.source_asset_code,

@@ -95,6 +95,11 @@ lazy_static! {
     pub static ref DB_POOL_ACTIVE: Gauge =
         register_gauge!("db_pool_active", "Active database pool connections")
             .expect("Failed to register db_pool_active gauge");
+    pub static ref HTTP_RESPONSES_COMPRESSED_TOTAL: Counter = register_counter!(
+        "http_responses_compressed_total",
+        "Total number of HTTP responses sent with compression (Content-Encoding set)"
+    )
+    .expect("Failed to register http_responses_compressed_total counter");
 }
 
 pub fn init_metrics() {
@@ -134,6 +139,10 @@ pub async fn http_metrics_middleware(req: Request<Body>, next: Next) -> Response
 
     HTTP_REQUESTS_TOTAL.inc();
     HTTP_REQUEST_DURATION_SECONDS.observe(duration);
+
+    if response.headers().contains_key(axum::http::header::CONTENT_ENCODING) {
+        HTTP_RESPONSES_COMPRESSED_TOTAL.inc();
+    }
 
     if response.status().is_server_error() {
         record_http_error(response.status().as_u16(), &method, &uri);
