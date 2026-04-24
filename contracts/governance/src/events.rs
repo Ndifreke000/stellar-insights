@@ -224,3 +224,85 @@ pub fn emit_parameter_proposal_created(
     };
     env.events().publish((PARAM_PROPOSAL, GOV_LIFECYCLE), event);
 }
+
+// ============================================================================
+// Governance Admin / Parameter Change Events
+// ============================================================================
+
+/// Topic for governance parameter change events (quorum, voting period, admin).
+pub const GOV_PARAM: Symbol = symbol_short!("GOV_PRM");
+
+/// Event emitted when a governance parameter (quorum or voting_period) is updated.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernanceParamChangedEvent {
+    pub param_name: String,
+    pub old_value: u64,
+    pub new_value: u64,
+    pub changed_by: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+impl GovernanceParamChangedEvent {
+    pub fn publish(
+        env: &Env,
+        param_name: String,
+        old_value: u64,
+        new_value: u64,
+        changed_by: Address,
+    ) {
+        let event = GovernanceParamChangedEvent {
+            param_name,
+            old_value,
+            new_value,
+            changed_by,
+            timestamp: env.ledger().timestamp(),
+            ledger_sequence: env.ledger().sequence(),
+        };
+        env.events().publish((GOV_PARAM, GOV_LIFECYCLE), event);
+    }
+}
+
+/// Event emitted when the governance admin is changed.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernanceAdminChangedEvent {
+    pub old_admin: Address,
+    pub new_admin: Address,
+    pub changed_by: Address,
+    pub timestamp: u64,
+    pub ledger_sequence: u32,
+}
+
+impl GovernanceAdminChangedEvent {
+    pub fn publish(env: &Env, old_admin: Address, new_admin: Address, changed_by: Address) {
+        let event = GovernanceAdminChangedEvent {
+            old_admin,
+            new_admin,
+            changed_by,
+            timestamp: env.ledger().timestamp(),
+            ledger_sequence: env.ledger().sequence(),
+        };
+        env.events().publish((GOV_PARAM, GOV_LIFECYCLE), event);
+    }
+}
+
+pub fn emit_governance_param_changed(
+    env: &Env,
+    param_name: String,
+    old_value: u64,
+    new_value: u64,
+    changed_by: Address,
+) {
+    GovernanceParamChangedEvent::publish(env, param_name, old_value, new_value, changed_by);
+}
+
+pub fn emit_governance_admin_changed(
+    env: &Env,
+    old_admin: Address,
+    new_admin: Address,
+    changed_by: Address,
+) {
+    GovernanceAdminChangedEvent::publish(env, old_admin, new_admin, changed_by);
+}

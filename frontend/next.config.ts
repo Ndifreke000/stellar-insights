@@ -31,6 +31,8 @@ const nextConfig: NextConfig = {
       "recharts",
       "framer-motion",
       "@stellar/stellar-sdk",
+      "d3-force-3d",
+      "react-force-graph-2d",
     ],
     turbopack: {
       root: '../',
@@ -48,6 +50,49 @@ const nextConfig: NextConfig = {
         hostname: '**.stellar.org',
       },
     ],
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            default: false,
+            vendors: false,
+            vendor: {
+              filename: 'chunks/vendor.js',
+              test: /node_modules/,
+              priority: 10,
+              reuseExistingChunk: true,
+              name: 'vendor',
+            },
+            charts: {
+              filename: 'chunks/charts.js',
+              test: /[\\/]node_modules[\\/](recharts|d3-force-3d|react-force-graph-2d)[\\/]/,
+              priority: 20,
+              reuseExistingChunk: true,
+              name: 'charts',
+            },
+            animation: {
+              filename: 'chunks/animation.js',
+              test: /[\\/]node_modules[\\/](framer-motion)[\\/]/,
+              priority: 20,
+              reuseExistingChunk: true,
+              name: 'animation',
+            },
+            common: {
+              filename: 'chunks/common.js',
+              minChunks: 2,
+              priority: 5,
+              reuseExistingChunk: true,
+              name: 'common',
+            },
+          },
+        },
+      };
+    }
+    return config;
   },
 };
 

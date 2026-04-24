@@ -29,8 +29,8 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_connections: 20,
-            min_connections: 5,
+            max_connections: 50,
+            min_connections: 10,
             connect_timeout_seconds: 30,
             idle_timeout_seconds: 600,
             max_lifetime_seconds: 1800,
@@ -111,11 +111,11 @@ impl PoolConfig {
             max_connections: std::env::var("DB_POOL_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(20),
+                .unwrap_or(50),
             min_connections: std::env::var("DB_POOL_MIN_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(5),
+                .unwrap_or(10),
             connect_timeout_seconds: std::env::var("DB_POOL_CONNECT_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -259,8 +259,22 @@ impl Database {
         }
     }
 
-    /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log
+    /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log.
+    /// For slow queries, also runs `EXPLAIN QUERY PLAN` on `sql` (if provided) so the
+    /// query planner output is captured in logs for index analysis.
     async fn execute_with_timing<T, F>(&self, operation: &str, f: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        self.execute_with_timing_sql(operation, None, f).await
+    }
+
+    async fn execute_with_timing_sql<T, F>(
+        &self,
+        operation: &str,
+        sql: Option<&str>,
+        f: F,
+    ) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,
     {
@@ -276,11 +290,37 @@ impl Database {
                 elapsed.as_millis(),
                 self.slow_query_threshold_ms,
             );
+
+            if let Some(sql) = sql {
+                self.log_explain_query_plan(operation, sql).await;
+            }
         }
 
         crate::observability::metrics::observe_db_query(operation, status, elapsed.as_secs_f64());
 
         result
+    }
+
+    /// Runs `EXPLAIN QUERY PLAN` on `sql` and logs the output at WARN level.
+    async fn log_explain_query_plan(&self, operation: &str, sql: &str) {
+        let explain_sql = format!("EXPLAIN QUERY PLAN {sql}");
+        match sqlx::query(&explain_sql).fetch_all(&self.pool).await {
+            Ok(rows) => {
+                use sqlx::Row;
+                let plan: Vec<String> = rows
+                    .iter()
+                    .filter_map(|r| r.try_get::<String, _>("detail").ok())
+                    .collect();
+                log::warn!(
+                    "EXPLAIN QUERY PLAN for '{}': {}",
+                    operation,
+                    plan.join(" | ")
+                );
+            }
+            Err(e) => {
+                log::debug!("Could not run EXPLAIN QUERY PLAN for '{}': {}", operation, e);
+            }
+        }
     }
 
     #[must_use]

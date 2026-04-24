@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::database::Database;
 use crate::models::api_key::CreateApiKeyRequest;
+use crate::validation::ValidatedJson;
 
 fn extract_wallet_address(headers: &HeaderMap) -> Result<String, ApiKeyError> {
     headers
@@ -35,19 +36,11 @@ fn extract_wallet_address(headers: &HeaderMap) -> Result<String, ApiKeyError> {
 pub async fn create_api_key(
     State(db): State<Arc<Database>>,
     headers: HeaderMap,
-    Json(req): Json<CreateApiKeyRequest>,
+    ValidatedJson(req): ValidatedJson<CreateApiKeyRequest>,
 ) -> Result<Response, ApiKeyError> {
     let wallet_address = extract_wallet_address(&headers)?;
 
     let name = req.name.trim();
-    if name.is_empty() {
-        return Err(ApiKeyError::BadRequest("Key name is required".to_string()));
-    }
-    if name.len() > 100 {
-        return Err(ApiKeyError::BadRequest(
-            "Key name must not exceed 100 characters".to_string(),
-        ));
-    }
     if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ') {
         return Err(ApiKeyError::BadRequest(
             "Key name may only contain letters, digits, spaces, hyphens, and underscores"

@@ -1,0 +1,93 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: stellar-insights-alerts
+  namespace: stellar-insights
+spec:
+  groups:
+    - name: stellar-insights.rules
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (sum(rate(http_requests_total{status=~"5.."}[5m])) / 
+             sum(rate(http_requests_total[5m]))) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High error rate detected (>5%)"
+            description: "Error rate is {{ $value | humanizePercentage }}"
+
+        - alert: HighP99Latency
+          expr: |
+            histogram_quantile(0.99, 
+              sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 1.0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High p99 latency detected (>1s)"
+            description: "p99 latency is {{ $value | humanizeDuration }}"
+
+        - alert: DBConnectionPoolExhaustion
+          expr: |
+            (pg_stat_activity_count / pg_settings_max_connections) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Database connection pool utilization high (>80%)"
+            description: "Connection pool is {{ $value | humanizePercentage }} utilized"
+
+        - alert: SlowDatabaseQueries
+          expr: |
+            rate(pg_slow_queries_total[5m]) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High rate of slow database queries"
+            description: "{{ $value | humanize }} slow queries per second"
+
+        - alert: CacheFailureRate
+          expr: |
+            (sum(rate(redis_commands_failed_total[5m])) / 
+             sum(rate(redis_commands_total[5m]))) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High cache failure rate (>1%)"
+            description: "Cache failure rate is {{ $value | humanizePercentage }}"
+
+        - alert: RedisMemoryUsageHigh
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage high (>85%)"
+            description: "Redis memory is {{ $value | humanizePercentage }} utilized"
+
+        - alert: PaymentProcessingFailures
+          expr: |
+            rate(payments_failed_total[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High payment processing failure rate"
+            description: "{{ $value | humanize }} payment failures per second"
+
+        - alert: LedgerIngestionLag
+          expr: |
+            (time() - ledger_ingestion_last_timestamp_seconds) > 300
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ledger ingestion lag detected (>5 minutes)"
+            description: "Last ledger ingestion was {{ $value | humanizeDuration }} ago"

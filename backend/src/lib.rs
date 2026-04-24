@@ -5,6 +5,7 @@ pub mod api;
 pub mod api_analytics_middleware;
 pub mod api_deprecation_middleware;
 pub mod api_v1_middleware;
+pub mod deprecation_middleware;
 pub mod monitor;
 
 pub mod auth;
@@ -35,6 +36,7 @@ pub mod request_signing_middleware;
 pub mod network;
 pub mod observability;
 pub mod openapi;
+pub mod payload_limit;
 pub mod rate_limit;
 pub mod replay;
 pub mod request_id;

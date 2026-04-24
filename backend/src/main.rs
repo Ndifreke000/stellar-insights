@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tower_http::{
-    compression::{predicate::SizeAbove, CompressionLayer},
+    compression::{predicate::{And, NotForContentType, SizeAbove}, CompressionLayer, CompressionLevel},
     cors::{AllowOrigin, CorsLayer},
     timeout::TimeoutLayer,
     trace::TraceLayer,
@@ -143,7 +143,10 @@ async fn main() -> anyhow::Result<()> {
     let cache = Arc::new(
         CacheManager::new(CacheConfig::from_env())
             .await
-            .context("Failed to initialize cache manager - check Redis connection")?,
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to initialize cache manager, using in-memory fallback: {}", e);
+                CacheManager::new_in_memory_for_tests(CacheConfig::from_env())
+            }),
     );
 
     // Initialize Stellar RPC Client
@@ -192,6 +195,64 @@ async fn main() -> anyhow::Result<()> {
             .await
             .context("Failed to initialize rate limiter")?,
     );
+
+    // Configure rate limits for expensive operations
+    use stellar_insights_backend::rate_limit::{ClientRateLimits, RateLimitConfig};
+    
+    // Export endpoints (CSV/Excel generation)
+    rate_limiter.register_endpoint(
+        "/api/export/csv".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 5,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 10,
+                premium: 20,
+                anonymous: 5,
+            }),
+        },
+    ).await;
+    
+    rate_limiter.register_endpoint(
+        "/api/export/excel".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 5,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 10,
+                premium: 20,
+                anonymous: 5,
+            }),
+        },
+    ).await;
+    
+    // Analytics aggregation queries
+    rate_limiter.register_endpoint(
+        "/api/analytics".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 20,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 40,
+                premium: 100,
+                anonymous: 20,
+            }),
+        },
+    ).await;
+    
+    // RPC proxy endpoints
+    rate_limiter.register_endpoint(
+        "/api/rpc".to_string(),
+        RateLimitConfig {
+            requests_per_minute: 100,
+            whitelist_ips: vec![],
+            client_limits: Some(ClientRateLimits {
+                authenticated: 200,
+                premium: 500,
+                anonymous: 100,
+            }),
+        },
+    ).await;
 
     let webhook_dispatcher_handle: JoinHandle<()> = {
         let webhook_pool = pool.clone();
@@ -287,9 +348,24 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(1024);
 
+    // COMPRESSION_LEVEL: "fastest", "best", or a numeric quality (0-9). Default: "default".
+    let compression_level = match std::env::var("COMPRESSION_LEVEL")
+        .unwrap_or_default()
+        .to_lowercase()
+        .as_str()
+    {
+        "fastest" => CompressionLevel::Fastest,
+        "best" => CompressionLevel::Best,
+        s => s
+            .parse::<i32>()
+            .map(CompressionLevel::Precise)
+            .unwrap_or(CompressionLevel::Default),
+    };
+
     tracing::info!(
-        "Compression enabled (gzip, brotli) for responses > {} bytes",
-        compression_min_size
+        "Compression enabled (gzip, brotli) for responses > {} bytes, level={:?}",
+        compression_min_size,
+        compression_level
     );
 
     // Request timeout configuration — reads REQUEST_TIMEOUT_SECONDS from env,
@@ -339,6 +415,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(middleware::from_fn(
             stellar_insights_backend::api_deprecation_middleware::deprecation_middleware,
+            stellar_insights_backend::payload_limit::payload_limit_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             db.clone(),
@@ -357,7 +434,12 @@ async fn main() -> anyhow::Result<()> {
             CompressionLayer::new()
                 .gzip(true)
                 .br(true)
-                .compress_when(SizeAbove::new(compression_min_size)),
+                .quality(compression_level)
+                .compress_when(
+                    SizeAbove::new(compression_min_size)
+                        .and(NotForContentType::IMAGES)
+                        .and(NotForContentType::SSE),
+                ),
         );
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());

@@ -112,6 +112,11 @@ lazy_static! {
     )
     .label_names(vec!["endpoint", "slo_target_ms"]))
     .expect("Failed to register http_request_slo_violations_total counter");
+    pub static ref HTTP_RESPONSES_COMPRESSED_TOTAL: Counter = register_counter!(
+        "http_responses_compressed_total",
+        "Total number of HTTP responses sent with compression (Content-Encoding set)"
+    )
+    .expect("Failed to register http_responses_compressed_total counter");
 }
 
 pub fn init_metrics() {
@@ -160,6 +165,10 @@ pub async fn http_metrics_middleware(req: Request<Body>, next: Next) -> Response
 
     // Check SLO violations
     check_slo_violation(&endpoint, duration * 1000.0);
+
+    if response.headers().contains_key(axum::http::header::CONTENT_ENCODING) {
+        HTTP_RESPONSES_COMPRESSED_TOTAL.inc();
+    }
 
     if response.status().is_server_error() {
         record_http_error(response.status().as_u16(), &method, &uri);

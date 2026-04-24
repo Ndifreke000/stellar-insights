@@ -5,6 +5,7 @@ use crate::api::{
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
 use crate::database::Database;
+use crate::deprecation_middleware::{default_deprecation_map, deprecation_middleware};
 use crate::rate_limit::{rate_limit_middleware, RateLimiter};
 use crate::rpc::StellarRpcClient;
 use crate::services::account_merge_detector::AccountMergeDetector;
@@ -170,6 +171,10 @@ pub fn routes(
         ))
         .layer(middleware::from_fn(
             crate::api_v1_middleware::version_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            default_deprecation_map(),
+            deprecation_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             rate_limiter,
