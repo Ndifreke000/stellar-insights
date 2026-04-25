@@ -1,0 +1,40 @@
+{
+  "info": {
+    "name": "Stellar Insights API",
+    "description": "Real-time payment analytics for Stellar",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Anchors",
+      "item": [
+        {
+          "name": "List Anchors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/anchors?page=1&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "anchors"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "50"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8080", "type": "string"},
+    {"key": "api_key", "value": "YOUR_API_KEY_HERE", "type": "string"}
+  ]
+}
