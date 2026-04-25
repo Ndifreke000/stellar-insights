@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { useReportWebVitals } from "next/web-vitals";
 import { monitoring } from "@/lib/monitoring";
+import { performanceProfiler } from "@/lib/performance";
 
 /**
  * MonitoringProvider
@@ -14,18 +15,32 @@ export function MonitoringProvider({
 }: {
   children: React.ReactNode;
 }) {
-  // Track Web Vitals
+  // Track Web Vitals (LCP, FID, CLS, TTFB, INP)
   useReportWebVitals((metric) => {
-    // Next.js Web Vitals: id, name, startTime, value, label
     monitoring.trackMetric(
       `web-vitals-${metric.name.toLowerCase()}`,
       metric.value,
-      {
-        label: metric.label,
-        id: metric.id,
-      },
+      { label: metric.label, id: metric.id },
     );
   });
+
+  // Report navigation timing + initial memory snapshot once on mount
+  useEffect(() => {
+    const timing = performanceProfiler.getNavigationTiming();
+    if (timing) {
+      Object.entries(timing).forEach(([key, value]) => {
+        monitoring.trackMetric(`nav:${key}`, value);
+      });
+    }
+
+    const mem = performanceProfiler.snapshotMemory();
+    if (mem) {
+      monitoring.trackMetric('memory:usedJSHeapMB', mem.usedJSHeapMB, {
+        totalJSHeapMB: mem.totalJSHeapMB,
+        limitJSHeapMB: mem.limitJSHeapMB,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     // Track runtime errors
