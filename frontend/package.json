@@ -15,7 +15,9 @@
     "test:contrast": "node scripts/validate-colors.mjs",
     "benchmark": "node benchmarks/api.bench.mjs",
     "benchmark:save-baseline": "SAVE_BASELINE=true node benchmarks/api.bench.mjs",
-    "test:benchmarks": "node --test benchmarks/api.bench.test.mjs"
+    "test:benchmarks": "node --test benchmarks/api.bench.test.mjs",
+    "test:i18n": "vitest run src/__tests__/i18n.test.ts",
+    "i18n:coverage": "vitest run src/__tests__/i18n.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
