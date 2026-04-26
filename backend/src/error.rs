@@ -290,6 +290,7 @@ impl From<sqlx::Error> for ApiError {
 
         if let Some(StatusCode::SERVICE_UNAVAILABLE) = status {
             tracing::error!("Database pool exhausted");
+            crate::observability::metrics::record_pool_error("exhausted");
             return Self::ServiceUnavailable {
                 code,
                 message,

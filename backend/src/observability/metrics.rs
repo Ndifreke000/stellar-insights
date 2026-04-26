@@ -106,6 +106,37 @@ lazy_static! {
     pub static ref DB_POOL_ACTIVE: Gauge =
         register_gauge!("db_pool_active", "Active database pool connections")
             .expect("Failed to register db_pool_active gauge");
+    pub static ref DB_POOL_CONNECTIONS_ACTIVE: Gauge = register_gauge!(
+        "db_pool_connections_active",
+        "Number of active database pool connections"
+    )
+    .expect("Failed to register db_pool_connections_active gauge");
+    pub static ref DB_POOL_CONNECTIONS_IDLE: Gauge = register_gauge!(
+        "db_pool_connections_idle",
+        "Number of idle database pool connections"
+    )
+    .expect("Failed to register db_pool_connections_idle gauge");
+    pub static ref DB_POOL_UTILIZATION: Gauge = register_gauge!(
+        "db_pool_utilization",
+        "Database pool utilization ratio (active / total)"
+    )
+    .expect("Failed to register db_pool_utilization gauge");
+    pub static ref DB_POOL_WAIT_TIME_SECONDS: Histogram = register_histogram!(
+        HistogramOpts::new(
+            "db_pool_wait_time_seconds",
+            "Time spent waiting for a database pool connection"
+        )
+        .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])
+    )
+    .expect("Failed to register db_pool_wait_time_seconds histogram");
+    pub static ref DB_POOL_ERRORS_TOTAL: Counter = register_counter!(
+        Opts::new(
+            "db_pool_errors_total",
+            "Total number of database pool errors by kind"
+        )
+        .label_names(vec!["kind"])
+    )
+    .expect("Failed to register db_pool_errors_total counter");
     pub static ref HTTP_REQUEST_SLO_VIOLATIONS: Counter = register_counter!(Opts::new(
         "http_request_slo_violations_total",
         "Total number of HTTP requests exceeding SLO targets"
@@ -333,6 +364,29 @@ pub fn set_pool_active(count: i64) {
     DB_POOL_ACTIVE.set(count as f64);
 }
 
+pub fn set_pool_connections(active: u32, idle: usize, total: u32) {
+    DB_POOL_CONNECTIONS_ACTIVE.set(active as f64);
+    DB_POOL_CONNECTIONS_IDLE.set(idle as f64);
+    let utilization = if total > 0 {
+        active as f64 / total as f64
+    } else {
+        0.0
+    };
+    DB_POOL_UTILIZATION.set(utilization);
+    // Keep legacy gauges in sync
+    DB_POOL_SIZE.set(total as f64);
+    DB_POOL_IDLE.set(idle as f64);
+    DB_POOL_ACTIVE.set(active as f64);
+}
+
+pub fn observe_pool_wait_time(seconds: f64) {
+    DB_POOL_WAIT_TIME_SECONDS.observe(seconds);
+}
+
+pub fn record_pool_error(kind: &str) {
+    DB_POOL_ERRORS_TOTAL.with_label_values(&[kind]).inc();
+}
+
 /// Check if request duration violates SLO (p95 < 500ms)
 pub fn check_slo_violation(endpoint: &str, duration_ms: f64) {
     const SLO_TARGET_MS: f64 = 500.0;
@@ -495,5 +549,41 @@ mod tests {
             let response = handle.await.unwrap();
             assert_eq!(response.status(), axum::http::StatusCode::OK);
         }
+    }
+
+    #[tokio::test]
+    async fn pool_metrics_are_exported_to_prometheus() {
+        init_metrics();
+
+        set_pool_connections(8, 2, 10);
+        observe_pool_wait_time(0.05);
+        record_pool_error("exhausted");
+        record_pool_error("near_exhaustion");
+
+        let response = metrics_handler();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("db_pool_connections_active"), "missing db_pool_connections_active");
+        assert!(text.contains("db_pool_connections_idle"), "missing db_pool_connections_idle");
+        assert!(text.contains("db_pool_wait_time_seconds"), "missing db_pool_wait_time_seconds");
+        assert!(text.contains("db_pool_errors_total"), "missing db_pool_errors_total");
+        assert!(text.contains("db_pool_utilization"), "missing db_pool_utilization");
+        assert!(text.contains("kind=\"exhausted\""), "missing exhausted label");
+        assert!(text.contains("kind=\"near_exhaustion\""), "missing near_exhaustion label");
+    }
+
+    #[test]
+    fn set_pool_connections_updates_all_gauges() {
+        init_metrics();
+        set_pool_connections(7, 3, 10);
+
+        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7.0);
+        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3.0);
+        assert!((DB_POOL_UTILIZATION.get() - 0.7).abs() < f64::EPSILON);
+        // Legacy gauges kept in sync
+        assert_eq!(DB_POOL_ACTIVE.get(), 7.0);
+        assert_eq!(DB_POOL_IDLE.get(), 3.0);
+        assert_eq!(DB_POOL_SIZE.get(), 10.0);
     }
 }

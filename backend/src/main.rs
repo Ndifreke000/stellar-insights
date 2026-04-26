@@ -134,10 +134,9 @@ async fn main() -> anyhow::Result<()> {
                         active,
                         size
                     );
+                    stellar_insights_backend::observability::metrics::record_pool_error("near_exhaustion");
                 }
-                stellar_insights_backend::observability::metrics::set_pool_size(size as i64);
-                stellar_insights_backend::observability::metrics::set_pool_idle(idle as i64);
-                stellar_insights_backend::observability::metrics::set_pool_active(active as i64);
+                stellar_insights_backend::observability::metrics::set_pool_connections(active, idle as usize, size);
             }
         })
     };
