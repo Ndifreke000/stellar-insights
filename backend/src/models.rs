@@ -241,6 +241,8 @@ pub struct PaymentRow {
 }
 
 impl PaymentRow {
+    #[must_use]
+    pub fn to_corridor(&self) -> crate::models::corridor::Corridor {
         let src_code = if self.source_asset_code.is_empty() {
             self.asset_code.clone().unwrap_or_default()
         } else {
