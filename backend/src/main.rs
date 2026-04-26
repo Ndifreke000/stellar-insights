@@ -163,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
     let services = ServiceContainer::build(pool.clone(), rpc_client.clone());
 
     let ws_state = Arc::new(WsState::new());
+    ws_state.spawn_redis_subscriber();
     let ingestion = Arc::new(DataIngestionService::new(rpc_client.clone(), db.clone()));
 
     let app_state = AppState::new(

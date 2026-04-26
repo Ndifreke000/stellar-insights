@@ -98,7 +98,12 @@ pub struct WsState {
     pub tx: broadcast::Sender<WsMessage>,
     rate_limits: DashMap<String, RateLimitInfo>,
     ip_rate_limits: DashMap<IpAddr, IpRateLimit>,
+    /// Redis client for cross-instance pub/sub. `None` when Redis is unavailable.
+    redis_client: Option<redis::Client>,
 }
+
+/// Redis channel used for cross-instance WebSocket message fan-out.
+const REDIS_WS_CHANNEL: &str = "ws:broadcast";
 
 impl Default for WsState {
     fn default() -> Self {
@@ -110,6 +115,11 @@ impl WsState {
     #[must_use]
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
+        let redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+        let redis_client = redis::Client::open(redis_url.as_str())
+            .map_err(|e| warn!("WsState: Redis unavailable, cross-instance broadcast disabled: {}", e))
+            .ok();
         Self {
             connections: DashMap::new(),
             subscriptions: DashMap::new(),
@@ -118,7 +128,55 @@ impl WsState {
             tx,
             rate_limits: DashMap::new(),
             ip_rate_limits: DashMap::new(),
+            redis_client,
         }
+    }
+
+    /// Spawn the Redis subscriber task that relays cross-instance broadcasts to
+    /// local connections. Call once after creating `Arc<WsState>`.
+    pub fn spawn_redis_subscriber(self: &Arc<Self>) {
+        let Some(client) = self.redis_client.clone() else {
+            info!("WsState: Redis not configured, cross-instance broadcast disabled");
+            return;
+        };
+        let local_tx = self.tx.clone();
+        tokio::spawn(async move {
+            loop {
+                match client.get_async_pubsub().await {
+                    Ok(mut pubsub) => {
+                        if let Err(e) = pubsub.subscribe(REDIS_WS_CHANNEL).await {
+                            warn!("WsState Redis subscribe error: {}", e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                        info!("WsState: subscribed to Redis channel '{}'", REDIS_WS_CHANNEL);
+                        let mut stream = pubsub.on_message();
+                        loop {
+                            match stream.next().await {
+                                Some(msg) => {
+                                    let payload: String = match msg.get_payload() {
+                                        Ok(p) => p,
+                                        Err(e) => { warn!("WsState Redis payload error: {}", e); continue; }
+                                    };
+                                    match serde_json::from_str::<WsMessage>(&payload) {
+                                        Ok(ws_msg) => { let _ = local_tx.send(ws_msg); }
+                                        Err(e) => warn!("WsState Redis deserialize error: {}", e),
+                                    }
+                                }
+                                None => {
+                                    warn!("WsState Redis pub/sub stream ended, reconnecting");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("WsState Redis connection error: {}, retrying in 5s", e);
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
     }
 
     /// Check whether `client_id` is within its rate limit.
@@ -179,6 +237,28 @@ impl WsState {
     }
 
     pub fn broadcast(&self, message: WsMessage) {
+        // Publish to Redis so all instances relay the message to their local connections.
+        if let Some(client) = &self.redis_client {
+            if let Ok(payload) = serde_json::to_string(&message) {
+                let client = client.clone();
+                let payload_clone = payload.clone();
+                tokio::spawn(async move {
+                    match client.get_multiplexed_tokio_connection().await {
+                        Ok(mut conn) => {
+                            let _: redis::RedisResult<()> =
+                                redis::cmd("PUBLISH")
+                                    .arg(REDIS_WS_CHANNEL)
+                                    .arg(payload_clone)
+                                    .query_async(&mut conn)
+                                    .await;
+                        }
+                        Err(e) => warn!("WsState broadcast: Redis publish failed: {}", e),
+                    }
+                });
+                return; // Redis subscriber will feed local tx
+            }
+        }
+        // Fallback: no Redis, broadcast locally only.
         if let Err(e) = self.tx.send(message) {
             warn!("Failed to broadcast message: {}", e);
         }

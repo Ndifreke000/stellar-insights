@@ -6,6 +6,7 @@ pub mod api_analytics_middleware;
 pub mod api_deprecation_middleware;
 pub mod api_v1_middleware;
 pub mod deprecation_middleware;
+pub mod distributed_lock;
 pub mod monitor;
 
 pub mod auth;
