@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { ScrollText, Plus } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ProposalCard } from "@/components/governance/ProposalCard";

@@ -10,7 +10,7 @@ export enum ConnectionState {
 
 export interface WsMessage {
   type: string;
-  [key: string]: any;
+  [key: string]: string | number | boolean | null | undefined | string[] | Record<string, unknown>;
 }
 
 export interface UseWebSocketOptions {

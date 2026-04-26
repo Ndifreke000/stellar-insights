@@ -28,9 +28,26 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
     const nodesMap = new Map<string, GraphNode>();
     const links: GraphLink[] = [];
 
+    interface AnchorRecord {
+      id?: string;
+      name?: string;
+      reliability_score?: number;
+      address?: string;
+      status?: string;
+    }
+    interface CorridorRecord {
+      source_anchor_id?: string;
+      destination_anchor_id?: string;
+      source_asset_code?: string;
+      source_asset_issuer?: string;
+      volume_usd?: number;
+      success_rate?: number;
+      liquidity_score?: number;
+    }
+
     // Process anchors into nodes
     if (Array.isArray(anchors)) {
-      anchors.forEach((anchor: any) => {
+      anchors.forEach((anchor: AnchorRecord) => {
         if (anchor.id && anchor.name) {
           nodesMap.set(anchor.id, {
             id: anchor.id,
@@ -46,7 +63,7 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
 
     // Process corridors into links and asset nodes
     if (Array.isArray(corridors)) {
-      corridors.forEach((corridor: any) => {
+      corridors.forEach((corridor: CorridorRecord) => {
         if (corridor.source_anchor_id && corridor.destination_anchor_id) {
           // Create asset node if it doesn't exist
           const assetId = `${corridor.source_asset_code}_${corridor.source_asset_issuer}`;

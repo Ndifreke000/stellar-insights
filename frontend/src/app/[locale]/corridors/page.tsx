@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { logger } from "@/lib/logger";
-import { useEffect, useState, useMemo } from "react";
 import {
   TrendingUp,
   Search,
@@ -18,9 +17,6 @@ import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
 import { getCorridors, CorridorMetrics } from "@/lib/api/corridors";
 import { mockCorridors } from "@/components/lib//mockCorridorData";
-import { MainLayout } from "@/components/layout";
-import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
-import { CorridorHeatmap } from "@/components/charts/CorridorHeatmap";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
 import { ExportDialog } from "@/components/ExportDialog";

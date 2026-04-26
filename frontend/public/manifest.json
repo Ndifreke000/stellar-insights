@@ -3,10 +3,13 @@
   "short_name": "Stellar Insights",
   "description": "Real-time payment analytics and reliability metrics for the Stellar network.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#6366f1",
   "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["finance", "utilities"],
   "icons": [
     {
       "src": "/icon-light-32x32.png",
@@ -17,7 +20,32 @@
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/en/dashboard",
+      "description": "View the main analytics dashboard"
+    },
+    {
+      "name": "Corridors",
+      "url": "/en/corridors",
+      "description": "Browse payment corridors"
     }
   ]
 }

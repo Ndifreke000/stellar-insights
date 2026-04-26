@@ -7,7 +7,7 @@ export interface GraphNode {
     status?: string;
     fullName?: string;
     issuer?: string;
-    [key: string]: any;
+    [key: string]: string | number | undefined;
 }
 
 export interface GraphLink {
@@ -17,7 +17,7 @@ export interface GraphLink {
     value: number;
     health?: number;
     liquidity?: number;
-    [key: string]: any;
+    [key: string]: string | number | undefined;
 }
 
 export interface NetworkGraphData {
@@ -25,8 +25,9 @@ export interface NetworkGraphData {
     links: GraphLink[];
 }
 
-export function validateNetworkGraphData(data: any): data is NetworkGraphData {
+export function validateNetworkGraphData(data: unknown): data is NetworkGraphData {
     if (!data || typeof data !== 'object') return false;
-    if (!Array.isArray(data.nodes) || !Array.isArray(data.links)) return false;
+    const d = data as Record<string, unknown>;
+    if (!Array.isArray(d.nodes) || !Array.isArray(d.links)) return false;
     return true;
 }

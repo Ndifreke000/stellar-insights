@@ -1,21 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-import {
-  TrendingUp,
-  Activity,
-  AlertCircle,
-  RefreshCw,
-  Download,
-} from "lucide-react";
-import { Link } from "@/i18n/navigation";
-import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
-import { logger } from "@/lib/logger";
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
-import dynamic from "next/dynamic";
+import { logger } from "@/lib/logger";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const ChartSkeleton = () => (
@@ -56,28 +45,6 @@ const formatCurrency = (value: number) => {
     maximumFractionDigits: 2,
   }).format(value);
 };
-
-// Heavy chart components — lazy-loaded so they don't bloat the initial bundle.
-const LiquidityChart = dynamic(
-  () => import("@/components/charts/LiquidityChart").then((m) => ({ default: m.LiquidityChart })),
-  { ssr: false }
-);
-const TVLChart = dynamic(
-  () => import("@/components/charts/TVLChart").then((m) => ({ default: m.TVLChart })),
-  { ssr: false }
-);
-const SettlementLatencyChart = dynamic(
-  () => import("@/components/charts/SettlementLatencyChart").then((m) => ({ default: m.SettlementLatencyChart })),
-  { ssr: false }
-);
-const TopCorridors = dynamic(
-  () => import("@/components/charts/TopCorridors").then((m) => ({ default: m.TopCorridors })),
-  { ssr: false }
-);
-const LiquidityHeatmap = dynamic(
-  () => import("@/components/charts/LiquidityHeatmap").then((m) => ({ default: m.LiquidityHeatmap })),
-  { ssr: false }
-);
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
@@ -148,15 +115,6 @@ export default function AnalyticsPage() {
       </div>
     );
   }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      notation: "compact",
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
 
   return (
     <ErrorBoundary>
