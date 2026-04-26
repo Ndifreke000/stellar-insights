@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{header, Request, StatusCode},
     middleware, Router,
 };
 use serde_json::Value;
@@ -126,4 +126,78 @@ async fn test_get_corridor_detail_invalid_format() {
     let response = app.oneshot(request).await.unwrap();
     // Handler should return BadRequest for invalid format
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_corridor_detail_returns_cache_headers() {
+    let pool = setup_test_db().await;
+    let db = Arc::new(Database::new(pool));
+    let app = create_test_router(db).await;
+
+    let corridor_key = "XLM%3Anative-%3EXLM%3Anative";
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/corridors/{corridor_key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response.headers().get(header::CACHE_CONTROL).is_some(),
+        "Cache-Control header missing"
+    );
+    assert!(
+        response.headers().get(header::ETAG).is_some(),
+        "ETag header missing"
+    );
+    assert!(
+        response.headers().get(header::LAST_MODIFIED).is_some(),
+        "Last-Modified header missing"
+    );
+}
+
+#[tokio::test]
+async fn test_corridor_detail_returns_304_on_if_none_match() {
+    let pool = setup_test_db().await;
+    let db = Arc::new(Database::new(pool));
+    let app = create_test_router(db).await;
+
+    let corridor_key = "XLM%3Anative-%3EXLM%3Anative";
+
+    // First request — get the ETag
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/corridors/{corridor_key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let etag = first
+        .headers()
+        .get(header::ETAG)
+        .expect("ETag missing on first response")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // Second request with If-None-Match — expect 304
+    let second = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/corridors/{corridor_key}"))
+                .header(header::IF_NONE_MATCH, &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
 }

@@ -702,7 +702,7 @@ fn find_related_corridors(
     tag = "Corridors"
 )]
 #[tracing::instrument(
-    skip(_db, cache, rpc_client, price_feed),
+    skip(_db, cache, rpc_client, price_feed, headers),
     fields(request_id = %request_id.0, corridor_key = %corridor_key)
 )]
 pub async fn get_corridor_detail(
@@ -714,7 +714,8 @@ pub async fn get_corridor_detail(
         Arc<PriceFeedClient>,
     )>,
     Path(corridor_key): Path<String>,
-) -> ApiResult<Json<CorridorDetailResponse>> {
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     use std::collections::HashMap;
     info!("Fetching corridor");
 
@@ -923,7 +924,9 @@ pub async fn get_corridor_detail(
         "Corridor found"
     );
 
-    Ok(Json(response))
+    let ttl = cache.config.get_ttl("corridor");
+    let cached = crate::http_cache::cached_json_response(&headers, &cache_key, &response, ttl)?;
+    Ok(cached)
 }
 
 /// POST /api/corridors - Create a new corridor
