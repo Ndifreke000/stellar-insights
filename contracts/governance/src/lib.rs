@@ -11,7 +11,7 @@ use events::{
     emit_parameter_proposal_created, emit_proposal_created,
     emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -649,36 +649,32 @@ impl GovernanceContract {
 
     /// Get a proposal by ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<Proposal, Error> {
-        if env.storage().persistent().has(&DataKey::Proposal(proposal_id)) {
-            env.storage().persistent().extend_ttl(
-                &DataKey::Proposal(proposal_id),
-                LEDGERS_TO_EXTEND,
-                LEDGERS_TO_EXTEND,
-            );
-        }
-        env.storage()
+        let proposal = env
+            .storage()
             .persistent()
             .get(&DataKey::Proposal(proposal_id))
-            .ok_or(Error::ProposalNotFound)
+            .ok_or(Error::ProposalNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        Ok(proposal)
     }
 
     /// Get the vote tally for a proposal.
     pub fn get_tally(env: Env, proposal_id: u64) -> Result<VoteTally, Error> {
-        if env
+        let tally = env
             .storage()
             .persistent()
-            .has(&DataKey::VoteTally(proposal_id))
-        {
-            env.storage().persistent().extend_ttl(
-                &DataKey::VoteTally(proposal_id),
-                LEDGERS_TO_EXTEND,
-                LEDGERS_TO_EXTEND,
-            );
-        }
-        env.storage()
-            .persistent()
             .get(&DataKey::VoteTally(proposal_id))
-            .ok_or(Error::ProposalNotFound)
+            .ok_or(Error::ProposalNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        Ok(tally)
     }
 
     /// Check if an address has voted on a proposal — O(1) key lookup.
@@ -709,14 +705,19 @@ impl GovernanceContract {
         let mut removed: u32 = 0;
         for voter in voters.iter() {
             let key = DataKey::Vote(proposal_id, voter);
-            if env.storage().persistent().has(&key) {
+            if env.storage().persistent().get::<DataKey, VoteChoice>(&key).is_some() {
                 env.storage().persistent().remove(&key);
                 removed += 1;
             }
         }
 
         // Remove tally once votes are cleaned up
-        if env.storage().persistent().has(&DataKey::VoteTally(proposal_id)) {
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, VoteTally>(&DataKey::VoteTally(proposal_id))
+            .is_some()
+        {
             env.storage().persistent().remove(&DataKey::VoteTally(proposal_id));
         }
 

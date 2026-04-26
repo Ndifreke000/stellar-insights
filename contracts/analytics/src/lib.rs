@@ -762,17 +762,42 @@ impl AnalyticsContract {
         }
 
         let mut results = Vec::new(&env);
+        let mut latest_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let timestamp = env.ledger().timestamp();
+        let ledger_sequence = env.ledger().sequence();
+
         for (epoch, hash) in snapshots.iter() {
-            let previous_epoch = validate_epoch(&env, epoch)?;
-            let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+            if epoch == 0 {
+                return Err(
+                    Error::InvalidEpochZero
+                        .log_context(&env, "batch_submit_snapshots: epoch must be > 0")
+                );
+            }
+            if epoch == latest_epoch {
+                return Err(Error::DuplicateEpoch.log_context(
+                    &env,
+                    "batch_submit_snapshots: snapshot for this epoch already exists",
+                ));
+            }
+            if epoch < latest_epoch {
+                return Err(Error::EpochMonotonicityViolated.log_context(
+                    &env,
+                    "batch_submit_snapshots: epochs must be strictly increasing",
+                ));
+            }
+
             if hash == zero_hash {
                 return Err(
                     Error::InvalidHashZero.log_context(&env, "batch_submit_snapshots: hash must not be all zeros")
                 );
             }
 
-            let timestamp = env.ledger().timestamp();
-            let ledger_sequence = env.ledger().sequence();
+            let previous_epoch = latest_epoch;
             let metadata = SnapshotMetadata {
                 epoch,
                 timestamp,
@@ -781,7 +806,16 @@ impl AnalyticsContract {
                 ledger_sequence,
                 expires_at: None,
             };
-            write_snapshot(&env, epoch, &metadata);
+
+            env.storage()
+                .persistent()
+                .set(&DataKey::Snapshot(epoch), &metadata);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshot(epoch),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+
             env.events().publish(
                 (symbol_short!("snapshot"), caller.clone()),
                 SnapshotSubmittedEvent {
@@ -794,7 +828,13 @@ impl AnalyticsContract {
                 },
             );
             results.push_back(timestamp);
+            latest_epoch = epoch;
         }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::LatestEpoch, &latest_epoch);
+        bump_instance(&env);
 
         // Emit batch event
         env.events().publish(
