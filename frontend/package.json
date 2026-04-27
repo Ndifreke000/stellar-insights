@@ -63,7 +63,7 @@
     "autocannon": "^8.0.0",
     "axe-core": "^4.11.3",
     "eslint": "^9.39.3",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.4",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "jest-axe": "9.0.0",
     "jsdom": "28.1.0",
