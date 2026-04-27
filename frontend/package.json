@@ -22,7 +22,7 @@
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "@hookform/resolvers": "5.2.2",
-    "@prisma/client": "^6.19.2",
+    "@prisma/client": "^7.8.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@sentry/nextjs": "^8.0.0",
     "@stellar/stellar-sdk": "^14.5.0",
