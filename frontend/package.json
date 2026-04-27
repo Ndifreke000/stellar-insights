@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:timed": "node -e \"const s=Date.now();const {execSync}=require('child_process');try{execSync('next build',{stdio:'inherit'})}finally{const ms=Date.now()-s;console.log('\\nBuild time: '+(ms/1000).toFixed(1)+'s')}\"",
     "start": "next start",
     "analyze": "ANALYZE=true next build && node scripts/analyze-bundle.mjs",
     "lint": "eslint",

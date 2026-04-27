@@ -1,0 +1,68 @@
+name: Frontend Build
+
+on:
+  push:
+    branches: [main]
+    paths: ['frontend/**']
+  pull_request:
+    paths: ['frontend/**']
+
+jobs:
+  build:
+    name: Build & Metrics
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Restore Next.js cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
+            nextjs-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (timed)
+        id: build
+        run: |
+          START=$(date +%s%3N)
+          pnpm build
+          END=$(date +%s%3N)
+          MS=$((END - START))
+          echo "duration_ms=${MS}" >> "$GITHUB_OUTPUT"
+          echo "duration_s=$(echo "scale=1; ${MS}/1000" | bc)" >> "$GITHUB_OUTPUT"
+
+      - name: Build metrics summary
+        run: |
+          DURATION="${{ steps.build.outputs.duration_s }}s"
+          STATUS="✅ Under target"
+          if [ "${{ steps.build.outputs.duration_ms }}" -gt 120000 ]; then
+            STATUS="⚠️ Over 2-minute target"
+          fi
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Frontend Build Metrics
+
+          | Metric | Value |
+          |--------|-------|
+          | **Build time** | \`${DURATION}\` |
+          | **Target** | \`< 2 minutes\` |
+          | **Status** | ${STATUS} |
+          | **Cache** | \`${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}\` |
+          EOF
