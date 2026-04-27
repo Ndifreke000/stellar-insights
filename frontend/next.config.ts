@@ -59,6 +59,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+  swcMinify: true,
   async headers() {
     return [
       {

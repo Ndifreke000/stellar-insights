@@ -1,0 +1,72 @@
+name: Frontend Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+  pull_request:
+    paths:
+      - 'frontend/**'
+
+jobs:
+  build:
+    name: Build & Measure
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
+            nextjs-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build with timing
+        run: |
+          START=$(date +%s%3N)
+          pnpm build
+          END=$(date +%s%3N)
+          MS=$((END - START))
+          MINS=$((MS / 60000))
+          SECS=$(echo "scale=1; ($MS % 60000) / 1000" | bc)
+          echo "BUILD_MS=${MS}" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=${MINS}m ${SECS}s" >> "$GITHUB_ENV"
+
+      - name: Build summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Frontend Build Metrics
+
+          | Metric | Value |
+          |--------|-------|
+          | **Build time** | \`${{ env.BUILD_TIME }}\` (\`${{ env.BUILD_MS }}ms\`) |
+          | **Target** | \`< 2m 0.0s\` |
+          | **Status** | ${{ env.BUILD_MS < 120000 && '✅ Under target' || '⚠️ Over target' }} |
+          EOF
+
+      - name: Fail if build exceeds 2 minutes
+        if: ${{ env.BUILD_MS != '' }}
+        run: |
+          if [ "${{ env.BUILD_MS }}" -gt 120000 ]; then
+            echo "::warning::Build took ${{ env.BUILD_TIME }}, exceeding the 2-minute target."
+          fi
