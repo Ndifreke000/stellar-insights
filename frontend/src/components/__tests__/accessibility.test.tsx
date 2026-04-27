@@ -6,15 +6,7 @@ import { CorridorHealthCard } from '../dashboard/CorridorHealthCard';
 import { CreateProposalModal } from '../governance/CreateProposalModal';
 import { NotificationList } from '../notifications/NotificationList';
 
-// Mock notification context
-jest.mock('@/contexts/NotificationContext', () => ({
-  useNotifications: () => ({
-    markAsRead: jest.fn(),
-    clearNotification: jest.fn(),
-  }),
-}));
-
-// Extend Jest matchers
+// Extend jest-axe matchers
 expect.extend(toHaveNoViolations);
 
 // Mock next-intl
@@ -33,6 +25,14 @@ vi.mock('@/contexts/UserPreferencesContext', () => ({
   useUserPreferences: () => ({
     prefs: { sidebarCollapsed: false },
     setPrefs: vi.fn(),
+  }),
+}));
+
+// Mock notification context
+vi.mock('@/contexts/NotificationContext', () => ({
+  useNotifications: () => ({
+    markAsRead: vi.fn(),
+    clearNotification: vi.fn(),
   }),
 }));
 
