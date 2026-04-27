@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:timed": "node -e \"const s=Date.now();const {execSync}=require('child_process');try{execSync('next build',{stdio:'inherit'})}finally{const ms=Date.now()-s;const mins=Math.floor(ms/60000);const secs=((ms%60000)/1000).toFixed(1);console.log('\\n⏱  Build time: '+mins+'m '+secs+'s ('+ms+'ms)')}\"",
     "build:timed": "node -e \"const s=Date.now();const {execSync}=require('child_process');try{execSync('next build',{stdio:'inherit'})}finally{const ms=Date.now()-s;console.log('\\nBuild time: '+(ms/1000).toFixed(1)+'s')}\"",
     "start": "next start",
     "analyze": "ANALYZE=true next build && node scripts/analyze-bundle.mjs",

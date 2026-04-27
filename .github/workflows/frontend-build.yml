@@ -3,6 +3,15 @@ name: Frontend Build
 on:
   push:
     branches: [main]
+    paths:
+      - 'frontend/**'
+  pull_request:
+    paths:
+      - 'frontend/**'
+
+jobs:
+  build:
+    name: Build & Measure
     paths: ['frontend/**']
   pull_request:
     paths: ['frontend/**']
@@ -24,6 +33,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Restore Next.js build cache
           node-version: 20
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
@@ -39,6 +53,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build with timing
       - name: Build (timed)
         id: build
         run: |
@@ -46,6 +61,13 @@ jobs:
           pnpm build
           END=$(date +%s%3N)
           MS=$((END - START))
+          MINS=$((MS / 60000))
+          SECS=$(echo "scale=1; ($MS % 60000) / 1000" | bc)
+          echo "BUILD_MS=${MS}" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=${MINS}m ${SECS}s" >> "$GITHUB_ENV"
+
+      - name: Build summary
+        run: |
           echo "duration_ms=${MS}" >> "$GITHUB_OUTPUT"
           echo "duration_s=$(echo "scale=1; ${MS}/1000" | bc)" >> "$GITHUB_OUTPUT"
 
@@ -61,6 +83,17 @@ jobs:
 
           | Metric | Value |
           |--------|-------|
+          | **Build time** | \`${{ env.BUILD_TIME }}\` (\`${{ env.BUILD_MS }}ms\`) |
+          | **Target** | \`< 2m 0.0s\` |
+          | **Status** | ${{ env.BUILD_MS < 120000 && '✅ Under target' || '⚠️ Over target' }} |
+          EOF
+
+      - name: Fail if build exceeds 2 minutes
+        if: ${{ env.BUILD_MS != '' }}
+        run: |
+          if [ "${{ env.BUILD_MS }}" -gt 120000 ]; then
+            echo "::warning::Build took ${{ env.BUILD_TIME }}, exceeding the 2-minute target."
+          fi
           | **Build time** | \`${DURATION}\` |
           | **Target** | \`< 2 minutes\` |
           | **Status** | ${STATUS} |
