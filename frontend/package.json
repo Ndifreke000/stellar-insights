@@ -34,7 +34,7 @@
     "d3-force-3d": "^3.0.6",
     "date-fns": "^4.1.0",
     "dompurify": "^3.4.1",
-    "framer-motion": "^12.29.2",
+    "framer-motion": "^12.38.0",
     "html-to-image": "^1.11.13",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
