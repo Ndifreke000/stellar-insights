@@ -12,7 +12,7 @@
     "lint": "eslint",
     "lint:a11y": "eslint --ext .tsx,.ts --rule 'jsx-a11y/*: error' src/",
     "test": "vitest",
-    "test:a11y": "vitest --run src/**/*.a11y.test.tsx",
+    "test:a11y": "vitest run --reporter=verbose src/components/__tests__/accessibility.a11y.test.tsx src/components/__tests__/accessibility.test.tsx",
     "test:ui": "vitest --ui",
     "test:contrast": "node scripts/validate-colors.mjs",
     "benchmark": "node benchmarks/api.bench.mjs",

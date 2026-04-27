@@ -19,3 +19,4 @@ analytics = { path = "../analytics" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+proptest = { version = "1", default-features = false, features = ["std"] }

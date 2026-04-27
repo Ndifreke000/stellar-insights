@@ -1,0 +1,51 @@
+name: Contract Fuzzing
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contracts/**'
+  pull_request:
+    paths:
+      - 'contracts/**'
+
+jobs:
+  fuzz:
+    name: Property-based & Fuzz Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-contracts-fuzz-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-contracts-fuzz-
+
+      - name: Run analytics fuzz tests (1000+ iterations via bolero)
+        working-directory: contracts
+        env:
+          BOLERO_ITERATIONS: 1000
+        run: cargo test --package analytics --test '*' fuzz_ -- --nocapture
+
+      - name: Run analytics property-based tests
+        working-directory: contracts
+        run: cargo test --package analytics fuzz_ -- --nocapture
+
+      - name: Run governance fuzz tests (property-based)
+        working-directory: contracts
+        run: cargo test --package governance fuzz_ -- --nocapture
+
+      - name: Run all contract tests (fail CI on any failure)
+        working-directory: contracts
+        run: cargo test --workspace -- --nocapture
