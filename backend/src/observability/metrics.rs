@@ -204,6 +204,8 @@ pub async fn metrics_handler() -> Response {
         metrics.http_in_flight_requests.load(Ordering::Relaxed)
     ));
 
+    crate::observability::slo::append_slo_metrics(&mut out);
+
     (
         [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],
         out,

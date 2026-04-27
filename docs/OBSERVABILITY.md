@@ -28,6 +28,13 @@ Key metric families:
 - `active_connections`
 - `corridors_tracked`
 - `errors_total`
+- `slo_compliance` — `1` = SLO met, `0` = breached (labels: `p95_latency`, `availability`, `error_rate`)
+- `slo_current_value` — current measured value (labels: `p95_latency_seconds`, `availability_ratio`, `error_rate_ratio`)
+
+## SLO Monitoring
+
+SLOs are evaluated every 60 seconds by a background task started at boot.
+See [SLO.md](./SLO.md) for targets, PromQL queries, and Grafana panel setup.
 
 ## Logging
 

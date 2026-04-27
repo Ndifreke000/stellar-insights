@@ -77,6 +77,7 @@ async fn main() -> Result<()> {
     // Initialize tracing + optional OpenTelemetry exporter
     obs_tracing::init_tracing("stellar-insights-backend")?;
     obs_metrics::init_metrics();
+    stellar_insights_backend::observability::slo::spawn_slo_evaluator();
 
     tracing::info!("Starting Stellar Insights Backend");
 
