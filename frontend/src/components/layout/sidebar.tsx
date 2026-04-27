@@ -22,6 +22,7 @@ import {
   ScrollText,
   Share2,
   Shield,
+  Gauge,
 } from "lucide-react";
 import { useUserPreferences } from "@/contexts/UserPreferencesContext";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -44,6 +45,7 @@ const navItems = [
   { key: "governance", icon: ScrollText, path: "/governance" },
   { key: "privacy", icon: Shield, path: "/settings/gdpr" },
   { key: "alerts", icon: Activity, path: "/alerts" },
+  { key: "performance", icon: Gauge, path: "/performance" },
 ];
 
 interface SidebarProps {

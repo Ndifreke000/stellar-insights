@@ -35,6 +35,7 @@
       "settings": "Settings",
       "collapse": "Collapse",
       "alerts": "Alerts",
+      "performance": "Performance",
       "expandSidebar": "Expand Sidebar",
       "collapseSidebar": "Collapse Sidebar",
       "systemNominal": "System Nominal"

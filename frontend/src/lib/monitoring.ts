@@ -91,7 +91,14 @@ class Monitoring {
   }
 
   /**
-   * Flush buffers to the backend (mocked for now)
+   * Track API call latency
+   */
+  public trackApiLatency(endpoint: string, latencyMs: number) {
+    this.trackMetric("api-latency", latencyMs, { endpoint });
+  }
+
+  /**
+   * Flush buffers to the backend
    */
   private async flush() {
     if (this.metricsBuffer.length === 0 && this.errorsBuffer.length === 0) {
@@ -105,27 +112,12 @@ class Monitoring {
     this.errorsBuffer = [];
 
     try {
-      // In a real implementation, this would be:
-      // await axios.post('/api/monitoring/batch', { metrics: metricsToFlush, errors: errorsToFlush });
-
-      // For now, we simulate persistence in local storage for the dashboard to read
-      if (typeof window !== "undefined") {
-        const storedMetrics = JSON.parse(
-          localStorage.getItem("mon_metrics") || "[]",
-        );
-        const storedErrors = JSON.parse(
-          localStorage.getItem("mon_errors") || "[]",
-        );
-
-        localStorage.setItem(
-          "mon_metrics",
-          JSON.stringify([...storedMetrics, ...metricsToFlush].slice(-100)),
-        );
-        localStorage.setItem(
-          "mon_errors",
-          JSON.stringify([...storedErrors, ...errorsToFlush].slice(-100)),
-        );
-      }
+      await fetch("/api/metrics/frontend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metrics: metricsToFlush, errors: errorsToFlush }),
+        keepalive: true,
+      });
     } catch (e) {
       logger.error("[Monitoring] Failed to flush metrics", e);
     }
