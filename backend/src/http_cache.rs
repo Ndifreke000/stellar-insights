@@ -127,7 +127,8 @@ pub fn cached_json_response<T: Serialize>(
     ttl_seconds: usize,
 ) -> anyhow::Result<Response> {
     let body = serde_json::to_vec(payload)?;
-    let etag = format!("\"{:x}\"", Sha256::digest(&body));
+    let digest = Sha256::digest(&body);
+    let etag = format!("\"{}\"", hex::encode(digest));
     let last_modified = resolve_last_modified(resource_key, &etag);
     let cache_control = format!("public, max-age={ttl_seconds}");
 

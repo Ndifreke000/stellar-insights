@@ -4,6 +4,7 @@ use crate::error::{ApiError, ApiResult};
 use async_trait::async_trait;
 use axum::{
     extract::{FromRequest, Request},
+    response::IntoResponse,
     Json,
 };
 use validator::Validate;
@@ -27,10 +28,7 @@ where
         let Json(value) = Json::<T>::from_request(req, state)
             .await
             .map_err(|e| e.into_response())?;
-        validate_request(&value).map_err(|e| {
-            use axum::response::IntoResponse;
-            e.into_response()
-        })?;
+        validate_request(&value).map_err(|e| e.into_response())?;
         Ok(ValidatedJson(value))
     }
 }

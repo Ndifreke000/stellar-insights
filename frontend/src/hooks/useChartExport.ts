@@ -1,4 +1,6 @@
-import { useRef, useCallback, useState } from 'react';\nimport { logger } from '@/lib/logger';\nimport { exportChart, ExportFormat } from '@/lib/chart-export';
+import { useRef, useCallback, useState } from 'react';
+import { logger } from '@/lib/logger';
+import { exportChart, ExportFormat } from '@/lib/chart-export';
 
 interface UseChartExportOptions {
   chartName: string;

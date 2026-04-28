@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ShortcutAction, ShortcutConfig, KeyBinding, Platform } from '@/types/keyboard-shortcuts';
-import { logger } from '@/lib/logger';\nimport { ShortcutRegistry } from '@/lib/keyboard-shortcuts/registry';
+import { logger } from '@/lib/logger';
+import { ShortcutRegistry } from '@/lib/keyboard-shortcuts/registry';
 import { detectPlatform, matchesBinding, isInputFocused } from '@/lib/keyboard-shortcuts/utils';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 

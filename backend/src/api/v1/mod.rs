@@ -13,6 +13,7 @@ use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 use crate::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use crate::services::price_feed::PriceFeedClient;
+use std::sync::Arc;
 use crate::state::AppState;
 use axum::{
     middleware,
@@ -30,7 +31,7 @@ fn job_monitoring_routes(pool: sqlx::SqlitePool) -> Router {
         .route("/status", get(job_monitoring::get_job_status))
         .route("/health", get(job_monitoring::get_job_health))
         .route("/metrics", get(job_monitoring::get_job_metrics))
-        .with_state(Database::new(pool))
+        .with_state(Arc::new(Database::new(pool)))
 }
 
 #[derive(Serialize)]
