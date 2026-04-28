@@ -88,7 +88,7 @@ pub enum JobStatus {
 }
 
 /// Job execution record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct JobExecution {
     pub job_name: String,
     pub status: JobStatus,

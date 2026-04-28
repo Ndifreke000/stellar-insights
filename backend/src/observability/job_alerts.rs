@@ -343,6 +343,7 @@ impl WebhookAlertHandler {
     }
 }
 
+#[async_trait]
 impl AlertHandler for WebhookAlertHandler {
     async fn send_alert(&self, alert: &JobAlert) {
         let client = reqwest::Client::new();

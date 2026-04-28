@@ -22,8 +22,8 @@ impl WebhookSignature {
     pub fn sign(payload: &str, secret: &str) -> String {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
-        mac.update(payload.as_bytes());
-        format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
+        Mac::update(&mut mac, payload.as_bytes());
+        format!("sha256={}", hex::encode(Mac::finalize(mac).into_bytes()))
     }
 
     /// Verify webhook signature
