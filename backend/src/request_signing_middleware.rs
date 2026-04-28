@@ -62,9 +62,9 @@ pub async fn request_signing_middleware(
 
     let mut mac = HmacSha256::new_from_slice(signing_secret.as_ref().as_bytes())
         .map_err(|_| SigningError::Internal)?;
-    mac.update(timestamp.as_bytes());
-    mac.update(&body_bytes);
-    let expected = hex::encode(mac.finalize().into_bytes());
+    Mac::update(&mut mac, timestamp.as_bytes());
+    Mac::update(&mut mac, &body_bytes);
+    let expected = hex::encode(Mac::finalize(mac).into_bytes());
 
     if signature != expected {
         return Err(SigningError::InvalidSignature);

@@ -164,7 +164,8 @@ impl BackupManager {
         let bytes = tokio::fs::read(backup_path).await.with_context(|| {
             format!("Failed to read backup for checksum: {}", backup_path.display())
         })?;
-        let computed = format!("{:x}", Sha256::digest(&bytes));
+        let digest = Sha256::digest(&bytes);
+        let computed = hex::encode(digest);
 
         let sidecar = backup_path.with_extension("db.sha256");
         let checksum_ok = if sidecar.exists() {

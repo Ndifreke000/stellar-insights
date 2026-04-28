@@ -8,36 +8,45 @@ use prometheus::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use prometheus::{IntCounterVec, HistogramVec, IntGaugeVec, Opts, HistogramOpts};
 
 lazy_static! {
     // Job execution metrics
-    pub static ref JOB_EXECUTIONS_TOTAL: Counter = register_counter!(Opts::new(
-        "job_executions_total",
-        "Total number of job executions"
+    pub static ref JOB_EXECUTIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "job_executions_total",
+            "Total number of job executions"
+        ),
+        &["job_name", "status"]
     )
-    .label_names(vec!["job_name", "status"]))
     .expect("Failed to register job_executions_total counter");
 
-    pub static ref JOB_DURATION_SECONDS: Histogram = register_histogram!(HistogramOpts::new(
-        "job_duration_seconds",
-        "Job execution duration in seconds"
+    pub static ref JOB_DURATION_SECONDS: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "job_duration_seconds",
+            "Job execution duration in seconds"
+        )
+        .buckets(vec![0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0]),
+        &["job_name"]
     )
-    .label_names(vec!["job_name"])
-    .buckets(vec![0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0]))
     .expect("Failed to register job_duration_seconds histogram");
 
-    pub static ref JOB_FAILURES_TOTAL: Counter = register_counter!(Opts::new(
-        "job_failures_total",
-        "Total number of job failures"
+    pub static ref JOB_FAILURES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "job_failures_total",
+            "Total number of job failures"
+        ),
+        &["job_name", "error_type"]
     )
-    .label_names(vec!["job_name", "error_type"]))
     .expect("Failed to register job_failures_total counter");
 
-    pub static ref JOB_LAST_SUCCESS_TIMESTAMP: Gauge = register_gauge!(Opts::new(
-        "job_last_success_timestamp",
-        "Unix timestamp of last successful job execution"
+    pub static ref JOB_LAST_SUCCESS_TIMESTAMP: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "job_last_success_timestamp",
+            "Unix timestamp of last successful job execution"
+        ),
+        &["job_name"]
     )
-    .label_names(vec!["job_name"]))
     .expect("Failed to register job_last_success_timestamp gauge");
 
     pub static ref JOB_LAST_FAILURE_TIMESTAMP: Gauge = register_gauge!(Opts::new(

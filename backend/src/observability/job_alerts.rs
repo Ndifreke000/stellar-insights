@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use async_trait::async_trait;
 
 use crate::observability::job_metrics::{JobRegistry, JobStatus};
 
@@ -97,6 +98,7 @@ pub enum JobAlertSeverity {
 }
 
 /// Alert handler trait
+#[async_trait]
 pub trait AlertHandler: Send + Sync {
     async fn send_alert(&self, alert: &JobAlert);
 }
@@ -104,6 +106,7 @@ pub trait AlertHandler: Send + Sync {
 /// Console alert handler (logs to console)
 pub struct ConsoleAlertHandler;
 
+#[async_trait]
 impl AlertHandler for ConsoleAlertHandler {
     async fn send_alert(&self, alert: &JobAlert) {
         match alert.severity {
