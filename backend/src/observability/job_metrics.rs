@@ -2,13 +2,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter, register_gauge, register_histogram, Counter, Gauge, Histogram,
-    HistogramOpts, Opts,
+    IntCounterVec, HistogramVec, IntGaugeVec, Opts, HistogramOpts,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
-use prometheus::{IntCounterVec, HistogramVec, IntGaugeVec, Opts, HistogramOpts};
 
 lazy_static! {
     // Job execution metrics
@@ -49,25 +47,31 @@ lazy_static! {
     )
     .expect("Failed to register job_last_success_timestamp gauge");
 
-    pub static ref JOB_LAST_FAILURE_TIMESTAMP: Gauge = register_gauge!(Opts::new(
-        "job_last_failure_timestamp",
-        "Unix timestamp of last failed job execution"
+    pub static ref JOB_LAST_FAILURE_TIMESTAMP: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "job_last_failure_timestamp",
+            "Unix timestamp of last failed job execution"
+        ),
+        &["job_name"]
     )
-    .label_names(vec!["job_name"]))
     .expect("Failed to register job_last_failure_timestamp gauge");
 
-    pub static ref JOB_ACTIVE_STATUS: Gauge = register_gauge!(Opts::new(
-        "job_active_status",
-        "Whether a job is currently active (1) or inactive (0)"
+    pub static ref JOB_ACTIVE_STATUS: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "job_active_status",
+            "Whether a job is currently active (1) or inactive (0)"
+        ),
+        &["job_name"]
     )
-    .label_names(vec!["job_name"]))
     .expect("Failed to register job_active_status gauge");
 
-    pub static ref JOB_CONSECUTIVE_FAILURES: Gauge = register_gauge!(Opts::new(
-        "job_consecutive_failures",
-        "Number of consecutive failures for a job"
+    pub static ref JOB_CONSECUTIVE_FAILURES: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "job_consecutive_failures",
+            "Number of consecutive failures for a job"
+        ),
+        &["job_name"]
     )
-    .label_names(vec!["job_name"]))
     .expect("Failed to register job_consecutive_failures gauge");
 
     // Global job registry for status tracking

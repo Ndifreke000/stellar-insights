@@ -8,119 +8,125 @@ use axum::{
 };
 use lazy_static::lazy_static;
 use prometheus::{
-    gather, register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge,
-    Histogram, HistogramOpts, Opts, Registry, TextEncoder,
+    gather, IntCounter, IntGauge, Histogram, HistogramOpts, Opts, Registry, TextEncoder,
+    IntCounterVec, HistogramVec, Encoder,
 };
 
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
-    pub static ref HTTP_REQUESTS_TOTAL: Counter = register_counter!(
+    pub static ref HTTP_REQUESTS_TOTAL: IntCounter = IntCounter::new(
         "http_requests_total",
         "Total number of HTTP requests processed"
     )
     .expect("Failed to register http_requests_total counter");
     pub static ref HTTP_REQUEST_DURATION_SECONDS: Histogram =
-        register_histogram!(HistogramOpts::new(
+        Histogram::with_opts(HistogramOpts::new(
             "http_request_duration_seconds",
             "HTTP request duration in seconds with p50/p95/p99 buckets"
         )
         .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]))
         .expect("Failed to register http_request_duration_seconds histogram");
-    pub static ref HTTP_REQUEST_DURATION_BY_ENDPOINT: Histogram = register_histogram!(
+    pub static ref HTTP_REQUEST_DURATION_BY_ENDPOINT: HistogramVec = HistogramVec::new(
         HistogramOpts::new(
             "http_request_duration_by_endpoint_seconds",
             "HTTP request duration in seconds per endpoint"
         )
-        .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])
-        .label_names(vec!["method", "endpoint"])
+        .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]),
+        &["method", "endpoint"]
     )
     .expect("Failed to register http_request_duration_by_endpoint_seconds histogram");
-    pub static ref RPC_CALLS_TOTAL: Counter =
-        register_counter!("rpc_calls_total", "Total number of RPC calls made")
+    pub static ref RPC_CALLS_TOTAL: IntCounter =
+        IntCounter::new("rpc_calls_total", "Total number of RPC calls made")
             .expect("Failed to register rpc_calls_total counter");
-    pub static ref RPC_CALL_DURATION_SECONDS: Histogram = register_histogram!(HistogramOpts::new(
+    pub static ref RPC_CALL_DURATION_SECONDS: Histogram = Histogram::with_opts(HistogramOpts::new(
         "rpc_call_duration_seconds",
         "RPC call duration in seconds"
     ))
     .expect("Failed to register rpc_call_duration_seconds histogram");
-    pub static ref DB_QUERY_DURATION_SECONDS: Histogram = register_histogram!(HistogramOpts::new(
+    pub static ref DB_QUERY_DURATION_SECONDS: Histogram = Histogram::with_opts(HistogramOpts::new(
         "db_query_duration_seconds",
         "Database query duration in seconds"
     ))
     .expect("Failed to register db_query_duration_seconds histogram");
-    pub static ref CACHE_OPERATIONS_TOTAL: Counter =
-        register_counter!("cache_operations_total", "Total number of cache operations")
+    pub static ref CACHE_OPERATIONS_TOTAL: IntCounter =
+        IntCounter::new("cache_operations_total", "Total number of cache operations")
             .expect("Failed to register cache_operations_total counter");
-    pub static ref CACHE_HITS_TOTAL: Counter =
-        register_counter!("cache_hits_total", "Total number of cache hits")
+    pub static ref CACHE_HITS_TOTAL: IntCounter =
+        IntCounter::new("cache_hits_total", "Total number of cache hits")
             .expect("Failed to register cache_hits_total counter");
-    pub static ref CACHE_MISSES_TOTAL: Counter =
-        register_counter!("cache_misses_total", "Total number of cache misses")
+    pub static ref CACHE_MISSES_TOTAL: IntCounter =
+        IntCounter::new("cache_misses_total", "Total number of cache misses")
             .expect("Failed to register cache_misses_total counter");
-    pub static ref ERRORS_TOTAL: Counter =
-        register_counter!("errors_total", "Total number of errors encountered")
+    pub static ref ERRORS_TOTAL: IntCounter =
+        IntCounter::new("errors_total", "Total number of errors encountered")
             .expect("Failed to register errors_total counter");
-    pub static ref HTTP_ERRORS_TOTAL: Counter = register_counter!(Opts::new(
-        "http_errors_total",
-        "Total number of HTTP errors by status code"
+    pub static ref HTTP_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "http_errors_total",
+            "Total number of HTTP errors by status code"
+        ),
+        &["status_code", "method", "path"]
     )
-    .label_names(vec!["status_code", "method", "path"]))
     .expect("Failed to register http_errors_total counter");
-    pub static ref DB_ERRORS_TOTAL: Counter = register_counter!(Opts::new(
-        "db_errors_total",
-        "Total number of database errors by type"
+    pub static ref DB_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "db_errors_total",
+            "Total number of database errors by type"
+        ),
+        &["error_type", "query_type"]
     )
-    .label_names(vec!["error_type", "query_type"]))
     .expect("Failed to register db_errors_total counter");
-    pub static ref RPC_ERRORS_TOTAL: Counter = register_counter!(Opts::new(
-        "rpc_errors_total",
-        "Total number of RPC errors by method"
+    pub static ref RPC_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rpc_errors_total",
+            "Total number of RPC errors by method"
+        ),
+        &["method", "error_type"]
     )
-    .label_names(vec!["method", "error_type"]))
     .expect("Failed to register rpc_errors_total counter");
-    pub static ref BACKGROUND_JOBS_TOTAL: Counter = register_counter!(
+    pub static ref BACKGROUND_JOBS_TOTAL: IntCounter = IntCounter::new(
         "background_jobs_total",
         "Total number of background jobs executed"
     )
     .expect("Failed to register background_jobs_total counter");
-    pub static ref ACTIVE_CONNECTIONS: Gauge = register_gauge!(
+    pub static ref ACTIVE_CONNECTIONS: IntGauge = IntGauge::new(
         "active_connections",
         "Number of active websocket connections"
     )
     .expect("Failed to register active_connections gauge");
-    pub static ref CORRIDORS_TRACKED: Gauge =
-        register_gauge!("corridors_tracked", "Number of tracked corridors")
+    pub static ref CORRIDORS_TRACKED: IntGauge =
+        IntGauge::new("corridors_tracked", "Number of tracked corridors")
             .expect("Failed to register corridors_tracked gauge");
-    pub static ref HTTP_IN_FLIGHT_REQUESTS: Gauge = register_gauge!(
+    pub static ref HTTP_IN_FLIGHT_REQUESTS: IntGauge = IntGauge::new(
         "http_in_flight_requests",
         "Number of in-flight HTTP requests"
     )
     .expect("Failed to register http_in_flight_requests gauge");
-    pub static ref DB_POOL_SIZE: Gauge =
-        register_gauge!("db_pool_size", "Total database pool connections")
+    pub static ref DB_POOL_SIZE: IntGauge =
+        IntGauge::new("db_pool_size", "Total database pool connections")
             .expect("Failed to register db_pool_size gauge");
-    pub static ref DB_POOL_IDLE: Gauge =
-        register_gauge!("db_pool_idle", "Idle database pool connections")
+    pub static ref DB_POOL_IDLE: IntGauge =
+        IntGauge::new("db_pool_idle", "Idle database pool connections")
             .expect("Failed to register db_pool_idle gauge");
-    pub static ref DB_POOL_ACTIVE: Gauge =
-        register_gauge!("db_pool_active", "Active database pool connections")
+    pub static ref DB_POOL_ACTIVE: IntGauge =
+        IntGauge::new("db_pool_active", "Active database pool connections")
             .expect("Failed to register db_pool_active gauge");
-    pub static ref DB_POOL_CONNECTIONS_ACTIVE: Gauge = register_gauge!(
+    pub static ref DB_POOL_CONNECTIONS_ACTIVE: IntGauge = IntGauge::new(
         "db_pool_connections_active",
         "Number of active database pool connections"
     )
     .expect("Failed to register db_pool_connections_active gauge");
-    pub static ref DB_POOL_CONNECTIONS_IDLE: Gauge = register_gauge!(
+    pub static ref DB_POOL_CONNECTIONS_IDLE: IntGauge = IntGauge::new(
         "db_pool_connections_idle",
         "Number of idle database pool connections"
     )
     .expect("Failed to register db_pool_connections_idle gauge");
-    pub static ref DB_POOL_UTILIZATION: Gauge = register_gauge!(
+    pub static ref DB_POOL_UTILIZATION: IntGauge = IntGauge::new(
         "db_pool_utilization",
         "Database pool utilization ratio (active / total)"
     )
     .expect("Failed to register db_pool_utilization gauge");
-    pub static ref DB_POOL_WAIT_TIME_SECONDS: Histogram = register_histogram!(
+    pub static ref DB_POOL_WAIT_TIME_SECONDS: Histogram = Histogram::with_opts(
         HistogramOpts::new(
             "db_pool_wait_time_seconds",
             "Time spent waiting for a database pool connection"
@@ -128,48 +134,54 @@ lazy_static! {
         .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])
     )
     .expect("Failed to register db_pool_wait_time_seconds histogram");
-    pub static ref DB_POOL_ERRORS_TOTAL: Counter = register_counter!(
+    pub static ref DB_POOL_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
         Opts::new(
             "db_pool_errors_total",
             "Total number of database pool errors by kind"
-        )
-        .label_names(vec!["kind"])
+        ),
+        &["kind"]
     )
     .expect("Failed to register db_pool_errors_total counter");
-    pub static ref HTTP_REQUEST_SLO_VIOLATIONS: Counter = register_counter!(Opts::new(
-        "http_request_slo_violations_total",
-        "Total number of HTTP requests exceeding SLO targets"
+    pub static ref HTTP_REQUEST_SLO_VIOLATIONS: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "http_request_slo_violations_total",
+            "Total number of HTTP requests exceeding SLO targets"
+        ),
+        &["endpoint", "slo_target_ms"]
     )
-    .label_names(vec!["endpoint", "slo_target_ms"]))
     .expect("Failed to register http_request_slo_violations_total counter");
-    pub static ref HTTP_RESPONSES_COMPRESSED_TOTAL: Counter = register_counter!(
+    pub static ref HTTP_RESPONSES_COMPRESSED_TOTAL: IntCounter = IntCounter::new(
         "http_responses_compressed_total",
         "Total number of HTTP responses sent with compression (Content-Encoding set)"
     )
     .expect("Failed to register http_responses_compressed_total counter");
-    pub static ref DB_SLOW_QUERIES_TOTAL: Counter = register_counter!(Opts::new(
-        "db_slow_queries_total",
-        "Total number of slow database queries exceeding the configured threshold"
+    pub static ref DB_SLOW_QUERIES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "db_slow_queries_total",
+            "Total number of slow database queries exceeding the configured threshold"
+        ),
+        &["operation"]
     )
-    .label_names(vec!["operation"]))
     .expect("Failed to register db_slow_queries_total counter");
-    pub static ref DB_QUERY_DURATION_BY_OPERATION: Histogram = register_histogram!(
+    pub static ref DB_QUERY_DURATION_BY_OPERATION: HistogramVec = HistogramVec::new(
         HistogramOpts::new(
             "db_query_duration_by_operation_seconds",
             "Database query duration in seconds per operation"
         )
-        .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])
-        .label_names(vec!["operation", "status"])
+        .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]),
+        &["operation", "status"]
     )
     .expect("Failed to register db_query_duration_by_operation_seconds histogram");
-    pub static ref BACKUP_VERIFICATIONS_TOTAL: Counter = register_counter!(Opts::new(
-        "backup_verifications_total",
-        "Total number of backup verification attempts"
+    pub static ref BACKUP_VERIFICATIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "backup_verifications_total",
+            "Total number of backup verification attempts"
+        ),
+        &["result"]
     )
-    .label_names(vec!["result"]))
     .expect("Failed to register backup_verifications_total counter");
-    pub static ref BACKUP_SIZE_BYTES: Gauge =
-        register_gauge!("backup_size_bytes", "Size of the most recent backup in bytes")
+    pub static ref BACKUP_SIZE_BYTES: IntGauge =
+        IntGauge::new("backup_size_bytes", "Size of the most recent backup in bytes")
             .expect("Failed to register backup_size_bytes gauge");
 }
 
