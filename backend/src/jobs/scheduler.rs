@@ -5,7 +5,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::distributed_lock::DistributedLock;
-use crate::observability::job_metrics::instrument_job;
+use crate::instrument_job;
 
 use crate::cache::CacheManager;
 use crate::database::Database;

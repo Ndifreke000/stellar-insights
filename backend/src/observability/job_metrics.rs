@@ -127,14 +127,14 @@ pub struct JobRegistry {
 }
 
 #[derive(Debug, Clone)]
-struct JobInfo {
-    last_execution: Option<JobExecution>,
-    consecutive_failures: u64,
-    is_active: bool,
-    total_executions: u64,
-    total_failures: u64,
-    last_success_timestamp: Option<i64>,
-    last_failure_timestamp: Option<i64>,
+pub struct JobInfo {
+    pub last_execution: Option<JobExecution>,
+    pub consecutive_failures: u64,
+    pub is_active: bool,
+    pub total_executions: u64,
+    pub total_failures: u64,
+    pub last_success_timestamp: Option<i64>,
+    pub last_failure_timestamp: Option<i64>,
 }
 
 impl JobRegistry {
@@ -362,7 +362,7 @@ pub async fn get_job_status_summary() -> serde_json::Value {
             "last_failure_timestamp": info.last_failure_timestamp,
             "last_execution": info.last_execution.as_ref().map(|exec| {
                 match &exec.status {
-                    $crate::observability::job_metrics::JobStatus::Success => {
+                    JobStatus::Success => {
                         serde_json::json!({
                             "status": "success",
                             "started_at": exec.started_at.elapsed().as_secs(),
@@ -370,7 +370,7 @@ pub async fn get_job_status_summary() -> serde_json::Value {
                             "completed_at": exec.completed_at.map(|t| t.elapsed().as_secs())
                         })
                     }
-                    $crate::observability::job_metrics::JobStatus::Failed(err) => {
+                    JobStatus::Failed(err) => {
                         serde_json::json!({
                             "status": "failed",
                             "started_at": exec.started_at.elapsed().as_secs(),
@@ -379,7 +379,7 @@ pub async fn get_job_status_summary() -> serde_json::Value {
                             "error": err
                         })
                     }
-                    $crate::observability::job_metrics::JobStatus::Timeout => {
+                    JobStatus::Timeout => {
                         serde_json::json!({
                             "status": "timeout",
                             "started_at": exec.started_at.elapsed().as_secs(),
@@ -387,7 +387,7 @@ pub async fn get_job_status_summary() -> serde_json::Value {
                             "completed_at": exec.completed_at.map(|t| t.elapsed().as_secs())
                         })
                     }
-                    $crate::observability::job_metrics::JobStatus::Running => {
+                    JobStatus::Running => {
                         serde_json::json!({
                             "status": "running",
                             "started_at": exec.started_at.elapsed().as_secs(),

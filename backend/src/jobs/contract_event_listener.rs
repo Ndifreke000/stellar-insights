@@ -1,9 +1,9 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
-use crate::observability::job_metrics::instrument_job;
+use crate::instrument_job;
 
 use crate::database::Database;
 use crate::services::contract_listener::ListenerConfig;

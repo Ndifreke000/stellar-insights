@@ -3,9 +3,9 @@ use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
-use crate::observability::job_metrics::instrument_job;
+use crate::instrument_job;
 
 use crate::models::asset_verification::VerifiedAsset;
 use crate::services::asset_verifier::AssetVerifier;

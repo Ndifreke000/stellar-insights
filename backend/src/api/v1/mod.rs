@@ -22,7 +22,6 @@ use axum::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 /// Job monitoring routes
