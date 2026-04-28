@@ -7,6 +7,7 @@
 target/
 **/*.rs.bk
 *.pdb
+*.backup
 
 # Node dependencies - NEVER commit!
 **/node_modules/
@@ -19,6 +20,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Python cache - NEVER commit!
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
 # Database files - NEVER commit!
 *.db
@@ -35,6 +44,10 @@ stellar_insights.db
 .env.*.local
 .env.production
 .env.development
+
+# Test snapshots - NEVER commit!
+**/test_snapshots/
+test_snapshots/
 
 # ============================================
 # IDE and Editor files
