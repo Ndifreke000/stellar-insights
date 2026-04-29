@@ -62,7 +62,7 @@ tracing-opentelemetry = "0.28"
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
-ndarray = "0.15"
+ndarray = "0.17"
 rand = "0.8"
 redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager"] }
 async-lock = "3.3"
