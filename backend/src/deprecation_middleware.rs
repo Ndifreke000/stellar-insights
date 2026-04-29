@@ -24,7 +24,7 @@ pub type DeprecationMap = Arc<HashMap<&'static str, DeprecationConfig>>;
 /// Build the default deprecation registry.
 /// Add entries here as endpoints are deprecated.
 pub fn default_deprecation_map() -> DeprecationMap {
-    let mut map = HashMap::new();
+    let map = HashMap::new();
 
     // Example (uncomment and adjust when real endpoints are deprecated):
     // map.insert(

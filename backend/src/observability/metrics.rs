@@ -297,7 +297,7 @@ pub fn record_cache_miss() {
     CACHE_MISSES_TOTAL.inc();
 }
 
-pub fn record_error(error_type: &str) {
+pub fn record_error(_error_type: &str) {
     ERRORS_TOTAL.inc();
 }
 
@@ -323,7 +323,7 @@ pub fn record_rpc_error(method: &str, error_type: &str) {
 }
 
 pub fn set_active_connections(count: i64) {
-    ACTIVE_CONNECTIONS.set(count as f64);
+    ACTIVE_CONNECTIONS.set(count);
 }
 
 pub fn observe_db_query(operation: &str, status: &str, duration_seconds: f64) {
@@ -352,7 +352,7 @@ pub fn record_backup_verification_failure(reason: &str) {
 }
 
 pub fn set_backup_size_bytes(size: u64) {
-    BACKUP_SIZE_BYTES.set(size as f64);
+    BACKUP_SIZE_BYTES.set(size as i64);
 }
 
 pub fn record_background_job(_job: &str, _status: &str) {
@@ -360,34 +360,35 @@ pub fn record_background_job(_job: &str, _status: &str) {
 }
 
 pub fn set_corridors_tracked(count: i64) {
-    CORRIDORS_TRACKED.set(count as f64);
+    CORRIDORS_TRACKED.set(count);
 }
 
 pub fn set_pool_size(count: i64) {
-    DB_POOL_SIZE.set(count as f64);
+    DB_POOL_SIZE.set(count);
 }
 
 pub fn set_pool_idle(count: i64) {
-    DB_POOL_IDLE.set(count as f64);
+    DB_POOL_IDLE.set(count);
 }
 
 pub fn set_pool_active(count: i64) {
-    DB_POOL_ACTIVE.set(count as f64);
+    DB_POOL_ACTIVE.set(count);
 }
 
 pub fn set_pool_connections(active: u32, idle: usize, total: u32) {
-    DB_POOL_CONNECTIONS_ACTIVE.set(active as f64);
-    DB_POOL_CONNECTIONS_IDLE.set(idle as f64);
+    DB_POOL_CONNECTIONS_ACTIVE.set(active as i64);
+    DB_POOL_CONNECTIONS_IDLE.set(idle as i64);
+    // Calculate utilization as percentage (0-100) for IntGauge
     let utilization = if total > 0 {
-        active as f64 / total as f64
+        ((active as f64 / total as f64) * 100.0) as i64
     } else {
-        0.0
+        0
     };
     DB_POOL_UTILIZATION.set(utilization);
     // Keep legacy gauges in sync
-    DB_POOL_SIZE.set(total as f64);
-    DB_POOL_IDLE.set(idle as f64);
-    DB_POOL_ACTIVE.set(active as f64);
+    DB_POOL_SIZE.set(total as i64);
+    DB_POOL_IDLE.set(idle as i64);
+    DB_POOL_ACTIVE.set(active as i64);
 }
 
 pub fn observe_pool_wait_time(seconds: f64) {

@@ -12,7 +12,7 @@ use axum::{
     body::Body,
     extract::Request,
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use http_body_util::BodyExt;
 use std::time::Instant;

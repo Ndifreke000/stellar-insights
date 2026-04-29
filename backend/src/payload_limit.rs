@@ -1,7 +1,6 @@
 //! Middleware to limit request payload size and prevent DoS attacks
 
 use axum::{
-    body::Body,
     extract::Request,
     http::StatusCode,
     middleware::Next,

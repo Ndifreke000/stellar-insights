@@ -6,7 +6,7 @@ use prometheus::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 lazy_static! {
     // Job execution metrics
@@ -188,22 +188,22 @@ impl JobRegistry {
                 JobStatus::Success => {
                     info.consecutive_failures = 0;
                     info.last_success_timestamp = Some(now);
-                    JOB_LAST_SUCCESS_TIMESTAMP.with_label_values(&[job_name]).set(now as f64);
+                    JOB_LAST_SUCCESS_TIMESTAMP.with_label_values(&[job_name]).set(now);
                     JOB_CONSECUTIVE_FAILURES.with_label_values(&[job_name]).set(0);
                 }
-                JobStatus::Failed(error) => {
+                JobStatus::Failed(_error) => {
                     info.consecutive_failures += 1;
                     info.total_failures += 1;
                     info.last_failure_timestamp = Some(now);
-                    JOB_LAST_FAILURE_TIMESTAMP.with_label_values(&[job_name]).set(now as f64);
-                    JOB_CONSECUTIVE_FAILURES.with_label_values(&[job_name]).set(info.consecutive_failures as f64);
+                    JOB_LAST_FAILURE_TIMESTAMP.with_label_values(&[job_name]).set(now);
+                    JOB_CONSECUTIVE_FAILURES.with_label_values(&[job_name]).set(info.consecutive_failures as i64);
                 }
                 JobStatus::Timeout => {
                     info.consecutive_failures += 1;
                     info.total_failures += 1;
                     info.last_failure_timestamp = Some(now);
-                    JOB_LAST_FAILURE_TIMESTAMP.with_label_values(&[job_name]).set(now as f64);
-                    JOB_CONSECUTIVE_FAILURES.with_label_values(&[job_name]).set(info.consecutive_failures as f64);
+                    JOB_LAST_FAILURE_TIMESTAMP.with_label_values(&[job_name]).set(now);
+                    JOB_CONSECUTIVE_FAILURES.with_label_values(&[job_name]).set(info.consecutive_failures as i64);
                 }
                 JobStatus::Running => {} // Still running, shouldn't happen here
             }
@@ -346,7 +346,9 @@ macro_rules! instrument_job {
     ($job_name:expr, $async_block:block) => {{
         let _metrics = $crate::observability::job_metrics::JobMetricsCollector::new($job_name);
         
-        match async move $async_block.await {
+        let result = $async_block;
+        
+        match result {
             Ok(_) => {
                 _metrics.complete_success();
                 Ok(())

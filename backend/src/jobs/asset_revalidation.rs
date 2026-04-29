@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
 use tracing::{info, warn};
 
-use crate::instrument_job;
+use crate::observability::job_metrics::JobMetricsCollector;
 
 use crate::models::asset_verification::VerifiedAsset;
 use crate::services::asset_verifier::AssetVerifier;
@@ -64,7 +64,15 @@ impl AssetRevalidationJob {
         loop {
             ticker.tick().await;
 
-            instrument_job!("asset-revalidation", { self.run_revalidation().await });
+            let _metrics = JobMetricsCollector::new("asset-revalidation");
+            match self.run_revalidation().await {
+                Ok(_) => {
+                    _metrics.complete_success();
+                }
+                Err(e) => {
+                    _metrics.complete_failure(&e.to_string());
+                }
+            }
         }
     }
 

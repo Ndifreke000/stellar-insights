@@ -1,9 +1,9 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
-use crate::instrument_job;
+use crate::observability::job_metrics::JobMetricsCollector;
 
 use crate::database::Database;
 use crate::services::contract_listener::ListenerConfig;
@@ -83,24 +83,32 @@ impl ContractEventListenerJob {
         loop {
             interval.tick().await;
 
-            instrument_job!("contract-event-listener", {
-                match self
-                    .check_for_missed_events(&event_indexer, &listener_config)
-                    .await
-                {
-                    Ok(events_processed) => {
-                        if events_processed > 0 {
-                            info!("Processed {} missed contract events", events_processed);
-                        }
-                        Ok(())
+            let _metrics = JobMetricsCollector::new("contract-event-listener");
+            let result = match self
+                .check_for_missed_events(&event_indexer, &listener_config)
+                .await
+            {
+                Ok(events_processed) => {
+                    if events_processed > 0 {
+                        info!("Processed {} missed contract events", events_processed);
                     }
-                    Err(e) => {
-                        error!("Error checking for missed events: {}", e);
-                        // Continue running despite errors
-                        Err(e)
-                    }
+                    Ok(())
                 }
-            });
+                Err(e) => {
+                    error!("Error checking for missed events: {}", e);
+                    // Continue running despite errors
+                    Err(e)
+                }
+            };
+            
+            match result {
+                Ok(_) => {
+                    _metrics.complete_success();
+                }
+                Err(e) => {
+                    _metrics.complete_failure(&e.to_string());
+                }
+            }
         }
     }
 

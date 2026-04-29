@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::database::Database;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::observability::job_metrics::get_job_status_summary;
 
 /// Query parameters for job monitoring endpoints
@@ -162,7 +162,7 @@ pub async fn get_job_status(
             health_status,
         };
 
-        jobs.insert(name, job_detail);
+        jobs.insert(name.clone(), job_detail);
     }
 
     let overall_success_rate = if total_executions > 0 {

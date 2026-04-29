@@ -231,6 +231,18 @@ impl ApiError {
     }
 }
 
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound { message, .. } => write!(f, "{}", message),
+            Self::BadRequest { message, .. } => write!(f, "{}", message),
+            Self::InternalError { message, .. } => write!(f, "{}", message),
+            Self::Unauthorized { message, .. } => write!(f, "{}", message),
+            Self::ServiceUnavailable { message, .. } => write!(f, "{}", message),
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status_code();

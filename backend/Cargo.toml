@@ -60,7 +60,7 @@ opentelemetry_sdk = { version = "0.27", features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
 tracing-opentelemetry = "0.28"
 dotenvy = "0.15"
-sha2 = "0.11"
+sha2 = "0.10"
 hex = "0.4"
 ndarray = "0.15"
 rand = "0.8"

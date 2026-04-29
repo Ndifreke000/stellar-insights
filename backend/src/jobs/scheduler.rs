@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::distributed_lock::DistributedLock;
-use crate::instrument_job;
+use crate::observability::job_metrics::JobMetricsCollector;
 
 use crate::cache::CacheManager;
 use crate::database::Database;
@@ -92,8 +92,19 @@ impl JobScheduler {
                     info!("Job '{}' skipped — another instance holds the lock", config.name);
                     continue;
                 }
+                
+                // Execute job with metrics tracking
                 let job_name = config.name.clone();
-                instrument_job!(job_name.as_str(), { job_fn().await });
+                let _metrics = JobMetricsCollector::new(&job_name);
+                
+                match job_fn().await {
+                    Ok(_) => {
+                        _metrics.complete_success();
+                    }
+                    Err(e) => {
+                        _metrics.complete_failure(&e.to_string());
+                    }
+                }
             }
         });
 

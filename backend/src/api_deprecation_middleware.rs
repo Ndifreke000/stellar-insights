@@ -3,7 +3,7 @@ use axum::{
     extract::Request,
     http::HeaderValue,
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 
 /// Middleware to add deprecation headers to v1 endpoints
