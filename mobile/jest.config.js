@@ -12,7 +12,7 @@ module.exports = {
     '^@services/(.*)$': '<rootDir>/src/services/$1',
     '^@hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
-    '^@types/(.*)$': '<rootDir>/src/types/$1',
+    '^@appTypes/(.*)$': '<rootDir>/src/types/$1',
     '^@store/(.*)$': '<rootDir>/src/store/$1',
     '^@config/(.*)$': '<rootDir>/src/config/$1',
   },

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, AuthTokens } from '@types/index';
+import { User, AuthTokens } from '@appTypes/index';
 
 interface AuthState {
   user: User | null;

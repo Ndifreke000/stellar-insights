@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { StellarNetwork } from '@types/index';
+import { StellarNetwork } from '@appTypes/index';
 
 interface AppState {
   theme: 'light' | 'dark';

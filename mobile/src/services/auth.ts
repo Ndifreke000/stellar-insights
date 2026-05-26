@@ -1,7 +1,7 @@
 import * as Keychain from 'react-native-keychain';
 import { STORAGE_KEYS } from '@config/constants';
 import { useAuthStore } from '@store/authStore';
-import { AuthTokens, User } from '@types/index';
+import { AuthTokens, User } from '@appTypes/index';
 import { apiClient } from './api';
 import { storage } from './storage';
 
@@ -38,7 +38,9 @@ export async function clearAuthTokens(): Promise<void> {
 
 export async function refreshAuthTokens(): Promise<AuthTokens | null> {
   const { tokens } = useAuthStore.getState();
-  if (!tokens?.refreshToken) return null;
+  if (!tokens?.refreshToken) {
+    return null;
+  }
 
   try {
     const newTokens = await apiClient.post<AuthTokens>('/auth/refresh', {

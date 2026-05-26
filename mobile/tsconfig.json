@@ -4,8 +4,6 @@
     "target": "esnext",
     "lib": ["esnext"],
     "jsx": "react-native",
-    "module": "commonjs",
-    "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "strict": true,
@@ -20,7 +18,7 @@
       "@services/*": ["src/services/*"],
       "@hooks/*": ["src/hooks/*"],
       "@utils/*": ["src/utils/*"],
-      "@types/*": ["src/types/*"],
+      "@appTypes/*": ["src/types/*"],
       "@store/*": ["src/store/*"],
       "@config/*": ["src/config/*"]
     }
