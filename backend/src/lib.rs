@@ -52,4 +52,5 @@ pub mod webhooks;
 pub mod websocket;
 
 pub mod rpc;
+pub mod middleware;
 
