@@ -5,6 +5,7 @@ import {
   ReactNativeCompatibility,
   SDKError,
   SDKUnitTests,
+  TypeScriptTypes,
 } from "../src/index.js";
 
 describe("SDK extensions", () => {
@@ -90,6 +91,33 @@ describe("SDK extensions", () => {
     it("throws SDKError if event is invalid", async () => {
       const analytics = new AnalyticsAPIModule();
       await expect(analytics.execute({ event: "", payload: {} } as any)).rejects.toBeInstanceOf(SDKError);
+    });
+  });
+
+  describe("TypeScriptTypes", () => {
+    it("resolves successfully with valid typeName", async () => {
+      const ts = new TypeScriptTypes({ apiKey: "key" });
+      const result = await ts.execute({ typeName: "Anchor", verbose: true });
+      expect(result.success).toBe(true);
+      expect(result.data.typeName).toBe("Anchor");
+      expect(result.data.verbose).toBe(true);
+      expect(typeof result.data.resolvedAt).toBe("string");
+    });
+
+    it("attaches optional metadata to result", async () => {
+      const ts = new TypeScriptTypes();
+      const result = await ts.execute({ typeName: "Corridor", metadata: { version: 2 } });
+      expect(result.data.metadata).toEqual({ version: 2 });
+    });
+
+    it("throws SDKError when typeName is empty", async () => {
+      const ts = new TypeScriptTypes();
+      await expect(ts.execute({ typeName: "" } as any)).rejects.toBeInstanceOf(SDKError);
+    });
+
+    it("throws SDKError when typeName is missing", async () => {
+      const ts = new TypeScriptTypes();
+      await expect(ts.execute({} as any)).rejects.toBeInstanceOf(SDKError);
     });
   });
 });
