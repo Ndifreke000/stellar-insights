@@ -136,8 +136,8 @@ importers:
         specifier: 6.10.2
         version: 6.10.2(eslint@9.39.4(jiti@2.6.1))
       jest-axe:
-        specifier: 9.0.0
-        version: 9.0.0
+        specifier: 10.0.0
+        version: 10.0.0
       jsdom:
         specifier: 28.1.0
         version: 28.1.0(@noble/hashes@1.8.0)
@@ -2762,12 +2762,12 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  axe-core@4.11.3:
-    resolution: {integrity: sha512-zBQouZixDTbo3jMGqHKyePxYxr1e5W8UdTmBQ7sNtaA9M2bE32daxxPLS/jojhKOHxQ7LWwPjfiwf/fhaJWzlg==}
+  axe-core@4.10.2:
+    resolution: {integrity: sha512-RE3mdQ7P3FRSe7eqCWoeQ/Z9QXrtniSjp1wUjt5nRC3WIpz5rSCve6o3fsZ2aCpJtrZjSZgjwXAoTO5k4tEI0w==}
     engines: {node: '>=4'}
 
-  axe-core@4.9.1:
-    resolution: {integrity: sha512-QbUdXJVTpvUTHU7871ppZkdOLBeGUKBQWHkHrvN2V9IQWGMt61zf3B45BtzjxEJzYuj0JBjBZP/hmYS/R9pmAw==}
+  axe-core@4.11.3:
+    resolution: {integrity: sha512-zBQouZixDTbo3jMGqHKyePxYxr1e5W8UdTmBQ7sNtaA9M2bE32daxxPLS/jojhKOHxQ7LWwPjfiwf/fhaJWzlg==}
     engines: {node: '>=4'}
 
   axios@1.13.5:
@@ -4041,8 +4041,8 @@ packages:
     resolution: {integrity: sha512-YKnxXEekXKzhpf7CLYA0A+oDP8V0OhICNCr5lv96FvSsDEmrb0GKM776JgQvHTMjr7DTTPEVv/1Ciaw0uEWzBA==}
     engines: {node: '>=12'}
 
-  jest-axe@9.0.0:
-    resolution: {integrity: sha512-Xt7O0+wIpW31lv0SO1wQZUTyJE7DEmnDEZeTt9/S9L5WUywxrv8BrgvTuQEqujtfaQOcJ70p4wg7UUgK1E2F5g==}
+  jest-axe@10.0.0:
+    resolution: {integrity: sha512-9QR0M7//o5UVRnEUUm68IsGapHrcKGakYy9dKWWMX79LmeUKguDI6DREyljC5I13j78OUmtKLF5My6ccffLFBg==}
     engines: {node: '>= 16.0.0'}
 
   jest-diff@29.7.0:
@@ -8521,9 +8521,9 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axe-core@4.11.3: {}
+  axe-core@4.10.2: {}
 
-  axe-core@4.9.1: {}
+  axe-core@4.11.3: {}
 
   axios@1.13.5:
     dependencies:
@@ -9998,9 +9998,9 @@ snapshots:
 
   jerrypick@1.1.2: {}
 
-  jest-axe@9.0.0:
+  jest-axe@10.0.0:
     dependencies:
-      axe-core: 4.9.1
+      axe-core: 4.10.2
       chalk: 4.1.2
       jest-matcher-utils: 29.2.2
       lodash.merge: 4.6.2
