@@ -23,6 +23,7 @@ pub mod db;
 pub mod email;
 pub mod env_config;
 pub mod error;
+pub mod features;
 pub mod handlers; // Core handlers (pool_metrics, health_check, ingestion_status)
 pub mod health_check_enhanced; // Enhanced health check with mobile support
 pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
