@@ -1,0 +1,29 @@
+"use client";
+
+import React from "react";
+import { Calculator } from "lucide-react";
+import { CostCalculator } from "@/components/CostCalculator";
+
+export default function CalculatorPage() {
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+        <div>
+          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+            Payments // Cost Estimator
+          </div>
+          <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
+            <Calculator className="w-8 h-8 text-accent" />
+            Cost calculator
+          </h2>
+        </div>
+        <p className="text-muted-foreground text-sm max-w-xl">
+          Estimate exchange rates, slippage, network fees, and service fees for cross-border
+          payments. Compare routes and pick the most cost-efficient option.
+        </p>
+      </div>
+
+      <CostCalculator />
+    </div>
+  );
+}
