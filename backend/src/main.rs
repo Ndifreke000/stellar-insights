@@ -49,6 +49,7 @@ use stellar_insights_backend::{
         NetworkContextMiddleware, NetworkAwareRpcClient, MobilePaginationEndpoints,
         DatabaseSchemaSeparation, WebSocketRealTimeUpdates, ApiVersioning,
         DeprecationWarnings, MobileRequestLogging,
+        ConcurrencyLimitState, concurrency_limit_middleware, panic_recovery_middleware,
     },
 };
 
@@ -221,6 +222,13 @@ async fn main() -> anyhow::Result<()> {
         RateLimiter::new()
             .await
             .context("Failed to initialize rate limiter")?,
+    );
+
+    // Concurrency limiter — caps in-flight requests to prevent 500s under spike load
+    let concurrency_state = ConcurrencyLimitState::from_env();
+    tracing::info!(
+        max_in_flight = concurrency_state.current(),
+        "Concurrency limit initialized (MAX_IN_FLIGHT_REQUESTS env var, default 500)"
     );
 
     // Configure rate limits for expensive operations
@@ -454,6 +462,13 @@ async fn main() -> anyhow::Result<()> {
             db.clone(),
             stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
         ))
+        // Concurrency limiter — rejects excess requests with 503 instead of letting them pile up
+        .layer(middleware::from_fn_with_state(
+            concurrency_state,
+            concurrency_limit_middleware,
+        ))
+        // Panic recovery — converts handler panics to 500 JSON responses
+        .layer(middleware::from_fn(panic_recovery_middleware))
         // trace_propagation_middleware must be inside TraceLayer so a span already
         // exists when it calls set_parent(). In Axum's layer stack the last
         // .layer() is outermost (runs first), so placing trace_propagation_middleware

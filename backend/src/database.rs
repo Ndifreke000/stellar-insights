@@ -29,9 +29,12 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_connections: 50,
-            min_connections: 10,
-            connect_timeout_seconds: 30,
+            // Raised from 50 → 100 to handle higher concurrency before exhaustion
+            max_connections: 100,
+            // Keep a healthy minimum to avoid cold-start latency spikes
+            min_connections: 5,
+            // Shorter acquire timeout so callers get a fast 503 instead of hanging
+            connect_timeout_seconds: 10,
             idle_timeout_seconds: 600,
             max_lifetime_seconds: 1800,
         }
@@ -111,15 +114,15 @@ impl PoolConfig {
             max_connections: std::env::var("DB_POOL_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(50),
+                .unwrap_or(100),
             min_connections: std::env::var("DB_POOL_MIN_CONNECTIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(10),
+                .unwrap_or(5),
             connect_timeout_seconds: std::env::var("DB_POOL_CONNECT_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(30),
+                .unwrap_or(10),
             idle_timeout_seconds: std::env::var("DB_POOL_IDLE_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|s| s.parse().ok())

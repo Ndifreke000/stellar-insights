@@ -21,6 +21,8 @@ import { ShortcutHelpOverlay } from "@/components/keyboard-shortcuts/ShortcutHel
 import { ShortcutsInitializer } from "@/components/keyboard-shortcuts/ShortcutsInitializer";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { StateProvider } from "@/components/StateProvider";
+import { CommandPaletteProvider } from "@/contexts/CommandPaletteContext";
+import { CommandPalette } from "@/components/CommandPalette";
 
 type Props = {
   children: React.ReactNode;
@@ -63,6 +65,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         <ThemeProvider>
           <UserPreferencesProvider>
             <KeyboardShortcutsProvider>
+              <CommandPaletteProvider>
               <WalletProvider>
                 <NotificationProvider>
                   <StateProvider>
@@ -85,9 +88,11 @@ export default async function LocaleLayout({ children, params }: Props) {
                   <QuestProgressTracker />
                   <NotificationSystem />
                   <ShortcutHelpOverlay />
+                  <CommandPalette />
                   </StateProvider>
                 </NotificationProvider>
               </WalletProvider>
+              </CommandPaletteProvider>
             </KeyboardShortcutsProvider>
           </UserPreferencesProvider>
         </ThemeProvider>
