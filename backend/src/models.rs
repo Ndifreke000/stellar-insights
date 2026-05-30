@@ -8,6 +8,7 @@ pub mod api_gateway;
 pub mod asset_verification;
 pub mod corridor;
 pub mod rate_limiting_advanced;
+pub mod service_mesh;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
