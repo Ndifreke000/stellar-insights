@@ -25,6 +25,10 @@ import { AppIntentsComponent } from '@components/AppIntentsComponent';
 import { QuickActionsComponent } from '@components/QuickActionsComponent';
 import { ShareExtensionComponent } from '@components/ShareExtensionComponent';
 import { ActionExtensionComponent } from '@components/ActionExtensionComponent';
+import { ForceTouchComponent } from '@components/ForceTouchComponent';
+import { HandoffSupportComponent } from '@components/HandoffSupportComponent';
+import { GeofencingComponent } from '@components/GeofencingComponent';
+import { BackgroundSyncComponent } from '@components/BackgroundSyncComponent';
 
 export type CorridorsStackParamList = {
   CorridorsList: undefined;
@@ -61,6 +65,10 @@ export type MainTabParamList = {
   QuickActions: undefined;
   ShareExtension: undefined;
   ActionExtension: undefined;
+  ForceTouch: undefined;
+  HandoffSupport: undefined;
+  Geofencing: undefined;
+  BackgroundSync: undefined;
   Settings: undefined;
 };
 
@@ -152,11 +160,7 @@ export function MainNavigator() {
         component={CorridorsNavigator}
         options={{ headerShown: false }}
       />
-      <Tab.Screen
-        name="Anchors"
-        component={AnchorsNavigator}
-        options={{ headerShown: false }}
-      />
+      <Tab.Screen name="Anchors" component={AnchorsNavigator} options={{ headerShown: false }} />
       <Tab.Screen
         name="OfflineQueue"
         component={OfflineQueue}
@@ -241,6 +245,26 @@ export function MainNavigator() {
         name="ActionExtension"
         component={ActionExtensionComponent}
         options={{ title: 'Actions' }}
+      />
+      <Tab.Screen
+        name="ForceTouch"
+        component={ForceTouchComponent}
+        options={{ title: 'Force Touch' }}
+      />
+      <Tab.Screen
+        name="HandoffSupport"
+        component={HandoffSupportComponent}
+        options={{ title: 'Handoff' }}
+      />
+      <Tab.Screen
+        name="Geofencing"
+        component={GeofencingComponent}
+        options={{ title: 'Geofencing' }}
+      />
+      <Tab.Screen
+        name="BackgroundSync"
+        component={BackgroundSyncComponent}
+        options={{ title: 'Background Sync' }}
       />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>

@@ -40,6 +40,10 @@ const linking: LinkingOptions<RootStackParamList> = {
           QuickActions: 'quick-actions',
           ShareExtension: 'share-extension',
           ActionExtension: 'action-extension',
+          ForceTouch: 'force-touch',
+          HandoffSupport: 'handoff-support',
+          Geofencing: 'geofencing',
+          BackgroundSync: 'background-sync',
         },
       },
       Auth: {
