@@ -45,6 +45,10 @@ const linking: LinkingOptions<RootStackParamList> = {
           Geofencing: 'geofencing',
           BackgroundSync: 'background-sync',
           GestureControls: 'gesture-controls',
+          BarcodeScanner: 'barcode-scanner',
+          FingerprintScanner: 'fingerprint-scanner',
+          FaceRecognition: 'face-recognition',
+          VoiceCommands: 'voice-commands',
         },
       },
       Auth: {

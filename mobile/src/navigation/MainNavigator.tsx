@@ -30,6 +30,10 @@ import { ForceTouchComponent } from '@components/ForceTouchComponent';
 import { HandoffSupportComponent } from '@components/HandoffSupportComponent';
 import { GeofencingComponent } from '@components/GeofencingComponent';
 import { BackgroundSyncComponent } from '@components/BackgroundSyncComponent';
+import { BarcodeScannerComponent } from '../features/barcode_scanner/BarcodeScannerComponent';
+import { FingerprintScannerComponent } from '../features/fingerprint_scanner/FingerprintScannerComponent';
+import { FaceRecognitionComponent } from '../features/face_recognition/FaceRecognitionComponent';
+import { VoiceCommandsComponent } from '../features/voice_commands/VoiceCommandsComponent';
 
 export type CorridorsStackParamList = {
   CorridorsList: undefined;
@@ -71,6 +75,10 @@ export type MainTabParamList = {
   Geofencing: undefined;
   BackgroundSync: undefined;
   GestureControls: undefined;
+  BarcodeScanner: undefined;
+  FingerprintScanner: undefined;
+  FaceRecognition: undefined;
+  VoiceCommands: undefined;
   Settings: undefined;
 };
 
@@ -272,6 +280,26 @@ export function MainNavigator() {
         name="GestureControls"
         component={GestureControlsComponent}
         options={{ title: 'Gesture Controls' }}
+      />
+      <Tab.Screen
+        name="BarcodeScanner"
+        component={BarcodeScannerComponent}
+        options={{ title: 'Barcode Scanner' }}
+      />
+      <Tab.Screen
+        name="FingerprintScanner"
+        component={FingerprintScannerComponent}
+        options={{ title: 'Fingerprint' }}
+      />
+      <Tab.Screen
+        name="FaceRecognition"
+        component={FaceRecognitionComponent}
+        options={{ title: 'Face Recognition' }}
+      />
+      <Tab.Screen
+        name="VoiceCommands"
+        component={VoiceCommandsComponent}
+        options={{ title: 'Voice' }}
       />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
