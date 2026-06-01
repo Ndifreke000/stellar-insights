@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   isBiometricSupported,
   isPlatformAuthenticatorAvailable,
-  isStaleCredential,
+  CREDENTIAL_VERSION,
   loadCredential,
   registerBiometric,
   authenticateWithBiometric,
@@ -95,12 +95,17 @@ export function useBiometricAuth(userId: string): UseBiometricAuthReturn {
     setState('idle');
   }, []);
 
+  const isStale =
+    credential !== null &&
+    (credential.version < CREDENTIAL_VERSION ||
+      (credential.expiresAt !== undefined && credential.expiresAt < Date.now()));
+
   return {
     state,
     error,
     isSupported,
     isEnrolled: credential !== null,
-    isStale: isStaleCredential(userId),
+    isStale,
     credential,
     authenticate,
     register,
