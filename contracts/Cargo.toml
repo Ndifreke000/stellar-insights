@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+  "example-contract",
+  "snapshot-contract",
+  "stellar_insights",
+  "analytics",
+  "governance",
+]
+
+# Clippy linting configuration for all contracts
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[workspace.dependencies]
+soroban-sdk = "21.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+# For more information about this profile see https://soroban.stellar.org/docs/basic-tutorials/logging#cargotoml-profile
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

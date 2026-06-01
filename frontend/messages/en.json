@@ -1,0 +1,163 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "search": "Search",
+    "refresh": "Refresh"
+  },
+  "metadata": {
+    "title": "Stellar Insights - Payment Network Intelligence",
+    "description": "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity."
+  },
+  "layout": {
+    "sidebar": {
+      "stellarInsights": "INSIGHTS",
+      "home": "Home",
+      "terminal": "Terminal",
+      "corridors": "Corridors",
+      "network": "Network",
+      "analytics": "Analytics",
+      "apiUsage": "API Usage",
+      "trustlines": "Trustlines",
+      "networkHealth": "Network Health",
+      "liquidity": "Liquidity",
+      "pools": "Pools",
+      "sep6": "SEP-6",
+      "calculator": "Calculator",
+      "apiKeys": "API Keys",
+      "quests": "Quests",
+      "governance": "Governance",
+      "privacy": "Privacy",
+      "settings": "Settings",
+      "collapse": "Collapse",
+      "systemNominal": "System Nominal"
+    }
+  },
+  "navbar": {
+    "liveNetwork": "LIVE NETWORK",
+    "aboutUs": "About Us",
+    "howToUse": "How to Use",
+    "contactUs": "Contact Us",
+    "learnAbout": "Learn about Stellar Insights",
+    "getStarted": "Get started with our platform",
+    "reachOut": "Reach out to our team",
+    "stellarInsights": "Stellar Insights",
+    "toggleMenu": "Toggle navigation menu"
+  },
+  "home": {
+    "hero": {
+      "liveBadge": "Live Network Intelligence Active",
+      "title": "QUANTIFYING",
+      "titleHighlight": "NETWORK TRUST",
+      "subtitle": "Stellar Insights provides institutional-grade telemetry for the Stellar payment network. Move beyond transaction counting; analyze liquidity depth, corridor reliability, and settlement finality in real-time.",
+      "enterTerminal": "Enter Terminal",
+      "connectIdentity": "Connect Identity",
+      "initializing": "Initializing..."
+    },
+    "tickers": {
+      "usdcBrl": "USDC/BRL",
+      "xlmEur": "XLM/EUR",
+      "networkTvl": "Network TVL",
+      "successRate": "Success Rate"
+    },
+    "capabilities": {
+      "globalCorridors": "Global Corridors",
+      "globalCorridorsDesc": "Detailed health analysis of cross-border payment paths. Monitor uptime, liquidity bottlenecks, and anchor performance across 50+ fiat pairs.",
+      "deepTelemetry": "Deep Telemetry",
+      "deepTelemetryDesc": "Beyond surface-level TPS. We analyze ledger-level settlement data to provide true speed-to-finality distribution for payment operations.",
+      "predictiveTrust": "Predictive Trust",
+      "predictiveTrustDesc": "Our ML engine predicts corridor success probability, helping you route high-value payments through the most resilient network nodes."
+    },
+    "cta": {
+      "title": "Ready to integrate network intelligence?",
+      "subtitle": "Join the forward-thinking anchors and wallets already using Stellar Insights to optimize their liquidity management and payment reliability.",
+      "launchTerminal": "Launch Terminal",
+      "readSpec": "Read Specification"
+    },
+    "footer": {
+      "stellarInsights": "Stellar Insights",
+      "networkStatus": "Network Status",
+      "apiKeys": "API Keys",
+      "governance": "Governance",
+      "copyright": "© 2026 STELLAR_INSIGHTS // v1.4.0-STABLE"
+    }
+  },
+  "contact": {
+    "title": "Contact Us",
+    "heading": "We'd Love to Hear From You",
+    "headingBefore": "We'd Love to ",
+    "headingHighlight": "Hear From You",
+    "subtitle": "Have a question, found a bug, or want to partner with us? Reach out via the form below or any of our channels.",
+    "otherChannels": "Other Channels",
+    "channels": {
+      "email": "Email",
+      "github": "GitHub",
+      "twitter": "Twitter / X"
+    },
+    "emailHint": "Response within 24 hours",
+    "githubHint": "Open issues & feature requests",
+    "twitterHint": "News & quick support",
+    "form": {
+      "name": "Name",
+      "email": "Email",
+      "subject": "Subject",
+      "message": "Message",
+      "send": "Send Message",
+      "sendAnother": "Send another message",
+      "messageSent": "Message Sent!",
+      "thanks": "Thanks for reaching out. We'll get back to you within 24 hours.",
+      "sending": "Sending…",
+      "sendMessage": "Send Message",
+      "sectionTitle": "Send a Message",
+      "selectTopic": "Select a topic…",
+      "placeholders": {
+        "name": "Jane Doe",
+        "email": "jane@example.com",
+        "message": "Tell us how we can help…"
+      },
+      "options": {
+        "support": "Technical Support",
+        "bug": "Bug Report",
+        "feature": "Feature Request",
+        "partnership": "Partnership",
+        "other": "Other"
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Terminal",
+    "successRate": "Success Rate",
+    "activeCorridors": "Active Corridors",
+    "liquidityDepth": "Liquidity Depth",
+    "settlementSpeed": "Settlement Speed",
+    "paymentSuccessRate": "Payment Success Rate",
+    "avgSettlementSpeed": "Avg Settlement Speed",
+    "topAssets": "Top Assets",
+    "topCorridors": "Top Corridors",
+    "networkOverview": "Network Overview",
+    "intelligenceTerminal": "Intelligence Terminal // 01",
+    "loading": "Initialising Terminal... // System Handshake",
+    "error": "Terminal Error",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "lastUpdated": "Last updated",
+    "lastUpdate": "Last Update",
+    "nextRefreshIn": "Next refresh in",
+    "noDataYet": "No data yet",
+    "refreshNow": "Refresh now",
+    "reconnect": "Reconnect",
+    "connecting": "Connecting...",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "attempts": "attempts",
+    "failedToFetch": "Failed to fetch dashboard data",
+    "waitingLiquidity": "Waiting for Liquidity Data...",
+    "waitingAsset": "Waiting for Asset Data...",
+    "waitingCorridor": "Waiting for Corridor Data...",
+    "waitingSettlement": "Waiting for Settlement Data..."
+  }
+}

@@ -1,0 +1,288 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stellar-insights-backend
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: backend
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero downtime
+  selector:
+    matchLabels:
+      app: stellar-insights
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: stellar-insights
+        component: backend
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: stellar-insights-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # Init container for database migrations
+      initContainers:
+      - name: db-migration
+        image: stellar-insights/backend:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Running database migrations..."
+            sqlx migrate run
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: stellar-insights-secrets
+              key: database-url
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      
+      containers:
+      - name: backend
+        image: stellar-insights/backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        
+        env:
+        # Database Configuration
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: stellar-insights-secrets
+              key: database-url
+        
+        # Redis Configuration
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: stellar-insights-secrets
+              key: redis-url
+        
+        # JWT Secret
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stellar-insights-secrets
+              key: jwt-secret
+        
+        # Encryption Key
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stellar-insights-secrets
+              key: encryption-key
+        
+        # Server Configuration
+        - name: SERVER_HOST
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8080"
+        
+        # Stellar Network Configuration
+        - name: STELLAR_NETWORK
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: stellar-network
+        
+        - name: STELLAR_RPC_URL_MAINNET
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: stellar-rpc-url-mainnet
+        
+        - name: STELLAR_HORIZON_URL_MAINNET
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: stellar-horizon-url-mainnet
+        
+        # Logging
+        - name: RUST_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: rust-log
+        
+        - name: LOG_FORMAT
+          value: "json"
+        
+        # CORS Configuration
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: cors-allowed-origins
+        
+        # Database Pool Configuration
+        - name: DB_POOL_MAX_CONNECTIONS
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: db-pool-max-connections
+        
+        - name: DB_POOL_MIN_CONNECTIONS
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: db-pool-min-connections
+        
+        # Admin IP Whitelist
+        - name: ADMIN_IP_WHITELIST
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: admin-ip-whitelist
+        
+        - name: ADMIN_IP_TRUST_PROXY
+          value: "true"
+        
+        # Observability
+        - name: OTEL_ENABLED
+          value: "true"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: stellar-insights-config
+              key: otel-endpoint
+              optional: true
+        
+        # Health check endpoints
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Startup probe for slow-starting containers
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 30  # 150 seconds max startup time
+        
+        # Resource management
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            ephemeral-storage: "1Gi"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+            ephemeral-storage: "2Gi"
+        
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+        
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+        - name: logs
+          mountPath: /app/logs
+      
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      
+      # Pod scheduling
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                  - backend
+              topologyKey: kubernetes.io/hostname
+      
+      # Tolerations for node taints
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

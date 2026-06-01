@@ -1,0 +1,528 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* WCAG AA Compliant Colors */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-disabled: var(--text-disabled);
+  --color-link-primary: var(--link-primary);
+  --color-link-hover: var(--link-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Dark Theme (Default) ─────────────────────────────────────────────── */
+:root {
+  --background: #020617;
+  --foreground: #f8fafc;
+
+  --card: rgba(15, 23, 42, 0.6);
+  --card-foreground: #f8fafc;
+
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+
+  --border: rgba(51, 65, 85, 0.5);
+
+  --muted: #1e293b;
+  --muted-foreground: #cbd5e1; /* Slate-300: 9.2:1 on dark bg - WCAG AA ✅ */
+
+  /* WCAG AA Compliant Text Colors - Dark Mode */
+  --text-primary: #f8fafc; /* Slate-50: 17.4:1 ✅ */
+  --text-secondary: #e2e8f0; /* Slate-200: 13.6:1 ✅ */
+  --text-muted: #cbd5e1; /* Slate-300: 9.2:1 ✅ */
+  --text-disabled: #94a3b8; /* Slate-400: 5.3:1 ✅ */
+
+  /* WCAG AA Compliant Link Colors - Dark Mode */
+  --link-primary: #60a5fa; /* Blue-400: 5.1:1 ✅ */
+  --link-hover: #93c5fd; /* Blue-300: 7.8:1 ✅ */
+
+  /* WCAG AA Compliant Status Colors - Dark Mode */
+  --success: #34d399; /* Emerald-400: 5.2:1 ✅ */
+  --warning: #fbbf24; /* Amber-400: 10.1:1 ✅ */
+  --error: #f87171; /* Red-400: 5.1:1 ✅ */
+
+  /* Theme-aware alpha channels for glassmorphism & overlays */
+  --glass-bg: rgba(15, 23, 42, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-card-from: rgba(30, 41, 59, 0.7);
+  --glass-card-to: rgba(15, 23, 42, 0.8);
+  --glass-card-border: rgba(255, 255, 255, 0.05);
+  --glass-card-shadow: rgba(0, 0, 0, 0.8);
+  --glow-accent-shadow: rgba(99, 102, 241, 0.2);
+  --glow-success-shadow: rgba(34, 197, 94, 0.2);
+
+  /* Navbar */
+  --navbar-scrolled-bg: rgba(2, 6, 23, 0.75);
+  --navbar-scrolled-border: rgba(99, 102, 241, 0.15);
+  --navbar-scrolled-shadow: rgba(0, 0, 0, 0.4);
+  --navbar-link-hover-bg: rgba(255, 255, 255, 0.05);
+  --navbar-link-hover-border: rgba(99, 102, 241, 0.2);
+  --navbar-link-active-bg: rgba(99, 102, 241, 0.1);
+  --navbar-link-active-border: rgba(99, 102, 241, 0.25);
+  --navbar-hamburger-border: rgba(255, 255, 255, 0.08);
+  --navbar-hamburger-bg: rgba(255, 255, 255, 0.03);
+  --navbar-hamburger-hover-bg: rgba(99, 102, 241, 0.12);
+  --navbar-mobile-panel-bg: rgba(2, 6, 23, 0.92);
+  --navbar-mobile-panel-border: rgba(99, 102, 241, 0.1);
+  --navbar-mobile-link-hover-bg: rgba(255, 255, 255, 0.04);
+  --navbar-mobile-link-hover-border: rgba(99, 102, 241, 0.15);
+  --navbar-mobile-link-active-bg: rgba(99, 102, 241, 0.1);
+  --navbar-mobile-link-active-border: rgba(99, 102, 241, 0.25);
+  --navbar-mobile-icon-bg: rgba(99, 102, 241, 0.12);
+
+  /* Contact form */
+  --contact-input-border: rgba(51, 65, 85, 0.5);
+  --contact-input-bg: rgba(15, 23, 42, 0.5);
+  --contact-input-focus-border: rgba(99, 102, 241, 0.5);
+  --contact-input-focus-shadow: rgba(99, 102, 241, 0.1);
+  --contact-option-bg: #0f172a;
+
+  /* Sidebar hover */
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+}
+
+/* ─── Light Theme ──────────────────────────────────────────────────────── */
+html.light,
+[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+
+  --card: rgba(255, 255, 255, 0.85);
+  --card-foreground: #0f172a;
+
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+
+  --border: rgba(148, 163, 184, 0.35);
+
+  --muted: #e2e8f0;
+  --muted-foreground: #334155; /* Slate-700: 10.8:1 on light bg - WCAG AA ✅ */
+
+  /* WCAG AA Compliant Text Colors - Light Mode */
+  --text-primary: #0f172a; /* Slate-900: 16.1:1 ✅ */
+  --text-secondary: #1e293b; /* Slate-800: 13.1:1 ✅ */
+  --text-muted: #334155; /* Slate-700: 10.8:1 ✅ */
+  --text-disabled: #475569; /* Slate-600: 7.5:1 ✅ */
+
+  /* WCAG AA Compliant Link Colors - Light Mode */
+  --link-primary: #2563eb; /* Blue-600: 5.9:1 ✅ */
+  --link-hover: #1d4ed8; /* Blue-700: 8.2:1 ✅ */
+
+  /* WCAG AA Compliant Status Colors - Light Mode */
+  --success: #047857; /* Emerald-700: 5.1:1 ✅ */
+  --warning: #b45309; /* Amber-700: 4.7:1 ✅ */
+  --error: #dc2626; /* Red-600: 5.9:1 ✅ */
+
+  /* Glassmorphism – light variant */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(148, 163, 184, 0.25);
+  --glass-card-from: rgba(255, 255, 255, 0.8);
+  --glass-card-to: rgba(241, 245, 249, 0.9);
+  --glass-card-border: rgba(148, 163, 184, 0.15);
+  --glass-card-shadow: rgba(0, 0, 0, 0.08);
+  --glow-accent-shadow: rgba(79, 70, 229, 0.15);
+  --glow-success-shadow: rgba(22, 163, 74, 0.15);
+
+  /* Navbar – light */
+  --navbar-scrolled-bg: rgba(248, 250, 252, 0.82);
+  --navbar-scrolled-border: rgba(79, 70, 229, 0.12);
+  --navbar-scrolled-shadow: rgba(0, 0, 0, 0.06);
+  --navbar-link-hover-bg: rgba(0, 0, 0, 0.04);
+  --navbar-link-hover-border: rgba(79, 70, 229, 0.18);
+  --navbar-link-active-bg: rgba(79, 70, 229, 0.08);
+  --navbar-link-active-border: rgba(79, 70, 229, 0.22);
+  --navbar-hamburger-border: rgba(0, 0, 0, 0.08);
+  --navbar-hamburger-bg: rgba(0, 0, 0, 0.02);
+  --navbar-hamburger-hover-bg: rgba(79, 70, 229, 0.1);
+  --navbar-mobile-panel-bg: rgba(248, 250, 252, 0.96);
+  --navbar-mobile-panel-border: rgba(79, 70, 229, 0.1);
+  --navbar-mobile-link-hover-bg: rgba(0, 0, 0, 0.03);
+  --navbar-mobile-link-hover-border: rgba(79, 70, 229, 0.12);
+  --navbar-mobile-link-active-bg: rgba(79, 70, 229, 0.08);
+  --navbar-mobile-link-active-border: rgba(79, 70, 229, 0.22);
+  --navbar-mobile-icon-bg: rgba(79, 70, 229, 0.1);
+
+  /* Contact form – light */
+  --contact-input-border: rgba(148, 163, 184, 0.4);
+  --contact-input-bg: rgba(255, 255, 255, 0.7);
+  --contact-input-focus-border: rgba(79, 70, 229, 0.5);
+  --contact-input-focus-shadow: rgba(79, 70, 229, 0.08);
+  --contact-option-bg: #ffffff;
+
+  /* Sidebar hover – light */
+  --sidebar-hover-bg: rgba(0, 0, 0, 0.04);
+}
+
+/* ─── Smooth theme transitions ─────────────────────────────────────────── */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    fill 0.3s ease,
+    stroke 0.3s ease !important;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Glassmorphism Utilities ──────────────────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    var(--glass-card-from) 0%,
+    var(--glass-card-to) 100%
+  );
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-card-border);
+  box-shadow: 0 8px 32px 0 var(--glass-card-shadow);
+}
+
+/* ─── Data Glow Effects ────────────────────────────────────────────────── */
+.glow-accent {
+  box-shadow: 0 0 20px var(--glow-accent-shadow);
+}
+
+.glow-success {
+  box-shadow: 0 0 20px var(--glow-success-shadow);
+}
+
+/* ─── Animations ───────────────────────────────────────────────────────── */
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ─── Scrollbar Customization ──────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* ─── Sidebar offset CSS variable ──────────────────────────────────────── */
+:root {
+  --sidebar-offset: 5rem;
+  /* collapsed sidebar = 80px */
+}
+
+@media (max-width: 767px) {
+  :root {
+    --sidebar-offset: 0rem;
+  }
+}
+
+/* ─── Navbar ───────────────────────────────────────────────────────────── */
+.navbar-default {
+  background: transparent;
+  border-bottom: 1px solid transparent;
+}
+
+.navbar-scrolled {
+  background: var(--navbar-scrolled-bg);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--navbar-scrolled-border);
+  box-shadow: 0 4px 32px var(--navbar-scrolled-shadow);
+}
+
+.navbar-inner {
+  max-width: 100%;
+}
+
+/* Live badge */
+.navbar-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.7);
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+}
+
+.navbar-live-text {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Nav links */
+.navbar-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navbar-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+  position: relative;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navbar-link:hover {
+  color: var(--foreground);
+  background: var(--navbar-link-hover-bg);
+  border-color: var(--navbar-link-hover-border);
+}
+
+.navbar-link--active {
+  color: var(--accent);
+  background: var(--navbar-link-active-bg);
+  border-color: var(--navbar-link-active-border);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
+}
+
+.navbar-link-indicator {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.8);
+  margin-left: 2px;
+}
+
+/* Brand tag (right side) */
+.navbar-brand-tag {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+}
+
+/* Hamburger */
+.navbar-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--navbar-hamburger-border);
+  color: var(--muted-foreground);
+  background: var(--navbar-hamburger-bg);
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.navbar-hamburger:hover {
+  background: var(--navbar-hamburger-hover-bg);
+  color: var(--accent);
+  border-color: var(--navbar-link-active-border);
+}
+
+/* Mobile panel */
+.navbar-mobile-panel {
+  overflow: hidden;
+  max-height: 0;
+  transition:
+    max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.25s ease;
+  opacity: 0;
+  background: var(--navbar-mobile-panel-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--navbar-mobile-panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px;
+}
+
+.navbar-mobile-panel.open {
+  max-height: 400px;
+  opacity: 1;
+  padding: 12px;
+}
+
+.navbar-mobile-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.navbar-mobile-link:hover {
+  background: var(--navbar-mobile-link-hover-bg);
+  color: var(--foreground);
+  border-color: var(--navbar-mobile-link-hover-border);
+}
+
+.navbar-mobile-link--active {
+  background: var(--navbar-mobile-link-active-bg);
+  color: var(--accent);
+  border-color: var(--navbar-mobile-link-active-border);
+}
+
+.navbar-mobile-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--navbar-mobile-icon-bg);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ─── Theme Toggle Button ─────────────────────────────────────────────── */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--navbar-hamburger-border);
+  color: var(--muted-foreground);
+  background: var(--navbar-hamburger-bg);
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--navbar-hamburger-hover-bg);
+  color: var(--accent);
+  border-color: var(--navbar-link-active-border);
+  box-shadow: 0 0 12px var(--glow-accent-shadow);
+}
+
+/* ─── Contact Form ─────────────────────────────────────────────────────── */
+.contact-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.contact-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--contact-input-border);
+  background: var(--contact-input-bg);
+  color: var(--foreground);
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.contact-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.contact-input:focus {
+  border-color: var(--contact-input-focus-border);
+  box-shadow: 0 0 0 3px var(--contact-input-focus-shadow);
+}
+
+.contact-input option {
+  background: var(--contact-option-bg);
+  color: var(--foreground);
+}

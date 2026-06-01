@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: database
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: stellar-insights
+    component: database
+  sessionAffinity: None

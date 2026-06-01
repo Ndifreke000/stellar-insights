@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stellar-insights-frontend
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: stellar-insights
+      component: frontend
+  unhealthyPodEvictionPolicy: IfHealthyBudget

@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stellar-insights-backend
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: backend
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: stellar-insights
+      component: backend
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stellar-insights-backend-metrics
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    component: backend
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  selector:
+    app: stellar-insights
+    component: backend

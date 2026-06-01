@@ -1,0 +1,158 @@
+{
+  "title": "Stellar Insights Backend Observability",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "tags": [
+    "stellar-insights",
+    "backend",
+    "observability"
+  ],
+  "panels": [
+    {
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (endpoint, method) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{method}} {{endpoint}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "title": "HTTP Avg Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (rate(http_request_duration_seconds_sum[5m])) / clamp_min(sum by (endpoint) (rate(http_request_duration_seconds_count[5m])), 0.0001)",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "title": "RPC Call Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (method, status) (rate(rpc_calls_total[5m]))",
+          "legendFormat": "{{method}} ({{status}})"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "title": "RPC Avg Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(rpc_call_duration_seconds_sum[5m])) / clamp_min(sum by (method) (rate(rpc_call_duration_seconds_count[5m])), 0.0001)",
+          "legendFormat": "{{method}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "title": "Cache Hit Ratio",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(cache_operations_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(cache_operations_total[5m])), 0.0001)",
+          "legendFormat": "hit_ratio"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      }
+    },
+    {
+      "title": "Active WebSocket Connections",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "active_connections",
+          "legendFormat": "connections"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      }
+    },
+    {
+      "title": "Background Job Throughput",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (job, status) (rate(background_jobs_total[5m]))",
+          "legendFormat": "{{job}} ({{status}})"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      }
+    },
+    {
+      "title": "Errors by Type",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (error_type) (rate(errors_total[5m]))",
+          "legendFormat": "{{error_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "title": "DB Query Avg Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (query) (rate(db_query_duration_seconds_sum[5m])) / clamp_min(sum by (query) (rate(db_query_duration_seconds_count[5m])), 0.0001)",
+          "legendFormat": "{{query}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      }
+    }
+  ]
+}
