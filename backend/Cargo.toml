@@ -56,7 +56,7 @@ tracing-log = "0.2"
 tracing-appender = "0.2"
 tracing-logstash = "0.2"
 opentelemetry = { version = "0.27", features = ["trace"] }
-opentelemetry_sdk = { version = "0.27", features = ["trace", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
 tracing-opentelemetry = "0.28"
 dotenvy = "0.15"
