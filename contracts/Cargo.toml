@@ -21,7 +21,7 @@ panic = "deny"
 
 [workspace.dependencies]
 soroban-sdk = "26.0.1"
-soroban-token-sdk = "26.0.0"
+soroban-token-sdk = "26.0.1"
 
 # Release and bench profiles must stay in this workspace root only. Cargo ignores
 # `[profile.*]` in member crates (e.g. access-control, stellar_insights, governance)

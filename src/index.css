@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 232 47% 6%;
+    --foreground: 220 20% 96%;
+    --card: 232 40% 9%;
+    --muted: 232 25% 14%;
+    --muted-foreground: 220 12% 65%;
+    --primary: 188 95% 55%;
+    --primary-foreground: 232 47% 6%;
+    --primary-glow: 270 90% 65%;
+    --accent: 320 90% 60%;
+    --accent-foreground: 220 20% 98%;
+    --border: 232 30% 18%;
+    --gradient-cosmic: radial-gradient(ellipse at top, hsl(270 90% 25% / 0.5), transparent 60%), radial-gradient(ellipse at bottom right, hsl(188 95% 35% / 0.35), transparent 55%), hsl(var(--background));
+    --gradient-primary: linear-gradient(135deg, hsl(188 95% 55%), hsl(270 90% 65%));
+    --shadow-glow: 0 0 60px -10px hsl(188 95% 55% / 0.5);
+  }
+
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background: var(--gradient-cosmic);
+    background-attachment: fixed;
+  }
+  h1, h2, h3 { @apply font-display tracking-tight; }
+}
+
+@layer utilities {
+  .text-gradient { @apply bg-gradient-primary bg-clip-text text-transparent; }
+  .glass { @apply bg-card/40 backdrop-blur-xl border border-border/50; }
+}
