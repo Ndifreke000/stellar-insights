@@ -8,7 +8,7 @@ use events::{
     emit_admin_changed, emit_initialized, emit_proposal_created, emit_proposal_finalized,
     emit_vote_cast, emit_voter_registered,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -83,6 +83,10 @@ pub enum DataKey {
     VoterWeight(Address),
     /// Whether a voter has voted on a specific proposal
     VoteCast(u64, Address),
+    /// Ordered list of all registered voter addresses (for snapshotting)
+    VoterList,
+    /// Snapshot of a voter's weight taken at proposal creation time
+    ProposalVoterSnapshot(u64, Address),
 }
 
 // ============================================================================
@@ -171,6 +175,20 @@ impl GovernanceVotingContract {
             DATA_TTL_THRESHOLD,
             DATA_TTL_EXTEND,
         );
+
+        // Maintain the global voter list so create_proposal can snapshot weights.
+        let mut voter_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::VoterList)
+            .unwrap_or_else(|| Vec::new(&env));
+        if !voter_list.contains(&voter) {
+            voter_list.push_back(voter.clone());
+            env.storage()
+                .instance()
+                .set(&DataKey::VoterList, &voter_list);
+        }
+
         bump_instance(&env);
 
         emit_voter_registered(&env, voter, weight);
@@ -193,7 +211,24 @@ impl GovernanceVotingContract {
 
         env.storage()
             .persistent()
-            .remove(&DataKey::VoterWeight(voter));
+            .remove(&DataKey::VoterWeight(voter.clone()));
+
+        // Remove from voter list.
+        let voter_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::VoterList)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut updated: Vec<Address> = Vec::new(&env);
+        for addr in voter_list.iter() {
+            if addr != voter {
+                updated.push_back(addr);
+            }
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::VoterList, &updated);
+
         bump_instance(&env);
         Ok(())
     }
@@ -282,6 +317,30 @@ impl GovernanceVotingContract {
             DATA_TTL_EXTEND,
         );
 
+        // Snapshot every registered voter's weight at proposal creation so that
+        // transfers or admin re-registrations after this point cannot influence
+        // the vote tally (prevents the double-vote window).
+        let voter_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::VoterList)
+            .unwrap_or_else(|| Vec::new(&env));
+        for voter_addr in voter_list.iter() {
+            if let Some(w) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, u64>(&DataKey::VoterWeight(voter_addr.clone()))
+            {
+                let snapshot_key = DataKey::ProposalVoterSnapshot(count, voter_addr.clone());
+                env.storage().persistent().set(&snapshot_key, &w);
+                env.storage().persistent().extend_ttl(
+                    &snapshot_key,
+                    DATA_TTL_THRESHOLD,
+                    DATA_TTL_EXTEND,
+                );
+            }
+        }
+
         env.storage()
             .instance()
             .set(&DataKey::ProposalCount, &count);
@@ -304,10 +363,13 @@ impl GovernanceVotingContract {
     ) -> Result<(), Error> {
         voter.require_auth();
 
+        // Use the weight that was snapshotted at proposal creation time.
+        // This closes the double-vote window where a voter could cast a vote and
+        // then transfer/re-register tokens to a second address before the tally.
         let weight: u64 = env
             .storage()
             .persistent()
-            .get(&DataKey::VoterWeight(voter.clone()))
+            .get(&DataKey::ProposalVoterSnapshot(proposal_id, voter.clone()))
             .ok_or(Error::VoterNotRegistered)?;
 
         let mut proposal: Proposal = env

@@ -13,6 +13,7 @@ import { hasValidToken } from './services/tokenStorage';
 import { processOfflineQueue } from './hooks/useOfflineQueue';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
 import { OfflineCachingIndicator } from './components/OfflineCaching';
+import { OfflineBanner } from './components/OfflineBanner';
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ['stellar-insights://'],
@@ -109,6 +110,7 @@ function App(): React.JSX.Element {
         <QueryClientProvider client={queryClient}>
           <NavigationContainer linking={linking}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+            <OfflineBanner />
             <NetworkStatusIndicator />
             <OfflineCachingIndicator showCacheSize={true} />
             <RootNavigator />
