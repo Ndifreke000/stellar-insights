@@ -247,27 +247,28 @@ impl ApiKeyDb {
     }
 
     /// Validates an API key using the plaintext key.
+    ///
+    /// Looks up candidates by stored prefix (fast), then verifies each one
+    /// with Argon2 (slow, intentional). This avoids a full-table scan while
+    /// keeping Argon2's brute-force resistance.
     #[tracing::instrument(skip(self, plain_key))]
     pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
-        use crate::models::api_key::hash_api_key;
-        let key_hash = hash_api_key(plain_key);
+        use crate::models::api_key::{extract_key_prefix, verify_api_key};
 
-        let key = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE key_hash = $1 AND status = 'active'",
+        let prefix = extract_key_prefix(plain_key);
+
+        let candidates = sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys WHERE key_prefix = $1 AND status = 'active'",
         )
-        .bind(&key_hash)
-        .fetch_optional(&self.pool)
+        .bind(&prefix)
+        .fetch_all(&self.pool)
         .await
-        .context("Failed to validate API key")?;
+        .context("Failed to query API keys by prefix")?;
 
-        if let Some(ref k) = key {
+        for k in candidates {
             if let Some(ref expires_at) = k.expires_at {
                 match DateTime::parse_from_rfc3339(expires_at) {
-                    Ok(exp) => {
-                        if exp < Utc::now() {
-                            return Ok(None);
-                        }
-                    }
+                    Ok(exp) if exp < Utc::now() => continue,
                     Err(e) => {
                         tracing::warn!(
                             "API key {} has malformed expires_at '{}': {}. Treating as expired.",
@@ -275,19 +276,23 @@ impl ApiKeyDb {
                             expires_at,
                             e
                         );
-                        return Ok(None);
+                        continue;
                     }
+                    _ => {}
                 }
             }
 
-            // last_used_at update is best-effort
-            let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
-                .bind(Utc::now().to_rfc3339())
-                .bind(&k.id)
-                .execute(&self.pool)
-                .await;
+            if verify_api_key(plain_key, &k.key_hash) {
+                // best-effort last_used_at update
+                let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
+                    .bind(Utc::now().to_rfc3339())
+                    .bind(&k.id)
+                    .execute(&self.pool)
+                    .await;
+                return Ok(Some(k));
+            }
         }
 
-        Ok(key)
+        Ok(None)
     }
 }
