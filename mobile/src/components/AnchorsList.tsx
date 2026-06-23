@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { useAnchorsList, AnchorListItem, AnchorDataSource } from '@hooks/useAnchorsList';
+import { useAnchorsList, AnchorListItem } from '@hooks/useAnchorsList';
 import { AnchorsStackParamList } from '@navigation/MainNavigator';
 
 export interface AnchorsListProps {
@@ -84,14 +84,13 @@ function getStatusStyles(status: string) {
   }
 }
 
-function getFeedbackBannerStyle(dataSource: AnchorDataSource | null) {
-  if (dataSource === 'mock') {
+function getFeedbackBannerStyle(isFromCache: boolean) {
+  if (!isFromCache) {
     return {
       container: styles.mockBanner,
       text: styles.mockBannerText,
     };
   }
-
   return {
     container: styles.feedbackBanner,
     text: styles.feedbackText,
@@ -153,13 +152,16 @@ const AnchorCard: React.FC<AnchorCardProps> = ({ anchor, onPress }) => {
 export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
   const navigation = useNavigation<AnchorsListNavigationProp>();
   const {
-    anchors,
+    items: anchors,
     total,
     loading,
+    loadingMore,
+    hasMore,
     error,
     warning,
-    dataSource,
-    refetch,
+    isFromCache,
+    refresh,
+    loadMore,
   } = useAnchorsList();
 
   const handleAnchorPress = (anchorId: string) => {
@@ -201,9 +203,7 @@ export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
           >
             <Text style={styles.errorText}>{error}</Text>
             <Pressable
-              onPress={() => {
-                void refetch();
-              }}
+              onPress={() => { void refresh(); }}
               style={styles.retryButton}
               accessibilityRole="button"
               accessibilityLabel="Retry loading anchors list"
@@ -216,7 +216,7 @@ export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
     );
   }
 
-  const feedbackBanner = warning ? getFeedbackBannerStyle(dataSource) : null;
+  const feedbackBanner = warning ? getFeedbackBannerStyle(isFromCache) : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -228,12 +228,22 @@ export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
         refreshControl={
           <RefreshControl
             refreshing={loading}
-            onRefresh={() => {
-              void refetch();
-            }}
+            onRefresh={() => { void refresh(); }}
             tintColor={Platform.OS === 'ios' ? '#007AFF' : undefined}
             colors={Platform.OS === 'android' ? ['#1976D2'] : undefined}
           />
+        }
+        onEndReached={hasMore ? () => { void loadMore(); } : undefined}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadMoreSpinner}>
+              <ActivityIndicator
+                size="small"
+                color={Platform.OS === 'ios' ? '#007AFF' : '#1976D2'}
+              />
+            </View>
+          ) : null
         }
         ListHeaderComponent={
           <>
@@ -255,7 +265,7 @@ export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
                 accessibilityLabel={warning}
               >
                 <Text style={feedbackBanner.text}>{warning}</Text>
-                {dataSource === 'mock' ? (
+                {!isFromCache ? (
                   <Text style={feedbackBanner.text}>
                     Anchor metrics shown are for preview only and may not reflect live
                     performance.
@@ -481,5 +491,9 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  loadMoreSpinner: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
 });

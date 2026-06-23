@@ -1,7 +1,13 @@
 import Config from 'react-native-config';
 
+if (!Config.API_BASE_URL) {
+  throw new Error(
+    'API_BASE_URL is not set. Copy mobile/.env.example to mobile/.env and set API_BASE_URL to your backend URL.',
+  );
+}
+
 export const API_CONFIG = {
-  BASE_URL: Config.API_BASE_URL || 'http://localhost:8080',
+  BASE_URL: Config.API_BASE_URL,
   TIMEOUT: parseInt(Config.API_TIMEOUT || '30000', 10),
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000,

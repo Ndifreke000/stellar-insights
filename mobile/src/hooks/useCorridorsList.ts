@@ -1,60 +1,38 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import NetInfo from '@react-native-community/netinfo';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 
 import { apiClient } from '@services/api';
 import { CACHE_KEYS } from '@config/constants';
-import { CorridorDataSource, CorridorMetrics } from '@types/corridor';
+import { CorridorMetrics } from '@types/corridor';
+import {
+  CursorPage,
+  usePaginatedList,
+  UsePaginatedListReturn,
+} from './usePaginatedList';
 
-export interface CorridorsListData {
-  corridors: CorridorMetrics[];
+interface CorridorsCursorResponse {
+  data: CorridorMetrics[];
+  next_cursor: string | null;
   total: number;
 }
 
-interface PaginatedCorridorsResponse {
-  data: CorridorMetrics[];
-  pagination: {
-    total: number;
-  };
-}
+function normalizeCorridorsPage(raw: unknown): CursorPage<CorridorMetrics> {
+  // Cursor-based envelope: { data, next_cursor, total }
+  const r = raw as Partial<CorridorsCursorResponse>;
+  if (Array.isArray(r.data)) {
+    return {
+      items: r.data,
+      next_cursor: r.next_cursor ?? null,
+      total: r.total ?? r.data.length,
+    };
+  }
 
-export function normalizeCorridorsResponse(raw: unknown): CorridorsListData {
+  // Legacy: plain array (no pagination)
   if (Array.isArray(raw)) {
-    return { corridors: raw, total: raw.length };
-  }
-
-  const response = raw as Partial<CorridorsListData & PaginatedCorridorsResponse>;
-
-  if (Array.isArray(response.corridors)) {
-    return {
-      corridors: response.corridors,
-      total: response.total ?? response.corridors.length,
-    };
-  }
-
-  if (Array.isArray(response.data)) {
-    return {
-      corridors: response.data,
-      total: response.pagination?.total ?? response.data.length,
-    };
+    return { items: raw as CorridorMetrics[], next_cursor: null, total: (raw as CorridorMetrics[]).length };
   }
 
   throw new Error('Invalid corridors response');
 }
-
-export interface UseCorridorsListReturn {
-  corridors: CorridorMetrics[];
-  total: number;
-  loading: boolean;
-  error: string | null;
-  warning: string | null;
-  isOffline: boolean;
-  dataSource: CorridorDataSource | null;
-  isFromCache: boolean;
-  refetch: () => Promise<void>;
-}
-
-export const CORRIDORS_LIST_CACHE_KEY = CACHE_KEYS.CORRIDORS;
 
 const MOCK_CORRIDORS: CorridorMetrics[] = [
   {
@@ -116,159 +94,22 @@ const MOCK_CORRIDORS: CorridorMetrics[] = [
   },
 ];
 
-export function generateMockCorridorsList(): CorridorsListData {
-  return {
-    corridors: MOCK_CORRIDORS,
-    total: MOCK_CORRIDORS.length,
-  };
+function mockCorridorsPage(): CursorPage<CorridorMetrics> {
+  return { items: MOCK_CORRIDORS, next_cursor: null, total: MOCK_CORRIDORS.length };
 }
 
-async function readCachedCorridors(): Promise<CorridorsListData | null> {
-  try {
-    const cached = await AsyncStorage.getItem(CORRIDORS_LIST_CACHE_KEY);
-    return cached ? (JSON.parse(cached) as CorridorsListData) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function writeCachedCorridors(data: CorridorsListData): Promise<void> {
-  try {
-    await AsyncStorage.setItem(CORRIDORS_LIST_CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // Cache writes are best-effort for offline support.
-  }
-}
-
-async function fetchCorridorsList(): Promise<CorridorsListData> {
-  const response = await apiClient.get<unknown>('/corridors');
-  return normalizeCorridorsResponse(response);
-}
-
-function applyFallbackResult(
-  setCorridors: (corridors: CorridorMetrics[]) => void,
-  setTotal: (total: number) => void,
-  setDataSource: (source: CorridorDataSource) => void,
-  setWarning: (warning: string) => void,
-  dataSource: Extract<CorridorDataSource, 'cache' | 'mock'>,
-  warning: string,
-  cachedData?: CorridorsListData | null,
-): void {
-  const data =
-    dataSource === 'cache' && cachedData
-      ? cachedData
-      : generateMockCorridorsList();
-
-  setCorridors(data.corridors);
-  setTotal(data.total);
-  setDataSource(dataSource);
-  setWarning(warning);
-}
+export type UseCorridorsListReturn = UsePaginatedListReturn<CorridorMetrics>;
 
 export function useCorridorsList(): UseCorridorsListReturn {
-  const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
-  const [dataSource, setDataSource] = useState<CorridorDataSource | null>(null);
-
-  const loadCorridorsList = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setWarning(null);
-    setDataSource(null);
-
-    let offline = false;
-    try {
-      const networkState = await NetInfo.fetch();
-      offline = !(
-        networkState.isConnected &&
-        networkState.isInternetReachable !== false
-      );
-    } catch {
-      offline = true;
-    }
-    setIsOffline(offline);
-
-    try {
-      if (offline) {
-        const cached = await readCachedCorridors();
-        if (cached) {
-          setCorridors(cached.corridors);
-          setTotal(cached.total);
-          setDataSource('cache');
-          setWarning('Offline — showing saved corridors.');
-          return;
-        }
-
-        applyFallbackResult(
-          setCorridors,
-          setTotal,
-          setDataSource,
-          setWarning,
-          'mock',
-          'Offline — no saved data available. Showing sample corridors.',
-        );
-        return;
-      }
-
-      try {
-        const result = await fetchCorridorsList();
-        setCorridors(result.corridors);
-        setTotal(result.total);
-        setDataSource('live');
-        await writeCachedCorridors(result);
-        return;
-      } catch {
-        const cached = await readCachedCorridors();
-        if (cached) {
-          applyFallbackResult(
-            setCorridors,
-            setTotal,
-            setDataSource,
-            setWarning,
-            'cache',
-            'Live data unavailable. Showing saved corridors.',
-            cached,
-          );
-          return;
-        }
-
-        applyFallbackResult(
-          setCorridors,
-          setTotal,
-          setDataSource,
-          setWarning,
-          'mock',
-          'Live data unavailable. Showing sample corridors.',
-        );
-      }
-    } catch {
-      setError('Failed to load corridors');
-      setCorridors([]);
-      setTotal(0);
-      setDataSource(null);
-      setWarning(null);
-    } finally {
-      setLoading(false);
-    }
+  const fetchPage = useCallback(async (cursor: string | null) => {
+    const params = cursor ? { cursor, limit: 20 } : { limit: 20 };
+    const response = await apiClient.get<unknown>('/corridors', { params });
+    return normalizeCorridorsPage(response);
   }, []);
 
-  useEffect(() => {
-    void loadCorridorsList();
-  }, [loadCorridorsList]);
-
-  return {
-    corridors,
-    total,
-    loading,
-    error,
-    warning,
-    isOffline,
-    dataSource,
-    isFromCache: dataSource === 'cache',
-    refetch: loadCorridorsList,
-  };
+  return usePaginatedList<CorridorMetrics>({
+    cacheKey: CACHE_KEYS.CORRIDORS,
+    fetchPage,
+    mockData: mockCorridorsPage,
+  });
 }
