@@ -16,6 +16,7 @@ patches:
 - path: backend-patch.yaml
 - path: hpa-patch.yaml
 - path: network-policy-patch.yaml
+- path: redis-patch.yaml
 
 images:
 - name: stellar-insights/backend

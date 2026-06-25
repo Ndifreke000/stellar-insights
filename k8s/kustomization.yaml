@@ -20,7 +20,8 @@ resources:
 - frontend/configmap.yaml
 - database/statefulset.yaml
 - database/service.yaml
-- redis/deployment.yaml
+- redis/statefulset.yaml
+- redis/pvc.yaml
 - redis/service.yaml
 - ingress/ingress.yaml
 - network-policy.yaml
