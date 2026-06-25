@@ -259,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let rate_limiter = Arc::new(
-        RateLimiter::new()
+        RateLimiter::new_with_db(Some(pool.clone()))
             .await
             .context("Failed to initialize rate limiter")?,
     );
