@@ -10,6 +10,7 @@ import { Link } from "@/i18n/navigation";
 import { BackButton } from "@/components/ui/BackButton";
 import { AnchorDetailData } from "@/lib/api/types";
 import { getAnchorDetail } from "@/lib/api/anchor";
+import { sanitizeText } from "@/lib/sanitize";
 
 function AnchorDetailPageContent({
   params,
@@ -98,7 +99,7 @@ function AnchorDetailPageContent({
         />
         <span className="text-slate-600">/</span>
         <span className="text-slate-200 truncate max-w-[200px]">
-          {data.anchor.name || address}
+          {sanitizeText(data.anchor.name) || sanitizeText(address)}
         </span>
       </div>
 

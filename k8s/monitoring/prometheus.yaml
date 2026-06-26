@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: stellar-insights
+  namespace: stellar-insights
+  labels:
+    app: stellar-insights
+    managed-by: kustomize
+spec:
+  # Global Prometheus configuration
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+
+  # Service monitor selector to discover scrape targets
+  serviceMonitorSelector:
+    matchLabels:
+      prometheus: kube-prometheus
+
+  # Alerting configuration
+  alerting:
+    alertmanagers:
+    - namespace: stellar-insights
+      name: alertmanager-config
+
+  # Rule files
+  ruleSelector:
+    matchLabels:
+      prometheus: kube-prometheus
+
+  # Resource management
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Storage configuration
+  retention: 30d
+  storageSpec:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: standard
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

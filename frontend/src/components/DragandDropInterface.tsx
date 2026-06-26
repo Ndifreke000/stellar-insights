@@ -38,7 +38,7 @@ export const DragandDropInterface: React.FC<DragandDropInterfaceProps> = ({
   const handleDragStart = (e: React.DragEvent, item: DraggableItem, index: number) => {
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+    e.dataTransfer.setData('text/plain', item.content);
     
     if (dragImageRef.current) {
       e.dataTransfer.setDragImage(dragImageRef.current, 0, 0);

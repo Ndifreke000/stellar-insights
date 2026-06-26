@@ -4,6 +4,24 @@ use sqlx::SqlitePool;
 
 use crate::models::corridor::HourlyCorridorMetrics;
 
+// SQL injection guard: only these time field names are permitted in dynamic queries.
+// Adding a new field requires an explicit enum variant.
+enum TimeField {
+    StartTime,
+    EndTime,
+    UpdatedAt,
+}
+
+impl TimeField {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::StartTime => "start_time",
+            Self::EndTime => "end_time",
+            Self::UpdatedAt => "updated_at",
+        }
+    }
+}
+
 pub struct AggregationDb {
     pool: SqlitePool,
 }
@@ -278,17 +296,18 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         let time_field = match status {
-            "running" => "start_time",
-            "completed" | "failed" => "end_time",
-            _ => "updated_at",
+            "running" => TimeField::StartTime,
+            "completed" | "failed" => TimeField::EndTime,
+            _ => TimeField::UpdatedAt,
         };
 
         let query_str = format!(
             r"
             UPDATE aggregation_jobs
-            SET status = ?, error_message = ?, {time_field} = ?, updated_at = ?
+            SET status = ?, error_message = ?, {} = ?, updated_at = ?
             WHERE id = ?
-            "
+            ",
+            time_field.as_str()
         );
 
         sqlx::query(&query_str)

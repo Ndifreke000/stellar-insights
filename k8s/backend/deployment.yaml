@@ -184,16 +184,17 @@ spec:
               optional: true
         
         # Health check endpoints
+        # Threshold increased to tolerate GC pauses under mainnet load (was failureThreshold: 2, periodSeconds: 10)
         livenessProbe:
           httpGet:
             path: /health
             port: http
             scheme: HTTP
           initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 10
           successThreshold: 1
-          failureThreshold: 3
+          failureThreshold: 5
         
         readinessProbe:
           httpGet:

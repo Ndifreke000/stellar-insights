@@ -98,3 +98,16 @@ export type * from "./types/network_context_management.js";
 export type * from "./types/authentication_module.js";
 export type * from "./types/retry_with_backoff.js";
 export type * from "./types/anchors_api_module.js";
+
+// Soroban contract types
+export type {
+  ProposalStatus,
+  VoteChoice,
+  GovernanceProposal,
+  VoteTally,
+  ParameterAction,
+  PublicMetadata,
+  ContractInfo,
+  Snapshot,
+  SnapshotMetadata,
+} from "./types.js";

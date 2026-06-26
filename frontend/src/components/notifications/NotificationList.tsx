@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
 import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import { sanitizeText, sanitizeUrl } from '@/lib/sanitize';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -133,7 +134,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           </div>
           
           <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-            {notification.message}
+            {sanitizeText(notification.message)}
           </p>
           
           <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
@@ -142,7 +143,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             </span>
             {notification.metadata?.source && (
               <span>
-                Source: {notification.metadata.source as string}
+                Source: {sanitizeText(notification.metadata.source as string)}
               </span>
             )}
           </div>
@@ -176,10 +177,13 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   <Copy aria-hidden="true" className="h-4 w-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
-                {notification.metadata?.url && (
+                {notification.metadata?.url && sanitizeUrl(notification.metadata.url as string) && (
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
-                    window.open(notification.metadata.url as string, '_blank');
+                    const safeUrl = sanitizeUrl(notification.metadata?.url as string);
+                    if (safeUrl) {
+                      window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                    }
                   }}>
                     <ExternalLink aria-hidden="true" className="h-4 w-4 mr-2" />
                     Open Link

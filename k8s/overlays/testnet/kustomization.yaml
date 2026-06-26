@@ -11,9 +11,11 @@ namePrefix: testnet-
 commonLabels:
   environment: testnet
 
+resources:
+- namespace.yaml
+
 patches:
-- path: backend-replicas.yaml
-- path: frontend-replicas.yaml
+- path: backend-patch.yaml
 
 images:
 - name: stellar-insights/backend

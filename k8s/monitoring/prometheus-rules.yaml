@@ -10,9 +10,11 @@ spec:
       rules:
         - alert: HighErrorRate
           expr: |
-            (sum(rate(http_requests_total{status=~"5.."}[5m])) / 
+            (sum(rate(http_requests_total{status=~"5.."}[5m])) /
              sum(rate(http_requests_total[5m]))) > 0.05
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: critical
           annotations:
@@ -21,10 +23,12 @@ spec:
 
         - alert: HighP99Latency
           expr: |
-            histogram_quantile(0.99, 
+            histogram_quantile(0.99,
               sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
             ) > 1.0
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:
@@ -34,7 +38,9 @@ spec:
         - alert: DBConnectionPoolExhaustion
           expr: |
             (pg_stat_activity_count / pg_settings_max_connections) > 0.8
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:
@@ -44,7 +50,9 @@ spec:
         - alert: SlowDatabaseQueries
           expr: |
             rate(pg_slow_queries_total[5m]) > 10
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:
@@ -53,9 +61,11 @@ spec:
 
         - alert: CacheFailureRate
           expr: |
-            (sum(rate(redis_commands_failed_total[5m])) / 
+            (sum(rate(redis_commands_failed_total[5m])) /
              sum(rate(redis_commands_total[5m]))) > 0.01
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:
@@ -65,7 +75,9 @@ spec:
         - alert: RedisMemoryUsageHigh
           expr: |
             (redis_memory_used_bytes / redis_memory_max_bytes) > 0.85
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:
@@ -75,7 +87,9 @@ spec:
         - alert: PaymentProcessingFailures
           expr: |
             rate(payments_failed_total[5m]) > 0.1
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: critical
           annotations:
@@ -85,7 +99,9 @@ spec:
         - alert: LedgerIngestionLag
           expr: |
             (time() - ledger_ingestion_last_timestamp_seconds) > 300
-          for: 5m
+          # Originally 5m (5 cycles at 60s scrape interval). Recalculated to maintain
+          # 5 evaluation cycles at 15s interval: 5 cycles * 15s = 75s, rounded up to 2m
+          for: 2m
           labels:
             severity: warning
           annotations:

@@ -26,6 +26,8 @@ import type {
   Transaction,
   VerifiedAsset,
   Webhook,
+  VoteTally,
+  GovernanceProposal,
 } from "./types.js";
 
 export class AnchorsResource {
@@ -233,7 +235,7 @@ export class MlResource {
     return this.http.request("POST", "/api/ml/predict", { body: params });
   }
 
-  modelStatus(): Promise<unknown> {
+  modelStatus(): Promise<Record<string, unknown>> {
     return this.http.request("GET", "/api/ml/status");
   }
 }
@@ -253,7 +255,7 @@ export class GovernanceResource {
     return this.http.request("GET", `/api/governance/proposals/${encodeURIComponent(id)}`);
   }
 
-  vote(id: string, support: boolean): Promise<unknown> {
+  vote(id: string, support: boolean): Promise<VoteTally> {
     return this.http.request("POST", `/api/governance/proposals/${encodeURIComponent(id)}/vote`, {
       body: { support },
     });

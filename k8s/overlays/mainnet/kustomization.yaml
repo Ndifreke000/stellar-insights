@@ -6,16 +6,23 @@ namespace: stellar-insights-mainnet
 bases:
 - ../../
 
-namePrefix: mainnet-
-
 commonLabels:
   environment: mainnet
 
+resources:
+- namespace.yaml
+
+patches:
+- path: backend-patch.yaml
+- path: hpa-patch.yaml
+- path: network-policy-patch.yaml
+- path: redis-patch.yaml
+
 images:
 - name: stellar-insights/backend
-  newTag: mainnet
+  newTag: v1.0.0
 - name: stellar-insights/frontend
-  newTag: mainnet
+  newTag: v1.0.0
 
 configMapGenerator:
 - name: stellar-insights-config
@@ -23,4 +30,4 @@ configMapGenerator:
   literals:
   - stellar-network=mainnet
   - rust-log=warn
-  - cors-allowed-origins=https://app.stellar-insights.com
+  - cors-allowed-origins=https://stellar-insights.com

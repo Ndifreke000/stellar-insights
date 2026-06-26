@@ -37,8 +37,9 @@ spec:
     ports:
     - protocol: TCP
       port: 9090
+  # Explicit egress rules — all other outbound connections denied by default. Mainnet: replace HTTPS CIDR with confirmed Stellar Foundation ranges.
   egress:
-  # Allow DNS
+  # DNS: required for service discovery
   - to:
     - namespaceSelector:
         matchLabels:
@@ -46,7 +47,9 @@ spec:
     ports:
     - protocol: UDP
       port: 53
-  # Allow database access
+    - protocol: TCP
+      port: 53
+  # Postgres: database access
   - to:
     - podSelector:
         matchLabels:
@@ -54,7 +57,7 @@ spec:
     ports:
     - protocol: TCP
       port: 5432
-  # Allow Redis access
+  # Redis: cache access
   - to:
     - podSelector:
         matchLabels:
@@ -62,7 +65,7 @@ spec:
     ports:
     - protocol: TCP
       port: 6379
-  # Allow external HTTPS (Stellar RPC, Horizon)
+  # HTTPS to Stellar Horizon/RPC: TODO: restrict to Stellar Foundation IP ranges once confirmed for mainnet
   - to:
     - namespaceSelector: {}
     ports:

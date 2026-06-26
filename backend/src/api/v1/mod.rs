@@ -7,7 +7,7 @@ use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::deprecation_middleware::{default_deprecation_map, deprecation_middleware};
 use crate::handlers::job_monitoring;
-use crate::rate_limit::{rate_limit_middleware, RateLimiter};
+use crate::rate_limit::{api_key_rate_limit_middleware, rate_limit_middleware, RateLimiter};
 use crate::rpc::StellarRpcClient;
 use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
@@ -105,7 +105,7 @@ pub fn routes(
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
         .with_state(app_state.clone());
 
-    // 3. Protected anchor routes
+    // Protected routes require JWT; per-API-key limits apply after auth resolves.
     let protected_routes = Router::new()
         .route("/anchors", axum::routing::post(anchors::create_anchor))
         .route("/anchors/:id/metrics", put(anchors::update_anchor_metrics))
@@ -122,6 +122,10 @@ pub fn routes(
             put(corridors::update_corridor_metrics_from_transactions),
         )
         .with_state(app_state)
+        .layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            api_key_rate_limit_middleware,
+        ))
         .layer(middleware::from_fn(auth_middleware));
 
     let protected_webhook_routes = Router::new()
@@ -186,6 +190,10 @@ pub fn routes(
         .layer(middleware::from_fn_with_state(
             default_deprecation_map(),
             deprecation_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            api_key_rate_limit_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             rate_limiter,

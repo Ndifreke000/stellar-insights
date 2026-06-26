@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "test": "vitest run",
+    "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"
   },
   "keywords": ["stellar", "sdk", "payments", "analytics", "request-deduplication"],

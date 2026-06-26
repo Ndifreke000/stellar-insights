@@ -62,7 +62,7 @@ module "database" {
   db_subnet_ids        = module.networking.private_db_subnet_ids
 
   identifier         = "stellar-insights-${var.environment}"
-  instance_class     = "db.t3.micro"   # Right-sized for cost optimization (saves ~$30/month)
+  instance_class     = "db.t3.medium"  # Mainnet minimum: handles transaction volume at network scale
   allocated_storage  = 500
   storage_type       = "gp3"
   engine_version     = "14.8"
@@ -273,12 +273,12 @@ output "cost_estimate" {
     fargate_vcpu_hours      = "$25/month"  # ~500 vCPU-hours @ $0.04/vCPU-hour
     fargate_memory_hours    = "$20/month"  # ~1000 GB-hours @ $0.008/GB-hour
     fargate_requests        = "$10/month"  # Request charges if applicable
-    rds_t3_micro_multiaz   = "$100/month"
+    rds_t3_medium_multiaz  = "$150/month"
     redis_3_node_multiaz    = "$40/month"
     data_transfer           = "$20/month"
     cloudwatch_logs         = "$10/month"
     waf_optional            = "$5/month"
-    total_monthly           = "~$280/month"
+    total_monthly           = "~$330/month"
     savings_vs_ec2          = "~$175/month (38% savings from Fargate migration)"
   }
 }

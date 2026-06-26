@@ -1,0 +1,47 @@
+# Mainnet Environment Variables
+# Cost estimate: $400-500/month (production-grade infrastructure for network scale)
+#
+# Breakdown:
+#   - NAT Gateway: ~$30/month (1 NAT, consider per-AZ for HA)
+#   - ALB: ~$20/month
+#   - ECS (Fargate): ~$50/month (3+ tasks, auto-scaling)
+#   - RDS PostgreSQL (db.t3.medium, Multi-AZ, 500GB): ~$200/month
+#   - ElastiCache Redis (cache.t3.small, 3-node Multi-AZ): ~$50/month
+#   - Data transfer out: ~$20-30/month
+#   - Backups & monitoring: ~$10-20/month
+#
+# ✓ Multi-AZ deployment (automatic failover)
+# ✓ db.t3.medium minimum for mainnet transaction volume
+# ✓ Deletion protection enabled on database
+# ✓ Enhanced monitoring enabled
+# ✓ 30-day backup retention
+# ✓ 3 AZs for full geographic redundancy
+# ✓ Auto-scaling: 3-10 tasks based on load
+
+aws_region  = "us-east-1"
+environment = "mainnet"
+vpc_cidr    = "10.3.0.0/16"
+
+# Vault configuration (HCP or self-hosted)
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Critical alerts go to ops team oncall
+alarm_email = "ops-critical@stellar-insights.com"
+
+# Setup instructions:
+# 1. Create S3 bucket for state: stellar-insights-terraform-state-ACCOUNT_ID
+# 2. Create DynamoDB table: terraform-locks with LockID key
+# 3. Ensure terraform/global/ infrastructure is deployed
+# 4. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+# 5. Review plan: terraform plan
+# 6. Apply: terraform apply
+#
+# Post-deployment checklist:
+# - Verify RDS Multi-AZ failover is working
+# - Test database backups and restore procedure
+# - Configure Route53 records for mainnet domain
+# - Run smoke tests against the network
+# - Train team on mainnet incident response
+# - Document runbooks for common operations

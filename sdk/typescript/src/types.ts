@@ -279,3 +279,67 @@ export interface VerifiedAsset {
   verified: boolean;
   verification_date?: string;
 }
+
+// ─── Soroban Contract Types ───────────────────────────────────────────────
+
+export interface ProposalStatus {
+  tag: "Active" | "Passed" | "Failed" | "Executed";
+}
+
+export interface VoteChoice {
+  tag: "For" | "Against" | "Abstain";
+}
+
+export interface GovernanceProposal {
+  id: bigint;
+  proposer: string; // Address
+  title: string;
+  target_contract: string; // Address
+  new_wasm_hash: string; // BytesN<32> as hex string
+  status: ProposalStatus;
+  created_at: bigint;
+  voting_ends_at: bigint;
+}
+
+export interface VoteTally {
+  votes_for: bigint;
+  votes_against: bigint;
+  votes_abstain: bigint;
+  total_voters: bigint;
+}
+
+export interface ParameterAction {
+  tag: "SetAdmin" | "SetPaused";
+  values: [string] | [boolean]; // Address or boolean
+}
+
+export interface PublicMetadata {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  repository: string;
+  license: string;
+}
+
+export interface ContractInfo {
+  metadata: PublicMetadata;
+  initialized: boolean;
+  admin: string | null; // Address or null
+  total_proposals: bigint;
+}
+
+export interface Snapshot {
+  hash: string; // BytesN<32> as hex string
+  epoch: bigint;
+  timestamp: bigint;
+}
+
+export interface SnapshotMetadata {
+  epoch: bigint;
+  timestamp: bigint;
+  hash: string; // BytesN<32> as hex string
+  submitter: string; // Address
+  ledger_sequence: number;
+  expires_at: bigint | null;
+}

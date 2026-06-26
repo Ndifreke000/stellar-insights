@@ -14,6 +14,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { formatAddressShort } from "@/lib/address";
+import { sanitizeText } from "@/lib/sanitize";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { AnchorMetrics } from "@/lib/api/types";
 
@@ -278,7 +279,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {anchor.name}
+                          {sanitizeText(anchor.name)}
                         </div>
                         <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                           {truncateAddress(anchor.stellar_account)}
@@ -385,7 +386,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {anchor.name}
+                      {sanitizeText(anchor.name)}
                     </div>
                     <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                       {truncateAddress(anchor.stellar_account)}

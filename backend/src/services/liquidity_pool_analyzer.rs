@@ -33,6 +33,18 @@ impl LiquidityPoolAnalyzer {
         let mut count = 0u64;
 
         for hp in &horizon_pools {
+            // Defensive guard: Horizon has been observed returning pools with fewer
+            // than 2 reserves on mainnet (regression: issue_reserve_offbyone).
+            // Skip rather than panic with an out-of-bounds index.
+            if hp.reserves.len() < 2 {
+                tracing::warn!(
+                    pool_id = %hp.id,
+                    reserve_count = hp.reserves.len(),
+                    "Skipping pool with insufficient reserves (expected >= 2)"
+                );
+                continue;
+            }
+
             let (primary_reserve_code, primary_reserve_issuer) =
                 Self::parse_asset(&hp.reserves[0].asset);
             let (secondary_reserve_code, secondary_reserve_issuer) =

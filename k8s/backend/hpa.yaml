@@ -28,6 +28,7 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
+  # Aggressive scale-up policy to handle sudden traffic spikes — default 5-minute window caused 503s under burst load
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300  # 5 minutes
@@ -40,12 +41,8 @@ spec:
         periodSeconds: 60
       selectPolicy: Min
     scaleUp:
-      stabilizationWindowSeconds: 0
+      stabilizationWindowSeconds: 30
       policies:
-      - type: Percent
-        value: 100
-        periodSeconds: 30
       - type: Pods
-        value: 2
-        periodSeconds: 30
-      selectPolicy: Max
+        value: 4
+        periodSeconds: 60

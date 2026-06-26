@@ -1,4 +1,5 @@
 import { AnchorMetrics } from '@/lib/api/types';
+import { sanitizeText } from '@/lib/sanitize';
 import { Shield, ShieldAlert, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
 
 interface AnchorHeaderProps {
@@ -38,7 +39,7 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                 <div>
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-white tracking-tight">
-                            {anchor.name || 'Unknown Anchor'}
+                            {sanitizeText(anchor.name) || 'Unknown Anchor'}
                         </h1>
                         <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${getStatusColor(anchor.status)}`}>
                             {getStatusIcon(anchor.status)}
@@ -47,7 +48,7 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                     </div>
 
                     <div className="mt-2 flex items-center gap-2 text-slate-400 text-sm font-mono">
-                        <span>{anchor.stellar_account}</span>
+                        <span>{sanitizeText(anchor.stellar_account)}</span>
                         <button
                             className="p-1 hover:text-white transition-colors"
                             title="Copy Address"

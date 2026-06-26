@@ -7,7 +7,9 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      # Dev/staging heap capped at 512m to prevent OOM on small hosts.
+      # Production minimum: -Xms2g -Xmx2g for mainnet transaction volume.
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - xpack.monitoring.collection.enabled=true
       - cluster.name=stellar-insights-cluster
       - node.name=stellar-node-1

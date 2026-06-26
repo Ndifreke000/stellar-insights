@@ -32,6 +32,7 @@ panic = "allow"
 
 [features]
 legacy_sep10_tests = []
+sep-integration = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -116,3 +117,18 @@ harness = false
 [[bench]]
 name = "database_benchmarks"
 harness = false
+
+[[test]]
+name = "sep10_integration"
+path = "tests/sep/sep10_integration.rs"
+required-features = ["sep-integration"]
+
+[[test]]
+name = "sep24_integration"
+path = "tests/sep/sep24_integration.rs"
+required-features = ["sep-integration"]
+
+[[test]]
+name = "sep31_integration"
+path = "tests/sep/sep31_integration.rs"
+required-features = ["sep-integration"]

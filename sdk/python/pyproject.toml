@@ -22,3 +22,6 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "testnet: marks tests as testnet integration tests (deselect with '-m \"not testnet\"')",
+]
