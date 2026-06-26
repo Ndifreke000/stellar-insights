@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: stellar-insights-mainnet
+
+bases:
+- ../../
+
+commonLabels:
+  environment: mainnet
+
+resources:
+- namespace.yaml
+
+patches:
+- path: backend-patch.yaml
+- path: hpa-patch.yaml
+- path: network-policy-patch.yaml
+- path: redis-patch.yaml
+
+images:
+- name: stellar-insights/backend
+  newTag: v1.0.0
+- name: stellar-insights/frontend
+  newTag: v1.0.0
+
+configMapGenerator:
+- name: stellar-insights-config
+  behavior: merge
+  literals:
+  - stellar-network=mainnet
+  - rust-log=warn
+  - cors-allowed-origins=https://stellar-insights.com

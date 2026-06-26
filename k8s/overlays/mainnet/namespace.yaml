@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stellar-insights-mainnet
+  labels:
+    environment: mainnet
+    app.kubernetes.io/part-of: stellar-insights
