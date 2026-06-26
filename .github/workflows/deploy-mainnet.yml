@@ -1,0 +1,134 @@
+name: Deploy Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy-mainnet" to confirm'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: stellar-insights-backend
+  K8S_OVERLAY: k8s/overlays/mainnet
+  K8S_NAMESPACE: stellar-insights-mainnet
+
+jobs:
+  validate-input:
+    name: Validate Trigger
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Confirm deployment intent
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy-mainnet" ]; then
+            echo "Confirmation input must be exactly 'deploy-mainnet'"
+            exit 1
+          fi
+
+  pre-mainnet-checklist:
+    name: Pre-Mainnet Checklist
+    needs: [validate-input]
+    if: always() && (github.event_name == 'push' || needs.validate-input.result == 'success' || needs.validate-input.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pre-mainnet checklist
+        run: bash scripts/pre-mainnet-checklist.sh
+
+  deploy:
+    name: Build, Push & Deploy Mainnet
+    needs: pre-mainnet-checklist
+    runs-on: ubuntu-latest
+    # Requires two approvals from the mainnet-deployers team (configure in GitHub Environment settings)
+    environment: mainnet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: image
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=mainnet-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/terraform-executor
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image.outputs.tag }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:mainnet-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_MAINNET }}" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Apply mainnet overlay
+        run: |
+          kubectl kustomize "${{ env.K8S_OVERLAY }}" \
+            | sed "s|stellar-insights/backend:mainnet|${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image.outputs.tag }}|g" \
+            | kubectl apply -f -
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/mainnet-stellar-insights-backend \
+            -n "${{ env.K8S_NAMESPACE }}" --timeout=15m
+
+      - name: Run mainnet health check
+        env:
+          MAINNET_URL: ${{ vars.MAINNET_BACKEND_URL }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+        run: bash backend/scripts/mainnet-health-check.sh
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Mainnet Deployment
+
+          | Field | Value |
+          |-------|-------|
+          | **Status** | \`${{ job.status }}\` |
+          | **Image Tag** | \`${{ steps.image.outputs.tag }}\` |
+          | **Overlay** | \`${{ env.K8S_OVERLAY }}\` |
+          | **Actor** | @${{ github.actor }} |
+          | **Trigger** | \`${{ github.event_name }}\` |
+          EOF

@@ -29,15 +29,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+RUN addgroup --system --gid 1001 stellar && \
+    adduser --system --uid 1001 --gid 1001 --home /app --no-create-home stellar
 
 COPY --from=builder /app/target/release/stellar-insights-backend /usr/local/bin/stellar-insights-backend
 COPY --from=builder /app/entrypoint.sh /app/entrypoint.sh
 COPY --from=builder /app/scripts/run_migrations.sh /app/scripts/run_migrations.sh
 COPY --from=builder /app/scripts/rollback_last_migration.sh /app/scripts/rollback_last_migration.sh
-RUN chmod +x /app/entrypoint.sh /app/scripts/run_migrations.sh /app/scripts/rollback_last_migration.sh
+RUN chown -R stellar:stellar /app && \
+    chmod +x /app/entrypoint.sh /app/scripts/run_migrations.sh /app/scripts/rollback_last_migration.sh
 
-USER appuser
+USER stellar
 
 EXPOSE 8080
 

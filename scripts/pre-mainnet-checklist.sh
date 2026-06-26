@@ -20,15 +20,15 @@ fi
 
 # Check 2: K8s mainnet overlay applies without errors
 echo -n "Check 2: Validating K8s mainnet overlays... "
-if [ -d "k8s/overlays/production" ] && command -v kubectl >/dev/null 2>&1; then
-  if kubectl kustomize k8s/overlays/production > /dev/null 2>&1; then
+if [ -d "k8s/overlays/mainnet" ] && command -v kubectl >/dev/null 2>&1; then
+  if kubectl kustomize k8s/overlays/mainnet > /dev/null 2>&1; then
     echo "PASS"
   else
     echo "FAIL (K8s mainnet kustomize overlay failed)"
     exit 1
   fi
 else
-  echo "SKIP (k8s/overlays/production or kubectl not available)"
+  echo "SKIP (k8s/overlays/mainnet or kubectl not available)"
 fi
 
 # Check 3: Terraform plan shows no destructive changes
