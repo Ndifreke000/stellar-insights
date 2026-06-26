@@ -1,4 +1,5 @@
 use crate::network::{NetworkConfig, StellarNetwork};
+use crate::observability::tracing::inject_trace_context;
 use crate::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreaker};
 use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
@@ -686,10 +687,11 @@ impl StellarRpcClient {
             "id": 1
         });
 
-        let response = self
-            .client
-            .post(&self.rpc_url)
-            .json(&payload)
+        let response = inject_trace_context(
+            self.client
+                .post(&self.rpc_url)
+                .json(&payload)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -732,9 +734,10 @@ impl StellarRpcClient {
 
     async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -803,10 +806,11 @@ impl StellarRpcClient {
             "id": 1,
             "params": params
         });
-        let response = self
-            .client
-            .post(&self.rpc_url)
-            .json(&payload)
+        let response = inject_trace_context(
+            self.client
+                .post(&self.rpc_url)
+                .json(&payload)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -857,9 +861,10 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -904,9 +909,10 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -962,9 +968,10 @@ impl StellarRpcClient {
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -999,9 +1006,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/payments?limit=200",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1044,9 +1052,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/transactions?limit=200&include_failed=true",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1089,9 +1098,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/operations?limit=200",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1136,9 +1146,10 @@ impl StellarRpcClient {
             "{}/operations/{}/effects?limit=200",
             self.horizon_url, operation_id
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1183,9 +1194,10 @@ impl StellarRpcClient {
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1405,7 +1417,7 @@ impl StellarRpcClient {
             }
 
             let response = self
-                .retry_request(|| async { self.client.get(&url).send().await })
+                .retry_request(|| async { inject_trace_context(self.client.get(&url)).send().await })
                 .await
                 .context("Failed to fetch account payments page")?;
 
@@ -1601,9 +1613,10 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1648,9 +1661,10 @@ impl StellarRpcClient {
         pool_id: &str,
     ) -> Result<HorizonLiquidityPool, RpcError> {
         let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1691,9 +1705,10 @@ impl StellarRpcClient {
             "{}/liquidity_pools/{}/trades?order=desc&limit={}",
             self.horizon_url, pool_id, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1740,9 +1755,10 @@ impl StellarRpcClient {
         } else {
             url.push_str("&order=desc");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;

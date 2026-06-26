@@ -188,6 +188,34 @@ lazy_static! {
         "Size of the most recent backup in bytes"
     )
     .expect("Failed to register backup_size_bytes gauge");
+    // Stellar-specific metrics
+    pub static ref STELLAR_LEDGER_LAG_SECONDS: IntGauge = IntGauge::new(
+        "stellar_ledger_lag_seconds",
+        "Stellar ledger lag in seconds"
+    )
+    .expect("Failed to register stellar_ledger_lag_seconds gauge");
+    pub static ref STELLAR_TRANSACTION_SUCCESS_RATE: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "stellar_transaction_success_rate",
+            "Stellar transaction success rate (rolling 5 minutes)"
+        )
+        .buckets(vec![0.0, 0.25, 0.5, 0.75, 1.0])
+    )
+    .expect("Failed to register stellar_transaction_success_rate histogram");
+    pub static ref STELLAR_ANCHOR_HEALTH: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("stellar_anchor_health", "Stellar anchor health (0/1)"),
+        &["anchor"]
+    )
+    .expect("Failed to register stellar_anchor_health gauge");
+    pub static ref STELLAR_CORRIDOR_RELIABILITY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "stellar_corridor_reliability",
+            "Stellar corridor reliability (rolling 24 hours)"
+        )
+        .buckets(vec![0.0, 0.25, 0.5, 0.75, 1.0]),
+        &["corridor"]
+    )
+    .expect("Failed to register stellar_corridor_reliability histogram");
 }
 
 pub fn init_metrics() {
@@ -625,4 +653,21 @@ mod tests {
         assert_eq!(DB_POOL_IDLE.get(), 3.0);
         assert_eq!(DB_POOL_SIZE.get(), 10.0);
     }
+}
+
+// Helper functions for Stellar-specific metrics
+pub fn set_stellar_ledger_lag(seconds: i64) {
+    STELLAR_LEDGER_LAG_SECONDS.set(seconds);
+}
+
+pub fn observe_stellar_transaction_success_rate(rate: f64) {
+    STELLAR_TRANSACTION_SUCCESS_RATE.observe(rate);
+}
+
+pub fn set_stellar_anchor_health(anchor: &str, healthy: bool) {
+    STELLAR_ANCHOR_HEALTH.with_label_values(&[anchor]).set(if healthy { 1 } else { 0 });
+}
+
+pub fn observe_stellar_corridor_reliability(corridor: &str, reliability: f64) {
+    STELLAR_CORRIDOR_RELIABILITY.with_label_values(&[corridor]).observe(reliability);
 }
