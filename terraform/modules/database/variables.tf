@@ -39,8 +39,9 @@ variable "identifier" {
 }
 
 variable "instance_class" {
-  description = "RDS instance type (e.g., db.t3.micro, db.t3.small, db.t3.medium)"
+  description = "RDS instance type (e.g., db.t3.micro, db.t3.small, db.t3.medium). Default is db.t3.medium for mainnet; testnet can override to smaller instances"
   type        = string
+  default     = "db.t3.medium"
 
   validation {
     condition     = can(regex("^db\\.t3\\.(micro|small|medium|large|xlarge|2xlarge)$", var.instance_class))
