@@ -15,6 +15,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
+    "generate": "bash scripts/generate-bindings.sh",
     "test": "vitest run",
     "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"

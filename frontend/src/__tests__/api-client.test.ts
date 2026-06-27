@@ -151,9 +151,48 @@ describe('API Client', () => {
         json: async () => ({ error: 'Invalid CSRF token' }),
       });
 
-      await expect(apiPost('/api/test', { data: 'test' })).rejects.toThrow(
-        'Security validation failed'
-      );
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'refreshed-token' },
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const result = await apiPost('/api/test', { data: 'test' });
+
+      expect(result).toEqual({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('should refresh CSRF token and retry once on 401', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'new-csrf-token' },
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const result = await apiPost('/api/test', { data: 'test' });
+
+      expect(result).toEqual({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch.mock.calls[2][1]).toMatchObject({
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'new-csrf-token',
+        }),
+      });
     });
 
     it('should handle general API errors', async () => {

@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 
 interface DataPoint {
+  id?: string | number;
   name: string;
   value: number;
-  [key: string]: string | number;
+  [key: string]: string | number | undefined;
 }
 
 interface UseAdvancedDataVisualizationOptions {
@@ -30,7 +31,20 @@ export const useAdvancedDataVisualization = (options: UseAdvancedDataVisualizati
   }, []);
 
   const addDataPoint = useCallback((point: DataPoint) => {
-    setData((prevData) => [...prevData, point]);
+    setData((prevData) => {
+      if (point.id !== undefined && prevData.some((p) => p.id === point.id)) {
+        return prevData;
+      }
+      return [...prevData, point];
+    });
+  }, []);
+
+  const addDataPoints = useCallback((points: DataPoint[]) => {
+    setData((prevData) => {
+      const seenIds = new Set(prevData.map((p) => p.id).filter((id) => id !== undefined));
+      const fresh = points.filter((p) => p.id === undefined || !seenIds.has(p.id));
+      return fresh.length > 0 ? [...prevData, ...fresh] : prevData;
+    });
   }, []);
 
   const removeDataPoint = useCallback((index: number) => {
@@ -101,6 +115,7 @@ export const useAdvancedDataVisualization = (options: UseAdvancedDataVisualizati
     setChartType,
     updateData,
     addDataPoint,
+    addDataPoints,
     removeDataPoint,
     clearData,
     fetchData,

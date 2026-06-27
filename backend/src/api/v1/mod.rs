@@ -157,7 +157,7 @@ pub fn routes(
         .nest("/cost-calculator", cost_calculator::routes(price_feed))
         .nest("/cache/stats", cache_stats::routes(cache.clone()))
         .nest("/metrics", metrics::routes(cache.clone()))
-        .nest("/analytics", crate::api::analytics_dashboard::routes(cache))
+        .nest("/analytics", crate::api::analytics_dashboard::routes(app_state.clone()))
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // 6. OAuth routes

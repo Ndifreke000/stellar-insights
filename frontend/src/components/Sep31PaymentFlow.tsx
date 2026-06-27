@@ -28,10 +28,19 @@ import {
 import { FormField, FormSelect } from "@/components/ui/FormField";
 import { sep31PaymentFlowSchema, type Sep31PaymentFlowForm } from "@/lib/schemas";
 
+interface ComplianceField {
+  name: string;
+  description?: string;
+  optional?: boolean;
+}
+
 export function Sep31PaymentFlow() {
   const [anchors, setAnchors] = useState<Sep31AnchorInfo[]>([]);
   const [selectedAnchor, setSelectedAnchor] = useState<Sep31AnchorInfo | null>(null);
   const [info, setInfo] = useState<Sep31InfoResponse | null>(null);
+  const [complianceFields, setComplianceFields] = useState<ComplianceField[]>([]);
+  const [complianceValues, setComplianceValues] = useState<Record<string, string>>({});
+  const [complianceErrors, setComplianceErrors] = useState<Record<string, string>>({});
   const [transactions, setTransactions] = useState<Sep31Transaction[]>([]);
   const [quote, setQuote] = useState<Sep31QuoteResponse | null>(null);
   const [loadingAnchors, setLoadingAnchors] = useState(false);
@@ -83,7 +92,7 @@ export function Sep31PaymentFlow() {
 
   const isFormValid = isValid && isDirty;
 
-  const transferServer = selectedAnchor?.transfer_server || customTransferServer.trim();
+  const resolvedTransferServer = selectedAnchor?.transfer_server || transferServer?.trim();
 
   const loadAnchors = useCallback(async () => {
     setLoadingAnchors(true);
@@ -102,25 +111,52 @@ export function Sep31PaymentFlow() {
   }, [selectedAnchor]);
 
   const loadInfo = useCallback(async () => {
-    if (!transferServer) {
+    if (!resolvedTransferServer) {
       setInfo(null);
+      setComplianceFields([]);
       return;
     }
     setLoadingInfo(true);
     setError(null);
     try {
-      const data = await getSep31Info(transferServer);
+      const data = await getSep31Info(resolvedTransferServer);
       setInfo(data);
+
+      const fields: ComplianceField[] = [];
+      if (data.receive) {
+        for (const asset of Object.values(data.receive)) {
+          const types = (asset as Record<string, unknown>).types as
+            | Record<string, { fields?: Record<string, { description?: string; optional?: boolean }> }>
+            | undefined;
+          if (!types) continue;
+          for (const typeInfo of Object.values(types)) {
+            if (!typeInfo.fields) continue;
+            for (const [fieldName, fieldMeta] of Object.entries(typeInfo.fields)) {
+              if (!fields.some((f) => f.name === fieldName)) {
+                fields.push({
+                  name: fieldName,
+                  description: fieldMeta.description,
+                  optional: fieldMeta.optional,
+                });
+              }
+            }
+          }
+        }
+      }
+      setComplianceFields(fields);
+      setComplianceValues({});
+      setComplianceErrors({});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load anchor info");
       setInfo(null);
+      setComplianceFields([]);
     } finally {
       setLoadingInfo(false);
     }
-  }, [transferServer]);
+  }, [resolvedTransferServer]);
 
   const loadQuote = useCallback(async () => {
-    if (!transferServer || !amount) {
+    if (!resolvedTransferServer || !amount) {
       setError("Enter amount and select an anchor");
       return;
     }
@@ -129,7 +165,7 @@ export function Sep31PaymentFlow() {
     setQuote(null);
     try {
       const res = await getSep31Quote({
-        transfer_server: transferServer,
+        transfer_server: resolvedTransferServer,
         jwt: jwt || undefined,
         amount,
         sell_asset: sourceAsset || undefined,
@@ -147,15 +183,15 @@ export function Sep31PaymentFlow() {
     } finally {
       setLoadingQuote(false);
     }
-  }, [transferServer, amount, sourceAsset, destAsset, jwt]);
+  }, [resolvedTransferServer, amount, sourceAsset, destAsset, jwt]);
 
   const loadTransactions = useCallback(async () => {
-    if (!transferServer) return;
+    if (!resolvedTransferServer) return;
     setLoadingTx(true);
     setError(null);
     try {
       const res = await getSep31Transactions({
-        transfer_server: transferServer,
+        transfer_server: resolvedTransferServer,
         jwt: jwt || undefined,
         limit: 20,
       });
@@ -166,16 +202,27 @@ export function Sep31PaymentFlow() {
     } finally {
       setLoadingTx(false);
     }
-  }, [transferServer, jwt]);
+  }, [resolvedTransferServer, jwt]);
 
   React.useEffect(() => {
     loadAnchors();
   }, []);
 
   React.useEffect(() => {
-    if (transferServer) loadInfo();
+    if (resolvedTransferServer) loadInfo();
     else setInfo(null);
-  }, [transferServer]);
+  }, [resolvedTransferServer]);
+
+  const validateComplianceFields = (): boolean => {
+    const errors: Record<string, string> = {};
+    for (const field of complianceFields) {
+      if (!field.optional && !complianceValues[field.name]?.trim()) {
+        errors[field.name] = `${field.name} is required`;
+      }
+    }
+    setComplianceErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSendPayment: SubmitHandler<Sep31PaymentFlowForm> = async (data) => {
     const base = selectedAnchor?.transfer_server || data.transferServer;
@@ -184,10 +231,19 @@ export function Sep31PaymentFlow() {
       return;
     }
     if (!isFormValid) return;
+    if (!validateComplianceFields()) {
+      setError("Please fill in all required compliance fields");
+      return;
+    }
     setSending(true);
     setError(null);
     setSuccessMessage(null);
     try {
+      const compliancePayload: Record<string, string> = {};
+      for (const field of complianceFields) {
+        const val = complianceValues[field.name]?.trim();
+        if (val) compliancePayload[field.name] = val;
+      }
       const res = await createSep31Payment({
         transfer_server: base,
         jwt: data.jwt || undefined,
@@ -196,6 +252,7 @@ export function Sep31PaymentFlow() {
         quote_id: quote?.id || undefined,
         source_asset: data.sourceAsset || undefined,
         destination_asset: data.destAsset || undefined,
+        ...compliancePayload,
       });
       const id = (res as { id?: string }).id ?? (res as { transaction?: Sep31Transaction }).transaction?.id;
       setSuccessMessage(
@@ -204,6 +261,7 @@ export function Sep31PaymentFlow() {
           : "Payment submitted. Check payment history for status."
       );
       setQuote(null);
+      setComplianceValues({});
       loadTransactions();
     } catch (e) {
       const msg =
@@ -334,6 +392,52 @@ export function Sep31PaymentFlow() {
             description="Authentication token from SEP-10 challenge"
           />
         </div>
+        {complianceFields.length > 0 && (
+          <div className="mb-4 p-4 rounded-xl bg-white/5 border border-border">
+            <h3 className="text-sm font-medium text-foreground mb-3">
+              Anchor compliance fields
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {complianceFields.map((field) => (
+                <div key={field.name}>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">
+                    {field.name}
+                    {!field.optional && <span className="text-red-400 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={complianceValues[field.name] || ""}
+                    onChange={(e) => {
+                      setComplianceValues((prev) => ({
+                        ...prev,
+                        [field.name]: e.target.value,
+                      }));
+                      if (complianceErrors[field.name]) {
+                        setComplianceErrors((prev) => {
+                          const next = { ...prev };
+                          delete next[field.name];
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder={field.description || field.name}
+                    className="w-full rounded-xl bg-background/80 border border-border px-4 py-2.5 text-foreground focus:ring-2 focus:ring-accent/50"
+                  />
+                  {complianceErrors[field.name] && (
+                    <p className="text-red-400 text-xs mt-1">
+                      {complianceErrors[field.name]}
+                    </p>
+                  )}
+                  {field.description && (
+                    <p className="text-muted-foreground text-xs mt-1">
+                      {field.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {error && (
           <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-red-400 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -350,7 +454,7 @@ export function Sep31PaymentFlow() {
           <button
             type="button"
             onClick={loadQuote}
-            disabled={loadingQuote || !transferServer || !amount || !isFormValid}
+            disabled={loadingQuote || !resolvedTransferServer || !amount || !isFormValid}
             className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2 disabled:opacity-50"
           >
             {loadingQuote ? (
@@ -363,7 +467,7 @@ export function Sep31PaymentFlow() {
           <button
             type="button"
             onClick={handleSubmit(handleSendPayment)}
-            disabled={sending || !transferServer || !amount || !isFormValid}
+            disabled={sending || !resolvedTransferServer || !amount || !isFormValid}
             className="rounded-xl bg-accent text-accent-foreground px-6 py-2.5 font-medium hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
           >
             {sending ? (
@@ -390,7 +494,7 @@ export function Sep31PaymentFlow() {
             )}
           </div>
         )}
-        {transferServer && !info && loadingInfo && (
+        {resolvedTransferServer && !info && loadingInfo && (
           <div className="flex items-center gap-2 text-muted-foreground py-4">
             <Loader2 className="w-4 h-4 animate-spin" />
             Loading anchor capabilities…
@@ -404,26 +508,26 @@ export function Sep31PaymentFlow() {
           <Clock className="w-5 h-5 text-accent" />
           Payment history
         </h2>
-        {transferServer && (
+        {resolvedTransferServer && (
           <button
-            type="button"
+            type=”button”
             onClick={loadTransactions}
             disabled={loadingTx}
-            className="mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2"
+            className=”mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2”
           >
             {loadingTx ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className=”w-4 h-4 animate-spin” />
             ) : (
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className=”w-4 h-4” />
             )}
             Load history
           </button>
         )}
         {transactions.length === 0 && !loadingTx && (
-          <p className="text-muted-foreground text-sm">
-            {transferServer
-              ? "Click “Load history” to fetch payments (JWT may be required)."
-              : "Select an anchor above to load payment history."}
+          <p className=”text-muted-foreground text-sm”>
+            {resolvedTransferServer
+              ? “Click “Load history” to fetch payments (JWT may be required).”
+              : “Select an anchor above to load payment history.”}
           </p>
         )}
         {transactions.length > 0 && (

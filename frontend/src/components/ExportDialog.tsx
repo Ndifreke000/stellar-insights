@@ -74,24 +74,27 @@ export function ExportDialog({ isOpen, onClose, type, title }: ExportDialogProps
         }
       }
 
-      const response = await fetch(`${API_BASE_URL}/export/${type}?${params.toString()}`);
+      const exportUrl = `${API_BASE_URL}/export/${type}?${params.toString()}`;
 
+      // Verify the endpoint is reachable before triggering the download
+      const check = await fetch(exportUrl, { method: "HEAD" });
       clearInterval(progressInterval);
-      setProgress(100);
-
-      if (!response.ok) {
-        throw new Error(`Export failed: ${response.statusText}`);
+      if (!check.ok) {
+        throw new Error(`Export failed: ${check.statusText}`);
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      setProgress(50);
+
+      // Let the browser handle the download natively — streams to disk
+      // instead of loading the entire response into memory
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${type}_export_${new Date().toISOString().split('T')[0]}.${format === "excel" ? "xlsx" : format}`;
+      a.href = exportUrl;
+      a.download = `${type}_export_${new Date().toISOString().split('T')[0]}.${format}`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+
+      setProgress(100);
 
       setSuccess(true);
       setTimeout(() => {

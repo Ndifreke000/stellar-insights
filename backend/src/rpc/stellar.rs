@@ -136,6 +136,8 @@ pub struct LedgerInfo {
     pub fee_pool: String,
     pub base_fee: u32,
     pub base_reserve: String,
+    #[serde(default)]
+    pub protocol_version: u32,
 }
 
 /// Represents a single asset balance change from the new Horizon API format.

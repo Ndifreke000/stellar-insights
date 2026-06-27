@@ -103,10 +103,10 @@ impl Schema {
         CREATE INDEX IF NOT EXISTS idx_contract_events_event_type ON contract_events(event_type);
     ";
 
-    pub const CREATE_BACKFILL_STATE: &'static str = r"
-        CREATE TABLE IF NOT EXISTS backfill_state (
-            id TEXT PRIMARY KEY,
-            current_ledger INTEGER NOT NULL,
+    pub const CREATE_INDEXER_STATE: &'static str = r"
+        CREATE TABLE IF NOT EXISTS indexer_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     ";

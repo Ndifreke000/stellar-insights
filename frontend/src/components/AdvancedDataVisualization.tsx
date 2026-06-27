@@ -4,9 +4,10 @@ import React, { useState, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DataPoint {
+  id?: string | number;
   name: string;
   value: number;
-  [key: string]: string | number;
+  [key: string]: string | number | undefined;
 }
 
 interface AdvancedDataVisualizationProps {

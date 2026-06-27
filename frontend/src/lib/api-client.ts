@@ -1,45 +1,31 @@
 /**
  * API Client with CSRF Protection
- * 
+ *
  * Provides type-safe API methods with automatic CSRF token handling
  * for all state-changing operations.
  */
+
+import { getCsrfToken, refreshCsrfToken } from './csrf-client';
 
 interface ApiOptions extends RequestInit {
   skipCsrf?: boolean;
 }
 
-/**
- * Get CSRF token from meta tag or cookie
- */
-function getCsrfToken(): string | null {
-  // Try meta tag first (for SSR pages)
-  const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  if (metaToken) return metaToken;
-  
-  // Fallback to cookie
-  const cookies = document.cookie.split(';');
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
-    if (name === 'csrf-token') {
-      return decodeURIComponent(value);
-    }
-  }
-  
-  return null;
+interface ApiFetchOptions extends ApiOptions {
+  _retried?: boolean;
 }
 
 /**
  * Base fetch wrapper with CSRF protection
  */
-async function apiFetch(url: string, options: ApiOptions = {}): Promise<Response> {
-  const { skipCsrf = false, headers = {}, ...restOptions } = options;
-  
+async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
+  const { skipCsrf = false, headers = {}, _retried = false, ...restOptions } = options;
+
   const requestHeaders: HeadersInit = {
     'Content-Type': 'application/json',
     ...headers,
   };
-  
+
   // Add CSRF token for state-changing methods
   const method = options.method?.toUpperCase();
   if (!skipCsrf && method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
@@ -49,100 +35,111 @@ async function apiFetch(url: string, options: ApiOptions = {}): Promise<Response
     }
     requestHeaders['X-CSRF-Token'] = csrfToken;
   }
-  
+
   const response = await fetch(url, {
     ...restOptions,
     method,
     headers: requestHeaders,
+    credentials: restOptions.credentials ?? 'same-origin',
   });
-  
-  // Handle CSRF token errors
-  if (response.status === 403) {
+
+  // Re-fetch CSRF token after session expiry, then retry once
+  if (response.status === 401 && !_retried) {
+    await refreshCsrfToken();
+    return apiFetch(url, { ...options, _retried: true });
+  }
+
+  // Handle CSRF token errors — refresh and retry once
+  if (response.status === 403 && !_retried) {
     const data = await response.json().catch(() => ({}));
     if (data.error?.includes('CSRF')) {
-      throw new Error('Security validation failed. Please refresh the page and try again.');
+      await refreshCsrfToken();
+      return apiFetch(url, { ...options, _retried: true });
     }
+    throw new Error('Security validation failed. Please refresh the page and try again.');
   }
-  
+
   return response;
 }
 
 /**
  * GET request
  */
-export async function apiGet<T = any>(url: string, options?: ApiOptions): Promise<T> {
+export async function apiGet<T = unknown>(url: string, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, { ...options, method: 'GET' });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   return response.json();
 }
 
 /**
  * POST request with CSRF protection
  */
-export async function apiPost<T = any>(url: string, data?: any, options?: ApiOptions): Promise<T> {
+export async function apiPost<T = unknown>(url: string, data?: unknown, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'POST',
     body: data ? JSON.stringify(data) : undefined,
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   return response.json();
 }
 
 /**
  * PUT request with CSRF protection
  */
-export async function apiPut<T = any>(url: string, data?: any, options?: ApiOptions): Promise<T> {
+export async function apiPut<T = unknown>(url: string, data?: unknown, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'PUT',
     body: data ? JSON.stringify(data) : undefined,
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   return response.json();
 }
 
 /**
  * PATCH request with CSRF protection
  */
-export async function apiPatch<T = any>(url: string, data?: any, options?: ApiOptions): Promise<T> {
+export async function apiPatch<T = unknown>(url: string, data?: unknown, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'PATCH',
     body: data ? JSON.stringify(data) : undefined,
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   return response.json();
 }
 
 /**
  * DELETE request with CSRF protection
  */
-export async function apiDelete<T = any>(url: string, options?: ApiOptions): Promise<T> {
+export async function apiDelete<T = unknown>(url: string, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   return response.json();
 }
+
+export { refreshCsrfToken } from './csrf-client';

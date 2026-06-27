@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -119,6 +120,26 @@ impl NetworkConfig {
             StellarNetwork::Mainnet => "#00D4AA", // Stellar green
             StellarNetwork::Testnet => "#FF6B35", // Orange for testnet
         }
+    }
+
+    /// Fetch the current Soroban protocol version from Horizon.
+    pub async fn current_protocol_version(&self) -> Result<u32> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
+        let resp: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch latest ledger from Horizon")?
+            .json()
+            .await
+            .context("Failed to parse Horizon ledger response")?;
+
+        resp["_embedded"]["records"][0]["protocol_version"]
+            .as_u64()
+            .map(|v| v as u32)
+            .ok_or_else(|| {
+                anyhow::anyhow!("Missing protocol_version in Horizon ledger response")
+            })
     }
 }
 

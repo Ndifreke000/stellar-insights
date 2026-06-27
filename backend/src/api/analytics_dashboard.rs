@@ -1,9 +1,9 @@
 use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::cache::helpers::cached_query;
 use crate::cache::{keys, CacheManager};
+use crate::state::AppState;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NetworkVolumeDataPoint {
@@ -38,6 +38,13 @@ pub struct AnalyticsDashboardData {
     pub corridor_performance: Vec<CorridorPerformanceMetric>,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct CorridorPerformanceRow {
+    corridor: String,
+    success_rate: f64,
+    volume: f64,
+}
+
 /// Handler for GET /analytics/dashboard (cached with 1 min TTL; mounted under `/analytics` in the API router)
 #[utoipa::path(
     get,
@@ -49,18 +56,18 @@ pub struct AnalyticsDashboardData {
     tag = "Analytics"
 )]
 pub async fn analytics_dashboard(
-    State(cache): State<Arc<CacheManager>>,
+    State(app_state): State<AppState>,
 ) -> Json<AnalyticsDashboardData> {
     let cache_key = keys::analytics_dashboard();
 
     let dashboard_data = cached_query(
-        &cache,
+        &app_state.cache,
         &cache_key,
-        cache.config.get_ttl("dashboard"),
+        app_state.cache.config.get_ttl("dashboard"),
         || async {
             // Generate real analytics data based on database queries
             let time_series_data = generate_time_series_data()?;
-            let corridor_performance = generate_corridor_performance()?;
+            let corridor_performance = generate_corridor_performance(&app_state).await?;
             let stats = generate_network_stats(&time_series_data, &corridor_performance)?;
 
             Ok(AnalyticsDashboardData {
@@ -125,41 +132,49 @@ fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyhow::Er
     ])
 }
 
-fn generate_corridor_performance() -> Result<Vec<CorridorPerformanceMetric>, anyhow::Error> {
-    // For now, return realistic mock data
-    // In production, this would query the database for actual corridor performance
-    Ok(vec![
-        CorridorPerformanceMetric {
-            corridor: "USDC→PHP".to_string(),
-            success_rate: 98.5,
-            volume: 240_000.0,
-            health: 95,
-        },
-        CorridorPerformanceMetric {
-            corridor: "USD→PHP".to_string(),
-            success_rate: 97.2,
-            volume: 180_000.0,
-            health: 92,
-        },
-        CorridorPerformanceMetric {
-            corridor: "EUR→USDC".to_string(),
-            success_rate: 99.1,
-            volume: 150_000.0,
-            health: 98,
-        },
-        CorridorPerformanceMetric {
-            corridor: "USDC→SGD".to_string(),
-            success_rate: 96.8,
-            volume: 120_000.0,
-            health: 89,
-        },
-        CorridorPerformanceMetric {
-            corridor: "USD→EUR".to_string(),
-            success_rate: 98.9,
-            volume: 200_000.0,
-            health: 97,
-        },
-    ])
+async fn generate_corridor_performance(
+    app_state: &AppState,
+) -> Result<Vec<CorridorPerformanceMetric>, anyhow::Error> {
+    let rows = sqlx::query_as::<_, CorridorPerformanceRow>(
+        r"
+        SELECT
+            c.source_asset_code || ':' || c.source_asset_issuer || '->' || c.destination_asset_code || ':' || c.destination_asset_issuer AS corridor,
+            COALESCE(AVG(cm.success_rate), 0.0) AS success_rate,
+            COALESCE(SUM(cm.volume_usd), 0.0) AS volume
+        FROM corridors c
+        LEFT JOIN corridor_metrics cm
+            ON c.source_asset_code = cm.asset_a_code
+           AND c.source_asset_issuer = cm.asset_a_issuer
+           AND c.destination_asset_code = cm.asset_b_code
+           AND c.destination_asset_issuer = cm.asset_b_issuer
+        GROUP BY
+            c.id,
+            c.source_asset_code,
+            c.source_asset_issuer,
+            c.destination_asset_code,
+            c.destination_asset_issuer
+        ORDER BY volume DESC
+        ",
+    )
+    .fetch_all(app_state.db.pool())
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to load corridor performance from database: {e}"))?;
+
+    let metrics = rows
+        .into_iter()
+        .map(|row| CorridorPerformanceMetric {
+            corridor: row.corridor,
+            success_rate: row.success_rate,
+            volume: row.volume,
+            health: calculate_health(row.success_rate),
+        })
+        .collect();
+
+    Ok(metrics)
+}
+
+fn calculate_health(success_rate: f64) -> i32 {
+    success_rate.clamp(0.0, 100.0).round() as i32
 }
 
 fn generate_network_stats(
@@ -282,8 +297,8 @@ fn generate_fallback_data() -> AnalyticsDashboardData {
     }
 }
 
-pub fn routes(cache: Arc<CacheManager>) -> Router {
+pub fn routes(app_state: AppState) -> Router {
     Router::new()
         .route("/dashboard", get(analytics_dashboard))
-        .with_state(cache)
+        .with_state(app_state)
 }

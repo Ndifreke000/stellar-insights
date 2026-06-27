@@ -30,6 +30,7 @@ pub fn mock_ledger_info() -> LedgerInfo {
         fee_pool: "3145678.9012345".to_string(),
         base_fee: 100,
         base_reserve: "0.5".to_string(),
+        protocol_version: 21,
     }
 }
 
