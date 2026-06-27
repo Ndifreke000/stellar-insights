@@ -40,11 +40,6 @@ export function ExportDialog({ isOpen, onClose, type, title }: ExportDialogProps
     setSuccess(false);
 
     try {
-      // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
-        setProgress(prev => (prev < 90 ? prev + 5 : prev));
-      }, 200);
-
       const params = new URLSearchParams();
       params.append("format", format === "excel" ? "xlsx" : format);
 
@@ -60,29 +55,29 @@ export function ExportDialog({ isOpen, onClose, type, title }: ExportDialogProps
         }
       }
 
-      const response = await fetch(`${API_BASE_URL}/export/${type}?${params.toString()}`);
+      const exportUrl = `${API_BASE_URL}/export/${type}?${params.toString()}`;
 
-      clearInterval(progressInterval);
-      setProgress(100);
-
-      if (!response.ok) {
-        throw new Error(`Export failed: ${response.statusText}`);
+      // Verify the endpoint is reachable before triggering the download
+      const check = await fetch(exportUrl, { method: "HEAD" });
+      if (!check.ok) {
+        throw new Error(`Export failed: ${check.statusText}`);
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      setProgress(50);
+
+      // Let the browser handle the download natively — streams to disk
+      // instead of loading the entire response into memory
       const a = document.createElement("a");
-      a.href = url;
+      a.href = exportUrl;
       a.download = `${type}_export_${new Date().toISOString().split('T')[0]}.${format === "excel" ? "xlsx" : format}`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
+      setProgress(100);
       setSuccess(true);
       setTimeout(() => {
         onClose();
-        // Reset state after closing
         setTimeout(() => {
           setIsExporting(false);
           setProgress(0);

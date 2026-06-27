@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -29,24 +29,25 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
     auditTrail: []
   });
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    fetchVerificationData();
-    const interval = setInterval(fetchVerificationData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+  const fetchVerificationData = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-  const fetchVerificationData = async () => {
     try {
       setError(null);
-      const response = await fetch('/api/analytics/verification-summary');
-      
+      const response = await fetch('/api/analytics/verification-summary', {
+        signal: controller.signal,
+      });
+
       if (!response.ok) {
         throw new Error('Failed to fetch verification data');
       }
 
       const data = await response.json();
-      
+
       setVerificationData({
         latestEpoch: data.latestEpoch,
         status: data.latestStatus || 'pending',
@@ -56,11 +57,21 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
         auditTrail: data.auditTrail || []
       });
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error('Error fetching verification data:', err);
       setError('Failed to load verification data');
       setVerificationData((prev: any) => ({ ...prev, status: 'failed' }));
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchVerificationData();
+    const interval = setInterval(fetchVerificationData, 30000);
+    return () => {
+      clearInterval(interval);
+      abortControllerRef.current?.abort();
+    };
+  }, [fetchVerificationData]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
