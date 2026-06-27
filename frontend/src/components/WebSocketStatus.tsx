@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 export interface WebSocketStatusProps {
@@ -19,6 +19,35 @@ export function WebSocketStatus({
   className = '',
 }: WebSocketStatusProps) {
   const t = useTranslations("dashboard");
+  const prevOnlineRef = useRef(navigator.onLine);
+  const [networkSwitched, setNetworkSwitched] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (!prevOnlineRef.current) {
+        setNetworkSwitched(true);
+        onReconnect?.();
+      }
+      prevOnlineRef.current = true;
+    };
+    const handleOffline = () => {
+      prevOnlineRef.current = false;
+      setNetworkSwitched(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [onReconnect]);
+
+  useEffect(() => {
+    if (isConnected && networkSwitched) {
+      setNetworkSwitched(false);
+    }
+  }, [isConnected, networkSwitched]);
+
   const getStatusColor = () => {
     if (isConnected) return 'text-green-600 bg-green-100';
     if (isConnecting) return 'text-yellow-600 bg-yellow-100';

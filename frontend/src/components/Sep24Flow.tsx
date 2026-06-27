@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -46,6 +46,10 @@ export function Sep24Flow() {
   const [error, setError] = useState<string | null>(null);
   const [interactiveUrl, setInteractiveUrl] = useState<string | null>(null);
   const [selectedAnchor, setSelectedAnchor] = useState<Sep24AnchorInfo | null>(null);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const POLLING_TIMEOUT_MS = 10 * 60 * 1000;
 
   const {
     register,
@@ -104,7 +108,15 @@ export function Sep24Flow() {
     : null;
   const assetCodes = assets ? Object.keys(assets) : [];
 
-  const startFlow: SubmitHandler<Sep24Form> = async (data) => {
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const startFlow: SubmitHandler<Sep24FlowForm> = async (data) => {
     if (!isFormValid) {
       return;
     }
@@ -116,8 +128,15 @@ export function Sep24Flow() {
 
     setError(null);
     setInteractiveUrl(null);
+    setPollingTimedOut(false);
 
-    // Use the appropriate mutation
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+    }
+    pollingTimeoutRef.current = setTimeout(() => {
+      setPollingTimedOut(true);
+    }, POLLING_TIMEOUT_MS);
+
     const mutation = flowKind === "deposit" ? startDepositMutation : startWithdrawMutation;
 
     const params = {
@@ -278,6 +297,12 @@ export function Sep24Flow() {
                 >
                   Open again <ExternalLink className="w-3 h-3" />
                 </a>
+              </div>
+            )}
+            {pollingTimedOut && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-amber-400 text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Anchor did not respond — check your email or contact support.
               </div>
             )}
             <button
