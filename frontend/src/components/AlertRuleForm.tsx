@@ -3,7 +3,7 @@ import { CreateAlertRuleRequest, UpdateAlertRuleRequest, AlertRule } from "../li
 
 interface AlertRuleFormProps {
     initialData?: AlertRule;
-    onSubmit: (data: CreateAlertRuleRequest | UpdateAlertRuleRequest) => void;
+    onSubmit: (data: CreateAlertRuleRequest | UpdateAlertRuleRequest) => void | Promise<void>;
     onCancel: () => void;
     isLoading?: boolean;
 }
@@ -20,9 +20,12 @@ export function AlertRuleForm({ initialData, onSubmit, onCancel, isLoading }: Al
     const [notifyEmail, setNotifyEmail] = useState(initialData?.notify_email || false);
     const [notifyWebhook, setNotifyWebhook] = useState(initialData?.notify_webhook || false);
     const [notifyInApp, setNotifyInApp] = useState(initialData?.notify_in_app ?? true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         const data: CreateAlertRuleRequest = {
             metric_type: metricType,
             condition,
@@ -32,7 +35,11 @@ export function AlertRuleForm({ initialData, onSubmit, onCancel, isLoading }: Al
             notify_in_app: notifyInApp,
             ...(corridorId ? { corridor_id: corridorId } : {}),
         };
-        onSubmit(data);
+        try {
+            await onSubmit(data);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -146,17 +153,17 @@ export function AlertRuleForm({ initialData, onSubmit, onCancel, isLoading }: Al
                 <button
                     type="button"
                     onClick={onCancel}
-                    disabled={isLoading}
+                    disabled={isLoading || isSubmitting}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
                 >
                     Cancel
                 </button>
                 <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || isSubmitting}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 >
-                    {isLoading ? "Saving..." : initialData ? "Update Rule" : "Create Rule"}
+                    {isLoading || isSubmitting ? "Saving..." : initialData ? "Update Rule" : "Create Rule"}
                 </button>
             </div>
         </form>
