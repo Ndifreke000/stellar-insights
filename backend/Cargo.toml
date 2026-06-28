@@ -79,6 +79,7 @@ utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 urlencoding = "2.1"
 toml = "1.0"
 prometheus = "0.13"
+rust_decimal = "1.40"
 ipnetwork = "0.20"
 argon2 = "0.5.3"
 url = "2.5"

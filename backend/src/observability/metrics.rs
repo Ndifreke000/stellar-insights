@@ -216,6 +216,15 @@ lazy_static! {
         &["corridor"]
     )
     .expect("Failed to register stellar_corridor_reliability histogram");
+    // Price feed / oracle staleness metrics
+    pub static ref PRICE_FEED_STALE_ASSETS: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "price_feed_stale_assets",
+            "Per-asset oracle staleness indicator (1 = stale, 0 = fresh)"
+        ),
+        &["asset"]
+    )
+    .expect("Failed to register price_feed_stale_assets gauge");
 }
 
 pub fn init_metrics() {

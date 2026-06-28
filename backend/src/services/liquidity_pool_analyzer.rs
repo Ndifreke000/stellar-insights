@@ -1,6 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
+use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 use sqlx::{Pool, Sqlite};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::info;
 
@@ -49,11 +52,17 @@ impl LiquidityPoolAnalyzer {
                 Self::parse_asset(&hp.reserves[0].asset);
             let (secondary_reserve_code, secondary_reserve_issuer) =
                 Self::parse_asset(&hp.reserves[1].asset);
-            let primary_reserve: f64 = hp.reserves[0].amount.parse().unwrap_or(0.0);
-            let secondary_reserve: f64 = hp.reserves[1].amount.parse().unwrap_or(0.0);
+            let primary_reserve =
+                Decimal::from_str(&hp.reserves[0].amount).unwrap_or(Decimal::ZERO);
+            let secondary_reserve =
+                Decimal::from_str(&hp.reserves[1].amount).unwrap_or(Decimal::ZERO);
+            // Convert to f64 for storage/compatibility (still used in DB columns)
+            let primary_reserve_f64 = primary_reserve.to_f64().unwrap_or(0.0);
+            let secondary_reserve_f64 = secondary_reserve.to_f64().unwrap_or(0.0);
 
             // Estimate total value (simplified: assume both sides equivalent for AMM)
-            let total_value_usd = primary_reserve + secondary_reserve; // Simplified valuation
+            // Use Decimal for precision, then convert to f64 for DB storage
+            let total_value_usd_f64 = (primary_reserve + secondary_reserve).to_f64().unwrap_or(0.0);
 
             // Compute volume from recent trades
             let trades = self
@@ -76,15 +85,19 @@ impl LiquidityPoolAnalyzer {
             let fees_earned_24h = volume_24h_usd * fee_rate;
 
             // Compute APY: annualize daily fees relative to TVL
-            let apy = if total_value_usd > 0.0 {
-                (fees_earned_24h / total_value_usd) * 365.0 * 100.0
+            let apy = if total_value_usd_f64 > 0.0 {
+                (fees_earned_24h / total_value_usd_f64) * 365.0 * 100.0
             } else {
                 0.0
             };
 
             // Compute impermanent loss (requires initial reserves, use snapshot if available)
             let il = self
-                .compute_impermanent_loss_for_pool(&hp.id, primary_reserve, secondary_reserve)
+                .compute_impermanent_loss_for_pool(
+                    &hp.id,
+                    primary_reserve_f64,
+                    secondary_reserve_f64,
+                )
                 .await;
 
             let now = Utc::now();
@@ -121,11 +134,11 @@ impl LiquidityPoolAnalyzer {
             .bind(&hp.total_shares)
             .bind(&primary_reserve_code)
             .bind(&primary_reserve_issuer)
-            .bind(primary_reserve)
+            .bind(primary_reserve_f64)
             .bind(&secondary_reserve_code)
             .bind(&secondary_reserve_issuer)
-            .bind(secondary_reserve)
-            .bind(total_value_usd)
+            .bind(secondary_reserve_f64)
+            .bind(total_value_usd_f64)
             .bind(volume_24h_usd)
             .bind(fees_earned_24h)
             .bind(apy)
@@ -292,6 +305,8 @@ impl LiquidityPoolAnalyzer {
     /// Compute impermanent loss given initial and current reserves.
     /// IL = 2 * `sqrt(price_ratio)` / (1 + `price_ratio`) - 1
     /// where `price_ratio` = (`current_base_reserve/current_quote_reserve`) / (`initial_base_reserve/initial_quote_reserve`)
+    ///
+    /// Uses `Decimal` for precision to avoid off-by-one flooring on low-liquidity pools.
     #[must_use]
     pub fn compute_impermanent_loss(
         initial_base_reserve: f64,
@@ -299,20 +314,33 @@ impl LiquidityPoolAnalyzer {
         current_base_reserve: f64,
         current_quote_reserve: f64,
     ) -> f64 {
-        if initial_base_reserve <= 0.0
-            || initial_quote_reserve <= 0.0
-            || current_base_reserve <= 0.0
-            || current_quote_reserve <= 0.0
+        // Use Decimal for precision arithmetic
+        let init_base = Decimal::from_f64(initial_base_reserve).unwrap_or(Decimal::ZERO);
+        let init_quote = Decimal::from_f64(initial_quote_reserve).unwrap_or(Decimal::ZERO);
+        let curr_base = Decimal::from_f64(current_base_reserve).unwrap_or(Decimal::ZERO);
+        let curr_quote = Decimal::from_f64(current_quote_reserve).unwrap_or(Decimal::ZERO);
+
+        if init_base.is_zero()
+            || init_quote.is_zero()
+            || curr_base.is_zero()
+            || curr_quote.is_zero()
         {
             return 0.0;
         }
 
-        let initial_ratio = initial_base_reserve / initial_quote_reserve;
-        let current_ratio = current_base_reserve / current_quote_reserve;
+        // Compute ratios using Decimal
+        let initial_ratio = init_base / init_quote;
+        let current_ratio = curr_base / curr_quote;
         let price_ratio = current_ratio / initial_ratio;
 
-        let sqrt_ratio = price_ratio.sqrt();
-        let il = 2.0 * sqrt_ratio / (1.0 + price_ratio) - 1.0;
+        // Convert back to f64 for sqrt (rust_decimal math ops require "maths" feature)
+        let price_ratio_f64 = price_ratio.to_f64().unwrap_or(0.0);
+        if price_ratio_f64 <= 0.0 {
+            return 0.0;
+        }
+
+        let sqrt_ratio = price_ratio_f64.sqrt();
+        let il = 2.0 * sqrt_ratio / (1.0 + price_ratio_f64) - 1.0;
 
         // IL is typically negative (representing loss), return as positive percentage
         (il.abs()) * 100.0
