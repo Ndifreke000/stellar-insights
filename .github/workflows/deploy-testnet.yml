@@ -96,10 +96,11 @@ jobs:
             -n "${{ env.K8S_NAMESPACE }}" --timeout=10m
 
       - name: Run backend smoke tests
+        working-directory: backend
         env:
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          BACKEND_URL: ${{ vars.TESTNET_BACKEND_URL }}
-        run: bash backend/scripts/testnet-smoke-tests.sh
+          TESTNET_API_URL: ${{ vars.TESTNET_BACKEND_URL }}
+          TESTNET_API_KEY: ${{ secrets.TESTNET_API_KEY }}
+        run: cargo test --features testnet-smoke
 
       - name: Post Slack notification
         if: always()

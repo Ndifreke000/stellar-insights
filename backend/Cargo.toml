@@ -33,6 +33,7 @@ panic = "allow"
 [features]
 legacy_sep10_tests = []
 sep-integration = []
+testnet-smoke = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -132,3 +133,8 @@ required-features = ["sep-integration"]
 name = "sep31_integration"
 path = "tests/sep/sep31_integration.rs"
 required-features = ["sep-integration"]
+
+[[test]]
+name = "testnet_smoke"
+path = "tests/testnet/mod.rs"
+required-features = ["testnet-smoke"]
