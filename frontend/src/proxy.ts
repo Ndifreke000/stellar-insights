@@ -12,7 +12,8 @@ const intlMiddleware = createMiddleware(routing);
  * Notes:
  * - `script-src 'unsafe-inline'` is required by Next.js for inline hydration scripts.
  *   A nonce-based approach can replace this once Next.js nonce support is wired up.
- * - `connect-src` includes wss: for WebSocket and *.sentry.io for error reporting.
+ * - `connect-src` includes wss: for WebSocket, *.sentry.io for error reporting,
+ *   and Stellar RPC/Horizon endpoints for contract calls.
  * - `upgrade-insecure-requests` is omitted in development to avoid breaking http://localhost.
  */
 function buildCsp(isProd: boolean): string {
@@ -22,7 +23,7 @@ function buildCsp(isProd: boolean): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://*.stellar.org",
     "font-src 'self'",
-    "connect-src 'self' wss: https: https://*.sentry.io",
+    "connect-src 'self' wss: https: https://*.sentry.io https://soroban-testnet.stellar.org https://stellar.api.onfinality.io https://horizon-testnet.stellar.org https://horizon.stellar.org",
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "object-src 'none'",

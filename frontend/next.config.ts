@@ -46,7 +46,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.stellar.org",
       "font-src 'self'",
-      "connect-src 'self' wss: https: https://*.sentry.io",
+      "connect-src 'self' wss: https: https://*.sentry.io https://soroban-testnet.stellar.org https://stellar.api.onfinality.io https://horizon-testnet.stellar.org https://horizon.stellar.org",
       "frame-src 'none'",
       "frame-ancestors 'none'",
       "object-src 'none'",
