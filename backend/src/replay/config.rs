@@ -32,6 +32,16 @@ pub struct ReplayConfig {
     pub event_timeout_secs: u64,
     /// Maximum retries for failed events
     pub max_retries: u32,
+    /// Stellar protocol version active at the start of the replay range.
+    ///
+    /// The engine updates this value as it advances through ledgers so that
+    /// each batch is processed with the semantics that were live at that
+    /// point in time.
+    ///
+    /// Set to `0` to let the engine infer the protocol version from the
+    /// ledger data (recommended unless you know the exact version).
+    /// Defaults to `0` (auto-infer).
+    pub protocol_version: u32,
 }
 
 impl Default for ReplayConfig {
@@ -47,6 +57,8 @@ impl Default for ReplayConfig {
             checkpoint_interval: 1000,
             event_timeout_secs: 30,
             max_retries: 3,
+            // 0 = auto-infer from ledger data at runtime
+            protocol_version: 0,
         }
     }
 }
@@ -97,6 +109,18 @@ impl ReplayConfig {
     #[must_use]
     pub const fn verbose(mut self) -> Self {
         self.verbose = true;
+        self
+    }
+
+    /// Override the replay protocol version.
+    ///
+    /// Passing `0` (the default) tells the engine to infer the protocol
+    /// version from the ledger data automatically.  Set an explicit value
+    /// only when you know exactly which protocol was active for the entire
+    /// replay range (e.g. in tests or offline analysis).
+    #[must_use]
+    pub const fn with_protocol_version(mut self, version: u32) -> Self {
+        self.protocol_version = version;
         self
     }
 
@@ -234,12 +258,20 @@ mod tests {
     fn test_replay_config_validation() {
         let config = ReplayConfig::default();
         assert!(config.validate().is_ok());
+        assert_eq!(config.protocol_version, 0, "default should be 0 (auto-infer)");
 
         let invalid_config = ReplayConfig {
             batch_size: 0,
             ..Default::default()
         };
         assert!(invalid_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_replay_config_with_protocol_version() {
+        let config = ReplayConfig::new().with_protocol_version(21);
+        assert_eq!(config.protocol_version, 21);
+        assert!(config.validate().is_ok());
     }
 
     #[test]

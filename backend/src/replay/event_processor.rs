@@ -12,6 +12,7 @@ use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use super::ContractEvent;
+use crate::replay::{LedgerProtocolVersion, PROTOCOL_V20};
 
 /// Context provided to event processors
 #[derive(Debug, Clone)]
@@ -26,6 +27,13 @@ pub struct ProcessingContext {
     pub events_processed: u64,
     /// Processing timeout
     pub timeout: Duration,
+    /// Stellar protocol version active for the current ledger.
+    ///
+    /// Set to the protocol version that was active when `current_ledger` was
+    /// closed so that processors can branch on semantics that changed across
+    /// protocol upgrades.  `0` means the version has not been resolved yet
+    /// (treated as "use legacy / most-conservative path").
+    pub protocol_version: u32,
 }
 
 impl ProcessingContext {
@@ -38,6 +46,7 @@ impl ProcessingContext {
             current_ledger: 0,
             events_processed: 0,
             timeout: Duration::from_secs(30),
+            protocol_version: 0,
         }
     }
 
@@ -50,7 +59,18 @@ impl ProcessingContext {
             current_ledger: 0,
             events_processed: 0,
             timeout: Duration::from_secs(30),
+            protocol_version: 0,
         }
+    }
+
+    /// Return a copy of this context with the given protocol version applied.
+    ///
+    /// Called by the engine once per ledger batch so that each processor
+    /// receives the version that was active when the ledger was closed.
+    #[must_use]
+    pub const fn with_protocol_version(mut self, version: u32) -> Self {
+        self.protocol_version = version;
+        self
     }
 
     /// Check if this is a replay context
@@ -325,6 +345,20 @@ impl SnapshotEventProcessor {
         event: &ContractEvent,
         context: &ProcessingContext,
     ) -> Result<ProcessingResult> {
+        let proto = LedgerProtocolVersion(context.protocol_version);
+
+        // Ledgers closed before Soroban was introduced (protocol < 20) cannot
+        // contain snapshot-submission contract events.  Guard here in case the
+        // caller supplies an explicit protocol version that is too old.
+        if !proto.supports_soroban() {
+            debug!(
+                ledger = event.ledger_sequence,
+                protocol = context.protocol_version,
+                "Skipping snapshot submission — Soroban not active for this protocol version"
+            );
+            return Ok(ProcessingResult::skipped());
+        }
+
         // Extract snapshot data from event
         let epoch = event
             .data
@@ -339,8 +373,8 @@ impl SnapshotEventProcessor {
             .context("Missing hash in event data")?;
 
         debug!(
-            "Processing snapshot submission: epoch={}, hash={}",
-            epoch, hash
+            "Processing snapshot submission: epoch={}, hash={}, protocol={}",
+            epoch, hash, context.protocol_version
         );
 
         // Check if already exists (idempotency)
@@ -356,22 +390,52 @@ impl SnapshotEventProcessor {
             return Ok(ProcessingResult::skipped());
         }
 
-        // Insert snapshot record (if not dry-run)
+        // Insert snapshot record (if not dry-run).
+        //
+        // Protocol 21+ introduced stricter fee semantics (CAP-0052/CAP-0054).
+        // The snapshot record itself has the same shape, but we tag it with the
+        // active protocol so downstream analytics can distinguish pre-/post-
+        // upgrade submissions without re-querying the ledger.
         if !context.dry_run {
-            sqlx::query(
-                r"
-                INSERT INTO snapshots (epoch, hash, ledger_sequence, transaction_hash, created_at)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (epoch) DO NOTHING
-                ",
-            )
-            .bind(epoch as i64)
-            .bind(hash)
-            .bind(event.ledger_sequence as i64)
-            .bind(&event.transaction_hash)
-            .bind(event.timestamp)
-            .execute(&self.pool)
-            .await?;
+            if proto.has_v21_fee_semantics() {
+                // Protocol 21+: store with explicit protocol tag so the reader
+                // can apply the correct fee-accounting rules.
+                sqlx::query(
+                    r"
+                    INSERT INTO snapshots (
+                        epoch, hash, ledger_sequence, transaction_hash,
+                        protocol_version, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (epoch) DO NOTHING
+                    ",
+                )
+                .bind(epoch as i64)
+                .bind(hash)
+                .bind(event.ledger_sequence as i64)
+                .bind(&event.transaction_hash)
+                .bind(context.protocol_version as i64)
+                .bind(event.timestamp)
+                .execute(&self.pool)
+                .await?;
+            } else {
+                // Protocol 20 (original Soroban): legacy insert without the
+                // protocol_version column so old schema deployments still work.
+                sqlx::query(
+                    r"
+                    INSERT INTO snapshots (epoch, hash, ledger_sequence, transaction_hash, created_at)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (epoch) DO NOTHING
+                    ",
+                )
+                .bind(epoch as i64)
+                .bind(hash)
+                .bind(event.ledger_sequence as i64)
+                .bind(&event.transaction_hash)
+                .bind(event.timestamp)
+                .execute(&self.pool)
+                .await?;
+            }
         }
 
         Ok(ProcessingResult::success().with_change(StateChange {
@@ -383,6 +447,7 @@ impl SnapshotEventProcessor {
                 "epoch": epoch,
                 "hash": hash,
                 "ledger": event.ledger_sequence,
+                "protocol_version": context.protocol_version,
             })),
         }))
     }
@@ -443,9 +508,14 @@ mod tests {
     fn test_processing_context() {
         let ctx = ProcessingContext::new();
         assert!(!ctx.is_replay());
+        assert_eq!(ctx.protocol_version, 0);
 
         let replay_ctx = ProcessingContext::for_replay("session-1".to_string(), false);
         assert!(replay_ctx.is_replay());
+        assert_eq!(replay_ctx.protocol_version, 0);
+
+        let versioned = replay_ctx.with_protocol_version(21);
+        assert_eq!(versioned.protocol_version, 21);
     }
 
     #[test]

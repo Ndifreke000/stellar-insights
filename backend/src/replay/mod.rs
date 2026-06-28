@@ -26,9 +26,78 @@ pub use engine::ReplayEngine;
 pub use event_processor::{EventProcessor, ProcessingContext, ProcessingResult};
 pub use state_builder::StateBuilder;
 pub use storage::{EventStorage, ReplayStorage};
+pub use self::LedgerProtocolVersion;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+// ---------------------------------------------------------------------------
+// Protocol version thresholds
+// ---------------------------------------------------------------------------
+// These constants represent the Stellar protocol version at which specific
+// on-chain semantic changes were introduced.  Replay logic branches on these
+// values so that events from older ledgers are processed with the rules that
+// were active at the time, preserving determinism.
+//
+// Convention: `PROTOCOL_V<N>` is the first protocol version where the change
+// takes effect.  All versions *below* the constant use the legacy path; all
+// versions *at or above* use the new path.
+
+/// Protocol 20 introduced Soroban smart contracts (Soroban / CAP-0046).
+/// Before this version there are no contract events to replay; the replay
+/// engine skips ledgers whose active protocol is below this threshold.
+pub const PROTOCOL_V20: u32 = 20;
+
+/// Protocol 21 tightened Soroban fee semantics (CAP-0052 / CAP-0054).
+/// The snapshot-submission handler uses different fee/reserve accounting
+/// depending on whether the ledger was closed under protocol 20 or 21+.
+pub const PROTOCOL_V21: u32 = 21;
+
+/// A resolved protocol version for a specific ledger.
+///
+/// Wraps the raw `u32` so callers can call the helper predicates instead of
+/// writing bare numeric comparisons throughout the replay code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LedgerProtocolVersion(pub u32);
+
+impl LedgerProtocolVersion {
+    /// Return the raw protocol version number.
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+
+    /// Returns `true` when Soroban contract events are valid for this ledger.
+    /// Ledgers closed under a protocol version below 20 pre-date Soroban and
+    /// produce no contract events; replaying them is a no-op.
+    #[must_use]
+    pub const fn supports_soroban(self) -> bool {
+        self.0 >= PROTOCOL_V20
+    }
+
+    /// Returns `true` when the protocol-21 fee semantics are active.
+    /// Used by `SnapshotEventProcessor` and `StateBuilder` to choose the
+    /// correct accounting path for snapshot-submission events.
+    #[must_use]
+    pub const fn has_v21_fee_semantics(self) -> bool {
+        self.0 >= PROTOCOL_V21
+    }
+}
+
+impl Default for LedgerProtocolVersion {
+    /// Default to protocol 20 (first Soroban-capable version) so that replay
+    /// sessions that do not supply an explicit version still process events
+    /// correctly.  Callers that know the exact version should always supply it.
+    fn default() -> Self {
+        Self(PROTOCOL_V20)
+    }
+}
+
+impl fmt::Display for LedgerProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "protocol/{}", self.0)
+    }
+}
 
 /// Represents a contract event from the blockchain
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -213,3 +282,47 @@ pub enum ReplayError {
 }
 
 pub type ReplayResult<T> = std::result::Result<T, ReplayError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ledger_protocol_version_soroban_support() {
+        // Versions below 20 pre-date Soroban — no contract events.
+        assert!(!LedgerProtocolVersion(0).supports_soroban());
+        assert!(!LedgerProtocolVersion(19).supports_soroban());
+        // Protocol 20 introduced Soroban.
+        assert!(LedgerProtocolVersion(20).supports_soroban());
+        assert!(LedgerProtocolVersion(21).supports_soroban());
+        assert!(LedgerProtocolVersion(22).supports_soroban());
+    }
+
+    #[test]
+    fn test_ledger_protocol_version_v21_fee_semantics() {
+        assert!(!LedgerProtocolVersion(20).has_v21_fee_semantics());
+        assert!(LedgerProtocolVersion(21).has_v21_fee_semantics());
+        assert!(LedgerProtocolVersion(22).has_v21_fee_semantics());
+    }
+
+    #[test]
+    fn test_ledger_protocol_version_default() {
+        // Default should be protocol 20 (first Soroban-capable version).
+        let v = LedgerProtocolVersion::default();
+        assert_eq!(v.as_u32(), PROTOCOL_V20);
+        assert!(v.supports_soroban());
+    }
+
+    #[test]
+    fn test_ledger_protocol_version_ordering() {
+        assert!(LedgerProtocolVersion(19) < LedgerProtocolVersion(20));
+        assert!(LedgerProtocolVersion(20) < LedgerProtocolVersion(21));
+        assert_eq!(LedgerProtocolVersion(21), LedgerProtocolVersion(21));
+    }
+
+    #[test]
+    fn test_ledger_protocol_version_display() {
+        assert_eq!(LedgerProtocolVersion(20).to_string(), "protocol/20");
+        assert_eq!(LedgerProtocolVersion(21).to_string(), "protocol/21");
+    }
+}

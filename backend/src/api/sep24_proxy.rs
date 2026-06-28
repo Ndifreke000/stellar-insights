@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -422,7 +422,7 @@ pub async fn get_transaction(
 
 /// List known SEP-24-enabled anchors (from env or static list).
 /// GET /api/sep24/anchors
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sep24AnchorInfo {
     pub name: String,
     pub transfer_server: String,
@@ -447,6 +447,280 @@ pub async fn list_anchors() -> Json<Value> {
         vec![]
     };
     Json(serde_json::json!({ "anchors": anchors }))
+}
+
+/// Derive the set of permitted CORS origins from the registered anchor list.
+///
+/// An anchor's `home_domain` (e.g. `"anchor.example.com"`) is converted to
+/// a proper origin string (`"https://anchor.example.com"`) so it can be
+/// compared directly with the `Origin` request header.  HTTP is also
+/// accepted during local development.
+///
+/// The list is read fresh from the `SEP24_ANCHORS` env var on every call so
+/// that changes take effect without a restart (the var is cheap to read and
+/// parse compared to a DB query).
+fn allowed_anchor_origins() -> Vec<String> {
+    let anchors: Vec<Sep24AnchorInfo> = std::env::var("SEP24_ANCHORS")
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    anchors
+        .into_iter()
+        .filter_map(|a| a.home_domain)
+        .flat_map(|domain| {
+            let domain = domain.trim().trim_end_matches('/').to_string();
+            // Emit both schemes so local / self-signed setups work in dev.
+            vec![
+                format!("https://{}", domain),
+                format!("http://{}", domain),
+            ]
+        })
+        .collect()
+}
+
+/// Return the matching allowed origin for a given `Origin` header value, or
+/// `None` if the origin is not in the registered anchor list.
+fn resolve_callback_origin(request_origin: &str) -> Option<String> {
+    let needle = request_origin.trim().trim_end_matches('/');
+    allowed_anchor_origins()
+        .into_iter()
+        .find(|o| o.trim_end_matches('/') == needle)
+}
+
+/// Build a minimal set of CORS response headers for the callback endpoint.
+///
+/// `origin` must already be validated via [`resolve_callback_origin`].
+fn callback_cors_headers(origin: &str) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    // Safety: origin comes from our own allow-list, so it is always a valid
+    // header value.  The `unwrap_or_else` is a defensive fallback.
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_str(origin)
+            .unwrap_or_else(|_| HeaderValue::from_static("null")),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, POST, OPTIONS"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Content-Type, Authorization"),
+    );
+    // Do not reflect credentials for anchor callbacks — they are server-to-
+    // server notifications, not browser sessions.
+    headers.insert(
+        header::VARY,
+        HeaderValue::from_static("Origin"),
+    );
+    headers
+}
+
+/// Query parameters forwarded by the anchor on the callback redirect.
+#[derive(Debug, Deserialize)]
+pub struct CallbackQuery {
+    /// The anchor's transfer server base URL — used to look up the anchor and
+    /// validate that the callback is coming from a registered anchor.
+    #[serde(default)]
+    pub transfer_server: Option<String>,
+    /// SEP-24 transaction identifier.
+    #[serde(default)]
+    pub transaction_id: Option<String>,
+    /// Final status reported by the anchor (`completed`, `refunded`, etc.).
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Absorb any extra fields the anchor chooses to include.
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+/// `OPTIONS /api/sep24/callback` — preflight handler.
+///
+/// The browser sends this before the anchor's interactive flow posts back to
+/// our domain.  We must reply with the matching `Access-Control-Allow-Origin`
+/// for the anchor's `home_domain` or the browser will block the follow-up
+/// request.
+#[utoipa::path(
+    options,
+    path = "/api/sep24/callback",
+    responses(
+        (status = 204, description = "Preflight accepted"),
+        (status = 403, description = "Origin not in registered anchor list")
+    ),
+    tag = "SEP-24"
+)]
+pub async fn options_callback(headers: HeaderMap) -> impl IntoResponse {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    match resolve_callback_origin(origin) {
+        Some(allowed) => {
+            let mut cors_headers = callback_cors_headers(&allowed);
+            // Preflight-specific header: cache the result for 1 hour.
+            cors_headers.insert(
+                header::ACCESS_CONTROL_MAX_AGE,
+                HeaderValue::from_static("3600"),
+            );
+            (StatusCode::NO_CONTENT, cors_headers).into_response()
+        }
+        None => {
+            tracing::warn!(
+                origin = %origin,
+                "SEP-24 callback preflight rejected: origin not in registered anchor list"
+            );
+            (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "forbidden",
+                    "message": "Origin not in registered anchor list"
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// `GET /api/sep24/callback` — anchor redirect target.
+///
+/// After completing the interactive deposit/withdrawal flow the anchor
+/// redirects the user's browser to this URL.  The browser will include an
+/// `Origin` header matching the anchor's `home_domain`; we validate it against
+/// the registered anchor list and echo it back in `Access-Control-Allow-Origin`
+/// so the frontend JavaScript can read the response.
+#[utoipa::path(
+    get,
+    path = "/api/sep24/callback",
+    params(
+        ("transfer_server" = Option<String>, Query, description = "Anchor transfer server URL"),
+        ("transaction_id" = Option<String>, Query, description = "SEP-24 transaction ID"),
+        ("status" = Option<String>, Query, description = "Final transaction status")
+    ),
+    responses(
+        (status = 200, description = "Callback received"),
+        (status = 403, description = "Origin not in registered anchor list")
+    ),
+    tag = "SEP-24"
+)]
+pub async fn get_callback(
+    headers: HeaderMap,
+    Query(q): Query<CallbackQuery>,
+) -> impl IntoResponse {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    // Validate the requesting origin against the registered anchor list.
+    // We also accept requests with no Origin header (server-to-server calls
+    // or same-origin browser navigations) — in that case we return the
+    // response without CORS headers, which is safe.
+    let cors_headers = if origin.is_empty() {
+        HeaderMap::new()
+    } else {
+        match resolve_callback_origin(origin) {
+            Some(ref allowed) => callback_cors_headers(allowed),
+            None => {
+                tracing::warn!(
+                    origin = %origin,
+                    transfer_server = ?q.transfer_server,
+                    transaction_id = ?q.transaction_id,
+                    "SEP-24 callback rejected: origin not in registered anchor list"
+                );
+                return (
+                    StatusCode::FORBIDDEN,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({
+                        "error": "forbidden",
+                        "message": "Origin not in registered anchor list"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    tracing::info!(
+        origin = %origin,
+        transfer_server = ?q.transfer_server,
+        transaction_id = ?q.transaction_id,
+        status = ?q.status,
+        "SEP-24 callback received"
+    );
+
+    (
+        StatusCode::OK,
+        cors_headers,
+        Json(serde_json::json!({
+            "received": true,
+            "transaction_id": q.transaction_id,
+            "status": q.status,
+        })),
+    )
+        .into_response()
+}
+
+/// `POST /api/sep24/callback` — anchor server-side notification target.
+///
+/// Some anchors POST a JSON body to the callback URL instead of (or in
+/// addition to) a redirect.  This handler accepts the body and validates the
+/// `Origin` header the same way as `get_callback`.
+#[utoipa::path(
+    post,
+    path = "/api/sep24/callback",
+    request_body(content = Value, description = "Anchor callback payload"),
+    responses(
+        (status = 200, description = "Callback received"),
+        (status = 403, description = "Origin not in registered anchor list")
+    ),
+    tag = "SEP-24"
+)]
+pub async fn post_callback(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> impl IntoResponse {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let cors_headers = if origin.is_empty() {
+        HeaderMap::new()
+    } else {
+        match resolve_callback_origin(origin) {
+            Some(ref allowed) => callback_cors_headers(allowed),
+            None => {
+                tracing::warn!(
+                    origin = %origin,
+                    "SEP-24 POST callback rejected: origin not in registered anchor list"
+                );
+                return (
+                    StatusCode::FORBIDDEN,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({
+                        "error": "forbidden",
+                        "message": "Origin not in registered anchor list"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    tracing::info!(
+        origin = %origin,
+        has_body = body.is_some(),
+        "SEP-24 POST callback received"
+    );
+
+    (
+        StatusCode::OK,
+        cors_headers,
+        Json(serde_json::json!({ "received": true })),
+    )
+        .into_response()
 }
 
 #[derive(Debug)]
@@ -498,6 +772,17 @@ pub fn routes() -> axum::Router {
             axum::routing::get(get_transaction),
         )
         .route("/api/sep24/anchors", axum::routing::get(list_anchors))
+        // Callback endpoint: OPTIONS for preflight, GET for anchor redirects,
+        // POST for server-side anchor notifications.
+        // CORS headers are set dynamically per-request (see `callback_cors_headers`)
+        // because the allowed origin is the anchor's `home_domain`, which is
+        // not known at startup and differs per anchor.
+        .route(
+            "/api/sep24/callback",
+            axum::routing::get(get_callback)
+                .post(post_callback)
+                .options(options_callback),
+        )
         .with_state(state)
 }
 

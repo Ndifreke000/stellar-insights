@@ -1,6 +1,6 @@
 use crate::api::{
     account_merges, anchors, cache_stats, corridors, cost_calculator, fee_bump, liquidity_pools,
-    metrics, oauth, price_feed as price_feed_api, rpc, webhooks,
+    metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -180,6 +180,10 @@ pub fn routes(
         .route("/api/version", get(get_api_version))
         // Preserve existing unversioned endpoints for backward compatibility.
         .merge(v1_router)
+        // SEP-24 proxy routes are mounted separately because the callback
+        // endpoint manages its own per-origin CORS headers dynamically
+        // (the anchor home_domain is not known at startup).
+        .merge(sep24_proxy::routes())
         .layer(cors)
         .layer(middleware::from_fn(
             crate::request_id::request_id_middleware,

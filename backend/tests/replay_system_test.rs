@@ -18,7 +18,7 @@ use stellar_insights_backend::replay::{
     event_processor::{EventProcessor, ProcessingContext, SnapshotEventProcessor},
     state_builder::StateBuilder,
     storage::{EventStorage, ReplayStorage},
-    ContractEvent, EventFilter,
+    ContractEvent, EventFilter, LedgerProtocolVersion, PROTOCOL_V20, PROTOCOL_V21,
 };
 
 /// Setup test database
@@ -209,10 +209,10 @@ async fn test_state_builder() {
     let pool = setup_test_db().await;
     let mut builder = StateBuilder::new(pool);
 
-    // Apply events
+    // Apply events (protocol 20 = first Soroban-capable version)
     let events = create_test_events(5, 1000);
     for event in &events {
-        let result = builder.apply_event(event).await.unwrap();
+        let result = builder.apply_event(event, 20).await.unwrap();
         assert!(result.success);
     }
 
@@ -230,10 +230,10 @@ async fn test_state_idempotency() {
     // Apply same event twice
     let event = create_test_events(1, 1000)[0].clone();
 
-    let result1 = builder.apply_event(&event).await.unwrap();
+    let result1 = builder.apply_event(&event, 20).await.unwrap();
     assert!(result1.success);
 
-    let result2 = builder.apply_event(&event).await.unwrap();
+    let result2 = builder.apply_event(&event, 20).await.unwrap();
     assert!(result2.skipped); // Should be skipped due to idempotency
 
     // State should only have one snapshot
@@ -248,7 +248,7 @@ async fn test_state_persistence_and_verification() {
     // Build state
     let events = create_test_events(5, 1000);
     for event in &events {
-        builder.apply_event(event).await.unwrap();
+        builder.apply_event(event, 20).await.unwrap();
     }
 
     // Persist state
@@ -276,8 +276,8 @@ async fn test_state_hash_consistency() {
     // Apply same events to both builders
     let events = create_test_events(5, 1000);
     for event in &events {
-        builder1.apply_event(event).await.unwrap();
-        builder2.apply_event(event).await.unwrap();
+        builder1.apply_event(event, 20).await.unwrap();
+        builder2.apply_event(event, 20).await.unwrap();
     }
 
     // Hashes should match (deterministic)
@@ -459,7 +459,7 @@ async fn test_state_corruption_detection() {
     // Build and persist state
     let events = create_test_events(5, 1000);
     for event in &events {
-        builder.apply_event(event).await.unwrap();
+        builder.apply_event(event, 20).await.unwrap();
     }
     builder.persist_state().await.unwrap();
 
@@ -474,4 +474,93 @@ async fn test_state_corruption_detection() {
     let result = new_builder.load_state(1004).await;
 
     assert!(result.is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Protocol version tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_state_builder_skips_pre_soroban_events() {
+    let pool = setup_test_db().await;
+    let mut builder = StateBuilder::new(pool);
+
+    let events = create_test_events(3, 500);
+
+    // Protocol 19 pre-dates Soroban — events should be skipped.
+    for event in &events {
+        let result = builder.apply_event(event, 19).await.unwrap();
+        assert!(result.skipped, "pre-Soroban event should be skipped");
+    }
+
+    assert_eq!(builder.state().snapshots.len(), 0);
+    assert_eq!(builder.state().ledger, 0, "ledger should not advance");
+}
+
+#[tokio::test]
+async fn test_state_builder_records_protocol_version_on_snapshot() {
+    let pool = setup_test_db().await;
+    let mut builder = StateBuilder::new(pool);
+
+    let events = create_test_events(1, 1000);
+
+    // Apply with protocol 21
+    builder.apply_event(&events[0], PROTOCOL_V21).await.unwrap();
+
+    let snapshot = builder.state().snapshots.get(&1000).unwrap();
+    assert_eq!(snapshot.protocol_version, PROTOCOL_V21);
+}
+
+#[tokio::test]
+async fn test_state_builder_protocol_20_vs_21_hashes_differ() {
+    // Two builders receiving identical events but under different protocol
+    // versions should produce different state hashes because the stored
+    // `protocol_version` field differs.
+    let pool20 = setup_test_db().await;
+    let pool21 = setup_test_db().await;
+
+    let mut builder20 = StateBuilder::new(pool20);
+    let mut builder21 = StateBuilder::new(pool21);
+
+    let events = create_test_events(3, 1000);
+
+    for event in &events {
+        builder20.apply_event(event, PROTOCOL_V20).await.unwrap();
+        builder21.apply_event(event, PROTOCOL_V21).await.unwrap();
+    }
+
+    assert_ne!(
+        builder20.state().compute_hash(),
+        builder21.state().compute_hash(),
+        "protocol 20 and 21 states should hash differently"
+    );
+}
+
+#[tokio::test]
+async fn test_processing_context_protocol_version() {
+    let ctx = ProcessingContext::for_replay("session-1".to_string(), false);
+    assert_eq!(ctx.protocol_version, 0, "default should be 0 (unresolved)");
+
+    let ctx21 = ctx.with_protocol_version(21);
+    assert_eq!(ctx21.protocol_version, 21);
+    // Original context is unchanged (with_protocol_version returns a copy)
+}
+
+#[tokio::test]
+async fn test_ledger_protocol_version_predicates() {
+    assert!(!LedgerProtocolVersion(19).supports_soroban());
+    assert!(LedgerProtocolVersion(PROTOCOL_V20).supports_soroban());
+    assert!(!LedgerProtocolVersion(PROTOCOL_V20).has_v21_fee_semantics());
+    assert!(LedgerProtocolVersion(PROTOCOL_V21).has_v21_fee_semantics());
+}
+
+#[tokio::test]
+async fn test_replay_config_protocol_version_builder() {
+    let config = ReplayConfig::new().with_protocol_version(21);
+    assert_eq!(config.protocol_version, 21);
+    assert!(config.validate().is_ok());
+
+    // Default should be 0 (auto-infer)
+    let default_config = ReplayConfig::default();
+    assert_eq!(default_config.protocol_version, 0);
 }
