@@ -756,6 +756,42 @@ impl StellarRpcClient {
             .ok_or_else(|| RpcError::ParseError("No ledger data found".to_string()))
     }
 
+    /// Fetch a specific ledger by its sequence number and return its info.
+    /// Used to verify ledger hashes during snapshot generation (issue #1631).
+    pub async fn fetch_ledger_by_sequence(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
+        if self.mock_mode {
+            return Ok(super::mock_stellar::mock_ledger_info());
+        }
+
+        let result = self
+            .execute_with_retry(|| self.fetch_ledger_by_sequence_internal(sequence))
+            .await;
+
+        result.inspect_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+        })
+    }
+
+    async fn fetch_ledger_by_sequence_internal(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
+        let url = format!("{}/ledgers/{}", self.horizon_url, sequence);
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
+        // Horizon returns a single ledger object (not wrapped in _embedded)
+        // when querying by sequence directly.
+        response
+            .json::<LedgerInfo>()
+            .await
+            .map_err(|e| RpcError::ParseError(e.to_string()))
+    }
+
     /// I'm fetching ledgers via RPC getLedgers for sequential ingestion (issue #2)
     pub async fn fetch_ledgers(
         &self,

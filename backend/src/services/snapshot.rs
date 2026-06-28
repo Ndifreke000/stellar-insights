@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::rpc::stellar::{LedgerInfo, StellarRpcClient};
 use crate::snapshot::schema::{
     AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION,
 };
@@ -41,6 +42,7 @@ pub struct SnapshotGenerationResult {
 /// 6. On-chain verification is performed
 pub struct SnapshotService {
     db: Arc<Database>,
+    rpc_client: Arc<StellarRpcClient>,
     contract_service: Option<Arc<ContractService>>,
     event_indexer: Option<Arc<EventIndexer>>,
 }
@@ -48,13 +50,15 @@ pub struct SnapshotService {
 impl SnapshotService {
     /// Create a new snapshot service
     #[must_use]
-    pub const fn new(
+    pub fn new(
         db: Arc<Database>,
+        rpc_client: Arc<StellarRpcClient>,
         contract_service: Option<Arc<ContractService>>,
         event_indexer: Option<Arc<EventIndexer>>,
     ) -> Self {
         Self {
             db,
+            rpc_client,
             contract_service,
             event_indexer,
         }
@@ -96,6 +100,41 @@ impl SnapshotService {
         let hash_hex = hex::encode(hash);
 
         info!("Generated snapshot hash: {}", hash_hex);
+
+        // Step 3b: Verify the latest ledger hash to guard against orphaned ledgers
+        // on network forks. We fetch the latest ledger, then re-fetch it by sequence
+        // to confirm the hash matches. This ensures the snapshot is anchored on a
+        // canonical ledger, not a fork.
+        info!("Verifying latest ledger hash to guard against network forks");
+        let latest_ledger = self
+            .rpc_client
+            .fetch_latest_ledger()
+            .await
+            .context("Failed to fetch latest ledger from Horizon")?;
+
+        let verified_ledger = self
+            .rpc_client
+            .fetch_ledger_by_sequence(latest_ledger.sequence)
+            .await
+            .context("Failed to verify ledger by sequence")?;
+
+        if verified_ledger.hash != latest_ledger.hash {
+            anyhow::bail!(
+                "Ledger hash mismatch: latest ledger {} reports hash {} but \
+                 fetching by sequence returned hash {}. \
+                 This likely means the first response was served from a transient fork. \
+                 Snapshot generation aborted to avoid anchoring to an orphaned ledger.",
+                latest_ledger.sequence,
+                latest_ledger.hash,
+                verified_ledger.hash,
+            );
+        }
+        info!(
+            "Latest ledger {} hash verified (matching hash: {}) — \
+             snapshot is anchored to canonical chain",
+            latest_ledger.sequence,
+            verified_ledger.hash,
+        );
 
         // Step 4: Store hash in database
         let snapshot_id = self

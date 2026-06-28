@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::contract::{ContractConfig, ContractService};
 use stellar_insights_backend::services::snapshot::SnapshotService;
 use tracing::{info, Level};
@@ -45,7 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Initialize snapshot service
-    let snapshot_service = SnapshotService::new(db.clone(), contract_service.clone(), None);
+    // Initialize RPC client for ledger verification
+    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(false));
+    let snapshot_service = SnapshotService::new(db.clone(), rpc_client, contract_service.clone(), None);
 
     // Generate snapshot for current epoch
     let epoch = chrono::Utc::now().timestamp() as u64 / 3600; // Hourly epochs

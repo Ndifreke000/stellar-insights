@@ -392,6 +392,28 @@ impl WsState {
         true
     }
 
+    /// Remove all subscriptions for every connected client.
+    /// Useful when the network configuration changes — stale subscriptions from the
+    /// previous network must be drained so no incorrect data is pushed.
+    pub fn drain_all_subscriptions(&self) {
+        let connection_ids: Vec<Uuid> = self.subscriptions.iter().map(|e| *e.key()).collect();
+        for connection_id in connection_ids {
+            self.subscriptions.remove(&connection_id);
+        }
+        info!("All WebSocket subscriptions have been drained");
+    }
+
+    /// Broadcast a `NetworkChanged` message to every connected client and drain
+    /// all stale subscriptions. Clients that receive `NetworkChanged` should
+    /// re-subscribe to channels relevant to the new network.
+    pub fn broadcast_network_change(&self, network: &str) {
+        info!("Broadcasting network change to: {}", network);
+        self.broadcast(WsMessage::NetworkChanged {
+            network: network.to_string(),
+        });
+        self.drain_all_subscriptions();
+    }
+
     pub fn close_all_connections(&self) {
         let connection_ids: Vec<Uuid> = self.connections.iter().map(|e| *e.key()).collect();
         for connection_id in connection_ids {
@@ -482,6 +504,11 @@ pub enum WsMessage {
     },
     ServerShutdown {
         message: String,
+    },
+    /// Broadcast when the server switches to a different Stellar network.
+    /// Receiving clients should discard stale subscriptions and re-subscribe.
+    NetworkChanged {
+        network: String,
     },
 }
 
