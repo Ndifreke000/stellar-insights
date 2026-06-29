@@ -11,6 +11,7 @@ members = [
   "multi-sig-wallet",
   "time-locked-transactions",
   "token-swap",
+  "upgrade",
   "tests",
 ]
 
