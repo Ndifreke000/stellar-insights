@@ -94,8 +94,12 @@ impl AuthService {
             .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
 
         assert!(
-            (jwt_secret.len() >= 32),
+            jwt_secret.len() >= 32,
             "JWT_SECRET must be at least 32 characters for adequate security"
+        );
+        assert!(
+            !jwt_secret.starts_with("CHANGE_ME"),
+            "JWT_SECRET must not use a placeholder value — generate a cryptographically secure random key"
         );
 
         Self {

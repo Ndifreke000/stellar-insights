@@ -88,6 +88,23 @@ pub enum ClientTier {
     Premium,
 }
 
+/// Normalize an IP address for use as a rate-limit bucket key.
+///
+/// IPv6 addresses are masked to their /48 prefix so that an attacker rotating
+/// through addresses within a single /64 cannot trivially bypass per-IP limits.
+/// IPv4 addresses are returned unchanged.
+fn normalize_ip_for_rate_limit(ip: &str) -> String {
+    use std::net::IpAddr;
+    match ip.parse::<IpAddr>() {
+        Ok(IpAddr::V6(v6)) => {
+            let s = v6.segments();
+            // Keep the first three 16-bit groups (48 bits), zero the rest.
+            std::net::Ipv6Addr::new(s[0], s[1], s[2], 0, 0, 0, 0, 0).to_string()
+        }
+        _ => ip.to_string(),
+    }
+}
+
 /// Comma-separated user/API-key IDs in `STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS` map to premium tier.
 fn client_id_has_premium_env_override(client_id: &str) -> bool {
     std::env::var("STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS")
@@ -171,8 +188,8 @@ impl RateLimiter {
             return ClientIdentifier::User(user_id);
         }
 
-        // Fall back to IP address
-        ClientIdentifier::IpAddress(ip_address)
+        // Fall back to IP address — normalized to /48 for IPv6 to prevent prefix rotation bypass.
+        ClientIdentifier::IpAddress(normalize_ip_for_rate_limit(&ip_address))
     }
 
     /// Get API key from database by hash
@@ -386,7 +403,7 @@ impl RateLimiter {
 
     /// Check rate limit for an IP/endpoint combination (legacy method)
     pub async fn check_rate_limit(&self, ip: &str, endpoint: &str) -> (bool, RateLimitInfo) {
-        let client = ClientIdentifier::IpAddress(ip.to_string());
+        let client = ClientIdentifier::IpAddress(normalize_ip_for_rate_limit(ip));
         self.check_rate_limit_for_client(&client, endpoint, ip)
             .await
     }

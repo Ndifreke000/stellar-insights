@@ -353,6 +353,23 @@ impl VaultClient {
         }
     }
 
+    /// Renew the service's own Vault token before its TTL expires.
+    pub async fn renew_self(&self) -> Result<(), VaultError> {
+        let url = format!("{}/v1/auth/token/renew-self", self.config.vault_addr);
+        let resp = self
+            .http_client
+            .post(&url)
+            .header("X-Vault-Token", &self.config.vault_token)
+            .send()
+            .await
+            .map_err(|e| VaultError::RequestError(e.to_string()))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(VaultError::LeaseRenewalFailed("self".to_string()))
+        }
+    }
+
     /// Revoke a lease
     pub async fn revoke_lease(&self, lease_id: &str) -> Result<(), VaultError> {
         let url = format!("{}/v1/sys/leases/revoke", self.config.vault_addr);
