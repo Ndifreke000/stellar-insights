@@ -105,6 +105,14 @@ pub fn routes(
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
         .with_state(app_state.clone());
 
+    // 2b. Export routes (#1784) — handlers already existed but were never
+    // mounted, so CSV/Excel export was unreachable from the API.
+    let export_routes = Router::new()
+        .route("/export/corridors", get(crate::api::export::export_corridors))
+        .route("/export/anchors", get(crate::api::export::export_anchors))
+        .route("/export/payments", get(crate::api::export::export_payments))
+        .with_state(app_state.clone());
+
     // Protected routes require JWT; per-API-key limits apply after auth resolves.
     let protected_routes = Router::new()
         .route("/anchors", axum::routing::post(anchors::create_anchor))
@@ -167,6 +175,7 @@ pub fn routes(
     let v1_router = Router::new()
         .merge(cached_routes)
         .merge(public_anchor_routes)
+        .merge(export_routes)
         .merge(protected_routes)
         .merge(protected_webhook_routes)
         .merge(rpc_routes)
