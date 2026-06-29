@@ -23,6 +23,26 @@ fn bump_instance(env: &Env) {
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 }
 
+fn require_not_locked(env: &Env) -> Result<(), Error> {
+    if env
+        .storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+    {
+        return Err(Error::Reentrancy);
+    }
+    Ok(())
+}
+
+fn set_locked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &true);
+}
+
+fn set_unlocked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &false);
+}
+
 // ============================================================================
 // Data Types
 // ============================================================================
@@ -73,6 +93,7 @@ pub enum DataKey {
     Version,
     Tx(u64),
     Confirmers(u64),
+    Locked,
 }
 
 // ============================================================================
@@ -126,7 +147,7 @@ impl MultiSigWalletContract {
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
-        emit_initialized(&env, threshold);
+        emit_initialized(&env, &owners, threshold);
         Ok(())
     }
 
@@ -379,6 +400,8 @@ impl MultiSigWalletContract {
     ///
     /// Transfers tokens held by this contract to the recipient.
     pub fn execute_tx(env: Env, caller: Address, tx_id: u64) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         caller.require_auth();
         Self::require_owner(&env, &caller)?;
 
@@ -405,17 +428,23 @@ impl MultiSigWalletContract {
             return Err(Error::ThresholdNotMet);
         }
 
-        let token_client = token::Client::new(&env, &tx.token);
-        token_client.transfer(&env.current_contract_address(), &tx.to, &tx.amount);
-
+        let token = tx.token.clone();
+        let to = tx.to.clone();
         let amount = tx.amount;
+
+        // Effect: mark executed before external call (CEI)
         tx.state = TxState::Executed;
         env.storage().persistent().set(&DataKey::Tx(tx_id), &tx);
         env.storage()
             .persistent()
             .extend_ttl(&DataKey::Tx(tx_id), TX_TTL_THRESHOLD, TX_TTL_EXTEND);
-
         bump_instance(&env);
+
+        // Interaction: token transfer under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &token).transfer(&env.current_contract_address(), &to, &amount);
+        set_unlocked(&env);
+
         emit_tx_executed(&env, tx_id, caller, amount);
         Ok(())
     }

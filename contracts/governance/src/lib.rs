@@ -145,6 +145,10 @@ impl GovernanceContract {
             return Err(errors::Error::AlreadyInitialized);
         }
 
+        if quorum > 10_000 {
+            return Err(errors::Error::InvalidQuorum);
+        }
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::ProposalCount, &0u64);
         env.storage().instance().set(&DataKey::Quorum, &quorum);
@@ -434,7 +438,9 @@ impl GovernanceContract {
 
     /// Finalize a proposal after the voting period has ended.
     /// Anyone can call this function once the deadline passes.
-    pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
+    /// `total_supply` is the circulating token supply used for basis-points quorum check:
+    /// quorum passes when `(votes_cast * 10_000) / total_supply >= quorum_bps`.
+    pub fn finalize(env: Env, proposal_id: u64, total_supply: u64) -> Result<ProposalStatus, Error> {
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -463,10 +469,18 @@ impl GovernanceContract {
                 total_voters: 0,
             });
 
-        let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+        let quorum_bps: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
 
-        // Determine outcome: passes if quorum met AND more for than against
-        let new_status = if tally.total_voters >= quorum && tally.votes_for > tally.votes_against {
+        if total_supply == 0 {
+            return Err(Error::InvalidTotalSupply);
+        }
+
+        // Quorum check: (votes_cast * 10_000) / total_supply >= quorum_bps
+        // Using u128 for the intermediate product to avoid overflow.
+        let votes_bps =
+            (tally.total_voters as u128 * 10_000) / total_supply as u128;
+
+        let new_status = if votes_bps >= quorum_bps as u128 && tally.votes_for > tally.votes_against {
             ProposalStatus::Passed
         } else {
             ProposalStatus::Failed
@@ -582,6 +596,9 @@ impl GovernanceContract {
             .ok_or(Error::AdminNotSet)?;
         if caller != admin {
             return Err(Error::UnauthorizedCaller);
+        }
+        if new_quorum > 10_000 {
+            return Err(Error::InvalidQuorum);
         }
         let old_quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
         env.storage().instance().set(&DataKey::Quorum, &new_quorum);

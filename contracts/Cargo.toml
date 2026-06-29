@@ -11,6 +11,7 @@ members = [
   "multi-sig-wallet",
   "time-locked-transactions",
   "token-swap",
+  "tests",
 ]
 
 # Clippy linting configuration for all contracts

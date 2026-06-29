@@ -27,3 +27,11 @@ pub fn emit_cancelled(env: &Env, tx_id: u64, cancelled_by: Address) {
     env.events()
         .publish((symbol_short!("TLT_CAN"),), (tx_id, cancelled_by));
 }
+
+pub fn emit_paused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TLT_PAU"),), admin);
+}
+
+pub fn emit_unpaused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TLT_UNP"),), admin);
+}

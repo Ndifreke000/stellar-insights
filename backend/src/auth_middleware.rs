@@ -4,7 +4,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use chrono::Utc;
 use serde_json::json;
+use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::auth::Claims;
@@ -12,6 +14,10 @@ use crate::auth::Claims;
 /// JWT secret shared via extension
 #[derive(Clone)]
 pub struct JwtSecret(pub Arc<str>);
+
+/// SQLite pool for token revocation lookups, shared via extension
+#[derive(Clone)]
+pub struct TokenRevocationStore(pub Arc<SqlitePool>);
 
 /// Extract user from authenticated request
 #[derive(Debug, Clone)]
@@ -39,28 +45,35 @@ where
     }
 }
 
-/// Auth middleware - validates JWT from Authorization header
+/// Auth middleware - validates JWT and checks token revocation
 pub async fn auth_middleware(
     Extension(JwtSecret(jwt_secret)): Extension<JwtSecret>,
+    Extension(revocation_store): Extension<TokenRevocationStore>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
-    // Extract Authorization header
     let auth_header = req
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .ok_or(AuthError::MissingToken)?;
 
-    // Extract Bearer token
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or(AuthError::InvalidToken)?;
 
-    // Validate token
     let claims = validate_access_token(token, jwt_secret.as_ref())?;
 
-    // Attach user to request extensions
+    // Check revocation table if the token carries a jti
+    if let Some(ref jti) = claims.jti {
+        if is_token_revoked(&revocation_store, jti)
+            .await
+            .map_err(|_| AuthError::InvalidToken)?
+        {
+            return Err(AuthError::InvalidToken);
+        }
+    }
+
     let auth_user = AuthUser {
         user_id: claims.sub,
         username: claims.username,
@@ -68,6 +81,48 @@ pub async fn auth_middleware(
     req.extensions_mut().insert(auth_user);
 
     Ok(next.run(req).await)
+}
+
+/// Returns true when the jti is in the revocations table and has not yet expired.
+async fn is_token_revoked(
+    store: &TokenRevocationStore,
+    jti: &str,
+) -> Result<bool, sqlx::Error> {
+    let revoked: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM token_revocations
+            WHERE jti = ? AND expires_at > strftime('%s', 'now')
+        )",
+    )
+    .bind(jti)
+    .fetch_one(store.0.as_ref())
+    .await?;
+
+    Ok(revoked)
+}
+
+/// Insert a revocation record so the given jti is rejected until expires_at.
+/// Call this on password change or key rotation, passing the old token's jti
+/// and the token's original exp timestamp as expires_at.
+pub async fn revoke_token(
+    store: &TokenRevocationStore,
+    jti: &str,
+    user_id: &str,
+    expires_at: i64,
+) -> Result<(), sqlx::Error> {
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        "INSERT OR IGNORE INTO token_revocations (jti, user_id, revoked_at, expires_at)
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(jti)
+    .bind(user_id)
+    .bind(now)
+    .bind(expires_at)
+    .execute(store.0.as_ref())
+    .await?;
+
+    Ok(())
 }
 
 /// Validate access token
@@ -82,7 +137,6 @@ fn validate_access_token(token: &str, secret: &str) -> Result<Claims, AuthError>
         &validation,
     )
     .map(|data| {
-        // Verify it's an access token
         if data.claims.token_type != "access" {
             return Err(AuthError::InvalidToken);
         }

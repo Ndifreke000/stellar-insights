@@ -4,7 +4,7 @@ mod errors;
 mod events;
 
 use errors::Error;
-use events::{emit_cancelled, emit_executed, emit_initialized, emit_scheduled};
+use events::{emit_cancelled, emit_executed, emit_initialized, emit_paused, emit_scheduled, emit_unpaused};
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -133,6 +133,7 @@ impl TimeLockedTransactionsContract {
         }
         env.storage().instance().set(&DataKey::Paused, &true);
         bump_instance(&env);
+        emit_paused(&env, caller);
         Ok(())
     }
 
@@ -148,6 +149,7 @@ impl TimeLockedTransactionsContract {
         }
         env.storage().instance().set(&DataKey::Paused, &false);
         bump_instance(&env);
+        emit_unpaused(&env, caller);
         Ok(())
     }
 

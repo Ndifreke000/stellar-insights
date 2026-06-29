@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 // Token expiry constants
 const ACCESS_TOKEN_EXPIRY_HOURS: i64 = 1;
@@ -73,6 +74,8 @@ pub struct Claims {
     pub exp: i64,           // Expiry timestamp
     pub iat: i64,           // Issued at timestamp
     pub token_type: String, // "access" or "refresh"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>, // JWT ID — present on access tokens for revocation checks
 }
 
 /// Authentication service
@@ -148,6 +151,7 @@ impl AuthService {
             exp: expiration,
             iat: Utc::now().timestamp(),
             token_type: "access".to_string(),
+            jti: Some(Uuid::new_v4().to_string()),
         };
 
         encode(
@@ -171,6 +175,7 @@ impl AuthService {
             exp: expiration,
             iat: Utc::now().timestamp(),
             token_type: "refresh".to_string(),
+            jti: None,
         };
 
         encode(

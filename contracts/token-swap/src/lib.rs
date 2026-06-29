@@ -4,7 +4,10 @@ mod errors;
 mod events;
 
 use errors::Error;
-use events::{emit_initialized, emit_offer_accepted, emit_offer_cancelled, emit_offer_created};
+use events::{
+    emit_initialized, emit_offer_accepted, emit_offer_cancelled, emit_offer_created, emit_paused,
+    emit_unpaused,
+};
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,6 +21,26 @@ fn bump_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+fn require_not_locked(env: &Env) -> Result<(), Error> {
+    if env
+        .storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+    {
+        return Err(Error::Reentrancy);
+    }
+    Ok(())
+}
+
+fn set_locked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &true);
+}
+
+fn set_unlocked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &false);
 }
 
 // ============================================================================
@@ -71,6 +94,7 @@ pub enum DataKey {
     Paused,
     Version,
     Offer(u64),
+    Locked,
 }
 
 // ============================================================================
@@ -135,6 +159,7 @@ impl TokenSwapContract {
         }
         env.storage().instance().set(&DataKey::Paused, &true);
         bump_instance(&env);
+        emit_paused(&env, caller);
         Ok(())
     }
 
@@ -150,6 +175,7 @@ impl TokenSwapContract {
         }
         env.storage().instance().set(&DataKey::Paused, &false);
         bump_instance(&env);
+        emit_unpaused(&env, caller);
         Ok(())
     }
 
@@ -191,6 +217,8 @@ impl TokenSwapContract {
         want_amount: i128,
         expiry: u64,
     ) -> Result<u64, Error> {
+        require_not_locked(&env)?;
+
         let paused: bool = env
             .storage()
             .instance()
@@ -212,7 +240,6 @@ impl TokenSwapContract {
             return Err(Error::SameToken);
         }
 
-        // Validate expiry if set
         if expiry != 0 && expiry <= env.ledger().timestamp() {
             return Err(Error::OfferExpired);
         }
@@ -224,14 +251,10 @@ impl TokenSwapContract {
             .unwrap_or(0);
         count = count.checked_add(1).ok_or(Error::OfferIdOverflow)?;
 
-        // Deposit offer tokens from maker into this contract
-        let offer_token_client = token::Client::new(&env, &offer_token);
-        offer_token_client.transfer(&maker, &env.current_contract_address(), &offer_amount);
-
         let offer = Offer {
             id: count,
             maker: maker.clone(),
-            offer_token,
+            offer_token: offer_token.clone(),
             offer_amount,
             want_token,
             want_amount,
@@ -240,6 +263,7 @@ impl TokenSwapContract {
             created_at: env.ledger().timestamp(),
         };
 
+        // Effect: record offer before external call (CEI)
         env.storage()
             .persistent()
             .set(&DataKey::Offer(count), &offer);
@@ -248,9 +272,17 @@ impl TokenSwapContract {
             OFFER_TTL_THRESHOLD,
             OFFER_TTL_EXTEND,
         );
-
         env.storage().instance().set(&DataKey::OfferCount, &count);
         bump_instance(&env);
+
+        // Interaction: pull offer tokens from maker under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &offer_token).transfer(
+            &maker,
+            &env.current_contract_address(),
+            &offer_amount,
+        );
+        set_unlocked(&env);
 
         emit_offer_created(&env, count, maker, offer_amount, want_amount);
         Ok(count)
@@ -259,7 +291,16 @@ impl TokenSwapContract {
     /// Accept an open offer. Atomically swaps both sides.
     ///
     /// The taker sends want_token to the maker and receives offer_token from this contract.
-    pub fn accept_offer(env: Env, taker: Address, offer_id: u64) -> Result<(), Error> {
+    /// The `min_out` parameter ensures protection against sandwich attacks and slippage.
+    /// The actual_out (offer_amount) must be >= min_out or the transaction reverts.
+    pub fn accept_offer(
+        env: Env,
+        taker: Address,
+        offer_id: u64,
+        min_out: i128,
+    ) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         let paused: bool = env
             .storage()
             .instance()
@@ -284,23 +325,22 @@ impl TokenSwapContract {
             return Err(Error::AlreadyCancelled);
         }
 
-        // Enforce expiry if set
         if offer.expiry != 0 && env.ledger().timestamp() > offer.expiry {
             return Err(Error::OfferExpired);
         }
 
-        // Taker sends want_token directly to maker
-        let want_token_client = token::Client::new(&env, &offer.want_token);
-        want_token_client.transfer(&taker, &offer.maker, &offer.want_amount);
+        // Validate slippage: actual_out must be >= min_out to prevent sandwich attacks
+        if offer.offer_amount < min_out {
+            return Err(Error::SlippageExceeded);
+        }
 
-        // Contract sends offer_token to taker
-        let offer_token_client = token::Client::new(&env, &offer.offer_token);
-        offer_token_client.transfer(
-            &env.current_contract_address(),
-            &taker,
-            &offer.offer_amount,
-        );
+        let want_token = offer.want_token.clone();
+        let offer_token = offer.offer_token.clone();
+        let maker = offer.maker.clone();
+        let want_amount = offer.want_amount;
+        let offer_amount = offer.offer_amount;
 
+        // Effect: mark filled before external calls (CEI)
         offer.state = OfferState::Filled;
         env.storage()
             .persistent()
@@ -310,8 +350,18 @@ impl TokenSwapContract {
             OFFER_TTL_THRESHOLD,
             OFFER_TTL_EXTEND,
         );
-
         bump_instance(&env);
+
+        // Interaction: atomic swap under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &want_token).transfer(&taker, &maker, &want_amount);
+        token::Client::new(&env, &offer_token).transfer(
+            &env.current_contract_address(),
+            &taker,
+            &offer_amount,
+        );
+        set_unlocked(&env);
+
         emit_offer_accepted(&env, offer_id, taker);
         Ok(())
     }
@@ -321,6 +371,8 @@ impl TokenSwapContract {
     /// The maker may cancel at any time. The admin may cancel for emergency.
     /// After expiry, any caller may trigger a cancel on behalf of the maker.
     pub fn cancel_offer(env: Env, caller: Address, offer_id: u64) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         caller.require_auth();
 
         let admin: Address = env
@@ -345,19 +397,15 @@ impl TokenSwapContract {
         let now = env.ledger().timestamp();
         let expired = offer.expiry != 0 && now > offer.expiry;
 
-        // Allow: maker, admin, or anyone after expiry
         if caller != offer.maker && caller != admin && !expired {
             return Err(Error::Unauthorized);
         }
 
-        // Return offer tokens to maker
-        let offer_token_client = token::Client::new(&env, &offer.offer_token);
-        offer_token_client.transfer(
-            &env.current_contract_address(),
-            &offer.maker,
-            &offer.offer_amount,
-        );
+        let offer_token = offer.offer_token.clone();
+        let maker = offer.maker.clone();
+        let offer_amount = offer.offer_amount;
 
+        // Effect: mark cancelled before external call (CEI)
         offer.state = OfferState::Cancelled;
         env.storage()
             .persistent()
@@ -367,8 +415,17 @@ impl TokenSwapContract {
             OFFER_TTL_THRESHOLD,
             OFFER_TTL_EXTEND,
         );
-
         bump_instance(&env);
+
+        // Interaction: return tokens to maker under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &offer_token).transfer(
+            &env.current_contract_address(),
+            &maker,
+            &offer_amount,
+        );
+        set_unlocked(&env);
+
         emit_offer_cancelled(&env, offer_id, caller);
         Ok(())
     }

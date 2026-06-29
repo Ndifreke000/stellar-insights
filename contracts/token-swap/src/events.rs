@@ -26,3 +26,11 @@ pub fn emit_offer_cancelled(env: &Env, offer_id: u64, cancelled_by: Address) {
     env.events()
         .publish((symbol_short!("TSW_CAN"),), (offer_id, cancelled_by));
 }
+
+pub fn emit_paused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TSW_PAU"),), admin);
+}
+
+pub fn emit_unpaused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TSW_UNP"),), admin);
+}

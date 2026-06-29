@@ -32,6 +32,6 @@ pub enum Error {
     TxIdOverflow = 13,
     /// Duplicate address in owners list
     DuplicateOwner = 14,
-    /// Threshold exceeds the number of signers
-    ThresholdExceedsSigCount = 15,
+    /// Reentrant call detected
+    Reentrancy = 15,
 }

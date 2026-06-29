@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
@@ -19,6 +20,7 @@ export interface NetworkSwitcherProps {
 }
 
 export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwitcherProps) {
+  const queryClient = useQueryClient();
   const [currentNetwork, setCurrentNetwork] = useState<NetworkInfo | null>(null);
   const [availableNetworks, setAvailableNetworks] = useState<NetworkInfo[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -84,10 +86,13 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
 
       if (response.ok) {
         const result = await response.json();
-        
+
         // Show message about server restart requirement
         alert(result.message);
-        
+
+        // Clear stale React Query cache so data refetches for the new network
+        queryClient.clear();
+
         // For now, we'll update the local state to show the intended network
         // In a real implementation, this would trigger a server restart
         setCurrentNetwork(pendingNetwork);

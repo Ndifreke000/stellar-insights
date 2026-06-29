@@ -25,6 +25,16 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
 
 /// Validates all required environment variables are set
 pub fn validate_env() -> Result<()> {
+    // STELLAR_NETWORK is a fatal startup guard: a missing or unknown value would
+    // silently route a testnet deployment against mainnet data.
+    match env::var("STELLAR_NETWORK") {
+        Ok(ref n) if n == "mainnet" || n == "testnet" => {}
+        Ok(ref n) => panic!(
+            "STELLAR_NETWORK must be set to 'mainnet' or 'testnet', got '{n}'"
+        ),
+        Err(_) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet'"),
+    }
+
     let mut errors = Vec::new();
 
     // Check required variables
@@ -310,6 +320,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_jwt_placeholder() {
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var(
@@ -329,6 +340,7 @@ mod tests {
             "Error should include generation command, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -336,6 +348,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_short_jwt_secret() {
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var("JWT_SECRET", "tooshort");
@@ -352,6 +365,7 @@ mod tests {
             "Error should mention minimum length, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -359,6 +373,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_accepts_valid_jwt_secret() {
+        std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var("JWT_SECRET", "a".repeat(48));
@@ -366,8 +381,29 @@ mod tests {
         let result = validate_env();
         assert!(result.is_ok(), "Should accept a valid JWT secret");
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_when_stellar_network_missing() {
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_on_unknown_network() {
+        std::env::set_var("STELLAR_NETWORK", "devnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
     }
 }
