@@ -10,7 +10,7 @@ pub enum Error {
     NotInitialized = 2,
     /// Caller is not an owner
     Unauthorized = 3,
-    /// Threshold must be between 1 and owner count
+    /// Threshold must be at least 1
     InvalidThreshold = 4,
     /// Owners list is empty
     InvalidOwners = 5,
