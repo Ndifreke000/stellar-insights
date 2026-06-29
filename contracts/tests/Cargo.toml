@@ -9,6 +9,10 @@ name = "integration"
 path = "integration/mod.rs"
 required-features = ["testnet-integration"]
 
+[[test]]
+name = "fuzz"
+path = "fuzz/mod.rs"
+
 [features]
 testnet-integration = []
 
