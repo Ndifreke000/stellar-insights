@@ -39,6 +39,8 @@ pub struct EventListQuery {
     pub offset: Option<i64>,
     pub event_type: Option<String>,
     pub verification_status: Option<String>,
+    /// Filter by one or more contract IDs (repeated query param, e.g. contract_ids=a&contract_ids=b)
+    pub contract_ids: Option<Vec<String>>,
 }
 
 /// Handler for GET /api/analytics/verification-summary
@@ -89,7 +91,8 @@ pub async fn get_verification_summary(
         ("limit" = Option<i64>, Query, description = "Maximum number of events to return"),
         ("offset" = Option<i64>, Query, description = "Number of events to skip"),
         ("event_type" = Option<String>, Query, description = "Filter by event type"),
-        ("verification_status" = Option<String>, Query, description = "Filter by verification status")
+        ("verification_status" = Option<String>, Query, description = "Filter by verification status"),
+        ("contract_ids" = Option<Vec<String>>, Query, description = "Filter by one or more contract IDs (repeated query param)")
     ),
     responses(
         (status = 200, description = "List of contract events", body = Vec<crate::services::event_indexer::IndexedEvent>),
@@ -106,6 +109,7 @@ pub async fn list_contract_events(
     let query = EventQuery {
         event_type: params.event_type,
         verification_status: params.verification_status,
+        contract_ids: params.contract_ids.unwrap_or_default(),
         limit: params.limit.or(Some(50)),
         offset: params.offset,
         order_by: Some(EventOrderBy::CreatedAtDesc),

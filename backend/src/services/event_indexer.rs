@@ -72,7 +72,7 @@ pub struct IndexedEvent {
 /// Event query filters
 #[derive(Debug, Clone, Default)]
 pub struct EventQuery {
-    pub contract_id: Option<String>,
+    pub contract_ids: Vec<String>,
     pub event_type: Option<String>,
     pub epoch: Option<u64>,
     pub hash: Option<String>,
@@ -298,9 +298,10 @@ impl EventIndexer {
         let mut bindings = Vec::new();
 
         // Add filters
-        if let Some(contract_id) = &query.contract_id {
-            sql.push_str(" AND contract_id = ?");
-            bindings.push(contract_id.clone());
+        if !query.contract_ids.is_empty() {
+            let placeholders = query.contract_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let _ = write!(sql, " AND contract_id IN ({placeholders})");
+            bindings.extend(query.contract_ids.iter().cloned());
         }
 
         if let Some(event_type) = &query.event_type {
