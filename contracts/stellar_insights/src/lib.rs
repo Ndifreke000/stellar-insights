@@ -357,6 +357,8 @@ impl StellarInsightsContract {
         if caller != old_admin {
             return Err(Error::Unauthorized);
         }
+        // Require the new admin to also sign to prevent unilateral transfer
+        new_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         bump_instance(&env);
         emit_admin_transferred(&env, old_admin, new_admin);
