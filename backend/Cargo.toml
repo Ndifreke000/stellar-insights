@@ -60,7 +60,7 @@ tracing-logstash = "0.2"
 opentelemetry = { version = "0.27", features = ["trace"] }
 opentelemetry_sdk = { version = "0.32", features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
-tracing-opentelemetry = "0.28"
+tracing-opentelemetry = "0.33"
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
