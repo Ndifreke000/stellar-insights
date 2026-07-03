@@ -217,7 +217,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </article>
   );
 };
 
