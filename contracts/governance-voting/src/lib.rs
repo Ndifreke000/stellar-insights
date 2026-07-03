@@ -224,7 +224,9 @@ impl GovernanceVotingContract {
             .unwrap_or_else(|| Vec::new(&env));
         let mut new_list: Vec<Address> = Vec::new(&env);
         for i in 0..voter_list.len() {
-            let addr = voter_list.get(i).unwrap();
+            let Some(addr) = voter_list.get(i) else {
+                continue;
+            };
             if addr != voter {
                 new_list.push_back(addr);
             }
@@ -329,7 +331,9 @@ impl GovernanceVotingContract {
             .unwrap_or_else(|| Vec::new(&env));
         let mut weight_snapshot: Map<Address, u64> = Map::new(&env);
         for i in 0..voter_list.len() {
-            let addr = voter_list.get(i).unwrap();
+            let Some(addr) = voter_list.get(i) else {
+                continue;
+            };
             if let Some(w) = env
                 .storage()
                 .persistent()
