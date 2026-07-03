@@ -55,7 +55,7 @@ deploy_contract() {
     log "Deploying ${name}..."
     if [[ ! -f "${wasm}" ]]; then
         echo "  Error: wasm not found at ${wasm}"
-        echo "  Run 'cd contracts && cargo build --release --target wasm32-unknown-unknown' first."
+        echo "  Run 'cd contracts && cargo build --release --target wasm32v1-none' first."
         exit 1
     fi
 
@@ -80,12 +80,12 @@ deploy_contract() {
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 log "Building all contracts for release..."
-(cd "${CONTRACTS_DIR}" && cargo build --release --target wasm32-unknown-unknown 2>&1 | tail -5)
+(cd "${CONTRACTS_DIR}" && cargo build --release --target wasm32v1-none 2>&1 | tail -5)
 log "Build complete."
 
 # ── Deploy ─────────────────────────────────────────────────────────────────────
 
-WASM_DIR="${CONTRACTS_DIR}/target/wasm32-unknown-unknown/release"
+WASM_DIR="${CONTRACTS_DIR}/target/wasm32v1-none/release"
 
 # Start fresh env file
 cat > "${ENV_FILE}" <<EOF
