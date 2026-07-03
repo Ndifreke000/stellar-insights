@@ -129,7 +129,7 @@ pub fn routes(
             "/corridors/:id/metrics-from-transactions",
             put(corridors::update_corridor_metrics_from_transactions),
         )
-        .with_state(app_state)
+        .with_state(app_state.clone())
         .layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             api_key_rate_limit_middleware,
