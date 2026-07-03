@@ -152,8 +152,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Mutex;
 
-    #[test]
-    fn test_broadcast_anchor_update() {
+    #[tokio::test]
+    async fn test_broadcast_anchor_update() {
         let ws_state = Arc::new(WsState::new());
         let anchor = Anchor {
             id: "test-id".to_string(),
@@ -175,8 +175,8 @@ mod tests {
         broadcast_anchor_update(&ws_state, &anchor);
     }
 
-    #[test]
-    fn test_broadcast_corridor_update() {
+    #[tokio::test]
+    async fn test_broadcast_corridor_update() {
         let ws_state = Arc::new(WsState::new());
         let corridor = Corridor::new(
             "USD".to_string(),
