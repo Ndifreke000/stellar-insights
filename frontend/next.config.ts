@@ -76,8 +76,16 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
+    // NOTE: "lucide-react" was removed from this list — Next 16.2.7's
+    // barrel-file optimization for it is broken: it corrupts whichever named
+    // import happens to be first in a multi-icon `import { A, B, C } from
+    // "lucide-react"` statement, regardless of which icon that is (verified
+    // by reordering the import and watching the failure follow the first
+    // position, not any specific icon name). That turned into hard build
+    // failures ("Module has no exported member"), not just a missed
+    // optimization, so correctness wins over this bundle-size tweak until
+    // upstream fixes it.
     optimizePackageImports: [
-      "lucide-react",
       "recharts",
       "framer-motion",
       "@stellar/stellar-sdk",
