@@ -334,7 +334,6 @@ impl AuthService {
 // Consolidated from sep10_middleware.rs
 
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Request, State},
     http::{header, request::Parts, StatusCode},
     middleware::Next,
@@ -356,7 +355,6 @@ pub struct Sep10Claims {
     pub client_domain: Option<String>,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Sep10Claims
 where
     S: Send + Sync,
