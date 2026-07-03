@@ -57,10 +57,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-log = "0.2"
 tracing-appender = "0.2"
 tracing-logstash = "0.2"
-opentelemetry = { version = "0.27", features = ["trace"] }
-opentelemetry_sdk = { version = "0.32", features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
-tracing-opentelemetry = "0.28"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.33"
 dotenvy = "0.15"
 sha2 = "0.10"
 hex = "0.4"
