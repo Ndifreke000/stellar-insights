@@ -36,7 +36,7 @@ fn fuzz_invalid_amounts_rejected() {
     for amount in [0i128, -1, -100, i128::MIN] {
         let result = client.try_create_escrow(&depositor, &beneficiary, &token, &amount, &deadline);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "amount={amount} must be rejected (InvalidAmount)"
         );
     }
@@ -76,7 +76,7 @@ fn fuzz_nonexistent_escrow_returns_error() {
     for id in [0u64, 1, 999, u64::MAX / 2, u64::MAX] {
         let result = client.try_get_escrow(&id);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "escrow id={id} does not exist — must return EscrowNotFound"
         );
     }
@@ -102,7 +102,7 @@ fn fuzz_double_fund_rejected() {
 
     let double_fund = client.try_fund_escrow(&depositor, &escrow_id);
     assert!(
-        matches!(double_fund, Ok(Err(_))),
+        matches!(double_fund, Err(Ok(_))),
         "funding an already-funded escrow must be rejected"
     );
 }
@@ -146,7 +146,7 @@ fn fuzz_release_before_fund_rejected() {
     // Attempt release without funding
     let result = client.try_release_funds(&admin, &id);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "releasing funds from an unfunded escrow must be rejected"
     );
 }
@@ -167,7 +167,7 @@ fn fuzz_paused_contract_rejects_create_escrow() {
 
     let result = client.try_create_escrow(&depositor, &beneficiary, &token, &100i128, &9999u64);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "paused contract must reject create_escrow"
     );
 }

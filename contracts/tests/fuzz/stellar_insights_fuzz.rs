@@ -36,7 +36,7 @@ fn fuzz_epoch_zero_always_rejected() {
 
     let result = client.try_submit_snapshot(&0u64, &nonzero_hash(&env, 1), &admin);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "epoch=0 must be rejected by the contract"
     );
 }
@@ -55,13 +55,13 @@ fn fuzz_epoch_monotonicity_enforced() {
 
     // Same epoch must be rejected (duplicate)
     let dup = client.try_submit_snapshot(&5u64, &nonzero_hash(&env, 2), &admin);
-    assert!(matches!(dup, Ok(Err(_))), "duplicate epoch=5 must be rejected");
+    assert!(matches!(dup, Err(Ok(_))), "duplicate epoch=5 must be rejected");
 
     // Earlier epoch must also be rejected
     for earlier in [1u64, 3, 4] {
         let result = client.try_submit_snapshot(&earlier, &nonzero_hash(&env, 3), &admin);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "epoch={earlier} < latest(5) must be rejected"
         );
     }
@@ -100,7 +100,7 @@ fn fuzz_zero_hash_rejected() {
     let zero_hash = hash(&env, 0);
     let result = client.try_submit_snapshot(&1u64, &zero_hash, &admin);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "all-zero hash must be rejected"
     );
 }
@@ -117,7 +117,7 @@ fn fuzz_non_admin_always_rejected() {
         let non_admin = Address::generate(&env);
         let result = client.try_submit_snapshot(&1u64, &nonzero_hash(&env, 1), &non_admin);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "non-admin caller must always be rejected"
         );
     }
@@ -134,7 +134,7 @@ fn fuzz_missing_epoch_returns_error() {
     for epoch in [0u64, 1, 100, u64::MAX / 2, u64::MAX] {
         let result = client.try_get_snapshot(&epoch);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "epoch={epoch} not submitted — get_snapshot must return an error"
         );
     }
@@ -153,7 +153,7 @@ fn fuzz_paused_contract_rejects_submissions() {
 
     let result = client.try_submit_snapshot(&1u64, &nonzero_hash(&env, 1), &admin);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "paused contract must reject submit_snapshot"
     );
 
