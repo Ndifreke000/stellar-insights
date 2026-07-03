@@ -3,9 +3,9 @@ import { StateCreator } from 'zustand';
 /**
  * Logging middleware for Zustand store
  */
-export const loggerMiddleware: <T extends object>(
+export const loggerMiddleware = <T extends object>(
   config: { name: string; enabled?: boolean }
-) => (f: StateCreator<T>) => StateCreator<T> => {
+) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
     const loggedSet = (...args: Parameters<typeof set>) => {
       if (config.enabled !== false && process.env.NODE_ENV === 'development') {
@@ -21,9 +21,9 @@ export const loggerMiddleware: <T extends object>(
 /**
  * Analytics middleware for tracking state changes
  */
-export const analyticsMiddleware: <T extends object>(
+export const analyticsMiddleware = <T extends object>(
   config: { trackChanges?: boolean; events?: string[] }
-) => (f: StateCreator<T>) => StateCreator<T> => {
+) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
     const originalSet = set;
 
@@ -50,9 +50,9 @@ export const analyticsMiddleware: <T extends object>(
 /**
  * Performance monitoring middleware
  */
-export const performanceMiddleware: <T extends object>(
+export const performanceMiddleware = <T extends object>(
   config: { enabled?: boolean }
-) => (f: StateCreator<T>) => StateCreator<T> => {
+) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
     const originalSet = set;
 
@@ -77,9 +77,9 @@ export const performanceMiddleware: <T extends object>(
 /**
  * Validation middleware for state updates
  */
-export const validationMiddleware: <T extends object>(
+export const validationMiddleware = <T extends object>(
   config: { validator?: (state: Partial<T>) => boolean | string }
-) => (f: StateCreator<T>) => StateCreator<T> => {
+) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
     const validatedSet = (...args: Parameters<typeof set>) => {
       const [partialState, ...rest] = args;
@@ -106,9 +106,9 @@ export const validationMiddleware: <T extends object>(
 /**
  * Undo/Redo middleware for state changes
  */
-export const undoRedoMiddleware: <T extends object>(
+export const undoRedoMiddleware = <T extends object>(
   config: { maxSize?: number }
-) => (f: StateCreator<T>) => StateCreator<T & { undo: () => void; redo: () => void; canUndo: () => boolean; canRedo: () => boolean }> => {
+) => (f: StateCreator<T>): StateCreator<T & { undo: () => void; redo: () => void; canUndo: () => boolean; canRedo: () => boolean }> => {
   return (set, get, api) => {
     let history: T[] = [];
     let currentIndex = -1;
@@ -170,9 +170,9 @@ export const undoRedoMiddleware: <T extends object>(
 /**
  * Sync with localStorage middleware
  */
-export const localStorageMiddleware: <T extends object>(
+export const localStorageMiddleware = <T extends object>(
   config: { key: string; whitelist?: (keyof T)[]; blacklist?: (keyof T)[] }
-) => (f: StateCreator<T>) => StateCreator<T> => {
+) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
     // Load from localStorage on init
     if (typeof window !== 'undefined') {
