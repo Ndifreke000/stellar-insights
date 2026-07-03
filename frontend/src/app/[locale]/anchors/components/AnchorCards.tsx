@@ -139,7 +139,7 @@ const AnchorCards = ({
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
-          </div>
+          </article>
         );
       })}
     </div>
