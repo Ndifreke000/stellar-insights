@@ -1,17 +1,30 @@
 import { StateCreator } from 'zustand';
 
 /**
+ * Forwards to an overloaded zustand `setState` with the exact args tuple it
+ * was called with. TypeScript can't resolve an overloaded function type
+ * through a generic `(...args) => original(...args)` passthrough — the two
+ * `setState` overloads (`(partial, replace?: false)` vs `(state, replace:
+ * true)`) don't recombine into the union `args` was inferred as. The
+ * forwarding itself is safe: `args` is always the untouched tuple this
+ * function was called with.
+ */
+function forwardSet(fn: (...args: never[]) => void, args: unknown[]): void {
+  (fn as (...a: unknown[]) => void)(...args);
+}
+
+/**
  * Logging middleware for Zustand store
  */
 export const loggerMiddleware = <T extends object>(
   config: { name: string; enabled?: boolean }
 ) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
-    const loggedSet = (...args: Parameters<typeof set>) => {
+    const loggedSet: typeof set = (...args) => {
       if (config.enabled !== false && process.env.NODE_ENV === 'development') {
         console.log(`[${config.name}] State update:`, args);
       }
-      return set(...args);
+      return forwardSet(set, args);
     };
 
     return f(loggedSet, get, api);
@@ -27,20 +40,21 @@ export const analyticsMiddleware = <T extends object>(
   return (set, get, api) => {
     const originalSet = set;
 
-    const trackedSet = (...args: Parameters<typeof set>) => {
+    const trackedSet: typeof set = (...args) => {
       // Track specific state changes
       if (config.trackChanges && process.env.NODE_ENV === 'development') {
-        const [partialState, ...rest] = args;
+        const [partialState] = args;
         if (typeof partialState === 'object' && partialState !== null) {
-          Object.keys(partialState).forEach(key => {
+          const state = partialState as Record<string, unknown>;
+          Object.keys(state).forEach(key => {
             if (!config.events || config.events.includes(key)) {
-              console.log(`[Analytics] State change: ${key}`, partialState[key]);
+              console.log(`[Analytics] State change: ${key}`, state[key]);
             }
           });
         }
       }
 
-      return originalSet(...args);
+      return forwardSet(originalSet, args);
     };
 
     return f(trackedSet, get, api);
@@ -56,18 +70,18 @@ export const performanceMiddleware = <T extends object>(
   return (set, get, api) => {
     const originalSet = set;
 
-    const performanceSet = (...args: Parameters<typeof set>) => {
+    const performanceSet: typeof set = (...args) => {
       if (config.enabled !== false) {
         const start = performance.now();
-        const result = originalSet(...args);
+        forwardSet(originalSet, args);
         const end = performance.now();
-        
+
         if (end - start > 1) { // Only log if update takes more than 1ms
           console.warn(`[Performance] Slow state update: ${(end - start).toFixed(2)}ms`);
         }
       }
-      
-      return originalSet(...args);
+
+      return forwardSet(originalSet, args);
     };
 
     return f(performanceSet, get, api);
@@ -81,11 +95,11 @@ export const validationMiddleware = <T extends object>(
   config: { validator?: (state: Partial<T>) => boolean | string }
 ) => (f: StateCreator<T>): StateCreator<T> => {
   return (set, get, api) => {
-    const validatedSet = (...args: Parameters<typeof set>) => {
+    const validatedSet: typeof set = (...args) => {
       const [partialState, ...rest] = args;
-      
+
       if (config.validator && typeof partialState === 'object' && partialState !== null) {
-        const result = config.validator(partialState);
+        const result = config.validator(partialState as Partial<T>);
         if (result === false) {
           console.error('[Validation] State update rejected');
           return;
@@ -95,8 +109,8 @@ export const validationMiddleware = <T extends object>(
           return;
         }
       }
-      
-      return set(partialState, ...rest);
+
+      return forwardSet(set, [partialState, ...rest]);
     };
 
     return f(validatedSet, get, api);
@@ -106,9 +120,16 @@ export const validationMiddleware = <T extends object>(
 /**
  * Undo/Redo middleware for state changes
  */
+type UndoRedoState<T> = T & {
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+};
+
 export const undoRedoMiddleware = <T extends object>(
   config: { maxSize?: number }
-) => (f: StateCreator<T>): StateCreator<T & { undo: () => void; redo: () => void; canUndo: () => boolean; canRedo: () => boolean }> => {
+) => (f: StateCreator<T>): StateCreator<UndoRedoState<T>> => {
   return (set, get, api) => {
     let history: T[] = [];
     let currentIndex = -1;
@@ -118,7 +139,7 @@ export const undoRedoMiddleware = <T extends object>(
       if (currentIndex > 0) {
         currentIndex--;
         const prevState = history[currentIndex];
-        set(prevState as Partial<T>);
+        set(prevState as Partial<UndoRedoState<T>>);
         return true;
       }
       return false;
@@ -128,7 +149,7 @@ export const undoRedoMiddleware = <T extends object>(
       if (currentIndex < history.length - 1) {
         currentIndex++;
         const nextState = history[currentIndex];
-        set(nextState as Partial<T>);
+        set(nextState as Partial<UndoRedoState<T>>);
         return true;
       }
       return false;
@@ -139,19 +160,19 @@ export const undoRedoMiddleware = <T extends object>(
 
     const originalSet = set;
 
-    const trackedSet = (...args: Parameters<typeof set>) => {
+    const trackedSet: typeof set = (...args) => {
       const [partialState, ...rest] = args;
-      
+
       // Add to history
       const currentState = get();
-      const newState = { ...currentState, ...partialState };
-      
+      const newState = { ...currentState, ...partialState } as T;
+
       // Remove any states after current index
       history = history.slice(0, currentIndex + 1);
-      
+
       // Add new state
       history.push(newState);
-      
+
       // Limit history size
       if (history.length > maxSize) {
         history = history.slice(-maxSize);
@@ -159,11 +180,11 @@ export const undoRedoMiddleware = <T extends object>(
       } else {
         currentIndex = history.length - 1;
       }
-      
-      return originalSet(partialState, ...rest);
+
+      return forwardSet(originalSet, [partialState, ...rest]);
     };
 
-    return f(trackedSet, get, api) as any;
+    return { ...f(trackedSet, get, api), undo, redo, canUndo, canRedo };
   };
 };
 
@@ -189,20 +210,20 @@ export const localStorageMiddleware = <T extends object>(
 
     const originalSet = set;
 
-    const syncedSet = (...args: Parameters<typeof set>) => {
+    const syncedSet: typeof set = (...args) => {
       const [partialState, ...rest] = args;
-      
-      const result = originalSet(partialState, ...rest);
-      
+
+      const result = forwardSet(originalSet, [partialState, ...rest]);
+
       // Save to localStorage
       if (typeof window !== 'undefined') {
         try {
           const currentState = get();
-          let stateToSave = currentState;
-          
+          let stateToSave: Partial<T> = currentState;
+
           // Apply whitelist if provided
           if (config.whitelist) {
-            stateToSave = {};
+            stateToSave = {} as Partial<T>;
             config.whitelist.forEach(key => {
               if (key in currentState) {
                 (stateToSave as any)[key] = currentState[key];
