@@ -94,6 +94,10 @@ deploy_contract() {
         return
     fi
 
+    # `|| true` on the pipeline: with `set -e`, a transient deploy failure
+    # (grep finding no 56-char ID) would otherwise kill the script right here,
+    # silently skipping the error message below — this way the `-z` check
+    # gets a chance to report which contract failed before exiting.
     local contract_id
     contract_id=$(stellar contract deploy \
         --wasm "${wasm}" \
@@ -102,10 +106,11 @@ deploy_contract() {
         --rpc-url "${RPC_URL}" \
         --network-passphrase "${NETWORK_PASSPHRASE}" \
         --fee "${FEE}" \
-        2>&1 | grep -E '^[A-Z0-9]{56}$' | tail -1)
+        2>&1 | grep -E '^[A-Z0-9]{56}$' | tail -1) || true
 
     if [[ -z "${contract_id}" ]]; then
         echo "  Error: failed to deploy ${name} — no contract ID returned."
+        echo "  This can be a transient RPC/network hiccup — try re-running."
         exit 1
     fi
 
