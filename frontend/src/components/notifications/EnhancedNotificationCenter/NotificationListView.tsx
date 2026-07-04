@@ -28,7 +28,12 @@ import {
 import { NotificationItem } from './NotificationItem';
 import { IUseEnhancedNotificationCenter } from './useEnhancedNotificationCenter';
 
-export const NotificationListView = (props: IUseEnhancedNotificationCenter) => {
+type NotificationListViewProps = Omit<
+  IUseEnhancedNotificationCenter,
+  'preferences' | 'updatePreferences' | 'selectedFilters' | 'setSelectedFilters' | 'setShowFilters'
+>;
+
+export const NotificationListView = (props: NotificationListViewProps) => {
   const {
     markAsRead,
     clearNotification,
