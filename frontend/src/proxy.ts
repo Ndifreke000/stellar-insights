@@ -49,7 +49,7 @@ function applySecurityHeaders(response: NextResponse, isProd: boolean): void {
   );
 }
 
-export default function middleware(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   const isProd = process.env.NODE_ENV === "production";
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
@@ -61,12 +61,12 @@ export default function middleware(request: NextRequest) {
   return response;
 }
 
-function handleApiRequest(request: NextRequest, isProd: boolean) {
+async function handleApiRequest(request: NextRequest, isProd: boolean) {
   const response = NextResponse.next();
   applySecurityHeaders(response, isProd);
 
   if (request.method === "GET") {
-    const csrfToken = generateCsrfToken();
+    const csrfToken = await generateCsrfToken();
     response.cookies.set("csrf-token", csrfToken, {
       httpOnly: true,
       secure: isProd,
@@ -80,7 +80,7 @@ function handleApiRequest(request: NextRequest, isProd: boolean) {
 
   if (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)) {
     const cookieToken = request.cookies.get("csrf-token")?.value;
-    const headerToken = request.headers.get("X-CSRF-Token");
+    const headerToken = request.headers.get("X-CSRF-Token") ?? undefined;
 
     if (!validateCsrfToken(cookieToken, headerToken)) {
       return NextResponse.json(
