@@ -60,7 +60,9 @@ export function ExportDialog({ isOpen, onClose, type, title }: ExportDialogProps
       }
 
       const params = new URLSearchParams();
-      params.append("format", format === "excel" ? "xlsx" : format);
+      // "excel" is handled entirely above (client-side, with an early
+      // return), so `format` here can only be "json" | "csv".
+      params.append("format", format);
 
       if (dateRange === "custom" && customStart && customEnd) {
         params.append("start_date", new Date(customStart).toISOString());
