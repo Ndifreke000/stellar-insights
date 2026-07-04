@@ -143,7 +143,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             </span>
             {Boolean(notification.metadata?.source) && (
               <span>
-                Source: {sanitizeText(notification.metadata.source as string)}
+                Source: {sanitizeText(notification.metadata?.source as string)}
               </span>
             )}
           </div>

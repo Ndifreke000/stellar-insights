@@ -15,7 +15,7 @@ export interface AppState {
   
   // Form State
   formData: Record<string, any>;
-  formErrors: Record<string, string>;
+  formErrors: Record<string, Record<string, string>>;
   formDirty: Record<string, boolean>;
   
   // Filter State
