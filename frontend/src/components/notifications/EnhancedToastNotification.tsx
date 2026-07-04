@@ -195,12 +195,12 @@ export const EnhancedToastNotification: React.FC<ToastNotificationProps> = ({
             </div>
 
             {/* Metadata */}
-            {notification.metadata?.url && (
+            {Boolean(notification.metadata?.url) && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  window.open(notification.metadata.url as string, '_blank');
+                  window.open(notification.metadata?.url as string, '_blank');
                   handleMarkAsRead();
                 }}
                 className="text-xs"

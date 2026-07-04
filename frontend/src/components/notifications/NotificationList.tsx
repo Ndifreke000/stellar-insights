@@ -141,7 +141,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             <span>
               {new Date(notification.timestamp).toLocaleString()}
             </span>
-            {notification.metadata?.source && (
+            {Boolean(notification.metadata?.source) && (
               <span>
                 Source: {sanitizeText(notification.metadata.source as string)}
               </span>
@@ -177,7 +177,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   <Copy aria-hidden="true" className="h-4 w-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
-                {notification.metadata?.url && sanitizeUrl(notification.metadata.url as string) && (
+                {Boolean(notification.metadata?.url && sanitizeUrl(notification.metadata.url as string)) && (
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
                     const safeUrl = sanitizeUrl(notification.metadata?.url as string);
