@@ -34,4 +34,6 @@ pub enum Error {
     DuplicateOwner = 14,
     /// Reentrant call detected
     Reentrancy = 15,
+    /// Threshold exceeds the number of owners
+    ThresholdExceedsSigCount = 16,
 }

@@ -26,7 +26,6 @@ pub use engine::ReplayEngine;
 pub use event_processor::{EventProcessor, ProcessingContext, ProcessingResult};
 pub use state_builder::StateBuilder;
 pub use storage::{EventStorage, ReplayStorage};
-pub use self::LedgerProtocolVersion;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

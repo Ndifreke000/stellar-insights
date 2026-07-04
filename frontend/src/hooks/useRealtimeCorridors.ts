@@ -73,7 +73,7 @@ export function useRealtimeCorridors(
     (message: WsMessage) => {
       switch (message.type) {
         case "corridor_update":
-          const corridorUpdate = message as CorridorUpdate;
+          const corridorUpdate = message as unknown as CorridorUpdate;
           setCorridorUpdates((prev) => {
             const newMap = new Map(prev);
             newMap.set(corridorUpdate.corridor_key, corridorUpdate);
@@ -83,14 +83,14 @@ export function useRealtimeCorridors(
           break;
 
         case "health_alert":
-          const healthAlert = message as HealthAlert;
+          const healthAlert = message as unknown as HealthAlert;
           setHealthAlerts((prev) => [healthAlert, ...prev].slice(0, 50)); // Keep last 50 alerts
           onHealthAlert?.(healthAlert);
           break;
 
         case "new_payment":
           if (enablePaymentStream) {
-            const payment = message as NewPayment;
+            const payment = message as unknown as NewPayment;
             setRecentPayments((prev) => [payment, ...prev].slice(0, 100)); // Keep last 100 payments
             onNewPayment?.(payment);
           }

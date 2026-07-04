@@ -40,7 +40,7 @@ fn fuzz_non_admin_proposal_rejected() {
         let target = Address::generate(&env);
         let result = client.try_create_proposal(&caller, &title(&env, "bad"), &target, &hash(&env, 1));
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "non-admin must not be able to create proposals"
         );
     }
@@ -98,7 +98,7 @@ fn fuzz_vote_after_deadline_rejected() {
         let voter = Address::generate(&env);
         let result = client.try_vote(&voter, &pid, &VoteChoice::For);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "vote at ts={} (period={voting_period}) must be rejected",
             voting_period + 1
         );
@@ -126,7 +126,7 @@ fn fuzz_vote_on_finalized_proposal_rejected() {
     let late_voter = Address::generate(&env);
     let result = client.try_vote(&late_voter, &pid, &VoteChoice::For);
     assert!(
-        matches!(result, Ok(Err(_))),
+        matches!(result, Err(Ok(_))),
         "voting on a finalized proposal must be rejected"
     );
 }
@@ -168,7 +168,7 @@ fn fuzz_non_admin_quorum_update_rejected() {
         let attacker = Address::generate(&env);
         let result = client.try_update_quorum(&attacker, &1u64);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "non-admin must not be able to update quorum"
         );
     }
@@ -186,7 +186,7 @@ fn fuzz_non_admin_voting_period_update_rejected() {
         let attacker = Address::generate(&env);
         let result = client.try_update_voting_period(&attacker, &9999u64);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "non-admin must not be able to update voting period"
         );
     }
@@ -203,7 +203,7 @@ fn fuzz_nonexistent_proposal_returns_error() {
     for id in [0u64, 1, 99, u64::MAX / 2, u64::MAX] {
         let result = client.try_get_proposal(&id);
         assert!(
-            matches!(result, Ok(Err(_))),
+            matches!(result, Err(Ok(_))),
             "proposal id={id} does not exist — must return ProposalNotFound"
         );
     }

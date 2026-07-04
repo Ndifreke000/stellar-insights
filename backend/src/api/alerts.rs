@@ -264,7 +264,7 @@ async fn handle_alert_socket(socket: WebSocket, alert_manager: Arc<AlertManager>
         while let Ok(alert) = rx.recv().await {
             if let Ok(msg) = serde_json::to_string(&alert) {
                 if sender
-                    .send(axum::extract::ws::Message::Text(msg))
+                    .send(axum::extract::ws::Message::Text(msg.into()))
                     .await
                     .is_err()
                 {

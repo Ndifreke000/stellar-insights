@@ -58,7 +58,7 @@ pub struct LastExecutionDetail {
 }
 
 /// Job health status
-#[derive(Debug, Serialize)]
+#[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum JobHealthStatus {
     Healthy,
@@ -365,36 +365,41 @@ mod tests {
 
     #[test]
     fn test_determine_health_status() {
+        // `determine_health_status` compares `last_success`/`last_failure` against
+        // `chrono::Utc::now()`, so timestamps must be relative to "now" (not tiny
+        // fixed literals) or every case falls into the ">24h stale" critical branch.
+        let now = chrono::Utc::now().timestamp();
+
         // Test critical conditions
         assert_eq!(
-            determine_health_status(true, 5, 90.0, Some(100), Some(110)),
+            determine_health_status(true, 5, 90.0, Some(now - 100), Some(now - 110)),
             JobHealthStatus::Critical
         );
 
         assert_eq!(
-            determine_health_status(true, 3, 40.0, Some(100), Some(110)),
+            determine_health_status(true, 3, 40.0, Some(now - 100), Some(now - 110)),
             JobHealthStatus::Critical
         );
 
         // Test warning conditions
         assert_eq!(
-            determine_health_status(true, 3, 90.0, Some(100), Some(110)),
+            determine_health_status(true, 3, 90.0, Some(now - 100), Some(now - 110)),
             JobHealthStatus::Warning
         );
 
         assert_eq!(
-            determine_health_status(true, 1, 70.0, Some(100), Some(110)),
+            determine_health_status(true, 1, 70.0, Some(now - 100), Some(now - 110)),
             JobHealthStatus::Warning
         );
 
         // Test healthy conditions
         assert_eq!(
-            determine_health_status(true, 0, 95.0, Some(100), None),
+            determine_health_status(true, 0, 95.0, Some(now - 100), None),
             JobHealthStatus::Healthy
         );
 
         assert_eq!(
-            determine_health_status(false, 1, 90.0, Some(100), Some(110)),
+            determine_health_status(false, 1, 90.0, Some(now - 100), Some(now - 110)),
             JobHealthStatus::Healthy
         );
 

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { NotificationService } from '@/services/notificationService';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import { BaseNotification, NotificationType, NotificationPriority, NotificationPreferences } from '@/types/notifications';
 
 export const NotificationCenterDemo: React.FC = () => {
   const { showToast, notifications, clearAllNotifications } = useNotifications();

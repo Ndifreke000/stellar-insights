@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, useApiQuery, useApiMutation } from '@/lib/react-query/hooks';
 import {
   getSep24Info,
@@ -147,6 +147,7 @@ export function useSep24FlowState() {
   const {
     formData,
     setFormData,
+    clearFormData,
     setFormErrors,
     clearFormErrors,
     setLoading,

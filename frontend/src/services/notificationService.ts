@@ -1,6 +1,6 @@
 'use client';
 
-import { BaseNotification, NotificationType, NotificationPriority, NotificationAction } from '@/types/notifications';
+import { BaseNotification, NotificationType, NotificationPriority, NotificationAction, NotificationPreferences } from '@/types/notifications';
 
 export interface NotificationTemplate {
   id: string;

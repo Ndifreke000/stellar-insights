@@ -496,6 +496,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "analytics",
+ "escrow",
+ "governance",
+ "soroban-sdk",
+ "stellar-insights",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1979,6 +1990,13 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stellar-insights"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-insights-upgrade"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",

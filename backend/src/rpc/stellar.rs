@@ -1846,6 +1846,7 @@ impl StellarRpcClient {
 )]
 mod tests {
     use super::*;
+    use crate::rpc::mock_stellar;
 
     #[tokio::test]
     async fn test_mock_health_check() {
@@ -1960,7 +1961,7 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
         let result = client
             .fetch_ledgers(
-                Some(super::mock_stellar::MOCK_LATEST_LEDGER.saturating_add(1)),
+                Some(mock_stellar::MOCK_LATEST_LEDGER.saturating_add(1)),
                 5,
                 None,
             )
@@ -1970,7 +1971,7 @@ mod tests {
         assert!(result.ledgers.is_empty());
         assert_eq!(
             result.latest_ledger,
-            super::mock_stellar::MOCK_LATEST_LEDGER
+            mock_stellar::MOCK_LATEST_LEDGER
         );
     }
 
@@ -2306,7 +2307,7 @@ mod tests {
 
     #[test]
     fn test_mock_payments_include_new_format() {
-        let payments = super::mock_stellar::mock_payments(10);
+        let payments = mock_stellar::mock_payments(10);
         assert_eq!(payments.len(), 10);
 
         // Even-indexed payments should have asset_balance_changes populated

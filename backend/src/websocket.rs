@@ -690,7 +690,7 @@ async fn handle_socket(
                                 message: "Rate limit exceeded. Please slow down.".to_string(),
                             }) {
                                 let mut guard = recv_sender.lock().await;
-                                let _ = guard.send(Message::Text(json)).await;
+                                let _ = guard.send(Message::Text(json.into())).await;
                             }
                             continue;
                         }
@@ -769,7 +769,7 @@ async fn handle_socket(
                         let ping = WsMessage::Ping { timestamp: chrono::Utc::now().timestamp() };
                         if let Ok(json) = serde_json::to_string(&ping) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send ping to {}", connection_id);
                                 break;
                             }
@@ -778,7 +778,7 @@ async fn handle_socket(
                     Ok(msg) = broadcast_rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send broadcast to {}", connection_id);
                                 break;
                             }
@@ -787,7 +787,7 @@ async fn handle_socket(
                     Some(msg) = rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send message to {}", connection_id);
                                 break;
                             }
@@ -822,7 +822,7 @@ async fn send_ws_message(sender: &SharedWebSocketSender, message: &WsMessage) ->
         warn!("Failed to serialize WebSocket message: {}", e);
     })?;
     let mut guard = sender.lock().await;
-    guard.send(Message::Text(json)).await.map_err(|e| {
+    guard.send(Message::Text(json.into())).await.map_err(|e| {
         warn!("Failed to send WebSocket message: {}", e);
     })
 }
@@ -941,18 +941,19 @@ mod tests {
     #[test]
     fn test_connection_limit_enforced() {
         let state = Arc::new(WsState::new());
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::with_capacity(MAX_CONCURRENT_CONNECTIONS);
 
         for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
 
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert!(state.try_acquire_connection_permit(ip).is_none());
 
         drop(permits.pop());
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS - 1);
-        assert!(state.try_acquire_connection_permit().is_some());
+        assert!(state.try_acquire_connection_permit(ip).is_some());
     }
 
     #[test]
@@ -975,7 +976,8 @@ mod tests {
     fn test_cleanup_connection_removes_rate_limit_state() {
         let state = Arc::new(WsState::new());
         let connection_id = Uuid::new_v4();
-        let permit = state.try_acquire_connection_permit().unwrap();
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let permit = state.try_acquire_connection_permit(ip).unwrap();
 
         state.check_message_rate_limit(connection_id);
         state.subscribe_connection(connection_id, vec!["corridor:test".to_string()]);
@@ -1048,12 +1050,13 @@ mod tests {
     #[test]
     fn test_websocket_connection_limit() {
         let state = Arc::new(WsState::new());
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::new();
         for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert!(state.try_acquire_connection_permit(ip).is_none());
     }
 
     #[test]

@@ -510,24 +510,24 @@ export function Sep31PaymentFlow() {
         </h2>
         {resolvedTransferServer && (
           <button
-            type=”button”
+            type="button"
             onClick={loadTransactions}
             disabled={loadingTx}
-            className=”mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2”
+            className="mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2"
           >
             {loadingTx ? (
-              <Loader2 className=”w-4 h-4 animate-spin” />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <RefreshCw className=”w-4 h-4” />
+              <RefreshCw className="w-4 h-4" />
             )}
             Load history
           </button>
         )}
         {transactions.length === 0 && !loadingTx && (
-          <p className=”text-muted-foreground text-sm”>
+          <p className="text-muted-foreground text-sm">
             {resolvedTransferServer
-              ? “Click “Load history” to fetch payments (JWT may be required).”
-              : “Select an anchor above to load payment history.”}
+              ? "Click 'Load history' to fetch payments (JWT may be required)."
+              : "Select an anchor above to load payment history."}
           </p>
         )}
         {transactions.length > 0 && (

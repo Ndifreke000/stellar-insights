@@ -8,8 +8,8 @@ use axum::{
 };
 use lazy_static::lazy_static;
 use prometheus::{
-    gather, Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
-    Opts, Registry, TextEncoder,
+    Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
+    IntGaugeVec, Opts, Registry, TextEncoder,
 };
 
 lazy_static! {
@@ -228,13 +228,60 @@ lazy_static! {
 }
 
 pub fn init_metrics() {
-    // Explicitly initialize lazy_statics by accessing them
-    let _ = &*REGISTRY;
+    // Metrics built via `X::new(...)` aren't auto-registered anywhere (unlike the
+    // `register_x!` macros), so without this, both `/metrics` (below) and
+    // `job_monitoring::get_job_metrics` — which both gather from `REGISTRY` — would
+    // silently return empty output. `register()` errors (e.g. double-registration
+    // when this is called more than once, such as across tests) are ignored, since
+    // registration is idempotent for our purposes.
+    macro_rules! register_all {
+        ($($metric:expr),+ $(,)?) => {
+            $( let _ = REGISTRY.register(Box::new($metric.clone())); )+
+        };
+    }
+    register_all!(
+        HTTP_REQUESTS_TOTAL,
+        HTTP_REQUEST_DURATION_SECONDS,
+        HTTP_REQUEST_DURATION_BY_ENDPOINT,
+        RPC_CALLS_TOTAL,
+        RPC_CALL_DURATION_SECONDS,
+        DB_QUERY_DURATION_SECONDS,
+        CACHE_OPERATIONS_TOTAL,
+        CACHE_HITS_TOTAL,
+        CACHE_MISSES_TOTAL,
+        ERRORS_TOTAL,
+        HTTP_ERRORS_TOTAL,
+        DB_ERRORS_TOTAL,
+        RPC_ERRORS_TOTAL,
+        BACKGROUND_JOBS_TOTAL,
+        ACTIVE_CONNECTIONS,
+        CORRIDORS_TRACKED,
+        HTTP_IN_FLIGHT_REQUESTS,
+        DB_POOL_SIZE,
+        DB_POOL_IDLE,
+        DB_POOL_ACTIVE,
+        DB_POOL_CONNECTIONS_ACTIVE,
+        DB_POOL_CONNECTIONS_IDLE,
+        DB_POOL_UTILIZATION,
+        DB_POOL_WAIT_TIME_SECONDS,
+        DB_POOL_ERRORS_TOTAL,
+        HTTP_REQUEST_SLO_VIOLATIONS,
+        HTTP_RESPONSES_COMPRESSED_TOTAL,
+        DB_SLOW_QUERIES_TOTAL,
+        DB_QUERY_DURATION_BY_OPERATION,
+        BACKUP_VERIFICATIONS_TOTAL,
+        BACKUP_SIZE_BYTES,
+        STELLAR_LEDGER_LAG_SECONDS,
+        STELLAR_TRANSACTION_SUCCESS_RATE,
+        STELLAR_ANCHOR_HEALTH,
+        STELLAR_CORRIDOR_RELIABILITY,
+        PRICE_FEED_STALE_ASSETS,
+    );
 }
 
 pub fn metrics_handler() -> Response {
     let encoder = TextEncoder::new();
-    let metric_families = gather();
+    let metric_families = REGISTRY.gather();
     let mut buffer = vec![];
 
     if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
@@ -265,6 +312,7 @@ pub async fn http_metrics_middleware(req: Request<Body>, next: Next) -> Response
     let response = next.run(req).await;
     let duration = start.elapsed().as_secs_f64();
     HTTP_IN_FLIGHT_REQUESTS.dec();
+    HTTP_REQUESTS_TOTAL.inc();
 
     HTTP_REQUEST_DURATION_SECONDS.observe(duration);
     HTTP_REQUEST_DURATION_BY_ENDPOINT
@@ -506,7 +554,7 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1.0);
+        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1);
         assert!(text.contains("http_requests_total"));
     }
 
@@ -654,13 +702,13 @@ mod tests {
         init_metrics();
         set_pool_connections(7, 3, 10);
 
-        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7.0);
-        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3.0);
-        assert!((DB_POOL_UTILIZATION.get() - 0.7).abs() < f64::EPSILON);
+        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3);
+        assert_eq!(DB_POOL_UTILIZATION.get(), 70);
         // Legacy gauges kept in sync
-        assert_eq!(DB_POOL_ACTIVE.get(), 7.0);
-        assert_eq!(DB_POOL_IDLE.get(), 3.0);
-        assert_eq!(DB_POOL_SIZE.get(), 10.0);
+        assert_eq!(DB_POOL_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_IDLE.get(), 3);
+        assert_eq!(DB_POOL_SIZE.get(), 10);
     }
 }
 

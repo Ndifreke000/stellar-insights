@@ -188,6 +188,14 @@ impl StellarInsightsContract {
             return Err(Error::EpochOverflow);
         }
 
+        // Validate hash is not all zeros (security-critical — the
+        // Error::InvalidHashZero variant existed but was never actually
+        // checked, so a degenerate all-zero hash silently passed through).
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if hash == zero_hash {
+            return Err(Error::InvalidHashZero);
+        }
+
         // Get existing snapshots map or create new one
         let mut snapshots: Map<u64, Snapshot> = env
             .storage()

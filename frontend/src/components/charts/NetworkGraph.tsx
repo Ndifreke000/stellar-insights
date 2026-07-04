@@ -26,7 +26,7 @@ interface Link {
   liquidity?: number;
 }
 
-interface GraphData {
+export interface GraphData {
   nodes: Node[];
   links: Link[];
 }
@@ -36,7 +36,7 @@ interface NetworkGraphProps {
 }
 
 const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
-  const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const fgRef = useRef<ForceGraphMethods<Node, Link> | undefined>(undefined);
   const [hoverNode, setHoverNode] = useState<Node | null>(null);
   const [windowSize, setWindowSize] = useState({ width: 800, height: 600 });
 

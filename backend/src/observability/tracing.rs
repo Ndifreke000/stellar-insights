@@ -6,7 +6,6 @@ use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::resource::Resource;
-use opentelemetry_sdk::runtime;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -14,24 +13,32 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 const MAX_LOG_FILES: usize = 30;
 
+// opentelemetry 0.32 removed `global::shutdown_tracer_provider()`; shutdown is now an
+// instance method on the provider, so we stash it here for `shutdown_tracing()` to use.
+static OTEL_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> =
+    std::sync::OnceLock::new();
+
 fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Tracer> {
     // HTTP/protobuf OTLP on 4318; avoids pulling `tonic` into the crate graph.
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4318/v1/traces".to_string());
 
-    let resource = Resource::new([KeyValue::new("service.name", service_name.to_string())]);
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new("service.name", service_name.to_string()))
+        .build();
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
         .build()?;
 
-    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .build();
 
     global::set_tracer_provider(provider.clone());
+    let _ = OTEL_PROVIDER.set(provider.clone());
     Ok(provider.tracer("stellar-insights-backend"))
 }
 
@@ -185,7 +192,9 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
 }
 
 pub fn shutdown_tracing() {
-    global::shutdown_tracer_provider();
+    if let Some(provider) = OTEL_PROVIDER.get() {
+        let _ = provider.shutdown();
+    }
 }
 
 /// A [`tracing_subscriber::Layer`] that stamps `trace_id` and `span_id` onto
@@ -289,7 +298,7 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
     let parent_cx = global::get_text_map_propagator(|propagator| propagator.extract(&carrier));
 
     let span = tracing::Span::current();
-    span.set_parent(parent_cx.clone());
+    let _ = span.set_parent(parent_cx.clone());
 
     // Stamp trace_id / span_id onto the span so structured logs carry them.
     use opentelemetry::trace::TraceContextExt as _;

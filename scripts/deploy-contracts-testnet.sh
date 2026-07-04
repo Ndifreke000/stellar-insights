@@ -55,20 +55,25 @@ deploy_contract() {
     log "Deploying ${name}..."
     if [[ ! -f "${wasm}" ]]; then
         echo "  Error: wasm not found at ${wasm}"
-        echo "  Run 'cd contracts && cargo build --release --target wasm32-unknown-unknown' first."
+        echo "  Run 'cd contracts && cargo build --release --target wasm32v1-none' first."
         exit 1
     fi
 
+    # `|| true` on the pipeline: with `set -e`, a transient deploy failure
+    # (grep finding no 56-char ID) would otherwise kill the script right here,
+    # silently skipping the error message below — this way the `-z` check
+    # gets a chance to report which contract failed before exiting.
     local contract_id
     contract_id=$(stellar contract deploy \
         --wasm "${wasm}" \
         --source "${SOURCE}" \
         --network "${NETWORK}" \
         --fee "${FEE}" \
-        2>&1 | grep -E '^[A-Z0-9]{56}$' | tail -1)
+        2>&1 | grep -E '^[A-Z0-9]{56}$' | tail -1) || true
 
     if [[ -z "${contract_id}" ]]; then
         echo "  Error: failed to deploy ${name} — no contract ID returned."
+        echo "  This can be a transient RPC/network hiccup — try re-running."
         exit 1
     fi
 
@@ -80,12 +85,12 @@ deploy_contract() {
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 log "Building all contracts for release..."
-(cd "${CONTRACTS_DIR}" && cargo build --release --target wasm32-unknown-unknown 2>&1 | tail -5)
+(cd "${CONTRACTS_DIR}" && cargo build --release --target wasm32v1-none 2>&1 | tail -5)
 log "Build complete."
 
 # ── Deploy ─────────────────────────────────────────────────────────────────────
 
-WASM_DIR="${CONTRACTS_DIR}/target/wasm32-unknown-unknown/release"
+WASM_DIR="${CONTRACTS_DIR}/target/wasm32v1-none/release"
 
 # Start fresh env file
 cat > "${ENV_FILE}" <<EOF

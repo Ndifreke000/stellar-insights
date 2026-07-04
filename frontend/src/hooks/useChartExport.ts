@@ -18,7 +18,7 @@ export function useChartExport({ chartName }: UseChartExportOptions) {
 
       try {
         const filename = `${chartName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}`;
-        await exportChart(chartRef.current, { filename, format });
+        await exportChart(chartRef.current, filename, format);
       } catch (error) {
         logger.error('Chart export failed', error);
         throw error;

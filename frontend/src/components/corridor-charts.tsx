@@ -18,7 +18,7 @@ import {
   LiquidityDataPoint,
   VolumeDataPoint,
   SlippageDataPoint,
-} from "@/lib/api/api";
+} from "@/lib/api/types";
 
 interface SuccessRateChartProps {
   data: SuccessRateDataPoint[];

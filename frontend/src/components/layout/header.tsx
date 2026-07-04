@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from "react";
 import { Menu, Wallet, LogOut } from "lucide-react";
 import { useWallet } from "../lib/wallet-context";
 import { NotificationCenter } from "./notification-center";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 interface HeaderProps {
   onMenuToggle: () => void;

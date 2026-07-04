@@ -8,16 +8,16 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
-use crate::rpc::StellarRpcClient;
+use crate::rpc::StellarRpcClientTrait;
 
 pub struct LiquidityPoolAnalyzer {
     pool: Pool<Sqlite>,
-    rpc_client: Arc<StellarRpcClient>,
+    rpc_client: Arc<dyn StellarRpcClientTrait>,
 }
 
 impl LiquidityPoolAnalyzer {
     #[must_use]
-    pub const fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
+    pub fn new(pool: Pool<Sqlite>, rpc_client: Arc<dyn StellarRpcClientTrait>) -> Self {
         Self { pool, rpc_client }
     }
 

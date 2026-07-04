@@ -9,8 +9,8 @@ import { TopAssetsTable } from "@/components/dashboard/TopAssetsTable";
 import { SettlementSpeedChart } from "@/components/dashboard/SettlementSpeedChart";
 import { WebSocketStatus } from "@/components/WebSocketStatus";
 import { DataRefreshIndicator } from "@/components/DataRefreshIndicator";
-import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
-import { useRealtimeAnchors } from "@/hooks/useRealtimeAnchors";
+import { useRealtimeCorridors, type CorridorUpdate, type HealthAlert } from "@/hooks/useRealtimeCorridors";
+import { useRealtimeAnchors, type AnchorUpdate } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
 import { logger } from "@/lib/logger";
 import {
@@ -102,7 +102,7 @@ export default function DashboardPage() {
   });
 
   // ── WebSocket connections for real-time updates ─────────────────────────
-  const onCorridorUpdate = useCallback((update) => {
+  const onCorridorUpdate = useCallback((update: CorridorUpdate) => {
     logger.debug("Received corridor update:", { update: JSON.stringify(update) });
     markUpdated();
     setData((prevData) => {
@@ -115,7 +115,7 @@ export default function DashboardPage() {
     });
   }, [markUpdated]);
 
-  const onHealthAlert = useCallback((alert) => {
+  const onHealthAlert = useCallback((alert: HealthAlert) => {
     logger.debug("Health alert:", { alert: JSON.stringify(alert) });
   }, []);
 
@@ -130,7 +130,7 @@ export default function DashboardPage() {
     onHealthAlert,
   });
 
-  const onAnchorUpdate = useCallback((update) => {
+  const onAnchorUpdate = useCallback((update: AnchorUpdate) => {
     logger.debug("Received anchor update:", { update: JSON.stringify(update) });
     markUpdated();
   }, [markUpdated]);
