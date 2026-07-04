@@ -26,7 +26,7 @@ interface Link {
   liquidity?: number;
 }
 
-interface GraphData {
+export interface GraphData {
   nodes: Node[];
   links: Link[];
 }

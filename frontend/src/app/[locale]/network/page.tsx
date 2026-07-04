@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import { Activity, Share2, Info } from 'lucide-react';
+import type { GraphData } from '@/components/charts/NetworkGraph';
 
 // Lazy-load the force-graph canvas component — it pulls in react-force-graph-2d
 // and d3-force-3d which are large and require a browser environment.
@@ -20,9 +21,9 @@ const NetworkGraph = dynamic(() => import('@/components/charts/NetworkGraph'), {
 });
 
 export default function NetworkPage() {
-    const [data, setData] = useState(null);
+    const [data, setData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchGraphData() {
@@ -32,7 +33,7 @@ export default function NetworkPage() {
                 const json = await res.json();
                 setData(json);
             } catch (err) {
-                setError(err.message);
+                setError(err instanceof Error ? err.message : String(err));
             } finally {
                 setLoading(false);
             }
@@ -89,9 +90,9 @@ export default function NetworkPage() {
                         <p className="font-bold uppercase tracking-widest">Telemetry Data Unavailable</p>
                         <p className="text-sm text-muted-foreground">{error}</p>
                     </div>
-                ) : (
+                ) : data ? (
                     <NetworkGraph data={data} />
-                )}
+                ) : null}
 
                 {/* Floating Info Card */}
                 <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
