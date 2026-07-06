@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { Bell, X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';

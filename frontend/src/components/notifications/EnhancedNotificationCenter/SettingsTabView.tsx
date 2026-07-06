@@ -16,7 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CATEGORY_ICONS } from './util';
-import useEnhancedNotificationCenter from './useEnhancedNotificationCenter';
 import React from 'react';
 import { NotificationPreferences } from '@/types/notifications';
 

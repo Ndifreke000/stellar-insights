@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   getContrastRatio,
   meetsWCAG_AA,
-  meetsWCAG_AAA,
   getComplianceLevel,
   validateColorPair,
 } from '../contrast-checker';

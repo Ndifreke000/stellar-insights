@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import {
   Search,
   ChevronUp,
@@ -210,7 +209,7 @@ export const NotificationListView = (props: NotificationListViewProps) => {
                     : 'space-y-2'
                 }
               >
-                {groupNotifications.map((notification, index) => (
+                {groupNotifications.map((notification) => (
                   <NotificationItem
                     key={notification.id}
                     notification={notification}

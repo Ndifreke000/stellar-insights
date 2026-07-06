@@ -11,7 +11,7 @@ interface Alert {
 
 export default function AlertNotifications() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [_ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     const websocket = new WebSocket('ws://localhost:8080/ws/alerts');

@@ -53,7 +53,7 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-export function Sidebar({ open, onClose }: SidebarProps = {}) {
+export function Sidebar({ open: _open, onClose: _onClose }: SidebarProps = {}) {
   const pathname = usePathname();
   const t = useTranslations("layout.sidebar");
   const { prefs, setPrefs } = useUserPreferences();

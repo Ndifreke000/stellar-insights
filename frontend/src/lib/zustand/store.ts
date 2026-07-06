@@ -97,7 +97,7 @@ export const useAppStore = create<AppState & AppActions>()(
   devtools(
     persist(
       subscribeWithSelector(
-        immer((set, get) => ({
+        immer((set, _get) => ({
           // Initial State
           sidebarCollapsed: false,
           activeModal: null,
