@@ -13,25 +13,28 @@
 //! # Quick Start
 //!
 //! ```rust,no_run
+//! use std::sync::Arc;
 //! use stellar_insights_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
 //! use stellar_insights_backend::database::Database;
+//! use sqlx::SqlitePool;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let db = Database::new(pool).await?;
+//!     let pool = SqlitePool::connect("sqlite://stellar_insights.db").await?;
+//!     let db = Arc::new(Database::new(pool));
 //!     let indexer = EventIndexer::new(db);
-//!     
+//!
 //!     // Query events
 //!     let query = EventQuery {
-//!         contract_id: Some("contract_123".to_string()),
+//!         contract_ids: vec!["contract_123".to_string()],
 //!         limit: Some(100),
 //!         order_by: Some(EventOrderBy::CreatedAtDesc),
 //!         ..Default::default()
 //!     };
-//!     
+//!
 //!     let events = indexer.query_events(query).await?;
 //!     println!("Found {} events", events.len());
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```

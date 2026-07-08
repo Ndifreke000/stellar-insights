@@ -422,6 +422,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_rejects_inverted_range() {
+        let _guard = crate::lock_env_test();
         use crate::database::Database;
         use crate::db::schema::Schema;
 
@@ -455,6 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_rejects_oversized_range() {
+        let _guard = crate::lock_env_test();
         use crate::database::Database;
         use crate::db::schema::Schema;
 
@@ -488,6 +490,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_rejects_concurrent_run() {
+        let _guard = crate::lock_env_test();
         use crate::database::Database;
         use crate::db::schema::Schema;
 

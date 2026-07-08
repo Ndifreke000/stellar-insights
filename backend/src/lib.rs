@@ -56,3 +56,26 @@ pub mod websocket;
 
 pub mod middleware;
 pub mod rpc;
+
+/// Tests that read or mutate process-global env vars (`STELLAR_NETWORK`,
+/// `STELLAR_RPC_URL_MAINNET`, etc.) race under `cargo test`'s default
+/// multi-threaded runner, since `std::env::set_var`/`remove_var` affect the
+/// whole process. Acquiring this lock serializes them against each other and
+/// ensures the mainnet RPC vars are set before `NetworkConfig::for_network`
+/// panics on a fresh/parallel run where no other test has set them yet.
+#[cfg(test)]
+pub(crate) fn lock_env_test() -> std::sync::MutexGuard<'static, ()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
+    guard
+}

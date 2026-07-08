@@ -30,12 +30,12 @@ async fn setup_test_db() -> SqlitePool {
         r#"
         CREATE TABLE contract_events (
             id TEXT PRIMARY KEY,
-            ledger_sequence INTEGER NOT NULL,
+            ledger INTEGER NOT NULL,
             transaction_hash TEXT NOT NULL,
             contract_id TEXT NOT NULL,
             event_type TEXT NOT NULL,
             data TEXT NOT NULL,
-            timestamp TIMESTAMP NOT NULL,
+            timestamp_dt TIMESTAMP NOT NULL,
             network TEXT NOT NULL
         );
 

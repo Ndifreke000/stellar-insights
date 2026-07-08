@@ -4,7 +4,9 @@ use std::fmt;
 /// Wrapper type that redacts sensitive data in logs
 ///
 /// Usage:
-/// ```
+/// ```rust
+/// use stellar_insights_backend::logging::redaction::Redacted;
+///
 /// let sensitive_data = "secret_value";
 /// tracing::info!("Processing data: {:?}", Redacted(&sensitive_data));
 /// // Logs: Processing data: [REDACTED]

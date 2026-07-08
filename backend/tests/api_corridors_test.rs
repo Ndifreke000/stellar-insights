@@ -35,7 +35,7 @@ async fn create_test_router(db: Arc<Database>) -> Router {
     Router::new()
         .route("/api/corridors", axum::routing::get(list_corridors))
         .route(
-            "/api/corridors/:corridor_key",
+            "/api/corridors/{corridor_key}",
             axum::routing::get(get_corridor_detail),
         )
         .with_state(state)
@@ -63,8 +63,8 @@ async fn test_list_corridors_success() {
         .unwrap();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(json.is_array());
-    let corridors = json.as_array().unwrap();
+    assert!(json["data"].is_array());
+    let corridors = json["data"].as_array().unwrap();
     assert!(!corridors.is_empty());
     assert!(corridors[0].get("id").is_some());
 }

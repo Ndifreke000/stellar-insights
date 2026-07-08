@@ -230,11 +230,11 @@ pub fn routes(event_indexer: Arc<EventIndexer>) -> Router {
         )
         .route("/api/analytics/contract-events", get(list_contract_events))
         .route(
-            "/api/analytics/contract-events/:id",
+            "/api/analytics/contract-events/{id}",
             get(get_contract_event),
         )
         .route(
-            "/api/analytics/contract-events/epoch/:epoch",
+            "/api/analytics/contract-events/epoch/{epoch}",
             get(get_events_for_epoch),
         )
         .route("/api/analytics/event-stats", get(get_event_stats))

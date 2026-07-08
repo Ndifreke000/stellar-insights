@@ -21,11 +21,11 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/rules", get(list_rules).post(create_rule))
-        .route("/rules/:id", put(update_rule).delete(delete_rule))
+        .route("/rules/{id}", put(update_rule).delete(delete_rule))
         .route("/history", get(list_history))
-        .route("/history/:id/read", post(mark_history_read))
-        .route("/history/:id/dismiss", post(dismiss_history))
-        .route("/history/:id/snooze", post(snooze_rule_from_history)) // snoozes the underlying rule
+        .route("/history/{id}/read", post(mark_history_read))
+        .route("/history/{id}/dismiss", post(dismiss_history))
+        .route("/history/{id}/snooze", post(snooze_rule_from_history)) // snoozes the underlying rule
 }
 
 // Rule Handlers

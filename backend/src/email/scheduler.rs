@@ -177,6 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_digest_caching() {
+        let _guard = crate::lock_env_test();
         GENERATE_DAILY_DIGEST_CALLS.store(0, Ordering::Relaxed);
 
         let email_service = Arc::new(EmailService::new(

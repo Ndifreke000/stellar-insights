@@ -570,6 +570,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_breaker_opens_on_failures() {
+        let _guard = crate::lock_env_test();
         let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(false));
         let anchor_id = Uuid::new_v4();
 
