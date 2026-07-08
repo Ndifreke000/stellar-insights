@@ -2,7 +2,11 @@
 
 import React from 'react';
 
-export function TransactionBuilder() {
+export interface TransactionBuilderProps {
+  onXdrGenerated: (generatedXdr: string, requiredSigs: number) => Promise<void> | void;
+}
+
+export function TransactionBuilder(_props: TransactionBuilderProps) {
   return (
     <div className="p-8 text-center bg-slate-900/50 rounded-xl border border-slate-800">
       <h2 className="text-xl font-bold mb-4">Transaction Builder</h2>

@@ -157,6 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_network_info() {
+        let _guard = crate::lock_env_test();
         let result = get_network_info().await;
         assert!(result.is_ok());
 
@@ -168,6 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_available_networks() {
+        let _guard = crate::lock_env_test();
         let result = get_available_networks().await;
         let networks = result.0;
 

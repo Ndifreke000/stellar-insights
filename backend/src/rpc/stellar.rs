@@ -615,10 +615,20 @@ impl StellarRpcClient {
         }
     }
 
-    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet)
+    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet).
+    ///
+    /// When `mock_mode` is true the client never makes a real network call, so it
+    /// defaults to testnet instead of mainnet — that avoids requiring the
+    /// `STELLAR_RPC_URL_MAINNET`/`STELLAR_HORIZON_URL_MAINNET` production secrets
+    /// just to construct a mock client in tests.
     #[must_use]
     pub fn new_with_defaults(mock_mode: bool) -> Self {
-        Self::new_with_network(StellarNetwork::Mainnet, mock_mode)
+        let network = if mock_mode {
+            StellarNetwork::Testnet
+        } else {
+            StellarNetwork::Mainnet
+        };
+        Self::new_with_network(network, mock_mode)
     }
 
     /// Get the current network configuration

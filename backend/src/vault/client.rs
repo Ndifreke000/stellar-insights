@@ -26,13 +26,13 @@ use crate::vault::{VaultConfig, VaultError};
 ///         "stellar-app".to_string(),
 ///     );
 ///     let client = VaultClient::new(config).await?;
-///     
+///
 ///     // Read a static secret
-///     let api_key = client.read_secret("api/keys/stellar").await?;
-///     
+///     let api_key = client.read_secret("api/keys/stellar", None).await?;
+///
 ///     // Generate database credentials
-///     let db_creds = client.generate_db_credentials("read-write").await?;
-///     
+///     let db_creds = client.get_database_credentials("read-write").await?;
+///
 ///     Ok(())
 /// }
 /// ```
@@ -85,7 +85,7 @@ struct KvData {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::DatabaseCredentials;
+/// use stellar_insights_backend::vault::client::DatabaseCredentials;
 ///
 /// // Credentials received from Vault
 /// let creds: DatabaseCredentials = DatabaseCredentials {
@@ -191,18 +191,23 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::VaultClient;
+    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let config = VaultConfig::new(
+    ///         "https://vault.example.com".to_string(),
+    ///         "your-vault-token".to_string(),
+    ///         "stellar-app".to_string(),
+    ///     );
     ///     let client = VaultClient::new(config).await?;
-    ///     
+    ///
     ///     // Read specific field
     ///     let api_key = client.read_secret("api/keys/stellar", Some("private_key")).await?;
-    ///     
+    ///
     ///     // Read entire secret
-    ///     let config = client.read_secret("app/config", None).await?;
-    ///     
+    ///     let app_config = client.read_secret("app/config", None).await?;
+    ///
     ///     Ok(())
     /// }
     /// ```
@@ -267,16 +272,21 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::VaultClient;
+    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let config = VaultConfig::new(
+    ///         "https://vault.example.com".to_string(),
+    ///         "your-vault-token".to_string(),
+    ///         "stellar-app".to_string(),
+    ///     );
     ///     let client = VaultClient::new(config).await?;
-    ///     
+    ///
     ///     // Generate read-write credentials
     ///     let creds = client.get_database_credentials("read-write").await?;
     ///     println!("Username: {}, TTL: {}s", creds.username, creds.ttl);
-    ///     
+    ///
     ///     Ok(())
     /// }
     /// ```

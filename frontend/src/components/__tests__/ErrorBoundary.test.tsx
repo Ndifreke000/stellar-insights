@@ -28,17 +28,6 @@ const ThrowError = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
   return <div>No error</div>;
 };
 
-// Component that throws an error on click
-const ThrowErrorOnClick = () => {
-  const [shouldThrow, setShouldThrow] = React.useState(false);
-
-  if (shouldThrow) {
-    throw new Error("Error thrown on click");
-  }
-
-  return <button onClick={() => setShouldThrow(true)}>Throw Error</button>;
-};
-
 describe("ErrorBoundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();

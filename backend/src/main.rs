@@ -40,6 +40,7 @@ use stellar_insights_backend::{
         ResponseCompression, WebSocketRealTimeUpdates, PushNotificationRegistration,
         Sep10ForMobile,
     },
+    network::StellarNetwork,
     observability::logging::request_response_logging_middleware,
     observability::metrics as obs_metrics,
     observability::tracing::trace_propagation_middleware,
@@ -177,7 +178,17 @@ async fn main() -> anyhow::Result<()> {
         .parse::<bool>()
         .unwrap_or(false);
 
-    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(mock_mode));
+    // Respect STELLAR_NETWORK rather than hardcoding mainnet — a testnet
+    // deployment must not silently issue RPC calls against mainnet.
+    let stellar_network = std::env::var("STELLAR_NETWORK")
+        .ok()
+        .and_then(|s| s.parse::<StellarNetwork>().ok())
+        .unwrap_or(StellarNetwork::Mainnet);
+
+    let rpc_client = Arc::new(StellarRpcClient::new_with_network(
+        stellar_network,
+        mock_mode,
+    ));
 
     // Build all services via the container (dependency injection — issue #1123)
     let services = ServiceContainer::build(pool.clone(), rpc_client.clone());

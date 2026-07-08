@@ -13,7 +13,8 @@ import {
  */
 export async function GET(): Promise<NextResponse<NetworkGraphData>> {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
 
     // Fetch anchors and corridors from backend
     const [anchorsRes, corridorsRes] = await Promise.all([

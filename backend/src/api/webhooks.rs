@@ -265,7 +265,7 @@ impl IntoResponse for WebhookApiError {
 pub fn routes(db: SqlitePool) -> Router {
     Router::new()
         .route("/api/webhooks", post(register_webhook).get(list_webhooks))
-        .route("/api/webhooks/:id", get(get_webhook).delete(delete_webhook))
-        .route("/api/webhooks/:id/test", post(test_webhook))
+        .route("/api/webhooks/{id}", get(get_webhook).delete(delete_webhook))
+        .route("/api/webhooks/{id}/test", post(test_webhook))
         .with_state(db)
 }

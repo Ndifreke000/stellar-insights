@@ -87,7 +87,7 @@ pub fn routes(
         .route("/anchors", get(anchors::get_anchors))
         .route("/corridors", get(corridors::list_corridors))
         .route(
-            "/corridors/:corridor_key",
+            "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
         .with_state(cached_state);
@@ -96,12 +96,12 @@ pub fn routes(
     let public_anchor_routes = Router::new()
         .route("/health", get(crate::handlers::health_check))
         .route("/db/pool-metrics", get(crate::handlers::pool_metrics))
-        .route("/anchors/:id", get(anchors::get_anchor))
+        .route("/anchors/{id}", get(anchors::get_anchor))
         .route(
-            "/anchors/account/:stellar_account",
+            "/anchors/account/{stellar_account}",
             get(anchors::get_anchor_by_account),
         )
-        .route("/anchors/:id/assets", get(anchors::get_anchor_assets))
+        .route("/anchors/{id}/assets", get(anchors::get_anchor_assets))
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
         .with_state(app_state.clone());
 
@@ -116,9 +116,9 @@ pub fn routes(
     // Protected routes require JWT; per-API-key limits apply after auth resolves.
     let protected_routes = Router::new()
         .route("/anchors", axum::routing::post(anchors::create_anchor))
-        .route("/anchors/:id/metrics", put(anchors::update_anchor_metrics))
+        .route("/anchors/{id}/metrics", put(anchors::update_anchor_metrics))
         .route(
-            "/anchors/:id/assets",
+            "/anchors/{id}/assets",
             axum::routing::post(anchors::create_anchor_asset),
         )
         .route(
@@ -126,7 +126,7 @@ pub fn routes(
             axum::routing::post(corridors::create_corridor),
         )
         .route(
-            "/corridors/:id/metrics-from-transactions",
+            "/corridors/{id}/metrics-from-transactions",
             put(corridors::update_corridor_metrics_from_transactions),
         )
         .with_state(app_state.clone())
@@ -146,7 +146,7 @@ pub fn routes(
         .route("/rpc/ledger/latest", get(rpc::get_latest_ledger))
         .route("/rpc/payments", get(rpc::get_payments))
         .route(
-            "/rpc/payments/account/:account_id",
+            "/rpc/payments/account/{account_id}",
             get(rpc::get_account_payments),
         )
         .route("/rpc/trades", get(rpc::get_trades))

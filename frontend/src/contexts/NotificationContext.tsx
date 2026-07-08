@@ -15,7 +15,6 @@ import {
   NotificationPreferences,
   ToastNotification,
   WebSocketNotificationPayload,
-  NotificationPriority,
 } from "@/types/notifications";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useNotificationSound } from "@/hooks/useNotificationSound";

@@ -78,9 +78,9 @@ pub struct ListTransactionsResponse {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_transactions).post(create_transaction))
-        .route("/:id", get(get_transaction))
-        .route("/:id/signatures", post(add_signature))
-        .route("/:id/submit", post(submit_transaction))
+        .route("/{id}", get(get_transaction))
+        .route("/{id}/signatures", post(add_signature))
+        .route("/{id}/submit", post(submit_transaction))
 }
 
 // Handlers
