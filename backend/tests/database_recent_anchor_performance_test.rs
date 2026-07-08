@@ -2,7 +2,7 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use stellar_insights_backend::database::Database;
-use stellar_insights_backend::models::PaymentRecord;
+use stellar_insights_backend::models::PaymentRow;
 
 async fn setup_test_db() -> Arc<Database> {
     let pool = SqlitePool::connect(":memory:").await.unwrap();
@@ -17,7 +17,7 @@ async fn test_get_recent_anchor_performance_from_payments_without_successful_col
     let now = Utc::now();
 
     db.save_payments(vec![
-        PaymentRecord {
+        PaymentRow {
             id: "payment_1".to_string(),
             transaction_hash: "tx_1".to_string(),
             source_account: anchor_account.to_string(),
@@ -39,7 +39,7 @@ async fn test_get_recent_anchor_performance_from_payments_without_successful_col
             confirmation_time: None,
             created_at: now,
         },
-        PaymentRecord {
+        PaymentRow {
             id: "payment_2".to_string(),
             transaction_hash: "tx_2".to_string(),
             source_account: "GSOURCEACCOUNT000000000000000000000000000000000000000000001"

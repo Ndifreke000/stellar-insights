@@ -291,7 +291,14 @@ impl TokenSwapContract {
     /// Accept an open offer. Atomically swaps both sides.
     ///
     /// The taker sends want_token to the maker and receives offer_token from this contract.
-    pub fn accept_offer(env: Env, taker: Address, offer_id: u64) -> Result<(), Error> {
+    /// The `min_out` parameter ensures protection against sandwich attacks and slippage.
+    /// The actual_out (offer_amount) must be >= min_out or the transaction reverts.
+    pub fn accept_offer(
+        env: Env,
+        taker: Address,
+        offer_id: u64,
+        min_out: i128,
+    ) -> Result<(), Error> {
         require_not_locked(&env)?;
 
         let paused: bool = env
@@ -320,6 +327,11 @@ impl TokenSwapContract {
 
         if offer.expiry != 0 && env.ledger().timestamp() > offer.expiry {
             return Err(Error::OfferExpired);
+        }
+
+        // Validate slippage: actual_out must be >= min_out to prevent sandwich attacks
+        if offer.offer_amount < min_out {
+            return Err(Error::SlippageExceeded);
         }
 
         let want_token = offer.want_token.clone();

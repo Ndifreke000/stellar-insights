@@ -21,9 +21,12 @@ interface ApiFetchOptions extends ApiOptions {
 async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { skipCsrf = false, headers = {}, _retried = false, ...restOptions } = options;
 
-  const requestHeaders: HeadersInit = {
+  // Normalize whichever HeadersInit shape was passed in (Headers instance,
+  // string[][], or a plain object) into a plain Record so it can be indexed
+  // below (e.g. requestHeaders['X-CSRF-Token'] = ...).
+  const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...headers,
+    ...Object.fromEntries(new Headers(headers).entries()),
   };
 
   // Add CSRF token for state-changing methods

@@ -530,7 +530,7 @@ pub fn routes() -> axum::Router {
             axum::routing::get(get_transactions).post(post_transaction),
         )
         .route(
-            "/api/sep31/transactions/:id",
+            "/api/sep31/transactions/{id}",
             axum::routing::get(get_transaction),
         )
         .route(

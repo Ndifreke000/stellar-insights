@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderName, HeaderValue, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -20,19 +20,20 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
     Router::new()
         // Protected routes (require SEP-10 auth)
         .route("/proposals", post(create_proposal))
-        .route("/proposals/:id/vote", post(cast_vote))
-        .route("/proposals/:id/comments", post(add_comment))
-        .route("/proposals/:id/activate", put(activate_proposal))
+        .route("/proposals/{id}/vote", post(cast_vote))
+        .route("/proposals/{id}/comments", post(add_comment))
+        .route("/proposals/{id}/activate", put(activate_proposal))
+        .route("/proposals/{id}/refresh", post(refresh_tally))
         .layer(middleware::from_fn_with_state(
             sep10_service,
             sep10_auth_middleware,
         ))
         // Public routes
         .route("/proposals", get(list_proposals))
-        .route("/proposals/:id", get(get_proposal))
-        .route("/proposals/:id/votes", get(get_votes))
-        .route("/proposals/:id/comments", get(get_comments))
-        .route("/proposals/:id/has-voted/:address", get(has_voted))
+        .route("/proposals/{id}", get(get_proposal))
+        .route("/proposals/{id}/votes", get(get_votes))
+        .route("/proposals/{id}/comments", get(get_comments))
+        .route("/proposals/{id}/has-voted/{address}", get(has_voted))
         .with_state(service)
 }
 
@@ -196,12 +197,47 @@ async fn get_proposal(
     State(service): State<Arc<GovernanceService>>,
     Path(id): Path<String>,
 ) -> Result<Response, GovernanceError> {
-    let response = service
-        .get_proposal(&id)
+    let (proposal, cache_age) = service
+        .get_proposal_cached(&id)
         .await
         .map_err(|e| GovernanceError::NotFound(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(response)).into_response())
+    let mut response = (StatusCode::OK, Json(proposal)).into_response();
+    let age_str = cache_age.unwrap_or(0).to_string();
+    if let Ok(val) = HeaderValue::from_str(&age_str) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cache-age"), val);
+    }
+    Ok(response)
+}
+
+// POST /api/governance/proposals/:id/refresh - Admin: bust cached vote tally
+#[utoipa::path(
+    post,
+    path = "/api/governance/proposals/{id}/refresh",
+    params(
+        ("id" = String, Path, description = "Proposal ID")
+    ),
+    responses(
+        (status = 200, description = "Cache invalidated"),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal error")
+    ),
+    tag = "Governance"
+)]
+async fn refresh_tally(
+    State(service): State<Arc<GovernanceService>>,
+    Path(id): Path<String>,
+    _sep10_user: axum::Extension<Sep10User>,
+) -> Result<Response, GovernanceError> {
+    service
+        .invalidate_proposal_cache(&id)
+        .await
+        .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
+
+    info!("Cache busted for proposal {} by admin request", id);
+    Ok((StatusCode::OK, Json(serde_json::json!({ "invalidated": true }))).into_response())
 }
 
 // POST /api/governance/proposals/:id/vote - Cast a vote on a proposal

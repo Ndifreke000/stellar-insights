@@ -18,9 +18,9 @@ fn setup(env: &Env) -> (TimeLockedTransactionsContractClient, Address, Address) 
     (client, contract_id, admin)
 }
 
-fn advance_time(env: &Env, seconds: u64) {
+fn advance_ledger(env: &Env, ledgers: u32) {
     env.ledger().with_mut(|li| {
-        li.timestamp += seconds;
+        li.sequence_number += ledgers;
     });
 }
 
@@ -59,10 +59,10 @@ fn test_schedule_transfer() {
     let asset_client = token::StellarAssetClient::new(&env, &token_addr);
     asset_client.mint(&sender, &10_000_000);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
+    let unlock_ledger = env.ledger().sequence() + 720;
     let amount: i128 = 1_000_000;
 
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_time);
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_ledger);
     assert_eq!(tx_id, 1);
     assert_eq!(client.get_transfer_count(), 1);
 
@@ -70,7 +70,7 @@ fn test_schedule_transfer() {
     assert_eq!(transfer.sender, sender);
     assert_eq!(transfer.recipient, recipient);
     assert_eq!(transfer.amount, amount);
-    assert_eq!(transfer.unlock_time, unlock_time);
+    assert_eq!(transfer.unlock_ledger, unlock_ledger);
     assert_eq!(transfer.state, TransferState::Pending);
 
     // Tokens are now held by the contract
@@ -92,11 +92,11 @@ fn test_execute_after_unlock() {
     let amount: i128 = 2_000_000;
     asset_client.mint(&sender, &amount);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_ledger);
 
-    // Advance past unlock
-    advance_time(&env, 3601);
+    // Advance past unlock ledger
+    advance_ledger(&env, 721);
     client.execute_transfer(&sender, &tx_id);
 
     let transfer = client.get_transfer(&tx_id);
@@ -120,10 +120,10 @@ fn test_recipient_can_execute_after_unlock() {
     let amount: i128 = 1_000_000;
     asset_client.mint(&sender, &amount);
 
-    let unlock_time = env.ledger().timestamp() + 100;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 20;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_ledger);
 
-    advance_time(&env, 200);
+    advance_ledger(&env, 21);
     client.execute_transfer(&recipient, &tx_id);
 
     assert_eq!(client.get_transfer(&tx_id).state, TransferState::Executed);
@@ -143,8 +143,8 @@ fn test_execute_before_unlock_fails() {
     let asset_client = token::StellarAssetClient::new(&env, &token_addr);
     asset_client.mint(&sender, &1_000_000);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_ledger);
 
     // Not yet past unlock — should panic
     client.execute_transfer(&sender, &tx_id);
@@ -166,8 +166,8 @@ fn test_cancel_transfer() {
 
     let initial_balance = token::Client::new(&env, &token_addr).balance(&sender);
 
-    let unlock_time = env.ledger().timestamp() + 7200;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 1440;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_ledger);
 
     // Sender cancels before unlock — tokens returned
     client.cancel_transfer(&sender, &tx_id);
@@ -191,8 +191,8 @@ fn test_admin_can_cancel() {
     let amount: i128 = 1_000_000;
     asset_client.mint(&sender, &amount);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &amount, &unlock_ledger);
 
     client.cancel_transfer(&admin, &tx_id);
     assert_eq!(client.get_transfer(&tx_id).state, TransferState::Cancelled);
@@ -213,8 +213,8 @@ fn test_unauthorized_cancel_fails() {
     let asset_client = token::StellarAssetClient::new(&env, &token_addr);
     asset_client.mint(&sender, &1_000_000);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_ledger);
 
     client.cancel_transfer(&outsider, &tx_id); // should panic
 }
@@ -233,11 +233,11 @@ fn test_execute_cancelled_transfer_fails() {
     let asset_client = token::StellarAssetClient::new(&env, &token_addr);
     asset_client.mint(&sender, &1_000_000);
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let tx_id = client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_ledger);
     client.cancel_transfer(&sender, &tx_id);
 
-    advance_time(&env, 7200);
+    advance_ledger(&env, 1440);
     client.execute_transfer(&sender, &tx_id); // already cancelled — should panic
 }
 
@@ -255,8 +255,8 @@ fn test_pause_prevents_scheduling() {
     client.pause(&admin);
     assert!(client.is_paused());
 
-    let unlock_time = env.ledger().timestamp() + 3600;
-    let result = client.try_schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_time);
+    let unlock_ledger = env.ledger().sequence() + 720;
+    let result = client.try_schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &unlock_ledger);
     assert!(result.is_err());
 
     client.unpause(&admin);
@@ -265,7 +265,7 @@ fn test_pause_prevents_scheduling() {
 
 #[test]
 #[should_panic]
-fn test_invalid_unlock_time_fails() {
+fn test_invalid_unlock_ledger_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -277,7 +277,7 @@ fn test_invalid_unlock_time_fails() {
     let asset_client = token::StellarAssetClient::new(&env, &token_addr);
     asset_client.mint(&sender, &1_000_000);
 
-    // Unlock time in the past — should panic
-    let past_unlock = env.ledger().timestamp().saturating_sub(1);
+    // Unlock ledger at or before current sequence — should panic
+    let past_unlock = env.ledger().sequence();
     client.schedule_transfer(&sender, &recipient, &token_addr, &1_000_000, &past_unlock);
 }

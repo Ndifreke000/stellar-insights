@@ -50,7 +50,7 @@ export function useWebSocket(
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastMessage, setLastMessage] = useState<WsMessage | null>(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
-  const [connectionState, setConnectionState] = useState<ConnectionState>(
+  const [_connectionState, setConnectionState] = useState<ConnectionState>(
     ConnectionState.DISCONNECTED
   );
 
@@ -68,6 +68,10 @@ export function useWebSocket(
   const connectionAttemptsRef = useRef(0);
   const optionsRef = useRef({ onOpen, onClose, onError, onMessage });
   optionsRef.current = { onOpen, onClose, onError, onMessage };
+
+  // Channels the caller has asked to be subscribed to. Persisted across
+  // reconnects so we can restore subscriptions once the socket reopens.
+  const activeChannelsRef = useRef<Set<string>>(new Set());
 
   const connect = useCallback(() => {
     if (isConnectingRef.current) {
@@ -102,6 +106,18 @@ export function useWebSocket(
         connectionAttemptsRef.current = 0;
         setConnectionAttempts(0);
         isConnectingRef.current = false;
+
+        // Restore subscriptions that were active before this (re)connect.
+        if (activeChannelsRef.current.size > 0) {
+          logger.debug("Resubscribing to channels after (re)connect");
+          ws.send(
+            JSON.stringify({
+              type: "subscribe",
+              channels: Array.from(activeChannelsRef.current),
+            }),
+          );
+        }
+
         optionsRef.current.onOpen?.();
       };
 
@@ -186,6 +202,7 @@ export function useWebSocket(
 
   const subscribe = useCallback(
     (channels: string[]) => {
+      channels.forEach((channel) => activeChannelsRef.current.add(channel));
       send({
         type: "subscribe",
         channels,
@@ -196,6 +213,7 @@ export function useWebSocket(
 
   const unsubscribe = useCallback(
     (channels: string[]) => {
+      channels.forEach((channel) => activeChannelsRef.current.delete(channel));
       send({
         type: "unsubscribe",
         channels,

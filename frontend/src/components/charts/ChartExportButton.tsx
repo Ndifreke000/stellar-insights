@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Download, Image, FileImage } from 'lucide-react';
 import { exportChart, ExportFormat } from '@/lib/chart-export';
 import { logger } from '@/lib/logger';
 
 interface ChartExportButtonProps {
-  chartRef: React.RefObject<HTMLDivElement>;
+  chartRef: React.RefObject<HTMLDivElement | null>;
   chartName: string;
   className?: string;
 }
@@ -27,7 +27,7 @@ export function ChartExportButton({
 
     try {
       const filename = `${chartName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}`;
-      await exportChart(chartRef.current, { filename, format });
+      await exportChart(chartRef.current, filename, format);
     } catch (error) {
       logger.error('Export failed:', error instanceof Error ? error : new Error(String(error)));
     } finally {

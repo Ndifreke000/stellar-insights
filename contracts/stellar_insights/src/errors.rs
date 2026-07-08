@@ -49,6 +49,8 @@ pub enum Error {
     UnauthorizedCaller = 21,
     /// Invalid hash size (must be 32 bytes)
     InvalidHashSize = 22,
+    /// Epoch overflow — cannot exceed u64::MAX
+    EpochOverflow = 23,
 }
 
 impl Error {
@@ -84,6 +86,7 @@ impl Error {
             Error::ActionAlreadyExecuted => "Governance action has already been executed",
             Error::UnauthorizedCaller => "Caller is not authorized to perform this action",
             Error::InvalidHashSize => "Invalid hash size (must be 32 bytes)",
+            Error::EpochOverflow => "Epoch overflow — cannot exceed u64::MAX",
         }
     }
 

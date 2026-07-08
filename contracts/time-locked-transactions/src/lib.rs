@@ -28,7 +28,7 @@ fn bump_instance(env: &Env) {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum TransferState {
-    /// Funds locked, awaiting unlock time
+    /// Funds locked, awaiting unlock ledger
     Pending = 0,
     /// Funds released to recipient
     Executed = 1,
@@ -49,8 +49,8 @@ pub struct ScheduledTransfer {
     pub token: Address,
     /// Locked amount
     pub amount: i128,
-    /// Unix timestamp after which execution is permitted
-    pub unlock_time: u64,
+    /// Ledger sequence after which execution is permitted
+    pub unlock_ledger: u32,
     /// Current state
     pub state: TransferState,
     /// Ledger timestamp when scheduled
@@ -186,7 +186,7 @@ impl TimeLockedTransactionsContract {
         recipient: Address,
         token: Address,
         amount: i128,
-        unlock_time: u64,
+        unlock_ledger: u32,
     ) -> Result<u64, Error> {
         let paused: bool = env
             .storage()
@@ -203,8 +203,8 @@ impl TimeLockedTransactionsContract {
             return Err(Error::InvalidAmount);
         }
 
-        let now = env.ledger().timestamp();
-        if unlock_time <= now {
+        let current_ledger = env.ledger().sequence();
+        if unlock_ledger <= current_ledger {
             return Err(Error::InvalidUnlockTime);
         }
 
@@ -225,9 +225,9 @@ impl TimeLockedTransactionsContract {
             recipient: recipient.clone(),
             token,
             amount,
-            unlock_time,
+            unlock_ledger,
             state: TransferState::Pending,
-            created_at: now,
+            created_at: env.ledger().timestamp(),
         };
 
         env.storage()
@@ -242,11 +242,11 @@ impl TimeLockedTransactionsContract {
         env.storage().instance().set(&DataKey::TxCount, &count);
         bump_instance(&env);
 
-        emit_scheduled(&env, count, sender, recipient, amount, unlock_time);
+        emit_scheduled(&env, count, sender, recipient, amount, unlock_ledger);
         Ok(count)
     }
 
-    /// Release locked funds to the recipient once the unlock time has passed.
+    /// Release locked funds to the recipient once the unlock ledger has been reached.
     ///
     /// Either the sender or the recipient may trigger execution.
     pub fn execute_transfer(env: Env, caller: Address, tx_id: u64) -> Result<(), Error> {
@@ -269,8 +269,8 @@ impl TimeLockedTransactionsContract {
             return Err(Error::Unauthorized);
         }
 
-        let now = env.ledger().timestamp();
-        if now < transfer.unlock_time {
+        let current_ledger = env.ledger().sequence();
+        if current_ledger < transfer.unlock_ledger {
             return Err(Error::NotUnlockedYet);
         }
 

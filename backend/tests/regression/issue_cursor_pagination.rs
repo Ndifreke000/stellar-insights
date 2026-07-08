@@ -105,16 +105,26 @@ async fn test_cursor_pagination_token_ordering() {
     assert!(!payments.is_empty(), "expected at least one payment");
 
     // In mock mode tokens are `paging_<N>` where N = index; verify monotonic
-    // growth as a proxy for correct cursor advancement.
-    let tokens: Vec<&str> = payments.iter().map(|p| p.paging_token.as_str()).collect();
+    // growth as a proxy for correct cursor advancement. Tokens must be
+    // compared by their numeric suffix, not lexicographically — a plain
+    // string sort would put "paging_10" before "paging_2".
+    let indices: Vec<u64> = payments
+        .iter()
+        .map(|p| {
+            p.paging_token
+                .strip_prefix("paging_")
+                .and_then(|n| n.parse::<u64>().ok())
+                .expect("paging_token should be in the form paging_<N>")
+        })
+        .collect();
     let sorted = {
-        let mut t = tokens.clone();
-        t.sort_unstable();
-        t
+        let mut n = indices.clone();
+        n.sort_unstable();
+        n
     };
     assert_eq!(
-        tokens, sorted,
-        "paging_tokens are not in ascending order – indicates cursor regression"
+        indices, sorted,
+        "paging_tokens are not in ascending numeric order – indicates cursor regression"
     );
 }
 

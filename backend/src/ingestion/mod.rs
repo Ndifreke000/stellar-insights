@@ -1,13 +1,22 @@
-// I'm exporting the ledger ingestion module as required by issue #2
 pub mod ledger;
 
 use anyhow::Result;
 use serde::Serialize;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
 use tracing::{info, warn};
 
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
+
+fn retry_strategy() -> impl Iterator<Item = Duration> {
+    ExponentialBackoff::from_millis(200)
+        .max_delay(Duration::from_secs(30))
+        .map(jitter)
+        .take(10)
+}
 
 pub struct DataIngestionService {
     rpc_client: Arc<StellarRpcClient>,
@@ -48,11 +57,14 @@ impl DataIngestionService {
 
     /// Process metrics for a single anchor
     async fn process_anchor_metrics(&self, account_id: &str) -> Result<()> {
-        let payments = self
-            .rpc_client
-            .fetch_account_payments(account_id, 100)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let client = &self.rpc_client;
+        let payments = Retry::spawn(retry_strategy(), || async {
+            client
+                .fetch_account_payments(account_id, 100)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await?;
 
         if payments.is_empty() {
             return Ok(());
@@ -117,11 +129,11 @@ impl DataIngestionService {
 
     /// Get current network health status
     pub async fn get_network_health(&self) -> Result<NetworkHealth> {
-        let health = self
-            .rpc_client
-            .check_health()
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let client = &self.rpc_client;
+        let health = Retry::spawn(retry_strategy(), || async {
+            client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await?;
 
         Ok(NetworkHealth {
             status: health.status,
@@ -157,11 +169,11 @@ impl DataIngestionService {
         let last_ingested = cursor_row.map_or(0, |r| r.0 as u64);
 
         // We get network state
-        let health = self
-            .rpc_client
-            .check_health()
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let client = &self.rpc_client;
+        let health = Retry::spawn(retry_strategy(), || async {
+            client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await?;
 
         Ok(IngestionStatus {
             last_ingested_ledger: last_ingested,

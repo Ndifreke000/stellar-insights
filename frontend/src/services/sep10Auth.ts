@@ -1,8 +1,5 @@
 import {
-  Keypair,
-  Networks,
   Transaction,
-  TransactionBuilder,
   Operation,
 } from '@stellar/stellar-sdk';
 import { logger } from '@/lib/logger';
@@ -193,7 +190,7 @@ export class Sep10AuthService {
     },
   ): Promise<VerificationResponse> {
     // Step 1: Get server info
-    const info = await this.getInfo();
+    const _info = await this.getInfo();
 
     // Step 2: Request challenge
     const challengeRequest: ChallengeRequest = {

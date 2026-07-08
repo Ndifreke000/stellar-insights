@@ -119,8 +119,11 @@ impl MultiSigWalletContract {
         if owner_count == 0 {
             return Err(Error::InvalidOwners);
         }
-        if threshold == 0 || threshold > owner_count {
+        if threshold == 0 {
             return Err(Error::InvalidThreshold);
+        }
+        if threshold > owner_count {
+            return Err(Error::ThresholdExceedsSigCount);
         }
 
         // Reject duplicate owners

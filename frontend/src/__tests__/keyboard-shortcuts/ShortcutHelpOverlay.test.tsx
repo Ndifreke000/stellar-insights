@@ -1,28 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ShortcutHelpOverlay } from '@/components/keyboard-shortcuts/ShortcutHelpOverlay';
 import { KeyboardShortcutsProvider } from '@/contexts/KeyboardShortcutsContext';
-import type { ShortcutAction } from '@/types/keyboard-shortcuts';
-
-// Mock shortcuts for testing
-const mockShortcuts: ShortcutAction[] = [
-  {
-    id: 'test-nav',
-    name: 'Test Navigation',
-    description: 'Navigate to test page',
-    category: 'navigation',
-    defaultBinding: { key: 'd', modifiers: ['ctrl'] },
-    handler: () => {},
-  },
-  {
-    id: 'test-search',
-    name: 'Test Search',
-    description: 'Open search dialog',
-    category: 'search',
-    defaultBinding: { key: 'k', modifiers: ['ctrl'] },
-    handler: () => {},
-  },
-];
 
 // Wrapper component to provide context and register shortcuts
 function TestWrapper({ children }: { children: React.ReactNode }) {
@@ -45,7 +24,7 @@ describe('ShortcutHelpOverlay', () => {
   });
 
   it('should render when help is visible', () => {
-    const { rerender } = render(
+    render(
       <TestWrapper>
         <ShortcutHelpOverlay />
       </TestWrapper>

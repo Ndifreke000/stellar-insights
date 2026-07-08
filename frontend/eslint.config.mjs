@@ -16,6 +16,18 @@ const eslintConfig = defineConfig([
   {
     rules: {
       "no-console": "off",
+      // Allow intentionally-unused bindings (e.g. required callback/positional
+      // params, or destructured values kept for documentation) to be marked
+      // with a leading underscore instead of being deleted.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          enableAutofixRemoval: { imports: true },
+        },
+      ],
     },
   },
 ]);

@@ -101,7 +101,7 @@ async fn test_websocket_endpoint() {
     
     let ws_connect = tokio::time::timeout(
         Duration::from_secs(10),
-        connect_async(url.clone())
+        connect_async(url.as_str())
     ).await;
     
     match ws_connect {

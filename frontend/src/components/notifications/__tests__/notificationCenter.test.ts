@@ -1,7 +1,7 @@
 // Notification Center Test Suite
 // This file contains test cases for the notification center functionality
 
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import {  describe, it, expect, beforeEach } from 'vitest';
 import { NotificationService } from '@/services/notificationService';
 import type { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
 

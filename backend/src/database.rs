@@ -374,7 +374,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let req = CreateAnchorRequest {
     ///     name: "Example Anchor".to_string(),
     ///     stellar_account: "GBRPYHIL...".to_string(),
@@ -424,7 +424,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
     /// let anchor = db.get_anchor_by_id(anchor_id).await?;
     ///
@@ -468,7 +468,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let account = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
     /// let anchor = db.get_anchor_by_stellar_account(account).await?;
     /// ```
@@ -653,7 +653,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let asset = db.create_asset(
     ///     anchor_id,
     ///     "USDC".to_string(),
@@ -713,7 +713,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let assets = db.get_assets_by_anchor(anchor_id).await?;
     /// for asset in assets {
     ///     println!("{}: {}", asset.asset_code, asset.asset_issuer);
@@ -752,7 +752,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_ids = vec![anchor1_id, anchor2_id, anchor3_id];
     /// let assets_map = db.get_assets_by_anchors(&anchor_ids).await?;
     ///
@@ -1777,6 +1777,99 @@ impl Database {
                 )
             })?;
             Ok(())
+        })
+        .await
+    }
+
+    /// List pending transactions with keyset (cursor) pagination.
+    ///
+    /// `account`  – optional source_account filter
+    /// `after_id` – id of the last row from the previous page (from a decoded cursor)
+    /// `limit`    – max rows to return (caller should pass `limit + 1` to detect next page)
+    #[tracing::instrument(skip(self), fields(account = ?account, after_id = ?after_id, limit))]
+    pub async fn list_pending_transactions(
+        &self,
+        account: Option<&str>,
+        after_id: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<crate::models::PendingTransaction>> {
+        self.execute_with_timing("list_pending_transactions", async {
+            // Resolve the pivot row's (created_at, id) so we can do keyset pagination.
+            // When after_id is None we start from the beginning.
+            let rows = if let Some(aid) = after_id {
+                let pivot = sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    "SELECT * FROM pending_transactions WHERE id = $1",
+                )
+                .bind(aid)
+                .fetch_optional(&self.pool)
+                .await
+                .with_context(|| format!("Failed to resolve cursor id: {aid}"))?
+                .ok_or_else(|| anyhow::anyhow!("Cursor references unknown id: {aid}"))?;
+
+                let pivot_ts = pivot.created_at.to_rfc3339();
+
+                if let Some(acct) = account {
+                    sqlx::query_as::<_, crate::models::PendingTransaction>(
+                        r"
+                        SELECT * FROM pending_transactions
+                        WHERE source_account = $1
+                          AND (created_at > $2 OR (created_at = $2 AND id > $3))
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT $4
+                        ",
+                    )
+                    .bind(acct)
+                    .bind(&pivot_ts)
+                    .bind(&pivot.id)
+                    .bind(limit)
+                    .fetch_all(&self.pool)
+                    .await
+                    .context("Failed to list pending transactions (filtered, after cursor)")?
+                } else {
+                    sqlx::query_as::<_, crate::models::PendingTransaction>(
+                        r"
+                        SELECT * FROM pending_transactions
+                        WHERE created_at > $1 OR (created_at = $1 AND id > $2)
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT $3
+                        ",
+                    )
+                    .bind(&pivot_ts)
+                    .bind(&pivot.id)
+                    .bind(limit)
+                    .fetch_all(&self.pool)
+                    .await
+                    .context("Failed to list pending transactions (unfiltered, after cursor)")?
+                }
+            } else if let Some(acct) = account {
+                sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    r"
+                    SELECT * FROM pending_transactions
+                    WHERE source_account = $1
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT $2
+                    ",
+                )
+                .bind(acct)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .context("Failed to list pending transactions (filtered, no cursor)")?
+            } else {
+                sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    r"
+                    SELECT * FROM pending_transactions
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT $1
+                    ",
+                )
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .context("Failed to list pending transactions (unfiltered, no cursor)")?
+            };
+
+            Ok(rows)
         })
         .await
     }

@@ -56,14 +56,14 @@ To deploy the Soroban contracts to the testnet:
    Navigate to the `contracts/` directory and compile the WASM targets:
    ```bash
    cd contracts
-   cargo build --target wasm32-unknown-unknown --release
+   cargo build --target wasm32v1-none --release
    ```
 
 2. **Deploy via Stellar CLI**:
    Deploy the `stellar_insights` analytics contract to the testnet:
    ```bash
    stellar contract deploy \
-     --wasm target/wasm32-unknown-unknown/release/stellar_insights.wasm \
+     --wasm target/wasm32v1-none/release/stellar_insights.wasm \
      --source my-identity \
      --network testnet
    ```

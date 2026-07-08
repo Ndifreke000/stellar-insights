@@ -13,25 +13,28 @@
 //! # Quick Start
 //!
 //! ```rust,no_run
+//! use std::sync::Arc;
 //! use stellar_insights_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
 //! use stellar_insights_backend::database::Database;
+//! use sqlx::SqlitePool;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let db = Database::new(pool).await?;
+//!     let pool = SqlitePool::connect("sqlite://stellar_insights.db").await?;
+//!     let db = Arc::new(Database::new(pool));
 //!     let indexer = EventIndexer::new(db);
-//!     
+//!
 //!     // Query events
 //!     let query = EventQuery {
-//!         contract_id: Some("contract_123".to_string()),
+//!         contract_ids: vec!["contract_123".to_string()],
 //!         limit: Some(100),
 //!         order_by: Some(EventOrderBy::CreatedAtDesc),
 //!         ..Default::default()
 //!     };
-//!     
+//!
 //!     let events = indexer.query_events(query).await?;
 //!     println!("Found {} events", events.len());
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -72,7 +75,7 @@ pub struct IndexedEvent {
 /// Event query filters
 #[derive(Debug, Clone, Default)]
 pub struct EventQuery {
-    pub contract_id: Option<String>,
+    pub contract_ids: Vec<String>,
     pub event_type: Option<String>,
     pub epoch: Option<u64>,
     pub hash: Option<String>,
@@ -298,9 +301,10 @@ impl EventIndexer {
         let mut bindings = Vec::new();
 
         // Add filters
-        if let Some(contract_id) = &query.contract_id {
-            sql.push_str(" AND contract_id = ?");
-            bindings.push(contract_id.clone());
+        if !query.contract_ids.is_empty() {
+            let placeholders = query.contract_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let _ = write!(sql, " AND contract_id IN ({placeholders})");
+            bindings.extend(query.contract_ids.iter().cloned());
         }
 
         if let Some(event_type) = &query.event_type {

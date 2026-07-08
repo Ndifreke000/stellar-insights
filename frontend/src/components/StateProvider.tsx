@@ -35,7 +35,7 @@ function StateDevTools() {
       (window as any).__stateDevtools = {
         // Store debugging
         store,
-        logState: () => console.log('Store State:', store.getState()),
+        logState: () => console.log('Store State:', useAppStore.getState()),
         resetState: () => store.resetState(),
 
         // Query debugging
@@ -47,9 +47,7 @@ function StateDevTools() {
           queryClient.invalidateQueries();
         },
         getQueryData: (queryKey: string[]) => {
-          const query = queryClient.getQueryCache().find(({ queryKey: key }) =>
-            JSON.stringify(key) === JSON.stringify(queryKey)
-          );
+          const query = queryClient.getQueryCache().find({ queryKey });
           return query?.state.data;
         },
 
@@ -92,8 +90,4 @@ export function useDebugTools() {
       return () => clearInterval(interval);
     }
   }, []);
-
-  return { StateDevTools, useDebugTools };
 }
-
-export { StateDevTools, useDebugTools };

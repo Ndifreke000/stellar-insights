@@ -11,7 +11,25 @@ members = [
   "multi-sig-wallet",
   "time-locked-transactions",
   "token-swap",
+  "upgrade",
   "tests",
+]
+# `benches` and `tests` are host-side crates (dev/bench tooling, not deployable
+# contracts) and pull in soroban-sdk's testutils feature, which needs std and
+# so can't build for wasm32v1-none. Restrict the default member set so a plain
+# `cargo build --release --target wasm32v1-none` from this directory builds
+# only the real contracts; explicitly build `-p benches`/`-p tests` for those.
+default-members = [
+  "stellar_insights",
+  "analytics",
+  "access-control",
+  "governance",
+  "escrow",
+  "governance-voting",
+  "multi-sig-wallet",
+  "time-locked-transactions",
+  "token-swap",
+  "upgrade",
 ]
 
 # Clippy linting configuration for all contracts

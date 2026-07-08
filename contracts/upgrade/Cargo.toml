@@ -8,7 +8,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { version = "21.5.0", features = ["alloc"] }
+soroban-sdk = { workspace = true }
 
 [profile.release]
 opt-level = "z"

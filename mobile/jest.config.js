@@ -20,6 +20,9 @@ module.exports = {
   collectCoverageFrom: [
     'src/components/AnchorDetail.tsx',
     'src/hooks/useAnchorDetail.ts',
+    'src/components/SyncStatusBanner.tsx',
+    'src/hooks/useAssets.ts',
+    'src/services/database.ts',
   ],
   coverageThreshold: {
     global: {

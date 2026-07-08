@@ -9,6 +9,10 @@ name = "integration"
 path = "integration/mod.rs"
 required-features = ["testnet-integration"]
 
+[[test]]
+name = "fuzz"
+path = "fuzz/mod.rs"
+
 [features]
 testnet-integration = []
 
@@ -17,4 +21,4 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 analytics = { path = "../analytics" }
 governance = { path = "../governance" }
 escrow = { path = "../escrow" }
-stellar_insights = { path = "../stellar_insights" }
+stellar-insights = { path = "../stellar_insights" }
