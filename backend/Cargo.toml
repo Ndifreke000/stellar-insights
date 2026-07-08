@@ -66,7 +66,7 @@ sha2 = "0.10"
 hex = "0.4"
 ndarray = "0.17"
 rand = "0.10"
-redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager"] }
+redis = { version = "1.3", features = ["aio", "tokio-comp", "connection-manager"] }
 async-lock = "3.3"
 futures = "0.3"
 tokio-tungstenite = "0.29"
