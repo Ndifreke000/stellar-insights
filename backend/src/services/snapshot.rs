@@ -1,5 +1,5 @@
 use crate::database::Database;
-use crate::rpc::stellar::{LedgerInfo, StellarRpcClient};
+use crate::rpc::stellar::{StellarRpcClient};
 use crate::snapshot::schema::{
     AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SCHEMA_VERSION,
 };
