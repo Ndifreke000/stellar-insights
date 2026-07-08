@@ -4193,7 +4193,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "prometheus",
- "rand 0.8.6",
+ "rand 0.10.1",
  "redis",
  "reqwest",
  "rust_decimal",
