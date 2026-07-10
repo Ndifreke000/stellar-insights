@@ -26,7 +26,7 @@
   "keywords": ["stellar", "sdk", "payments", "analytics", "retry-backoff"],
   "license": "MIT",
   "devDependencies": {
-    "tsup": "8.0.2",
+    "tsup": "8.5.1",
     "typescript": "5.4.5",
     "vitest": "4.1.9"
   }
