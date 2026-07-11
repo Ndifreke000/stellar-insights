@@ -53,11 +53,9 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
                     : undefined;
                   setSelectedFilters((prev) => ({
                     ...prev,
-                    dateRange: prev.dateRange
-                      ? { ...prev.dateRange, start }
-                      : start
-                        ? { start, end: new Date() }
-                        : undefined,
+                    dateRange: start
+                      ? { end: prev.dateRange?.end ?? new Date(), ...prev.dateRange, start }
+                      : undefined,
                   }));
                 }}
               />
@@ -74,11 +72,9 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
                     : undefined;
                   setSelectedFilters((prev) => ({
                     ...prev,
-                    dateRange: prev.dateRange
-                      ? { ...prev.dateRange, end }
-                      : end
-                        ? { start: new Date(), end }
-                        : undefined,
+                    dateRange: end
+                      ? { start: prev.dateRange?.start ?? new Date(), ...prev.dateRange, end }
+                      : undefined,
                   }));
                 }}
               />

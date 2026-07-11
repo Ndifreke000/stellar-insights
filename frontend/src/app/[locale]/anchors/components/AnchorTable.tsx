@@ -1,8 +1,10 @@
+import type { Dispatch, SetStateAction } from "react";
 import { Home as AnchorIcon, ExternalLink } from "lucide-react";
-import { formatNumber, generateMockHistoricalData, getHealthStatusColor, getHealthStatusIcon, handleSort, SortIndicator, truncateAddress } from "./helpers";
+import { formatNumber, generateMockHistoricalData, getHealthStatusColor, getHealthStatusIcon, handleSort, SortIndicator, truncateAddress, type AnchorSortBy, type AnchorSortOrder } from "./helpers";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { AnchorMetrics } from "@/lib/api/types";
 
 const AnchorList = ({
   sortBy,
@@ -10,6 +12,12 @@ const AnchorList = ({
   setSortBy,
   setSortOrder,
   paginatedAnchors
+}: {
+  sortBy: AnchorSortBy;
+  sortOrder: AnchorSortOrder;
+  setSortBy: Dispatch<SetStateAction<AnchorSortBy>>;
+  setSortOrder: Dispatch<SetStateAction<AnchorSortOrder>>;
+  paginatedAnchors: AnchorMetrics[];
 }) => {
   const router = useRouter()
   return (

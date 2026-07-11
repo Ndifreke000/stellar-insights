@@ -250,19 +250,23 @@ impl CacheManager {
             let mut conn = conn.clone();
             match serde_json::to_string(value) {
                 Ok(serialized) => {
-                    match redis::cmd("SETEX")
+                    // SET NX prevents concurrent miss-then-write races: the first writer wins
+                    // and subsequent concurrent writers silently skip rather than overwriting.
+                    match redis::cmd("SET")
                         .arg(key)
-                        .arg(ttl_seconds)
                         .arg(&serialized)
-                        .query_async::<_, ()>(&mut conn)
+                        .arg("NX")
+                        .arg("PX")
+                        .arg(ttl_seconds * 1000)
+                        .query_async::<_, Option<String>>(&mut conn)
                         .await
                     {
-                        Ok(()) => {
+                        Ok(_) => {
                             tracing::debug!("Cache set for key: {} (TTL: {}s)", key, ttl_seconds);
                             Ok(())
                         }
                         Err(e) => {
-                            tracing::warn!("Redis SETEX error for {}: {}", key, e);
+                            tracing::warn!("Redis SET NX error for {}: {}", key, e);
                             Ok(())
                         }
                     }
@@ -277,22 +281,24 @@ impl CacheManager {
         }
     }
 
-    /// Delete a cache key
+    /// Delete a cache key using an atomic Lua script to avoid TOCTOU races.
     pub async fn delete(&self, key: &str) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match redis::cmd("DEL")
-                .arg(key)
-                .query_async::<_, ()>(&mut conn)
+            // Lua guarantees the check-and-delete is atomic on the Redis server.
+            const LUA_DEL: &str = "return redis.call('DEL', KEYS[1])";
+            match redis::Script::new(LUA_DEL)
+                .key(key)
+                .invoke_async::<_, i64>(&mut conn)
                 .await
             {
-                Ok(()) => {
+                Ok(_) => {
                     self.invalidations.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!("Cache invalidated for key: {}", key);
                     Ok(())
                 }
                 Err(e) => {
-                    tracing::warn!("Redis DEL error for {}: {}", key, e);
+                    tracing::warn!("Redis Lua DEL error for {}: {}", key, e);
                     Ok(())
                 }
             }

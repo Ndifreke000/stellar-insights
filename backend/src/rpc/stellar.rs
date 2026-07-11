@@ -615,10 +615,20 @@ impl StellarRpcClient {
         }
     }
 
-    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet)
+    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet).
+    ///
+    /// When `mock_mode` is true the client never makes a real network call, so it
+    /// defaults to testnet instead of mainnet — that avoids requiring the
+    /// `STELLAR_RPC_URL_MAINNET`/`STELLAR_HORIZON_URL_MAINNET` production secrets
+    /// just to construct a mock client in tests.
     #[must_use]
     pub fn new_with_defaults(mock_mode: bool) -> Self {
-        Self::new_with_network(StellarNetwork::Mainnet, mock_mode)
+        let network = if mock_mode {
+            StellarNetwork::Testnet
+        } else {
+            StellarNetwork::Mainnet
+        };
+        Self::new_with_network(network, mock_mode)
     }
 
     /// Get the current network configuration
@@ -1846,6 +1856,7 @@ impl StellarRpcClient {
 )]
 mod tests {
     use super::*;
+    use crate::rpc::mock_stellar;
 
     #[tokio::test]
     async fn test_mock_health_check() {
@@ -1960,7 +1971,7 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
         let result = client
             .fetch_ledgers(
-                Some(super::mock_stellar::MOCK_LATEST_LEDGER.saturating_add(1)),
+                Some(mock_stellar::MOCK_LATEST_LEDGER.saturating_add(1)),
                 5,
                 None,
             )
@@ -1970,7 +1981,7 @@ mod tests {
         assert!(result.ledgers.is_empty());
         assert_eq!(
             result.latest_ledger,
-            super::mock_stellar::MOCK_LATEST_LEDGER
+            mock_stellar::MOCK_LATEST_LEDGER
         );
     }
 
@@ -2306,7 +2317,7 @@ mod tests {
 
     #[test]
     fn test_mock_payments_include_new_format() {
-        let payments = super::mock_stellar::mock_payments(10);
+        let payments = mock_stellar::mock_payments(10);
         assert_eq!(payments.len(), 10);
 
         // Even-indexed payments should have asset_balance_changes populated

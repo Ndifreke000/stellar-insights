@@ -12,7 +12,7 @@ export default function TransactionsBuilderPage() {
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [xdr, setXdr] = useState<string | null>(null);
   const [requiredSignatures, setRequiredSignatures] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
 
   const handleXdrGenerated = async (
     generatedXdr: string,

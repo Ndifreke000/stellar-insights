@@ -1,5 +1,9 @@
+import type { Dispatch, SetStateAction } from "react";
 import { formatAddressShort } from "@/lib/address";
 import { CheckCircle, AlertCircle, Activity } from "lucide-react";
+
+export type AnchorSortBy = "reliability" | "transactions" | "failure_rate";
+export type AnchorSortOrder = "asc" | "desc";
 import {
   Search,
   TrendingUp,
@@ -103,6 +107,14 @@ const SearchAndControls = ({
   setSortOrder,
   sortOrder,
   setIsExportOpen,
+}: {
+  searchTerm: string;
+  setSearchTerm: Dispatch<SetStateAction<string>>;
+  sortBy: AnchorSortBy;
+  setSortBy: Dispatch<SetStateAction<AnchorSortBy>>;
+  setSortOrder: Dispatch<SetStateAction<AnchorSortOrder>>;
+  sortOrder: AnchorSortOrder;
+  setIsExportOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
   return (
     <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">

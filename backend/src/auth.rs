@@ -94,8 +94,12 @@ impl AuthService {
             .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
 
         assert!(
-            (jwt_secret.len() >= 32),
+            jwt_secret.len() >= 32,
             "JWT_SECRET must be at least 32 characters for adequate security"
+        );
+        assert!(
+            !jwt_secret.starts_with("CHANGE_ME"),
+            "JWT_SECRET must not use a placeholder value — generate a cryptographically secure random key"
         );
 
         Self {
@@ -330,7 +334,6 @@ impl AuthService {
 // Consolidated from sep10_middleware.rs
 
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Request, State},
     http::{header, request::Parts, StatusCode},
     middleware::Next,
@@ -352,7 +355,6 @@ pub struct Sep10Claims {
     pub client_domain: Option<String>,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Sep10Claims
 where
     S: Send + Sync,

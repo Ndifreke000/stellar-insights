@@ -8,12 +8,12 @@
 INSERT OR IGNORE INTO anchors (id, name, stellar_account, home_domain, total_transactions, successful_transactions, failed_transactions, total_volume_usd, avg_settlement_time_ms, reliability_score, status, created_at, updated_at)
 VALUES 
 -- Green status anchors (highly reliable)
-('anchor-circle-001', 'Circle', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 'circle.com', 125000, 124125, 875, 15500000.00, 1200, 99.3, 'green', datetime('now', '-90 days'), datetime('now')),
-('anchor-moneygram-001', 'MoneyGram Access', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 'moneygram.com', 98500, 97415, 1085, 9800000.00, 1500, 98.9, 'green', datetime('now', '-60 days'), datetime('now')),
+('anchor-circle-001', 'Circle', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 'circle.com', 125000, 124125, 875, 15500000.00, 1200, 99.3, 'green', datetime('now', '-90 days'), datetime('now')),
+('anchor-moneygram-001', 'MoneyGram Access', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 'moneygram.com', 98500, 97415, 1085, 9800000.00, 1500, 98.9, 'green', datetime('now', '-60 days'), datetime('now')),
 ('anchor-stellar-001', 'Stellar Development Foundation', 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7', 'stellar.org', 250000, 248750, 1250, 50000000.00, 800, 99.5, 'green', datetime('now', '-120 days'), datetime('now')),
 
 -- Yellow status anchors (caution - moderate reliability)
-('anchor-anchorusd-001', 'AnchorUSD', 'GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX', 'anchorusd.com', 45000, 42750, 2250, 7500000.00, 3500, 95.0, 'yellow', datetime('now', '-45 days'), datetime('now')),
+('anchor-anchorusd-001', 'AnchorUSD', 'GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLAA', 'anchorusd.com', 45000, 42750, 2250, 7500000.00, 3500, 95.0, 'yellow', datetime('now', '-45 days'), datetime('now')),
 ('anchor-vibrant-001', 'Vibrant', 'GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR', 'vibrantapp.com', 32000, 30400, 1600, 4200000.00, 4200, 94.8, 'yellow', datetime('now', '-30 days'), datetime('now')),
 
 -- Red status anchors (unreliable - needs attention)
@@ -27,19 +27,19 @@ VALUES
 INSERT OR IGNORE INTO assets (id, anchor_id, asset_code, asset_issuer, total_supply, num_holders, blockchain_chain, created_at, updated_at)
 VALUES 
 -- Circle assets
-('asset-usdc-001', 'anchor-circle-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 5000000000, 250000, 'stellar', datetime('now', '-90 days'), datetime('now')),
-('asset-eurc-001', 'anchor-circle-001', 'EURC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 2000000000, 80000, 'stellar', datetime('now', '-90 days'), datetime('now')),
-('asset-gbpd-001', 'anchor-circle-001', 'GBPD', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 1500000000, 60000, 'stellar', datetime('now', '-85 days'), datetime('now')),
+('asset-usdc-001', 'anchor-circle-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 5000000000, 250000, 'stellar', datetime('now', '-90 days'), datetime('now')),
+('asset-eurc-001', 'anchor-circle-001', 'EURC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 2000000000, 80000, 'stellar', datetime('now', '-90 days'), datetime('now')),
+('asset-gbpd-001', 'anchor-circle-001', 'GBPD', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 1500000000, 60000, 'stellar', datetime('now', '-85 days'), datetime('now')),
 
 -- MoneyGram assets
-('asset-mgi-001', 'anchor-moneygram-001', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 800000000, 120000, 'stellar', datetime('now', '-60 days'), datetime('now')),
-('asset-mgusd-001', 'anchor-moneygram-001', 'MGUSD', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 600000000, 90000, 'stellar', datetime('now', '-55 days'), datetime('now')),
+('asset-mgi-001', 'anchor-moneygram-001', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 800000000, 120000, 'stellar', datetime('now', '-60 days'), datetime('now')),
+('asset-mgusd-001', 'anchor-moneygram-001', 'MGUSD', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 600000000, 90000, 'stellar', datetime('now', '-55 days'), datetime('now')),
 
 -- Stellar Foundation assets
 ('asset-xlm-001', 'anchor-stellar-001', 'XLM', 'native', 50000000000, 5000000, 'stellar', datetime('now', '-120 days'), datetime('now')),
 
 -- AnchorUSD assets
-('asset-ausd-001', 'anchor-anchorusd-001', 'AUSD', 'GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX', 300000000, 50000, 'stellar', datetime('now', '-45 days'), datetime('now')),
+('asset-ausd-001', 'anchor-anchorusd-001', 'AUSD', 'GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLAA', 300000000, 50000, 'stellar', datetime('now', '-45 days'), datetime('now')),
 
 -- Vibrant assets
 ('asset-velo-001', 'anchor-vibrant-001', 'VELO', 'GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR', 1000000000, 150000, 'stellar', datetime('now', '-30 days'), datetime('now')),
@@ -54,22 +54,22 @@ VALUES
 INSERT OR IGNORE INTO corridors (id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer, reliability_score, status, source_code, destination_code, created_at, updated_at)
 VALUES 
 -- USDC corridors (high volume)
-('corridor-usdc-eurc-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 'EURC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 99.2, 'active', 'USDC', 'EURC', datetime('now', '-90 days'), datetime('now')),
-('corridor-usdc-gbpd-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 'GBPD', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 98.8, 'active', 'USDC', 'GBPD', datetime('now', '-85 days'), datetime('now')),
-('corridor-usdc-mgi-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 97.5, 'active', 'USDC', 'MGI', datetime('now', '-80 days'), datetime('now')),
+('corridor-usdc-eurc-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 'EURC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 99.2, 'active', 'USDC', 'EURC', datetime('now', '-90 days'), datetime('now')),
+('corridor-usdc-gbpd-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 'GBPD', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 98.8, 'active', 'USDC', 'GBPD', datetime('now', '-85 days'), datetime('now')),
+('corridor-usdc-mgi-001', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 97.5, 'active', 'USDC', 'MGI', datetime('now', '-80 days'), datetime('now')),
 
 -- XLM corridors (native asset)
-('corridor-xlm-usdc-001', 'XLM', 'native', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 99.5, 'active', 'XLM', 'USDC', datetime('now', '-120 days'), datetime('now')),
-('corridor-xlm-mgi-001', 'XLM', 'native', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 98.2, 'active', 'XLM', 'MGI', datetime('now', '-100 days'), datetime('now')),
+('corridor-xlm-usdc-001', 'XLM', 'native', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 99.5, 'active', 'XLM', 'USDC', datetime('now', '-120 days'), datetime('now')),
+('corridor-xlm-mgi-001', 'XLM', 'native', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 98.2, 'active', 'XLM', 'MGI', datetime('now', '-100 days'), datetime('now')),
 
 -- MoneyGram corridors
-('corridor-mgi-mgusd-001', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 'MGUSD', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ', 96.5, 'active', 'MGI', 'MGUSD', datetime('now', '-60 days'), datetime('now')),
+('corridor-mgi-mgusd-001', 'MGI', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 'MGUSD', 'GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RIAA', 96.5, 'active', 'MGI', 'MGUSD', datetime('now', '-60 days'), datetime('now')),
 
 -- Vibrant corridors
-('corridor-velo-usdc-001', 'VELO', 'GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 94.2, 'active', 'VELO', 'USDC', datetime('now', '-30 days'), datetime('now')),
+('corridor-velo-usdc-001', 'VELO', 'GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 94.2, 'active', 'VELO', 'USDC', datetime('now', '-30 days'), datetime('now')),
 
 -- Inactive/degraded corridors
-('corridor-test-usdc-001', 'TEST', 'GCTESTANCHOR12345678901234567890123456789012345', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', 75.0, 'degraded', 'TEST', 'USDC', datetime('now', '-15 days'), datetime('now'));
+('corridor-test-usdc-001', 'TEST', 'GCTESTANCHOR12345678901234567890123456789012345', 'USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZAA', 75.0, 'degraded', 'TEST', 'USDC', datetime('now', '-15 days'), datetime('now'));
 
 -- ============================================================================
 -- ANCHOR METRICS HISTORY - Time-series performance data

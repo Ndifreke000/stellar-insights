@@ -10,11 +10,11 @@ pub fn emit_scheduled(
     sender: Address,
     recipient: Address,
     amount: i128,
-    unlock_time: u64,
+    unlock_ledger: u32,
 ) {
     env.events().publish(
         (symbol_short!("TLT_SCH"),),
-        (tx_id, sender, recipient, amount, unlock_time),
+        (tx_id, sender, recipient, amount, unlock_ledger),
     );
 }
 

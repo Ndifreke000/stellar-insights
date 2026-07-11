@@ -320,6 +320,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_jwt_placeholder() {
+        let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
@@ -348,6 +349,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_short_jwt_secret() {
+        let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
@@ -373,6 +375,7 @@ mod tests {
 
     #[test]
     fn test_validate_env_accepts_valid_jwt_secret() {
+        let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
@@ -390,6 +393,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
     fn test_validate_env_panics_when_stellar_network_missing() {
+        let _guard = crate::lock_env_test();
         std::env::remove_var("STELLAR_NETWORK");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
@@ -400,6 +404,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
     fn test_validate_env_panics_on_unknown_network() {
+        let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "devnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));

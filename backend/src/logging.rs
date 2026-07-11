@@ -85,7 +85,7 @@ macro_rules! log_error {
 /// Log with automatic redaction of sensitive fields
 ///
 /// Usage:
-/// ```
+/// ```rust,ignore
 /// log_secure!(info, "Processing payment",
 ///     account = redact_account(&stellar_account),
 ///     amount = redact_amount(payment_amount),

@@ -129,7 +129,7 @@ export function AssetDistributionChart({
 
       {/* Legend */}
       <div className="mt-6 flex flex-wrap gap-3 justify-center">
-        {data.map((entry, index) => (
+        {data.map((entry) => (
           <div
             key={entry.asset_code}
             className="flex items-center gap-1.5 text-xs"

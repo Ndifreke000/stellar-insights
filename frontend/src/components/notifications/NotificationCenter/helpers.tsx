@@ -14,7 +14,7 @@ export interface NotificationCenterProps {
   handleSelectAll: () => void,
   handleBatchMarkAsRead: () => void,
   handleBatchDelete: () => void,
-  handleExport,
+  handleExport: (format: 'json' | 'csv') => void,
   markAllAsRead:() => void,
   clearAllNotifications:() => void,
     selectedNotifications: Set<string>;

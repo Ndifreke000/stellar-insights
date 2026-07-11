@@ -2,7 +2,6 @@
 
 import React, { useCallback, useRef, useEffect, useState } from "react";
 import ForceGraph2D, { ForceGraphMethods } from "react-force-graph-2d";
-import { useSearchParams } from "next/navigation";
 
 interface Node {
   id: string;
@@ -26,7 +25,7 @@ interface Link {
   liquidity?: number;
 }
 
-interface GraphData {
+export interface GraphData {
   nodes: Node[];
   links: Link[];
 }
@@ -36,7 +35,7 @@ interface NetworkGraphProps {
 }
 
 const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
-  const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const fgRef = useRef<ForceGraphMethods<Node, Link> | undefined>(undefined);
   const [hoverNode, setHoverNode] = useState<Node | null>(null);
   const [windowSize, setWindowSize] = useState({ width: 800, height: 600 });
 
@@ -74,10 +73,6 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
       const label = node.name;
       const fontSize = 12 / globalScale;
       ctx.font = `${fontSize}px Inter, sans-serif`;
-      const textWidth = ctx.measureText(label).width;
-      const bckgDimensions = [textWidth, fontSize].map(
-        (n) => n + fontSize * 0.2,
-      ); // some padding
 
       // Draw shadow/glow if hovered
       if (hoverNode && hoverNode.id === node.id) {

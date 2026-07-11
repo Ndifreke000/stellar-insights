@@ -26,7 +26,6 @@ pub struct AuthUser {
     pub username: String,
 }
 
-#[axum::async_trait]
 impl<S> axum::extract::FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,

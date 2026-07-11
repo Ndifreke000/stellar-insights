@@ -40,8 +40,8 @@ pub fn routes(analyzer: Arc<LiquidityPoolAnalyzer>) -> Router {
         .route("/", get(list_pools))
         .route("/stats", get(get_pool_stats))
         .route("/rankings", get(get_pool_rankings))
-        .route("/:pool_id", get(get_pool_detail))
-        .route("/:pool_id/snapshots", get(get_pool_snapshots))
+        .route("/{pool_id}", get(get_pool_detail))
+        .route("/{pool_id}/snapshots", get(get_pool_snapshots))
         .with_state(analyzer)
 }
 

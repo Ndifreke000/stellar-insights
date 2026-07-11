@@ -38,8 +38,12 @@ jobs:
         working-directory: backend
         env:
           JWT_SECRET: ci-test-secret-value-at-least-32-characters-long
-          DATABASE_URL: sqlite::memory:
-        run: cargo test --all-features
+          DATABASE_URL: "sqlite::memory:"
+        # Deliberately not --all-features: the legacy_sep10_tests feature
+        # gates tests/sep10_test.rs, which targets a pre-consolidation
+        # crate layout (stellar_base/stellar_analytics) that no longer
+        # exists in this repo and has not compiled for some time.
+        run: cargo test --features sep-integration
 
   build-and-deploy:
     name: Build, Push & Deploy Testnet

@@ -1,5 +1,4 @@
 #![no_std]
-extern crate std;
 
 mod errors;
 
@@ -29,6 +28,7 @@ pub enum ContractError {
     EpochAlreadyExists = 4,
     EpochMonotonicityViolated = 5,
     SnapshotImmutabilityViolated = 6,
+    DuplicateHash = 7,
 }
 
 fn emit_error_event(
@@ -45,6 +45,7 @@ fn emit_error_event(
         ContractError::EpochAlreadyExists => "Epoch already exists",
         ContractError::EpochMonotonicityViolated => "Epoch monotonicity violated",
         ContractError::SnapshotImmutabilityViolated => "Snapshot immutability violated",
+        ContractError::DuplicateHash => "A snapshot with this hash already exists",
     };
     env.events().publish(
         (symbol_short!("error"), caller.clone()),
@@ -344,6 +345,8 @@ pub enum DataKey {
     AddressRegistry,
     /// Reverse-lookup: Address → its registry ID (O(1) alternative to linear scan)
     AddressId(Address),
+    /// Map snapshot hash -> epoch for duplicate detection
+    SnapshotHashes,
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -522,7 +525,29 @@ fn write_snapshot(
     env: &Env,
     epoch: u64,
     metadata: &SnapshotMetadata,
-) {
+) -> Result<(), Error> {
+    // Check for duplicate hash across all epochs
+    let mut hash_map: Map<BytesN<32>, u64> = env
+        .storage()
+        .persistent()
+        .get(&DataKey::SnapshotHashes)
+        .unwrap_or_else(|| Map::new(env));
+    if hash_map.contains_key(metadata.hash.clone()) {
+        return Err(Error::DuplicateHash.log_context(
+            env,
+            "write_snapshot: snapshot hash already exists for a different epoch",
+        ));
+    }
+    hash_map.set(metadata.hash.clone(), epoch);
+    env.storage()
+        .persistent()
+        .set(&DataKey::SnapshotHashes, &hash_map);
+    env.storage().persistent().extend_ttl(
+        &DataKey::SnapshotHashes,
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
+
     env.storage()
         .persistent()
         .set(&DataKey::Snapshot(epoch), metadata);
@@ -533,6 +558,7 @@ fn write_snapshot(
     );
     env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
     bump_instance(env);
+    Ok(())
 }
 
 fn get_next_action_id(env: &Env) -> u64 {
@@ -709,7 +735,7 @@ impl AnalyticsContract {
             expires_at: None,
         };
 
-        write_snapshot(&env, epoch, &metadata);
+        write_snapshot(&env, epoch, &metadata)?;
 
         env.events().publish(
             (symbol_short!("snapshot"), caller),
@@ -875,7 +901,7 @@ impl AnalyticsContract {
             expires_at: Some(timestamp + ttl),
         };
 
-        write_snapshot(&env, epoch, &metadata);
+        write_snapshot(&env, epoch, &metadata)?;
 
         let ledgers_to_live = (ttl / LEDGER_SECONDS) as u32;
         env.storage().persistent().extend_ttl(

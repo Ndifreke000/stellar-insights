@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { ProgressiveWebApp } from '@/components/ProgressiveWebApp';
-import { useProgressiveWebApp, PWAInstallState } from '@/hooks/useProgressiveWebApp';
+import { useProgressiveWebApp } from '@/hooks/useProgressiveWebApp';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 

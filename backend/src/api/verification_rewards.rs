@@ -30,7 +30,7 @@ pub fn routes(
             sep10_auth_middleware,
         ))
         .route("/leaderboard", get(get_leaderboard))
-        .route("/stats/:user_id", get(get_public_user_stats))
+        .route("/stats/{user_id}", get(get_public_user_stats))
         .with_state(service)
 }
 

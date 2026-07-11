@@ -63,10 +63,18 @@ impl NetworkConfig {
     pub fn for_network(network: StellarNetwork) -> Self {
         let (rpc_url, horizon_url, network_passphrase) = match network {
             StellarNetwork::Mainnet => (
-                std::env::var("STELLAR_RPC_URL_MAINNET")
-                    .unwrap_or_else(|_| "https://stellar.api.onfinality.io/public".to_string()),
-                std::env::var("STELLAR_HORIZON_URL_MAINNET")
-                    .unwrap_or_else(|_| "https://horizon.stellar.org".to_string()),
+                std::env::var("STELLAR_RPC_URL_MAINNET").unwrap_or_else(|_| {
+                    panic!(
+                        "STELLAR_RPC_URL_MAINNET must be set — \
+                         refusing to start without an explicit mainnet RPC URL"
+                    )
+                }),
+                std::env::var("STELLAR_HORIZON_URL_MAINNET").unwrap_or_else(|_| {
+                    panic!(
+                        "STELLAR_HORIZON_URL_MAINNET must be set — \
+                         refusing to start without an explicit mainnet Horizon URL"
+                    )
+                }),
                 "Public Global Stellar Network ; September 2015".to_string(),
             ),
             StellarNetwork::Testnet => (
@@ -177,6 +185,10 @@ mod tests {
 
     #[test]
     fn test_network_config_creation() {
+        // Mainnet now requires explicit env vars — set them for test isolation.
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+
         let mainnet_config = NetworkConfig::for_network(StellarNetwork::Mainnet);
         assert!(mainnet_config.is_mainnet());
         assert!(!mainnet_config.is_testnet());

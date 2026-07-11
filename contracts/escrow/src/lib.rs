@@ -337,6 +337,10 @@ impl EscrowServiceContract {
             return Err(Error::Unauthorized);
         }
 
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
         let token = escrow.token.clone();
         let beneficiary = escrow.beneficiary.clone();
         let amount = escrow.amount;
@@ -387,6 +391,10 @@ impl EscrowServiceContract {
 
         if caller != escrow.depositor {
             return Err(Error::Unauthorized);
+        }
+
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
         }
 
         let now = env.ledger().timestamp();
@@ -492,6 +500,10 @@ impl EscrowServiceContract {
 
         if escrow.state != EscrowState::Disputed {
             return Err(Error::NotDisputed);
+        }
+
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
         }
 
         let token = escrow.token.clone();

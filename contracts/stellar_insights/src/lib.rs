@@ -183,6 +183,19 @@ impl StellarInsightsContract {
             return Err(Error::InvalidEpochZero);
         }
 
+        // Prevent u64 overflow on mainnet by capping at u64::MAX
+        if epoch == u64::MAX {
+            return Err(Error::EpochOverflow);
+        }
+
+        // Validate hash is not all zeros (security-critical — the
+        // Error::InvalidHashZero variant existed but was never actually
+        // checked, so a degenerate all-zero hash silently passed through).
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if hash == zero_hash {
+            return Err(Error::InvalidHashZero);
+        }
+
         // Get existing snapshots map or create new one
         let mut snapshots: Map<u64, Snapshot> = env
             .storage()
@@ -352,6 +365,8 @@ impl StellarInsightsContract {
         if caller != old_admin {
             return Err(Error::Unauthorized);
         }
+        // Require the new admin to also sign to prevent unilateral transfer
+        new_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         bump_instance(&env);
         emit_admin_transferred(&env, old_admin, new_admin);

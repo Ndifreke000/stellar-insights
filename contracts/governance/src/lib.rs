@@ -1,17 +1,31 @@
 #![no_std]
-extern crate std;
 
 mod errors;
 mod events;
 
-use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{
     emit_governance_initialized, emit_governance_param_changed, emit_governance_admin_changed,
     emit_parameter_proposal_created, emit_proposal_created,
     emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractclient, contractimpl, contracttype, Address, BytesN, Env, String};
+
+/// Interface shared by any contract that governance can administer (e.g.
+/// analytics). Declared locally via `#[contractclient]` — rather than
+/// depending on e.g. the `analytics` crate directly and using its generated
+/// client — because `analytics` is also a `#[contract]`/cdylib in its own
+/// right; linking its crate into governance's wasm binary would duplicate
+/// every `#[contractimpl]`-exported symbol (get_contract_info, set_admin,
+/// etc.) between the two contracts. `#[contractclient]` generates a client
+/// purely from this trait's signature, with no dependency on analytics'
+/// implementation.
+#[contractclient(name = "GovernedContractClient")]
+pub trait GovernedContract {
+    fn set_admin_by_governance(env: Env, caller: Address, new_admin: Address);
+    fn set_paused_by_governance(env: Env, caller: Address, paused: bool);
+    fn upgrade(env: Env, new_wasm_hash: BytesN<32>);
+}
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -547,7 +561,7 @@ impl GovernanceContract {
             .get(&DataKey::ParameterAction(proposal_id))
         {
             let governance = env.current_contract_address();
-            let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+            let client = GovernedContractClient::new(&env, &proposal.target_contract);
             match action {
                 ParameterAction::SetAdmin(addr) => {
                     let _ = client.set_admin_by_governance(&governance, &addr);
@@ -560,7 +574,7 @@ impl GovernanceContract {
             // Upgrade proposal: invoke upgrade on the target contract with the approved wasm hash.
             let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
             if proposal.new_wasm_hash != zero_hash {
-                let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+                let client = GovernedContractClient::new(&env, &proposal.target_contract);
                 let _ = client.upgrade(&proposal.new_wasm_hash);
             }
         }

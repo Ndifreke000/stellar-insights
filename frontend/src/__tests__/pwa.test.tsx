@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { readFileSync } from 'fs';
+import { render, screen } from '@testing-library/react';
 import { join } from 'path';
-import { jsdom } from 'jsdom';
 
 // Mock navigator.onLine
 Object.defineProperty(globalThis, 'navigator', {

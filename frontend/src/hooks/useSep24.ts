@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import {   useQueryClient } from '@tanstack/react-query';
 import { queryKeys, useApiQuery, useApiMutation } from '@/lib/react-query/hooks';
 import {
   getSep24Info,
@@ -6,9 +6,6 @@ import {
   startWithdrawInteractive,
   getSep24Transactions,
   getSep24Anchors,
-  type Sep24AnchorInfo,
-  type Sep24InfoResponse,
-  type Sep24Transaction,
 } from '@/services/sep24';
 import { useAppStore } from '@/lib/zustand/store';
 
@@ -147,6 +144,7 @@ export function useSep24FlowState() {
   const {
     formData,
     setFormData,
+    clearFormData,
     setFormErrors,
     clearFormErrors,
     setLoading,

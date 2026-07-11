@@ -32,4 +32,6 @@ pub enum Error {
     ProposalIdOverflow = 13,
     /// Quorum not met
     QuorumNotMet = 14,
+    /// Arithmetic overflow in vote weight calculation
+    Overflow = 15,
 }

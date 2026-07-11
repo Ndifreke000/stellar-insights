@@ -6,7 +6,6 @@ import { hasLocale } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { MonitoringProvider } from "@/components/MonitoringProvider";
 import { WalletProvider } from "@/components/lib/wallet-context";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -16,7 +15,6 @@ import { NotificationSystem } from "@/components/notifications/NotificationSyste
 import { QuestProgressTracker } from "@/components/QuestProgressTracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/navbar";
-import { SkipNavigation } from "@/components/SkipNavigation";
 import { ShortcutHelpOverlay } from "@/components/keyboard-shortcuts/ShortcutHelpOverlay";
 import { ShortcutsInitializer } from "@/components/keyboard-shortcuts/ShortcutsInitializer";
 import { OfflineBanner } from "@/components/OfflineBanner";
