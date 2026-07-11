@@ -318,7 +318,7 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
 /// services, preserving the distributed trace across service boundaries.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// let response = inject_trace_context(client.get(&url)).send().await?;
 /// ```
 pub fn inject_trace_context(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {

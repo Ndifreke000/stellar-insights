@@ -261,6 +261,8 @@ where
 /// # Example
 ///
 /// ```rust
+/// use stellar_insights_backend::cache::helpers::build_param_cache_key;
+///
 /// let key = build_param_cache_key("corridor:list", &("USD", "EUR"));
 /// // e.g. "corridor:list:3f8a2c1d"
 /// ```

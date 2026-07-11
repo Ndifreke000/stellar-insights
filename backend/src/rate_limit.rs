@@ -847,20 +847,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_api_key_rate_limit_is_independent_per_key() {
+        let _guard = crate::lock_env_test();
         let db = setup_api_key_rate_limit_db().await;
         let limiter = RateLimiter::new_with_db(Some(db)).await.unwrap();
         let limit = 2u32;
 
+        // Unique per run: a real Redis may be reachable at the default
+        // REDIS_URL in dev/CI environments, and its 60s TTL means a fixed
+        // key name like "key-a" can carry a stale count over from the
+        // previous run of this same test, making it flaky.
+        let unique = uuid::Uuid::new_v4();
+        let key_a = format!("key-a-{unique}");
+        let key_b = format!("key-b-{unique}");
+
         for _ in 0..2 {
-            let (allowed, _) = limiter.rate_limit_api_key("key-a", limit).await;
+            let (allowed, _) = limiter.rate_limit_api_key(&key_a, limit).await;
             assert!(allowed);
         }
 
-        let (allowed, info) = limiter.rate_limit_api_key("key-a", limit).await;
+        let (allowed, info) = limiter.rate_limit_api_key(&key_a, limit).await;
         assert!(!allowed);
         assert_eq!(info.remaining, 0);
 
-        let (allowed, _) = limiter.rate_limit_api_key("key-b", limit).await;
+        let (allowed, _) = limiter.rate_limit_api_key(&key_b, limit).await;
         assert!(allowed);
     }
 

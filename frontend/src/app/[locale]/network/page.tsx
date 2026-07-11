@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Badge } from '@/components/ui/badge';
 import { Activity, Share2, Info } from 'lucide-react';
 import type { GraphData } from '@/components/charts/NetworkGraph';
 

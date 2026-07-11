@@ -50,7 +50,7 @@ export function useWebSocket(
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastMessage, setLastMessage] = useState<WsMessage | null>(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
-  const [connectionState, setConnectionState] = useState<ConnectionState>(
+  const [_connectionState, setConnectionState] = useState<ConnectionState>(
     ConnectionState.DISCONNECTED
   );
 

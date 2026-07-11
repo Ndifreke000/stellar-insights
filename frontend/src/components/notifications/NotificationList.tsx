@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import React, { useCallback } from 'react';
+import {  BellOff, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
+import { BaseNotification } from '@/types/notifications';
 import { sanitizeText, sanitizeUrl } from '@/lib/sanitize';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
@@ -34,25 +34,12 @@ const TYPE_COLORS: {
   info: 'text-blue-500',
 };
 
-const PRIORITY_COLORS: {
-  low: string;
-  medium: string;
-  high: string;
-  critical: string;
-} = {
-  low: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900',
-  medium: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20',
-  high: 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20',
-  critical: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20',
-};
-
 export const NotificationItem: React.FC<NotificationItemProps> = ({
   notification,
   onSelect,
   showActions = true,
 }) => {
   const { markAsRead, clearNotification } = useNotifications();
-  const [isExpanded, setIsExpanded] = useState(false);
 
   const handleMarkAsRead = useCallback(() => {
     markAsRead(notification.id);
@@ -77,7 +64,6 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   }, [onSelect, notification, handleMarkAsRead]);
 
   const IconComponent = NOTIFICATION_ICONS[notification.type];
-  const priorityColor = PRIORITY_COLORS[notification.priority];
   const typeColor = TYPE_COLORS[notification.type];
 
   return (
@@ -143,7 +129,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             </span>
             {Boolean(notification.metadata?.source) && (
               <span>
-                Source: {sanitizeText(notification.metadata.source as string)}
+                Source: {sanitizeText(notification.metadata?.source as string)}
               </span>
             )}
           </div>

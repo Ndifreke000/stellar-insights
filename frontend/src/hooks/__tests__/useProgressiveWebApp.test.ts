@@ -304,7 +304,7 @@ describe('useProgressiveWebApp', () => {
     it('should set loading state during cache clear', async () => {
       const { result } = renderHook(() => useProgressiveWebApp());
 
-      const clearPromise = act(async () => {
+      const _clearPromise = act(async () => {
         await result.current.clearCache();
       });
 

@@ -25,7 +25,7 @@ import {
   Banknote,
   Quote,
 } from "lucide-react";
-import { FormField, FormSelect } from "@/components/ui/FormField";
+import { FormField } from "@/components/ui/FormField";
 import { sep31PaymentFlowSchema, type Sep31PaymentFlowForm } from "@/lib/schemas";
 
 interface ComplianceField {
@@ -52,13 +52,11 @@ export function Sep31PaymentFlow() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const {
-    register,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
+    formState: { isValid, isDirty },
     setValue,
     watch,
     trigger,
-    resetField,
   } = useForm<Sep31PaymentFlowForm>({
     resolver: zodResolver(sep31PaymentFlowSchema),
     mode: "onChange",
@@ -75,7 +73,7 @@ export function Sep31PaymentFlow() {
   // Watch form values for real-time updates
   const transferServer = watch("transferServer");
   const amount = watch("amount");
-  const receiverId = watch("receiverId");
+  const _receiverId = watch("receiverId");
   const sourceAsset = watch("sourceAsset");
   const destAsset = watch("destAsset");
   const jwt = watch("jwt");

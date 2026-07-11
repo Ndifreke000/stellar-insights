@@ -4,10 +4,8 @@ import React, { useState, useEffect } from "react";
 import {
   getConsents,
   batchUpdateConsents,
-  getGdprSummary,
   CONSENT_LABELS,
   ConsentResponse,
-  GdprSummary,
 } from "@/lib/gdpr-api";
 
 interface ConsentManagerProps {

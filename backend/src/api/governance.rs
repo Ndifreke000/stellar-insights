@@ -20,20 +20,20 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
     Router::new()
         // Protected routes (require SEP-10 auth)
         .route("/proposals", post(create_proposal))
-        .route("/proposals/:id/vote", post(cast_vote))
-        .route("/proposals/:id/comments", post(add_comment))
-        .route("/proposals/:id/activate", put(activate_proposal))
-        .route("/proposals/:id/refresh", post(refresh_tally))
+        .route("/proposals/{id}/vote", post(cast_vote))
+        .route("/proposals/{id}/comments", post(add_comment))
+        .route("/proposals/{id}/activate", put(activate_proposal))
+        .route("/proposals/{id}/refresh", post(refresh_tally))
         .layer(middleware::from_fn_with_state(
             sep10_service,
             sep10_auth_middleware,
         ))
         // Public routes
         .route("/proposals", get(list_proposals))
-        .route("/proposals/:id", get(get_proposal))
-        .route("/proposals/:id/votes", get(get_votes))
-        .route("/proposals/:id/comments", get(get_comments))
-        .route("/proposals/:id/has-voted/:address", get(has_voted))
+        .route("/proposals/{id}", get(get_proposal))
+        .route("/proposals/{id}/votes", get(get_votes))
+        .route("/proposals/{id}/comments", get(get_comments))
+        .route("/proposals/{id}/has-voted/{address}", get(has_voted))
         .with_state(service)
 }
 

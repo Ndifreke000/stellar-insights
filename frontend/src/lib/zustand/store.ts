@@ -15,7 +15,7 @@ export interface AppState {
   
   // Form State
   formData: Record<string, any>;
-  formErrors: Record<string, string>;
+  formErrors: Record<string, Record<string, string>>;
   formDirty: Record<string, boolean>;
   
   // Filter State
@@ -97,7 +97,7 @@ export const useAppStore = create<AppState & AppActions>()(
   devtools(
     persist(
       subscribeWithSelector(
-        immer((set, get) => ({
+        immer((set, _get) => ({
           // Initial State
           sidebarCollapsed: false,
           activeModal: null,

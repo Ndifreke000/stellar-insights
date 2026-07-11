@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {  useEffect, useRef, useState } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -39,7 +38,7 @@ export function Sep24Flow() {
   const startWithdrawMutation = useStartWithdrawFlow();
 
   // Zustand state
-  const { formData, setFormDataValue, clearFormDataValue, setFormErrors, clearFormErrors, setLoading, loading } = useSep24FlowState();
+  const { formData } = useSep24FlowState();
 
   // Local state
   const [flowKind, setFlowKind] = useState<FlowKind>("deposit");
@@ -52,13 +51,11 @@ export function Sep24Flow() {
   const POLLING_TIMEOUT_MS = 10 * 60 * 1000;
 
   const {
-    register,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
+    formState: { isValid, isDirty },
     setValue,
     watch,
     trigger,
-    resetField,
   } = useForm<Sep24FlowForm>({
     resolver: zodResolver(sep24FlowSchema),
     mode: "onChange",
@@ -68,8 +65,8 @@ export function Sep24Flow() {
   // Watch form values for real-time updates
   const watchedTransferServer = watch("transferServer");
   const assetCode = watch("assetCode");
-  const amount = watch("amount");
-  const account = watch("account");
+  const _amount = watch("amount");
+  const _account = watch("account");
   const jwt = watch("jwt");
 
   // Update selected anchor when transfer server changes

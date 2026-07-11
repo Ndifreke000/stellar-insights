@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
 import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
 import { TVLChart } from '@/components/charts/TVLChart';

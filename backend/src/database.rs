@@ -374,7 +374,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let req = CreateAnchorRequest {
     ///     name: "Example Anchor".to_string(),
     ///     stellar_account: "GBRPYHIL...".to_string(),
@@ -424,7 +424,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
     /// let anchor = db.get_anchor_by_id(anchor_id).await?;
     ///
@@ -468,7 +468,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let account = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
     /// let anchor = db.get_anchor_by_stellar_account(account).await?;
     /// ```
@@ -653,7 +653,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let asset = db.create_asset(
     ///     anchor_id,
     ///     "USDC".to_string(),
@@ -713,7 +713,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let assets = db.get_assets_by_anchor(anchor_id).await?;
     /// for asset in assets {
     ///     println!("{}: {}", asset.asset_code, asset.asset_issuer);
@@ -752,7 +752,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_ids = vec![anchor1_id, anchor2_id, anchor3_id];
     /// let assets_map = db.get_assets_by_anchors(&anchor_ids).await?;
     ///

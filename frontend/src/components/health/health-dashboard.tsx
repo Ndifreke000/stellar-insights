@@ -52,7 +52,7 @@ const generateRecentFailures = (): FailureRecord[] => {
   ];
   const corridors = ["USDC-PHP", "EURC-NGN", "USDT-KES", "XLM-USD"];
 
-  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, i) => ({
+  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, _i) => ({
     timestamp: new Date(
       Date.now() - Math.random() * 24 * 60 * 60 * 1000,
     ).toISOString(),
@@ -66,7 +66,7 @@ const generateRecentFailures = (): FailureRecord[] => {
 const HealthDashboard = () => {
   const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold>({
     healthScore: 85,
     uptimePercentage: 95,

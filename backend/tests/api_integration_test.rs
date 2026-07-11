@@ -64,6 +64,15 @@ async fn setup_db() -> Arc<Database> {
 }
 
 async fn make_app_state(db: Arc<Database>) -> AppState {
+    // AppState builds a MultiNetworkConfig covering both mainnet and testnet
+    // regardless of which one is active, so mainnet's required RPC URLs must
+    // be set even in these mock-mode tests.
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
     let ws_state = Arc::new(WsState::new());
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let ingestion = Arc::new(DataIngestionService::new(
@@ -190,11 +199,11 @@ async fn test_list_anchors_returns_json_object_with_anchors_array() {
         .unwrap();
 
     let body = json_body(resp).await;
-    // Response should be an object with an `anchors` array and `total` count
-    assert!(body["anchors"].is_array(), "expected anchors array");
-    assert!(body["total"].is_number(), "expected total count");
-    assert_eq!(body["anchors"].as_array().unwrap().len(), 0);
-    assert_eq!(body["total"], 0);
+    // Response is a PaginatedResponse: { data: [...], pagination: { total, ... } }
+    assert!(body["data"].is_array(), "expected data array");
+    assert!(body["pagination"]["total"].is_number(), "expected total count");
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+    assert_eq!(body["pagination"]["total"], 0);
 }
 
 #[tokio::test]
