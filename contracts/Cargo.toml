@@ -39,7 +39,7 @@ expect_used = "deny"
 panic = "deny"
 
 [workspace.dependencies]
-soroban-sdk = "26.0.1"
+soroban-sdk = "27.0.0"
 soroban-token-sdk = "26.0.1"
 
 # Release and bench profiles must stay in this workspace root only. Cargo ignores
