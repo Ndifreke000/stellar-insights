@@ -40,7 +40,7 @@ tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 http-body-util = "0.1"
 tower = { version = "0.4", features = ["util", "timeout"] }
-tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
+tower-http = { version = "0.7", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
 validator = { version = "0.18", features = ["derive"] }
