@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
  * (it's a non-standard, Chromium-only PWA install event), so TypeScript
  * doesn't know about it out of the box.
  */
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
     outcome: 'accepted' | 'dismissed';

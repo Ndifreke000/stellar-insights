@@ -205,7 +205,6 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("name")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                role="button"
                 aria-label="Sort by anchor name"
                 aria-sort={getSortDirection("name")}
               >
@@ -220,7 +219,6 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("reliability_score")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                role="button"
                 aria-label="Sort by reliability score"
                 aria-sort={getSortDirection("reliability_score")}
               >
@@ -232,7 +230,6 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("failure_rate")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                role="button"
                 aria-label="Sort by failure rate"
                 aria-sort={getSortDirection("failure_rate")}
               >

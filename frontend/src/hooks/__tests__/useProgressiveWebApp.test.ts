@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useProgressiveWebApp, PWAInstallState } from '../useProgressiveWebApp';
+import { useProgressiveWebApp, PWAInstallState, BeforeInstallPromptEvent } from '../useProgressiveWebApp';
 
 describe('useProgressiveWebApp', () => {
   let mockServiceWorkerRegistration: Partial<ServiceWorkerRegistration>;
@@ -111,7 +111,7 @@ describe('useProgressiveWebApp', () => {
       const { result } = renderHook(() => useProgressiveWebApp());
 
       act(() => {
-        const event = new Event('beforeinstallprompt') as any;
+        const event = new Event('beforeinstallprompt') as unknown as BeforeInstallPromptEvent;
         event.preventDefault = vi.fn();
         window.dispatchEvent(event);
       });
@@ -126,7 +126,8 @@ describe('useProgressiveWebApp', () => {
 
       // Manually set install prompt for testing
       act(() => {
-        (result.current as any).installPrompt = mockBeforeInstallPromptEvent;
+        (result.current as unknown as { installPrompt: Partial<BeforeInstallPromptEvent> }).installPrompt =
+          mockBeforeInstallPromptEvent;
       });
 
       await act(async () => {
@@ -219,7 +220,7 @@ describe('useProgressiveWebApp', () => {
     it('should handle cache clear error', async () => {
       const { result } = renderHook(() => useProgressiveWebApp());
 
-      (window.caches.keys as any).mockRejectedValueOnce(new Error('Cache error'));
+      vi.mocked(window.caches.keys).mockRejectedValueOnce(new Error('Cache error'));
 
       await act(async () => {
         await result.current.clearCache();
@@ -284,7 +285,8 @@ describe('useProgressiveWebApp', () => {
 
       // Mock waiting service worker
       const mockWaitingSW = { postMessage: vi.fn() };
-      (mockServiceWorkerRegistration.waiting as any) = mockWaitingSW;
+      (mockServiceWorkerRegistration.waiting as unknown as ServiceWorker) =
+        mockWaitingSW as unknown as ServiceWorker;
 
       await act(async () => {
         result.current.updateApp();
