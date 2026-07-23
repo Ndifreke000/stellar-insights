@@ -21,7 +21,7 @@ export interface NotificationCenterProps {
   groupedNotifications:Record<string, BaseNotification[]>;
   unreadCount: number,
   handleNotificationClick: (notification: BaseNotification) => void,
-  handleSelectNotification: (id: string, event: React.MouseEvent) => void,
+  handleSelectNotification: (id: string, event: React.SyntheticEvent) => void,
   filteredNotifications: BaseNotification[],
   clearNotification:(id: string) => void,
 }
