@@ -286,7 +286,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         clearTimeout(cleanupTimeoutRef.current);
       }
     };
-  }, [notifications.length, isClient]);
+  }, [notifications.length, isClient, setNotifications]);
 
   // Show connection status notifications only if WebSocket URL is provided (client-side only)
   useEffect(() => {
