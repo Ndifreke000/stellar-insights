@@ -73,6 +73,10 @@ export function useWebSocket(
   // reconnects so we can restore subscriptions once the socket reopens.
   const activeChannelsRef = useRef<Set<string>>(new Set());
 
+  // Holds the latest `connect` so the reconnect timeout below can call it
+  // without referencing `connect` before it's declared.
+  const connectRef = useRef<() => void>(() => {});
+
   const connect = useCallback(() => {
     if (isConnectingRef.current) {
       return;
@@ -138,7 +142,7 @@ export function useWebSocket(
           setConnectionState(ConnectionState.RECONNECTING);
           reconnectTimeoutRef.current = setTimeout(
             () => {
-              connect();
+              connectRef.current();
             },
             reconnectInterval * Math.pow(1.5, connectionAttemptsRef.current),
           );
@@ -169,6 +173,8 @@ export function useWebSocket(
       setConnectionState(ConnectionState.DISCONNECTED);
     }
   }, [url, maxReconnectAttempts, reconnectInterval]);
+
+  connectRef.current = connect;
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
