@@ -36,6 +36,42 @@ export interface Sep10Info {
   version: string;
 }
 
+interface FreighterApi {
+  signTransaction(
+    xdr: string,
+    opts: { network: string; networkPassphrase: string; accountToSign: string },
+  ): Promise<string>;
+}
+
+interface AlbedoApi {
+  tx(opts: {
+    xdr: string;
+    network: string;
+    pubkey: string;
+  }): Promise<{ signed_envelope_xdr: string }>;
+}
+
+interface XBullSDKApi {
+  signTransaction(opts: {
+    xdr: string;
+    network: string;
+    publicKey: string;
+  }): Promise<string>;
+}
+
+interface RabetApi {
+  sign(xdr: string, network: string): Promise<{ xdr: string }>;
+}
+
+declare global {
+  interface Window {
+    freighter?: FreighterApi;
+    albedo?: AlbedoApi;
+    xBullSDK?: XBullSDKApi;
+    rabet?: RabetApi;
+  }
+}
+
 /**
  * SEP-10 Authentication Service
  * Implements Stellar Web Authentication protocol
@@ -90,9 +126,9 @@ export class Sep10AuthService {
     publicKey: string,
   ): Promise<string> {
     // Try Freighter wallet first
-    if (typeof window !== "undefined" && (window as any).freighter) {
+    if (typeof window !== "undefined" && window.freighter) {
       try {
-        const signedXdr = await (window as any).freighter.signTransaction(
+        const signedXdr = await window.freighter.signTransaction(
           challengeXdr,
           {
             network: networkPassphrase,
@@ -107,9 +143,9 @@ export class Sep10AuthService {
     }
 
     // Try Albedo wallet
-    if (typeof window !== "undefined" && (window as any).albedo) {
+    if (typeof window !== "undefined" && window.albedo) {
       try {
-        const result = await (window as any).albedo.tx({
+        const result = await window.albedo.tx({
           xdr: challengeXdr,
           network: networkPassphrase,
           pubkey: publicKey,
@@ -121,9 +157,9 @@ export class Sep10AuthService {
     }
 
     // Try xBull wallet
-    if (typeof window !== "undefined" && (window as any).xBullSDK) {
+    if (typeof window !== "undefined" && window.xBullSDK) {
       try {
-        const xBullSDK = (window as any).xBullSDK;
+        const xBullSDK = window.xBullSDK;
         const result = await xBullSDK.signTransaction({
           xdr: challengeXdr,
           network: networkPassphrase,
@@ -136,9 +172,9 @@ export class Sep10AuthService {
     }
 
     // Try Rabet wallet
-    if (typeof window !== "undefined" && (window as any).rabet) {
+    if (typeof window !== "undefined" && window.rabet) {
       try {
-        const result = await (window as any).rabet.sign(
+        const result = await window.rabet.sign(
           challengeXdr,
           networkPassphrase,
         );
