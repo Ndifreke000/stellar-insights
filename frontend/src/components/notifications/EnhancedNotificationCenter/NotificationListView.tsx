@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import {
   Search,
   ChevronUp,
@@ -74,7 +73,7 @@ export const NotificationListView = (props: Partial<IUseEnhancedNotificationCent
           <div className="flex items-center gap-2">
             <Select
               value={groupBy}
-              onValueChange={(value: any) => setGroupBy(value)}
+              onValueChange={(value: 'none' | 'date' | 'type' | 'priority') => setGroupBy(value)}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -89,7 +88,7 @@ export const NotificationListView = (props: Partial<IUseEnhancedNotificationCent
 
             <Select
               value={sortBy}
-              onValueChange={(value: any) => setSortBy(value)}
+              onValueChange={(value: 'timestamp' | 'priority' | 'type') => setSortBy(value)}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -115,7 +114,7 @@ export const NotificationListView = (props: Partial<IUseEnhancedNotificationCent
 
             <Select
               value={viewMode}
-              onValueChange={(value: any) => setViewMode(value)}
+              onValueChange={(value: 'list' | 'grid' | 'compact') => setViewMode(value)}
             >
               <SelectTrigger className="w-24">
                 <SelectValue />
@@ -205,7 +204,7 @@ export const NotificationListView = (props: Partial<IUseEnhancedNotificationCent
                     : 'space-y-2'
                 }
               >
-                {groupNotifications.map((notification, index) => (
+                {groupNotifications.map((notification) => (
                   <NotificationItem
                     key={notification.id}
                     notification={notification}
