@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
+// Arbitrary key/value bag for a single form or filter set; the concrete shape
+// varies per form/filter key, so callers narrow via the key they pass in.
+export type FieldValues = Record<string, unknown>;
+
 // Types for our global state
 export interface AppState {
   // UI State
@@ -14,12 +18,12 @@ export interface AppState {
   breadcrumbs: Array<{ label: string; href: string }>;
   
   // Form State
-  formData: Record<string, any>;
+  formData: Record<string, FieldValues>;
   formErrors: Record<string, Record<string, string>>;
   formDirty: Record<string, boolean>;
-  
+
   // Filter State
-  filters: Record<string, any>;
+  filters: FieldValues;
   
   // Notification State
   notifications: Array<{
@@ -41,7 +45,7 @@ export interface AppState {
   websocket: {
     connected: boolean;
     reconnecting: boolean;
-    lastMessage: any;
+    lastMessage: unknown;
   };
 }
 
@@ -59,17 +63,17 @@ export interface AppActions {
   addBreadcrumb: (breadcrumb: { label: string; href: string }) => void;
   
   // Form Actions
-  setFormData: (key: string, data: any) => void;
-  updateFormData: (key: string, updates: Partial<any>) => void;
+  setFormData: (key: string, data: FieldValues) => void;
+  updateFormData: (key: string, updates: Partial<FieldValues>) => void;
   clearFormData: (key?: string) => void;
   setFormErrors: (key: string, errors: Record<string, string>) => void;
   clearFormErrors: (key?: string) => void;
   setFormDirty: (key: string, dirty: boolean) => void;
   clearFormDirty: (key?: string) => void;
-  
+
   // Filter Actions
-  setFilters: (filters: Record<string, any>) => void;
-  updateFilter: (key: string, value: any) => void;
+  setFilters: (filters: FieldValues) => void;
+  updateFilter: (key: string, value: unknown) => void;
   clearFilters: (key?: string) => void;
   
   // Notification Actions
@@ -86,7 +90,7 @@ export interface AppActions {
   // WebSocket Actions
   setWebSocketConnected: (connected: boolean) => void;
   setWebSocketReconnecting: (reconnecting: boolean) => void;
-  setWebSocketLastMessage: (message: any) => void;
+  setWebSocketLastMessage: (message: unknown) => void;
   
   // Reset Actions
   resetState: () => void;
