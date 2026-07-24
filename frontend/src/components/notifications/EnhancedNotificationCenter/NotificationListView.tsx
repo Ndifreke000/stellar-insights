@@ -78,7 +78,7 @@ export const NotificationListView = (props: NotificationListViewProps) => {
           <div className="flex items-center gap-2">
             <Select
               value={groupBy}
-              onValueChange={(value: any) => setGroupBy(value)}
+              onValueChange={(value: 'none' | 'date' | 'type' | 'priority') => setGroupBy(value)}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -93,7 +93,7 @@ export const NotificationListView = (props: NotificationListViewProps) => {
 
             <Select
               value={sortBy}
-              onValueChange={(value: any) => setSortBy(value)}
+              onValueChange={(value: 'timestamp' | 'priority' | 'type') => setSortBy(value)}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -119,7 +119,7 @@ export const NotificationListView = (props: NotificationListViewProps) => {
 
             <Select
               value={viewMode}
-              onValueChange={(value: any) => setViewMode(value)}
+              onValueChange={(value: 'list' | 'grid' | 'compact') => setViewMode(value)}
             >
               <SelectTrigger className="w-24">
                 <SelectValue />
