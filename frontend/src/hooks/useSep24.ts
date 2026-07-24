@@ -69,10 +69,10 @@ export function useStartDepositFlow() {
     {
       onSuccess: (data, variables) => {
         // Open interactive URL in new window
-        const url = (data as any).url;
+        const url = data.url;
         if (url && url.startsWith('http')) {
           window.open(url, 'sep24-interactive', 'width=500,height=700');
-          
+
           addNotification({
             type: 'success',
             message: 'Deposit flow started. Complete the flow in the popup window.',
@@ -115,10 +115,10 @@ export function useStartWithdrawFlow() {
     {
       onSuccess: (data, variables) => {
         // Open interactive URL in new window
-        const url = (data as any).url;
+        const url = data.url;
         if (url && url.startsWith('http')) {
           window.open(url, 'sep24-interactive', 'width=500,height=700');
-          
+
           addNotification({
             type: 'success',
             message: 'Withdrawal flow started. Complete the flow in the popup window.',
@@ -153,7 +153,7 @@ export function useSep24FlowState() {
 
   const formKey = 'sep24-flow';
   
-  const setFormDataValue = (key: string, value: any) => {
+  const setFormDataValue = (key: string, value: unknown) => {
     setFormData(formKey, { ...formData[formKey], [key]: value });
   };
 
