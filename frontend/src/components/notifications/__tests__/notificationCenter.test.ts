@@ -262,6 +262,8 @@ describe('Notification Center Performance', () => {
   });
 });
 
-export default {
+const notificationCenterTestModule = {
   NotificationService,
 };
+
+export default notificationCenterTestModule;

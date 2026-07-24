@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { format, subDays, subHours, startOfDay } from "date-fns";
 
 export type Preset = "24h" | "7d" | "30d" | "custom";
@@ -9,25 +9,37 @@ interface TimeRangeSelectorProps {
   onChange: (start: Date | null, end: Date | null) => void;
 }
 
+// Infer a sensible preset from the provided dates.
+function inferPreset(startDate: Date | null, endDate: Date | null): Preset {
+  if (!startDate || !endDate) return "custom";
+  const now = new Date();
+  const diffMs = now.getTime() - startDate.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (Math.abs(diffHours - 24) < 1) return "24h";
+  if (Math.abs(diffHours - 24 * 7) < 24) return "7d";
+  if (Math.abs(diffHours - 24 * 30) < 48) return "30d";
+  return "custom";
+}
+
 export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
   startDate,
   endDate,
   onChange,
 }) => {
-  const [preset, setPreset] = useState<Preset>("30d");
+  const [preset, setPreset] = useState<Preset>(() =>
+    inferPreset(startDate, endDate),
+  );
 
-  useEffect(() => {
-    // Try to infer a sensible preset from the provided dates.
-    if (!startDate || !endDate) return setPreset("custom");
-    const now = new Date();
-    const diffMs = now.getTime() - startDate.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (Math.abs(diffHours - 24) < 1) setPreset("24h");
-    else if (Math.abs(diffHours - 24 * 7) < 24) setPreset("7d");
-    else if (Math.abs(diffHours - 24 * 30) < 48) setPreset("30d");
-    else setPreset("custom");
-  }, [startDate, endDate]);
+  // Track the previous dates so we can re-derive the preset when they change,
+  // without reacting to a render via an effect (see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevStartDate, setPrevStartDate] = useState(startDate);
+  const [prevEndDate, setPrevEndDate] = useState(endDate);
+  if (startDate !== prevStartDate || endDate !== prevEndDate) {
+    setPrevStartDate(startDate);
+    setPrevEndDate(endDate);
+    setPreset(inferPreset(startDate, endDate));
+  }
 
   const applyPreset = (p: Preset) => {
     const now = new Date();
