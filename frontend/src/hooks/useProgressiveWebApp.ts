@@ -18,6 +18,14 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 /**
+ * `navigator.standalone` is a non-standard, Safari/iOS-only property used to
+ * detect if the PWA was launched from the home screen. Not part of the DOM lib types.
+ */
+interface NavigatorWithStandalone extends Navigator {
+  readonly standalone?: boolean;
+}
+
+/**
  * PWA Installation States
  */
 export enum PWAInstallState {
@@ -78,7 +86,7 @@ export function useProgressiveWebApp(): UseProgressiveWebAppReturn {
     if (typeof window === 'undefined') return false;
     return (
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true
+      (window.navigator as NavigatorWithStandalone).standalone === true
     );
   }, []);
 
