@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink } from 'lucide-react';
 import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
@@ -49,8 +49,15 @@ export const EnhancedToastNotification: React.FC<ToastNotificationProps> = ({
   const [progress, setProgress] = useState(100);
   const { markAsRead } = useNotifications();
   const autoHideDelay = AUTO_HIDE_DELAY[notification.priority];
-  let autoHideTimer: ReturnType<typeof setTimeout> | null = null;
-  let progressTimer: ReturnType<typeof setInterval> | null = null;
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleClose = useCallback(() => {
+    setIsVisible(false);
+    if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setTimeout(onClose, 300); // Wait for exit animation
+  }, [onClose]);
 
   // Auto-hide logic
   useEffect(() => {
@@ -62,7 +69,7 @@ export const EnhancedToastNotification: React.FC<ToastNotificationProps> = ({
       const totalSteps = autoHideDelay / progressInterval;
       let currentStep = 0;
 
-      progressTimer = setInterval(() => {
+      progressTimerRef.current = setInterval(() => {
         currentStep++;
         const newProgress = Math.max(0, 100 - (currentStep / totalSteps) * 100);
         setProgress(newProgress);
@@ -72,23 +79,16 @@ export const EnhancedToastNotification: React.FC<ToastNotificationProps> = ({
         }
       }, progressInterval);
 
-      autoHideTimer = setTimeout(() => {
+      autoHideTimerRef.current = setTimeout(() => {
         handleClose();
       }, autoHideDelay);
     }
 
     return () => {
-      if (autoHideTimer) clearTimeout(autoHideTimer);
-      if (progressTimer) clearInterval(progressTimer);
+      if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
-  }, [notification.id, autoHideDelay]);
-
-  const handleClose = useCallback(() => {
-    setIsVisible(false);
-    if (autoHideTimer) clearTimeout(autoHideTimer);
-    if (progressTimer) clearInterval(progressTimer);
-    setTimeout(onClose, 300); // Wait for exit animation
-  }, [onClose]);
+  }, [notification.id, autoHideDelay, handleClose]);
 
   const handleAction = useCallback((action: () => void | Promise<void>) => {
     action();
