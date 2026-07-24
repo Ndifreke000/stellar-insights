@@ -72,7 +72,7 @@ const useEnhancedNotificationCenter = () => {
 
   // Filter and sort notifications
   const filteredNotifications = useMemo(() => {
-    let filtered = notifications.filter(notification => {
+    const filtered = notifications.filter(notification => {
       // Search filter
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase();

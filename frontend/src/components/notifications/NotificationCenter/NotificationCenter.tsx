@@ -43,7 +43,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
     unreadCount 
   } = useNotifications();
 
-  const notificationService = NotificationService.getInstance();
+  const notificationService = useMemo(() => NotificationService.getInstance(), []);
   
   // UI State
   const [activeTab, setActiveTab] = useState<'notifications' | 'analytics'>('notifications');
@@ -57,15 +57,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
   });
 
   // Analytics
-  const analytics = useMemo(() => 
+  const analytics = useMemo(() =>
     notificationService.generateAnalytics(notifications),
-    [notifications]
+    [notifications, notificationService]
   );
 
   // Filtered notifications
-  const filteredNotifications = useMemo(() => 
+  const filteredNotifications = useMemo(() =>
     notificationService.filterNotifications(notifications, filter),
-    [notifications, filter]
+    [notifications, filter, notificationService]
   );
 
   // Grouped notifications
