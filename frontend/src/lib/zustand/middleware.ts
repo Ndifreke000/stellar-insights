@@ -226,7 +226,7 @@ export const localStorageMiddleware = <T extends object>(
             stateToSave = {} as Partial<T>;
             config.whitelist.forEach(key => {
               if (key in currentState) {
-                (stateToSave as any)[key] = currentState[key];
+                stateToSave[key] = currentState[key];
               }
             });
           }
@@ -235,7 +235,7 @@ export const localStorageMiddleware = <T extends object>(
           if (config.blacklist) {
             const temp = { ...stateToSave };
             config.blacklist.forEach(key => {
-              delete (temp as any)[key];
+              delete temp[key];
             });
             stateToSave = temp;
           }
