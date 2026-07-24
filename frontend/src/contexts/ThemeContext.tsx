@@ -71,12 +71,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     applyThemeToDOM(resolved);
   }, []);
 
-  // On mount, apply the initial theme
+  // On mount, sync the DOM with the already-resolved initial theme
   useEffect(() => {
-    const resolved = resolveTheme(themePreference);
-    setTheme(resolved);
-    applyThemeToDOM(resolved);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    applyThemeToDOM(theme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for system preference changes when mode is 'system'
   useEffect(() => {
