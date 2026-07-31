@@ -130,7 +130,7 @@ impl RateLimiter {
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-            match client.get_multiplexed_tokio_connection().await {
+            match client.get_multiplexed_async_connection().await {
                 Ok(conn) => {
                     tracing::info!("Connected to Redis for rate limiting");
                     Some(conn)

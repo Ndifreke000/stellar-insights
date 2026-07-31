@@ -259,7 +259,7 @@ impl WsState {
                 let client = client.clone();
                 let payload_clone = payload.clone();
                 tokio::spawn(async move {
-                    match client.get_multiplexed_tokio_connection().await {
+                    match client.get_multiplexed_async_connection().await {
                         Ok(mut conn) => {
                             let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
                                 .arg(REDIS_WS_CHANNEL)

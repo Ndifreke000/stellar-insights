@@ -29,7 +29,7 @@ impl DistributedLock {
                 return true;
             }
         };
-        let mut conn = match client.get_multiplexed_tokio_connection().await {
+        let mut conn = match client.get_multiplexed_async_connection().await {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(
