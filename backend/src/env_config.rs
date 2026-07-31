@@ -456,7 +456,7 @@ mod tests {
         let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
-        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(64));
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
         let result = validate_env();
