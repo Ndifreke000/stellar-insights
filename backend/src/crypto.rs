@@ -1,9 +1,10 @@
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
 };
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
+use rand::Rng;
 
 /// Encrypts plaintext using AES-256-GCM.
 /// Returns a base64 encoded string containing the nonce and ciphertext separated by a colon `nonce:ciphertext`.
@@ -23,7 +24,11 @@ pub fn encrypt_data(plain_text: &str, key_hex: &str) -> Result<String> {
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
 
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
+    // 96-bit nonce; unique per message. `AeadCore::generate_nonce` was removed
+    // upstream, so the nonce is filled manually instead.
+    let mut nonce_bytes = [0u8; 12];
+    rand::rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
     let cipher_text = cipher
         .encrypt(&nonce, plain_text.as_bytes())
@@ -88,11 +93,10 @@ pub fn is_encrypted(data: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::RngCore;
 
     fn generate_test_key() -> String {
         let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         hex::encode(key)
     }
 

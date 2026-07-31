@@ -561,7 +561,7 @@ async fn main() -> anyhow::Result<()> {
                 .br(true)
                 .quality(compression_level)
                 .compress_when(
-                    SizeAbove::new(compression_min_size)
+                    SizeAbove::new(compression_min_size.into())
                         .and(NotForContentType::IMAGES)
                         .and(NotForContentType::SSE),
                 ),

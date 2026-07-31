@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertRule {
     pub id: String,
     pub user_id: String,
@@ -20,6 +21,7 @@ pub struct AlertRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertHistory {
     pub id: String,
     pub rule_id: String,

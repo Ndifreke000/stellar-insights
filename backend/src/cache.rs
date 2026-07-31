@@ -289,7 +289,7 @@ impl CacheManager {
             const LUA_DEL: &str = "return redis.call('DEL', KEYS[1])";
             match redis::Script::new(LUA_DEL)
                 .key(key)
-                .invoke_async::<_, i64>(&mut conn)
+                .invoke_async::<i64>(&mut conn)
                 .await
             {
                 Ok(_) => {
