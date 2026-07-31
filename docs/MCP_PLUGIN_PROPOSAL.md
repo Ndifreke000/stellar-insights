@@ -171,19 +171,21 @@ a live backend until Phase 0 is complete.
 | 0.2 | Fix redis-rs API mismatch (`cache.rs`, `redis_caching_layer.rs`, `rate_limiting_advanced.rs`, `distributed_lock.rs`, `websocket.rs`, `api/gdpr.rs`, `ingestion/*`, `rate_limit.rs`) | Backend compiles against redis 1.3 | 0.1 | 2–4 days |
 | 0.3 | Fix hmac/sha2/digest version conflict (`webhooks/mod.rs`, `auth/sep10_simple.rs`, `request_signing_middleware.rs`) | Webhook signing + SEP-10 compile | 0.1 | 0.5–1 day |
 | 0.4 | Fix frontend `package-lock.json` drift (`@vitejs/plugin-react` ^4 vs ^6) | `npm install` succeeds with no flags | — | 0.5 day |
-| 1.1 | Scaffold `@stellar-insights/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | 0.5 day |
-| 1.2 | Add streamable-HTTP transport option | Server runnable as hosted endpoint, not just local stdio | 1.1 | 0.5 day |
-| 2.1 | Implement read-only tool set (§3.3) with Zod schemas + descriptions | 11 working tools | 1.1 | 2–3 days |
-| 2.2 | Implement `verify_snapshot` (Soroban contract read + hash compare) | Differentiator tool working end-to-end | 2.1 | 1–2 days |
-| 2.3 | Implement MCP resource URIs (`stellar-insights://corridor/{id}`, `.../anchor/{id}`) | Agents can attach entities as context | 2.1 | 0.5 day |
-| 3.1 | API-key auth wiring + tier-aware error messages | Rate-limit errors surface cleanly to the agent | 1.1 | 0.5 day |
-| 3.2 | `--allow-writes` gate + write-tool implementations (kept off by default) | Opt-in write tools, off in default build | 2.1 | 1 day |
-| 4.1 | Integration tests against a running backend (real testnet data) | CI-runnable test suite | 0.2, 0.3 | 1–2 days |
-| 4.2 | Manual test in Claude Desktop / Claude Code | Verified working end-to-end in a real client | 2.1, 2.2 | 0.5 day |
-| 5.1 | npm publish (`@stellar-insights/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | 0.5 day |
-| 5.2 | Submit to MCP registries (mcp.so, Anthropic directory) | Public discoverability | 5.1 | 0.5 day |
-| 6.1 | Docs: add MCP section to `sdk/` README, cross-link from main README | Documented alongside existing SDKs | 5.1 | 0.5 day |
+| 1.1 | Scaffold `@stellar-insights/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | Done (PR #2038) |
+| 1.2 | Add streamable-HTTP transport option | Server runnable as hosted endpoint, not just local stdio | 1.1 | Done - verified live via `curl` MCP `initialize` call |
+| 2.1 | Implement read-only tool set (§3.3) with Zod schemas + descriptions | 21 working tools (grew from the original 11-tool estimate as real SDK resources were mapped 1:1) | 1.1 | Done (PR #2038) |
+| 2.2 | Implement `verify_snapshot` (Soroban contract read + hash compare) | Differentiator tool working end-to-end | 2.1 | Done - verified live against the deployed testnet contract (real `SnapshotNotFound` error surfaced, since no snapshot has been submitted yet) |
+| 2.3 | Implement MCP resource URIs (`stellar-insights://corridor/{id}`, `.../anchor/{id}`) | Agents can attach entities as context | 2.1 | Done (PR #2038) |
+| 3.1 | API-key auth wiring + tier-aware error messages | Rate-limit errors surface cleanly to the agent | 1.1 | Auth wiring done; tier-aware error message *formatting* still just passes through the backend's own error body |
+| 3.2 | `--allow-writes` gate + write-tool implementations (kept off by default) | Opt-in write tools, off in default build | 2.1 | Done - 13 write tools, verified the flag toggles them on/off via a live stdio MCP handshake |
+| 4.1 | Integration tests against a running backend (real testnet data) | CI-runnable test suite | 0.2, 0.3 | Still blocked - backend doesn't compile yet (0.2/0.3 not done). Everything else has been tested live wherever it doesn't require the REST backend (see package README) |
+| 4.2 | Manual test in Claude Desktop / Claude Code | Verified working end-to-end in a real client | 2.1, 2.2 | Verified with the real MCP client/server libraries (stdio + HTTP) and raw `curl`; not yet manually clicked through in the Claude Desktop app itself |
+| 5.1 | npm publish (`@stellar-insights/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | README and config snippets done; not yet published to npm |
+| 5.2 | Submit to MCP registries (mcp.so, Anthropic directory) | Public discoverability | 5.1 | Not started - depends on 5.1 |
+| 6.1 | Docs: add MCP section to `sdk/` README, cross-link from main README | Documented alongside existing SDKs | 5.1 | `sdk/mcp-server/README.md` done; not yet cross-linked from the root README |
 
-**Total estimated effort:** ~14–19 days, of which ~3–5.5 days (Phase 0) is
-fixing pre-existing backend breakage unrelated to the plugin itself, and
-~11–13.5 days is the MCP server build proper.
+**Status:** Phases 1–3 (the MCP server itself: all tools, both transports,
+resources, the write-tool gate) are done and verified everywhere that doesn't
+require the REST backend. What's left is Phase 0 (backend build fixes,
+tracked separately), real integration testing once that lands, and
+publishing/distribution (5.1, 5.2, 6.1).

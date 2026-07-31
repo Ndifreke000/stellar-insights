@@ -44,13 +44,37 @@ export interface StellarInsightsClient {
   governance: {
     listProposals(params?: PaginationParams): Promise<unknown>;
     getProposal(id: string): Promise<unknown>;
+    createProposal(req: { title: string; description: string }): Promise<unknown>;
+    vote(id: string, support: boolean): Promise<unknown>;
   };
   alerts: {
     listHistory(params?: PaginationParams): Promise<unknown>;
+    listRules(params?: PaginationParams): Promise<unknown>;
+    createRule(req: { name: string; condition: string; threshold: number }): Promise<unknown>;
+    updateRule(id: string, req: Partial<{ name: string; condition: string; threshold: number }>): Promise<unknown>;
+    deleteRule(id: string): Promise<unknown>;
   };
   assetVerification: {
     verify(assetCode: string, assetIssuer: string): Promise<unknown>;
     get(assetCode: string, assetIssuer: string): Promise<unknown>;
     list(params?: PaginationParams): Promise<unknown>;
+  };
+  transactions: {
+    create(req: { envelope_xdr: string }): Promise<unknown>;
+    submit(id: string): Promise<unknown>;
+  };
+  webhooks: {
+    list(): Promise<unknown>;
+    create(req: { url: string; events: string[] }): Promise<unknown>;
+    get(id: string): Promise<unknown>;
+    delete(id: string): Promise<unknown>;
+    test(id: string): Promise<unknown>;
+  };
+  apiKeys: {
+    list(): Promise<unknown>;
+    create(req: { name: string }): Promise<unknown>;
+    get(id: string): Promise<unknown>;
+    rotate(id: string): Promise<unknown>;
+    revoke(id: string): Promise<unknown>;
   };
 }

@@ -25,5 +25,27 @@ for (const t of tools.tools) console.log(` - ${t.name}`);
 const resources = await client.listResourceTemplates();
 console.log(`Resource templates: ${resources.resourceTemplates.map((r) => r.uriTemplate).join(", ")}`);
 
+console.log("\nCalling verify_snapshot (live testnet contract call, no epoch = latest)...");
+const verifyResult = await client.callTool({ name: "verify_snapshot", arguments: {} });
+console.log(JSON.stringify(verifyResult, null, 2));
+
 await client.close();
+
+console.log("\nConnecting a second client with STELLAR_INSIGHTS_MCP_ALLOW_WRITES=true...");
+const writeTransport = new StdioClientTransport({
+  command: "npx",
+  args: ["tsx", "src/index.ts"],
+  cwd: packageRoot,
+  env: {
+    ...process.env,
+    STELLAR_INSIGHTS_API_KEY: process.env.STELLAR_INSIGHTS_API_KEY ?? "smoke-test-dummy-key",
+    STELLAR_INSIGHTS_MCP_ALLOW_WRITES: "true",
+  },
+});
+const writeClient = new Client({ name: "smoke-test-write-client", version: "0.0.1" });
+await writeClient.connect(writeTransport);
+const writeTools = await writeClient.listTools();
+console.log(`With ALLOW_WRITES=true: ${writeTools.tools.length} tools (was ${tools.tools.length} without it)`);
+await writeClient.close();
+
 process.exit(0);

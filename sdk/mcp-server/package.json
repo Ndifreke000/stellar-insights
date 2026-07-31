@@ -8,7 +8,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsx src/index.ts",
@@ -17,14 +19,22 @@
     "smoke-test": "node scripts/smoke-test.mjs",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["stellar", "mcp", "model-context-protocol", "analytics", "ai-agent"],
+  "keywords": [
+    "stellar",
+    "mcp",
+    "model-context-protocol",
+    "analytics",
+    "ai-agent"
+  ],
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@stellar-insights/sdk": "file:../typescript",
+    "@stellar/stellar-sdk": "^16.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
     "tsup": "8.5.1",
     "tsx": "^4.19.0",
