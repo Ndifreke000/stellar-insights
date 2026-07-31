@@ -17,6 +17,7 @@ use crate::auth_middleware::AuthUser;
 
 /// OAuth Token Request (for /api/oauth/token)
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct OAuthTokenRequest {
     pub grant_type: String,            // "authorization_code" or "refresh_token"
     pub code: Option<String>,          // for authorization_code
@@ -28,6 +29,7 @@ pub struct OAuthTokenRequest {
 
 /// OAuth Authorization Request (for /api/oauth/authorize)
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct OAuthAuthorizeRequest {
     pub client_id: String,
     pub redirect_uri: String,
@@ -38,6 +40,7 @@ pub struct OAuthAuthorizeRequest {
 
 /// OAuth Authorization Response
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct OAuthAuthorizeResponse {
     pub authorization_code: String,
     pub state: String,
@@ -52,6 +55,7 @@ pub struct OAuthTokenErrorResponse {
 
 /// OAuth Revoke Request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct OAuthRevokeRequest {
     pub access_token: String,
     pub client_id: String,
@@ -67,6 +71,7 @@ pub struct OAuthAppInfo {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ListOAuthAppsResponse {
     pub apps: Vec<OAuthAppInfo>,
 }

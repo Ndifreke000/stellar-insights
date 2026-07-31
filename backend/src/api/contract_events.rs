@@ -17,6 +17,7 @@ use tracing::{error, info};
 
 /// Response for verification summary endpoint
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerificationSummaryResponse {
     #[serde(rename = "latestEpoch")]
     pub latest_epoch: Option<u64>,

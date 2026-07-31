@@ -194,6 +194,7 @@ pub struct VerifyAssetRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ReportAssetRequest {
     pub asset_code: String,
     pub asset_issuer: String,

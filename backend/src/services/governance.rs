@@ -9,6 +9,7 @@ use tracing::info;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateProposalRequest {
     pub title: String,
     pub description: Option<String>,
@@ -45,6 +46,7 @@ pub struct ProposalsListResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CastVoteRequest {
     pub choice: String,
     pub tx_hash: Option<String>,
@@ -61,6 +63,7 @@ pub struct VoteResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct AddCommentRequest {
     pub content: String,
 }

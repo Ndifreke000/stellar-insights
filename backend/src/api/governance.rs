@@ -77,6 +77,7 @@ const fn default_comments_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ActivateRequest {
     #[serde(default = "default_voting_duration")]
     pub voting_duration_secs: i64,
@@ -92,6 +93,7 @@ pub struct ErrorResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct HasVotedResponse {
     pub has_voted: bool,
 }

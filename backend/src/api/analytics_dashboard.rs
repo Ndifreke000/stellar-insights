@@ -32,6 +32,7 @@ pub struct NetworkStats {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct AnalyticsDashboardData {
     pub stats: NetworkStats,
     pub time_series_data: Vec<NetworkVolumeDataPoint>,

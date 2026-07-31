@@ -36,6 +36,7 @@ pub mod websocket_streaming_models;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(utoipa::ToSchema)]
 pub enum SortBy {
     #[serde(rename = "success_rate")]
     SuccessRate,
@@ -303,6 +304,7 @@ pub struct IngestionState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct FeeBumpTransaction {
     pub transaction_hash: String,
     pub ledger_sequence: i64,
@@ -316,6 +318,7 @@ pub struct FeeBumpTransaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct FeeBumpStats {
     pub total_fee_bumps: i64,
     pub avg_fee_charged: f64,
@@ -325,6 +328,7 @@ pub struct FeeBumpStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct LiquidityPool {
     pub pool_id: String,
     pub pool_type: String,
@@ -349,6 +353,7 @@ pub struct LiquidityPool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct LiquidityPoolSnapshot {
     pub id: i64,
     pub pool_id: String,
@@ -364,6 +369,7 @@ pub struct LiquidityPoolSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct LiquidityPoolStats {
     pub total_pools: i64,
     pub total_liquidity_usd: f64,
@@ -404,6 +410,7 @@ pub struct MuxedAccountUsage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct PendingTransaction {
     pub id: String,
     pub source_account: String,
@@ -424,6 +431,7 @@ pub struct Signature {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PendingTransactionWithSignatures {
     #[serde(flatten)]
     pub transaction: PendingTransaction,
@@ -431,12 +439,14 @@ pub struct PendingTransactionWithSignatures {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct TransactionResult {
     pub hash: String,
     pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct TrustlineStat {
     pub asset_code: String,
     pub asset_issuer: String,
@@ -449,6 +459,7 @@ pub struct TrustlineStat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct TrustlineSnapshot {
     pub id: i64,
     pub asset_code: String,
@@ -461,6 +472,7 @@ pub struct TrustlineSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct TrustlineMetrics {
     pub total_assets_tracked: i64,
     pub total_trustlines_across_network: i64,
@@ -479,6 +491,7 @@ pub struct ApiUsageStat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ApiAnalyticsOverview {
     pub total_requests: i64,
     pub avg_response_time_ms: f64,

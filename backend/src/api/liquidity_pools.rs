@@ -124,6 +124,7 @@ async fn get_pool_rankings(
 }
 
 #[derive(serde::Serialize)]
+#[derive(utoipa::ToSchema)]
 struct PoolDetailResponse {
     pool: LiquidityPool,
     snapshots: Vec<LiquidityPoolSnapshot>,

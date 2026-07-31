@@ -50,6 +50,7 @@ pub struct Webhook {
 
 /// Webhook creation request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateWebhookRequest {
     pub url: String,
     pub event_types: Vec<String>,
@@ -58,6 +59,7 @@ pub struct CreateWebhookRequest {
 
 /// Webhook creation response
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct WebhookResponse {
     pub id: String,
     pub url: String,

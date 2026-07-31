@@ -21,11 +21,13 @@ pub struct NetworkInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct SwitchNetworkRequest {
     pub network: StellarNetwork,
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct SwitchNetworkResponse {
     pub success: bool,
     pub message: String,

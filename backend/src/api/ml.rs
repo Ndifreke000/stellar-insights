@@ -81,6 +81,7 @@ pub async fn predict_payment_success(
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ModelStatusResponse {
     pub version: String,
     pub last_trained: String,

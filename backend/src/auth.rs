@@ -34,6 +34,7 @@ pub struct User {
 
 /// Login request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -49,6 +50,7 @@ pub struct LoginResponse {
 
 /// Refresh token request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
@@ -62,6 +64,7 @@ pub struct RefreshTokenResponse {
 
 /// Logout request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct LogoutRequest {
     pub refresh_token: String,
 }
