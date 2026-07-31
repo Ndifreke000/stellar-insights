@@ -1,0 +1,34 @@
+{
+  "name": "@stellar-insights/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server exposing Stellar Insights corridor/anchor/network analytics as tools for AI agents",
+  "type": "module",
+  "bin": {
+    "stellar-insights-mcp-server": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "smoke-test": "node scripts/smoke-test.mjs",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["stellar", "mcp", "model-context-protocol", "analytics", "ai-agent"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@stellar-insights/sdk": "file:../typescript",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "8.5.1",
+    "tsx": "^4.19.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
