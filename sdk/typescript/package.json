@@ -7,9 +7,9 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     }
   },
   "files": ["dist"],
@@ -20,14 +20,21 @@
     "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["stellar", "sdk", "payments", "analytics", "request-deduplication"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "network-context"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "authentication"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "retry-backoff"],
+  "keywords": [
+    "stellar",
+    "sdk",
+    "payments",
+    "analytics",
+    "request-deduplication",
+    "network-context",
+    "authentication",
+    "retry-backoff"
+  ],
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "tsup": "8.5.1",
-    "typescript": "7.0.2",
+    "typescript": "^5.7.3",
     "vitest": "4.1.10"
   }
 }
