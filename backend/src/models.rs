@@ -422,6 +422,7 @@ pub struct PendingTransaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct Signature {
     pub id: String,
     pub transaction_id: String,
@@ -501,6 +502,7 @@ pub struct ApiAnalyticsOverview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct EndpointStat {
     pub endpoint: String,
     pub method: String,
@@ -509,6 +511,7 @@ pub struct EndpointStat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct StatusStat {
     pub status_code: i32,
     pub count: i64,

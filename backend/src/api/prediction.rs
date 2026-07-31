@@ -11,6 +11,7 @@ pub struct PredictionQuery {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f64,
     pub confidence_interval: (f64, f64),

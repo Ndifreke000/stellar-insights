@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct NetworkInfo {
     pub network: StellarNetwork,
     pub display_name: String,

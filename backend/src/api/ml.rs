@@ -18,6 +18,7 @@ fn default_timestamp() -> DateTime<Utc> {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f32,
     pub confidence: f32,

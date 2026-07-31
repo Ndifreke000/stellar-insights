@@ -64,6 +64,7 @@ pub struct OAuthRevokeRequest {
 
 /// List OAuth Apps Response
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct OAuthAppInfo {
     pub client_id: String,
     pub app_name: String,

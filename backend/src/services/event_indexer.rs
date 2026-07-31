@@ -810,6 +810,7 @@ impl EventIndexer {
 
 /// Verification summary for UI display
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerificationSummary {
     pub epoch: u64,
     pub hash: Option<String>,

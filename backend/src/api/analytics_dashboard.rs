@@ -6,6 +6,7 @@ use crate::cache::keys;
 use crate::state::AppState;
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct NetworkVolumeDataPoint {
     pub time: String,
     pub volume: f64,
@@ -14,6 +15,7 @@ pub struct NetworkVolumeDataPoint {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct CorridorPerformanceMetric {
     pub corridor: String,
     pub success_rate: f64,
@@ -22,6 +24,7 @@ pub struct CorridorPerformanceMetric {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct NetworkStats {
     pub volume_24h: f64,
     pub volume_growth: f64,

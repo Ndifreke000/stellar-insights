@@ -11,6 +11,7 @@ use std::sync::Arc;
 use crate::cache::{CacheManager, CacheStats};
 
 #[derive(Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CacheStatsResponse {
     pub hits: u64,
     pub misses: u64,
