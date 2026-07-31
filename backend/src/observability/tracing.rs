@@ -50,7 +50,10 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     // `traceparent` / `tracestate` headers are used for context propagation.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let _ = tracing_log::LogTracer::init();
+    // Note: no separate `tracing_log::LogTracer::init()` call here -
+    // `tracing_subscriber`'s `.init()` below already installs the log/tracing
+    // bridge itself (via its "tracing-log" feature), so calling both panics
+    // with a `SetLoggerError` on the second, redundant registration.
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "backend=info,tower_http=info".into());

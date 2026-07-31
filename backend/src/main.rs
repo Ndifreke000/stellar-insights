@@ -527,7 +527,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/admin", admin_routes)
         .merge(graphql_routes)
         .merge(ws_routes)
-        .route("/swagger-ui/*path", get(|| async { "Swagger UI documentation" }))
+        .route("/swagger-ui/{*path}", get(|| async { "Swagger UI documentation" }))
         .layer(middleware::from_fn(
             stellar_insights_backend::payload_limit::payload_limit_middleware,
         ))
