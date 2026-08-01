@@ -203,6 +203,14 @@ pub fn routes(
         .nest("/api/v2", v2_routes())
         .route("/api/version", get(get_api_version))
         // Preserve existing unversioned endpoints for backward compatibility.
+        // This must be nested under "/api", not merged at the bare root -
+        // v1_router's own routes have no prefix (e.g. "/anchors"), so a
+        // plain `.merge()` here only ever served bare paths like `/anchors`
+        // while the documented contract (openapi.json, the Postman
+        // collection, and both the TypeScript and Python SDKs) all call
+        // `/api/anchors`. Every unversioned SDK request was 404ing until
+        // this was nested under "/api" instead.
+        .nest("/api", v1_router.clone())
         .merge(v1_router)
         // SEP-24 proxy routes are mounted separately because the callback
         // endpoint manages its own per-origin CORS headers dynamically
