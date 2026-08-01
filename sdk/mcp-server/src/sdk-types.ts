@@ -22,9 +22,9 @@ export interface StellarInsightsClient {
     getByAccount(account: string): Promise<unknown>;
   };
   prices: {
-    list(): Promise<unknown>;
     get(asset: string): Promise<unknown>;
-    convert(from: string, to: string, amount: number): Promise<unknown>;
+    batch(assets: string[]): Promise<unknown>;
+    convertToUsd(asset: string, amount: number): Promise<unknown>;
   };
   costCalculator: {
     estimate(req: { source_asset: string; destination_asset: string; amount: number }): Promise<unknown>;

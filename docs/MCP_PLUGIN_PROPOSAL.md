@@ -135,7 +135,7 @@ code.
 | `get_network_stats` | `NetworkResource` | |
 | `get_analytics` | analytics_dashboard routes | period: 24h/7d/30d/90d |
 | `get_liquidity_pools` | `LiquidityPoolsResource` | |
-| `get_price` / `list_prices` | `PricesResource` | |
+| `get_price` / `get_prices` / `convert_price_to_usd` | `PricesResource` | |
 | `estimate_transfer_cost` | `CostCalculatorResource` | |
 | `predict_anomaly` / `get_ml_status` | `MlResource` | |
 | `get_governance_proposals` | `GovernanceResource` | read-only |

@@ -57,26 +57,27 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
     call: (c, a) => c.anchors.getByAccount(a.account as string),
   },
   {
-    name: "list_prices",
-    description: "List current prices for all tracked assets.",
-    schema: {},
-    call: (c) => c.prices.list(),
+    name: "get_prices",
+    description:
+      "Get current USD prices for one or more Stellar assets. There is no 'list all tracked assets' " +
+      "operation - you must name the assets you want (e.g. 'XLM:native', 'USDC:issuer...').",
+    schema: { assets: z.array(z.string()).min(1).describe("Asset identifiers to price") },
+    call: (c, a) => c.prices.batch(a.assets as string[]),
   },
   {
     name: "get_price",
-    description: "Get the current price for one asset.",
+    description: "Get the current USD price for one asset.",
     schema: { asset: z.string() },
     call: (c, a) => c.prices.get(a.asset as string),
   },
   {
-    name: "convert_price",
-    description: "Convert an amount between two assets using current price data.",
+    name: "convert_price_to_usd",
+    description: "Convert an amount of one asset to its current USD value.",
     schema: {
-      from: z.string(),
-      to: z.string(),
+      asset: z.string(),
       amount: z.number().positive(),
     },
-    call: (c, a) => c.prices.convert(a.from as string, a.to as string, a.amount as number),
+    call: (c, a) => c.prices.convertToUsd(a.asset as string, a.amount as number),
   },
   {
     name: "estimate_transfer_cost",
