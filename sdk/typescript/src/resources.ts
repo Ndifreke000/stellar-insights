@@ -22,6 +22,8 @@ import type {
   PaginationParams,
   PaymentPrediction,
   Price,
+  PriceCacheStats,
+  PricesBatchResult,
   Proposal,
   Transaction,
   VerifiedAsset,
@@ -64,18 +66,27 @@ export class CorridorsResource {
 export class PricesResource {
   constructor(private http: HttpClient) {}
 
-  list(): Promise<Price[]> {
-    return this.http.request("GET", "/api/prices");
-  }
-
+  /** GET /api/prices?asset=... - the backend has no path-param or no-arg "list all" route. */
   get(asset: string): Promise<Price> {
-    return this.http.request("GET", `/api/prices/${encodeURIComponent(asset)}`);
+    return this.http.request("GET", "/api/prices", { params: { asset } });
   }
 
-  convert(from: string, to: string, amount: number): Promise<ConvertResult> {
-    return this.http.request("POST", "/api/prices/convert", {
-      body: { from_asset: from, to_asset: to, amount },
-    });
+  /** GET /api/prices/batch?assets=a,b,c - multiple prices in one call. */
+  batch(assets: string[]): Promise<PricesBatchResult> {
+    return this.http.request("GET", "/api/prices/batch", { params: { assets: assets.join(",") } });
+  }
+
+  /**
+   * GET /api/prices/convert?asset=...&amount=... - converts one asset's
+   * amount to USD. The backend only supports USD as a target (there is no
+   * arbitrary asset-to-asset conversion), so there's no `to` parameter.
+   */
+  convertToUsd(asset: string, amount: number): Promise<ConvertResult> {
+    return this.http.request("GET", "/api/prices/convert", { params: { asset, amount } });
+  }
+
+  cacheStats(): Promise<PriceCacheStats> {
+    return this.http.request("GET", "/api/prices/cache-stats");
   }
 }
 
