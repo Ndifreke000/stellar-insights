@@ -40,12 +40,11 @@ describe.skipIf(skipTestnet)("Testnet: Client Integration Tests", () => {
   });
 
   it("retrieves price data", async () => {
-    const prices = await client.prices.list();
-    expect(prices).toBeDefined();
-    expect(prices).toBeInstanceOf(Array);
-    if (prices.length > 0) {
-      expect(prices[0].asset).toBeDefined();
-      expect(prices[0].price_usd).toBeDefined();
+    const result = await client.prices.batch(["XLM:native"]);
+    expect(result).toBeDefined();
+    expect(result.prices).toBeDefined();
+    if (Object.keys(result.prices).length > 0) {
+      expect(result.prices["XLM:native"]).toBeDefined();
     }
   });
 

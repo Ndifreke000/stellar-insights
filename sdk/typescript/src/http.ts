@@ -43,7 +43,7 @@ export class HttpClient {
   async request<T>(
     method: string,
     path: string,
-    options: { body?: unknown; params?: Record<string, unknown> } = {},
+    options: { body?: unknown; params?: Record<string, unknown>; headers?: Record<string, string> } = {},
   ): Promise<T> {
     const url = this.buildUrl(path, options.params);
     const headers: Record<string, string> = {
@@ -52,6 +52,9 @@ export class HttpClient {
     };
     if (this.token) {
       headers["Authorization"] = `Bearer ${this.token}`;
+    }
+    if (options.headers) {
+      Object.assign(headers, options.headers);
     }
 
     const init: RequestInit = {

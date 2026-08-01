@@ -443,11 +443,15 @@ export class BatchApiClient extends ApiClient {
     options?: RequestOptions
   ): Promise<T> {
     return new Promise((resolve, reject) => {
+      // The queue holds requests for many different T's, so it's typed with
+      // an erased `unknown` resolver - each caller's own Promise<T> executor
+      // still resolves with the right value, this cast just matches the
+      // heterogeneous queue's storage type.
       this.batchQueue.push({
         method,
         path,
         options: options || {},
-        resolve,
+        resolve: resolve as (value: unknown) => void,
         reject,
       });
 

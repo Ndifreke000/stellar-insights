@@ -224,7 +224,7 @@ export class AuthenticationModule {
   private buildResult(
     action: AuthenticationModuleParams["action"],
     authenticated: boolean,
-    data: AuthenticationModuleResult["data"] = { executedAt: new Date().toISOString() },
+    data: Omit<AuthenticationModuleResult["data"], "executedAt"> = {},
   ): AuthenticationModuleResult {
     return {
       success: true,
