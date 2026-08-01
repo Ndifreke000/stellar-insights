@@ -1,6 +1,6 @@
 use crate::api::{
     account_merges, anchors, cache_stats, corridors, cost_calculator, fee_bump, liquidity_pools,
-    metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
+    metrics, network, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -169,6 +169,16 @@ pub fn routes(
 
     // 5. Special service routes
     let service_routes = Router::new()
+        // network::routes() was never mounted anywhere before this fix -
+        // /api/network* 404ed unconditionally. Nested at "/network" to match
+        // the frontend's existing calls to /api/network/info,
+        // /api/network/available, /api/network/switch. Also added directly
+        // below as a bare "/network" route, since both the TypeScript and
+        // Python SDKs call GET /api/network (no "/info" suffix) for the same
+        // data - the frontend and the SDKs disagree on the path shape, so
+        // both are served rather than picking a winner.
+        .nest("/network", network::routes())
+        .route("/network", get(network::get_network_info))
         .nest("/fee-bumps", fee_bump::routes(fee_bump_tracker))
         .nest(
             "/account-merges",

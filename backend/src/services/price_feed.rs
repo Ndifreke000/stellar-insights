@@ -81,6 +81,10 @@ impl CoinGeckoProvider {
     pub fn new(api_key: Option<String>, timeout: Duration) -> Self {
         let client = Client::builder()
             .timeout(timeout)
+            // CoinGecko's free API rejects requests without a descriptive
+            // User-Agent (403 "Please add a descriptive User-Agent") -
+            // reqwest sends none by default.
+            .user_agent(concat!("stellar-insights-backend/", env!("CARGO_PKG_VERSION")))
             .build()
             .expect("Failed to create HTTP client");
 
