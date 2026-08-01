@@ -109,20 +109,36 @@ export interface CorridorDetail extends Corridor {
 }
 
 // ─── Prices ───────────────────────────────────────────────────────────────────
+// Shapes mirror the backend's actual PriceResponse/PricesResponse/ConvertResponse
+// (backend/src/api/price_feed.rs) - a prior version of this file diverged from
+// the real backend contract (change_24h/rate/from_asset/to_asset never
+// existed on the wire) and every call using it 404/400'd. See resources.ts.
 
 export interface Price {
   asset: string;
   price_usd: number;
-  change_24h: number;
-  updated_at: string;
+  stale: boolean;
+  timestamp: string;
+}
+
+export interface PricesBatchResult {
+  prices: Record<string, number>;
+  stale: boolean;
+  timestamp: string;
 }
 
 export interface ConvertResult {
-  from_asset: string;
-  to_asset: string;
+  asset: string;
   amount: number;
-  converted_amount: number;
-  rate: number;
+  amount_usd: number;
+  price_usd: number;
+  timestamp: string;
+}
+
+export interface PriceCacheStats {
+  total_cached: number;
+  fresh_cached: number;
+  timestamp: string;
 }
 
 // ─── Cost Calculator ─────────────────────────────────────────────────────────
