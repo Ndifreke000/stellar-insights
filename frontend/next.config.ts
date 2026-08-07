@@ -40,9 +40,11 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
+    // 'unsafe-eval' is only added outside production — see proxy.ts's
+    // buildCsp() for why dev mode needs it.
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.stellar.org",
       "font-src 'self'",

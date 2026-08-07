@@ -19,7 +19,10 @@ const intlMiddleware = createMiddleware(routing);
 function buildCsp(isProd: boolean): string {
   const directives: string[] = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    // 'unsafe-eval' is only added outside production: Next.js dev mode
+    // (Turbopack/Fast Refresh) evals modules to reconstruct call stacks,
+    // and without it every page load throws a CSP console error.
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://*.stellar.org",
     "font-src 'self'",

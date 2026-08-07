@@ -6,32 +6,14 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { sep10AuthService } from '../../services/sep10Auth'
 import { logger } from "@/lib/logger"
 
-interface FreighterWallet {
-  getPublicKey: () => Promise<string>
-}
-
-interface AlbedoWallet {
-  publicKey: (options?: Record<string, unknown>) => Promise<{ pubkey: string }>
-}
-
-interface XBullSDKWallet {
-  signTransaction: (options: Record<string, unknown>) => Promise<string>
-}
-
-interface RabetWallet {
-  connect: () => Promise<{ publicKey: string }>
-}
-
-// Extend Window interface for Stellar wallets
+// Extend Window interface for the generic `stellar` wallet bridge.
+// freighter/albedo/xBullSDK/rabet are typed globally in services/sep10Auth.ts —
+// declaring them again here with different types would conflict.
 declare global {
   interface Window {
     stellar?: {
       requestPublicKey: () => Promise<string>
     }
-    freighter?: FreighterWallet
-    albedo?: AlbedoWallet
-    xBullSDK?: XBullSDKWallet
-    rabet?: RabetWallet
   }
 }
 
