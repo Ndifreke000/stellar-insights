@@ -51,7 +51,7 @@ function isAuthorised(headersList: Headers): boolean {
 }
 
 export const metadata = {
-  title: "Internal Monitoring — Stellar Insights",
+  title: "Internal Monitoring — PayRaider",
   // Prevent search engines from indexing this internal page
   robots: "noindex, nofollow",
 };

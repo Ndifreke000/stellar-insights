@@ -10,7 +10,7 @@
     "refresh": "Refresh"
   },
   "metadata": {
-    "title": "Stellar Insights - Payment Network Intelligence",
+    "title": "PayRaider - Payment Network Intelligence",
     "description": "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity."
   },
   "layout": {
@@ -46,10 +46,10 @@
     "aboutUs": "About Us",
     "howToUse": "How to Use",
     "contactUs": "Contact Us",
-    "learnAbout": "Learn about Stellar Insights",
+    "learnAbout": "Learn about PayRaider",
     "getStarted": "Get started with our platform",
     "reachOut": "Reach out to our team",
-    "stellarInsights": "Stellar Insights",
+    "stellarInsights": "PayRaider",
     "toggleMenu": "Toggle navigation menu"
   },
   "home": {
@@ -57,7 +57,7 @@
       "liveBadge": "Live Network Intelligence Active",
       "title": "QUANTIFYING",
       "titleHighlight": "NETWORK TRUST",
-      "subtitle": "Stellar Insights provides institutional-grade telemetry for the Stellar payment network. Move beyond transaction counting; analyze liquidity depth, corridor reliability, and settlement finality in real-time.",
+      "subtitle": "PayRaider provides institutional-grade telemetry for the Stellar payment network. Move beyond transaction counting; analyze liquidity depth, corridor reliability, and settlement finality in real-time.",
       "enterTerminal": "Enter Terminal",
       "connectIdentity": "Connect Identity",
       "initializing": "Initializing..."
@@ -78,16 +78,16 @@
     },
     "cta": {
       "title": "Ready to integrate network intelligence?",
-      "subtitle": "Join the forward-thinking anchors and wallets already using Stellar Insights to optimize their liquidity management and payment reliability.",
+      "subtitle": "Join the forward-thinking anchors and wallets already using PayRaider to optimize their liquidity management and payment reliability.",
       "launchTerminal": "Launch Terminal",
       "readSpec": "Read Specification"
     },
     "footer": {
-      "stellarInsights": "Stellar Insights",
+      "stellarInsights": "PayRaider",
       "networkStatus": "Network Status",
       "apiKeys": "API Keys",
       "governance": "Governance",
-      "copyright": "© 2026 STELLAR_INSIGHTS // v1.4.0-STABLE"
+      "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
     }
   },
   "contact": {

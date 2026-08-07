@@ -64,7 +64,7 @@ export const useCameraIntegration = (): CameraIntegrationState => {
         const { PermissionsAndroid } = require('react-native');
         const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
           title: 'Camera Permission',
-          message: 'Stellar Insights needs camera access for QR code scanning and document capture',
+          message: 'PayRaider needs camera access for QR code scanning and document capture',
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',

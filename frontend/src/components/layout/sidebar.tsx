@@ -74,9 +74,9 @@ export function Sidebar({ open: _open, onClose: _onClose }: SidebarProps = {}) {
           </div>
           {!collapsed && (
             <span className="text-xl font-bold tracking-tighter text-foreground whitespace-nowrap overflow-hidden">
-              STELLAR
+              PAY
               <span className="text-accent underline decoration-accent/30">
-                {" "}{t("stellarInsights")}
+                RAIDER
               </span>
             </span>
           )}

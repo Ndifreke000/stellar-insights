@@ -19,7 +19,7 @@ export function PWAExample() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Progressive Web App</h1>
         <p className="text-muted-foreground">
-          Install Stellar Insights for offline access and faster loading
+          Install PayRaider for offline access and faster loading
         </p>
       </div>
 
