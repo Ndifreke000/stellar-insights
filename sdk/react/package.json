@@ -1,12 +1,12 @@
 {
-  "name": "@stellar-insights/sdk",
-  "version": "1.0.0",
-  "description": "Official TypeScript SDK for the Stellar Insights API",
-  "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/typescript#readme",
+  "name": "@stellar-insights/react",
+  "version": "0.1.0",
+  "description": "React hooks and components for the Stellar Insights API, built on @stellar-insights/sdk",
+  "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/react#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
-    "directory": "sdk/typescript"
+    "directory": "sdk/react"
   },
   "bugs": {
     "url": "https://github.com/Ndifreke000/stellar-insights/issues"
@@ -26,25 +26,32 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "generate": "bash scripts/generate-bindings.sh",
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react",
     "test": "vitest run",
-    "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"
   },
   "keywords": [
     "stellar",
-    "sdk",
+    "react",
+    "hooks",
+    "components",
     "payments",
-    "analytics",
-    "request-deduplication",
-    "network-context",
-    "authentication",
-    "retry-backoff"
+    "analytics"
   ],
   "license": "MIT",
+  "peerDependencies": {
+    "@stellar-insights/sdk": "^1.0.0",
+    "react": ">=18"
+  },
   "devDependencies": {
+    "@stellar-insights/sdk": "file:../typescript",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "^24.0.0",
+    "@types/react": "^18.3.0",
+    "jsdom": "^25.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "tsup": "8.5.1",
     "typescript": "^5.7.3",
     "vitest": "4.1.10"
