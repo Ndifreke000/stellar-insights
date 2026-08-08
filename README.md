@@ -1,4 +1,4 @@
-# Stellar Insights
+# PayRaider
 
 **Real-time payment analytics for Stellar.**
 

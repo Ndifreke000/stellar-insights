@@ -49,7 +49,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title} accessibilityRole="header">
-            Stellar Insights
+            PayRaider
           </Text>
           <Text style={styles.subtitle}>Sign in to continue</Text>
         </View>

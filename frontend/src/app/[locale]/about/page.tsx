@@ -4,9 +4,9 @@ import { TrendingUp, Shield, Zap, Globe, BarChart3, Activity } from "lucide-reac
 
 
 export const metadata: Metadata = {
- title: "About Us — Stellar Insights",
+ title: "About Us — PayRaider",
  description:
-   "Learn about Stellar Insights — the team behind institutional-grade telemetry for the Stellar payment network.",
+   "Learn about PayRaider — the team behind institutional-grade telemetry for the Stellar payment network.",
 };
 
 
@@ -51,7 +51,7 @@ export default function AboutPage() {
      <section className="text-center space-y-5 pt-4">
        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/30 bg-accent/10 text-accent text-xs font-semibold tracking-widest uppercase">
          <TrendingUp className="w-3.5 h-3.5" />
-         About Stellar Insights
+         About PayRaider
        </div>
 
 
@@ -62,7 +62,7 @@ export default function AboutPage() {
 
 
        <p className="text-muted-foreground text-lg max-w-2xl mx-auto leading-relaxed">
-         Stellar Insights was created to give institutions, developers, and traders the
+         PayRaider was created to give institutions, developers, and traders the
          high-fidelity telemetry they need to operate confidently on the world&apos;s fastest
          payment network. We move beyond simple transaction counts to surface what actually
          matters — liquidity depth, corridor reliability, and settlement certainty.

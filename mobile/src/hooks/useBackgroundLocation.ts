@@ -11,7 +11,7 @@ const DEFAULT_CONFIG: BackgroundLocationConfig = {
   distanceFilter: 10,
   interval: 30000,
   showsBackgroundLocationIndicator: true,
-  notificationTitle: 'Stellar Insights',
+  notificationTitle: 'PayRaider',
   notificationBody: 'Tracking location in background',
 };
 

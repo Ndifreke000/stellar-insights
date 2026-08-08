@@ -76,7 +76,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               <TrendingUpIcon className="w-5 h-5 text-white" />
             </div>
             <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:inline">
-              Stellar Insights
+              PayRaider
             </span>
           </div>
         </div>

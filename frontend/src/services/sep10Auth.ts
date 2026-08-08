@@ -37,6 +37,7 @@ export interface Sep10Info {
 }
 
 interface FreighterApi {
+  getPublicKey(): Promise<string>;
   signTransaction(
     xdr: string,
     opts: { network: string; networkPassphrase: string; accountToSign: string },
@@ -44,6 +45,7 @@ interface FreighterApi {
 }
 
 interface AlbedoApi {
+  publicKey(opts: Record<string, unknown>): Promise<{ pubkey: string }>;
   tx(opts: {
     xdr: string;
     network: string;
@@ -60,6 +62,7 @@ interface XBullSDKApi {
 }
 
 interface RabetApi {
+  connect(): Promise<{ publicKey: string }>;
   sign(xdr: string, network: string): Promise<{ xdr: string }>;
 }
 

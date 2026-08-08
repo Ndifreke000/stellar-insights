@@ -368,7 +368,7 @@ export const useAppStore = create<AppState & AppActions>()(
       }
     ),
     {
-      name: 'Stellar Insights App Store',
+      name: 'PayRaider App Store',
     }
   )
 );

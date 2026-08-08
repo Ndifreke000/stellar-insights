@@ -14,7 +14,7 @@ export const WatchAppComponent: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={styles.container} accessibilityLabel="Watch App screen">
       <Text style={styles.title}>Watch App</Text>
-      <Text style={styles.subtitle}>Apple Watch companion for Stellar Insights.</Text>
+      <Text style={styles.subtitle}>Apple Watch companion for PayRaider.</Text>
       <Text style={styles.status} accessibilityRole="text">
         {isSupported ? 'Watch App supported on this device.' : 'Watch App requires iOS.'}
       </Text>

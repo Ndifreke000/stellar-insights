@@ -11,14 +11,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Stellar Insights - Payment Network Intelligence",
+  title: "PayRaider - Payment Network Intelligence",
   description:
     "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Stellar Insights",
+    title: "PayRaider",
   },
   formatDetection: { telephone: false },
 };
