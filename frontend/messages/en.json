@@ -38,7 +38,13 @@
       "performance": "Performance",
       "expandSidebar": "Expand Sidebar",
       "collapseSidebar": "Collapse Sidebar",
-      "systemNominal": "System Nominal"
+      "systemNominal": "System Nominal",
+      "groups": {
+        "networkData": "Network Data",
+        "analytics": "Analytics",
+        "monitoring": "Monitoring",
+        "developer": "Developer"
+      }
     }
   },
   "navbar": {

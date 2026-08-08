@@ -11,6 +11,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   LayoutDashboard,
   Waves,
   Droplets,
@@ -27,25 +28,51 @@ import {
 import { useUserPreferences } from "@/contexts/UserPreferencesContext";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
-const navItems = [
+// Pinned items always show at the top, ungrouped.
+const pinnedItems = [
   { key: "home", icon: LayoutDashboard, path: "/" },
   { key: "terminal", icon: LayoutDashboard, path: "/dashboard" },
-  { key: "corridors", icon: Compass, path: "/corridors" },
-  { key: "network", icon: Share2, path: "/network" },
-  { key: "analytics", icon: BarChart3, path: "/analytics" },
-  { key: "apiUsage", icon: Activity, path: "/analytics/api" },
-  { key: "trustlines", icon: Users, path: "/trustlines" },
-  { key: "networkHealth", icon: Activity, path: "/health" },
-  { key: "liquidity", icon: Waves, path: "/liquidity" },
-  { key: "pools", icon: Droplets, path: "/liquidity-pools" },
-  { key: "sep6", icon: Database, path: "/sep6" },
-  { key: "calculator", icon: Calculator, path: "/calculator" },
-  { key: "apiKeys", icon: Key, path: "/developer/keys" },
-  { key: "quests", icon: Trophy, path: "/quests" },
-  { key: "governance", icon: ScrollText, path: "/governance" },
-  { key: "privacy", icon: Shield, path: "/settings/gdpr" },
-  { key: "alerts", icon: Activity, path: "/alerts" },
-  { key: "performance", icon: Gauge, path: "/performance" },
+];
+
+// Everything else is grouped into collapsible sections so the sidebar
+// doesn't read as one long undifferentiated list of 16+ links.
+const navGroups = [
+  {
+    key: "networkData",
+    items: [
+      { key: "corridors", icon: Compass, path: "/corridors" },
+      { key: "network", icon: Share2, path: "/network" },
+      { key: "trustlines", icon: Users, path: "/trustlines" },
+      { key: "liquidity", icon: Waves, path: "/liquidity" },
+      { key: "pools", icon: Droplets, path: "/liquidity-pools" },
+    ],
+  },
+  {
+    key: "analytics",
+    items: [
+      { key: "analytics", icon: BarChart3, path: "/analytics" },
+      { key: "apiUsage", icon: Activity, path: "/analytics/api" },
+      { key: "calculator", icon: Calculator, path: "/calculator" },
+      { key: "performance", icon: Gauge, path: "/performance" },
+    ],
+  },
+  {
+    key: "monitoring",
+    items: [
+      { key: "networkHealth", icon: Activity, path: "/health" },
+      { key: "alerts", icon: Activity, path: "/alerts" },
+    ],
+  },
+  {
+    key: "developer",
+    items: [
+      { key: "apiKeys", icon: Key, path: "/developer/keys" },
+      { key: "governance", icon: ScrollText, path: "/governance" },
+      { key: "quests", icon: Trophy, path: "/quests" },
+      { key: "privacy", icon: Shield, path: "/settings/gdpr" },
+      { key: "sep6", icon: Database, path: "/sep6" },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -53,12 +80,62 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+type NavItem = { key: string; icon: typeof LayoutDashboard; path: string };
+
+function NavLink({
+  item,
+  isActive,
+  collapsed,
+  label,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  collapsed: boolean;
+  label: string;
+}) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.path}
+      aria-current={isActive ? "page" : undefined}
+      aria-label={label}
+      className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${isActive
+          ? "bg-accent/10 text-accent border border-accent/20"
+          : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
+        }`}
+    >
+      <Icon
+        aria-hidden="true"
+        className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
+      />
+      {!collapsed && (
+        <span className="font-bold text-sm uppercase tracking-widest">
+          {label}
+        </span>
+      )}
+      {isActive && !collapsed && (
+        <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" aria-hidden="true" />
+      )}
+    </Link>
+  );
+}
+
 export function Sidebar({ open: _open, onClose: _onClose }: SidebarProps = {}) {
   const pathname = usePathname();
   const t = useTranslations("layout.sidebar");
+  const tGroups = useTranslations("layout.sidebar.groups");
   const { prefs, setPrefs } = useUserPreferences();
   const collapsed = prefs.sidebarCollapsed;
   const setCollapsed = (val: boolean) => setPrefs({ sidebarCollapsed: val });
+
+  const collapsedGroups = prefs.sidebarCollapsedGroups;
+  const toggleGroup = (groupKey: string) => {
+    setPrefs({
+      sidebarCollapsedGroups: collapsedGroups.includes(groupKey)
+        ? collapsedGroups.filter((k) => k !== groupKey)
+        : [...collapsedGroups, groupKey],
+    });
+  };
 
   return (
     <aside
@@ -85,38 +162,63 @@ export function Sidebar({ open: _open, onClose: _onClose }: SidebarProps = {}) {
         {/* Navigation Section */}
         <nav aria-label="Primary navigation" className="flex-1 px-4 py-8 overflow-y-auto">
           <ul role="list" className="space-y-3 m-0 p-0 list-none">
-            {navItems.map((item) => {
-              const isActive = pathname === item.path;
-              const Icon = item.icon;
+            {pinnedItems.map((item) => (
+              <li key={item.path}>
+                <NavLink
+                  item={item}
+                  isActive={pathname === item.path}
+                  collapsed={collapsed}
+                  label={t(item.key)}
+                />
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-6 space-y-4">
+            {navGroups.map((group) => {
+              const hasActiveItem = group.items.some((item) => pathname === item.path);
+              // A group containing the current page always shows its items,
+              // regardless of stored collapse state — otherwise navigating
+              // straight to a deep link could hide it behind a collapsed group.
+              const expanded = hasActiveItem || !collapsedGroups.includes(group.key);
+              const panelId = `sidebar-group-${group.key}`;
 
               return (
-                <li key={item.path}>
-                  <Link
-                    href={item.path}
-                    aria-current={isActive ? "page" : undefined}
-                    aria-label={t(item.key)}
-                    className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group ${isActive
-                        ? "bg-accent/10 text-accent border border-accent/20"
-                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent"
-                      }`}
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      className={`w-5 h-5 shrink-0 ${isActive ? "text-accent" : "group-hover:text-foreground"}`}
-                    />
-                    {!collapsed && (
-                      <span className="font-bold text-sm uppercase tracking-widest">
-                        {t(item.key)}
-                      </span>
-                    )}
-                    {isActive && !collapsed && (
-                      <div className="ml-auto w-1 h-4 rounded-full bg-accent shadow-[0_0_8px_rgba(99,102,241,0.6)]" aria-hidden="true" />
-                    )}
-                  </Link>
-                </li>
+                <div key={group.key}>
+                  {!collapsed && (
+                    <button
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      className="w-full flex items-center justify-between px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+                    >
+                      <span>{tGroups(group.key)}</span>
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`}
+                      />
+                    </button>
+                  )}
+                  {/* Icon-only (collapsed sidebar) mode ignores group state — there's
+                      no room for headers, so every icon always shows flat. */}
+                  {(collapsed || expanded) && (
+                    <ul id={panelId} role="list" className="space-y-3 m-0 p-0 list-none mt-1">
+                      {group.items.map((item) => (
+                        <li key={item.path}>
+                          <NavLink
+                            item={item}
+                            isActive={pathname === item.path}
+                            collapsed={collapsed}
+                            label={t(item.key)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               );
             })}
-          </ul>
+          </div>
         </nav>
 
         {/* Footer / Settings Section */}
