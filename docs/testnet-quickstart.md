@@ -174,7 +174,7 @@ To run SDK examples pointing to the testnet:
 1. Verify that your SDK configuration imports the testnet passphrase and endpoint.
 2. Example script usage:
    ```javascript
-   import { StellarSdk } from '@stellar-insights/sdk';
+   import { StellarSdk } from '@payraider/sdk';
 
    const sdk = new StellarSdk({
      network: 'testnet',

@@ -1,7 +1,7 @@
 {
-  "name": "@stellar-insights/sdk",
+  "name": "@payraider/sdk",
   "version": "1.0.0",
-  "description": "Official TypeScript SDK for the Stellar Insights API",
+  "description": "Official TypeScript SDK for the PayRaider API",
   "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/typescript#readme",
   "repository": {
     "type": "git",

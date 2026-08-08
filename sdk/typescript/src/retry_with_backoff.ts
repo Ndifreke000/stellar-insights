@@ -1,10 +1,10 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type {
   RetryWithBackoffMetrics,
   RetryWithBackoffParams,
   RetryWithBackoffResult,
 } from "./types/retry_with_backoff.js";
-import { StellarInsightsError } from "./http.js";
+import { PayRaiderError } from "./http.js";
 import { SDKError } from "./sdk_error.js";
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -17,12 +17,12 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class RetryWithBackoff {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
   private totalExecutions = 0;
   private totalRetries = 0;
   private totalFailures = 0;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 
@@ -106,7 +106,7 @@ export class RetryWithBackoff {
       return true;
     }
 
-    if (error instanceof StellarInsightsError) {
+    if (error instanceof PayRaiderError) {
       if (retryableStatuses.has(error.status)) {
         return true;
       }

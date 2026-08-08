@@ -1,4 +1,4 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type {
   NetworkChangeListener,
   NetworkContextManagementParams,
@@ -16,12 +16,12 @@ const NETWORK_URLS: Record<StellarNetwork, string> = {
 export class NetworkContextManagement {
   public static readonly HEADER_NAME = "X-Stellar-Network";
 
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
   private currentNetwork: StellarNetwork;
   private readonly cache = new Map<string, unknown>();
   private readonly listeners = new Set<NetworkChangeListener>();
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
     this.currentNetwork = NetworkContextManagement.inferNetworkFromConfig(config);
   }
@@ -133,7 +133,7 @@ export class NetworkContextManagement {
     };
   }
 
-  private static inferNetworkFromConfig(config: StellarInsightsConfig): StellarNetwork {
+  private static inferNetworkFromConfig(config: PayRaiderConfig): StellarNetwork {
     if (config.baseUrl?.includes("testnet")) {
       return "testnet";
     }

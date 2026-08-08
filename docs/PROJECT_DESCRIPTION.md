@@ -276,7 +276,7 @@ Two client SDKs allow developers to integrate Stellar Insights data into their o
 **TypeScript SDK (`sdk/typescript/`)**
 
 ```typescript
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { StellarInsightsClient } from '@payraider/sdk';
 
 const client = new StellarInsightsClient({ apiKey: 'your-key' });
 

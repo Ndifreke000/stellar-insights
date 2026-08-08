@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { StellarInsightsClient } from "./sdk-types.js";
+import type { PayRaiderClient } from "./sdk-types.js";
 
 const pagination = {
   page: z.number().int().min(1).optional().describe("Page number, 1-indexed"),
@@ -12,12 +12,12 @@ export interface ToolDef {
   name: string;
   description: string;
   schema: z.ZodRawShape;
-  call: (client: StellarInsightsClient, args: Record<string, unknown>) => Promise<unknown>;
+  call: (client: PayRaiderClient, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /**
  * Read-only tool set (v1). Every tool maps 1:1 onto an existing
- * @stellar-insights/sdk resource method — no new backend behaviour.
+ * @payraider/sdk resource method — no new backend behaviour.
  * Mutating operations (transactions, governance votes, webhooks, api keys,
  * alert rule writes, auth) are intentionally excluded; see README for the
  * write-tool opt-in.

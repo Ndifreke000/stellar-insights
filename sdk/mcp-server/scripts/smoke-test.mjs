@@ -12,7 +12,7 @@ const transport = new StdioClientTransport({
   command: "npx",
   args: ["tsx", "src/index.ts"],
   cwd: packageRoot,
-  env: { ...process.env, STELLAR_INSIGHTS_API_KEY: process.env.STELLAR_INSIGHTS_API_KEY ?? "smoke-test-dummy-key" },
+  env: { ...process.env, PAYRAIDER_API_KEY: process.env.PAYRAIDER_API_KEY ?? "smoke-test-dummy-key" },
 });
 
 const client = new Client({ name: "smoke-test-client", version: "0.0.1" });

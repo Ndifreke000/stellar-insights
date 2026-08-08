@@ -1,9 +1,9 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 
 /**
  * SDK initialization configuration with network awareness
  */
-export interface SDKInitConfig extends StellarInsightsConfig {
+export interface SDKInitConfig extends PayRaiderConfig {
   /** Enable debug logging */
   debug?: boolean;
   /** Target network: mainnet or testnet */
@@ -136,7 +136,7 @@ export class SDKInitializer {
     // Log initialization if debug mode is enabled
     if (mergedConfig.debug) {
       console.log(
-        `[Stellar Insights SDK] Initializing in ${environment} environment`,
+        `[PayRaider SDK] Initializing in ${environment} environment`,
         {
           network: mergedConfig.network,
           platform: EnvironmentDetector.getPlatform(),

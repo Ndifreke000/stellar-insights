@@ -1,0 +1,11 @@
+{
+  "name": "payraider-sdk-workspace",
+  "private": true,
+  "description": "Workspace root linking the PayRaider SDK family (typescript, react, mcp-server) for local development. Not published.",
+  "workspaces": ["typescript", "react", "mcp-server"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  }
+}

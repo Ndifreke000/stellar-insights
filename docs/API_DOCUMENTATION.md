@@ -357,7 +357,7 @@ ws.onmessage = (event) => {
 
 ## SDKs and Libraries
 
-- **JavaScript/TypeScript:** `npm install @stellar-insights/sdk`
+- **JavaScript/TypeScript:** `npm install @payraider/sdk`
 - **Python:** `pip install stellar-insights`
 - **Go:** `go get github.com/stellar-insights/go-sdk`
 

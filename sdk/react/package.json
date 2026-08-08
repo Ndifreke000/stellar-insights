@@ -1,7 +1,7 @@
 {
-  "name": "@stellar-insights/react",
+  "name": "@payraider/react",
   "version": "0.1.0",
-  "description": "React hooks and components for the Stellar Insights API, built on @stellar-insights/sdk",
+  "description": "React hooks and components for the PayRaider API, built on @payraider/sdk",
   "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/react#readme",
   "repository": {
     "type": "git",
@@ -40,11 +40,11 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@stellar-insights/sdk": "^1.0.0",
+    "@payraider/sdk": "^1.0.0",
     "react": ">=18"
   },
   "devDependencies": {
-    "@stellar-insights/sdk": "file:../typescript",
+    "@payraider/sdk": "^1.0.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/node": "^24.0.0",

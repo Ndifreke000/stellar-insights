@@ -158,7 +158,7 @@ import {
   initializeForMobile,
   autoInitialize,
   EnvironmentDetector
-} from '@stellar-insights/sdk';
+} from '@payraider/sdk';
 
 // Auto-initialize based on environment
 const context = autoInitialize({
@@ -226,7 +226,7 @@ Enterprise-grade API client with interceptors, caching, retries, and mobile opti
 #### Usage:
 
 ```typescript
-import { ApiClient, BatchApiClient, ApiClientError } from '@stellar-insights/sdk';
+import { ApiClient, BatchApiClient, ApiClientError } from '@payraider/sdk';
 
 // Create client
 const client = new ApiClient({
@@ -338,7 +338,7 @@ import {
   SDKInitializer,
   autoInitialize,
   ApiClient
-} from '@stellar-insights/sdk';
+} from '@payraider/sdk';
 
 // 1. Initialize SDK
 const initContext = autoInitialize({

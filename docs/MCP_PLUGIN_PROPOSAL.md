@@ -63,7 +63,7 @@ Write-scoped tools (create anchor/corridor, submit governance vote) are a
 **separate, explicitly-opted-in SKU**, not bundled by default — see §3.4.
 
 ### 2.4 Distribution
-- npm package (`npx @stellar-insights/mcp-server`) — zero-install trial.
+- npm package (`npx @payraider/mcp-server`) — zero-install trial.
 - Listing in public MCP registries (mcp.so, Anthropic's directory) — this
   listing *is* the plugin distribution channel; no new storefront needed.
 - Claude Desktop / Claude Code config snippet in the SDK README, next to the
@@ -171,7 +171,7 @@ a live backend until Phase 0 is complete.
 | 0.2 | Fix redis-rs API mismatch (`cache.rs`, `redis_caching_layer.rs`, `rate_limiting_advanced.rs`, `distributed_lock.rs`, `websocket.rs`, `api/gdpr.rs`, `ingestion/*`, `rate_limit.rs`) | Backend compiles against redis 1.3 | 0.1 | 2–4 days |
 | 0.3 | Fix hmac/sha2/digest version conflict (`webhooks/mod.rs`, `auth/sep10_simple.rs`, `request_signing_middleware.rs`) | Webhook signing + SEP-10 compile | 0.1 | 0.5–1 day |
 | 0.4 | Fix frontend `package-lock.json` drift (`@vitejs/plugin-react` ^4 vs ^6) | `npm install` succeeds with no flags | — | 0.5 day |
-| 1.1 | Scaffold `@stellar-insights/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | 0.5 day |
+| 1.1 | Scaffold `@payraider/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | 0.5 day |
 | 1.2 | Add streamable-HTTP transport option | Server runnable as hosted endpoint, not just local stdio | 1.1 | 0.5 day |
 | 2.1 | Implement read-only tool set (§3.3) with Zod schemas + descriptions | 11 working tools | 1.1 | 2–3 days |
 | 2.2 | Implement `verify_snapshot` (Soroban contract read + hash compare) | Differentiator tool working end-to-end | 2.1 | 1–2 days |
@@ -180,7 +180,7 @@ a live backend until Phase 0 is complete.
 | 3.2 | `--allow-writes` gate + write-tool implementations (kept off by default) | Opt-in write tools, off in default build | 2.1 | 1 day |
 | 4.1 | Integration tests against a running backend (real testnet data) | CI-runnable test suite | 0.2, 0.3 | 1–2 days |
 | 4.2 | Manual test in Claude Desktop / Claude Code | Verified working end-to-end in a real client | 2.1, 2.2 | 0.5 day |
-| 5.1 | npm publish (`@stellar-insights/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | 0.5 day |
+| 5.1 | npm publish (`@payraider/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | 0.5 day |
 | 5.2 | Submit to MCP registries (mcp.so, Anthropic directory) | Public discoverability | 5.1 | 0.5 day |
 | 6.1 | Docs: add MCP section to `sdk/` README, cross-link from main README | Documented alongside existing SDKs | 5.1 | 0.5 day |
 

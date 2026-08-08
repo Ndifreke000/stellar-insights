@@ -1,6 +1,6 @@
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-export interface StellarInsightsConfig {
+export interface PayRaiderConfig {
   /** API key for Bearer token auth */
   apiKey?: string;
   /** OAuth2 access token */
@@ -17,7 +17,7 @@ export interface StellarInsightsConfig {
 
 // ─── SDK Initialization ────────────────────────────────────────────────────────
 
-export interface SDKInitConfig extends StellarInsightsConfig {
+export interface SDKInitConfig extends PayRaiderConfig {
   /** Enable debug logging */
   debug?: boolean;
   /** Target network: mainnet or testnet */

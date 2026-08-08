@@ -1,6 +1,6 @@
 # stellar-insights
 
-Official Python SDK for the [Stellar Insights](https://stellar-insights.com) API — real-time payment corridor and anchor analytics for the Stellar network.
+Official Python SDK for the [PayRaider](https://stellar-insights.com) API — real-time payment corridor and anchor analytics for the Stellar network.
 
 ## Install
 

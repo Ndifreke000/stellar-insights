@@ -1,5 +1,5 @@
 import { HttpClient } from "./http.js";
-import type { StellarInsightsConfig, AuthTokens } from "./types.js";
+import type { PayRaiderConfig, AuthTokens } from "./types.js";
 import type {
   AuthEventListener,
   AuthEventType,
@@ -29,12 +29,12 @@ class InMemoryTokenStorage implements TokenStorage {
 }
 
 export class AuthenticationModule {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
   private readonly http: HttpClient;
   private readonly storage: TokenStorage;
   private readonly listeners = new Set<AuthEventListener>();
 
-  constructor(config: StellarInsightsConfig = {}, storage?: TokenStorage) {
+  constructor(config: PayRaiderConfig = {}, storage?: TokenStorage) {
     this.config = config;
     this.http = new HttpClient(config);
     this.storage = storage ?? new InMemoryTokenStorage();

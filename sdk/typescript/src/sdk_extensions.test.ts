@@ -67,10 +67,10 @@ describe("SDK extensions", () => {
   describe("NPMPublishingSetup", () => {
     it("configures publishing with defaults", async () => {
       const npmSetup = new NPMPublishingSetup();
-      const result = await npmSetup.execute({ packageName: "@stellar-insights/sdk", version: "1.0.0" });
+      const result = await npmSetup.execute({ packageName: "@payraider/sdk", version: "1.0.0" });
       expect(result.success).toBe(true);
       expect(result.data.registryUrl).toBe("https://registry.npmjs.org");
-      expect(result.data.packageName).toBe("@stellar-insights/sdk");
+      expect(result.data.packageName).toBe("@payraider/sdk");
     });
 
     it("throws SDKError for invalid packageName", async () => {

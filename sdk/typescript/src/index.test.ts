@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StellarInsights, StellarInsightsError } from "../src/index.js";
+import { PayRaider, PayRaiderError } from "../src/index.js";
 
 // Minimal fetch mock
 const mockFetch = vi.fn();
@@ -24,12 +24,12 @@ function err(status: number, body: unknown) {
   });
 }
 
-describe("StellarInsights SDK", () => {
-  let client: StellarInsights;
+describe("PayRaider SDK", () => {
+  let client: PayRaider;
 
   beforeEach(() => {
     mockFetch.mockReset();
-    client = new StellarInsights({ apiKey: "test-key", maxRetries: 0 });
+    client = new PayRaider({ apiKey: "test-key", maxRetries: 0 });
   });
 
   it("sends Bearer token", async () => {
@@ -47,11 +47,11 @@ describe("StellarInsights SDK", () => {
     expect(url).toContain("limit=10");
   });
 
-  it("throws StellarInsightsError on 4xx", async () => {
+  it("throws PayRaiderError on 4xx", async () => {
     mockFetch.mockReturnValueOnce(
       err(401, { error: "UNAUTHORIZED", message: "Invalid API key", status: 401 }),
     );
-    await expect(client.anchors.list()).rejects.toThrow(StellarInsightsError);
+    await expect(client.anchors.list()).rejects.toThrow(PayRaiderError);
   });
 
   it("throws with correct status and code", async () => {
@@ -61,14 +61,14 @@ describe("StellarInsights SDK", () => {
     try {
       await client.anchors.get("missing");
     } catch (e) {
-      expect(e).toBeInstanceOf(StellarInsightsError);
-      expect((e as StellarInsightsError).status).toBe(404);
-      expect((e as StellarInsightsError).code).toBe("NOT_FOUND");
+      expect(e).toBeInstanceOf(PayRaiderError);
+      expect((e as PayRaiderError).status).toBe(404);
+      expect((e as PayRaiderError).code).toBe("NOT_FOUND");
     }
   });
 
   it("retries on 429 up to maxRetries", async () => {
-    const clientWithRetry = new StellarInsights({
+    const clientWithRetry = new PayRaider({
       apiKey: "test-key",
       maxRetries: 2,
       retryDelay: 0,

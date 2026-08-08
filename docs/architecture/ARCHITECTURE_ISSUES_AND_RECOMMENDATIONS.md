@@ -96,8 +96,8 @@ X-Stellar-Network: testnet
 
 **Solution:**
 ```typescript
-// Create @stellar-insights/sdk package
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+// Create @payraider/sdk package
+import { StellarInsightsClient } from '@payraider/sdk';
 
 const client = new StellarInsightsClient({
   apiUrl: 'https://api.stellar-insights.com',
@@ -214,7 +214,7 @@ import { create } from 'zustand';
            └──────────┬───────────┘
                       │
            ┌──────────▼──────────────────────┐
-           │   @stellar-insights/sdk         │
+           │   @payraider/sdk                │
            │   - TypeScript                  │
            │   - Platform-agnostic           │
            │   - Type-safe API client        │
@@ -374,7 +374,7 @@ export class StellarInsightsClient {
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { StellarInsightsClient } from '@payraider/sdk';
 
 const client = new StellarInsightsClient({
   apiUrl: 'https://api.stellar-insights.com',

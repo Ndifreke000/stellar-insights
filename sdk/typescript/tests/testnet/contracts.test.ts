@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, skipIf } from "vitest";
-import { StellarInsights } from "../../src/index.js";
+import { PayRaider } from "../../src/index.js";
 import type { VoteTally } from "../../src/types.js";
 
 const TESTNET_RPC_URL = process.env.TESTNET_RPC_URL;
@@ -7,10 +7,10 @@ const TESTNET_SECRET_KEY = process.env.TESTNET_SECRET_KEY;
 const skipTestnet = !TESTNET_RPC_URL || !TESTNET_SECRET_KEY;
 
 describe.skipIf(skipTestnet)("Testnet: Contract Integration Tests", () => {
-  let client: StellarInsights;
+  let client: PayRaider;
 
   beforeAll(() => {
-    client = new StellarInsights({
+    client = new PayRaider({
       baseUrl: TESTNET_RPC_URL || "https://testnet-api.stellarinsights.io",
       apiKey: TESTNET_SECRET_KEY,
     });

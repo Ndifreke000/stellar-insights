@@ -1,5 +1,5 @@
-import type { StellarInsightsConfig, ApiError, PaginatedResponse } from "./types.js";
-import { HttpClient, StellarInsightsError } from "./http.js";
+import type { PayRaiderConfig, ApiError, PaginatedResponse } from "./types.js";
+import { HttpClient, PayRaiderError } from "./http.js";
 
 /**
  * Request interceptor type
@@ -120,7 +120,7 @@ export class ApiClient {
   private maxRetries: number;
   private retryDelay: number;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.httpClient = new HttpClient(config);
     this.cacheTimeout = (config as any).cacheTimeout ?? 60;
     this.requestTimeout = config.timeout ?? 30000;
@@ -345,7 +345,7 @@ export class ApiClient {
       return error;
     }
 
-    if (error instanceof StellarInsightsError) {
+    if (error instanceof PayRaiderError) {
       return new ApiClientError(
         error.message,
         error.status,
@@ -428,7 +428,7 @@ export class BatchApiClient extends ApiClient {
   private batchSize: number;
   private batchDelayMs: number;
 
-  constructor(config: StellarInsightsConfig = {}, batchSize: number = 10, batchDelayMs: number = 100) {
+  constructor(config: PayRaiderConfig = {}, batchSize: number = 10, batchDelayMs: number = 100) {
     super(config);
     this.batchSize = batchSize;
     this.batchDelayMs = batchDelayMs;

@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import type { StellarInsights } from "@stellar-insights/sdk";
-import { StellarInsightsProvider } from "./StellarInsightsProvider.js";
+import type { PayRaider } from "@payraider/sdk";
+import { PayRaiderProvider } from "./PayRaiderProvider.js";
 import { CorridorReliabilityCard } from "./components/CorridorReliabilityCard.js";
 
-function fakeClient(overrides: Partial<StellarInsights["corridors"]> = {}) {
+function fakeClient(overrides: Partial<PayRaider["corridors"]> = {}) {
   return {
     corridors: {
       list: vi.fn(),
       get: vi.fn(),
       ...overrides,
     },
-  } as unknown as StellarInsights;
+  } as unknown as PayRaider;
 }
 
 describe("CorridorReliabilityCard", () => {
@@ -30,9 +30,9 @@ describe("CorridorReliabilityCard", () => {
     });
 
     render(
-      <StellarInsightsProvider client={client}>
+      <PayRaiderProvider client={client}>
         <CorridorReliabilityCard source="USDC" destination="BRL" />
-      </StellarInsightsProvider>,
+      </PayRaiderProvider>,
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading USDC/BRL");
@@ -48,9 +48,9 @@ describe("CorridorReliabilityCard", () => {
     });
 
     render(
-      <StellarInsightsProvider client={client}>
+      <PayRaiderProvider client={client}>
         <CorridorReliabilityCard source="USDC" destination="BRL" />
-      </StellarInsightsProvider>,
+      </PayRaiderProvider>,
     );
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("network down"));

@@ -1,9 +1,9 @@
-# @stellar-insights/mcp-server
+# @payraider/mcp-server
 
-An [MCP](https://modelcontextprotocol.io) server that exposes Stellar Insights
+An [MCP](https://modelcontextprotocol.io) server that exposes PayRaider
 corridor, anchor, network and liquidity-pool analytics as tools for AI agents
 (Claude, ChatGPT, and other MCP-compatible clients). It's a thin adapter over
-[`@stellar-insights/sdk`](../typescript) — no new backend behaviour, just a
+[`@payraider/sdk`](../typescript) — no new backend behaviour, just a
 protocol translation layer.
 
 Full design rationale (business model, architecture, work breakdown) lives in
@@ -15,8 +15,8 @@ Full design rationale (business model, architecture, work breakdown) lives in
   liquidity pools, network stats, ML anomaly prediction, governance proposals
   (read), alert history (read), and asset verification. See `src/tools.ts`
   for the full list — each maps 1:1 onto an existing SDK resource method.
-- Two MCP resource templates (`stellar-insights://corridor/{source}/{destination}`,
-  `stellar-insights://anchor/{id}`) so an agent can attach a specific corridor
+- Two MCP resource templates (`payraider://corridor/{source}/{destination}`,
+  `payraider://anchor/{id}`) so an agent can attach a specific corridor
   or anchor as context.
 - stdio transport (the standard local-process MCP transport).
 
@@ -26,7 +26,7 @@ Full design rationale (business model, architecture, work breakdown) lives in
   differentiator tool described in the proposal doc. Needs a Soroban RPC
   contract-read integration that hasn't been built yet.
 - Write-scoped tools (transactions, governance votes, alert-rule/webhook
-  management). `STELLAR_INSIGHTS_MCP_ALLOW_WRITES=true` is reserved for this
+  management). `PAYRAIDER_MCP_ALLOW_WRITES=true` is reserved for this
   but is currently a no-op — see `src/index.ts`.
 - Streamable-HTTP transport (stdio only for now).
 - **Live end-to-end testing against a real backend.** The backend does not
@@ -49,22 +49,22 @@ npm run build
 
 | Env var | Required | Default | Purpose |
 |---|---|---|---|
-| `STELLAR_INSIGHTS_API_KEY` | yes | — | API key used to authenticate every tool call (same key system as the REST API / other SDKs) |
-| `STELLAR_INSIGHTS_NETWORK` | no | `testnet` | `mainnet` or `testnet` — selects the default API base URL |
-| `STELLAR_INSIGHTS_BASE_URL` | no | network default | Override, e.g. to point at a local backend during development |
-| `STELLAR_INSIGHTS_MCP_ALLOW_WRITES` | no | `false` | Reserved for write-scoped tools (not yet implemented) |
+| `PAYRAIDER_API_KEY` | yes | — | API key used to authenticate every tool call (same key system as the REST API / other SDKs) |
+| `PAYRAIDER_NETWORK` | no | `testnet` | `mainnet` or `testnet` — selects the default API base URL |
+| `PAYRAIDER_BASE_URL` | no | network default | Override, e.g. to point at a local backend during development |
+| `PAYRAIDER_MCP_ALLOW_WRITES` | no | `false` | Reserved for write-scoped tools (not yet implemented) |
 
 ## Running it
 
 ```bash
 npm run build
-STELLAR_INSIGHTS_API_KEY=your-key npm start
+PAYRAIDER_API_KEY=your-key npm start
 ```
 
 Or for local development without a build step:
 
 ```bash
-STELLAR_INSIGHTS_API_KEY=your-key npm run dev
+PAYRAIDER_API_KEY=your-key npm run dev
 ```
 
 ### Claude Desktop / Claude Code config
@@ -72,10 +72,10 @@ STELLAR_INSIGHTS_API_KEY=your-key npm run dev
 ```json
 {
   "mcpServers": {
-    "stellar-insights": {
+    "payraider": {
       "command": "node",
       "args": ["/absolute/path/to/sdk/mcp-server/dist/index.js"],
-      "env": { "STELLAR_INSIGHTS_API_KEY": "your-key" }
+      "env": { "PAYRAIDER_API_KEY": "your-key" }
     }
   }
 }

@@ -1,8 +1,8 @@
 export {
-  StellarInsightsProvider,
-  useStellarInsightsClient,
-  type StellarInsightsProviderProps,
-} from "./StellarInsightsProvider.js";
+  PayRaiderProvider,
+  usePayRaiderClient,
+  type PayRaiderProviderProps,
+} from "./PayRaiderProvider.js";
 
 export { useCorridor, type UseCorridorResult } from "./hooks/useCorridor.js";
 export { useCorridors, type UseCorridorsResult } from "./hooks/useCorridors.js";

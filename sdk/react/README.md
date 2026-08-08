@@ -1,43 +1,43 @@
-# @stellar-insights/react
+# @payraider/react
 
-React hooks and components for [Stellar Insights](https://github.com/Ndifreke000/stellar-insights), built on top of [`@stellar-insights/sdk`](../typescript).
+React hooks and components for [PayRaider](https://github.com/Ndifreke000/stellar-insights), built on top of [`@payraider/sdk`](../typescript).
 
 ## Install
 
 ```bash
-npm install @stellar-insights/react @stellar-insights/sdk
+npm install @payraider/react @payraider/sdk
 ```
 
 ## Quickstart
 
 ```tsx
-import { StellarInsightsProvider, CorridorReliabilityCard } from "@stellar-insights/react";
+import { PayRaiderProvider, CorridorReliabilityCard } from "@payraider/react";
 
 export function App() {
   return (
-    <StellarInsightsProvider network="mainnet">
+    <PayRaiderProvider network="mainnet">
       <CorridorReliabilityCard source="USDC" destination="BRL" />
-    </StellarInsightsProvider>
+    </PayRaiderProvider>
   );
 }
 ```
 
-`StellarInsightsProvider` also accepts a pre-built client (useful if your
+`PayRaiderProvider` also accepts a pre-built client (useful if your
 app already constructs one, e.g. with a custom `baseUrl` or auth token):
 
 ```tsx
-import { StellarInsights } from "@stellar-insights/sdk";
-import { StellarInsightsProvider } from "@stellar-insights/react";
+import { PayRaider } from "@payraider/sdk";
+import { PayRaiderProvider } from "@payraider/react";
 
-const client = new StellarInsights({ baseUrl: "https://your-backend.example.com" });
+const client = new PayRaider({ baseUrl: "https://your-backend.example.com" });
 
-<StellarInsightsProvider client={client}>...</StellarInsightsProvider>;
+<PayRaiderProvider client={client}>...</PayRaiderProvider>;
 ```
 
 ## Hooks
 
 ```tsx
-import { useCorridor, useCorridors } from "@stellar-insights/react";
+import { useCorridor, useCorridors } from "@payraider/react";
 
 function CorridorList() {
   const { data, isLoading, error } = useCorridors();
@@ -51,7 +51,7 @@ function CorridorDetail() {
 ```
 
 Both hooks return `{ data, error, isLoading, refetch }` and must be called
-under a `<StellarInsightsProvider>`.
+under a `<PayRaiderProvider>`.
 
 ## Components
 
