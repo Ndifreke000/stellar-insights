@@ -60,8 +60,8 @@ importers:
         specifier: ^5.0.8
         version: 5.0.8(jspdf@4.2.1)
       lucide-react:
-        specifier: ^0.576.0
-        version: 0.576.0(react@19.2.8)
+        specifier: ^1.31.0
+        version: 1.31.0(react@19.2.8)
       next:
         specifier: 16.2.12
         version: 16.2.12(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -116,7 +116,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^6.0.4
-        version: 6.0.4(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))
+        version: 6.0.4(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))
       autocannon:
         specifier: ^8.0.0
         version: 8.0.0
@@ -152,13 +152,13 @@ importers:
         version: 8.57.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       vite:
         specifier: 8.2.1
-        version: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)
+        version: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))
       vitest-axe:
         specifier: 1.0.0-pre.5
-        version: 1.0.0-pre.5(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)))
+        version: 1.0.0-pre.5(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)))
 
 packages:
 
@@ -4552,8 +4552,8 @@ packages:
     resolution: {integrity: sha512-DqC6n3QQ77zdFpCMASA1a3Jlb64Hv2N2DciFGkO/4L9+q/IpIAuRlKOvCXabtRW6cQf8usbmM6BE/TOPysCdIA==}
     engines: {bun: '>=1.0.0', deno: '>=1.30.0', node: '>=8.0.0'}
 
-  lucide-react@0.576.0:
-    resolution: {integrity: sha512-koNxU14BXrxUfZQ9cUaP0ES1uyPZKYDjk31FQZB6dQ/x+tXk979sVAn9ppZ/pVeJJyOxVM8j1E+8QEuSc02Vug==}
+  lucide-react@1.31.0:
+    resolution: {integrity: sha512-G8u2eEtoHUnUa9f8lbvqDhCiORMnYLdUEo06EEG9MQvHQrInKcX3Pa2TH39MM5qyzRcWETxB0+aOwAPI1g1kEg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -5458,8 +5458,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  terser@5.49.2:
-    resolution: {integrity: sha512-rGbJiKeQ4WDe3EXlDAIaQcwftVfv2Q8o1awFNfvXolJYKkb1AuZY1RTOmqx4LJXZENbWZA7eIsYGHuEzHsi1nQ==}
+  terser@5.50.0:
+    resolution: {integrity: sha512-CN9BVxWhgS/hRxtUMjtC2uRWSTcSfQFHMDWma6sKKfIivCD91sM+FOPfvwoaRMqCSrUpe1nv3jDamd9eEQ4y+w==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -9034,10 +9034,10 @@ snapshots:
       d3-time-format: 4.1.0
       internmap: 2.0.3
 
-  '@vitejs/plugin-react@6.0.4(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))':
+  '@vitejs/plugin-react@6.0.4(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)
+      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -9048,13 +9048,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))':
+  '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)
+      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)
 
   '@vitest/pretty-format@3.2.4':
     dependencies:
@@ -11143,7 +11143,7 @@ snapshots:
 
   lru.min@1.1.4: {}
 
-  lucide-react@0.576.0(react@19.2.8):
+  lucide-react@1.31.0(react@19.2.8):
     dependencies:
       react: 19.2.8
 
@@ -12095,7 +12095,7 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
-      terser: 5.49.2
+      terser: 5.50.0
       webpack: 5.105.4(esbuild@0.27.7)
     optionalDependencies:
       esbuild: 0.27.7
@@ -12107,7 +12107,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  terser@5.49.2:
+  terser@5.50.0:
     dependencies:
       '@jridgewell/source-map': 0.3.11
       acorn: 8.18.0
@@ -12365,7 +12365,7 @@ snapshots:
       d3-time: 3.1.0
       d3-timer: 3.0.1
 
-  vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2):
+  vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
@@ -12377,20 +12377,20 @@ snapshots:
       esbuild: 0.27.7
       fsevents: 2.3.3
       jiti: 2.7.0
-      terser: 5.49.2
+      terser: 5.50.0
 
-  vitest-axe@1.0.0-pre.5(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))):
+  vitest-axe@1.0.0-pre.5(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))):
     dependencies:
       '@vitest/pretty-format': 3.2.4
       axe-core: 4.12.1
       chalk: 5.6.2
       lodash-es: 4.17.23
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))
 
-  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)):
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2))
+      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -12407,7 +12407,7 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.2)
+      vite: 8.2.1(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.50.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
