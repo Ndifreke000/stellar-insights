@@ -49,7 +49,7 @@
     "recharts": "3.9.2",
     "tailwind-merge": "3.6.0",
     "zod": "4.4.3",
-    "zustand": "5.0.14"
+    "zustand": "5.0.15"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "16.2.12",
