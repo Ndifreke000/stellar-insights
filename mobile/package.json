@@ -17,7 +17,7 @@
     "@react-native-community/slider": "^5.2.0",
     "@react-native-firebase/app": "^19.0.1",
     "@react-native-firebase/messaging": "^19.0.1",
-    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/bottom-tabs": "^7.18.16",
     "@react-navigation/native": "^6.1.9",
     "@react-navigation/native-stack": "^6.9.17",
     "@stellar/stellar-sdk": "^16.1.0",
