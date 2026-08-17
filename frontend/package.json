@@ -46,7 +46,7 @@
     "react-dom": "19.2.8",
     "react-force-graph-2d": "1.29.1",
     "react-hook-form": "7.80.0",
-    "recharts": "3.9.2",
+    "recharts": "3.10.1",
     "tailwind-merge": "3.6.0",
     "zod": "4.4.3",
     "zustand": "5.0.14"
