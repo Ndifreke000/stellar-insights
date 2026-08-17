@@ -51,13 +51,13 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@types/react": "^18.2.48",
-    "@types/react-test-renderer": "^18.0.7",
+    "@types/react-test-renderer": "^19.1.0",
     "babel-jest": "^30.4.1",
     "babel-plugin-module-resolver": "^5.0.2",
     "eslint": "^10.8.1",
     "jest": "^30.4.2",
     "prettier": "^3.1.1",
-    "react-test-renderer": "18.2.0",
+    "react-test-renderer": "19.2.8",
     "typescript": "^7.0.2"
   },
   "engines": {
