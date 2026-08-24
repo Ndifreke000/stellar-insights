@@ -6,6 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ReactQueryLogger } from '@/lib/react-query/logger';
 import { ReactQueryProvider as CustomReactQueryProvider } from '@/lib/react-query/provider';
 import { useAppStore } from '@/lib/zustand/store';
+import { logger } from '@/lib/logger';
 
 interface StateDevtoolsObject {
   store: ReturnType<typeof useAppStore>;
@@ -56,13 +57,13 @@ function StateDevTools() {
       window.__stateDevtools = {
         // Store debugging
         store,
-        logState: () => console.log('Store State:', useAppStore.getState()),
+        logState: () => logger.debug('Store State:', { state: useAppStore.getState() }),
         resetState: () => store.resetState(),
 
         // Query debugging
         logQueries: () => {
           const cache = queryClient.getQueryCache();
-          console.log('Query Cache:', cache.getAll());
+          logger.debug('Query Cache:', { queries: cache.getAll() });
         },
         invalidateAll: () => {
           queryClient.invalidateQueries();

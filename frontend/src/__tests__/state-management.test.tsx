@@ -42,12 +42,20 @@ const mockGetSep24Info = async (server: string) => ({
   },
 });
 
-const mockStartDeposit = async ({ transfer_server, asset_code, amount, account, jwt }: any) => ({
+interface MockSep24Request {
+  transfer_server: string;
+  asset_code: string;
+  amount: string;
+  account: string;
+  jwt: string;
+}
+
+const mockStartDeposit = async ({ transfer_server, asset_code, amount, account, jwt }: MockSep24Request) => ({
   url: `https://anchor.example.com/deposit?token=${jwt}`,
   id: 'test-transaction-id',
 });
 
-const mockStartWithdraw = async ({ transfer_server, asset_code, amount, account, jwt }: any) => ({
+const mockStartWithdraw = async ({ transfer_server, asset_code, amount, account, jwt }: MockSep24Request) => ({
   id: 'test-transaction-id',
   url: `https://anchor.example.com/withdraw?token=${jwt}`,
 });

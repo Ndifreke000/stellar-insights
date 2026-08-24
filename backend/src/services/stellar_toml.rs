@@ -690,7 +690,8 @@ mod tests {
 
     #[test]
     fn test_validate_domain() {
-        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None)
+            .expect("failed to construct StellarTomlClient in test");
 
         // Valid domains
         assert!(client.validate_domain("example.com").is_ok());
@@ -709,7 +710,8 @@ mod tests {
 
     #[test]
     fn test_parse_toml_basic() {
-        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None)
+            .expect("failed to construct StellarTomlClient in test");
 
         let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -724,7 +726,7 @@ NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
         let result = client.parse_toml(toml_content, "test.com");
         assert!(result.is_ok());
 
-        let toml = result.unwrap();
+        let toml = result.expect("parse_toml should succeed for valid TOML fixture");
         assert_eq!(toml.organization_name, Some("Test Anchor".to_string()));
         assert_eq!(toml.organization_dba, Some("Test DBA".to_string()));
         assert_eq!(toml.organization_url, Some("https://test.com".to_string()));
@@ -741,7 +743,8 @@ NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
     #[test]
     fn test_parse_toml_with_currencies() {
-        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None)
+            .expect("failed to construct StellarTomlClient in test");
 
         let toml_content = r#"
 ORGANIZATION_NAME = "Test Anchor"
@@ -766,10 +769,10 @@ name = "Euro"
         let result = client.parse_toml(toml_content, "test.com");
         assert!(result.is_ok());
 
-        let toml = result.unwrap();
+        let toml = result.expect("parse_toml should succeed for valid TOML fixture");
         assert!(toml.currencies.is_some());
 
-        let currencies = toml.currencies.unwrap();
+        let currencies = toml.currencies.expect("toml.currencies should be Some after asserting is_some");
         assert_eq!(currencies.len(), 2);
         assert_eq!(currencies[0].code, "USD");
         assert_eq!(currencies[0].name, Some("US Dollar".to_string()));
@@ -778,7 +781,8 @@ name = "Euro"
 
     #[test]
     fn test_parse_invalid_toml() {
-        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None).unwrap();
+        let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None)
+            .expect("failed to construct StellarTomlClient in test");
 
         let invalid_toml = "INVALID TOML [[[";
         let result = client.parse_toml(invalid_toml, "test.com");

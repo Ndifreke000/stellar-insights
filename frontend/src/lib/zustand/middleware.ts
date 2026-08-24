@@ -1,4 +1,5 @@
 import { StateCreator } from 'zustand';
+import { logger } from '@/lib/logger';
 
 /**
  * Forwards to an overloaded zustand `setState` with the exact args tuple it
@@ -22,7 +23,7 @@ export const loggerMiddleware = <T extends object>(
   return (set, get, api) => {
     const loggedSet: typeof set = (...args) => {
       if (config.enabled !== false && process.env.NODE_ENV === 'development') {
-        console.log(`[${config.name}] State update:`, args);
+        logger.debug(`[${config.name}] State update:`, { args });
       }
       return forwardSet(set, args);
     };
@@ -48,7 +49,7 @@ export const analyticsMiddleware = <T extends object>(
           const state = partialState as Record<string, unknown>;
           Object.keys(state).forEach(key => {
             if (!config.events || config.events.includes(key)) {
-              console.log(`[Analytics] State change: ${key}`, state[key]);
+              logger.debug(`[Analytics] State change: ${key}`, { value: state[key] });
             }
           });
         }
