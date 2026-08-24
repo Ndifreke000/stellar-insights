@@ -68,7 +68,6 @@ const formatNumber = (num: number) => {
   return num.toString();
 };
 
-// TODO: Intended for future use
 const getHealthStatusColor = (status: string) => {
   const s = status.toLowerCase();
   if (s === "green" || s === "healthy") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
@@ -76,7 +75,6 @@ const getHealthStatusColor = (status: string) => {
   return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
 };
 
-// TODO: Intended for future use
 const getHealthStatusIcon = (status: string) => {
   const s = status.toLowerCase();
   if (s === "green" || s === "healthy") return <CheckCircle className="w-3 h-3" />;

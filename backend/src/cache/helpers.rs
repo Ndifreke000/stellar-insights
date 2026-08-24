@@ -320,59 +320,65 @@ mod http_tests {
     #[tokio::test]
     async fn returns_cache_headers_for_fresh_response() {
         let headers = HeaderMap::new();
-        let response =
-            cached_json_response(&headers, "resource:a", &Payload { value: "a" }, 60).unwrap();
+        let response = cached_json_response(&headers, "resource:a", &Payload { value: "a" }, 60)
+            .expect("cached_json_response should succeed for a fresh request");
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.headers().get(CACHE_CONTROL).is_some());
         assert!(response.headers().get(ETAG).is_some());
         assert!(response.headers().get(LAST_MODIFIED).is_some());
 
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
         assert_eq!(body, r#"{"value":"a"}"#);
     }
 
     #[tokio::test]
     async fn returns_304_when_if_none_match_matches() {
         let headers = HeaderMap::new();
-        let first =
-            cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60).unwrap();
+        let first = cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60)
+            .expect("cached_json_response should succeed for the initial request");
         let etag = first
             .headers()
             .get(ETAG)
-            .unwrap()
+            .expect("response should carry an ETag header")
             .to_str()
-            .unwrap()
+            .expect("ETag header should be valid ASCII")
             .to_string();
 
         let mut conditional_headers = HeaderMap::new();
-        conditional_headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
+        conditional_headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_str(&etag).expect("etag should be a valid header value"),
+        );
         let second = cached_json_response(
             &conditional_headers,
             "resource:b",
             &Payload { value: "b" },
             60,
         )
-        .unwrap();
+        .expect("cached_json_response should succeed for the conditional request");
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 
     #[tokio::test]
     async fn returns_304_when_if_modified_since_matches() {
         let headers = HeaderMap::new();
-        let first =
-            cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60).unwrap();
+        let first = cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60)
+            .expect("cached_json_response should succeed for the initial request");
         let last_modified = first
             .headers()
             .get(LAST_MODIFIED)
-            .unwrap()
+            .expect("response should carry a Last-Modified header")
             .to_str()
-            .unwrap()
+            .expect("Last-Modified header should be valid ASCII")
             .to_string();
 
         let mut conditional_headers = HeaderMap::new();
         conditional_headers.insert(
             IF_MODIFIED_SINCE,
-            HeaderValue::from_str(&last_modified).unwrap(),
+            HeaderValue::from_str(&last_modified)
+                .expect("last_modified should be a valid header value"),
         );
 
         let second = cached_json_response(
@@ -381,7 +387,7 @@ mod http_tests {
             &Payload { value: "c" },
             60,
         )
-        .unwrap();
+        .expect("cached_json_response should succeed for the conditional request");
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 }
