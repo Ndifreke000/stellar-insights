@@ -71,7 +71,8 @@ futures = "0.3"
 tokio-tungstenite = "0.30"
 dashmap = "6.2"
 stellar-xdr = { version = "26.0.1", features = ["std", "curr"] }
-stellar_sdk = "0.1"
+stellar-strkey = "0.0.8"
+ed25519-dalek = "2"
 base64 = "0.22"
 jsonwebtoken = "10.4"
 utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }

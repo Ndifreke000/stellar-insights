@@ -1060,7 +1060,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "XLM:native->XLM:native");
@@ -1089,7 +1090,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USDC:GISSUER");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "USDC:GISSUER->USDC:GISSUER");
@@ -1118,7 +1120,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USD:GUSDISSUER");
         assert_eq!(pair.destination_asset, "EUR:GEURISSUER");
         assert_eq!(pair.to_corridor_key(), "USD:GUSDISSUER->EUR:GEURISSUER");
@@ -1147,7 +1150,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "XLM:native->USDC:GISSUER");
@@ -1176,7 +1180,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "BRL:GBRLISSUER");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "BRL:GBRLISSUER->XLM:native");
@@ -1206,7 +1211,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "NGNT:GNGNTISSUER");
         assert_eq!(pair.destination_asset, "NGNT:GNGNTISSUER");
     }
@@ -1335,7 +1341,7 @@ mod tests {
 
         let related = find_related_corridors(target, &corridors);
         assert!(related.is_some());
-        let related_corridors = related.unwrap();
+        let related_corridors = related.expect("related corridors should be Some after asserting is_some");
         assert!(related_corridors.len() >= 2); // At least target and one related
     }
 }
