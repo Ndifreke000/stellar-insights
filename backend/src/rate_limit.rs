@@ -779,7 +779,9 @@ mod tests {
     use super::*;
 
     async fn setup_test_db() -> sqlx::SqlitePool {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
 
         sqlx::query(
             "CREATE TABLE user_subscriptions (
@@ -791,7 +793,7 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("user_subscriptions table creation should succeed");
 
         pool
     }
@@ -799,7 +801,9 @@ mod tests {
     #[tokio::test]
     async fn test_premium_user_tier() {
         let db = setup_test_db().await;
-        let rate_limiter = RateLimiter::new_with_db(Some(db.clone())).await.unwrap();
+        let rate_limiter = RateLimiter::new_with_db(Some(db.clone()))
+            .await
+            .expect("rate limiter should initialize");
 
         // Insert premium user correctly using SQLite datetime function
         sqlx::query("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, datetime('now', '+30 days'))")
@@ -807,7 +811,7 @@ mod tests {
             .bind("Premium")
             .execute(&db)
             .await
-            .unwrap();
+            .expect("premium user insert should succeed");
 
         let client = ClientIdentifier::User("user123".to_string());
         let tier = rate_limiter.get_client_tier(&client).await;
@@ -817,7 +821,9 @@ mod tests {
     #[tokio::test]
     async fn test_free_user_tier() {
         let db = setup_test_db().await;
-        let rate_limiter = RateLimiter::new_with_db(Some(db.clone())).await.unwrap();
+        let rate_limiter = RateLimiter::new_with_db(Some(db.clone()))
+            .await
+            .expect("rate limiter should initialize");
 
         let client = ClientIdentifier::User("user456".to_string());
         let tier = rate_limiter.get_client_tier(&client).await;
@@ -825,7 +831,9 @@ mod tests {
     }
 
     async fn setup_api_key_rate_limit_db() -> sqlx::SqlitePool {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
 
         sqlx::query(
             "CREATE TABLE api_keys (
@@ -844,7 +852,7 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("api_keys table creation should succeed");
 
         sqlx::query(
             "CREATE TABLE api_keys_rate_limit_config (
@@ -856,7 +864,7 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("api_keys_rate_limit_config table creation should succeed");
 
         pool
     }
@@ -865,7 +873,9 @@ mod tests {
     async fn test_api_key_rate_limit_is_independent_per_key() {
         let _guard = crate::lock_env_test();
         let db = setup_api_key_rate_limit_db().await;
-        let limiter = RateLimiter::new_with_db(Some(db)).await.unwrap();
+        let limiter = RateLimiter::new_with_db(Some(db))
+            .await
+            .expect("rate limiter should initialize");
         let limit = 2u32;
 
         // Unique per run: a real Redis may be reachable at the default
@@ -899,9 +909,11 @@ mod tests {
         .bind(15_i64)
         .execute(&db)
         .await
-        .unwrap();
+        .expect("api key rate limit config insert should succeed");
 
-        let limiter = RateLimiter::new_with_db(Some(db)).await.unwrap();
+        let limiter = RateLimiter::new_with_db(Some(db))
+            .await
+            .expect("rate limiter should initialize");
         assert_eq!(
             limiter.get_api_key_limit_per_minute("configured-key").await,
             15

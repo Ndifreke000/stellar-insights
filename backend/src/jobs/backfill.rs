@@ -412,7 +412,7 @@ mod tests {
             contract_id: None,
             delay_ms: Some(100),
         };
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req).expect("BackfillRequest should serialize");
         assert!(json.contains("from_ledger"));
         assert!(json.contains("1000"));
     }
@@ -423,15 +423,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
@@ -448,7 +450,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must be <="));
+        assert!(result
+            .expect_err("start should reject an inverted range")
+            .to_string()
+            .contains("must be <="));
     }
 
     #[tokio::test]
@@ -457,15 +462,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
@@ -482,7 +489,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
+        assert!(result
+            .expect_err("start should reject an oversized range")
+            .to_string()
+            .contains("exceeds maximum"));
     }
 
     #[tokio::test]
@@ -491,15 +501,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
