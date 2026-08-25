@@ -1,0 +1,28 @@
+{
+  "version": "8.12.2",
+  "index-patterns": [
+    {
+      "title": "stellar-insights-*",
+      "timeFieldName": "@timestamp"
+    }
+  ],
+  "dashboards": [
+    {
+      "id": "stellar-insights-overview",
+      "title": "Stellar Insights API Overview",
+      "description": "Overview dashboard for API performance and errors"
+    }
+  ],
+  "searches": [
+    {
+      "id": "all-errors",
+      "title": "All Error Logs",
+      "description": "All logs with ERROR level or 5XX status codes"
+    },
+    {
+      "id": "request-performance",
+      "title": "Request Performance by Endpoint",
+      "description": "Average latency and request counts by path"
+    }
+  ]
+}
