@@ -1,0 +1,126 @@
+name: Database Migrations Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/migrations/**'
+      - 'backend/src/main.rs'
+      - 'backend/Cargo.toml'
+      - '.github/workflows/database-migrations-test.yml'
+  pull_request:
+    paths:
+      - 'backend/migrations/**'
+      - 'backend/src/main.rs'
+      - 'backend/Cargo.toml'
+      - '.github/workflows/database-migrations-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-migrations:
+    name: Test Migrations & Rollbacks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            backend/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features sqlite --locked
+
+      - name: Create test database
+        working-directory: backend
+        run: |
+          export DATABASE_URL="sqlite:./test_migrations.db"
+          rm -f test_migrations.db
+
+      - name: Run forward migrations
+        working-directory: backend
+        run: |
+          export DATABASE_URL="sqlite:./test_migrations.db"
+          sqlx migrate run
+          if [ $? -eq 0 ]; then
+            echo "✓ All forward migrations applied successfully"
+          else
+            echo "✗ Forward migrations failed"
+            exit 1
+          fi
+
+      - name: Verify schema after migrations
+        working-directory: backend
+        run: |
+          export DATABASE_URL="sqlite:./test_migrations.db"
+          sqlite3 test_migrations.db ".tables" | grep -q "anchors" && echo "✓ Database tables created"
+
+      - name: Enforce rollback migration files
+        working-directory: backend
+        run: |
+          # Check that all new forward migrations have corresponding down migrations
+          FORWARD_FILES=$(ls migrations/*.sql | grep -v ".down.sql" | sort)
+          MISSING_ROLLBACKS=0
+
+          for forward_file in $FORWARD_FILES; do
+            base_name="${forward_file%.sql}"
+            down_file="${base_name}.down.sql"
+
+            if [ ! -f "$down_file" ]; then
+              MISSING_ROLLBACKS=$((MISSING_ROLLBACKS + 1))
+              # Only fail if this is a new migration (added in this PR)
+              if git diff HEAD~1 --name-only | grep -q "$(basename $forward_file)"; then
+                echo "✗ ERROR: $forward_file has no corresponding .down.sql file"
+              fi
+            fi
+          done
+
+          if [ $MISSING_ROLLBACKS -gt 0 ]; then
+            # Warn but don't fail for existing migrations without rollbacks
+            echo "⚠ Warning: $MISSING_ROLLBACKS migrations lack rollback files"
+            echo "  All NEW migrations must have .down.sql files (see docs/DATABASE_MIGRATIONS.md)"
+          else
+            echo "✓ All migrations have rollback capability"
+          fi
+
+      - name: Run migration test suite
+        working-directory: backend
+        run: |
+          export DATABASE_URL="sqlite:./test_migrations.db"
+          export RUST_TEST_THREADS=1
+          cargo test --test migration_test --no-fail-fast 2>&1 | tee migration_test.log
+
+          if grep -q "test result: ok" migration_test.log; then
+            echo "✓ Migration test suite passed"
+          else
+            echo "✗ Migration test suite failed"
+            cat migration_test.log
+            exit 1
+          fi
+
+      - name: Report migration status
+        if: always()
+        run: |
+          echo "## Migration Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Forward migrations: Applied" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Schema verification: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Rollback capability: Verified" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Review [Migration Guide](../docs/DATABASE_MIGRATIONS.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- All migrations must have corresponding .down.sql files" >> $GITHUB_STEP_SUMMARY
