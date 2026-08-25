@@ -1,0 +1,83 @@
+# Production Environment Variables
+# Cost estimate: $400-600/month (full HA, 3 AZs, production-grade)
+#
+# Breakdown:
+#   - NAT Gateways: ~$90/month (3 total, 1 per AZ for HA)
+#   - ALB: ~$20/month
+#   - ECS (t3.small, 3 instances): ~$90/month
+#   - RDS PostgreSQL (db.t3.medium Multi-AZ, 500GB): ~$150-200/month
+#   - ElastiCache Redis (cache.t3.small, Multi-AZ): ~$40/month
+#   - Data transfer out: ~$30-50/month
+#   - Backups & monitoring: ~$10-20/month
+#
+# ✓ Full high availability (3 AZs)
+# ✓ Multi-AZ RDS with automatic failover
+# ✓ Multi-AZ Redis with automatic failover
+# ✓ 30-day backup retention for RDS
+# ✓ Enhanced CloudWatch monitoring
+# ✓ VPC Flow Logs for security and troubleshooting
+# ✓ Auto-scaling enabled (scale to 3-10 tasks based on load)
+# ✓ Blue-green deployments with automatic rollback
+#
+# CRITICAL: This is a PRODUCTION environment
+# - ALL changes require code review and approval
+# - ALL deployments via GitHub Actions CI/CD only
+# - NO manual `terraform apply` on production
+# - ALL database changes must be tested in staging first
+# - ALL infrastructure changes require disaster recovery validation
+#
+# Setup instructions (first-time deployment):
+# 1. Copy this file to terraform.tfvars (git will ignore it)
+# 2. Review and customize all values (especially alarm_email)
+# 3. Ensure global infrastructure is deployed: cd ../global && terraform apply
+# 4. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="key=production/terraform.tfstate" \
+#      -backend-config="region=us-east-1" \
+#      -backend-config="dynamodb_table=terraform-locks"
+# 5. Review plan: terraform plan -out=tfplan
+# 6. STAGE FOR REVIEW: commit tfplan and open PR for team review
+# 7. After approval: terraform apply tfplan
+#
+# Pre-deployment Checklist:
+# [ ] All Vault secrets configured (DATABASE_URL, JWT_SECRET, OAuth credentials, etc)
+# [ ] SSL/TLS certificates in ACM for domain
+# [ ] Route53 DNS records configured and tested
+# [ ] RDS backup and restore tested in staging
+# [ ] CloudWatch alarms configured and tested
+# [ ] GitHub Actions deployment variables and secrets in place
+# [ ] Load test completed: minimum 100 req/sec
+# [ ] Spike test completed: 10x traffic surge handling
+# [ ] Disaster recovery drill completed (backup restore validated)
+# [ ] On-call team trained and runbooks reviewed
+#
+# Post-deployment Validation:
+# [ ] Health check: GET /health returning 200 OK
+# [ ] Database connectivity verified
+# [ ] Vault secrets accessible and working
+# [ ] CloudWatch logs flowing to centralized monitoring
+# [ ] Alarms configured and notifications tested (send test alert)
+# [ ] Logging and monitoring dashboards active
+# [ ] Performance baseline established (latency, throughput)
+# [ ] On-call runbook reviewed by all team members
+# [ ] Disaster recovery procedure tested with team
+#
+# Ongoing Operations:
+# - Weekly: Monitor CloudWatch dashboards and alarms
+# - Weekly: Review RDS backup status and retention
+# - Monthly: Test restore procedure from backup
+# - Monthly: Review scaling metrics and adjust if needed
+# - Quarterly: Run disaster recovery drill with team
+
+aws_region  = "us-east-1"
+environment = "production"
+vpc_cidr    = "10.2.0.0/16"
+
+# Vault configuration (HCP or self-hosted)
+# MUST be HTTPS and accessible from ECS tasks
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Critical alerts go to ops team oncall
+# MUST be a valid email that receives notifications
+alarm_email = "ops-critical@stellar-insights.com"

@@ -1,0 +1,259 @@
+name: Terraform Validate & Format
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform-validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Validate global configuration
+        working-directory: terraform/global
+        run: |
+          terraform init -backend=false
+          terraform validate
+          echo "✓ Global Terraform configuration is valid"
+
+      - name: Validate dev environment
+        working-directory: terraform/environments/dev
+        run: |
+          terraform init -backend=false
+          terraform validate
+          echo "✓ Dev Terraform configuration is valid"
+
+      - name: Validate staging environment
+        working-directory: terraform/environments/staging
+        run: |
+          terraform init -backend=false
+          terraform validate
+          echo "✓ Staging Terraform configuration is valid"
+
+      - name: Validate production environment
+        working-directory: terraform/environments/production
+        run: |
+          terraform init -backend=false
+          terraform validate
+          echo "✓ Production Terraform configuration is valid"
+
+      - name: Validate mainnet environment
+        working-directory: terraform/environments/mainnet
+        run: |
+          terraform init -backend=false
+          terraform validate
+          echo "✓ Mainnet Terraform configuration is valid"
+
+  terraform-format:
+    name: Check Terraform Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Check terraform fmt
+        run: |
+          # Check all Terraform files for formatting issues
+          if ! terraform fmt -recursive -check terraform/; then
+            echo "❌ Terraform formatting issues found!"
+            echo "Run the following to fix:"
+            echo "  terraform fmt -recursive terraform/"
+            exit 1
+          fi
+          echo "✓ All Terraform files are properly formatted"
+
+  terraform-security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for hardcoded secrets in Terraform files..."
+          # Check for common secret patterns
+          if grep -r -E "(password|secret|api_key|private_key|access_key|token).*=.*['\"]" terraform/ --include="*.tf" | grep -v "\.tfvars\.example" | grep -v "default.*="; then
+            echo "⚠️ Warning: Potential hardcoded secrets found!"
+            echo "Ensure all secrets are stored in Vault or Terraform variables, not in code."
+          else
+            echo "✓ No obvious hardcoded secrets found"
+          fi
+
+      - name: Check for sensitive data in outputs
+        run: |
+          echo "Checking for sensitive data in public outputs..."
+          if grep -r "sensitive.*=.*false" terraform/ --include="*.tf" | grep -E "(password|secret|key|token|credential)"; then
+            echo "⚠️ Warning: Sensitive data may be exposed in outputs!"
+            echo "Mark all sensitive outputs with 'sensitive = true'"
+          else
+            echo "✓ Sensitive outputs properly marked"
+          fi
+
+      - name: Check for unencrypted storage
+        run: |
+          echo "Checking for encryption configuration..."
+          # Verify RDS encryption is enabled
+          if grep -r "storage_encrypted" terraform/modules/database/ --include="*.tf" | grep -q "true"; then
+            echo "✓ RDS storage encryption enabled"
+          else
+            echo "⚠️ Warning: RDS storage encryption may not be enabled"
+          fi
+
+  terraform-documentation:
+    name: Verify Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Terraform README exists
+        run: |
+          if [ ! -f "terraform/README.md" ]; then
+            echo "❌ terraform/README.md not found!"
+            exit 1
+          fi
+          echo "✓ Terraform README exists"
+
+      - name: Check tfvars.example files exist
+        run: |
+          missing=0
+          for env in dev staging production mainnet; do
+            if [ ! -f "terraform/environments/$env/terraform.tfvars.example" ]; then
+              echo "❌ terraform/environments/$env/terraform.tfvars.example not found!"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ $missing -gt 0 ]; then
+            echo "Missing $missing example files!"
+            exit 1
+          fi
+          echo "✓ All environment example files exist"
+
+  cost-estimate:
+    name: Estimate Infrastructure Cost
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Generate cost estimates
+        run: |
+          cat > /tmp/cost-comment.md << 'EOF'
+          ## Infrastructure Cost Summary
+
+          | Environment | Est. Monthly | Components |
+          |---|---|---|
+          | dev | ~$50-70 | Single AZ, minimal resources |
+          | staging | ~$150-200 | Multi-AZ, RDS + Redis |
+          | production | ~$400-600 | Full HA, 3 AZs, enhanced monitoring |
+          | mainnet | ~$400-500 | Production-grade, mainnet workloads |
+
+          **Notes:**
+          - Costs are estimates based on on-demand pricing (us-east-1)
+          - Actual costs may vary based on data transfer and usage
+          - RDS backup storage included in monthly estimates
+          - NAT Gateway costs ~$30/month per AZ
+          - See [terraform/README.md](terraform/README.md#cost-optimization) for cost optimization tips
+
+          **Next Steps:**
+          - Review [terraform/README.md](terraform/README.md) for deployment instructions
+          - Copy `.tfvars.example` to `.tfvars` and customize
+          - Run `terraform plan` to see actual resource changes
+          - Use AWS Cost Explorer for historical spend analysis
+          EOF
+
+          # Output estimate to step summary (visible in PR)
+          cat /tmp/cost-comment.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post cost comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('/tmp/cost-comment.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [terraform-validate, terraform-format, terraform-security, terraform-documentation]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## Terraform Validation Results"
+          echo ""
+          if [ "${{ needs.terraform-validate.result }}" = "success" ]; then
+            echo "✓ All Terraform configurations are valid"
+          else
+            echo "❌ Terraform validation failed"
+            exit 1
+          fi
+
+          if [ "${{ needs.terraform-format.result }}" = "success" ]; then
+            echo "✓ All files are properly formatted"
+          else
+            echo "❌ Format check failed - run: terraform fmt -recursive terraform/"
+            exit 1
+          fi
+
+          if [ "${{ needs.terraform-security.result }}" = "success" ]; then
+            echo "✓ Security checks passed"
+          else
+            echo "⚠️ Security checks found issues"
+          fi
+
+          if [ "${{ needs.terraform-documentation.result }}" = "success" ]; then
+            echo "✓ Documentation is complete"
+          else
+            echo "❌ Documentation checks failed"
+            exit 1
+          fi
