@@ -11,13 +11,6 @@ on:
 
 jobs:
   build:
-    name: Build & Measure
-    paths: ['frontend/**']
-  pull_request:
-    paths: ['frontend/**']
-
-jobs:
-  build:
     name: Build & Metrics
     runs-on: ubuntu-latest
     defaults:
@@ -31,18 +24,14 @@ jobs:
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Restore Next.js build cache
-          node-version: 20
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Restore Next.js cache
         uses: actions/cache@v4
         with:
           path: frontend/.next/cache
@@ -51,10 +40,10 @@ jobs:
             nextjs-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
             nextjs-${{ runner.os }}-
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build with timing
-      - name: Build (timed)
         id: build
         run: |
           START=$(date +%s%3N)
@@ -65,19 +54,11 @@ jobs:
           SECS=$(echo "scale=1; ($MS % 60000) / 1000" | bc)
           echo "BUILD_MS=${MS}" >> "$GITHUB_ENV"
           echo "BUILD_TIME=${MINS}m ${SECS}s" >> "$GITHUB_ENV"
-
-      - name: Build summary
-        run: |
           echo "duration_ms=${MS}" >> "$GITHUB_OUTPUT"
           echo "duration_s=$(echo "scale=1; ${MS}/1000" | bc)" >> "$GITHUB_OUTPUT"
 
-      - name: Build metrics summary
+      - name: Publish build metrics
         run: |
-          DURATION="${{ steps.build.outputs.duration_s }}s"
-          STATUS="✅ Under target"
-          if [ "${{ steps.build.outputs.duration_ms }}" -gt 120000 ]; then
-            STATUS="⚠️ Over 2-minute target"
-          fi
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Frontend Build Metrics
 
@@ -86,16 +67,11 @@ jobs:
           | **Build time** | \`${{ env.BUILD_TIME }}\` (\`${{ env.BUILD_MS }}ms\`) |
           | **Target** | \`< 2m 0.0s\` |
           | **Status** | ${{ env.BUILD_MS < 120000 && '✅ Under target' || '⚠️ Over target' }} |
-          EOF
-
-      - name: Fail if build exceeds 2 minutes
-        if: ${{ env.BUILD_MS != '' }}
-        run: |
-          if [ "${{ env.BUILD_MS }}" -gt 120000 ]; then
-            echo "::warning::Build took ${{ env.BUILD_TIME }}, exceeding the 2-minute target."
-          fi
-          | **Build time** | \`${DURATION}\` |
-          | **Target** | \`< 2 minutes\` |
-          | **Status** | ${STATUS} |
           | **Cache** | \`${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}\` |
           EOF
+
+      - name: Warn if build exceeds 2 minutes
+        if: ${{ env.BUILD_MS != '' && env.BUILD_MS > 120000 }}
+        run: |
+          echo "::warning::Build took ${{ env.BUILD_TIME }}, exceeding the 2-minute target."
+          echo "Consider: dependency pruning, tree-shaking, code splitting, or enabling SWC minification"
