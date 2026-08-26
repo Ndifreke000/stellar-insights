@@ -65,9 +65,9 @@ resource "aws_elasticache_cluster" "redis" {
   auto_minor_version_upgrade = var.auto_minor_version_upgrade
   maintenance_window         = var.environment == "dev" ? "sun:04:00-sun:05:00" : "sun:04:00-sun:05:00"
 
-  # Snapshots
-  snapshot_retention_limit = var.snapshot_retention_limit
-  snapshot_window          = var.snapshot_window > 0 ? var.snapshot_window : null
+  # Snapshots — disabled for dev/staging (ephemeral cache), enabled for production
+  snapshot_retention_limit = var.snapshot_retention_limit != null ? var.snapshot_retention_limit : (var.environment == "production" ? 7 : 0)
+  snapshot_window          = (var.snapshot_retention_limit != null ? var.snapshot_retention_limit : (var.environment == "production" ? 7 : 0)) > 0 ? var.snapshot_window : null
 
   # Encryption
   at_rest_encryption_enabled = true
@@ -128,7 +128,7 @@ resource "aws_sns_topic" "cache_notifications" {
 
 resource "aws_cloudwatch_log_group" "redis_slow_log" {
   name              = "/aws/elasticache/redis/${var.environment}/slow-log"
-  retention_in_days = var.environment == "production" ? 14 : (var.environment == "staging" ? 7 : 3)
+  retention_in_days = var.log_retention_days
 
   tags = {
     Name = "stellar-insights-redis-logs-${var.environment}"
