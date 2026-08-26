@@ -11,6 +11,7 @@ pub mod contract_listener;
 pub mod data_port;
 pub mod event_indexer;
 pub mod fee_bump_tracker;
+pub mod gdpr;
 pub mod governance;
 pub mod indexing;
 pub mod liquidity_pool_analyzer;
