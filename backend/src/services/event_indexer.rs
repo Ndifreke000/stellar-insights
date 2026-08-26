@@ -827,27 +827,27 @@ mod tests {
     use crate::db::schema::Schema;
     use std::sync::Arc;
 
-    async fn setup_contract_event_db() -> Arc<Database> {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+    async fn setup_contract_event_db() -> Result<Arc<Database>> {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.context("failed to create in-memory SQLite pool")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create contract_events table")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create contract_events indexes")?;
         sqlx::query(Schema::CREATE_INDEXER_STATE)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create indexer_state table")?;
 
-        Arc::new(Database::new(pool))
+        Ok(Arc::new(Database::new(pool)))
     }
 
     #[tokio::test]
-    async fn test_event_indexing() {
-        let db = setup_contract_event_db().await;
+    async fn test_event_indexing() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -864,25 +864,26 @@ mod tests {
         };
 
         // Test indexing
-        indexer.index_event(event.clone()).await.unwrap();
+        indexer.index_event(event.clone()).await.context("failed to index event")?;
 
         // Test retrieval
-        let retrieved = indexer.get_event_by_id("test-event-1").await.unwrap();
+        let retrieved = indexer.get_event_by_id("test-event-1").await.context("failed to retrieve event")?;
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().epoch, Some(42));
+        assert_eq!(retrieved.expect("event should exist").epoch, Some(42));
 
         // Test query
         let query = EventQuery {
             event_type: Some("SNAP_SUB".to_string()),
             ..Default::default()
         };
-        let results = indexer.query_events(query).await.unwrap();
+        let results = indexer.query_events(query).await.context("failed to query events")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_verification_status_update() {
-        let db = setup_contract_event_db().await;
+    async fn test_verification_status_update() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -898,26 +899,27 @@ mod tests {
             verification_status: None,
         };
 
-        indexer.index_event(event).await.unwrap();
+        indexer.index_event(event).await.context("failed to index event")?;
 
         // Update verification status
         indexer
             .update_verification_status("test-event-2", "verified")
             .await
-            .unwrap();
+            .context("failed to update verification status")?;
 
         // Verify update
-        let retrieved = indexer.get_event_by_id("test-event-2").await.unwrap();
+        let retrieved = indexer.get_event_by_id("test-event-2").await.context("failed to retrieve event")?;
         assert!(retrieved.is_some());
         assert_eq!(
-            retrieved.unwrap().verification_status,
+            retrieved.expect("event should exist").verification_status,
             Some("verified".to_string())
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_process_events_skips_unknown_types() {
-        let db = setup_contract_event_db().await;
+    async fn test_process_events_skips_unknown_types() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let known = IndexedEvent {
@@ -949,43 +951,45 @@ mod tests {
         let count = indexer
             .process_events(&[known, unknown], 21)
             .await
-            .unwrap();
+            .context("failed to process events")?;
 
         // Only the known event should be indexed
         assert_eq!(count, 1);
-        assert!(indexer.get_event_by_id("ev-known").await.unwrap().is_some());
+        assert!(indexer.get_event_by_id("ev-known").await.context("failed to retrieve known event")?.is_some());
         assert!(indexer
             .get_event_by_id("ev-unknown")
             .await
-            .unwrap()
+            .context("failed to retrieve unknown event")?
             .is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_checkpoint_roundtrip() {
-        let db = setup_contract_event_db().await;
+    async fn test_checkpoint_roundtrip() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         // No checkpoint yet
-        assert!(indexer.get_last_processed_ledger().await.unwrap().is_none());
+        assert!(indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?.is_none());
 
-        indexer.persist_checkpoint(42_000).await.unwrap();
+        indexer.persist_checkpoint(42_000).await.context("failed to persist checkpoint (first)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
             Some(42_000)
         );
 
         // Overwrite moves it forward
-        indexer.persist_checkpoint(42_001).await.unwrap();
+        indexer.persist_checkpoint(42_001).await.context("failed to persist checkpoint (second)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
             Some(42_001)
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_process_events_persists_checkpoint() {
-        let db = setup_contract_event_db().await;
+    async fn test_process_events_persists_checkpoint() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let events: Vec<IndexedEvent> = (0..3)
@@ -1003,11 +1007,12 @@ mod tests {
             })
             .collect();
 
-        indexer.process_events(&events, 21).await.unwrap();
+        indexer.process_events(&events, 21).await.context("failed to process events")?;
 
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
             Some(202)
         );
+        Ok(())
     }
 }
