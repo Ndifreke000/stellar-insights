@@ -998,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deterministic_serialization() {
+    fn test_deterministic_serialization() -> Result<()> {
         let now = Utc::now();
         let id1 = Uuid::from_u128(1);
         let id2 = Uuid::from_u128(2);
@@ -1007,21 +1007,22 @@ mod tests {
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let json1 = SnapshotService::serialize_deterministically(snapshot1).unwrap();
+        let json1 = SnapshotService::serialize_deterministically(snapshot1).context("failed to serialize snapshot1")?;
 
         // Create same snapshot with metrics added in different order
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let json2 = SnapshotService::serialize_deterministically(snapshot2).unwrap();
+        let json2 = SnapshotService::serialize_deterministically(snapshot2).context("failed to serialize snapshot2")?;
 
         // Same content should produce same JSON regardless of insertion order
         assert_eq!(json1, json2);
+        Ok(())
     }
 
     #[test]
-    fn test_same_input_same_hash() {
+    fn test_same_input_same_hash() -> Result<()> {
         let now = Utc::now();
         let id1 = Uuid::from_u128(1);
         let id2 = Uuid::from_u128(2);
@@ -1030,21 +1031,22 @@ mod tests {
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).unwrap();
+        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         // Create same snapshot with metrics added in different order
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).unwrap();
+        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Same input should always yield same hash
         assert_eq!(hash1, hash2);
+        Ok(())
     }
 
     #[test]
-    fn test_different_content_different_hash() {
+    fn test_different_content_different_hash() -> Result<()> {
         let now = Utc::now();
         let id1 = Uuid::from_u128(1);
         let id2 = Uuid::from_u128(2);
@@ -1052,75 +1054,80 @@ mod tests {
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).unwrap();
+        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).unwrap();
+        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Different content should produce different hashes
         assert_ne!(hash1, hash2);
+        Ok(())
     }
 
     #[test]
-    fn test_hash_changes_with_epoch() {
+    fn test_hash_changes_with_epoch() -> Result<()> {
         let now = Utc::now();
         let id = Uuid::from_u128(1);
 
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).unwrap();
+        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         let mut snapshot2 = AnalyticsSnapshot::new(2, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).unwrap();
+        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Different epoch should produce different hash
         assert_ne!(hash1, hash2);
+        Ok(())
     }
 
     #[test]
-    fn test_hash_hex_format() {
+    fn test_hash_hex_format() -> Result<()> {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let hex = SnapshotService::hash_snapshot_hex(snapshot).unwrap();
+        let hex = SnapshotService::hash_snapshot_hex(snapshot).context("failed to compute hash hex")?;
 
         // Should be 64 characters (32 bytes × 2 hex chars)
         assert_eq!(hex.len(), 64);
 
         // Should only contain valid hex characters
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+        Ok(())
     }
 
     #[test]
-    fn test_hash_is_32_bytes() {
+    fn test_hash_is_32_bytes() -> Result<()> {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let hash = SnapshotService::hash_snapshot(snapshot).unwrap();
+        let hash = SnapshotService::hash_snapshot(snapshot).context("failed to hash snapshot")?;
 
         // Should be exactly 32 bytes
         assert_eq!(hash.len(), 32);
+        Ok(())
     }
 
     #[test]
-    fn test_version_and_hash() {
+    fn test_version_and_hash() -> Result<()> {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot).unwrap();
+        let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot).context("failed to compute version and hash")?;
 
         assert_eq!(hash_bytes.len(), 32);
         assert_eq!(hash_hex.len(), 64);
         assert_eq!(version, SCHEMA_VERSION);
+        Ok(())
     }
 
     #[test]
-    fn test_reproducibility_with_multiple_metrics() {
+    fn test_reproducibility_with_multiple_metrics() -> Result<()> {
         let now = Utc::now();
         let anchor_id1 = Uuid::from_u128(1);
         let anchor_id2 = Uuid::from_u128(2);
@@ -1134,7 +1141,7 @@ mod tests {
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id1, "corridor1"));
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id2, "corridor2"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).unwrap();
+        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         // Create snapshot in reverse order
         let mut snapshot2 = AnalyticsSnapshot::new(100, now);
@@ -1143,27 +1150,29 @@ mod tests {
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id1, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).unwrap();
+        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Should produce identical hashes
         assert_eq!(hash1, hash2);
+        Ok(())
     }
 
     #[test]
-    fn test_deterministic_json_no_extra_whitespace() {
+    fn test_deterministic_json_no_extra_whitespace() -> Result<()> {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotService::serialize_deterministically(snapshot).unwrap();
+        let json = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot")?;
 
         // Should not contain unnecessary whitespace
         assert!(!json.contains("  ")); // No double spaces
         assert!(!json.starts_with(" "));
         assert!(!json.ends_with(" "));
+        Ok(())
     }
 
     #[test]
-    fn test_floating_point_determinism() {
+    fn test_floating_point_determinism() -> Result<()> {
         let now = Utc::now();
         let id = Uuid::from_u128(1);
 
@@ -1174,20 +1183,21 @@ mod tests {
         metrics.failure_rate = 0.876_543_210_987_655;
         snapshot.add_anchor_metrics(metrics);
 
-        let json1 = SnapshotService::serialize_deterministically(snapshot.clone()).unwrap();
-        let json2 = SnapshotService::serialize_deterministically(snapshot).unwrap();
+        let json1 = SnapshotService::serialize_deterministically(snapshot.clone()).context("failed to serialize snapshot (first)")?;
+        let json2 = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot (second)")?;
 
         // Same floating point values should serialize identically
         assert_eq!(json1, json2);
+        Ok(())
     }
 
     #[test]
-    fn test_json_key_ordering() {
+    fn test_json_key_ordering() -> Result<()> {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotService::serialize_deterministically(snapshot).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot")?;
+        let parsed: serde_json::Value = serde_json::from_str(&json).context("failed to parse JSON")?;
 
         // Verify top-level keys are in sorted order
         if let serde_json::Value::Object(map) = parsed {
@@ -1199,5 +1209,6 @@ mod tests {
                 "Top-level JSON keys should be in sorted order"
             );
         }
+        Ok(())
     }
 }
