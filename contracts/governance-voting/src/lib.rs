@@ -77,6 +77,8 @@ pub enum DataKey {
     Quorum,
     VotingPeriod,
     Version,
+    /// Emergency pause state (true = paused, false = active) - integrates with #2141
+    Paused,
     /// Per-proposal storage
     Proposal(u64),
     /// Per-voter weight (registered voters)
@@ -122,6 +124,9 @@ impl GovernanceVotingContract {
         env.storage()
             .instance()
             .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -260,6 +265,16 @@ impl GovernanceVotingContract {
     ) -> Result<u64, Error> {
         caller.require_auth();
 
+        // Check if contract is paused
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         let admin: Address = env
             .storage()
             .instance()
@@ -373,6 +388,16 @@ impl GovernanceVotingContract {
     ) -> Result<(), Error> {
         voter.require_auth();
 
+        // Check if contract is paused
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         // Use the weight snapshot taken at proposal creation to prevent double-voting
         // via token transfer: the voter's weight is locked in at proposal creation time.
         let weight_snapshot: Map<Address, u64> = env
@@ -445,6 +470,16 @@ impl GovernanceVotingContract {
     /// A proposal passes when `votes_for > votes_against` AND
     /// `votes_for >= quorum`.
     pub fn finalize_proposal(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
+        // Check if contract is paused
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -521,6 +556,58 @@ impl GovernanceVotingContract {
             .set(&DataKey::VotingPeriod, &new_period);
         bump_instance(&env);
         Ok(())
+    }
+
+    /// Emergency pause the governance contract
+    ///
+    /// Prevents new proposals and voting. Only admin can pause. Read operations remain available.
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        bump_instance(&env);
+
+        Ok(())
+    }
+
+    /// Resume governance operations after emergency pause
+    ///
+    /// Only admin can unpause.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        bump_instance(&env);
+
+        Ok(())
+    }
+
+    /// Check if governance is paused
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 
     pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {

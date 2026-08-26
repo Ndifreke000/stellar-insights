@@ -5,7 +5,7 @@ mod events;
 
 use errors::Error;
 use events::{emit_admin_transferred, emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -18,6 +18,21 @@ fn bump_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+/// Role-based access control for contract functions
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Role {
+    /// Can perform all operations (backwards compat: original admin role)
+    Admin = 0,
+    /// Can submit snapshots
+    SnapshotSubmitter = 1,
+    /// Can pause/unpause the contract
+    PauseManager = 2,
+    /// Can perform upgrades
+    UpgradeManager = 3,
 }
 
 /// Storage keys for persistent contract data
@@ -130,6 +145,18 @@ impl StellarInsightsContract {
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
+        // Grant Admin role to initial admin
+        let mut roles = Vec::new(&env);
+        roles.push_back(Role::Admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(admin.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(admin.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
         emit_contract_initialized(&env, admin);
 
         Ok(())
@@ -183,15 +210,11 @@ impl StellarInsightsContract {
         // Verify caller is authenticated
         caller.require_auth();
 
-        // Get admin address from storage
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
+        // Check if caller has Admin or SnapshotSubmitter role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_submitter_role = Self::has_role(env.clone(), caller.clone(), Role::SnapshotSubmitter);
 
-        // Verify caller is the admin
-        if caller != admin {
+        if !has_admin_role && !has_submitter_role {
             return Err(Error::Unauthorized);
         }
 
@@ -370,21 +393,48 @@ impl StellarInsightsContract {
     /// * `new_admin` - Address to transfer admin rights to
     ///
     /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::Unauthorized` - If caller is not the current admin
     pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         caller.require_auth();
+
+        // Check if caller has Admin role
+        if !Self::has_role(env.clone(), caller.clone(), Role::Admin) {
+            return Err(Error::Unauthorized);
+        }
+
         let old_admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
-        if caller != old_admin {
-            return Err(Error::Unauthorized);
-        }
+
         // Require the new admin to also sign to prevent unilateral transfer
         new_admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        // Grant Admin role to the new admin
+        let mut roles = Vec::new(&env);
+        roles.push_back(Role::Admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(new_admin.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(new_admin.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
         bump_instance(&env);
         emit_admin_transferred(&env, old_admin, new_admin);
         Ok(())
@@ -419,13 +469,11 @@ impl StellarInsightsContract {
     pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
+        // Check if caller has Admin or PauseManager role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
 
-        if caller != admin {
+        if !has_admin_role && !has_pause_manager_role {
             return Err(Error::Unauthorized);
         }
 
@@ -451,13 +499,11 @@ impl StellarInsightsContract {
     pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
+        // Check if caller has Admin or PauseManager role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
 
-        if caller != admin {
+        if !has_admin_role && !has_pause_manager_role {
             return Err(Error::Unauthorized);
         }
 
@@ -521,7 +567,7 @@ impl StellarInsightsContract {
         // Emit event
         env.events().publish(
             (symbol_short!("upgrade"),),
-            (admin, new_wasm_hash),
+            (caller, new_wasm_hash),
         );
 
         Ok(())
@@ -728,6 +774,137 @@ impl StellarInsightsContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    // =========================================================================
+    // Role-Based Access Control (#2140)
+    // =========================================================================
+
+    /// Grant a role to an address. Only admin can grant roles.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to grant role (must be admin)
+    /// * `user` - Address to grant role to
+    /// * `role` - Role to grant
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is not admin
+    /// * `Error::AdminNotSet` - If admin not initialized
+    pub fn grant_role(env: Env, caller: Address, user: Address, role: Role) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut roles = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if !roles.iter().any(|r| r == role) {
+            roles.push_back(role);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(user.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(user.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("role_grnt"), user.clone()),
+            (caller, user, role),
+        );
+
+        Ok(())
+    }
+
+    /// Revoke a role from an address. Only admin can revoke roles.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to revoke role (must be admin)
+    /// * `user` - Address to revoke role from
+    /// * `role` - Role to revoke
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is not admin
+    /// * `Error::AdminNotSet` - If admin not initialized
+    pub fn revoke_role(env: Env, caller: Address, user: Address, role: Role) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        if let Some(roles) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
+        {
+            let mut new_roles = Vec::new(&env);
+            for r in roles.iter() {
+                if r != role {
+                    new_roles.push_back(r);
+                }
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::Roles(user.clone()), &new_roles);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Roles(user.clone()),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+            bump_instance(&env);
+
+            env.events().publish(
+                (symbol_short!("role_rvk"), user.clone()),
+                (caller, user, role),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Check if an address has a specific role
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `user` - Address to check
+    /// * `role` - Role to check for
+    ///
+    /// # Returns
+    /// * `true` if user has the role, `false` otherwise
+    pub fn has_role(env: Env, user: Address, role: Role) -> bool {
+        if let Some(roles) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user))
+        {
+            roles.iter().any(|r| r == role)
+        } else {
+            false
+        }
     }
 
     // =========================================================================

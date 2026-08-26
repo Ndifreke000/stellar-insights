@@ -1,0 +1,492 @@
+# Stellar Insights Kubernetes Deployment Guide
+
+## Architecture Overview
+
+The stellar-insights application is deployed as a containerized microservices architecture on Kubernetes with the following components:
+
+### Core Services
+- **Backend API** (`backend/`): Soroban RPC indexer and analytics API
+  - Deployment: 2 replicas (configurable via HPA: min 2, max 8 with 70% CPU threshold)
+  - Port: 8080 (container), 80 (service ClusterIP)
+  - Persistent volume: Required for local state
+  - PDB: Minimum 1 available replica during disruptions
+
+- **Frontend** (`frontend/`): Next.js web application
+  - Deployment: 2 replicas (configurable via HPA: min 2, max 5 with 80% CPU threshold)
+  - Port: 3000 (container), 3000 (service ClusterIP)
+  - Served via Ingress with TLS termination
+  - PDB: Minimum 1 available replica during disruptions
+
+### Data Layer
+- **PostgreSQL Database** (`database/`): Primary data store
+  - StatefulSet: Single-replica (not horizontally scaled)
+  - Port: 5432 (service)
+  - Persistent volume: 10Gi (configurable)
+  - Storage class: Must support read-write-once (RWO)
+
+- **Redis Cache** (`redis/`): In-memory session and cache store
+  - StatefulSet: Single-replica
+  - Port: 6379 (service)
+  - Persistent volume: 5Gi (RDB snapshots)
+  - Used by backend for session management and rate limiting
+
+### Networking
+- **Ingress** (`ingress/ingress.yaml`): External access
+  - NGINX Ingress Controller (nginx.ingress.kubernetes.io/ingress.class)
+  - TLS termination with cert-manager (ACME)
+  - CORS headers enabled
+  - Rate limiting: 100 requests/minute per IP
+  - Routing:
+    - `/` → frontend service
+    - `/api/*` → backend service
+
+- **Network Policy** (`network-policy.yaml`): Microsegmentation
+  - Restricts traffic between pods
+  - Allows ingress controller to reach frontend/backend
+  - Allows backend to reach database and redis
+  - Default deny for east-west traffic
+
+- **Service Accounts** (`*/serviceaccount.yaml`): RBAC (role-based access control)
+  - Per-service service accounts for least-privilege access
+  - Enables pod identity and workload identity integration
+
+### Monitoring
+- **Prometheus** (`monitoring/prometheus.yaml`): Metrics scraping
+  - Scrape interval: 30s
+  - Data retention: 15 days (configurable)
+  - ServiceMonitor resources for automatic target discovery
+  - Scrape targets: backend, frontend, kube-state-metrics
+
+- **ServiceMonitor** (`monitoring/servicemonitor.yaml`): Prometheus Operator integration
+  - Defines scrape targets for backend metrics (port 8080/metrics)
+  - Automatic label-based service discovery
+
+## Deployment Prerequisites
+
+### Cluster Requirements
+- Kubernetes 1.24+ (tested on 1.25+)
+- 3+ worker nodes with:
+  - Minimum 4 CPU cores and 8GB RAM per node
+  - 20Gi free disk space for stateful volumes
+- Storage class supporting PersistentVolumeClaims (RWO):
+  - AWS EBS (gp3 recommended)
+  - Google Cloud Persistent Disks
+  - Azure Managed Disks
+  - Local provisioner (development only)
+
+### Required Tools
+- `kubectl` CLI (matching cluster version)
+- `kustomize` v5.0+ or built-in `kubectl -k` support
+- `cert-manager` (for TLS - optional but recommended)
+- `helm` (optional, if installing Prometheus Operator)
+
+### Prerequisite Installations
+```bash
+# Install cert-manager (for automatic TLS)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+
+# Install NGINX Ingress Controller (if not already present)
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer
+```
+
+## Configuration Management
+
+### Secrets Management
+Secrets are externalized and stored outside the repository for security. Required secrets:
+
+1. **Database Credentials** (`config/secrets.yaml` - not committed)
+   - `DATABASE_USER`: PostgreSQL username (default: postgres)
+   - `DATABASE_PASSWORD`: PostgreSQL password (minimum 16 characters, special chars)
+   - `DATABASE_NAME`: PostgreSQL database name (default: stellar_insights)
+
+2. **Backend Secrets**
+   - `SOROBAN_RPC_URL`: Stellar Soroban RPC endpoint (e.g., https://soroban-testnet.stellar.org)
+   - `JWT_SECRET`: JWT signing key (minimum 32 characters)
+   - `SESSION_SECRET`: Session encryption key (minimum 32 characters)
+   - `REDIS_PASSWORD`: Redis authentication password
+
+3. **TLS Certificate Secrets**
+   - Managed by cert-manager with Let's Encrypt (production) or self-signed (development)
+   - Secret name: `stellar-insights-tls`
+
+### Environment Configuration
+ConfigMaps define environment-specific configuration:
+
+- **Global** (`config/configmap.yaml`):
+  - `ENVIRONMENT`: dev/staging/testnet/mainnet
+  - `LOG_LEVEL`: debug/info/warn/error
+  - `METRICS_ENABLED`: true/false
+
+- **Backend** (`backend/deployment.yaml`):
+  - `API_PORT`: Service port
+  - `CACHE_TTL`: Cache invalidation timeout (seconds)
+  - `BATCH_SIZE`: Indexer batch size
+
+- **Frontend** (`frontend/configmap.yaml`):
+  - `NEXT_PUBLIC_API_BASE_URL`: Backend API URL
+  - `NEXT_PUBLIC_ANALYTICS_ID`: Analytics tracking ID
+
+### Overlay Configuration
+Environment-specific configurations are in `overlays/`:
+
+```
+k8s/overlays/
+├── dev/           # Development: single replica, small resources
+├── staging/       # Staging: 2 replicas, moderate resources, real testnet
+├── testnet/       # Testnet: 2 replicas, production-like setup on testnet
+├── mainnet/       # Mainnet: HA setup with HPA, production resources
+└── production/    # Production: full HA with monitoring (not committed)
+```
+
+## Deployment Steps
+
+### 1. Prepare Environment
+
+```bash
+# Clone repository
+git clone https://github.com/Ndifreke000/stellar-insights.git
+cd stellar-insights/k8s
+
+# Create secrets file (not tracked by git)
+cat > config/secrets.yaml <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stellar-insights-secrets
+  namespace: stellar-insights
+type: Opaque
+stringData:
+  DATABASE_PASSWORD: "$(openssl rand -base64 32)"
+  JWT_SECRET: "$(openssl rand -base64 32)"
+  SESSION_SECRET: "$(openssl rand -base64 32)"
+  REDIS_PASSWORD: "$(openssl rand -base64 32)"
+  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+EOF
+
+# Validate manifests
+kubectl kustomize overlays/testnet | kubeval --strict
+```
+
+### 2. Deploy to Cluster
+
+```bash
+# Select environment (dev/staging/testnet/mainnet)
+ENVIRONMENT=testnet
+
+# Apply manifests using kustomize
+kubectl apply -k overlays/$ENVIRONMENT
+
+# Verify deployment
+kubectl get all -n stellar-insights
+kubectl get events -n stellar-insights --sort-by='.lastTimestamp'
+```
+
+### 3. Create Secrets
+
+```bash
+# Create database password
+kubectl create secret generic stellar-insights-secrets \
+  --from-literal=DATABASE_PASSWORD="$(openssl rand -base64 32)" \
+  --from-literal=JWT_SECRET="$(openssl rand -base64 32)" \
+  --from-literal=REDIS_PASSWORD="$(openssl rand -base64 32)" \
+  -n stellar-insights
+
+# Create TLS certificate secret (if not using cert-manager)
+kubectl create secret tls stellar-insights-tls \
+  --cert=path/to/cert.crt \
+  --key=path/to/key.key \
+  -n stellar-insights
+```
+
+### 4. Wait for Readiness
+
+```bash
+# Backend readiness
+kubectl rollout status deployment/stellar-insights-backend -n stellar-insights
+
+# Frontend readiness
+kubectl rollout status deployment/stellar-insights-frontend -n stellar-insights
+
+# Database readiness
+kubectl wait --for=condition=ready pod \
+  -l app=stellar-insights,component=database \
+  -n stellar-insights \
+  --timeout=300s
+```
+
+### 5. Verify Deployment
+
+```bash
+# Check pod status
+kubectl get pods -n stellar-insights
+
+# View logs
+kubectl logs -f deployment/stellar-insights-backend -n stellar-insights
+kubectl logs -f deployment/stellar-insights-frontend -n stellar-insights
+
+# Test API endpoint
+BACKEND_POD=$(kubectl get pod -l app=stellar-insights,component=backend \
+  -n stellar-insights -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $BACKEND_POD -n stellar-insights -- curl -s http://localhost:8080/health
+
+# Test Ingress
+kubectl get ingress -n stellar-insights
+# Wait for LoadBalancer IP assignment (check status column)
+```
+
+## Scaling and High Availability
+
+### Horizontal Pod Autoscaling
+HPA policies are configured for backend and frontend:
+
+```bash
+# View HPA status
+kubectl get hpa -n stellar-insights
+
+# Manual scaling (temporary override of HPA)
+kubectl scale deployment stellar-insights-backend --replicas=5 -n stellar-insights
+
+# Monitor autoscaling
+kubectl describe hpa stellar-insights-backend -n stellar-insights
+```
+
+Scaling thresholds:
+- Backend: 2-8 replicas, scale at 70% CPU utilization
+- Frontend: 2-5 replicas, scale at 80% CPU utilization
+
+### Pod Disruption Budgets
+PDBs ensure HA during voluntary disruptions (cluster upgrades, drains):
+
+```bash
+# Verify PDB configuration
+kubectl get pdb -n stellar-insights
+kubectl describe pdb stellar-insights-backend -n stellar-insights
+```
+
+Constraints:
+- Backend: Minimum 1 replica available
+- Frontend: Minimum 1 replica available
+
+### Persistent Storage
+Database and Redis require persistent volumes:
+
+```bash
+# Check PVC status
+kubectl get pvc -n stellar-insights
+
+# Resize PVC (for growing databases)
+kubectl patch pvc stellar-insights-database-data -p \
+  '{"spec":{"resources":{"requests":{"storage":"50Gi"}}}}' \
+  -n stellar-insights
+```
+
+## Monitoring and Observability
+
+### Prometheus Metrics
+Prometheus scrapes metrics from all services via ServiceMonitor:
+
+- Backend: `http://stellar-insights-backend:8080/metrics` (30s scrape interval)
+- Frontend: Not instrumented (static serving)
+
+### Querying Metrics
+
+```bash
+# Port-forward Prometheus
+kubectl port-forward svc/prometheus-server 9090:9090 -n stellar-insights
+
+# Example PromQL queries (visit http://localhost:9090)
+# API latency (p95): histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+# Memory usage: container_memory_usage_bytes{pod=~"stellar-insights-backend.*"}
+# Request rate: rate(http_requests_total[1m])
+```
+
+### Alert Rules
+Define alerts in `monitoring/prometheus-rules.yaml`:
+
+```bash
+# Apply alert rules
+kubectl apply -f monitoring/prometheus-rules.yaml
+
+# View active alerts
+kubectl exec prometheus-0 -n stellar-insights -- \
+  curl -s http://localhost:9090/api/v1/alerts | jq '.data.alerts'
+```
+
+## Rollback and Recovery
+
+### Rolling Back a Deployment
+
+```bash
+# Check deployment history
+kubectl rollout history deployment/stellar-insights-backend -n stellar-insights
+
+# Rollback to previous version
+kubectl rollout undo deployment/stellar-insights-backend -n stellar-insights
+
+# Rollback to specific revision
+kubectl rollout undo deployment/stellar-insights-backend --to-revision=2 -n stellar-insights
+```
+
+### Database Recovery
+
+```bash
+# Backup database
+kubectl exec -it stellar-insights-database-0 -n stellar-insights -- \
+  pg_dump -U postgres stellar_insights | gzip > backup-$(date +%s).sql.gz
+
+# Restore from backup
+kubectl exec -i stellar-insights-database-0 -n stellar-insights -- \
+  psql -U postgres stellar_insights < backup-1234567890.sql
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Pods stuck in Pending**
+   ```bash
+   kubectl describe pod <pod-name> -n stellar-insights
+   # Check: resource requests vs available nodes, PVC binding
+   ```
+
+2. **CrashLoopBackOff**
+   ```bash
+   kubectl logs <pod-name> -n stellar-insights --previous
+   # Check: missing secrets, invalid env vars, disk space
+   ```
+
+3. **Ingress not routing traffic**
+   ```bash
+   kubectl describe ingress stellar-insights -n stellar-insights
+   # Check: TLS cert status, backend service health, ingress controller logs
+   ```
+
+4. **Database connection errors**
+   ```bash
+   kubectl exec <backend-pod> -n stellar-insights -- \
+     env | grep DATABASE
+   # Verify credentials match secrets
+   ```
+
+### Debug Logging
+
+```bash
+# Enable debug logging in backend
+kubectl set env deployment/stellar-insights-backend LOG_LEVEL=debug -n stellar-insights
+
+# Stream logs from all backend replicas
+kubectl logs -f -l app=stellar-insights,component=backend -n stellar-insights
+
+# Interactive shell in pod
+kubectl exec -it <pod-name> -n stellar-insights -- /bin/sh
+```
+
+## Performance Tuning
+
+### Resource Limits
+Adjust resource requests/limits in deployment manifests based on workload:
+
+```yaml
+resources:
+  requests:
+    cpu: 500m          # Guaranteed minimum
+    memory: 512Mi       # Guaranteed minimum
+  limits:
+    cpu: 2000m         # Maximum allowed
+    memory: 2Gi        # Maximum allowed
+```
+
+### Connection Pooling
+Backend uses pgbouncer for database connection pooling:
+
+```bash
+kubectl set env deployment/stellar-insights-backend \
+  DB_POOL_SIZE=20 \
+  DB_POOL_MIN_SIZE=5 \
+  -n stellar-insights
+```
+
+## Security Hardening
+
+### Network Policies
+Microsegmentation is enforced via network-policy.yaml:
+
+```bash
+# Verify network policy
+kubectl get networkpolicy -n stellar-insights
+kubectl describe networkpolicy default-deny -n stellar-insights
+```
+
+### RBAC
+Per-service service accounts follow least-privilege principle:
+
+```bash
+# View role bindings
+kubectl get rolebindings -n stellar-insights
+kubectl describe rolebinding stellar-insights-backend -n stellar-insights
+```
+
+### Image Security
+Use image scanning and signed images in production:
+
+```bash
+# Scan images
+trivy image stellar-insights/backend:latest
+
+# Use private registry with authentication
+kubectl create secret docker-registry regcred \
+  --docker-server=private.registry.com \
+  --docker-username=user \
+  --docker-password=pass \
+  -n stellar-insights
+```
+
+## Maintenance
+
+### Regular Tasks
+
+- **Weekly**: Monitor resource utilization, review error logs
+- **Monthly**: Backup database, test restore procedure, rotate secrets
+- **Quarterly**: Update base images, run security scans, update Kubernetes version
+
+### Updating Applications
+
+```bash
+# Update image tags in kustomization.yaml
+kubectl kustomize overlays/$ENVIRONMENT | kubectl apply -f -
+
+# Monitor rollout
+kubectl rollout status deployment/stellar-insights-backend -n stellar-insights
+```
+
+## Support and Documentation
+
+- **Architecture Decisions**: See `docs/architecture.md`
+- **Container Images**: Built from `Dockerfile` in project root
+- **CI/CD Integration**: `.github/workflows/deploy-k8s.yaml`
+- **Terraform IaC**: `terraform/` directory (optional infrastructure provisioning)
+
+## FAQ
+
+**Q: How do I scale the application?**
+A: HPA automatically scales based on CPU utilization. For manual control: `kubectl scale deployment stellar-insights-backend --replicas=N -n stellar-insights`
+
+**Q: How do I update environment variables?**
+A: Update ConfigMaps in `config/configmap.yaml`, then redeploy or restart pods: `kubectl rollout restart deployment/stellar-insights-backend -n stellar-insights`
+
+**Q: How do I change database password?**
+A: Update the secret and restart pods: `kubectl delete secret stellar-insights-secrets` and recreate with new password.
+
+**Q: What's the upgrade process?**
+A: Kustomize overlays handle environment-specific configuration. Update image tags and apply new manifests with `kubectl apply -k overlays/$ENVIRONMENT`.
+
+---
+
+**Last updated**: 2026-08-26
+**Manifest version**: 1.0
+**Tested with Kubernetes**: 1.25+
