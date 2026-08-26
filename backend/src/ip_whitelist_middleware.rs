@@ -202,35 +202,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_single_ipv4() {
-        let config = IpWhitelistConfig::parse_whitelist("192.168.1.1").unwrap();
+    fn test_parse_single_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+        let config = IpWhitelistConfig::parse_whitelist("192.168.1.1")?;
         assert_eq!(config.len(), 1);
-        assert!(config[0].contains(IpAddr::from_str("192.168.1.1").unwrap()));
-        assert!(!config[0].contains(IpAddr::from_str("192.168.1.2").unwrap()));
+        assert!(config[0].contains(IpAddr::from_str("192.168.1.1")?));
+        assert!(!config[0].contains(IpAddr::from_str("192.168.1.2")?));
+        Ok(())
     }
 
     #[test]
-    fn test_parse_ipv4_cidr() {
-        let config = IpWhitelistConfig::parse_whitelist("192.168.1.0/24").unwrap();
+    fn test_parse_ipv4_cidr() -> Result<(), Box<dyn std::error::Error>> {
+        let config = IpWhitelistConfig::parse_whitelist("192.168.1.0/24")?;
         assert_eq!(config.len(), 1);
-        assert!(config[0].contains(IpAddr::from_str("192.168.1.1").unwrap()));
-        assert!(config[0].contains(IpAddr::from_str("192.168.1.254").unwrap()));
-        assert!(!config[0].contains(IpAddr::from_str("192.168.2.1").unwrap()));
+        assert!(config[0].contains(IpAddr::from_str("192.168.1.1")?));
+        assert!(config[0].contains(IpAddr::from_str("192.168.1.254")?));
+        assert!(!config[0].contains(IpAddr::from_str("192.168.2.1")?));
+        Ok(())
     }
 
     #[test]
-    fn test_parse_multiple_ips() {
+    fn test_parse_multiple_ips() -> Result<(), Box<dyn std::error::Error>> {
         let config =
-            IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1").unwrap();
+            IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1")?;
         assert_eq!(config.len(), 3);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_ipv6() {
-        let config = IpWhitelistConfig::parse_whitelist("::1, 2001:db8::/32").unwrap();
+    fn test_parse_ipv6() -> Result<(), Box<dyn std::error::Error>> {
+        let config = IpWhitelistConfig::parse_whitelist("::1, 2001:db8::/32")?;
         assert_eq!(config.len(), 2);
-        assert!(config[0].contains(IpAddr::from_str("::1").unwrap()));
-        assert!(config[1].contains(IpAddr::from_str("2001:db8::1").unwrap()));
+        assert!(config[0].contains(IpAddr::from_str("::1")?));
+        assert!(config[1].contains(IpAddr::from_str("2001:db8::1")?));
+        Ok(())
     }
 
     #[test]
@@ -246,32 +250,34 @@ mod tests {
     }
 
     #[test]
-    fn test_is_allowed() {
+    fn test_is_allowed() -> Result<(), Box<dyn std::error::Error>> {
         let config = IpWhitelistConfig {
             allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("192.168.1.0/24, 10.0.0.1").unwrap(),
+                IpWhitelistConfig::parse_whitelist("192.168.1.0/24, 10.0.0.1")?,
             ),
             trust_proxy: false,
             max_forwarded_ips: 3,
         };
 
-        assert!(config.is_allowed(&IpAddr::from_str("192.168.1.100").unwrap()));
-        assert!(config.is_allowed(&IpAddr::from_str("10.0.0.1").unwrap()));
-        assert!(!config.is_allowed(&IpAddr::from_str("192.168.2.1").unwrap()));
-        assert!(!config.is_allowed(&IpAddr::from_str("10.0.0.2").unwrap()));
+        assert!(config.is_allowed(&IpAddr::from_str("192.168.1.100")?));
+        assert!(config.is_allowed(&IpAddr::from_str("10.0.0.1")?));
+        assert!(!config.is_allowed(&IpAddr::from_str("192.168.2.1")?));
+        assert!(!config.is_allowed(&IpAddr::from_str("10.0.0.2")?));
+        Ok(())
     }
 
     #[test]
-    fn test_localhost_ipv4_and_ipv6() {
+    fn test_localhost_ipv4_and_ipv6() -> Result<(), Box<dyn std::error::Error>> {
         let config = IpWhitelistConfig {
             allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1").unwrap(),
+                IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1")?,
             ),
             trust_proxy: false,
             max_forwarded_ips: 3,
         };
 
-        assert!(config.is_allowed(&IpAddr::from_str("127.0.0.1").unwrap()));
-        assert!(config.is_allowed(&IpAddr::from_str("::1").unwrap()));
+        assert!(config.is_allowed(&IpAddr::from_str("127.0.0.1")?));
+        assert!(config.is_allowed(&IpAddr::from_str("::1")?));
+        Ok(())
     }
 }
