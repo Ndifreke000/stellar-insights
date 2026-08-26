@@ -34,7 +34,18 @@ pub enum DataKey {
     Paused,
     /// Contract package version at initialization
     Version,
+    /// Governance contract permitted to update parameters on-chain (#2137)
+    Governance,
+    /// Schema version of the data currently in storage (#2133)
+    StorageVersion,
 }
+
+/// Schema version this build reads and writes.
+///
+/// Bumped whenever the *shape* of stored data changes — not on every release.
+/// `migrate()` moves storage from whatever version it is on up to this one, and
+/// refuses to run against anything newer than it understands.
+pub const CURRENT_STORAGE_VERSION: u32 = 1;
 
 /// Analytics snapshot data structure
 #[contracttype]
@@ -103,6 +114,12 @@ impl StellarInsightsContract {
 
         // Initialize latest epoch to 0
         env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
+
+        // Stamp the schema version so a fresh deploy is never mistaken for
+        // pre-versioning state that still needs migrating.
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &CURRENT_STORAGE_VERSION);
 
         // Initialize contract as not paused
         env.storage().instance().set(&DataKey::Paused, &false);
@@ -466,13 +483,17 @@ impl StellarInsightsContract {
     /// * `Error::Unauthorized` - If caller is not the admin
     /// * `Error::ContractPaused` - If contract is currently paused
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
-        // Only admin can upgrade
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
 
+        // Authorisation stays with the admin. `GovernedContract::upgrade`
+        // carries no caller argument, so there is nothing to distinguish a
+        // governance invocation from any other — governance drives an upgrade
+        // by *being* the admin, which `set_admin_by_governance` allows a vote
+        // to arrange.
         admin.require_auth();
 
         // Verify contract is not paused
@@ -486,6 +507,13 @@ impl StellarInsightsContract {
             return Err(Error::ContractPaused);
         }
 
+        // A zero hash is never a real Wasm blob; accepting one would replace
+        // the contract with nothing and brick it permanently.
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if new_wasm_hash == zero_hash {
+            return Err(Error::InvalidWasmHash);
+        }
+
         // Perform upgrade
         env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
         bump_instance(&env);
@@ -495,6 +523,195 @@ impl StellarInsightsContract {
             (symbol_short!("upgrade"),),
             (admin, new_wasm_hash),
         );
+
+        Ok(())
+    }
+
+    /// Schema version of the data currently in storage.
+    ///
+    /// Contracts deployed before versioning existed report `0`, which is what
+    /// [`Self::migrate`] uses to decide there is work to do.
+    pub fn get_storage_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::StorageVersion)
+            .unwrap_or(0)
+    }
+
+    /// Bring stored data up to the schema this build expects.
+    ///
+    /// `upgrade()` swaps the Wasm but cannot touch storage in the same
+    /// invocation — the new code is not running yet. Migration is therefore a
+    /// separate admin-invoked step, run once against the *new* Wasm:
+    ///
+    /// ```text
+    ///   upgrade(new_wasm_hash)   →  new code active, storage still old shape
+    ///   migrate()                →  storage transformed, version stamped
+    /// ```
+    ///
+    /// Idempotent by construction: it refuses with `MigrationNotNeeded` once
+    /// storage is already current, so a retry after a partial failure is safe
+    /// and a double-invocation cannot corrupt state.
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` — admin was never initialized
+    /// * `Error::Unauthorized` — caller is neither admin nor governance
+    /// * `Error::MigrationNotNeeded` — storage is already current
+    /// * `Error::StorageVersionTooNew` — storage was written by a newer build,
+    ///   which means a downgrade happened; migrating would lose data
+    pub fn migrate(env: Env, caller: Address) -> Result<u32, Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        let governance: Option<Address> = env.storage().instance().get(&DataKey::Governance);
+
+        let authorized = caller == admin || governance.as_ref() == Some(&caller);
+        if !authorized {
+            return Err(Error::Unauthorized);
+        }
+
+        let from = Self::get_storage_version(env.clone());
+
+        if from > CURRENT_STORAGE_VERSION {
+            return Err(Error::StorageVersionTooNew);
+        }
+        if from == CURRENT_STORAGE_VERSION {
+            return Err(Error::MigrationNotNeeded);
+        }
+
+        // ── Migration steps ──────────────────────────────────────────────
+        // Each step moves storage forward exactly one version and must be
+        // safe to re-run. Add the next as `if from < N { … }` below, in order.
+
+        if from < 1 {
+            // v0 → v1: pre-versioning deployments never stamped LatestEpoch
+            // when they had no snapshots, so a missing key is read as 0. The
+            // rollback guard in submit_snapshot depends on that value being
+            // present and correct, so it is materialised here rather than
+            // left to `unwrap_or(0)`.
+            let latest: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0);
+            env.storage().instance().set(&DataKey::LatestEpoch, &latest);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &CURRENT_STORAGE_VERSION);
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("migrate"),),
+            (caller, from, CURRENT_STORAGE_VERSION),
+        );
+
+        Ok(CURRENT_STORAGE_VERSION)
+    }
+
+    /// Point the contract at the governance contract allowed to update its
+    /// parameters on-chain. Admin-only.
+    ///
+    /// Setting this is what makes a passed governance proposal executable
+    /// against this contract; until then the `*_by_governance` entrypoints
+    /// reject every caller.
+    pub fn set_governance(env: Env, caller: Address, governance: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Governance, &governance);
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("govset"),),
+            (caller, governance),
+        );
+
+        Ok(())
+    }
+
+    /// The governance contract permitted to update parameters, if configured.
+    pub fn get_governance(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Governance)
+    }
+
+    /// Transfer admin as the outcome of a passed governance proposal.
+    ///
+    /// Callable only by the configured governance contract. This is the
+    /// counterpart of `set_admin`, which requires the current admin — together
+    /// they let control move either by the admin's own hand or by a vote.
+    pub fn set_admin_by_governance(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(Error::GovernanceNotSet)?;
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+
+        emit_admin_transferred(&env, old_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Pause or unpause as the outcome of a passed governance proposal.
+    ///
+    /// Callable only by the configured governance contract.
+    pub fn set_paused_by_governance(
+        env: Env,
+        caller: Address,
+        paused: bool,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(Error::GovernanceNotSet)?;
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        bump_instance(&env);
+
+        if paused {
+            emit_contract_paused(&env, caller);
+        } else {
+            emit_contract_unpaused(&env, caller);
+        }
 
         Ok(())
     }
