@@ -353,9 +353,19 @@ impl StellarInsightsContract {
     /// * `new_admin` - Address to transfer admin rights to
     ///
     /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::Unauthorized` - If caller is not the current admin
     pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
         caller.require_auth();
         let old_admin: Address = env
             .storage()

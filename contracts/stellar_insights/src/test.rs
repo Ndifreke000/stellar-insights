@@ -746,3 +746,204 @@ fn test_set_admin_unauthorized_emits_no_event() {
     // Unauthorized transfer must not emit admin-transfer audit events.
     assert_eq!(admin_topic_events_before, admin_topic_events_after);
 }
+
+// ============================================================================
+// Emergency Pause Tests (#2141)
+// ============================================================================
+
+#[test]
+fn test_pause_blocks_snapshot_submission() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Pause the contract
+    client.pause(&admin);
+
+    // Attempt to submit snapshot while paused
+    let epoch = 1u64;
+    let hash = create_test_hash(&env, 12345);
+    let result = client.try_submit_snapshot(&epoch, &hash, &admin);
+
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_pause_blocks_set_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Pause the contract
+    client.pause(&admin);
+
+    // Attempt to change admin while paused
+    let result = client.try_set_admin(&admin, &new_admin);
+
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_pause_blocks_upgrade() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Pause the contract
+    client.pause(&admin);
+
+    // Attempt to upgrade while paused
+    let new_wasm = create_test_hash(&env, 99999);
+    let result = client.try_upgrade(&new_wasm);
+
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_read_only_functions_work_while_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Submit a snapshot before pausing
+    let epoch = 1u64;
+    let hash = create_test_hash(&env, 12345);
+    client.submit_snapshot(&epoch, &hash, &admin);
+
+    // Pause the contract
+    client.pause(&admin);
+
+    // All read-only functions should still work
+    assert!(client.is_paused());
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_latest_epoch(), epoch);
+    let (retrieved_hash, retrieved_epoch, _ts) = client.latest_snapshot();
+    assert_eq!(retrieved_hash, hash);
+    assert_eq!(retrieved_epoch, epoch);
+}
+
+#[test]
+fn test_unpause_restores_functionality() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Pause the contract
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    // Unpause the contract
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+
+    // Snapshot submission should work again
+    let epoch = 1u64;
+    let hash = create_test_hash(&env, 12345);
+    let _timestamp = client.submit_snapshot(&epoch, &hash, &admin);
+    assert_eq!(client.get_latest_epoch(), epoch);
+}
+
+#[test]
+fn test_unauthorized_cannot_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Unauthorized user tries to pause
+    let result = client.try_pause(&unauthorized);
+
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_unauthorized_cannot_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Admin pauses the contract
+    client.pause(&admin);
+
+    // Unauthorized user tries to unpause
+    let result = client.try_unpause(&unauthorized);
+
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_pause_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let events_before = count_contract_events_with_topic0(&env, symbol_short!("pause"));
+    client.pause(&admin);
+    let events_after = count_contract_events_with_topic0(&env, symbol_short!("pause"));
+
+    assert_eq!(events_after, events_before + 1);
+}
+
+#[test]
+fn test_unpause_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.pause(&admin);
+
+    let events_before = count_contract_events_with_topic0(&env, symbol_short!("unpause"));
+    client.unpause(&admin);
+    let events_after = count_contract_events_with_topic0(&env, symbol_short!("unpause"));
+
+    assert_eq!(events_after, events_before + 1);
+}
