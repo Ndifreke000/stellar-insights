@@ -1,6 +1,6 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridors, cost_calculator, fee_bump, liquidity_pools,
-    metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
+    account_merges, anchors, cache_stats, corridors, cost_calculator, digest, fee_bump,
+    liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -165,7 +165,7 @@ pub fn routes(
         )
         .route("/rpc/trades", get(rpc::get_trades))
         .route("/rpc/orderbook", get(rpc::get_order_book))
-        .with_state(rpc_client);
+        .with_state(Arc::clone(&rpc_client));
 
     // 5. Special service routes
     let service_routes = Router::new()
@@ -185,6 +185,18 @@ pub fn routes(
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool);
 
+    // 7. Email digest routes (#2130) — auth-gated: triggering a send is an
+    // operator action, not something an anonymous caller should be able to do.
+    let digest_routes = Router::new()
+        .nest(
+            "/digest",
+            digest::routes(digest::scheduler_from_env(
+                cache.clone(),
+                Arc::clone(&rpc_client),
+            )),
+        )
+        .layer(middleware::from_fn(auth_middleware));
+
     // V1 router (mounted at /api/v1 and also preserved at root for compatibility)
     let v1_router = Router::new()
         .merge(cached_routes)
@@ -195,7 +207,8 @@ pub fn routes(
         .merge(gdpr_routes)
         .merge(rpc_routes)
         .merge(service_routes)
-        .merge(oauth_routes);
+        .merge(oauth_routes)
+        .merge(digest_routes);
 
     // Combine all routes
     Router::new()

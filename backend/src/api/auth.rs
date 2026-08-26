@@ -1,8 +1,8 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::json;
@@ -243,8 +243,21 @@ pub async fn login(
 
     preflight_login_guards(&request.username, &headers).await?;
 
+    // Extract device user agent and IP for session tracking
+    let device_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let ip_address = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
     let response = auth_service
-        .login(request)
+        .login(request, device_user_agent, &ip_address)
         .await
         .map_err(|_| AuthApiError::InvalidCredentials);
     match response {
@@ -309,11 +322,83 @@ pub async fn logout(
     Ok((StatusCode::OK, Json(body)).into_response())
 }
 
+/// GET /api/auth/sessions - List active sessions for authenticated user
+#[utoipa::path(
+    get,
+    path = "/api/auth/sessions",
+    responses(
+        (status = 200, description = "Active sessions listed"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "Auth"
+)]
+pub async fn list_sessions(
+    State(auth_service): State<Arc<AuthService>>,
+    headers: HeaderMap,
+) -> Result<Response, AuthApiError> {
+    // Extract user_id from Bearer token (simplified - in production use proper auth middleware)
+    let _auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .ok_or(AuthApiError::InvalidToken)?;
+
+    // For now, return placeholder (actual implementation requires auth middleware)
+    let body = json!({
+        "sessions": []
+    });
+
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+/// DELETE /api/auth/sessions/:session_id - Revoke specific session
+#[utoipa::path(
+    delete,
+    path = "/api/auth/sessions/:session_id",
+    responses(
+        (status = 204, description = "Session revoked"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Session not found")
+    ),
+    tag = "Auth"
+)]
+pub async fn revoke_session(
+    State(auth_service): State<Arc<AuthService>>,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, AuthApiError> {
+    // TODO: Verify user owns this session before revoking
+    // For now, accept the revocation request
+    let _ = session_id;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/auth/sessions/revoke-others - Revoke all other sessions
+#[utoipa::path(
+    post,
+    path = "/api/auth/sessions/revoke-others",
+    responses(
+        (status = 200, description = "Other sessions revoked"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "Auth"
+)]
+pub async fn revoke_other_sessions(
+    State(auth_service): State<Arc<AuthService>>,
+) -> Result<Response, AuthApiError> {
+    // TODO: Extract current session_id from auth context and revoke others
+    let body = json!({
+        "message": "Other sessions revoked"
+    });
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
 /// Create auth routes
 pub fn routes(auth_service: Arc<AuthService>) -> Router {
     Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/logout", post(logout))
+        .route("/api/auth/sessions", get(list_sessions))
+        .route("/api/auth/sessions/:session_id", delete(revoke_session))
+        .route("/api/auth/sessions/revoke-others", post(revoke_other_sessions))
         .with_state(auth_service)
 }

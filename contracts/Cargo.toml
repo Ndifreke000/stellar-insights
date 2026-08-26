@@ -13,6 +13,12 @@ members = [
   "token-swap",
   "upgrade",
   "tests",
+  # Issue #2136 — Snapshot Verification Rewards
+  "snapshot-verification-rewards",
+  # Issue #2134 — Multi-Admin Support
+  "multi-admin",
+  # Issue #2135 — Contract Pause/Unpause
+  "pausable",
 ]
 # `benches` and `tests` are host-side crates (dev/bench tooling, not deployable
 # contracts) and pull in soroban-sdk's testutils feature, which needs std and
@@ -30,6 +36,12 @@ default-members = [
   "time-locked-transactions",
   "token-swap",
   "upgrade",
+  # Issue #2136 — Snapshot Verification Rewards
+  "snapshot-verification-rewards",
+  # Issue #2134 — Multi-Admin Support
+  "multi-admin",
+  # Issue #2135 — Contract Pause/Unpause
+  "pausable",
 ]
 
 # Clippy linting configuration for all contracts

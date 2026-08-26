@@ -1,5 +1,6 @@
 pub mod account_merges;
 pub mod achievements;
+pub mod admin_ip_whitelist;
 pub mod alerts;
 pub mod analytics_dashboard;
 pub mod anchors;
@@ -9,11 +10,12 @@ pub mod backfill;
 
 pub mod auth;
 pub mod cache_stats;
+pub mod twofa;
 pub mod corridors;
 pub mod cost_calculator;
 pub mod export;
 pub mod gdpr;
-// pub mod digest;  // Commented out - depends on email module
+pub mod digest;
 pub mod api_analytics;
 pub mod contract_events;
 pub mod fee_bump;

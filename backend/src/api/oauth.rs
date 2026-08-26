@@ -1,7 +1,7 @@
 /// OAuth API endpoints for Zapier integration
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -387,6 +387,63 @@ impl From<anyhow::Error> for OAuthApiError {
     }
 }
 
+/// Identity of the account behind an OAuth access token.
+///
+/// Zapier's connection setup calls an `authentication.test` endpoint after the
+/// OAuth exchange: it proves the token works and supplies the text Zapier shows
+/// as the connection's label. `connection_label` exists for exactly that.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct OAuthIdentity {
+    pub user_id: String,
+    pub username: String,
+    pub client_id: String,
+    pub scopes: Vec<String>,
+    /// Human-readable label for the connection, shown in the Zapier UI.
+    pub connection_label: String,
+}
+
+/// `GET /api/oauth/me` — validate the bearer token and describe the connection.
+///
+/// Without this a Zapier app can complete the OAuth dance but cannot verify or
+/// label the resulting connection, which is a required step before any trigger
+/// can be configured.
+pub async fn me(
+    State(db): State<SqlitePool>,
+    headers: HeaderMap,
+) -> Result<Json<OAuthIdentity>, OAuthApiError> {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| {
+            OAuthApiError::InvalidRequest("Missing Bearer access token".to_string())
+        })?;
+
+    let service = OAuthService::new(db);
+    let claims = service
+        .validate_oauth_token(token)
+        .map_err(|e| OAuthApiError::InvalidRequest(format!("Invalid access token: {e}")))?;
+
+    // Refresh tokens authenticate the token endpoint, not the API; accepting one
+    // here would let a Zapier connection test pass with a credential that cannot
+    // actually read anything.
+    if claims.token_type != "access" {
+        return Err(OAuthApiError::InvalidRequest(
+            "An access token is required".to_string(),
+        ));
+    }
+
+    Ok(Json(OAuthIdentity {
+        connection_label: format!("Stellar Insights ({})", claims.username),
+        user_id: claims.sub,
+        username: claims.username,
+        client_id: claims.client_id,
+        scopes: claims.scopes,
+    }))
+}
+
 /// Create OAuth routes
 pub fn routes(db: SqlitePool) -> Router {
     Router::new()
@@ -394,5 +451,7 @@ pub fn routes(db: SqlitePool) -> Router {
         .route("/api/oauth/token", post(token))
         .route("/api/oauth/revoke", post(revoke))
         .route("/api/oauth/apps", get(list_apps))
+        // #2127 — Zapier authentication.test
+        .route("/api/oauth/me", get(me))
         .with_state(db)
 }

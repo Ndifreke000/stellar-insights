@@ -253,14 +253,15 @@ async fn test_webhook_routes_mount_at_api_v1_webhooks() {
             "/api/v1/webhooks",
             webhooks::routes(db.pool().clone()),
         )
-        .layer(middleware::from_fn(|mut req, next| async move {
-            req.extensions_mut().insert(AuthUser {
-                user_id: "test-user".to_string(),
-                username: "tester".to_string(),
-            });
-            Ok::<_, axum::response::Response>(next.run(req).await)
-        }))
-        .with_state(db.pool().clone());
+        .layer(middleware::from_fn(
+            |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+                req.extensions_mut().insert(AuthUser {
+                    user_id: "test-user".to_string(),
+                    username: "tester".to_string(),
+                });
+                Ok::<_, axum::response::Response>(next.run(req).await)
+            },
+        ));
 
     let resolved = app
         .oneshot(

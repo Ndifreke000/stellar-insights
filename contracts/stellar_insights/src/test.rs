@@ -747,418 +747,325 @@ fn test_set_admin_unauthorized_emits_no_event() {
     assert_eq!(admin_topic_events_before, admin_topic_events_after);
 }
 
-// ============================================================================
-// Emergency Pause Tests (#2141)
-// ============================================================================
+// ── Governance-driven parameter updates (#2137) ──────────────────────────────
 
-#[test]
-fn test_pause_blocks_snapshot_submission() {
-    let env = Env::default();
+/// Register the contract with an admin and a configured governance address.
+fn setup_governed(env: &Env) -> (StellarInsightsContractClient<'_>, Address, Address) {
     env.mock_all_auths();
-
     let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let client = StellarInsightsContractClient::new(env, &contract_id);
 
-    let admin = Address::generate(&env);
+    let admin = Address::generate(env);
+    let governance = Address::generate(env);
+
     client.initialize(&admin);
+    client.set_governance(&admin, &governance);
 
-    // Pause the contract
-    client.pause(&admin);
-
-    // Attempt to submit snapshot while paused
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 12345);
-    let result = client.try_submit_snapshot(&epoch, &hash, &admin);
-
-    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+    (client, admin, governance)
 }
 
 #[test]
-fn test_pause_blocks_set_admin() {
+fn test_governance_starts_unset() {
     let env = Env::default();
     env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    client.initialize(&Address::generate(&env));
 
+    assert_eq!(client.get_governance(), None);
+}
+
+#[test]
+fn test_admin_can_configure_governance() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup_governed(&env);
+
+    assert_eq!(client.get_governance(), Some(governance));
+}
+
+#[test]
+fn test_non_admin_cannot_configure_governance() {
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, StellarInsightsContract);
     let client = StellarInsightsContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    client.initialize(&admin);
+
+    let result = client.try_set_governance(&stranger, &Address::generate(&env));
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_governance_can_transfer_admin() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup_governed(&env);
     let new_admin = Address::generate(&env);
+
+    client.set_admin_by_governance(&governance, &new_admin);
+
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+#[test]
+fn test_non_governance_cannot_transfer_admin() {
+    let env = Env::default();
+    let (client, admin, _governance) = setup_governed(&env);
+
+    // Even the admin must go through `set_admin`; this entrypoint is the
+    // governance path and accepts nobody else.
+    let result = client.try_set_admin_by_governance(&admin, &Address::generate(&env));
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_governance_admin_transfer_rejected_when_unconfigured() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    // Pause the contract
-    client.pause(&admin);
+    let result = client.try_set_admin_by_governance(&admin, &Address::generate(&env));
+    assert_eq!(result, Err(Ok(Error::GovernanceNotSet)));
+}
 
-    // Attempt to change admin while paused
-    let result = client.try_set_admin(&admin, &new_admin);
+#[test]
+fn test_governance_can_pause_and_unpause() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup_governed(&env);
 
+    assert!(!client.is_paused());
+
+    client.set_paused_by_governance(&governance, &true);
+    assert!(client.is_paused());
+
+    client.set_paused_by_governance(&governance, &false);
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_governance_pause_blocks_snapshot_submission() {
+    let env = Env::default();
+    let (client, admin, governance) = setup_governed(&env);
+
+    client.set_paused_by_governance(&governance, &true);
+
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &admin);
     assert_eq!(result, Err(Ok(Error::ContractPaused)));
 }
 
 #[test]
-fn test_pause_blocks_upgrade() {
+fn test_non_governance_cannot_pause_through_governance_path() {
+    let env = Env::default();
+    let (client, admin, _governance) = setup_governed(&env);
+
+    let result = client.try_set_paused_by_governance(&admin, &true);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_governance_admin_transfer_grants_submission_rights() {
+    let env = Env::default();
+    let (client, admin, governance) = setup_governed(&env);
+    let new_admin = Address::generate(&env);
+
+    client.set_admin_by_governance(&governance, &new_admin);
+
+    // The new admin can submit…
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &new_admin);
+    assert_eq!(client.get_latest_epoch(), 1);
+
+    // …and the old one can no longer.
+    let result = client.try_submit_snapshot(&2u64, &create_test_hash(&env, 2), &admin);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+// ── Upgrade safety and storage migration (#2133) ─────────────────────────────
+
+#[test]
+fn test_fresh_deploy_is_stamped_at_current_storage_version() {
     let env = Env::default();
     env.mock_all_auths();
-
     let contract_id = env.register_contract(None, StellarInsightsContract);
     let client = StellarInsightsContractClient::new(&env, &contract_id);
+    client.initialize(&Address::generate(&env));
 
+    assert_eq!(client.get_storage_version(), CURRENT_STORAGE_VERSION);
+}
+
+#[test]
+fn test_migrate_is_a_noop_on_a_fresh_deploy() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    // Pause the contract
+    // Nothing to move: a fresh deploy already writes the current shape.
+    let result = client.try_migrate(&admin);
+    assert_eq!(result, Err(Ok(Error::MigrationNotNeeded)));
+}
+
+#[test]
+fn test_migrate_advances_pre_versioning_storage() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Simulate a contract deployed before versioning existed: the key is
+    // absent, so get_storage_version() reads 0.
+    env.as_contract(&contract_id, || {
+        env.storage().instance().remove(&DataKey::StorageVersion);
+    });
+    assert_eq!(client.get_storage_version(), 0);
+
+    assert_eq!(client.migrate(&admin), CURRENT_STORAGE_VERSION);
+    assert_eq!(client.get_storage_version(), CURRENT_STORAGE_VERSION);
+}
+
+#[test]
+fn test_migrate_is_idempotent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().remove(&DataKey::StorageVersion);
+    });
+
+    client.migrate(&admin);
+    // A second call must refuse rather than re-run the steps.
+    assert_eq!(client.try_migrate(&admin), Err(Ok(Error::MigrationNotNeeded)));
+}
+
+#[test]
+fn test_migrate_refuses_storage_from_a_newer_build() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // A downgrade left storage written by a newer build; migrating forward
+    // from here would misread it.
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &(CURRENT_STORAGE_VERSION + 1));
+    });
+
+    assert_eq!(client.try_migrate(&admin), Err(Ok(Error::StorageVersionTooNew)));
+}
+
+#[test]
+fn test_migrate_rejects_an_unrelated_caller() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().remove(&DataKey::StorageVersion);
+    });
+
+    let result = client.try_migrate(&Address::generate(&env));
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_governance_may_run_the_migration() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup_governed(&env);
+    let contract_id = client.address.clone();
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().remove(&DataKey::StorageVersion);
+    });
+
+    assert_eq!(client.migrate(&governance), CURRENT_STORAGE_VERSION);
+}
+
+#[test]
+fn test_upgrade_rejects_a_zero_wasm_hash() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    client.initialize(&Address::generate(&env));
+
+    // An all-zero hash is not a real Wasm blob; installing it would leave the
+    // contract permanently unusable.
+    let zero = BytesN::from_array(&env, &[0u8; 32]);
+    assert_eq!(client.try_upgrade(&zero), Err(Ok(Error::InvalidWasmHash)));
+}
+
+#[test]
+fn test_upgrade_rejected_while_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, StellarInsightsContract);
+    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
     client.pause(&admin);
 
-    // Attempt to upgrade while paused
-    let new_wasm = create_test_hash(&env, 99999);
-    let result = client.try_upgrade(&admin, &new_wasm);
-
+    let result = client.try_upgrade(&create_test_hash(&env, 99));
     assert_eq!(result, Err(Ok(Error::ContractPaused)));
 }
 
+// ── Rollback protection across a migration (#2139) ───────────────────────────
+
 #[test]
-fn test_read_only_functions_work_while_paused() {
+fn test_migration_preserves_the_rollback_guard() {
     let env = Env::default();
     env.mock_all_auths();
-
     let contract_id = env.register_contract(None, StellarInsightsContract);
     let client = StellarInsightsContractClient::new(&env, &contract_id);
-
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    // Submit a snapshot before pausing
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 12345);
-    client.submit_snapshot(&epoch, &hash, &admin);
+    client.submit_snapshot(&10u64, &create_test_hash(&env, 1), &admin);
+    client.submit_snapshot(&20u64, &create_test_hash(&env, 2), &admin);
 
-    // Pause the contract
-    client.pause(&admin);
+    // Migrate as if this deployment predated versioning.
+    env.as_contract(&contract_id, || {
+        env.storage().instance().remove(&DataKey::StorageVersion);
+    });
+    client.migrate(&admin);
 
-    // All read-only functions should still work
-    assert!(client.is_paused());
-    assert_eq!(client.get_admin(), admin);
-    assert_eq!(client.get_latest_epoch(), epoch);
-    let (retrieved_hash, retrieved_epoch, _ts) = client.latest_snapshot();
-    assert_eq!(retrieved_hash, hash);
-    assert_eq!(retrieved_epoch, epoch);
+    // The latest epoch survives, so an older epoch is still refused — a
+    // migration must never reopen the rollback window.
+    assert_eq!(client.get_latest_epoch(), 20);
+    let result = client.try_submit_snapshot(&15u64, &create_test_hash(&env, 3), &admin);
+    assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
 }
 
 #[test]
-fn test_unpause_restores_functionality() {
+fn test_rollback_still_refused_after_governance_admin_change() {
     let env = Env::default();
-    env.mock_all_auths();
+    let (client, admin, governance) = setup_governed(&env);
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    client.submit_snapshot(&5u64, &create_test_hash(&env, 1), &admin);
 
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
+    let new_admin = Address::generate(&env);
+    client.set_admin_by_governance(&governance, &new_admin);
 
-    // Pause the contract
-    client.pause(&admin);
-    assert!(client.is_paused());
-
-    // Unpause the contract
-    client.unpause(&admin);
-    assert!(!client.is_paused());
-
-    // Snapshot submission should work again
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 12345);
-    let _timestamp = client.submit_snapshot(&epoch, &hash, &admin);
-    assert_eq!(client.get_latest_epoch(), epoch);
-}
-
-#[test]
-fn test_unauthorized_cannot_pause() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
-    client.initialize(&admin);
-
-    // Unauthorized user tries to pause
-    let result = client.try_pause(&unauthorized);
-
-    assert_eq!(result, Err(Ok(Error::Unauthorized)));
-    assert!(!client.is_paused());
-}
-
-#[test]
-fn test_unauthorized_cannot_unpause() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
-    client.initialize(&admin);
-
-    // Admin pauses the contract
-    client.pause(&admin);
-
-    // Unauthorized user tries to unpause
-    let result = client.try_unpause(&unauthorized);
-
-    assert_eq!(result, Err(Ok(Error::Unauthorized)));
-    assert!(client.is_paused());
-}
-
-#[test]
-fn test_pause_emits_event() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
-
-    let events_before = count_contract_events_with_topic0(&env, symbol_short!("pause"));
-    client.pause(&admin);
-    let events_after = count_contract_events_with_topic0(&env, symbol_short!("pause"));
-
-    assert_eq!(events_after, events_before + 1);
-}
-
-#[test]
-fn test_unpause_emits_event() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
-
-    client.pause(&admin);
-
-    let events_before = count_contract_events_with_topic0(&env, symbol_short!("unpause"));
-    client.unpause(&admin);
-    let events_after = count_contract_events_with_topic0(&env, symbol_short!("unpause"));
-
-    assert_eq!(events_after, events_before + 1);
-}
-
-// ============================================================================
-// Role-Based Access Control Tests (#2140)
-// ============================================================================
-
-#[test]
-fn test_grant_role_admin_only() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Admin can grant role
-    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
-    assert!(client.has_role(&user, &Role::SnapshotSubmitter));
-
-    // Unauthorized user cannot grant role
-    let result = client.try_grant_role(&unauthorized, &user, &Role::Admin);
-    assert_eq!(result, Err(Ok(Error::Unauthorized)));
-}
-
-#[test]
-fn test_revoke_role_admin_only() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
-
-    // Admin can revoke role
-    client.revoke_role(&admin, &user, &Role::SnapshotSubmitter);
-    assert!(!client.has_role(&user, &Role::SnapshotSubmitter));
-
-    // Unauthorized user cannot revoke role
-    client.grant_role(&admin, &user, &Role::PauseManager);
-    let result = client.try_revoke_role(&unauthorized, &user, &Role::PauseManager);
-    assert_eq!(result, Err(Ok(Error::Unauthorized)));
-}
-
-#[test]
-fn test_has_role_query() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Admin has Admin role by default
-    assert!(client.has_role(&admin, &Role::Admin));
-    assert!(!client.has_role(&admin, &Role::SnapshotSubmitter));
-
-    // Newly created user has no roles
-    assert!(!client.has_role(&user, &Role::Admin));
-    assert!(!client.has_role(&user, &Role::SnapshotSubmitter));
-
-    // After granting role, user has it
-    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
-    assert!(client.has_role(&user, &Role::SnapshotSubmitter));
-    assert!(!client.has_role(&user, &Role::Admin));
-}
-
-#[test]
-fn test_snapshot_submitter_role_can_submit() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let submitter = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Grant SnapshotSubmitter role to submitter
-    client.grant_role(&admin, &submitter, &Role::SnapshotSubmitter);
-
-    // Submitter can submit snapshots
-    let epoch = 1u64;
-    let hash = create_test_hash(&env, 12345);
-    let _timestamp = client.submit_snapshot(&epoch, &hash, &submitter);
-    assert_eq!(client.get_latest_epoch(), epoch);
-}
-
-#[test]
-fn test_pause_manager_role_can_pause() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let pause_manager = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Grant PauseManager role
-    client.grant_role(&admin, &pause_manager, &Role::PauseManager);
-
-    // PauseManager can pause
-    client.pause(&pause_manager);
-    assert!(client.is_paused());
-
-    // PauseManager can unpause
-    client.unpause(&pause_manager);
-    assert!(!client.is_paused());
-}
-
-#[test]
-fn test_upgrade_manager_role_can_upgrade() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let upgrade_manager = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Grant UpgradeManager role
-    client.grant_role(&admin, &upgrade_manager, &Role::UpgradeManager);
-
-    // UpgradeManager can upgrade
-    let new_wasm = create_test_hash(&env, 99999);
-    let result = client.try_upgrade(&upgrade_manager, &new_wasm);
-    // Upgrade may fail due to lack of actual WASM, but role check should pass
-    assert!(result.is_ok() || result.is_err()); // Just verify call succeeds or fails for other reasons
-}
-
-#[test]
-fn test_set_admin_with_roles() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin1 = Address::generate(&env);
-    let admin2 = Address::generate(&env);
-
-    client.initialize(&admin1);
-
-    // Transfer admin to admin2 (both must auth)
-    client.set_admin(&admin1, &admin2);
-
-    // admin2 should now have Admin role
-    assert!(client.has_role(&admin2, &Role::Admin));
-
-    // admin2 can now perform admin operations
-    let submitter = Address::generate(&env);
-    client.grant_role(&admin2, &submitter, &Role::SnapshotSubmitter);
-    assert!(client.has_role(&submitter, &Role::SnapshotSubmitter));
-}
-
-#[test]
-fn test_duplicate_role_grant_idempotent() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Grant role twice
-    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
-    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
-
-    // User should still have the role (duplicate grant is idempotent)
-    assert!(client.has_role(&user, &Role::SnapshotSubmitter));
-}
-
-#[test]
-fn test_revoke_nonexistent_role_succeeds() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // Revoke role user doesn't have (should succeed gracefully)
-    let result = client.try_revoke_role(&admin, &user, &Role::SnapshotSubmitter);
-    assert!(result.is_ok());
-    assert!(!client.has_role(&user, &Role::SnapshotSubmitter));
+    // A new admin installed by a vote inherits the guard, not a clean slate.
+    let result = client.try_submit_snapshot(&4u64, &create_test_hash(&env, 2), &new_admin);
+    assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
 }

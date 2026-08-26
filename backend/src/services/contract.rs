@@ -368,8 +368,12 @@ impl ContractService {
         };
 
         if let TransactionEnvelope::Tx(ref mut v1) = envelope {
-            v1.signatures
-                .try_push(decorated_sig)
+            // `VecM` exposes no push of its own; the bounded conversion back
+            // from `Vec` is what enforces the 20-signature limit.
+            let mut signatures = v1.signatures.to_vec();
+            signatures.push(decorated_sig);
+            v1.signatures = signatures
+                .try_into()
                 .map_err(|e| anyhow::anyhow!("Failed to attach signature: {e}"))?;
         }
 

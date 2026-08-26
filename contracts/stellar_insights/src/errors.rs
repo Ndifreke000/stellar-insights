@@ -51,6 +51,14 @@ pub enum Error {
     InvalidHashSize = 22,
     /// Epoch overflow — cannot exceed u64::MAX
     EpochOverflow = 23,
+    /// Wasm hash must not be all zeros
+    InvalidWasmHash = 24,
+    /// Stored state is already at the current schema version
+    MigrationNotNeeded = 25,
+    /// An upgrade has landed but its migration has not been run yet
+    MigrationRequired = 26,
+    /// Stored state is newer than this build understands
+    StorageVersionTooNew = 27,
 }
 
 impl Error {
@@ -87,6 +95,10 @@ impl Error {
             Error::UnauthorizedCaller => "Caller is not authorized to perform this action",
             Error::InvalidHashSize => "Invalid hash size (must be 32 bytes)",
             Error::EpochOverflow => "Epoch overflow — cannot exceed u64::MAX",
+            Error::InvalidWasmHash => "Wasm hash must not be all zeros",
+            Error::MigrationNotNeeded => "Stored state is already at the current schema version",
+            Error::MigrationRequired => "An upgrade is pending migration; run migrate() first",
+            Error::StorageVersionTooNew => "Stored state is newer than this build understands",
         }
     }
 
