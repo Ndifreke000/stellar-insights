@@ -22,6 +22,7 @@ use tower_http::{
 };
 
 use stellar_insights_backend::{
+    alerts::AlertManager,
     api::v1::routes,
     backup::{BackupConfig, BackupManager},
     cache::{CacheConfig, CacheManager},
@@ -56,6 +57,7 @@ use stellar_insights_backend::{
         shutdown_signal, shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
     },
     state::AppState,
+    telegram::{SubscriptionService, TelegramBot},
     websocket::WsState,
 };
 
@@ -387,6 +389,39 @@ async fn main() -> anyhow::Result<()> {
         })
     };
 
+    // #2129 — Telegram notification bot.
+    //
+    // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
+    // deployment that does not want it pays nothing and needs no extra config.
+    let telegram_handle: Option<JoinHandle<()>> = match std::env::var("TELEGRAM_BOT_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => {
+            let (alert_manager, _alert_rx) = AlertManager::new();
+            let subscriptions = Arc::new(SubscriptionService::new(pool.clone()));
+            let bot = TelegramBot::new(
+                &token,
+                Arc::clone(&db),
+                Arc::clone(&cache),
+                Arc::clone(&rpc_client),
+                subscriptions,
+                &alert_manager,
+            );
+
+            // The bot owns its own shutdown receiver; the sender is dropped
+            // with the process, which ends the polling and alert loops.
+            let (bot_shutdown_tx, bot_shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+            std::mem::forget(bot_shutdown_tx);
+
+            tracing::info!("Telegram bot enabled");
+            Some(tokio::spawn(async move {
+                bot.run(bot_shutdown_rx).await;
+            }))
+        }
+        _ => {
+            tracing::info!("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled");
+            None
+        }
+    };
+
     // CORS configuration
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3000".to_string());
@@ -582,6 +617,9 @@ async fn main() -> anyhow::Result<()> {
         pool_exhaustion_handle,
         webhook_dispatcher_handle,
     ];
+    if let Some(handle) = telegram_handle {
+        background_tasks.push(handle);
+    }
 
     // Graceful shutdown handler
     let shutdown_handler: JoinHandle<()> = {
