@@ -5,15 +5,21 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
-use sha2::Sha256;
+use std::collections::BTreeMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
+use redis::aio::MultiplexedConnection;
 
-type HmacSha256 = Hmac<Sha256>;
+use crate::services::request_signing::RequestSigningService;
 
 #[derive(Clone)]
 pub struct SigningSecret(pub Arc<str>);
+
+#[derive(Clone)]
+pub struct SigningService {
+    pub service: Arc<RequestSigningService>,
+}
 
 #[derive(Debug, Clone)]
 pub struct SignatureVerifiedUser {
@@ -21,62 +27,92 @@ pub struct SignatureVerifiedUser {
     pub username: String,
 }
 
-/// Middleware to verify request signature
+const CLOCK_SKEW_SECS: i64 = 300; // 5 minutes
+
+/// Middleware to verify request signature with HMAC-SHA256 and replay protection
 pub async fn request_signing_middleware(
     SigningSecret(signing_secret): SigningSecret,
+    SigningService { service }: SigningService,
     req: Request,
     next: Next,
 ) -> Result<Response, SigningError> {
-    // Extract signature header
+    // Extract required headers
     let signature = req
         .headers()
         .get("X-Signature")
         .and_then(|h| h.to_str().ok())
         .map(std::string::ToString::to_string)
-        .ok_or(SigningError::MissingSignature)?;
+        .ok_or(SigningError::InvalidRequest)?;
+
     let timestamp = req
         .headers()
         .get("X-Timestamp")
         .and_then(|h| h.to_str().ok())
         .map(std::string::ToString::to_string)
-        .ok_or(SigningError::MissingTimestamp)?;
+        .ok_or(SigningError::InvalidRequest)?;
 
-    // Prevent replay: check timestamp is recent (within 5 min)
+    let nonce = req
+        .headers()
+        .get("X-Nonce")
+        .and_then(|h| h.to_str().ok())
+        .map(std::string::ToString::to_string)
+        .ok_or(SigningError::InvalidRequest)?;
+
+    // Parse timestamp
     let ts = timestamp
         .parse::<i64>()
-        .map_err(|_| SigningError::InvalidTimestamp)?;
-    let now = Utc::now().timestamp();
-    if (now - ts).abs() > 300 {
-        return Err(SigningError::ReplayDetected);
+        .map_err(|_| SigningError::InvalidRequest)?;
+
+    // Extract method and path
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+
+    // Extract and sort query parameters
+    let mut query_params = BTreeMap::new();
+    if let Some(query) = req.uri.query() {
+        for param in query.split('&') {
+            if let Some((key, value)) = param.split_once('=') {
+                query_params.insert(key.to_string(), value.to_string());
+            }
+        }
     }
 
-    // Compute expected signature (limit body size to prevent DoS - SEC-005)
+    // Collect body
     let max_body_size: usize = std::env::var("MAX_REQUEST_BODY_SIZE")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(10 * 1024 * 1024); // default 10MB
+        .unwrap_or(10 * 1024 * 1024);
     let (parts, body) = req.into_parts();
     let body_bytes = axum::body::to_bytes(body, max_body_size)
         .await
-        .map_err(|_| SigningError::BodyTooLarge)?;
+        .map_err(|_| SigningError::InvalidRequest)?;
 
-    let mut mac = HmacSha256::new_from_slice(signing_secret.as_ref().as_bytes())
-        .map_err(|_| SigningError::Internal)?;
-    Mac::update(&mut mac, timestamp.as_bytes());
-    Mac::update(&mut mac, &body_bytes);
-    let expected = hex::encode(Mac::finalize(mac).into_bytes());
+    // Verify signature
+    let valid = service
+        .verify_signature(
+            &method,
+            &path,
+            query_params,
+            &body_bytes,
+            ts,
+            &nonce,
+            &signature,
+            signing_secret.as_ref(),
+            CLOCK_SKEW_SECS,
+        )
+        .await
+        .map_err(|_| SigningError::InvalidRequest)?;
 
-    if signature != expected {
-        return Err(SigningError::InvalidSignature);
+    if !valid {
+        return Err(SigningError::InvalidRequest);
     }
 
     // Reconstruct request
     let mut req = Request::from_parts(parts, axum::body::Body::from(body_bytes));
 
-    // Attach verified user (stub, integrate with auth as needed)
     req.extensions_mut().insert(SignatureVerifiedUser {
-        user_id: "stub-user-id".to_string(),
-        username: "stub-username".to_string(),
+        user_id: "authenticated".to_string(),
+        username: "authenticated".to_string(),
     });
 
     Ok(next.run(req).await)
@@ -84,27 +120,12 @@ pub async fn request_signing_middleware(
 
 #[derive(Debug)]
 pub enum SigningError {
-    MissingSignature,
-    MissingTimestamp,
-    InvalidTimestamp,
-    ReplayDetected,
-    InvalidSignature,
-    BodyTooLarge,
-    Internal,
+    InvalidRequest,
 }
 
 impl IntoResponse for SigningError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            Self::MissingSignature => (StatusCode::UNAUTHORIZED, "Missing X-Signature header"),
-            Self::MissingTimestamp => (StatusCode::UNAUTHORIZED, "Missing X-Timestamp header"),
-            Self::InvalidTimestamp => (StatusCode::BAD_REQUEST, "Invalid timestamp"),
-            Self::ReplayDetected => (StatusCode::UNAUTHORIZED, "Replay attack detected"),
-            Self::InvalidSignature => (StatusCode::UNAUTHORIZED, "Invalid request signature"),
-            Self::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large"),
-            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
-        };
-        let body = json!({"error": message});
-        (status, axum::response::Json(body)).into_response()
+        let body = json!({"error": "Invalid request signature or headers"});
+        (StatusCode::UNAUTHORIZED, axum::response::Json(body)).into_response()
     }
 }

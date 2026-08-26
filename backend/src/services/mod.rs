@@ -16,6 +16,7 @@ pub mod indexing;
 pub mod liquidity_pool_analyzer;
 pub mod price_feed;
 pub mod realtime_broadcaster;
+pub mod request_signing;
 pub mod service_container;
 pub mod slack_bot;
 pub mod snapshot;
