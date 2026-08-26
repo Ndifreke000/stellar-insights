@@ -79,6 +79,10 @@ pub struct Claims {
     pub token_type: String, // "access" or "refresh"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jti: Option<String>, // JWT ID — present on access tokens for revocation checks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>, // Session ID for device/session tracking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>, // Refresh token JTI (for refresh token validation)
 }
 
 /// Authentication service
@@ -86,6 +90,7 @@ pub struct AuthService {
     jwt_secret: String,
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
     db_pool: SqlitePool,
+    session_service: crate::session::SessionService,
 }
 
 impl AuthService {
@@ -105,10 +110,13 @@ impl AuthService {
             "JWT_SECRET must not use a placeholder value — generate a cryptographically secure random key"
         );
 
+        let session_service = crate::session::SessionService::new(db_pool.clone());
+
         Self {
             jwt_secret,
             redis_connection,
             db_pool,
+            session_service,
         }
     }
 
@@ -145,8 +153,8 @@ impl AuthService {
         })
     }
 
-    /// Generate access token
-    pub fn generate_access_token(&self, user: &User) -> Result<String> {
+    /// Generate access token with session tracking
+    pub fn generate_access_token(&self, user: &User, session_id: Option<&str>) -> Result<String> {
         let expiration = Utc::now()
             .checked_add_signed(Duration::hours(ACCESS_TOKEN_EXPIRY_HOURS))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
@@ -159,6 +167,8 @@ impl AuthService {
             iat: Utc::now().timestamp(),
             token_type: "access".to_string(),
             jti: Some(Uuid::new_v4().to_string()),
+            session_id: session_id.map(|s| s.to_string()),
+            sid: None,
         };
 
         encode(
@@ -169,8 +179,8 @@ impl AuthService {
         .map_err(|e| anyhow!("Failed to generate access token: {e}"))
     }
 
-    /// Generate refresh token
-    pub fn generate_refresh_token(&self, user: &User) -> Result<String> {
+    /// Generate refresh token with session tracking
+    pub fn generate_refresh_token(&self, user: &User, session_id: Option<&str>, refresh_token_jti: &str) -> Result<String> {
         let expiration = Utc::now()
             .checked_add_signed(Duration::days(REFRESH_TOKEN_EXPIRY_DAYS))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
@@ -182,7 +192,9 @@ impl AuthService {
             exp: expiration,
             iat: Utc::now().timestamp(),
             token_type: "refresh".to_string(),
-            jti: None,
+            jti: Some(refresh_token_jti.to_string()),
+            session_id: session_id.map(|s| s.to_string()),
+            sid: Some(refresh_token_jti.to_string()),
         };
 
         encode(
@@ -280,16 +292,28 @@ impl AuthService {
         Ok(())
     }
 
-    /// Login flow
-    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse> {
+    /// Login flow with session and device tracking
+    pub async fn login(
+        &self,
+        request: LoginRequest,
+        device_user_agent: Option<String>,
+        ip_address: &str,
+    ) -> Result<LoginResponse> {
         // Authenticate user
         let user = self
             .authenticate(&request.username, &request.password)
             .await?;
 
-        // Generate tokens
-        let access_token = self.generate_access_token(&user)?;
-        let refresh_token = self.generate_refresh_token(&user)?;
+        // Create session with device tracking
+        let refresh_token_jti = Uuid::new_v4().to_string();
+        let session = self
+            .session_service
+            .create_session(&user.id, &refresh_token_jti, device_user_agent, ip_address, None, None)
+            .await?;
+
+        // Generate tokens with session_id
+        let access_token = self.generate_access_token(&user, Some(&session.id))?;
+        let refresh_token = self.generate_refresh_token(&user, Some(&session.id), &refresh_token_jti)?;
 
         // Store refresh token
         self.store_refresh_token(&refresh_token, &user.id).await?;
@@ -301,7 +325,7 @@ impl AuthService {
         })
     }
 
-    /// Refresh access token
+    /// Refresh access token and touch session
     pub async fn refresh(&self, request: RefreshTokenRequest) -> Result<RefreshTokenResponse> {
         // Validate refresh token
         let claims = self.validate_refresh_token(&request.refresh_token).await?;
@@ -312,8 +336,15 @@ impl AuthService {
             username: claims.username,
         };
 
-        // Generate new access token
-        let access_token = self.generate_access_token(&user)?;
+        // Touch session if session_id is present
+        if let Some(session_id) = &claims.session_id {
+            if let Err(e) = self.session_service.touch_session(session_id).await {
+                tracing::warn!("Failed to touch session: {e}");
+            }
+        }
+
+        // Generate new access token with session_id
+        let access_token = self.generate_access_token(&user, claims.session_id.as_deref())?;
 
         Ok(RefreshTokenResponse {
             access_token,

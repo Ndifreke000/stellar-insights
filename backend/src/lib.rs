@@ -1,4 +1,5 @@
 pub mod admin_audit_log;
+pub mod admin_ip_whitelist;
 pub mod alerts;
 pub mod analytics;
 pub mod api;
@@ -46,6 +47,7 @@ pub mod rate_limit;
 pub mod replay;
 pub mod request_id;
 pub mod services;
+pub mod session;
 pub mod shutdown;
 pub mod snapshot;
 pub mod state;
