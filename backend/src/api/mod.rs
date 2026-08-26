@@ -13,7 +13,7 @@ pub mod corridors;
 pub mod cost_calculator;
 pub mod export;
 pub mod gdpr;
-// pub mod digest;  // Commented out - depends on email module
+pub mod digest;
 pub mod api_analytics;
 pub mod contract_events;
 pub mod fee_bump;
