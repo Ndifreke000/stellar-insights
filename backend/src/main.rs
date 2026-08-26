@@ -50,7 +50,7 @@ use stellar_insights_backend::{
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
-        webhook_dispatcher::WebhookDispatcher,
+        webhook_dispatcher::WebhookDispatcher, webhook_event_service::WebhookEventService,
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
@@ -389,13 +389,22 @@ async fn main() -> anyhow::Result<()> {
         })
     };
 
+    // #2126 — the alert manager is built with the webhook event service so an
+    // alert fans out to every registered webhook. `AlertManager::new` leaves
+    // that service unset, which left every webhook-emitting branch in alerts.rs
+    // unreachable; nothing in the codebase called `new_with_webhooks`.
+    //
+    // Constructed unconditionally: webhook delivery for alerts must not depend
+    // on whether the optional Telegram bot below happens to be enabled.
+    let (alert_manager, _alert_rx) =
+        AlertManager::new_with_webhooks(Arc::new(WebhookEventService::new(pool.clone())));
+
     // #2129 — Telegram notification bot.
     //
     // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
     // deployment that does not want it pays nothing and needs no extra config.
     let telegram_handle: Option<JoinHandle<()>> = match std::env::var("TELEGRAM_BOT_TOKEN") {
         Ok(token) if !token.trim().is_empty() => {
-            let (alert_manager, _alert_rx) = AlertManager::new();
             let subscriptions = Arc::new(SubscriptionService::new(pool.clone()));
             let bot = TelegramBot::new(
                 &token,
