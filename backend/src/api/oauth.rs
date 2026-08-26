@@ -392,8 +392,7 @@ impl From<anyhow::Error> for OAuthApiError {
 /// Zapier's connection setup calls an `authentication.test` endpoint after the
 /// OAuth exchange: it proves the token works and supplies the text Zapier shows
 /// as the connection's label. `connection_label` exists for exactly that.
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct OAuthIdentity {
     pub user_id: String,
     pub username: String,
