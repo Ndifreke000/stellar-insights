@@ -12,6 +12,11 @@ import {
   ArrowRight,
   Download,
 } from "lucide-react";
+import {
+  AdvancedFilterPanel,
+  applyFilters,
+  type AdvancedFilterState,
+} from "@/components/AdvancedFilterPanel";
 import { Badge } from "@/components/ui/badge";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
@@ -48,32 +53,32 @@ function CorridorsPageContent() {
   const setTimePeriod = (v: typeof timePeriod) =>
     setPrefs({ corridorsTimePeriod: v });
 
+  const [filterState, setFilterState] = useState<AdvancedFilterState>({ query: "", filters: [] });
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+
+  // Derive searchTerm from the filter state for backward compatibility
+  const searchTerm = filterState.query;
+  const setSearchTerm = (q: string) => setFilterState((prev) => ({ ...prev, query: q }));
 
   const filteredCorridors = useMemo(() => {
-    return corridors
-      .filter(
-        (c) =>
-          c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.destination_asset
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          c.id.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-      .sort((a, b) => {
-        switch (sortBy) {
-          case "success_rate":
-            return b.success_rate - a.success_rate;
-          case "liquidity":
-            return b.liquidity_depth_usd - a.liquidity_depth_usd;
-          case "health_score":
-          default:
-            return b.health_score - a.health_score;
-        }
-      });
-  }, [corridors, searchTerm, sortBy]);
+    // Apply advanced filters then sort
+    const filtered = applyFilters(
+      corridors as unknown as Record<string, unknown>[],
+      filterState
+    ) as unknown as CorridorMetrics[];
+
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "success_rate":
+          return b.success_rate - a.success_rate;
+        case "liquidity":
+          return b.liquidity_depth_usd - a.liquidity_depth_usd;
+        case "health_score":
+        default:
+          return b.health_score - a.health_score;
+      }
+    });
+  }, [corridors, filterState, sortBy]);
 
   const {
     currentPage,
@@ -153,14 +158,28 @@ function CorridorsPageContent() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-8 relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-accent transition-colors" />
-          <input
-            type="text"
-            placeholder="Search Intelligence Database..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900/50 border border-border/50 rounded-xl pl-11 pr-4 py-3 text-sm font-mono tracking-tight focus:outline-none focus:ring-2 focus:ring-accent/50 group-hover:border-accent/30 transition-all"
+        {/* Advanced Filter Panel (#2110) */}
+        <div className="lg:col-span-8">
+          <AdvancedFilterPanel
+            fields={[
+              { key: "source_asset", label: "Source Asset", type: "text", placeholder: "e.g. USDC" },
+              { key: "destination_asset", label: "Dest Asset", type: "text", placeholder: "e.g. PHP" },
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                options: [
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                  { value: "degraded", label: "Degraded" },
+                ],
+              },
+              { key: "success_rate", label: "Success Rate (%)", type: "number", placeholder: "e.g. 95" },
+              { key: "health_score", label: "Health Score", type: "range", min: 0, max: 100, step: 1 },
+            ]}
+            onChange={setFilterState}
+            storageKey="corridors_advanced_filter"
+            placeholder="Search corridors…"
           />
         </div>
         <div className="lg:col-span-4 flex gap-2">
@@ -189,12 +208,6 @@ function CorridorsPageContent() {
             <option value="success_rate">Sort: Success</option>
             <option value="liquidity">Sort: Liquidity</option>
           </select>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-3 border border-border/50 rounded-xl transition-all ${showFilters ? "bg-accent text-white border-accent" : "bg-slate-900/50 text-muted-foreground hover:border-accent/50"}`}
-          >
-            <Filter className="w-4 h-4" />
-          </button>
         </div>
       </div>
 

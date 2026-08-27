@@ -22,6 +22,8 @@
       "network": "Network",
       "analytics": "Analytics",
       "apiUsage": "API Usage",
+      "failedPayments": "Failed Payments",
+      "settlementDistribution": "Settlement Dist.",
       "trustlines": "Trustlines",
       "networkHealth": "Network Health",
       "liquidity": "Liquidity",
