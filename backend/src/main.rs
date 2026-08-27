@@ -47,7 +47,8 @@ use stellar_insights_backend::{
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
-        webhook_dispatcher::WebhookDispatcher, webhook_event_service::WebhookEventService,
+        slack_bot::SlackBotService, webhook_dispatcher::WebhookDispatcher,
+        webhook_event_service::WebhookEventService,
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
@@ -428,6 +429,20 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Opt-in Slack notifications for corridor and anchor alerts.
+    let slack_handle: Option<JoinHandle<()>> = match std::env::var("SLACK_WEBHOOK_URL") {
+        Ok(webhook_url) if !webhook_url.trim().is_empty() => {
+            tracing::info!("Slack notifications enabled");
+            Some(tokio::spawn(
+                SlackBotService::new(webhook_url, alert_manager.subscribe()).start(),
+            ))
+        }
+        _ => {
+            tracing::info!("SLACK_WEBHOOK_URL not set; Slack notifications disabled");
+            None
+        }
+    };
+
     // CORS configuration
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3000".to_string());
@@ -553,7 +568,8 @@ async fn main() -> anyhow::Result<()> {
         cors,
         pool.clone(),
         cache.clone(),
-    );
+    )
+    .merge(stellar_insights_backend::api::api_analytics::routes(db.clone()));
 
     // Admin routes (backfill, etc.) — mounted at /admin
     let admin_routes = stellar_insights_backend::api::backfill::routes(backfill_job);
@@ -647,6 +663,9 @@ async fn main() -> anyhow::Result<()> {
         webhook_dispatcher_handle,
     ];
     if let Some(handle) = telegram_handle {
+        background_tasks.push(handle);
+    }
+    if let Some(handle) = slack_handle {
         background_tasks.push(handle);
     }
 
