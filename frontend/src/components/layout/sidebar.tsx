@@ -9,6 +9,7 @@ import {
   Compass,
   Settings,
   Activity,
+  Bell,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -61,6 +62,7 @@ const navGroups = [
     items: [
       { key: "networkHealth", icon: Activity, path: "/health" },
       { key: "alerts", icon: Activity, path: "/alerts" },
+      { key: "corridorAlerts", icon: Bell, path: "/corridor-alerts" },
     ],
   },
   {

@@ -399,6 +399,17 @@ async fn main() -> anyhow::Result<()> {
     let (alert_manager, _alert_rx) =
         AlertManager::new_with_webhooks(Arc::new(WebhookEventService::new(pool.clone())));
 
+    // Corridor Performance Monitor — evaluates corridor metrics against user
+    // alert configs every 60 seconds and triggers alerts when thresholds are breached.
+    let (corridor_monitor, _corridor_alert_rx) =
+        crate::services::corridor_performance_monitor::CorridorPerformanceMonitor::new(
+            db.clone(),
+            Arc::clone(&alert_manager),
+        );
+    let corridor_monitor = Arc::new(corridor_monitor);
+    let corridor_monitor_handle = corridor_monitor.spawn(60);
+    tracing::info!("Corridor performance monitor started (60s interval)");
+
     // #2129 — Telegram notification bot.
     //
     // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
@@ -625,6 +636,7 @@ async fn main() -> anyhow::Result<()> {
         pool_metrics_handle,
         pool_exhaustion_handle,
         webhook_dispatcher_handle,
+        corridor_monitor_handle,
     ];
     if let Some(handle) = telegram_handle {
         background_tasks.push(handle);

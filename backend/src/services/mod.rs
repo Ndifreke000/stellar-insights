@@ -1,6 +1,7 @@
 pub mod account_merge_detector;
 pub mod aggregation;
 pub mod alert_manager;
+pub mod corridor_performance_monitor;
 pub mod alert_service;
 pub mod analytics;
 pub mod anchor_monitor;

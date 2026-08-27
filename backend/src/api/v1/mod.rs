@@ -1,6 +1,7 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridors, cost_calculator, digest, fee_bump,
-    liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
+    account_merges, anchors, cache_stats, corridor_alerts, corridors, cost_calculator, digest,
+    fee_bump, liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy,
+    webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -180,6 +181,7 @@ pub fn routes(
         .nest("/cache/stats", cache_stats::routes(cache.clone()))
         .nest("/metrics", metrics::routes(cache.clone()))
         .nest("/analytics", crate::api::analytics_dashboard::routes(app_state.clone()))
+        .nest("/corridor-alerts", corridor_alerts::router())
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // 6. OAuth routes

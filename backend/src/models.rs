@@ -4,6 +4,7 @@ use validator::Validate;
 
 pub mod alerts;
 pub mod api_gateway;
+pub mod corridor_alerts;
 pub mod api_key;
 pub mod api_versioning;
 pub mod asset_verification;
