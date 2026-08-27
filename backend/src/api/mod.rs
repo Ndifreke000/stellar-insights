@@ -2,6 +2,7 @@ pub mod account_merges;
 pub mod achievements;
 pub mod admin_ip_whitelist;
 pub mod alerts;
+pub mod corridor_alerts;
 pub mod analytics_dashboard;
 pub mod anchors;
 pub mod api_keys;
