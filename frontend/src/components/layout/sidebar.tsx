@@ -54,6 +54,8 @@ const navGroups = [
     items: [
       { key: "analytics", icon: BarChart3, path: "/analytics" },
       { key: "apiUsage", icon: Activity, path: "/analytics/api" },
+      { key: "failedPayments", icon: BarChart3, path: "/analytics/failed-payments" },
+      { key: "settlementDistribution", icon: Gauge, path: "/analytics/settlement-distribution" },
       { key: "calculator", icon: Calculator, path: "/calculator" },
       { key: "performance", icon: Gauge, path: "/performance" },
       { key: "chartExport", icon: BarChart3, path: "/analytics/charts" },

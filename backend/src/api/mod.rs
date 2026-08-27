@@ -7,6 +7,8 @@ pub mod anchors;
 pub mod api_keys;
 pub mod asset_verification;
 pub mod backfill;
+pub mod failed_payments;
+pub mod settlement_distribution;
 
 pub mod auth;
 pub mod cache_stats;
