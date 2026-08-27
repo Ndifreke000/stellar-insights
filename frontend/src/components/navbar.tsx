@@ -14,7 +14,7 @@ const navLinkKeys = [
   { key: "contactUs", href: "/contact", icon: Phone, descKey: "reachOut" },
 ];
 
-export function Navbar() {
+export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } = {}) {
   const pathname = usePathname();
   const t = useTranslations("navbar");
   const [scrolled, setScrolled] = useState(false);
@@ -118,6 +118,18 @@ export function Navbar() {
             <ThemeToggle />
             <NotificationBell />
 
+            {/* Sidebar hamburger — mobile only, opens the sidebar drawer */}
+            {onMobileMenuOpen && (
+              <button
+                className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                onClick={onMobileMenuOpen}
+                aria-label="Open sidebar navigation"
+              >
+                <Menu className="w-5 h-5" aria-hidden="true" />
+              </button>
+            )}
+
+            {/* Nav-link hamburger — toggles inline nav panel on small screens */}
             <button
               className="md:hidden navbar-hamburger"
               onClick={() => setMobileOpen((v) => !v)}

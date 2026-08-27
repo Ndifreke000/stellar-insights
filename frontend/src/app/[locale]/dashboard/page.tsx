@@ -13,6 +13,7 @@ import { useRealtimeCorridors, type CorridorUpdate, type HealthAlert } from "@/h
 import { useRealtimeAnchors, type AnchorUpdate } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
 import { logger } from "@/lib/logger";
+import { BookmarksDashboardWidget } from "@/components/BookmarksDashboardWidget";
 import {
   Skeleton,
   SkeletonChart,
@@ -352,6 +353,7 @@ export default function DashboardPage() {
             trendDirection={data.kpi.settlementSpeed.trendDirection}
             inverse={true}
           />
+          <BookmarksDashboardWidget />
         </div>
 
         {/* Customizable widget grid (#2109) */}

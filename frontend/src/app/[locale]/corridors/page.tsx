@@ -30,6 +30,7 @@ import {
   type CorridorsTimePeriod,
 } from "@/contexts/UserPreferencesContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { BookmarkButton } from "@/components/BookmarkButton";
 
 // Lazy-load the heatmap — only rendered when the user switches to heatmap view.
 const CorridorHeatmap = dynamic(
@@ -133,6 +134,12 @@ function CorridorsPageContent() {
           >
             {filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
+          <Link
+            href="/corridors/forecasting"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:bg-blue-500 hover:text-white transition-all"
+          >
+            Forecast
+          </Link>
           <button
             onClick={() => setIsExportOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-white transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)] hover:shadow-accent/30"
@@ -343,7 +350,14 @@ function CorridorsPageContent() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="mt-6 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                  <BookmarkButton
+                    id={corridor.id}
+                    type="corridor"
+                    label={`${corridor.source_asset} → ${corridor.destination_asset}`}
+                    href={`/corridors/${corridor.id}`}
+                    className="touch-sm"
+                  />
                   <ArrowRight className="w-4 h-4 text-accent animate-bounce-x" />
                 </div>
               </Link>
