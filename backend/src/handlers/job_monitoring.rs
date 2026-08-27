@@ -88,9 +88,15 @@ pub async fn get_job_status(
     info!("Fetching job status with query: {:?}", query);
 
     let status_summary = get_job_status_summary().await;
-    let summary_data = status_summary.as_object().unwrap();
+    let summary_data = status_summary
+        .as_object()
+        .ok_or_else(|| ApiError::internal("INVALID_JOB_STATUS", "Job status summary is not an object"))?;
 
-    let jobs_data = summary_data.get("jobs").unwrap().as_object().unwrap();
+    let jobs_data = summary_data
+        .get("jobs")
+        .ok_or_else(|| ApiError::internal("MISSING_JOBS_DATA", "Missing 'jobs' field in status summary"))?
+        .as_object()
+        .ok_or_else(|| ApiError::internal("INVALID_JOBS_DATA", "Jobs data is not an object"))?;
     let mut jobs = HashMap::new();
 
     let mut total_executions = 0u64;
@@ -107,17 +113,37 @@ pub async fn get_job_status(
             }
         }
 
-        let job_obj = job_data.as_object().unwrap();
-        let is_active = job_obj.get("is_active").unwrap().as_bool().unwrap();
-        let total_executions_job = job_obj.get("total_executions").unwrap().as_u64().unwrap();
-        let total_failures_job = job_obj.get("total_failures").unwrap().as_u64().unwrap();
+        let job_obj = job_data
+            .as_object()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_DATA", format!("Job '{}' data is not an object", name)))?;
+        let is_active = job_obj
+            .get("is_active")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'is_active' for job '{}'", name)))?
+            .as_bool()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'is_active' is not a boolean for job '{}'", name)))?;
+        let total_executions_job = job_obj
+            .get("total_executions")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'total_executions' for job '{}'", name)))?
+            .as_u64()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'total_executions' is not a u64 for job '{}'", name)))?;
+        let total_failures_job = job_obj
+            .get("total_failures")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'total_failures' for job '{}'", name)))?
+            .as_u64()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'total_failures' is not a u64 for job '{}'", name)))?;
         let consecutive_failures = job_obj
             .get("consecutive_failures")
-            .unwrap()
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'consecutive_failures' for job '{}'", name)))?
             .as_u64()
-            .unwrap();
-        let last_success_timestamp = job_obj.get("last_success_timestamp").unwrap().as_i64();
-        let last_failure_timestamp = job_obj.get("last_failure_timestamp").unwrap().as_i64();
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'consecutive_failures' is not a u64 for job '{}'", name)))?;
+        let last_success_timestamp = job_obj
+            .get("last_success_timestamp")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'last_success_timestamp' for job '{}'", name)))?
+            .as_i64();
+        let last_failure_timestamp = job_obj
+            .get("last_failure_timestamp")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'last_failure_timestamp' for job '{}'", name)))?
+            .as_i64();
 
         total_executions += total_executions_job;
         total_failures += total_failures_job;
@@ -144,23 +170,35 @@ pub async fn get_job_status(
             JobHealthStatus::Unknown => {}
         }
 
-        let last_execution = job_obj.get("last_execution").and_then(|exec| {
-            exec.as_object().map(|exec_obj| LastExecutionDetail {
-                status: exec_obj
+        let last_execution = if let Some(exec) = job_obj.get("last_execution") {
+            if let Some(exec_obj) = exec.as_object() {
+                let status = exec_obj
                     .get("status")
-                    .unwrap()
+                    .ok_or_else(|| ApiError::internal("MISSING_EXEC_FIELD", format!("Missing 'status' in last_execution for job '{}'", name)))?
                     .as_str()
-                    .unwrap()
-                    .to_string(),
-                started_at: exec_obj.get("started_at").unwrap().as_u64().unwrap(),
-                duration_ms: exec_obj.get("duration_ms").and_then(|v| v.as_u64()),
-                completed_at: exec_obj.get("completed_at").and_then(|v| v.as_u64()),
-                error: exec_obj
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-            })
-        });
+                    .ok_or_else(|| ApiError::internal("INVALID_EXEC_FIELD", format!("'status' is not a string for job '{}'", name)))?
+                    .to_string();
+                let started_at = exec_obj
+                    .get("started_at")
+                    .ok_or_else(|| ApiError::internal("MISSING_EXEC_FIELD", format!("Missing 'started_at' for job '{}'", name)))?
+                    .as_u64()
+                    .ok_or_else(|| ApiError::internal("INVALID_EXEC_FIELD", format!("'started_at' is not a u64 for job '{}'", name)))?;
+                Some(LastExecutionDetail {
+                    status,
+                    started_at,
+                    duration_ms: exec_obj.get("duration_ms").and_then(|v| v.as_u64()),
+                    completed_at: exec_obj.get("completed_at").and_then(|v| v.as_u64()),
+                    error: exec_obj
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let job_detail = JobStatusDetail {
             name: name.clone(),
@@ -195,10 +233,16 @@ pub async fn get_job_status(
         overall_success_rate,
     };
 
+    let timestamp = summary_data
+        .get("timestamp")
+        .ok_or_else(|| ApiError::internal("MISSING_TIMESTAMP", "Missing 'timestamp' in status summary"))?
+        .as_i64()
+        .ok_or_else(|| ApiError::internal("INVALID_TIMESTAMP", "'timestamp' is not an i64"))?;
+
     let response = JobStatusResponse {
         jobs,
         summary,
-        timestamp: summary_data.get("timestamp").unwrap().as_i64().unwrap(),
+        timestamp,
     };
 
     Ok(Json(response))
@@ -209,25 +253,51 @@ pub async fn get_job_health(
     State(_db): State<Arc<Database>>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let status_summary = get_job_status_summary().await;
-    let summary_data = status_summary.as_object().unwrap();
-    let jobs_data = summary_data.get("jobs").unwrap().as_object().unwrap();
+    let summary_data = status_summary
+        .as_object()
+        .ok_or_else(|| ApiError::internal("INVALID_JOB_STATUS", "Job status summary is not an object"))?;
+    let jobs_data = summary_data
+        .get("jobs")
+        .ok_or_else(|| ApiError::internal("MISSING_JOBS_DATA", "Missing 'jobs' field in status summary"))?
+        .as_object()
+        .ok_or_else(|| ApiError::internal("INVALID_JOBS_DATA", "Jobs data is not an object"))?;
 
     let mut healthy_count = 0usize;
     let mut warning_count = 0usize;
     let mut critical_count = 0usize;
 
-    for (_, job_data) in jobs_data {
-        let job_obj = job_data.as_object().unwrap();
-        let is_active = job_obj.get("is_active").unwrap().as_bool().unwrap();
-        let total_executions = job_obj.get("total_executions").unwrap().as_u64().unwrap();
-        let total_failures = job_obj.get("total_failures").unwrap().as_u64().unwrap();
+    for (name, job_data) in jobs_data {
+        let job_obj = job_data
+            .as_object()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_DATA", format!("Job '{}' data is not an object", name)))?;
+        let is_active = job_obj
+            .get("is_active")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'is_active' for job '{}'", name)))?
+            .as_bool()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'is_active' is not a boolean for job '{}'", name)))?;
+        let total_executions = job_obj
+            .get("total_executions")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'total_executions' for job '{}'", name)))?
+            .as_u64()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'total_executions' is not a u64 for job '{}'", name)))?;
+        let total_failures = job_obj
+            .get("total_failures")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'total_failures' for job '{}'", name)))?
+            .as_u64()
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'total_failures' is not a u64 for job '{}'", name)))?;
         let consecutive_failures = job_obj
             .get("consecutive_failures")
-            .unwrap()
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'consecutive_failures' for job '{}'", name)))?
             .as_u64()
-            .unwrap();
-        let last_success_timestamp = job_obj.get("last_success_timestamp").unwrap().as_i64();
-        let last_failure_timestamp = job_obj.get("last_failure_timestamp").unwrap().as_i64();
+            .ok_or_else(|| ApiError::internal("INVALID_JOB_FIELD", format!("'consecutive_failures' is not a u64 for job '{}'", name)))?;
+        let last_success_timestamp = job_obj
+            .get("last_success_timestamp")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'last_success_timestamp' for job '{}'", name)))?
+            .as_i64();
+        let last_failure_timestamp = job_obj
+            .get("last_failure_timestamp")
+            .ok_or_else(|| ApiError::internal("MISSING_JOB_FIELD", format!("Missing 'last_failure_timestamp' for job '{}'", name)))?
+            .as_i64();
 
         let success_rate = if total_executions > 0 {
             ((total_executions - total_failures) as f64 / total_executions as f64) * 100.0

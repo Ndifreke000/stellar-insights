@@ -13,6 +13,7 @@ import { useRealtimeCorridors, type CorridorUpdate, type HealthAlert } from "@/h
 import { useRealtimeAnchors, type AnchorUpdate } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
 import { logger } from "@/lib/logger";
+import { BookmarksDashboardWidget } from "@/components/BookmarksDashboardWidget";
 import {
   Skeleton,
   SkeletonChart,
@@ -316,6 +317,7 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+          <BookmarksDashboardWidget />
         </div>
       </div>
     </div>

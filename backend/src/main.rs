@@ -28,9 +28,6 @@ use stellar_insights_backend::{
     cache::{CacheConfig, CacheManager},
     database::{Database, PoolConfig},
     env_config,
-    features::graphql_api::{
-        graphql_handler, graphql_health_handler, GraphQLAPI, GraphQLAPIConfig,
-    },
     ingestion::DataIngestionService,
     jobs::backfill::{BackfillJob, BackfillState},
     middleware::{
@@ -50,7 +47,8 @@ use stellar_insights_backend::{
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
-        webhook_dispatcher::WebhookDispatcher, webhook_event_service::WebhookEventService,
+        slack_bot::SlackBotService, webhook_dispatcher::WebhookDispatcher,
+        webhook_event_service::WebhookEventService,
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
@@ -442,6 +440,20 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Opt-in Slack notifications for corridor and anchor alerts.
+    let slack_handle: Option<JoinHandle<()>> = match std::env::var("SLACK_WEBHOOK_URL") {
+        Ok(webhook_url) if !webhook_url.trim().is_empty() => {
+            tracing::info!("Slack notifications enabled");
+            Some(tokio::spawn(
+                SlackBotService::new(webhook_url, alert_manager.subscribe()).start(),
+            ))
+        }
+        _ => {
+            tracing::info!("SLACK_WEBHOOK_URL not set; Slack notifications disabled");
+            None
+        }
+    };
+
     // CORS configuration
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3000".to_string());
@@ -567,16 +579,40 @@ async fn main() -> anyhow::Result<()> {
         cors,
         pool.clone(),
         cache.clone(),
-    );
+    )
+    .merge(stellar_insights_backend::api::api_analytics::routes(db.clone()));
 
     // Admin routes (backfill, etc.) — mounted at /admin
     let admin_routes = stellar_insights_backend::api::backfill::routes(backfill_job);
 
-    let graphql_api = Arc::new(GraphQLAPI::new(GraphQLAPIConfig::default(), 0));
+    // ── Consolidated GraphQL API (Issues #2121-#2125) ────────────────────────────
+    //
+    // The consolidated schema replaces the feature-level `GraphQLAPI` with the
+    // full database-backed schema from `graphql/schema.rs`. It includes:
+    //   - Query resolvers for all entities (anchors, corridors, payments, etc.)
+    //   - Mutation resolvers for create/update/delete operations
+    //   - Subscription resolvers for real-time updates via WebSocket
+    //   - Query complexity/depth limiting via async-graphql
+    let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+    let graphql_schema = stellar_insights_backend::graphql::build_schema(
+        pool.clone(),
+        broadcast_tx,
+    );
     let graphql_routes = Router::new()
-        .route("/graphql", post(graphql_handler))
-        .route("/graphql/health", get(graphql_health_handler))
-        .layer(axum::Extension(Arc::clone(&graphql_api)));
+        .route(
+            "/graphql",
+            post(stellar_insights_backend::graphql::handlers::graphql_handler)
+                .get(stellar_insights_backend::graphql::handlers::graphql_playground),
+        )
+        .route(
+            "/graphql/ws",
+            get(stellar_insights_backend::graphql::handlers::graphql_ws_handler),
+        )
+        .route(
+            "/graphql/health",
+            get(stellar_insights_backend::graphql::handlers::graphql_health_handler),
+        )
+        .with_state(graphql_schema);
 
     let app = base_routes
         .nest("/admin", admin_routes)
@@ -639,6 +675,9 @@ async fn main() -> anyhow::Result<()> {
         corridor_monitor_handle,
     ];
     if let Some(handle) = telegram_handle {
+        background_tasks.push(handle);
+    }
+    if let Some(handle) = slack_handle {
         background_tasks.push(handle);
     }
 
