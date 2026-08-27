@@ -34,7 +34,7 @@ Stellar applies **surge pricing** when a ledger receives more transactions than 
 **Backend**
 - **New file:** `backend/src/services/congestion.rs` — sampling, scoring, and fee recommendation logic.
 - **New file:** `backend/src/api/congestion.rs` — HTTP handlers and router.
-- **New migration:** `backend/migrations/023_create_network_congestion.sql`
+- **New migration:** `backend/migrations/043_create_network_congestion.sql`
 - **Update:** `backend/src/rpc/stellar.rs` — add `fetch_fee_stats()`.
 - **Update:** `backend/src/api/mod.rs` — register the congestion router.
 - **Update:** `backend/src/api/network.rs` — link congestion into the network summary payload.
@@ -94,7 +94,7 @@ Each recommendation returns the stroop amount, the percentile it came from, and 
 
 ## Data Model
 
-`backend/migrations/023_create_network_congestion.sql`:
+`backend/migrations/043_create_network_congestion.sql`:
 
 ```sql
 CREATE TABLE network_congestion_samples (
@@ -229,7 +229,7 @@ Raw samples are retained for 7 days; a nightly job rolls them into 5-minute and 
 - [ ] `fetch_fee_stats()` added to `RpcClient` with unit tests over a recorded Horizon `/fee_stats` payload
 - [ ] `CongestionService` computes score, level, and trend from live samples
 - [ ] Scheduler job samples at the configured interval and persists to `network_congestion_samples`
-- [ ] Migration `023_create_network_congestion.sql` applies cleanly and is idempotent
+- [ ] Migration `043_create_network_congestion.sql` applies cleanly and is idempotent
 - [ ] `GET /api/network/congestion` returns current conditions in under 50 ms (served from cache, not RPC)
 - [ ] `GET /api/network/congestion/history` supports all documented windows and intervals
 - [ ] `GET /api/network/congestion/fees` returns three recommendations with inclusion probabilities

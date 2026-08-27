@@ -13,12 +13,12 @@ An anchor is only useful if its endpoints answer. A wallet routing a deposit to 
 
 ## Current Behavior
 
-- Anchor records exist (`backend/migrations/001_create_anchors.sql`, `backend/src/api/anchors.rs`, `anchors_cached.rs`) but carry no liveness state.
+- Anchor records exist (`backend/migrations/001_create_anchors.sql`, `backend/src/api/anchors.rs`) but carry no liveness state.
 - `backend/src/services/stellar_toml.rs` fetches `stellar.toml` on demand only — never on a schedule, never recorded.
-- `backend/src/alerts.rs` covers corridors only: `AlertType` is `SuccessRateDrop | LatencyIncrease | LiquidityDecrease`, keyed by `corridor_id`.
-- `AnchorStatusChangedEvent` is already defined in `backend/src/webhooks/events.rs` but nothing ever emits it.
-- Reliability scoring is derived from historical payment outcomes, so an outage only surfaces once payments have already failed.
-- No incident history, no SLA reporting, and no way for a user to subscribe to a specific anchor.
+- Nothing actively probes anchor endpoints. Anchor signals are all derived after the fact from payment outcomes, so an outage only surfaces once payments have already failed.
+- Alerting infrastructure now exists and is anchor-aware in shape but not in substance: `backend/src/alerts.rs` carries `AnchorStatusChange` and `AnchorMetricChange` variants, and `Alert` already has optional `corridor_id` / `anchor_id`. What is missing is any producer of anchor liveness events — the variants fire only on metric deltas, never on an endpoint going down.
+- The corridor alerting stack landed in #2210 (`backend/src/services/alert_manager.rs`, `alert_service.rs`, `webhook_event_service.rs`, migrations `040`–`042`) covers corridors only. Anchors have no equivalent config, cooldown, or delivery path.
+- No probe history, no incident records, no SLA reporting, and no way for a user to subscribe to a specific anchor.
 
 ## Expected Behavior
 
@@ -36,12 +36,12 @@ An anchor is only useful if its endpoints answer. A wallet routing a deposit to 
 - **New file:** `backend/src/services/anchor_health.rs` — probe execution, status machine, incident lifecycle.
 - **New file:** `backend/src/services/anchor_uptime.rs` — uptime/SLA aggregation.
 - **New file:** `backend/src/api/anchor_health.rs` — status, uptime, incident, and subscription handlers.
-- **New migration:** `backend/migrations/024_create_anchor_health.sql`
-- **Update:** `backend/src/alerts.rs` — extend `AlertType` with anchor variants (see below).
-- **Update:** `backend/src/webhooks/mod.rs` — emit the existing `anchor.status_changed` event type.
+- **New migration:** `backend/migrations/044_create_anchor_health.sql`
+- **Update:** `backend/src/services/alert_manager.rs`, `alert_service.rs` — produce anchor liveness alerts through the existing dispatch path.
+- **Update:** `backend/src/services/webhook_event_service.rs` — emit `anchor.status_changed` on probe-driven transitions.
 - **Update:** `backend/src/services/stellar_toml.rs` — reuse for endpoint discovery during probing.
 - **Update:** `backend/src/jobs/scheduler.rs` — register `anchor_health_probe` and `anchor_uptime_rollup`.
-- **Update:** `backend/src/api/anchors.rs`, `backend/src/api/anchors_cached.rs` — surface `health` on anchor payloads.
+- **Update:** `backend/src/api/anchors.rs` — surface `health` on anchor payloads.
 - **Update:** `backend/src/api/mod.rs`, `backend/src/websocket.rs`, `backend/src/openapi.rs`
 - **Update:** `backend/src/telegram/`, `backend/src/email/` — anchor alert templates.
 
@@ -93,30 +93,27 @@ A status change is only committed after `ANCHOR_FAILURE_THRESHOLD` consecutive p
 
 ## Alerting
 
-Extend `AlertType` in `backend/src/alerts.rs`:
+Most of the plumbing already exists — this issue supplies the missing *producer* and follows the conventions #2210 established for corridors rather than inventing parallel ones.
+
+`AlertType` in `backend/src/alerts.rs` already has `AnchorStatusChange` and `AnchorMetricChange`, and `Alert` already carries optional `corridor_id` / `anchor_id`. **No breaking payload change is required.** Anchor liveness maps onto the existing variants, with the transition carried in the alert body:
 
 ```rust
-pub enum AlertType {
-    SuccessRateDrop,
-    LatencyIncrease,
-    LiquidityDecrease,
-    AnchorDown,        // new
-    AnchorDegraded,    // new
-    AnchorRecovered,   // new
-    AnchorSlaBreach,   // new: error budget for the period exhausted
-}
+// Existing variants, newly produced by the health probe:
+AlertType::AnchorStatusChange   // down | degraded | recovered transitions
+AlertType::AnchorMetricChange   // SLA error budget exhausted
 ```
 
-`Alert` is currently keyed by `corridor_id: String`. Anchor alerts need their own subject, so the struct gains an optional `anchor_id` and `corridor_id` becomes optional — **this is a breaking change to the WebSocket alert payload** and must be versioned alongside the frontend consumer in `AlertNotifications.tsx`.
+Severity and transition (`down` / `degraded` / `recovered` / `sla_breach`) travel as fields on the alert rather than as new enum variants, keeping the WebSocket payload stable for `AlertNotifications.tsx`.
 
 Delivery reuses what already exists:
 
+- **Alert dispatch** — `backend/src/services/alert_manager.rs` and `alert_service.rs`, the same path corridors use
 - **WebSocket** — `backend/src/websocket.rs`, topic `anchor.status`
-- **Webhooks** — `WebhookEventType::AnchorStatusChanged` (`anchor.status_changed`), already defined and currently unemitted
+- **Webhooks** — `WebhookEventType::AnchorStatusChanged` (`anchor.status_changed`), already wired through `backend/src/services/webhook_event_service.rs`
 - **Telegram** — `backend/src/telegram/`
 - **Email** — `backend/src/email/`
 
-Per-subscription rate limiting: at most one notification per anchor per transition, plus a reminder every `ANCHOR_ALERT_REMINDER_HOURS` (default `6`) while an incident stays open. Recovery always notifies.
+Subscriptions follow the `corridor_alert_configs` shape from migration `041` — boolean `notify_*` columns and a `cooldown_seconds`, not a JSON channel array — so both alert families are configured and rate limited the same way. Cooldown defaults to `ANCHOR_ALERT_REMINDER_HOURS` (default `6`) while an incident stays open; recovery always notifies.
 
 ## Uptime and SLA
 
@@ -140,7 +137,7 @@ remaining_pct     = (budget_minutes - consumed_minutes) / budget_minutes * 100
 
 ## Data Model
 
-`backend/migrations/024_create_anchor_health.sql`:
+`backend/migrations/044_create_anchor_health.sql`:
 
 ```sql
 CREATE TABLE anchor_health_checks (
@@ -203,13 +200,24 @@ CREATE TABLE anchor_sla_targets (
     FOREIGN KEY (anchor_id) REFERENCES anchors (id) ON DELETE CASCADE
 );
 
-CREATE TABLE anchor_alert_subscriptions (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      TEXT NOT NULL,
-    anchor_id    TEXT NOT NULL,
-    channels     TEXT NOT NULL,        -- JSON array: ["websocket","email","telegram","webhook"]
-    min_severity TEXT NOT NULL DEFAULT 'down',   -- degraded | down
-    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-- Mirrors corridor_alert_configs (migration 041) so both alert families
+-- share one configuration and cooldown model.
+CREATE TABLE anchor_alert_configs (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL,
+    anchor_id         TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    min_severity      TEXT NOT NULL DEFAULT 'down',   -- degraded | down
+    cooldown_seconds  INTEGER DEFAULT 21600,
+    notify_email      BOOLEAN NOT NULL DEFAULT 0,
+    notify_webhook    BOOLEAN NOT NULL DEFAULT 0,
+    notify_in_app     BOOLEAN NOT NULL DEFAULT 1,
+    notify_slack      BOOLEAN NOT NULL DEFAULT 0,
+    notify_telegram   BOOLEAN NOT NULL DEFAULT 0,
+    is_active         BOOLEAN NOT NULL DEFAULT 1,
+    last_triggered_at TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (user_id, anchor_id),
     FOREIGN KEY (anchor_id) REFERENCES anchors (id) ON DELETE CASCADE
 );
@@ -228,7 +236,7 @@ Raw `anchor_health_checks` rows are retained 30 days (`ANCHOR_PROBE_RETENTION_DA
 | GET | `/api/anchors/:id/incidents?limit=50&status=open` | Incident history. |
 | GET | `/api/anchors/:id/sla` | Target, current-period uptime, error budget remaining. |
 | PUT | `/api/anchors/:id/sla` | Set target and period (admin; audited via `admin_audit_log`). |
-| POST | `/api/anchors/:id/subscribe` | Subscribe the caller; body `{ channels, min_severity }`. |
+| POST | `/api/anchors/:id/subscribe` | Subscribe the caller; body mirrors `corridor_alert_configs` (`notify_*`, `min_severity`, `cooldown_seconds`). |
 | DELETE | `/api/anchors/:id/subscribe` | Unsubscribe. |
 | GET | `/api/anchors/uptime/leaderboard?window=30d` | Anchors ranked by uptime. |
 
@@ -313,15 +321,16 @@ Raw `anchor_health_checks` rows are retained 30 days (`ANCHOR_PROBE_RETENTION_DA
 
 ## Acceptance Criteria
 
-- [ ] Migration `024_create_anchor_health.sql` applies cleanly and is idempotent
+- [ ] Migration `044_create_anchor_health.sql` applies cleanly and is idempotent
 - [ ] `anchor_health` service discovers endpoints from `stellar.toml` and probes each advertised service independently
 - [ ] Probes honour timeout, and classify `timeout` / `dns` / `tls` / `http` / `body` failures distinctly
 - [ ] Flap suppression: status commits only after N consecutive agreeing probes; thresholds are env-configurable
 - [ ] Incidents open on committed failure and close on committed recovery, with duration persisted
 - [ ] SEP-10 probing validates the challenge without ever signing or submitting it
-- [ ] `AlertType` extended with `AnchorDown`, `AnchorDegraded`, `AnchorRecovered`, `AnchorSlaBreach`
-- [ ] `Alert` payload change versioned and consumed correctly by `AlertNotifications.tsx`
-- [ ] `anchor.status_changed` webhook event actually emitted (it is currently defined but dead)
+- [ ] Probe transitions produce `AnchorStatusChange` alerts, and SLA breach produces `AnchorMetricChange`, through the existing `alert_manager` path
+- [ ] Existing WebSocket alert payload shape preserved — no change required in `AlertNotifications.tsx`
+- [ ] `anchor.status_changed` webhook emitted on probe-driven transitions via `webhook_event_service`
+- [ ] `anchor_alert_configs` mirrors the `corridor_alert_configs` shape; cooldown honoured by the same logic
 - [ ] Alerts delivered over WebSocket, webhook, Telegram, and email per subscription
 - [ ] Alert rate limiting: one per transition, plus a configurable reminder cadence while open
 - [ ] Uptime excludes windows with no probe coverage and reports `coverage_pct` separately
@@ -337,13 +346,13 @@ Raw `anchor_health_checks` rows are retained 30 days (`ANCHOR_PROBE_RETENTION_DA
 
 ## Implementation Steps
 
-1. **Schema** — write migration `024`, add query helpers under `backend/src/db/`.
+1. **Schema** — write migration `044`, add query helpers under `backend/src/db/`.
 2. **Probe engine** — `backend/src/services/anchor_health.rs`: endpoint discovery via `stellar_toml`, concurrent per-service probes with a bounded worker pool, per-host backoff, error classification.
 3. **Status machine** — consecutive-agreement thresholds, incident open/close, transition events. Keep the state transition logic pure and unit-tested against synthetic probe sequences.
 4. **Scheduler** — register `anchor_health_probe` (default 60s) and `anchor_uptime_rollup` (nightly) in `backend/src/jobs/scheduler.rs`.
 5. **Alerting** — extend `alerts.rs`; wire the four new types into WebSocket, webhook, Telegram, and email; implement subscription lookup and rate limiting.
 6. **Uptime service** — `backend/src/services/anchor_uptime.rs`: window aggregation, coverage, MTTR, SLA error budget.
-7. **API** — `backend/src/api/anchor_health.rs`; register in `mod.rs`; extend the anchor payloads in `anchors.rs` / `anchors_cached.rs` with a `health` block.
+7. **API** — `backend/src/api/anchor_health.rs`; register in `mod.rs`; extend the anchor payloads in `anchors.rs` with a `health` block.
 8. **Frontend service** — `frontend/src/services/anchorHealth.ts` with socket subscription and REST fallback.
 9. **Frontend components** — status board, uptime timeline, SLA card, incident history, subscribe button; integrate into the anchors page and health dashboard.
 10. **Testing** — probe classification tests, state-machine tests over synthetic sequences, alert dedupe tests, API integration tests, component tests.
@@ -370,14 +379,15 @@ Raw `anchor_health_checks` rows are retained 30 days (`ANCHOR_PROBE_RETENTION_DA
 - Related to: #2102 Network Congestion Indicator (shares the monitoring surface and alert plumbing)
 - Related to: Issue #022 Anchor Reliability Scoring Algorithm Enhancement — probe history is a strong new feature for that model
 - Depends on: existing `backend/src/services/stellar_toml.rs`
-- Unblocks: the dead `AnchorStatusChangedEvent` in `backend/src/webhooks/events.rs`
+- Builds on: #2210 corridor performance alerts — reuses `alert_manager`, `alert_service`, and the `corridor_alert_configs` conventions
+- Completes: `AnchorStatusChangedEvent`, which is wired for delivery but has no liveness producer
 
 ## Estimated Effort
 
 - Schema + probe engine: 1.5 days
 - Status machine, incidents, flap suppression: 1 day
-- Alerting across four channels + subscriptions: 1 day
+- Alerting via existing dispatch + subscription configs: 0.5 days
 - Uptime/SLA aggregation + API: 1 day
 - Frontend components and integration: 1 day
 - Testing, docs, polish: 0.5 days
-- **Total: 6 days**
+- **Total: 5.5 days**

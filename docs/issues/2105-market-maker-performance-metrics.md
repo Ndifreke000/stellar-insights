@@ -38,7 +38,7 @@ Stellar makes this tractable in a way most venues do not — orderbook offers ar
 - **New file:** `backend/src/services/market_maker.rs` — identification, snapshot capture, attribution.
 - **New file:** `backend/src/services/mm_metrics.rs` — spread, depth, uptime, fills, markouts, scoring.
 - **New file:** `backend/src/api/market_makers.rs` — handlers and router.
-- **New migration:** `backend/migrations/026_create_market_makers.sql`
+- **New migration:** `backend/migrations/046_create_market_makers.sql`
 - **Update:** `backend/src/rpc/stellar.rs` — add `fetch_offers_for_pair()` and `fetch_account_offers()`.
 - **Update:** `backend/src/jobs/scheduler.rs` — register `mm_snapshot`, `mm_fill_ingest`, `mm_daily_rollup`.
 - **Update:** `backend/src/api/mod.rs`, `backend/src/openapi.rs`
@@ -165,7 +165,7 @@ mm_score = 100 * (0.30 * norm(consistency_score)
 
 ## Data Model
 
-`backend/migrations/026_create_market_makers.sql`:
+`backend/migrations/046_create_market_makers.sql`:
 
 ```sql
 CREATE TABLE mm_quote_snapshots (
@@ -396,7 +396,7 @@ Markouts are filled by a deferred pass: the `mm_fill_ingest` job writes fills im
 
 ## Acceptance Criteria
 
-- [ ] Migration `026_create_market_makers.sql` applies cleanly and is idempotent
+- [ ] Migration `046_create_market_makers.sql` applies cleanly and is idempotent
 - [ ] `fetch_offers_for_pair()` and `fetch_account_offers()` added to `RpcClient`, paging correctly, with tests
 - [ ] Offers grouped by `seller`; per-maker best bid/ask, spread, and per-band depth computed per snapshot
 - [ ] Maker classification implements all four criteria, is per-pair, and is recomputed daily

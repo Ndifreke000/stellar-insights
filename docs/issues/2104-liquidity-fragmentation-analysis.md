@@ -36,7 +36,7 @@ Stellar lets the same asset pair trade in several places at once: the classic or
 - **New file:** `backend/src/services/fragmentation.rs` — venue inventory, HHI, fragmentation index, depth curves.
 - **New file:** `backend/src/services/liquidity_recommendations.rs` — gap detection and LP recommendations.
 - **New file:** `backend/src/api/fragmentation.rs` — handlers and router.
-- **New migration:** `backend/migrations/025_create_liquidity_fragmentation.sql`
+- **New migration:** `backend/migrations/045_create_liquidity_fragmentation.sql`
 - **Update:** `backend/src/rpc/stellar.rs` — add `fetch_order_book_full()` (deeper `limit`) and `fetch_pools_for_pair()`.
 - **Update:** `backend/src/services/liquidity_pool_analyzer.rs` — expose per-pair pool lookup.
 - **Update:** `backend/src/jobs/scheduler.rs` — register `fragmentation_snapshot`.
@@ -136,7 +136,7 @@ Optional `account` scoping compares an account's existing LP positions (from Hor
 
 ## Data Model
 
-`backend/migrations/025_create_liquidity_fragmentation.sql`:
+`backend/migrations/045_create_liquidity_fragmentation.sql`:
 
 ```sql
 CREATE TABLE pair_venue_snapshots (
@@ -313,7 +313,7 @@ Analysing every pair on the network per interval is not feasible against Horizon
 
 ## Acceptance Criteria
 
-- [ ] Migration `025_create_liquidity_fragmentation.sql` applies cleanly and is idempotent
+- [ ] Migration `045_create_liquidity_fragmentation.sql` applies cleanly and is idempotent
 - [ ] `fetch_order_book_full()` and `fetch_pools_for_pair()` added to `RpcClient` with tests
 - [ ] Orderbook depth computed by walking levels within each bps band
 - [ ] AMM depth computed from the constant-product curve including pool fee, verified against a worked example in tests
