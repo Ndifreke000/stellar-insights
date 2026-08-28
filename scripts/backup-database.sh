@@ -206,23 +206,81 @@ upload_backup_to_s3() {
 get_backup_timestamp() {
   local backup_key="$1"
   # Extract timestamp from s3 key: database/production/manual/stellar-insights-production-20240115-143022.sql.gz
-  echo "$backup_key" | sed -E 's/.*-([0-9]{8}-[0-9]{6})\..*$/\1/'
+  local timestamp
+  timestamp=$(echo "$backup_key" | sed -E 's/.*-([0-9]{8}-[0-9]{6})\..*$/\1/')
+
+  # sed leaves the full key unchanged when the pattern does not match
+  if [[ ! "$timestamp" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+    return 1
+  fi
+
+  echo "$timestamp"
 }
 
 get_backup_age_days() {
   local backup_timestamp="$1"
   # Convert YYYYMMDD-HHMMSS to epoch
-  local backup_date=$(echo "$backup_timestamp" | cut -d'-' -f1)
-  local backup_epoch=$(date -d "$backup_date" +%s 2>/dev/null || date -jf %Y%m%d "$backup_date" +%s)
-  local now_epoch=$(date +%s)
+  local backup_date
+  backup_date=$(echo "$backup_timestamp" | cut -d'-' -f1)
+
+  if [[ ! "$backup_date" =~ ^[0-9]{8}$ ]]; then
+    return 1
+  fi
+
+  local backup_epoch=""
+  backup_epoch=$(date -d "$backup_date" +%s 2>/dev/null) \
+    || backup_epoch=$(date -jf %Y%m%d "$backup_date" +%s 2>/dev/null) \
+    || true
+
+  if [[ -z "$backup_epoch" || ! "$backup_epoch" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  local now_epoch
+  now_epoch=$(date +%s)
   echo $(( (now_epoch - backup_epoch) / 86400 ))
+}
+
+get_backup_day_of_week() {
+  local backup_timestamp="$1"
+  local backup_date
+  backup_date=$(echo "$backup_timestamp" | cut -d'-' -f1)
+
+  local dow=""
+  dow=$(date -d "$backup_date" +%w 2>/dev/null) \
+    || dow=$(date -jf %Y%m%d "$backup_date" +%w 2>/dev/null) \
+    || true
+
+  if [[ -z "$dow" || ! "$dow" =~ ^[0-9]$ ]]; then
+    return 1
+  fi
+
+  echo "$dow"
 }
 
 should_retain_backup() {
   local backup_key="$1"
-  local timestamp=$(get_backup_timestamp "$backup_key")
-  local age_days=$(get_backup_age_days "$timestamp")
-  local dow=$(date -d "$(echo $timestamp | cut -d'-' -f1)" +%w 2>/dev/null || date -jf %Y%m%d "$(echo $timestamp | cut -d'-' -f1)" +%w)
+  local timestamp
+
+  if ! timestamp=$(get_backup_timestamp "$backup_key"); then
+    error "RETENTION SKIP: cannot parse timestamp from backup key: $backup_key — leaving in S3"
+    echo "true"
+    return 0
+  fi
+
+  local age_days
+  if ! age_days=$(get_backup_age_days "$timestamp"); then
+    error "RETENTION SKIP: timestamp parse failed for $backup_key (parsed: $timestamp) — leaving in S3"
+    echo "true"
+    return 0
+  fi
+
+  local dow
+  if ! dow=$(get_backup_day_of_week "$timestamp"); then
+    error "RETENTION SKIP: day-of-week parse failed for $backup_key (parsed: $timestamp) — leaving in S3"
+    echo "true"
+    return 0
+  fi
 
   # Daily: Keep last 7 days
   if [ $age_days -le $RETENTION_DAILY ]; then
