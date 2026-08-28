@@ -107,6 +107,52 @@ fn test_claim_with_no_rewards() {
 }
 
 #[test]
+fn test_get_registered_snapshot_hides_hash() {
+    let (env, client, admin) = setup();
+    let epoch: u64 = 1;
+    let hash = make_hash(&env, 42);
+    client.register_snapshot(&admin, &epoch, &hash);
+
+    let record = client.get_registered_snapshot(&epoch);
+    assert_eq!(record.epoch, epoch);
+    assert!(record.active);
+}
+
+#[test]
+fn test_deactivate_epoch_blocked_when_paused() {
+    let (env, client, admin) = setup();
+    let epoch: u64 = 1;
+    let hash = make_hash(&env, 7);
+    client.register_snapshot(&admin, &epoch, &hash);
+    client.pause(&admin);
+
+    let result = client.try_deactivate_epoch(&admin, &epoch);
+    assert!(result.is_err());
+
+    client.unpause(&admin);
+    client.deactivate_epoch(&admin, &epoch);
+    let record = client.get_registered_snapshot(&epoch);
+    assert!(!record.active);
+}
+
+#[test]
+fn test_reward_points_checked_add() {
+    let (env, client, admin) = setup();
+    client.set_reward_per_verification(&admin, &1u64);
+
+    let hash = make_hash(&env, 1);
+    for epoch in 1..=3u64 {
+        client.register_snapshot(&admin, &epoch, &hash);
+    }
+
+    let verifier = Address::generate(&env);
+    for epoch in 1..=3u64 {
+        client.verify_snapshot(&verifier, &epoch, &hash);
+    }
+    assert_eq!(client.get_reward_points(&verifier), 3u64);
+}
+
+#[test]
 fn test_deactivate_epoch() {
     let (env, client, admin) = setup();
     let epoch: u64 = 1;
