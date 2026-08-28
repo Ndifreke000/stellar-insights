@@ -21,7 +21,7 @@ jest.mock('@services/api', () => ({
   },
 }));
 
-jest.mock('@services/tokenStorage', () => ({
+jest.mock('@services/auth', () => ({
   saveToken: jest.fn(() => Promise.resolve()),
   getToken: jest.fn(() => Promise.resolve(null)),
 }));
@@ -33,7 +33,7 @@ jest.mock('@services/biometricService', () => ({
 }));
 
 import { apiClient } from '@services/api';
-import { getToken } from '@services/tokenStorage';
+import { getToken } from '@services/auth';
 import {
   authenticate as biometricAuthenticate,
   getBiometricType,
@@ -121,7 +121,7 @@ describe('LoginScreen', () => {
   it('renders correctly', () => {
     const { getByText, getByLabelText } = render(<LoginScreen />);
 
-    expect(getByText('PayRaider')).toBeTruthy();
+    expect(getByText('Stellar Insights')).toBeTruthy();
     expect(getByLabelText('Email or username')).toBeTruthy();
     expect(getByLabelText('Password')).toBeTruthy();
     expect(getByLabelText('Sign in')).toBeTruthy();
@@ -282,7 +282,7 @@ describe('LoginScreen', () => {
 
   it('still authenticates when secure token persistence fails', async () => {
     mockPost.mockResolvedValue(SUCCESS_RESPONSE);
-    const { saveToken } = jest.requireMock('@services/tokenStorage') as {
+    const { saveToken } = jest.requireMock('@services/auth') as {
       saveToken: jest.Mock;
     };
     saveToken.mockRejectedValueOnce(new Error('keychain unavailable'));

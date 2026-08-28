@@ -5,9 +5,9 @@ import {
   getToken,
   removeToken,
   saveToken,
-} from '@services/tokenStorage';
+} from '@services/auth';
 
-jest.mock('@services/tokenStorage', () => ({
+jest.mock('@services/auth', () => ({
   getToken: jest.fn(),
   saveToken: jest.fn(),
   removeToken: jest.fn(),
