@@ -44,7 +44,7 @@ const securityHeaders = [
     // buildCsp() for why dev mode needs it.
     value: [
       "default-src 'self'",
-      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
+      `script-src 'self' 'unsafe-inline' https://cdn.redoc.ly${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.stellar.org",
       "font-src 'self'",
