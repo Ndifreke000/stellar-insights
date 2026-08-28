@@ -24,23 +24,23 @@ describe('FingerprintScannerComponent', () => {
   });
 
   it('should display scan button after initialization', async () => {
-    const { getByA11yLabel } = render(<FingerprintScannerComponent />);
+    const { getByLabelText } = render(<FingerprintScannerComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start fingerprint scan');
+      const scanButton = getByLabelText('Start fingerprint scan');
       expect(scanButton).toBeDefined();
     }, { timeout: 1000 });
   });
 
   it('should handle scan button press', async () => {
-    const { getByA11yLabel, getByText } = render(<FingerprintScannerComponent />);
+    const { getByLabelText, getByText } = render(<FingerprintScannerComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start fingerprint scan');
+      const scanButton = getByLabelText('Start fingerprint scan');
       expect(scanButton).toBeDefined();
     });
 
-    const scanButton = getByA11yLabel('Start fingerprint scan');
+    const scanButton = getByLabelText('Start fingerprint scan');
     fireEvent.press(scanButton);
 
     await waitFor(() => {
@@ -49,10 +49,10 @@ describe('FingerprintScannerComponent', () => {
   });
 
   it('should show result after scan completes', async () => {
-    const { getByA11yLabel, getByText, queryByText } = render(<FingerprintScannerComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<FingerprintScannerComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start fingerprint scan');
+      const scanButton = getByLabelText('Start fingerprint scan');
       fireEvent.press(scanButton);
     });
 
@@ -68,10 +68,10 @@ describe('FingerprintScannerComponent', () => {
 
   it('should reset result when reset button is pressed', async () => {
     jest.useFakeTimers();
-    const { getByA11yLabel, getByText, queryByText } = render(<FingerprintScannerComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<FingerprintScannerComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start fingerprint scan');
+      const scanButton = getByLabelText('Start fingerprint scan');
       fireEvent.press(scanButton);
     });
 

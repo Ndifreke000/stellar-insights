@@ -15,8 +15,12 @@ panic = "deny"
 
 [dependencies]
 soroban-sdk = { workspace = true }
-analytics = { path = "../analytics" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = { version = "1", default-features = false, features = ["std"] }
+# Only needed by tests, which register a real analytics contract instance to
+# exercise governance's cross-contract calls end-to-end. The wasm build uses
+# the local GovernedContractClient (see lib.rs) instead, to avoid linking
+# analytics' own #[contractimpl] exports into governance's binary.
+analytics = { path = "../analytics" }

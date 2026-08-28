@@ -1,11 +1,33 @@
 "use client";
 
 import React from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type Query } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ReactQueryLogger } from '@/lib/react-query/logger';
 import { ReactQueryProvider as CustomReactQueryProvider } from '@/lib/react-query/provider';
 import { useAppStore } from '@/lib/zustand/store';
+import { logger } from '@/lib/logger';
+
+interface StateDevtoolsObject {
+  store: ReturnType<typeof useAppStore>;
+  logState: () => void;
+  resetState: () => void;
+  logQueries: () => void;
+  invalidateAll: () => Promise<void>;
+  getQueryData: (queryKey: string[]) => unknown;
+  getPerformance: () => {
+    totalQueries: number;
+    activeQueries: number;
+    staleQueries: number;
+    averageStaleTime: number;
+  };
+}
+
+declare global {
+  interface Window {
+    __stateDevtools?: StateDevtoolsObject;
+  }
+}
 
 interface StateProviderProps {
   children: React.ReactNode;
@@ -32,24 +54,22 @@ function StateDevTools() {
   React.useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
       // Expose debugging functions to window
-      (window as any).__stateDevtools = {
+      window.__stateDevtools = {
         // Store debugging
         store,
-        logState: () => console.log('Store State:', store.getState()),
+        logState: () => logger.debug('Store State:', { state: useAppStore.getState() }),
         resetState: () => store.resetState(),
 
         // Query debugging
         logQueries: () => {
           const cache = queryClient.getQueryCache();
-          console.log('Query Cache:', cache.getAll());
+          logger.debug('Query Cache:', { queries: cache.getAll() });
         },
         invalidateAll: () => {
           queryClient.invalidateQueries();
         },
         getQueryData: (queryKey: string[]) => {
-          const query = queryClient.getQueryCache().find(({ queryKey: key }) =>
-            JSON.stringify(key) === JSON.stringify(queryKey)
-          );
+          const query = queryClient.getQueryCache().find({ queryKey });
           return query?.state.data;
         },
 
@@ -59,9 +79,9 @@ function StateDevTools() {
           const queries = cache.getAll();
           return {
             totalQueries: queries.length,
-            activeQueries: queries.filter((q: any) => q.getObserversCount() > 0).length,
-            staleQueries: queries.filter((q: any) => q.isStale()).length,
-            averageStaleTime: queries.reduce((acc: number, q: any) => acc + q.state.staleTime, 0) / queries.length,
+            activeQueries: queries.filter((q: Query) => q.getObserversCount() > 0).length,
+            staleQueries: queries.filter((q: Query) => q.isStale()).length,
+            averageStaleTime: queries.reduce((acc: number, q: Query) => acc + q.state.staleTime, 0) / queries.length,
           };
         },
       };
@@ -77,7 +97,7 @@ function StateDevTools() {
 export function useDebugTools() {
   React.useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      const debugTools = (window as any).__stateDevtools;
+      const debugTools = window.__stateDevtools;
 
       // Log performance metrics every 30 seconds
       const interval = setInterval(() => {
@@ -92,8 +112,4 @@ export function useDebugTools() {
       return () => clearInterval(interval);
     }
   }, []);
-
-  return { StateDevTools, useDebugTools };
 }
-
-export { StateDevTools, useDebugTools };

@@ -25,8 +25,8 @@ export const SplitScreenComponent: React.FC<SplitScreenComponentProps> = ({
   const showSecondary = effectiveMode !== 'full' && !!secondaryContent;
 
   return (
-    <View style={[styles.container, style]} accessibilityRole="main" accessibilityLabel={showSecondary ? 'Split screen layout' : 'Single pane layout'}>
-      <View style={[styles.pane, { flex: split.getPaneAFlex() }]} accessibilityRole="region" accessibilityLabel="Primary content pane">
+    <View style={[styles.container, style]} accessibilityLabel={showSecondary ? 'Split screen layout' : 'Single pane layout'}>
+      <View style={[styles.pane, { flex: split.getPaneAFlex() }]} accessibilityLabel="Primary content pane">
         {primaryContent}
       </View>
       {showSecondary && (
@@ -35,7 +35,6 @@ export const SplitScreenComponent: React.FC<SplitScreenComponentProps> = ({
       {showSecondary && (
         <View
           style={[styles.pane, { flex: split.getPaneBFlex() }, effectiveMode === 'slide-over' && styles.slideOver]}
-          accessibilityRole="region"
           accessibilityLabel="Secondary content pane"
         >
           {secondaryContent}

@@ -1,65 +1,164 @@
 version: '3.8'
 
+# Production ELK stack for Stellar Insights
+#
+# Key differences from docker-compose.elk.yml (dev):
+#   - xpack.security.enabled=true on Elasticsearch (auth required)
+#   - ELASTIC_PASSWORD must be set via environment variable (no hardcoded default used)
+#   - Elasticsearch heap 2g (vs 512m in dev)
+#   - Logstash uses logstash-prod.yml (authenticated monitoring)
+#   - ILM policy applied at startup to cap index retention at 30 days / 50 GB
+#   - Filebeat ships container + application logs in production mode
+#   - Memory limits enforced on every container
+#   - Health-check HTTP port is not exposed externally (9600 removed from ports)
+#   - Kibana uses HTTPS in production (configure reverse proxy in front of 5601)
+
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: stellar-elasticsearch-prod
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
       - xpack.security.enrollment.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      # ELASTIC_PASSWORD must be injected from the environment or a secrets manager.
+      # The fallback "changeme" is intentionally absent here to force explicit configuration.
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.monitoring.collection.enabled=true
+      - cluster.name=stellar-insights-prod
+      - node.name=stellar-prod-node-1
+      # ILM: allow auto-creation of indices via policy
+      - action.auto_create_index=.monitoring*,.watches,.triggered_watches,.watcher-history*,.ml*,stellar-insights*
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"   # Bind to loopback only; expose via authenticated reverse proxy
     volumes:
       - es_data:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./elk/elasticsearch/config/ilm-policy.json:/usr/share/elasticsearch/config/ilm-policy.json:ro
     networks:
       - elk
+    deploy:
+      resources:
+        limits:
+          memory: 4g
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      test:
+        - "CMD-SHELL"
+        - >
+          curl -s -u elastic:${ELASTIC_PASSWORD}
+          http://localhost:9200/_cluster/health
+          | grep -qE '"status":"(green|yellow)"'
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 60s
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.11.0
     container_name: stellar-logstash-prod
+    restart: unless-stopped
     volumes:
       - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
       - ./elk/logstash/config/logstash-prod.yml:/usr/share/logstash/config/logstash.yml:ro
+      - logstash_data:/usr/share/logstash/data
     ports:
-      - "5044:5044"
-      - "5000:5000/tcp"
-      - "9600:9600"
+      - "127.0.0.1:5044:5044"   # Beats input — loopback only
+      - "127.0.0.1:5000:5000"   # TCP JSON — loopback only
     environment:
-      - "LS_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "LS_JAVA_OPTS=-Xms1g -Xmx1g"
       - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
+      - LOGSTASH_DEBUG=false
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - elk
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9600/_node/stats | grep -q '\"status\":\"green\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
     container_name: stellar-kibana-prod
+    restart: unless-stopped
     ports:
-      - "5601:5601"
+      - "127.0.0.1:5601:5601"   # Bind to loopback; put Nginx/Caddy with TLS in front
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
       - SERVER_NAME=stellar-insights-kibana
+      - MONITORING_ENABLED=true
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - elk
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q '\"overall\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+
+  # Filebeat: ships backend container logs and /var/log/stellar-insights/ to Logstash
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: stellar-filebeat-prod
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat_data:/usr/share/filebeat/data
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - KIBANA_HOST=http://kibana:5601
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    networks:
+      - elk
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: filebeat -e -strict.perms=false
 
 volumes:
   es_data:
+    driver: local
+  logstash_data:
+    driver: local
+  kibana_data:
+    driver: local
+  filebeat_data:
     driver: local
 
 networks:

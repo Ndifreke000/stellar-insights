@@ -1,8 +1,18 @@
-http.host: "0.0.0.0"
-xpack.monitoring.enabled: true
-xpack.monitoring.elasticsearch.hosts: [ "http://elasticsearch:9200" ]
-pipeline.workers: 2
-pipeline.batch.size: 125
-pipeline.batch.delay: 50
+---
+## Logstash configuration for Stellar Insights
+
+# Pipeline configuration
+pipeline.id: main
+queue.type: persisted
+queue.max_bytes: 1gb
+
+# API settings
+api.enabled: true
+api.http.host: 0.0.0.0
+api.http.port: 9600
+
+# Monitoring
+monitoring.enabled: false
+
+# Log level
 log.level: info
-path.config: /usr/share/logstash/pipeline

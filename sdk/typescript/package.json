@@ -2,31 +2,51 @@
   "name": "@stellar-insights/sdk",
   "version": "1.0.0",
   "description": "Official TypeScript SDK for the Stellar Insights API",
+  "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/typescript#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/Ndifreke000/stellar-insights/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     }
   },
   "files": ["dist"],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
+    "generate": "bash scripts/generate-bindings.sh",
     "test": "vitest run",
     "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["stellar", "sdk", "payments", "analytics", "request-deduplication"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "network-context"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "authentication"],
-  "keywords": ["stellar", "sdk", "payments", "analytics", "retry-backoff"],
+  "keywords": [
+    "stellar",
+    "sdk",
+    "payments",
+    "analytics",
+    "request-deduplication",
+    "network-context",
+    "authentication",
+    "retry-backoff"
+  ],
   "license": "MIT",
   "devDependencies": {
-    "tsup": "8.0.2",
-    "typescript": "5.4.5",
-    "vitest": "1.6.0"
+    "@types/node": "^26.1.2",
+    "tsup": "8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.10"
   }
 }

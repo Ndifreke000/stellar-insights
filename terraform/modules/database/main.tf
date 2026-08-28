@@ -149,8 +149,8 @@ resource "aws_db_instance" "postgresql" {
   # High availability
   multi_az = var.multi_az
 
-  # Backups
-  backup_retention_period = var.backup_retention_period
+  # Backups — optimized for cost: dev/staging need shorter retention
+  backup_retention_period = var.backup_retention_period != null ? var.backup_retention_period : (var.environment == "production" ? 7 : (var.environment == "staging" ? 3 : 1))
   backup_window           = var.backup_window
   skip_final_snapshot     = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "stellar-insights-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
@@ -163,7 +163,7 @@ resource "aws_db_instance" "postgresql" {
   # Cloudwatch logs
   enabled_cloudwatch_logs_exports = var.enable_cloudwatch_logs_exports
 
-  # Enhanced monitoring
+  # Enhanced monitoring — Performance Insights disabled for dev to reduce cost
   enable_performance_insights       = var.environment != "dev"
   performance_insights_retention_period = var.environment == "production" ? 31 : 7
   monitoring_interval              = var.enable_enhanced_monitoring ? var.monitoring_interval : 0

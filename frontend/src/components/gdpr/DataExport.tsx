@@ -78,7 +78,7 @@ export function DataExport({ onClose }: DataExportProps) {
       setError(null);
       setSuccess(null);
 
-      const result = await createExportRequest({
+      const _result = await createExportRequest({
         data_types: selectedTypes,
         export_format: "json",
       });

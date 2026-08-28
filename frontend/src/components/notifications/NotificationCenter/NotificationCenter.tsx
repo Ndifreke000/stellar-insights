@@ -4,28 +4,14 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell,
-  BellOff,
-  Download,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  AlertTriangle,
-  Info,
-  Filter,
-  Search,
-  Calendar,
   X,
   BarChart3,
-  Clock,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
-import { format, isToday, isYesterday, subDays, startOfDay, endOfDay } from 'date-fns';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import { format, isToday, isYesterday, subDays } from 'date-fns';
+import { BaseNotification } from '@/types/notifications';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationService, NotificationFilter, NotificationAnalytics } from '@/services/notificationService';
+import { NotificationService, NotificationFilter } from '@/services/notificationService';
 import AnalyticsTab from './AnalyticsTab';
-import { ICON_COLORS, NOTIFICATION_ICONS, PRIORITY_BADGES } from './helpers';
 import NotificationsTab from './NotificationsTab';
 
 interface NotificationCenterProps {
@@ -43,7 +29,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
     unreadCount 
   } = useNotifications();
 
-  const notificationService = NotificationService.getInstance();
+  const notificationService = useMemo(() => NotificationService.getInstance(), []);
   
   // UI State
   const [activeTab, setActiveTab] = useState<'notifications' | 'analytics'>('notifications');
@@ -57,15 +43,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
   });
 
   // Analytics
-  const analytics = useMemo(() => 
+  const analytics = useMemo(() =>
     notificationService.generateAnalytics(notifications),
-    [notifications]
+    [notifications, notificationService]
   );
 
   // Filtered notifications
-  const filteredNotifications = useMemo(() => 
+  const filteredNotifications = useMemo(() =>
     notificationService.filterNotifications(notifications, filter),
-    [notifications, filter]
+    [notifications, filter, notificationService]
   );
 
   // Grouped notifications
@@ -95,23 +81,13 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
     return groups;
   }, [filteredNotifications]);
 
-  const formatTime = (date: Date) => {
-    if (isToday(date)) {
-      return format(date, 'HH:mm');
-    } else if (isYesterday(date)) {
-      return `Yesterday ${format(date, 'HH:mm')}`;
-    } else {
-      return format(date, 'MMM dd, HH:mm');
-    }
-  };
-
   const handleNotificationClick = (notification: BaseNotification) => {
     if (!notification.read) {
       markAsRead(notification.id);
     }
   };
 
-  const handleSelectNotification = (notificationId: string, event: React.MouseEvent) => {
+  const handleSelectNotification = (notificationId: string, event: React.SyntheticEvent) => {
     event.stopPropagation();
     setSelectedNotifications(prev => {
       const newSet = new Set(prev);

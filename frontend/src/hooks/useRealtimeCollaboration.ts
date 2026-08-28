@@ -30,16 +30,20 @@ export const useRealtimeCollaboration = (options: UseRealtimeCollaborationOption
   const [messages, setMessages] = useState<CollaborativeMessage[]>([]);
   const [activeUsers, setActiveUsers] = useState<CollaborativeUser[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>(
+    () => (autoConnect ? 'connecting' : 'disconnected'),
+  );
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const connect = useCallback(() => {
-    setConnectionStatus('connecting');
+  // Opens the WebSocket and wires up its listeners. Does not itself set the
+  // 'connecting' status, so it can be called from the mount effect without
+  // triggering a synchronous setState from within the effect body.
+  const openConnection = useCallback(() => {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${sessionId}`;
-      
+
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
@@ -64,6 +68,11 @@ export const useRealtimeCollaboration = (options: UseRealtimeCollaborationOption
       setConnectionStatus('disconnected');
     }
   }, [sessionId]);
+
+  const connect = useCallback(() => {
+    setConnectionStatus('connecting');
+    openConnection();
+  }, [openConnection]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -124,13 +133,13 @@ export const useRealtimeCollaboration = (options: UseRealtimeCollaborationOption
 
   useEffect(() => {
     if (autoConnect) {
-      connect();
+      openConnection();
     }
 
     return () => {
       disconnect();
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, openConnection, disconnect]);
 
   return {
     messages,

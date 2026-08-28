@@ -74,7 +74,7 @@ export const LiquidityChart: React.FC<LiquidityChartProps> = ({ data }) => {
             <YAxis
               axisLine={false}
               tickLine={false}
-              tickFormatter={(value: any) => {
+              tickFormatter={(value: number | string) => {
                 const n = Number(value || 0);
                 return `$${(n / 1000000).toFixed(0)}M`;
               }}

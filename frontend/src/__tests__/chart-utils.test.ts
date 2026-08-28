@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { isSafari, getTooltipContentStyle, getTooltipLabelStyle, getChartContainerStyle } from '@/lib/chart-utils';
 
 describe('chart-utils', () => {
@@ -58,7 +58,7 @@ describe('chart-utils', () => {
 
     it('should return false when window is undefined', () => {
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error
       delete global.window;
       expect(isSafari()).toBe(false);
       global.window = originalWindow;

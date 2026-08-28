@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Calculator, Loader2, Route, TrendingUp } from "lucide-react";
+import {  Calculator, Loader2, Route, TrendingUp } from "lucide-react";
 import { FormField, FormSelect, FormCheckboxGroup } from "@/components/ui/FormField";
 import { costCalculatorSchema, type CostCalculatorForm } from "@/lib/schemas";
 
@@ -81,12 +81,9 @@ export function CostCalculator() {
   const [result, setResult] = useState<CostCalculationResponse | null>(null);
 
   const {
-    register,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
-    setValue,
+    formState: { isValid, isDirty },
     watch,
-    trigger,
   } = useForm<CostCalculatorForm>({
     resolver: zodResolver(costCalculatorSchema),
     mode: "onChange",
@@ -160,15 +157,6 @@ export function CostCalculator() {
       setLoading(false);
     }
   };
-
-  function toggleRoute(route: RouteKey) {
-    const currentRoutes = selectedRoutes || [];
-    if (currentRoutes.includes(route)) {
-      setValue("routes", currentRoutes.filter((value) => value !== route), { shouldValidate: true });
-    } else {
-      setValue("routes", [...currentRoutes, route], { shouldValidate: true });
-    }
-  }
 
   return (
     <div className="space-y-6">

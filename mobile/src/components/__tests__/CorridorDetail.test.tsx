@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 import { CorridorDetail } from '@components/CorridorDetail';
-import type { CorridorDetailData } from '@types/corridor';
+import type { CorridorDetailData } from '@app-types/corridor';
 
 const mockGoBack = jest.fn();
 const mockPush = jest.fn();

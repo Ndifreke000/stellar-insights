@@ -8,9 +8,9 @@ static ENV_MUTEX: Mutex<()> = Mutex::new(());
 fn test_pool_config_defaults() {
     let config = PoolConfig::default();
 
-    assert_eq!(config.max_connections, 20);
+    assert_eq!(config.max_connections, 100);
     assert_eq!(config.min_connections, 5);
-    assert_eq!(config.connect_timeout_seconds, 30);
+    assert_eq!(config.connect_timeout_seconds, 10);
     assert_eq!(config.idle_timeout_seconds, 600);
     assert_eq!(config.max_lifetime_seconds, 1800);
 }
@@ -54,9 +54,9 @@ fn test_pool_config_from_env_with_defaults() {
     let config = PoolConfig::from_env();
 
     // Should use defaults
-    assert_eq!(config.max_connections, 20);
+    assert_eq!(config.max_connections, 100);
     assert_eq!(config.min_connections, 5);
-    assert_eq!(config.connect_timeout_seconds, 30);
+    assert_eq!(config.connect_timeout_seconds, 10);
     assert_eq!(config.idle_timeout_seconds, 600);
     assert_eq!(config.max_lifetime_seconds, 1800);
 }

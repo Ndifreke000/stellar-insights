@@ -6,7 +6,7 @@ import { getToken, saveToken } from '@services/tokenStorage';
 import { useBiometricAuthentication } from '@hooks/useBiometricAuthentication';
 import type { BiometricType } from '@services/biometricService';
 import { useAuthStore } from '@store/authStore';
-import { AuthTokens, User } from '@types/index';
+import { AuthTokens, User } from '@app-types/index';
 
 /** Credentials submitted from the login form. */
 export interface LoginCredentials {

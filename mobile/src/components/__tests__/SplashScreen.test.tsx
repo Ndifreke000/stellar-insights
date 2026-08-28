@@ -27,7 +27,7 @@ describe('SplashScreen', () => {
     const tree = renderer.create(<SplashScreen />);
     const texts = tree.root.findAllByType(Text).map(n => n.props.children);
 
-    expect(texts).toContain('Stellar Insights');
+    expect(texts).toContain('PayRaider');
     expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
   });
 
@@ -76,7 +76,7 @@ describe('SplashScreen', () => {
     const tree = renderer.create(<SplashScreen />);
     const root = tree.toJSON() as renderer.ReactTestRendererJSON;
 
-    expect(root.props.accessibilityLabel).toBe('Loading Stellar Insights');
+    expect(root.props.accessibilityLabel).toBe('Loading PayRaider');
   });
 
   it('has error accessibility label when in error state', () => {

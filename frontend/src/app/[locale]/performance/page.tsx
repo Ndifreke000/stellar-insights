@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -57,17 +57,29 @@ const RATING_BG: Record<string, string> = {
   poor: "bg-red-500/10 border-red-500/20",
 };
 
+function readLocalMetrics(): Metric[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("mon_metrics") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function readLocalErrors(): AppError[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("mon_errors") || "[]");
+  } catch {
+    return [];
+  }
+}
+
 export default function PerformancePage() {
-  const [vitals, setVitals] = useState<WebVitalSummary[]>([]);
-  const [apiLatencies, setApiLatencies] = useState<ApiLatencyEntry[]>([]);
-  const [errorCount, setErrorCount] = useState(0);
-  const [errorTimeline, setErrorTimeline] = useState<{ time: string; count: number }[]>([]);
+  const [rawMetrics] = useState<Metric[]>(readLocalMetrics);
+  const [rawErrors] = useState<AppError[]>(readLocalErrors);
 
-  useEffect(() => {
-    const rawMetrics: Metric[] = JSON.parse(localStorage.getItem("mon_metrics") || "[]");
-    const rawErrors: AppError[] = JSON.parse(localStorage.getItem("mon_errors") || "[]");
-
-    // Aggregate Web Vitals (latest value per metric)
+  const vitals = useMemo(() => {
     const vitalsMap = new Map<string, number>();
     for (const m of rawMetrics) {
       if (m.name.startsWith("web-vitals-")) {
@@ -75,16 +87,16 @@ export default function PerformancePage() {
         vitalsMap.set(key, m.value);
       }
     }
-    const vitalsSummary: WebVitalSummary[] = Array.from(vitalsMap.entries()).map(([name, value]) => ({
+    return Array.from(vitalsMap.entries()).map(([name, value]) => ({
       name: name.toUpperCase(),
       value,
       rating: getRating(name, value),
       threshold: VITALS_CONFIG[name] ?? { good: 0, poor: 0 },
       unit: VITALS_CONFIG[name]?.unit ?? "",
     }));
-    setVitals(vitalsSummary);
+  }, [rawMetrics]);
 
-    // Aggregate API latencies (average per endpoint)
+  const apiLatencies = useMemo(() => {
     const latencyMap = new Map<string, number[]>();
     for (const m of rawMetrics) {
       if (m.name === "api-latency" && m.metadata?.endpoint) {
@@ -93,21 +105,22 @@ export default function PerformancePage() {
         latencyMap.get(ep)!.push(m.value);
       }
     }
-    const latencies: ApiLatencyEntry[] = Array.from(latencyMap.entries()).map(([endpoint, values]) => ({
+    return Array.from(latencyMap.entries()).map(([endpoint, values]) => ({
       endpoint,
       latency: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
     }));
-    setApiLatencies(latencies);
+  }, [rawMetrics]);
 
-    // Error count and timeline (last 12 hours, bucketed by hour)
-    setErrorCount(rawErrors.length);
+  const errorCount = useMemo(() => rawErrors.length, [rawErrors]);
+
+  const errorTimeline = useMemo(() => {
     const buckets = new Map<string, number>();
     for (const e of rawErrors) {
       const hour = new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       buckets.set(hour, (buckets.get(hour) ?? 0) + 1);
     }
-    setErrorTimeline(Array.from(buckets.entries()).map(([time, count]) => ({ time, count })));
-  }, []);
+    return Array.from(buckets.entries()).map(([time, count]) => ({ time, count }));
+  }, [rawErrors]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
@@ -148,7 +161,7 @@ export default function PerformancePage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis type="number" unit="ms" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="endpoint" tick={{ fontSize: 11 }} width={140} />
-                <Tooltip formatter={(v: number) => [`${v}ms`, "Avg latency"]} />
+                <Tooltip formatter={(v?: number): [string, string] => [`${v ?? 0}ms`, "Avg latency"]} />
                 <Bar dataKey="latency" fill="rgb(99,102,241)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

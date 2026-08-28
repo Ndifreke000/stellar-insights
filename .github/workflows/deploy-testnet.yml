@@ -38,8 +38,12 @@ jobs:
         working-directory: backend
         env:
           JWT_SECRET: ci-test-secret-value-at-least-32-characters-long
-          DATABASE_URL: sqlite::memory:
-        run: cargo test --all-features
+          DATABASE_URL: "sqlite::memory:"
+        # Deliberately not --all-features: the legacy_sep10_tests feature
+        # gates tests/sep10_test.rs, which targets a pre-consolidation
+        # crate layout (stellar_base/stellar_analytics) that no longer
+        # exists in this repo and has not compiled for some time.
+        run: cargo test --features sep-integration
 
   build-and-deploy:
     name: Build, Push & Deploy Testnet
@@ -49,6 +53,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # ── Issue #1844: Pre-flight validation ──────────────────────────────────
+      # Verify all required secrets and env vars are present before proceeding.
+      - name: Validate deployment configuration
+        run: |
+          echo "Checking required configuration..."
+          MISSING=""
+          [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ] && MISSING="$MISSING AWS_ACCOUNT_ID"
+          [ -z "${{ secrets.KUBECONFIG_TESTNET }}" ] && MISSING="$MISSING KUBECONFIG_TESTNET"
+          [ -z "${{ vars.TESTNET_BACKEND_URL }}" ] && MISSING="$MISSING TESTNET_BACKEND_URL (vars)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets/vars:$MISSING"
+            echo "::error::Configure these in the repo Settings > Secrets and Variables > Actions"
+            exit 1
+          fi
+          echo "✓ All required configuration present"
+          echo "  AWS_REGION: $AWS_REGION"
+          echo "  ECR_REPOSITORY: $ECR_REPOSITORY"
+          echo "  K8S_OVERLAY: $K8S_OVERLAY"
+          echo "  K8S_NAMESPACE: $K8S_NAMESPACE"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -96,10 +120,16 @@ jobs:
             -n "${{ env.K8S_NAMESPACE }}" --timeout=10m
 
       - name: Run backend smoke tests
+        working-directory: backend
         env:
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          BACKEND_URL: ${{ vars.TESTNET_BACKEND_URL }}
-        run: bash backend/scripts/testnet-smoke-tests.sh
+          TESTNET_API_URL: ${{ vars.TESTNET_BACKEND_URL }}
+          TESTNET_API_KEY: ${{ secrets.TESTNET_API_KEY }}
+        run: cargo test --features testnet-smoke
+
+      - name: Output deployment URL
+        run: |
+          echo "::notice::Testnet backend deployed at ${{ vars.TESTNET_BACKEND_URL }}"
+          echo "TESTNET_BACKEND_URL=${{ vars.TESTNET_BACKEND_URL }}" >> "$GITHUB_ENV"
 
       - name: Post Slack notification
         if: always()

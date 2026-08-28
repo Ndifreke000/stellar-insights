@@ -22,14 +22,12 @@ use tower_http::{
 };
 
 use stellar_insights_backend::{
+    alerts::AlertManager,
     api::v1::routes,
     backup::{BackupConfig, BackupManager},
     cache::{CacheConfig, CacheManager},
     database::{Database, PoolConfig},
     env_config,
-    features::graphql_api::{
-        graphql_handler, graphql_health_handler, GraphQLAPI, GraphQLAPIConfig,
-    },
     ingestion::DataIngestionService,
     jobs::backfill::{BackfillJob, BackfillState},
     middleware::{
@@ -40,6 +38,7 @@ use stellar_insights_backend::{
         ResponseCompression, WebSocketRealTimeUpdates, PushNotificationRegistration,
         Sep10ForMobile,
     },
+    network::StellarNetwork,
     observability::logging::request_response_logging_middleware,
     observability::metrics as obs_metrics,
     observability::tracing::trace_propagation_middleware,
@@ -48,13 +47,15 @@ use stellar_insights_backend::{
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
-        webhook_dispatcher::WebhookDispatcher,
+        slack_bot::SlackBotService, webhook_dispatcher::WebhookDispatcher,
+        webhook_event_service::WebhookEventService,
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
         shutdown_signal, shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
     },
     state::AppState,
+    telegram::{SubscriptionService, TelegramBot},
     websocket::WsState,
 };
 
@@ -177,7 +178,17 @@ async fn main() -> anyhow::Result<()> {
         .parse::<bool>()
         .unwrap_or(false);
 
-    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(mock_mode));
+    // Respect STELLAR_NETWORK rather than hardcoding mainnet — a testnet
+    // deployment must not silently issue RPC calls against mainnet.
+    let stellar_network = std::env::var("STELLAR_NETWORK")
+        .ok()
+        .and_then(|s| s.parse::<StellarNetwork>().ok())
+        .unwrap_or(StellarNetwork::Mainnet);
+
+    let rpc_client = Arc::new(StellarRpcClient::new_with_network(
+        stellar_network,
+        mock_mode,
+    ));
 
     // Build all services via the container (dependency injection — issue #1123)
     let services = ServiceContainer::build(pool.clone(), rpc_client.clone());
@@ -376,10 +387,87 @@ async fn main() -> anyhow::Result<()> {
         })
     };
 
+    // #2126 — the alert manager is built with the webhook event service so an
+    // alert fans out to every registered webhook. `AlertManager::new` leaves
+    // that service unset, which left every webhook-emitting branch in alerts.rs
+    // unreachable; nothing in the codebase called `new_with_webhooks`.
+    //
+    // Constructed unconditionally: webhook delivery for alerts must not depend
+    // on whether the optional Telegram bot below happens to be enabled.
+    let (alert_manager, _alert_rx) =
+        AlertManager::new_with_webhooks(Arc::new(WebhookEventService::new(pool.clone())));
+
+    // Corridor Performance Monitor — evaluates corridor metrics against user
+    // alert configs every 60 seconds and triggers alerts when thresholds are breached.
+    let (corridor_monitor, _corridor_alert_rx) =
+        crate::services::corridor_performance_monitor::CorridorPerformanceMonitor::new(
+            db.clone(),
+            Arc::clone(&alert_manager),
+        );
+    let corridor_monitor = Arc::new(corridor_monitor);
+    let corridor_monitor_handle = corridor_monitor.spawn(60);
+    tracing::info!("Corridor performance monitor started (60s interval)");
+
+    // #2129 — Telegram notification bot.
+    //
+    // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
+    // deployment that does not want it pays nothing and needs no extra config.
+    let telegram_handle: Option<JoinHandle<()>> = match std::env::var("TELEGRAM_BOT_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => {
+            let subscriptions = Arc::new(SubscriptionService::new(pool.clone()));
+            let bot = TelegramBot::new(
+                &token,
+                Arc::clone(&db),
+                Arc::clone(&cache),
+                Arc::clone(&rpc_client),
+                subscriptions,
+                &alert_manager,
+            );
+
+            // The bot owns its own shutdown receiver; the sender is dropped
+            // with the process, which ends the polling and alert loops.
+            let (bot_shutdown_tx, bot_shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+            std::mem::forget(bot_shutdown_tx);
+
+            tracing::info!("Telegram bot enabled");
+            Some(tokio::spawn(async move {
+                bot.run(bot_shutdown_rx).await;
+            }))
+        }
+        _ => {
+            tracing::info!("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled");
+            None
+        }
+    };
+
+    // Opt-in Slack notifications for corridor and anchor alerts.
+    let slack_handle: Option<JoinHandle<()>> = match std::env::var("SLACK_WEBHOOK_URL") {
+        Ok(webhook_url) if !webhook_url.trim().is_empty() => {
+            tracing::info!("Slack notifications enabled");
+            Some(tokio::spawn(
+                SlackBotService::new(webhook_url, alert_manager.subscribe()).start(),
+            ))
+        }
+        _ => {
+            tracing::info!("SLACK_WEBHOOK_URL not set; Slack notifications disabled");
+            None
+        }
+    };
+
     // CORS configuration
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3000".to_string());
     let wildcard_origins = allowed_origins.trim() == "*";
+
+    // Security: reject wildcard origins in production (non-mock mode)
+    if wildcard_origins && !mock_mode {
+        anyhow::bail!(
+            "CORS: wildcard origin ('*') is not permitted in production. \
+            Set CORS_ALLOWED_ORIGINS to comma-separated list of actual frontend domains. \
+            Example: https://stellar-insights.com,https://app.stellar-insights.com"
+        );
+    }
+
     let origins: Vec<HeaderValue> = allowed_origins
         .split(',')
         .filter_map(|origin| {
@@ -412,7 +500,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let allow_origin = if wildcard_origins {
-        tracing::info!("CORS: wildcard origin configured; mirroring request origin");
+        tracing::info!("CORS: wildcard origin configured (dev/mock mode only); mirroring request origin");
         AllowOrigin::mirror_request()
     } else {
         AllowOrigin::list(origins)
@@ -491,22 +579,46 @@ async fn main() -> anyhow::Result<()> {
         cors,
         pool.clone(),
         cache.clone(),
-    );
+    )
+    .merge(stellar_insights_backend::api::api_analytics::routes(db.clone()));
 
     // Admin routes (backfill, etc.) — mounted at /admin
     let admin_routes = stellar_insights_backend::api::backfill::routes(backfill_job);
 
-    let graphql_api = Arc::new(GraphQLAPI::new(GraphQLAPIConfig::default(), 0));
+    // ── Consolidated GraphQL API (Issues #2121-#2125) ────────────────────────────
+    //
+    // The consolidated schema replaces the feature-level `GraphQLAPI` with the
+    // full database-backed schema from `graphql/schema.rs`. It includes:
+    //   - Query resolvers for all entities (anchors, corridors, payments, etc.)
+    //   - Mutation resolvers for create/update/delete operations
+    //   - Subscription resolvers for real-time updates via WebSocket
+    //   - Query complexity/depth limiting via async-graphql
+    let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+    let graphql_schema = stellar_insights_backend::graphql::build_schema(
+        pool.clone(),
+        broadcast_tx,
+    );
     let graphql_routes = Router::new()
-        .route("/graphql", post(graphql_handler))
-        .route("/graphql/health", get(graphql_health_handler))
-        .layer(axum::Extension(Arc::clone(&graphql_api)));
+        .route(
+            "/graphql",
+            post(stellar_insights_backend::graphql::handlers::graphql_handler)
+                .get(stellar_insights_backend::graphql::handlers::graphql_playground),
+        )
+        .route(
+            "/graphql/ws",
+            get(stellar_insights_backend::graphql::handlers::graphql_ws_handler),
+        )
+        .route(
+            "/graphql/health",
+            get(stellar_insights_backend::graphql::handlers::graphql_health_handler),
+        )
+        .with_state(graphql_schema);
 
     let app = base_routes
         .nest("/admin", admin_routes)
         .merge(graphql_routes)
         .merge(ws_routes)
-        .route("/swagger-ui/*path", get(|| async { "Swagger UI documentation" }))
+        .route("/swagger-ui/{*path}", get(|| async { "Swagger UI documentation" }))
         .layer(middleware::from_fn(
             stellar_insights_backend::payload_limit::payload_limit_middleware,
         ))
@@ -540,7 +652,7 @@ async fn main() -> anyhow::Result<()> {
                 .br(true)
                 .quality(compression_level)
                 .compress_when(
-                    SizeAbove::new(compression_min_size)
+                    SizeAbove::new(compression_min_size.into())
                         .and(NotForContentType::IMAGES)
                         .and(NotForContentType::SSE),
                 ),
@@ -560,7 +672,14 @@ async fn main() -> anyhow::Result<()> {
         pool_metrics_handle,
         pool_exhaustion_handle,
         webhook_dispatcher_handle,
+        corridor_monitor_handle,
     ];
+    if let Some(handle) = telegram_handle {
+        background_tasks.push(handle);
+    }
+    if let Some(handle) = slack_handle {
+        background_tasks.push(handle);
+    }
 
     // Graceful shutdown handler
     let shutdown_handler: JoinHandle<()> = {

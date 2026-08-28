@@ -26,7 +26,7 @@ export const BackgroundLocationComponent: React.FC<BackgroundLocationComponentPr
 
   return (
     <ScrollView contentContainerStyle={styles.container} accessibilityLabel="Background location settings">
-      <View style={styles.section} accessibilityRole="region" accessibilityLabel="Permission status">
+      <View style={styles.section} accessibilityLabel="Permission status">
         <Text style={styles.label} accessibilityRole="header">Location Permission</Text>
         <Text
           style={[styles.statusText, permissionStatus === 'background_granted' && styles.statusGreen, permissionStatus === 'denied' && styles.statusRed]}
@@ -41,7 +41,7 @@ export const BackgroundLocationComponent: React.FC<BackgroundLocationComponentPr
         )}
       </View>
 
-      <View style={styles.section} accessibilityRole="region" accessibilityLabel="Tracking controls">
+      <View style={styles.section} accessibilityLabel="Tracking controls">
         <Text style={styles.label} accessibilityRole="header">Tracking</Text>
         {isLoading ? (
           <ActivityIndicator size="small" accessibilityLabel="Loading location service" />
@@ -66,7 +66,7 @@ export const BackgroundLocationComponent: React.FC<BackgroundLocationComponentPr
       )}
 
       {lastLocation && (
-        <View style={styles.section} accessibilityRole="region" accessibilityLabel="Last known location">
+        <View style={styles.section} accessibilityLabel="Last known location">
           <Text style={styles.label} accessibilityRole="header">Last Location</Text>
           <Text>Lat: {lastLocation.latitude.toFixed(6)}</Text>
           <Text>Lng: {lastLocation.longitude.toFixed(6)}</Text>

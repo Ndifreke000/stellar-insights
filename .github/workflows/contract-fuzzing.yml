@@ -8,6 +8,9 @@ on:
   pull_request:
     paths:
       - 'contracts/**'
+  # Allows the fuzz suite to be re-run on demand (e.g. after a wasm target
+  # migration) without pushing a no-op commit to contracts/.
+  workflow_dispatch:
 
 jobs:
   fuzz:
@@ -20,7 +23,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       - name: Cache cargo registry & build artefacts
         uses: actions/cache@v4

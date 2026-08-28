@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "types": ["react-native", "jest", "node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
@@ -21,7 +22,7 @@
       "@hooks/*": ["src/hooks/*"],
       "@features/*": ["src/features/*"],
       "@utils/*": ["src/utils/*"],
-      "@types/*": ["src/types/*"],
+      "@app-types/*": ["src/types/*"],
       "@store/*": ["src/store/*"],
       "@config/*": ["src/config/*"],
       "@navigation/*": ["src/navigation/*"]

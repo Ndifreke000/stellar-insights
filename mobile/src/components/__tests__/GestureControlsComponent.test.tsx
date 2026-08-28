@@ -8,12 +8,12 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 describe('GestureControlsComponent', () => {
   it('renders the gesture controls screen and status labels', () => {
-    const { getByText, getByA11yLabel } = render(<GestureControlsComponent />);
+    const { getByText, getByLabelText } = render(<GestureControlsComponent />);
 
     expect(getByText('Gesture Controls')).toBeTruthy();
     expect(getByText('Ready for input')).toBeTruthy();
     expect(getByText('Gesture count: 0')).toBeTruthy();
-    expect(getByA11yLabel('Gesture interaction area')).toBeTruthy();
+    expect(getByLabelText('Gesture interaction area')).toBeTruthy();
   });
 
   it('shows offline mode when network is unavailable', () => {

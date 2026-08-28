@@ -49,7 +49,7 @@ export const FingerprintScannerComponent = () => {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing fingerprint scanner">
           Initializing Fingerprint Scanner...
@@ -69,7 +69,7 @@ export const FingerprintScannerComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View
         style={styles.header}
         accessible={true}
@@ -95,7 +95,7 @@ export const FingerprintScannerComponent = () => {
           <View
             style={styles.successContainer}
             accessible={true}
-            accessibilityRole="status"
+            accessibilityLiveRegion="polite"
             accessibilityLabel="Authentication successful"
           >
             <Text style={styles.successText}>✓ Authentication Successful</Text>

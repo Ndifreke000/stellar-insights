@@ -1,8 +1,10 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(utoipa::ToSchema)]
 pub enum StellarNetwork {
     Mainnet,
     Testnet,
@@ -62,10 +64,18 @@ impl NetworkConfig {
     pub fn for_network(network: StellarNetwork) -> Self {
         let (rpc_url, horizon_url, network_passphrase) = match network {
             StellarNetwork::Mainnet => (
-                std::env::var("STELLAR_RPC_URL_MAINNET")
-                    .unwrap_or_else(|_| "https://stellar.api.onfinality.io/public".to_string()),
-                std::env::var("STELLAR_HORIZON_URL_MAINNET")
-                    .unwrap_or_else(|_| "https://horizon.stellar.org".to_string()),
+                std::env::var("STELLAR_RPC_URL_MAINNET").unwrap_or_else(|_| {
+                    panic!(
+                        "STELLAR_RPC_URL_MAINNET must be set — \
+                         refusing to start without an explicit mainnet RPC URL"
+                    )
+                }),
+                std::env::var("STELLAR_HORIZON_URL_MAINNET").unwrap_or_else(|_| {
+                    panic!(
+                        "STELLAR_HORIZON_URL_MAINNET must be set — \
+                         refusing to start without an explicit mainnet Horizon URL"
+                    )
+                }),
                 "Public Global Stellar Network ; September 2015".to_string(),
             ),
             StellarNetwork::Testnet => (
@@ -120,6 +130,26 @@ impl NetworkConfig {
             StellarNetwork::Testnet => "#FF6B35", // Orange for testnet
         }
     }
+
+    /// Fetch the current Soroban protocol version from Horizon.
+    pub async fn current_protocol_version(&self) -> Result<u32> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
+        let resp: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch latest ledger from Horizon")?
+            .json()
+            .await
+            .context("Failed to parse Horizon ledger response")?;
+
+        resp["_embedded"]["records"][0]["protocol_version"]
+            .as_u64()
+            .map(|v| v as u32)
+            .ok_or_else(|| {
+                anyhow::anyhow!("Missing protocol_version in Horizon ledger response")
+            })
+    }
 }
 
 #[cfg(test)]
@@ -156,6 +186,10 @@ mod tests {
 
     #[test]
     fn test_network_config_creation() {
+        // Mainnet now requires explicit env vars — set them for test isolation.
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+
         let mainnet_config = NetworkConfig::for_network(StellarNetwork::Mainnet);
         assert!(mainnet_config.is_mainnet());
         assert!(!mainnet_config.is_testnet());

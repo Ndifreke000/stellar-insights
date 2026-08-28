@@ -1,0 +1,43 @@
+# Development Environment Variables
+# Cost estimate: $50-70/month (minimal setup, single AZ)
+#
+# Breakdown:
+#   - NAT Gateway: ~$30/month (single NAT, cost-optimized)
+#   - ALB: ~$20/month
+#   - ECS (t3.micro): ~$5/month
+#   - Data transfer out: ~$10/month
+#   - RDS: skipped (uses local SQLite or container Redis)
+#   - ElastiCache: skipped (uses Docker container for dev)
+#
+# ✓ Minimal resources for local development and testing
+# ✓ Single AZ (no Multi-AZ failover)
+# ✓ Minimal monitoring (CloudWatch logs only)
+# ✓ 7-day backup retention
+# ✓ Auto-scaling: 1-2 tasks
+#
+# Setup instructions:
+# 1. Copy this file to terraform.tfvars (git will ignore it)
+# 2. Ensure global infrastructure is deployed: cd ../global && terraform apply
+# 3. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="key=dev/terraform.tfstate" \
+#      -backend-config="region=us-east-1" \
+#      -backend-config="dynamodb_table=terraform-locks"
+# 4. Review plan: terraform plan
+# 5. Apply: terraform apply
+#
+# Post-deployment:
+# - Verify ECS cluster is healthy: aws ecs describe-clusters --clusters stellar-insights-dev
+# - Check health check status: aws elbv2 describe-target-health --target-group-arn <TARGET_GROUP_ARN>
+# - View logs: aws logs tail /ecs/stellar-insights-dev --follow
+
+aws_region  = "us-east-1"
+environment = "dev"
+vpc_cidr    = "10.0.0.0/16"
+
+# Vault configuration (HCP or self-hosted)
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Alarm notifications (dev: not critical, can use noreply)
+alarm_email = "noreply@example.com"

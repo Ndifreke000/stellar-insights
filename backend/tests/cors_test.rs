@@ -326,6 +326,9 @@ async fn test_cors_preflight_allows_credentials() {
 // Tests – Wildcard configuration
 // ---------------------------------------------------------------------------
 
+/// NOTE: Wildcard ("*") CORS in production is blocked by startup validation in main.rs.
+/// This test verifies the CorsLayer behavior IF wildcard were allowed (dev/mock mode only).
+/// Production deployments will fail at startup if CORS_ALLOWED_ORIGINS="*" and RPC_MOCK_MODE=false.
 #[tokio::test]
 async fn test_cors_wildcard_allows_any_origin() {
     let cors = cors_layer_from_origins("*");

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { MainLayout } from "@/components/layout";
-import { ArrowLeft, Download, FileText, Mail, Table2, Printer } from "lucide-react";
+import { ArrowLeft, Download, FileText, Mail, Table } from "lucide-react";
 import { PrintButton } from "@/components/PrintButton";
 import { Link } from "@/i18n/navigation";
 import { DateRangeSelector } from "./components/DateRangeSelector";
@@ -149,7 +149,7 @@ export default function ExportPage() {
                   onClick={() => handleExport("excel")}
                   className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition font-medium text-sm text-gray-700 dark:text-gray-200"
                 >
-                  <Table2 className="w-4 h-4 text-emerald-600" />
+                  <Table className="w-4 h-4 text-emerald-600" />
                   Download Excel (.xlsx)
                 </button>
                 <button

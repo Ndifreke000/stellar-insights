@@ -2,6 +2,12 @@ use stellar_insights_backend::network::{NetworkConfig, StellarNetwork};
 
 #[test]
 fn test_network_config_mainnet() {
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
     let config = NetworkConfig::for_network(StellarNetwork::Mainnet);
 
     assert_eq!(config.network, StellarNetwork::Mainnet);
@@ -61,6 +67,12 @@ fn test_network_display() {
 
 #[tokio::test]
 async fn test_network_api_endpoints() {
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
     use axum::{
         body::Body,
         http::{Request, StatusCode},

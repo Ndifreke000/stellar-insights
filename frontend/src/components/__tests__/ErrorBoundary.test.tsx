@@ -13,7 +13,13 @@ vi.mock("@/lib/logger", () => ({
 
 // Mock next/navigation
 vi.mock("@/i18n/navigation", () => ({
-  Link: ({ href, children, ...props }: any) => (
+  Link: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    children?: React.ReactNode;
+  }) => (
     <a href={href} {...props}>
       {children}
     </a>
@@ -26,17 +32,6 @@ const ThrowError = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
     throw new Error("Test error message");
   }
   return <div>No error</div>;
-};
-
-// Component that throws an error on click
-const ThrowErrorOnClick = () => {
-  const [shouldThrow, setShouldThrow] = React.useState(false);
-
-  if (shouldThrow) {
-    throw new Error("Error thrown on click");
-  }
-
-  return <button onClick={() => setShouldThrow(true)}>Throw Error</button>;
 };
 
 describe("ErrorBoundary", () => {

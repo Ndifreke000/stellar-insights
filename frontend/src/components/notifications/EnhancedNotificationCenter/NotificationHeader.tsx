@@ -1,13 +1,11 @@
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Bell, CheckSquare, Filter, Wifi, WifiOff, X } from 'lucide-react';
-import useEnhancedNotificationCenter from './useEnhancedNotificationCenter';
 import { BaseNotification } from '@/types/notifications';
 import { Dispatch, SetStateAction } from 'react';
 

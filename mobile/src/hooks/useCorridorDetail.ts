@@ -9,7 +9,7 @@ import {
   CorridorDetailData,
   UseCorridorDetailOptions,
   UseCorridorDetailReturn,
-} from '@types/corridor';
+} from '@app-types/corridor';
 
 export function parseCorridorAssets(corridorId: string): [string, string] {
   if (corridorId.includes('->')) {

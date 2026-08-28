@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
-import { useMMKVStorage } from 'react-native-mmkv';
+import { useMMKVBoolean } from 'react-native-mmkv';
 
 interface FaceRecognitionState {
   isScanning: boolean;
@@ -25,7 +25,7 @@ export const useFaceRecognition = (): FaceRecognitionState => {
   const [error, setError] = useState<string | null>(null);
   const [confidenceScore, setConfidenceScore] = useState(0);
   const scanningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [permissionsGranted, setPermissionsGranted] = useMMKVStorage(FACE_PERMISSIONS_KEY, storage, false);
+  const [, setPermissionsGranted] = useMMKVBoolean(FACE_PERMISSIONS_KEY, storage);
 
   const isCameraAvailable = useCallback(async (): Promise<boolean> => {
     try {

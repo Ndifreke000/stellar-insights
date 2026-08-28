@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode
+  chartTitle?: string
   fallback?: ReactNode
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
@@ -53,10 +54,10 @@ export class ChartErrorBoundary extends Component<Props, State> {
         <div className="flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 min-h-[300px]">
           <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Chart Error
+            {this.props.chartTitle ?? "Chart"} — Failed to load
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-center max-w-md">
-            Unable to render this chart. This might be due to invalid data or a temporary issue.
+            Unable to render this chart. Click retry to try again.
           </p>
           
           {process.env.NODE_ENV === 'development' && this.state.error && (

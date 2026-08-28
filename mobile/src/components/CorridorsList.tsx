@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCorridorsList } from '@hooks/useCorridorsList';
-import { CorridorDataSource, CorridorMetrics } from '@types/corridor';
+import { CorridorDataSource, CorridorMetrics } from '@app-types/corridor';
 import { CorridorsStackParamList } from '@navigation/MainNavigator';
 
 export interface CorridorsListProps {

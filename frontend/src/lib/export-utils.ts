@@ -164,7 +164,7 @@ export function generateExcel(
 
   const zip = buildZip(files);
   triggerDownload(
-    new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    new Blob([zip as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `analytics_export_${format(new Date(), "yyyy-MM-dd")}.xlsx`,
   );
 }

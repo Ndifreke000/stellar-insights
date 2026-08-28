@@ -349,6 +349,66 @@ impl PriceFeedClient {
         Ok(amount * price)
     }
 
+    /// Get price with staleness info
+    /// Returns (price_usd, stale) where stale=true if the cached data is >15min old
+    pub async fn get_price_with_staleness(&self, stellar_asset: &str) -> Result<(f64, bool)> {
+        // Check cache first
+        {
+            let cache = self.cache.read().await;
+            if let Some(cached) = cache.get(stellar_asset) {
+                let stale = cached.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds;
+                if stale {
+                    warn!("Using stale cached price for {stellar_asset}");
+                }
+                return Ok((cached.price_usd, stale));
+            }
+        }
+
+        // Not in cache, fetch from provider
+        let provider_id = self
+            .asset_mapping
+            .get(stellar_asset)
+            .ok_or_else(|| anyhow::anyhow!("No asset mapping for {stellar_asset}"))?;
+
+        let price = self.provider.fetch_price(provider_id).await?;
+
+        // Update cache
+        {
+            let mut cache = self.cache.write().await;
+            cache.insert(
+                stellar_asset.to_string(),
+                CachedPrice {
+                    price_usd: price,
+                    timestamp: Instant::now(),
+                },
+            );
+        }
+
+        Ok((price, false))
+    }
+
+    /// Get prices with staleness info
+    /// Returns (prices_map, stale_assets_set) where stale_assets contains assets with stale cached data
+    pub async fn get_prices_with_staleness(
+        &self,
+        assets: &[String],
+    ) -> (HashMap<String, f64>, std::collections::HashSet<String>) {
+        let result = self.get_prices(assets).await;
+        let mut stale_assets = std::collections::HashSet::new();
+
+        // Check which assets have stale cache entries
+        let cache = self.cache.read().await;
+        for asset in assets {
+            if let Some(cached) = cache.get(asset) {
+                if cached.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds {
+                    stale_assets.insert(asset.clone());
+                }
+            }
+        }
+
+        (result, stale_assets)
+    }
+
     /// Clear the cache (useful for testing)
     pub async fn clear_cache(&self) {
         let mut cache = self.cache.write().await;

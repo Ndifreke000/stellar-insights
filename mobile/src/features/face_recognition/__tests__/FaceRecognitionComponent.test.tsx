@@ -24,23 +24,23 @@ describe('FaceRecognitionComponent', () => {
   });
 
   it('should display scan button after initialization', async () => {
-    const { getByA11yLabel } = render(<FaceRecognitionComponent />);
+    const { getByLabelText } = render(<FaceRecognitionComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start face recognition');
+      const scanButton = getByLabelText('Start face recognition');
       expect(scanButton).toBeDefined();
     }, { timeout: 1000 });
   });
 
   it('should handle scan button press', async () => {
-    const { getByA11yLabel, getByText } = render(<FaceRecognitionComponent />);
+    const { getByLabelText, getByText } = render(<FaceRecognitionComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start face recognition');
+      const scanButton = getByLabelText('Start face recognition');
       expect(scanButton).toBeDefined();
     });
 
-    const scanButton = getByA11yLabel('Start face recognition');
+    const scanButton = getByLabelText('Start face recognition');
     fireEvent.press(scanButton);
 
     await waitFor(() => {
@@ -49,10 +49,10 @@ describe('FaceRecognitionComponent', () => {
   });
 
   it('should show result after scan completes', async () => {
-    const { getByA11yLabel, getByText, queryByText } = render(<FaceRecognitionComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<FaceRecognitionComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start face recognition');
+      const scanButton = getByLabelText('Start face recognition');
       fireEvent.press(scanButton);
     });
 
@@ -68,10 +68,10 @@ describe('FaceRecognitionComponent', () => {
 
   it('should reset result when reset button is pressed', async () => {
     jest.useFakeTimers();
-    const { getByA11yLabel, getByText, queryByText } = render(<FaceRecognitionComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<FaceRecognitionComponent />);
 
     await waitFor(() => {
-      const scanButton = getByA11yLabel('Start face recognition');
+      const scanButton = getByLabelText('Start face recognition');
       fireEvent.press(scanButton);
     });
 

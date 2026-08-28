@@ -1,4 +1,5 @@
 import { NotificationPriority, NotificationType } from "@/types/notifications";
+import { NotificationFilter } from "@/services/notificationService";
 import { motion, AnimatePresence } from "framer-motion";
 import { BellOff, Calendar, ChevronDown, ChevronUp, Download, Filter, Search, Trash2 } from "lucide-react";
 import { formatTime, ICON_COLORS, NOTIFICATION_ICONS, NotificationCenterProps, PRIORITY_BADGES } from "./helpers";
@@ -93,7 +94,7 @@ const NotificationsTab = ({
                     </label>
                     <select
                       value={filter.readStatus}
-                      onChange={(e) => updateFilter({ readStatus: e.target.value as any })}
+                      onChange={(e) => updateFilter({ readStatus: e.target.value as NotificationFilter['readStatus'] })}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     >
                       <option value="all">All</option>
@@ -251,7 +252,7 @@ const NotificationsTab = ({
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={(e: any) => handleSelectNotification(notification.id, e)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSelectNotification(notification.id, e)}
                               onClick={(e) => e.stopPropagation()}
                               className="mt-1 rounded"
                             />

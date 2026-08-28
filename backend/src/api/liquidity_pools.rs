@@ -1,3 +1,9 @@
+//! Liquidity pool API handlers.
+//!
+//! #1868 N+1 audit: list/stats/rankings/detail/snapshot handlers each perform
+//! a constant number of DB queries. Snapshotting used to insert one row per
+//! pool in a loop — batched in `LiquidityPoolAnalyzer::take_snapshots`.
+
 use axum::{
     extract::{Path, Query, State},
     routing::get,
@@ -40,8 +46,8 @@ pub fn routes(analyzer: Arc<LiquidityPoolAnalyzer>) -> Router {
         .route("/", get(list_pools))
         .route("/stats", get(get_pool_stats))
         .route("/rankings", get(get_pool_rankings))
-        .route("/:pool_id", get(get_pool_detail))
-        .route("/:pool_id/snapshots", get(get_pool_snapshots))
+        .route("/{pool_id}", get(get_pool_detail))
+        .route("/{pool_id}/snapshots", get(get_pool_snapshots))
         .with_state(analyzer)
 }
 
@@ -118,6 +124,7 @@ async fn get_pool_rankings(
 }
 
 #[derive(serde::Serialize)]
+#[derive(utoipa::ToSchema)]
 struct PoolDetailResponse {
     pool: LiquidityPool,
     snapshots: Vec<LiquidityPoolSnapshot>,

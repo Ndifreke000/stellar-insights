@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from '@config/constants';
 import { useAuthStore } from '@store/authStore';
-import { AuthTokens, User } from '@types/index';
+import { AuthTokens, User } from '@app-types/index';
 import { apiClient } from './api';
 import { storage } from './storage';
 

@@ -222,6 +222,7 @@ function generateMockPrediction(
     recommendation: recommendations[riskLevel],
     alternative_routes: alternativeRoutes,
     model_version: "1.0.0",
+    is_mock: true,
   };
 }
 

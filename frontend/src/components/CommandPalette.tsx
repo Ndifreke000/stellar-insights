@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -35,6 +35,7 @@ export function CommandPalette() {
   const router = useRouter();
   const pathname = usePathname();
   const locale = pathname.split('/')[1] || 'en';
+  const [, startTransition] = useTransition();
 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -124,11 +125,13 @@ export function CommandPalette() {
   // Reset state when opened
   useEffect(() => {
     if (isOpen) {
-      setQuery('');
-      setActiveIndex(0);
+      startTransition(() => {
+        setQuery('');
+        setActiveIndex(0);
+      });
       setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [isOpen]);
+  }, [isOpen, startTransition]);
 
   // Keep active item in view
   useEffect(() => {

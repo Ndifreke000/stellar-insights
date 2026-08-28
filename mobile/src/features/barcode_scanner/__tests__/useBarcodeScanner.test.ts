@@ -78,8 +78,9 @@ describe('useBarcodeScanner', () => {
   it('should handle permission checks', async () => {
     const { result } = renderHook(() => useBarcodeScanner());
 
-    const hasPermission = await act(async () => {
-      return await result.current.hasPermission();
+    let hasPermission = false;
+    await act(async () => {
+      hasPermission = await result.current.hasPermission();
     });
 
     expect(typeof hasPermission).toBe('boolean');
@@ -88,8 +89,9 @@ describe('useBarcodeScanner', () => {
   it('should request permission', async () => {
     const { result } = renderHook(() => useBarcodeScanner());
 
-    const permissionGranted = await act(async () => {
-      return await result.current.requestPermission();
+    let permissionGranted = false;
+    await act(async () => {
+      permissionGranted = await result.current.requestPermission();
     });
 
     expect(typeof permissionGranted).toBe('boolean');

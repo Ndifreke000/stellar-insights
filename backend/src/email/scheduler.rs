@@ -1,3 +1,32 @@
+/// # Email Digest Scheduler
+///
+/// Drives weekly (Monday 09:00 UTC) and monthly (1st of month 09:00 UTC) digest emails.
+///
+/// ## SMTP provider
+/// Production SMTP settings are controlled by the following environment variables
+/// (see `backend/.env.example`):
+///
+/// | Variable | Default | Notes |
+/// |---|---|---|
+/// | `SMTP_HOST` | — | Relay hostname, e.g. `smtp.sendgrid.net` |
+/// | `SMTP_PORT` | 587 | Submission port (STARTTLS) |
+/// | `SMTP_USER` | — | SMTP username / API-key identity |
+/// | `SMTP_PASS` | — | SMTP password / API key |
+///
+/// For CI/integration testing a local [Mailhog](https://github.com/mailhog/MailHog) or
+/// [Mailpit](https://github.com/axllent/mailpit) SMTP stub (port 1025, no auth) is the
+/// recommended approach.  See `docs/smtp-integration-testing.md` for the full setup.
+///
+/// ## Failure handling
+/// A send failure for any individual recipient is **logged as an error** (via
+/// `tracing::error!`) and **skipped** — the scheduler continues to the next recipient
+/// rather than aborting the whole digest run.  Failed sends are **not retried**
+/// automatically; the next scheduled digest (weekly or monthly) constitutes the
+/// natural retry.
+///
+/// If you need guaranteed delivery, wire up a persistent job queue (e.g. a
+/// `scheduled_emails` DB table polled by a separate worker) and push unsent digests
+/// there on failure instead of silently dropping them.
 use chrono::{Datelike, Timelike, Utc};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
@@ -74,18 +103,37 @@ impl DigestScheduler {
 
         let html = generate_html_report(&report);
 
+        let mut sent = 0usize;
+        let mut failed = 0usize;
         for recipient in &self.recipients {
-            self.email_service.send_html(
+            match self.email_service.send_html(
                 recipient,
                 &format!("Stellar Insights - {period} Performance Report"),
                 &html,
-            )?;
+            ) {
+                Ok(()) => sent += 1,
+                Err(e) => {
+                    // Log and skip — do NOT abort the whole digest run for a single
+                    // bad address or transient SMTP error.  The next scheduled digest
+                    // acts as the natural retry; for guaranteed delivery wire up a
+                    // persistent retry queue instead.
+                    failed += 1;
+                    tracing::error!(
+                        recipient = %recipient,
+                        period = %period,
+                        error = %e,
+                        "SMTP send failed for digest recipient; skipping"
+                    );
+                }
+            }
         }
 
         tracing::info!(
-            "Sent {} digest to {} recipients",
-            period,
-            self.recipients.len()
+            period = %period,
+            sent = %sent,
+            failed = %failed,
+            total = %(sent + failed),
+            "Digest send complete"
         );
         Ok(())
     }
@@ -177,6 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_digest_caching() {
+        let _guard = crate::lock_env_test();
         GENERATE_DAILY_DIGEST_CALLS.store(0, Ordering::Relaxed);
 
         let email_service = Arc::new(EmailService::new(

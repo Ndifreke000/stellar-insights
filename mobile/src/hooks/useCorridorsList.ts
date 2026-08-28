@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { apiClient } from '@services/api';
 import { CACHE_KEYS } from '@config/constants';
-import { CorridorDataSource, CorridorMetrics } from '@types/corridor';
+import { CorridorDataSource, CorridorMetrics } from '@app-types/corridor';
 
 export interface CorridorsListData {
   corridors: CorridorMetrics[];

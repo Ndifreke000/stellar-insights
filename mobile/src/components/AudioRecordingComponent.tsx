@@ -56,7 +56,7 @@ export const AudioRecordingComponent = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing audio recording">
           Initializing...
@@ -66,7 +66,7 @@ export const AudioRecordingComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View style={styles.header} accessible accessibilityRole="header">
         <Text style={styles.title}>Audio Recording</Text>
       </View>

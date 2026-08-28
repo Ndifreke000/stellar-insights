@@ -47,7 +47,7 @@ export const BarcodeScannerComponent = () => {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing barcode scanner">
           Initializing Barcode Scanner...
@@ -57,7 +57,7 @@ export const BarcodeScannerComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View
         style={styles.header}
         accessible={true}
@@ -83,7 +83,7 @@ export const BarcodeScannerComponent = () => {
           <View
             style={styles.resultContainer}
             accessible={true}
-            accessibilityRole="status"
+            accessibilityLiveRegion="polite"
             accessibilityLabel={`Barcode scanned: ${result.data}`}
           >
             <Text style={styles.resultLabel}>Scanned Barcode:</Text>

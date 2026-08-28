@@ -1,0 +1,25 @@
+[package]
+name = "contract-integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[test]]
+name = "integration"
+path = "integration/mod.rs"
+required-features = ["testnet-integration"]
+
+[[test]]
+name = "fuzz"
+path = "fuzz/mod.rs"
+
+[features]
+testnet-integration = []
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+analytics = { path = "../analytics" }
+governance = { path = "../governance" }
+escrow = { path = "../escrow" }
+multi-sig-wallet = { path = "../multi-sig-wallet" }
+stellar-insights = { path = "../stellar_insights" }

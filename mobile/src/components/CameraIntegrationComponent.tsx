@@ -42,7 +42,7 @@ export const CameraIntegrationComponent = () => {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing camera">
           Initializing Camera...
@@ -52,7 +52,7 @@ export const CameraIntegrationComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View style={styles.header} accessible accessibilityRole="header">
         <Text style={styles.title}>Camera Integration</Text>
       </View>
@@ -85,7 +85,7 @@ export const CameraIntegrationComponent = () => {
 
         {/* QR result */}
         {qrResult && (
-          <View style={styles.resultContainer} accessible accessibilityRole="status" accessibilityLabel={`QR code scanned: ${qrResult.data}`}>
+          <View style={styles.resultContainer} accessible accessibilityLiveRegion="polite" accessibilityLabel={`QR code scanned: ${qrResult.data}`}>
             <Text style={styles.resultLabel}>QR Code Scanned</Text>
             <Text style={styles.resultValue} selectable>{qrResult.data}</Text>
             <Text style={styles.resultMeta}>Type: {qrResult.type}</Text>
@@ -97,7 +97,7 @@ export const CameraIntegrationComponent = () => {
 
         {/* Captured photo result */}
         {capturedPhoto && (
-          <View style={styles.resultContainer} accessible accessibilityRole="status" accessibilityLabel="Photo captured">
+          <View style={styles.resultContainer} accessible accessibilityLiveRegion="polite" accessibilityLabel="Photo captured">
             <Text style={styles.resultLabel}>Photo Captured</Text>
             <Text style={styles.resultValue} selectable>{capturedPhoto.uri}</Text>
             <Text style={styles.resultMeta}>{capturedPhoto.width} × {capturedPhoto.height}</Text>
@@ -109,7 +109,7 @@ export const CameraIntegrationComponent = () => {
 
         {/* Active scanning / capture view */}
         {isActive && (
-          <View style={styles.activeContainer} accessible accessibilityRole="status" accessibilityLabel={mode === 'qr' ? 'Scanning for QR code' : 'Camera is ready'}>
+          <View style={styles.activeContainer} accessible accessibilityLiveRegion="polite" accessibilityLabel={mode === 'qr' ? 'Scanning for QR code' : 'Camera is ready'}>
             <ActivityIndicator size="large" color="#007AFF" />
             <Text style={styles.activeText}>
               {mode === 'qr' ? 'Scanning for QR code...' : 'Camera ready'}

@@ -23,6 +23,8 @@ export interface UserPreferences {
   corridorsTimePeriod: CorridorsTimePeriod;
   /** Dashboard: auto-refresh interval in milliseconds */
   dashboardRefreshInterval: number;
+  /** Sidebar: keys of nav-item groups the user has collapsed */
+  sidebarCollapsedGroups: string[];
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -32,6 +34,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   corridorsSortBy: "health_score",
   corridorsTimePeriod: "7d",
   dashboardRefreshInterval: 30_000,
+  sidebarCollapsedGroups: [],
 };
 
 // ─── Context Shape ───────────────────────────────────────────────────────────

@@ -46,7 +46,7 @@ pub async fn export_corridors(
         .map_or(today - Duration::days(30), |d| d.date_naive());
     let end_date = params.end_date.map_or(today, |d| d.date_naive());
 
-    let corridors = app_state
+    let mut corridors = app_state
         .db
         .corridor_aggregates()
         .get_aggregated_corridor_metrics(start_date, end_date)
@@ -57,6 +57,10 @@ pub async fn export_corridors(
                 format!("Failed to fetch corridors for export: {e}"),
             )
         })?;
+
+    if let Some(corridor_id) = &params.corridor_id {
+        corridors.retain(|c| &c.corridor_key == corridor_id);
+    }
 
     match params.format.to_lowercase().as_str() {
         "csv" => {

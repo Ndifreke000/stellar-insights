@@ -24,8 +24,9 @@ describe('useFaceRecognition', () => {
   it('should check camera availability', async () => {
     const { result } = renderHook(() => useFaceRecognition());
 
-    const camAvailable = await act(async () => {
-      return await result.current.isCameraAvailable();
+    let camAvailable = false;
+    await act(async () => {
+      camAvailable = await result.current.isCameraAvailable();
     });
 
     expect(typeof camAvailable).toBe('boolean');
@@ -94,8 +95,9 @@ describe('useFaceRecognition', () => {
   it('should handle permission checks', async () => {
     const { result } = renderHook(() => useFaceRecognition());
 
-    const hasPermission = await act(async () => {
-      return await result.current.hasPermission();
+    let hasPermission = false;
+    await act(async () => {
+      hasPermission = await result.current.hasPermission();
     });
 
     expect(typeof hasPermission).toBe('boolean');

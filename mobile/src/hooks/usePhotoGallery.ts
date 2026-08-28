@@ -35,7 +35,7 @@ async function cachePhotos(photos: PhotoAsset[]): Promise<void> {
 async function requestCameraRollPermission(): Promise<boolean> {
   if (Platform.OS === 'android') {
     const permission =
-      parseInt(Platform.Version as string, 10) >= 33
+      parseInt(String(Platform.Version), 10) >= 33
         ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
         : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
     const granted = await PermissionsAndroid.request(permission, {

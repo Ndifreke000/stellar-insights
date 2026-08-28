@@ -19,6 +19,8 @@ from .types import (
     PaginatedResponse,
     PaymentPrediction,
     Price,
+    PriceCacheStats,
+    PricesBatchResult,
     Proposal,
     Transaction,
     VerifiedAsset,
@@ -56,20 +58,28 @@ class CorridorsResource:
 
 
 class PricesResource:
+    """
+    The backend has no path-param or no-arg "list all" route - every method
+    here takes an explicit asset (or list of assets) and matches
+    backend/src/api/price_feed.rs exactly. See the equivalent
+    sdk/typescript/src/resources.ts fix for the full rationale.
+    """
+
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    async def list(self) -> List[Price]:
-        return await self._http.request("GET", "/api/prices")
-
     async def get(self, asset: str) -> Price:
-        return await self._http.request("GET", f"/api/prices/{_enc(asset)}")
+        return await self._http.request("GET", "/api/prices", params={"asset": asset})
 
-    async def convert(self, from_asset: str, to_asset: str, amount: float) -> ConvertResult:
-        return await self._http.request(
-            "POST", "/api/prices/convert",
-            json={"from_asset": from_asset, "to_asset": to_asset, "amount": amount},
-        )
+    async def batch(self, assets: List[str]) -> PricesBatchResult:
+        return await self._http.request("GET", "/api/prices/batch", params={"assets": ",".join(assets)})
+
+    async def convert_to_usd(self, asset: str, amount: float) -> ConvertResult:
+        """The backend only ever converts to USD - there is no arbitrary asset-to-asset conversion."""
+        return await self._http.request("GET", "/api/prices/convert", params={"asset": asset, "amount": amount})
+
+    async def cache_stats(self) -> PriceCacheStats:
+        return await self._http.request("GET", "/api/prices/cache-stats")
 
 
 class CostCalculatorResource:

@@ -9,7 +9,7 @@ import {
   DashboardData,
   DashboardDataSource,
   DashboardStats,
-} from '@types/dashboard';
+} from '@app-types/dashboard';
 
 interface RawDashboardResponse {
   stats?: Partial<DashboardStats>;

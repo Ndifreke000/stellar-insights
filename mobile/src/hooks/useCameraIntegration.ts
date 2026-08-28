@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
-import { useMMKVStorage } from 'react-native-mmkv';
+import { useMMKVBoolean } from 'react-native-mmkv';
 
 export type CameraMode = 'qr' | 'document' | 'photo';
 
@@ -42,7 +42,7 @@ export const useCameraIntegration = (): CameraIntegrationState => {
   const [qrResult, setQrResult] = useState<QRScanResult | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [, setPermissionsGranted] = useMMKVStorage(CAMERA_PERMISSIONS_KEY, storage, false);
+  const [, setPermissionsGranted] = useMMKVBoolean(CAMERA_PERMISSIONS_KEY, storage);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasPermission = useCallback(async (): Promise<boolean> => {
@@ -64,7 +64,7 @@ export const useCameraIntegration = (): CameraIntegrationState => {
         const { PermissionsAndroid } = require('react-native');
         const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
           title: 'Camera Permission',
-          message: 'Stellar Insights needs camera access for QR code scanning and document capture',
+          message: 'PayRaider needs camera access for QR code scanning and document capture',
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',

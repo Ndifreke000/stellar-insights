@@ -5,11 +5,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
@@ -67,6 +68,21 @@ async fn check_challenge_rate_limit(ip: &str) -> Option<u64> {
 
     entries.push_back(now);
     None
+}
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// Decode the base64 challenge transaction and return the `max_time`
+/// (stored as `expires_at` during challenge generation).
+fn extract_max_time(transaction: &str) -> Option<i64> {
+    let bytes = BASE64.decode(transaction).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json["expires_at"].as_i64()
 }
 
 /// GET /api/sep10/info - Get SEP-10 server information
@@ -142,6 +158,17 @@ pub async fn verify_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
     Json(request): Json<VerificationRequest>,
 ) -> Result<Response, Sep10ApiError> {
+    // Enforce time bounds before any signature work: reject expired challenges
+    // immediately with HTTP 401 rather than letting them reach service logic.
+    let max_time = extract_max_time(&request.transaction).ok_or_else(|| {
+        Sep10ApiError::VerificationFailed("Missing or unreadable time bounds".to_string())
+    })?;
+
+    if now_unix() >= max_time {
+        tracing::warn!(max_time, "SEP-10 challenge submitted after expiry");
+        return Err(Sep10ApiError::ChallengeExpired);
+    }
+
     let response = sep10_service
         .verify_challenge(request)
         .await
@@ -181,6 +208,7 @@ pub async fn logout(
 pub enum Sep10ApiError {
     ChallengeGenerationFailed(String),
     VerificationFailed(String),
+    ChallengeExpired,
     LogoutFailed(String),
     RateLimited { retry_after_seconds: u64 },
 }
@@ -196,6 +224,11 @@ impl IntoResponse for Sep10ApiError {
             Self::VerificationFailed(msg) => (
                 StatusCode::UNAUTHORIZED,
                 format!("Verification failed: {msg}"),
+                None,
+            ),
+            Self::ChallengeExpired => (
+                StatusCode::UNAUTHORIZED,
+                "Challenge transaction has expired".to_string(),
                 None,
             ),
             Self::LogoutFailed(msg) => (

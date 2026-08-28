@@ -104,8 +104,9 @@ describe('useVoiceCommands', () => {
   it('should handle permission checks', async () => {
     const { result } = renderHook(() => useVoiceCommands());
 
-    const hasPermission = await act(async () => {
-      return await result.current.hasPermission();
+    let hasPermission = false;
+    await act(async () => {
+      hasPermission = await result.current.hasPermission();
     });
 
     expect(typeof hasPermission).toBe('boolean');

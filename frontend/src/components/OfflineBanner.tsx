@@ -17,11 +17,6 @@ export function OfflineBanner() {
   const [dismissed, setDismissed] = useState(false);
   const [elapsed, setElapsed] = useState('');
 
-  // Reset dismissed state whenever we go offline again
-  useEffect(() => {
-    if (!isOnline) setDismissed(false);
-  }, [isOnline]);
-
   // Auto-dismiss the "back online" toast after 4 s
   useEffect(() => {
     if (justReconnected) {
@@ -43,7 +38,8 @@ export function OfflineBanner() {
     return () => clearInterval(id);
   }, [isOnline, offlineSince]);
 
-  const visible = (!isOnline || justReconnected) && !dismissed;
+  // Reset dismissed when going offline, or dismiss when back online
+  const visible = (!isOnline || justReconnected) && !(dismissed && isOnline && !justReconnected);
 
   return (
     <AnimatePresence>

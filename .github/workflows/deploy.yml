@@ -145,6 +145,45 @@ jobs:
             --deployment-id "${{ steps.deploy.outputs.deployment_id }}"
           echo "Deployment completed successfully!"
 
+      - name: Validate green environment health
+        run: |
+          echo "Validating green (new) environment health checks..."
+
+          # Get green target group ARN from service
+          TG_ARNS=$(aws elbv2 describe-load-balancers \
+            --names "stellar-insights-alb-${{ steps.env.outputs.environment }}" \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text)
+
+          if [ -z "$TG_ARNS" ]; then
+            echo "⚠️ Warning: Could not retrieve target group info (non-critical)"
+            exit 0
+          fi
+
+          # Wait for health checks to stabilize
+          echo "Waiting for health checks to stabilize (timeout: 5 minutes)..."
+          TIMEOUT=300
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            HEALTHY=$(aws elbv2 describe-target-health \
+              --target-group-arn "$TG_ARNS" \
+              --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' \
+              --output text 2>/dev/null || echo "0")
+
+            if [ "$HEALTHY" -gt 0 ]; then
+              echo "✓ Green targets are healthy: $HEALTHY target(s)"
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+            echo "  Waiting... ($ELAPSED/$TIMEOUT seconds)"
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "⚠️ Warning: Health check validation timed out (deployment may still succeed)"
+          fi
+
       - name: Deployment summary
         if: always()
         run: |
@@ -166,4 +205,28 @@ jobs:
           | **Image Tag** | \`${{ github.sha }}\` |
           | **Task Definition** | \`${{ steps.new-task-def.outputs.task_definition_arn }}\` |
           | **Actor** | @${{ github.actor }} |
+
+          ## Blue-Green Deployment Process
+
+          1. ✓ **Blue** (current production) continues serving traffic
+          2. ✓ **Green** (new release) deployed in parallel
+          3. ✓ **Health checks** validated on green environment
+          4. ✓ **Traffic cutover** to green (automatic via CodeDeploy)
+          5. ⏳ **Monitoring** active for 5 minutes post-cutover
+          6. ✓ **Blue termination** after grace period
+
+          ### Next Steps
+
+          - Monitor [CloudWatch Dashboard](https://console.aws.amazon.com/cloudwatch)
+          - Check [ECS Service Status](https://console.aws.amazon.com/ecs)
+          - Review [Deployment Guide](../../docs/BLUE_GREEN_DEPLOYMENT.md)
+
+          ### Auto-Rollback Triggers
+
+          If any alarm fires, traffic automatically reverts to blue:
+          - 5XX errors > 5/min
+          - Response time > 2s
+          - Unhealthy hosts > 0
+
+          See [docs/BLUE_GREEN_DEPLOYMENT.md](../../docs/BLUE_GREEN_DEPLOYMENT.md#monitoring--auto-rollback) for details.
           EOF

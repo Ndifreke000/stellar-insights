@@ -1,9 +1,28 @@
+# Jaeger all-in-one: OTLP collector + UI
+#
+# Usage:
+#   docker compose -f docker-compose.jaeger.yml up -d
+#   OTEL_ENABLED=true cargo run          # from backend/
+#   open http://localhost:16686           # Jaeger UI — select "stellar-insights-backend"
+#
+# The backend reads OTEL_EXPORTER_OTLP_ENDPOINT from the environment; the
+# default value in .env.example already points at the port exposed below
+# (http://localhost:4318/v1/traces).  Set OTEL_ENABLED=true to activate.
+#
+# See docs/jaeger-tracing-guide.md for end-to-end verification steps.
 services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686" # UI
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver (used by the backend's http exporter)
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped

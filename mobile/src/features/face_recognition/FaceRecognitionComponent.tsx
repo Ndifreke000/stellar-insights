@@ -50,7 +50,7 @@ export const FaceRecognitionComponent = () => {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing face recognition">
           Initializing Face Recognition...
@@ -70,7 +70,7 @@ export const FaceRecognitionComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View
         style={styles.header}
         accessible={true}
@@ -96,7 +96,7 @@ export const FaceRecognitionComponent = () => {
           <View
             style={styles.successContainer}
             accessible={true}
-            accessibilityRole="status"
+            accessibilityLiveRegion="polite"
             accessibilityLabel={`Face recognized with ${(confidenceScore * 100).toFixed(0)}% confidence`}
           >
             <Text style={styles.successText}>✓ Face Recognized</Text>

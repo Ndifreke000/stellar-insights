@@ -6,6 +6,11 @@
  * and are intentionally excluded from the default CI suite.
  */
 
+// No imports in this file otherwise -- without this, TypeScript treats it as a
+// global script rather than a module, and its top-level declarations collide
+// with the identically-named ones in transactions.testnet.test.ts.
+export {};
+
 const TESTNET_HORIZON = 'https://horizon-testnet.stellar.org';
 const TIMEOUT_MS = 30_000;
 

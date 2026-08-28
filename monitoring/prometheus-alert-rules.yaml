@@ -1,0 +1,314 @@
+groups:
+  - name: stellar_insights_testnet_slos
+    interval: 30s
+    rules:
+      # ========================================================================
+      # TIER 1: Critical Infrastructure (99.9% SLO)
+      # ========================================================================
+
+      - alert: HealthCheckEndpointDown
+        expr: rate(http_errors_total{path="/health"}[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          slo_tier: tier1
+          service: health-check
+        annotations:
+          summary: "Health check endpoint error rate > 1%"
+          description: |
+            Health check endpoint at {{ $labels.instance }} has error rate {{ $value | humanizePercentage }} over the last 5m.
+            This indicates the backend may have connectivity issues with database, cache, or RPC.
+          runbook_url: "https://docs.example.com/runbooks/health-endpoint-down"
+          dashboard_url: "https://grafana.example.com/d/stellar-insights"
+
+      - alert: HealthCheckHighLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/health"}[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier1
+          service: health-check
+        annotations:
+          summary: "Health check p99 latency > 1s (target: <500ms)"
+          description: |
+            Health endpoint p99 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
+            System may be under stress. Check database pool utilization and cache performance.
+
+      # ========================================================================
+      # TIER 2: User-Facing API Endpoints (99.5% SLO)
+      # ========================================================================
+
+      - alert: AnchorsEndpointErrors
+        expr: rate(http_errors_total{path="/anchors"}[5m]) > 0.005
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier2
+          endpoint: anchors
+        annotations:
+          summary: "Anchors endpoint error rate > 0.5%"
+          description: |
+            Anchors endpoint on {{ $labels.instance }} has error rate {{ $value | humanizePercentage }}.
+            Check error logs for root cause: database errors, missing data, or cache issues.
+
+      - alert: AnchorsEndpointCriticalErrors
+        expr: rate(http_errors_total{path="/anchors"}[2m]) > 0.02
+        for: 2m
+        labels:
+          severity: critical
+          slo_tier: tier2
+          endpoint: anchors
+        annotations:
+          summary: "Anchors endpoint error rate > 2% (CRITICAL)"
+          description: |
+            Anchors endpoint error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}.
+            Significant user-facing impact. Immediate action required.
+          runbook_url: "https://docs.example.com/runbooks/anchor-errors"
+
+      - alert: AnchorsHighLatencyP95
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{path="/anchors"}[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          slo_tier: tier2
+          endpoint: anchors
+        annotations:
+          summary: "Anchors endpoint p95 latency > 5s"
+          description: |
+            Anchors p95 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
+            Check for slow database queries or high cache misses.
+
+      - alert: AnchorsHighLatencyP99
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/anchors"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          slo_tier: tier2
+          endpoint: anchors
+        annotations:
+          summary: "Anchors endpoint p99 latency > 10s (CRITICAL)"
+          description: |
+            Anchors p99 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
+            Users are experiencing significant delays. Investigate bottleneck service.
+
+      - alert: CorridorsEndpointErrors
+        expr: rate(http_errors_total{path="/corridors"}[5m]) > 0.005
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier2
+          endpoint: corridors
+        annotations:
+          summary: "Corridors endpoint error rate > 0.5%"
+          description: |
+            Corridors endpoint on {{ $labels.instance }} has error rate {{ $value | humanizePercentage }}.
+            Check for database or RPC connectivity issues.
+
+      - alert: CorridorsEndpointCriticalErrors
+        expr: rate(http_errors_total{path="/corridors"}[2m]) > 0.02
+        for: 2m
+        labels:
+          severity: critical
+          slo_tier: tier2
+          endpoint: corridors
+        annotations:
+          summary: "Corridors endpoint error rate > 2% (CRITICAL)"
+          description: |
+            Corridors endpoint error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}.
+            Immediate action required.
+
+      - alert: CorridorsHighLatencyP95
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{path="/corridors"}[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          slo_tier: tier2
+          endpoint: corridors
+        annotations:
+          summary: "Corridors endpoint p95 latency > 5s"
+          description: |
+            Corridors p95 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
+            Check database slow-query log for missing indexes or N+1 problems.
+
+      - alert: CorridorsHighLatencyP99
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/corridors"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          slo_tier: tier2
+          endpoint: corridors
+        annotations:
+          summary: "Corridors endpoint p99 latency > 10s (CRITICAL)"
+          description: |
+            Corridors p99 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
+            Users experiencing significant waits.
+
+      - alert: CacheHitRateLow
+        expr: (rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))) < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          slo_tier: tier2
+          component: cache
+        annotations:
+          summary: "Cache hit rate < 50%"
+          description: |
+            Cache is ineffective on {{ $labels.instance }} with hit rate {{ $value | humanizePercentage }}.
+            Cached endpoints will be slow. Check cache invalidation strategy and memory pressure.
+
+      # ========================================================================
+      # TIER 3: Integration Endpoints (99.0% SLO)
+      # ========================================================================
+
+      - alert: RPCCallsErrorRate
+        expr: (rate(rpc_errors_total[5m]) / rate(rpc_calls_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier3
+          component: rpc
+        annotations:
+          summary: "RPC error rate > 1%"
+          description: |
+            RPC calls on {{ $labels.instance }} have error rate {{ $value | humanizePercentage }}.
+            Check Stellar RPC/Horizon endpoint connectivity and rate limits.
+
+      - alert: RPCCallsErrorRateCritical
+        expr: (rate(rpc_errors_total[2m]) / rate(rpc_calls_total[2m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          slo_tier: tier3
+          component: rpc
+        annotations:
+          summary: "RPC error rate > 5% (CRITICAL)"
+          description: |
+            RPC error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}.
+            SEP flows may be unable to complete. Attempt endpoint failover immediately.
+          runbook_url: "https://docs.example.com/runbooks/rpc-failures"
+
+      - alert: CircuitBreakerTripping
+        expr: rate(circuit_breaker_trips_total[1m]) > 0.001
+        for: 3m
+        labels:
+          severity: warning
+          slo_tier: tier3
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker tripping (> 0.1/s)"
+          description: |
+            Circuit breaker on {{ $labels.instance }} is actively protecting from cascading failures.
+            Trip rate: {{ $value | humanize }}/s. Identify broken dependency immediately.
+
+      # ========================================================================
+      # TIER 4: Infrastructure and Background Jobs
+      # ========================================================================
+
+      - alert: DatabasePoolExhausted
+        expr: (db_pool_active / db_pool_size) > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          slo_tier: tier4
+          component: database
+        annotations:
+          summary: "Database pool utilization > 90%"
+          description: |
+            Database pool on {{ $labels.instance }} is {{ $value | humanizePercentage }} utilized.
+            Next load spike will exhaust the pool. Investigate slow queries.
+
+      - alert: DatabasePoolOversubscribed
+        expr: db_pool_active > db_pool_size
+        for: 1m
+        labels:
+          severity: critical
+          slo_tier: tier4
+          component: database
+        annotations:
+          summary: "Database pool oversubscribed (CRITICAL)"
+          description: |
+            Database pool on {{ $labels.instance }} is oversubscribed ({{ $value | humanize }} requests active).
+            Requests will fail immediately. Kill slow queries or enable connection queuing.
+          runbook_url: "https://docs.example.com/runbooks/db-pool-exhaustion"
+
+      - alert: DatabaseQueryLatencyHigh
+        expr: histogram_quantile(0.95, db_query_duration_seconds) > 1
+        for: 10m
+        labels:
+          severity: warning
+          slo_tier: tier4
+          component: database
+        annotations:
+          summary: "Database query latency p95 > 1s"
+          description: |
+            Database p95 query latency on {{ $labels.instance }} is {{ $value | humanizeDuration }}.
+            Check slow-query log for missing indexes or inefficient queries.
+
+      - alert: CacheMissRateHigh
+        expr: (rate(cache_misses_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))) > 0.6
+        for: 15m
+        labels:
+          severity: warning
+          slo_tier: tier4
+          component: cache
+        annotations:
+          summary: "Cache miss rate > 60%"
+          description: |
+            Cache miss rate on {{ $labels.instance }} is {{ $value | humanizePercentage }}.
+            Cache is nearly ineffective. Check TTLs, memory pressure, and invalidation strategy.
+
+      - alert: BackgroundJobFailureRate
+        expr: (rate(background_jobs_failed_total[5m]) / rate(background_jobs_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          slo_tier: tier4
+          component: background-jobs
+        annotations:
+          summary: "Background jobs failing > 5%"
+          description: |
+            Background jobs on {{ $labels.instance }} have failure rate {{ $value | humanizePercentage }}.
+            Data staleness may result. Investigate job logs.
+
+      - alert: BackgroundJobQueueDepth
+        expr: background_job_queue_depth > 1000
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier4
+          component: background-jobs
+        annotations:
+          summary: "Background job queue depth > 1000"
+          description: |
+            Background job queue on {{ $labels.instance }} has {{ $value | humanize }} jobs waiting.
+            Job processor may be under-scaled or jobs are too slow.
+
+      # ========================================================================
+      # GLOBAL: Catastrophic Failures
+      # ========================================================================
+
+      - alert: GlobalHighErrorRate
+        expr: (rate(http_errors_total[5m]) / rate(http_errors_total[5m] offset 24h)) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          slo_tier: global
+        annotations:
+          summary: "Global error rate > 5% (CRITICAL INCIDENT)"
+          description: |
+            Error rate on {{ $labels.instance }} is {{ $value | humanizePercentage }}.
+            This suggests a cascading failure or major service outage.
+          runbook_url: "https://docs.example.com/runbooks/cascading-failure"
+
+      - alert: NoMetricsScraped
+        expr: up{job="stellar-insights"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          slo_tier: global
+        annotations:
+          summary: "Prometheus cannot scrape metrics from stellar-insights"
+          description: |
+            Prometheus target {{ $labels.instance }} has been down for 3 minutes.
+            Backend may be crashed or network connectivity is broken.
+          runbook_url: "https://docs.example.com/runbooks/backend-down"

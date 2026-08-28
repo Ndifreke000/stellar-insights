@@ -88,8 +88,8 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useSep24Anchors(), {
         wrapper: TestWrapper,
       });
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockGetSep24Anchors().anchors);
     });
 
@@ -97,7 +97,7 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useSep24Anchors(), {
         wrapper: TestWrapper,
       });
-      
+
       expect(result.current.isLoading).toBe(true);
     });
 
@@ -108,8 +108,8 @@ describe('useSep24 Hooks', () => {
           wrapper: TestWrapper,
         }
       );
-      
-      await waitFor(() => expect(result.current.isError).toBe(true);
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
     });
   });
 
@@ -121,8 +121,8 @@ describe('useSep24 Hooks', () => {
           wrapper: TestWrapper,
         }
       );
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockGetSep24Info('https://anchor.example.com'));
     });
 
@@ -130,7 +130,7 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useSep24Info(''), {
         wrapper: TestWrapper,
       });
-      
+
       expect(result.current.fetchStatus).toBe('idle');
     });
 
@@ -141,8 +141,8 @@ describe('useSep24 Hooks', () => {
           wrapper: TestWrapper,
         }
       );
-      
-      await waitFor(() => expect(result.current.isError).toBe(true);
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
     });
   });
 
@@ -154,8 +154,8 @@ describe('useSep24 Hooks', () => {
           wrapper: TestWrapper,
         }
       );
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockGetSep24Transactions().transactions);
     });
 
@@ -163,7 +163,7 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useSep24Transactions('', ''), {
         wrapper: TestWrapper,
       });
-      
+
       expect(result.current.fetchStatus).toBe('idle');
     });
   });
@@ -173,7 +173,7 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useStartDepositFlow(), {
         wrapper: TestWrapper,
       });
-      
+
       act(() => {
         result.current.mutate({
           transferServer: 'https://anchor.example.com',
@@ -181,8 +181,8 @@ describe('useSep24 Hooks', () => {
           amount: '100',
         });
       });
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockStartDeposit());
     });
 
@@ -190,14 +190,14 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useStartDepositFlow(), {
         wrapper: TestWrapper,
       });
-      
+
       act(() => {
         result.current.mutate({
           transferServer: 'https://invalid.example.com',
         });
       });
-      
-      await waitFor(() => expect(result.current.isError).toBe(true);
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
     });
 
     it('should add success notification on success', async () => {
@@ -225,7 +225,7 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useStartWithdrawFlow(), {
         wrapper: TestWrapper,
       });
-      
+
       act(() => {
         result.current.mutate({
           transferServer: 'https://anchor.example.com',
@@ -233,8 +233,8 @@ describe('useSep24 Hooks', () => {
           amount: '100',
         });
       });
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockStartWithdraw());
     });
 
@@ -242,16 +242,16 @@ describe('useSep24 Hooks', () => {
       const { result } = renderHook(() => useStartWithdrawFlow(), {
         wrapper: TestWrapper,
       });
-      
+
       act(() => {
         result.current.mutate({
           transferServer: 'https://anchor.example.com',
           assetCode: 'USD',
         });
       });
-      
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
-      
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
       const notifications = useAppStore.getState().notifications;
       expect(notifications).toHaveLength(1);
       expect(notifications[0].type).toBe('success');
@@ -314,13 +314,13 @@ describe('useSep24 Hooks', () => {
       const { result: depositMutation } = renderHook(() => useStartDepositFlow(), {
         wrapper: TestWrapper,
       });
-      
+
       // Set form data
       act(() => {
         flowState.current.setFormDataValue('transferServer', 'https://anchor.example.com');
         flowState.current.setFormDataValue('assetCode', 'USDC');
       });
-      
+
       // Start deposit flow
       act(() => {
         depositMutation.current.mutate({
@@ -329,9 +329,9 @@ describe('useSep24 Hooks', () => {
           amount: '100',
         });
       });
-      
-      await waitFor(() => expect(depositMutation.current.isSuccess).toBe(true);
-      
+
+      await waitFor(() => expect(depositMutation.current.isSuccess).toBe(true));
+
       // Check that notifications were added
       const notifications = useAppStore.getState().notifications;
       expect(notifications).toHaveLength(1);

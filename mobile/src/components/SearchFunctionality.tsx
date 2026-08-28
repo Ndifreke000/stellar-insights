@@ -131,7 +131,7 @@ export const SearchFunctionality: React.FC<SearchFunctionalityProps> = ({
           contentContainerStyle={[styles.listContent, contentContainerStyle]}
           ListEmptyComponent={
             query.length > 0 ? (
-              <View style={styles.emptyContainer} accessibilityRole="status">
+              <View style={styles.emptyContainer} accessibilityLiveRegion="polite">
                 <Text style={styles.emptyIcon}>🔎</Text>
                 <Text style={styles.emptyText}>No results found</Text>
                 <Text style={styles.emptySubtext}>Try different search terms</Text>

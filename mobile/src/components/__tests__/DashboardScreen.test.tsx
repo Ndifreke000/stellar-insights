@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 import { DashboardScreen } from '@components/DashboardScreen';
-import type { CorridorPerformance, DashboardStats } from '@types/dashboard';
+import type { CorridorPerformance, DashboardStats } from '@app-types/dashboard';
 
 const mockRefetch = jest.fn();
 const mockUseDashboardScreen = jest.fn();

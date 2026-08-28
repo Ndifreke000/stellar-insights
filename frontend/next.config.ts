@@ -40,13 +40,15 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
+    // 'unsafe-eval' is only added outside production — see proxy.ts's
+    // buildCsp() for why dev mode needs it.
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.stellar.org",
       "font-src 'self'",
-      "connect-src 'self' wss: https: https://*.sentry.io",
+      "connect-src 'self' wss: https: https://*.sentry.io https://soroban-testnet.stellar.org https://stellar.api.onfinality.io https://horizon-testnet.stellar.org https://horizon.stellar.org",
       "frame-src 'none'",
       "frame-ancestors 'none'",
       "object-src 'none'",
@@ -76,8 +78,16 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
+    // NOTE: "lucide-react" was removed from this list — Next 16.2.7's
+    // barrel-file optimization for it is broken: it corrupts whichever named
+    // import happens to be first in a multi-icon `import { A, B, C } from
+    // "lucide-react"` statement, regardless of which icon that is (verified
+    // by reordering the import and watching the failure follow the first
+    // position, not any specific icon name). That turned into hard build
+    // failures ("Module has no exported member"), not just a missed
+    // optimization, so correctness wins over this bundle-size tweak until
+    // upstream fixes it.
     optimizePackageImports: [
-      "lucide-react",
       "recharts",
       "framer-motion",
       "@stellar/stellar-sdk",

@@ -195,7 +195,6 @@ export function FormCheckbox({
   className,
 }: FormCheckboxProps) {
   const {
-    register,
     watch,
     setValue,
     formState: { errors },

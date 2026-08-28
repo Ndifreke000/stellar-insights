@@ -45,7 +45,7 @@ export const VoiceCommandsComponent = () => {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Initializing voice commands">
           Initializing Voice Commands...
@@ -55,7 +55,7 @@ export const VoiceCommandsComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View
         style={styles.header}
         accessible={true}
@@ -81,7 +81,7 @@ export const VoiceCommandsComponent = () => {
           <View
             style={styles.resultContainer}
             accessible={true}
-            accessibilityRole="status"
+            accessibilityLiveRegion="polite"
             accessibilityLabel={`Heard: ${transcribedText}`}
           >
             <Text style={styles.resultLabel}>You said:</Text>
@@ -93,7 +93,7 @@ export const VoiceCommandsComponent = () => {
           <View
             style={styles.commandResultContainer}
             accessible={true}
-            accessibilityRole="status"
+            accessibilityLiveRegion="polite"
             accessibilityLabel={`Command executed: ${commandResult}`}
           >
             <Text style={styles.commandResultText}>Command: {commandResult}</Text>
@@ -111,7 +111,6 @@ export const VoiceCommandsComponent = () => {
             <View
               key={idx}
               style={styles.commandItem}
-              accessibilityRole="listitem"
               accessibilityLabel={`Command: ${cmd}`}
             >
               <Text style={styles.commandText}>• {cmd}</Text>

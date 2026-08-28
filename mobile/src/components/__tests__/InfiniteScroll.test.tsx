@@ -14,6 +14,7 @@ describe('InfiniteScroll', () => {
   const state = {
     items: [{ id: 'insight-1', title: 'Insight 1', description: 'Loaded from page 1' }],
     page: 1,
+    cursor: null,
     hasMore: true,
     isLoading: false,
     platformThreshold: 0.4,

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { WifiOff, RefreshCw, Home, Clock, Database } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -114,13 +115,13 @@ export default function OfflinePage() {
             <RefreshCw className={`w-4 h-4 ${retrying ? "animate-spin" : ""}`} aria-hidden="true" />
             {retrying ? "Retrying…" : "Retry"}
           </button>
-          <a
+          <Link
             href="/"
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border border-border hover:border-accent/40 font-bold uppercase tracking-tight text-sm transition-all"
           >
             <Home className="w-4 h-4" aria-hidden="true" />
             Home
-          </a>
+          </Link>
         </div>
       </motion.div>
     </div>

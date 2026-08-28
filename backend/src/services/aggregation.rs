@@ -468,7 +468,7 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("payments table creation should succeed");
 
         pool.execute(
             r#"
@@ -495,7 +495,7 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("corridor_metrics_hourly table creation should succeed");
 
         pool.execute(
             r#"
@@ -514,17 +514,19 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("aggregation_jobs table creation should succeed");
     }
 
     async fn setup_test_db() -> (Arc<Database>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("aggregation-tests.db");
         let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path.display()))
-            .unwrap()
+            .expect("sqlite connect options should parse")
             .create_if_missing(true);
 
-        let pool = SqlitePool::connect_with(options).await.unwrap();
+        let pool = SqlitePool::connect_with(options)
+            .await
+            .expect("sqlite pool should connect");
         setup_aggregation_schema(&pool).await;
 
         (Arc::new(Database::new(pool)), temp_dir)
@@ -563,12 +565,14 @@ mod tests {
         .bind(created_at.to_rfc3339())
         .execute(db.pool())
         .await
-        .unwrap();
+        .expect("test payment insert should succeed");
     }
 
     #[tokio::test]
     async fn test_truncate_to_hour() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         setup_aggregation_schema(&pool).await;
         let service =
             AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
@@ -599,7 +603,7 @@ mod tests {
         let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
             .fetch_one(db.pool())
             .await
-            .unwrap();
+            .expect("metrics count query should succeed");
         assert!(metrics_count > 0);
 
         let metric = sqlx::query(
@@ -611,7 +615,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("metric row query should succeed");
 
         assert_eq!(
             metric.get::<String, _>("corridor_key"),
@@ -631,7 +635,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("aggregation job row query should succeed");
 
         assert_eq!(job.get::<String, _>("status"), "completed");
         assert!(job
@@ -650,7 +654,7 @@ mod tests {
         let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
             .fetch_one(db.pool())
             .await
-            .unwrap();
+            .expect("metrics count query should succeed");
         assert_eq!(metrics_count, 0);
 
         let status: String = sqlx::query_scalar(
@@ -658,7 +662,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("aggregation job status query should succeed");
         assert_eq!(status, "completed");
     }
 }

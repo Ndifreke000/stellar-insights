@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 import { AnchorDetail } from '@components/AnchorDetail';
-import type { AnchorDetailData } from '@types/anchor';
+import type { AnchorDetailData } from '@app-types/anchor';
 
 const mockGoBack = jest.fn();
 const mockGetParent = jest.fn();

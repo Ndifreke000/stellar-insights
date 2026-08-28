@@ -1,0 +1,161 @@
+# AlertManager Configuration for Stellar Insights Testnet
+#
+# This file configures how Prometheus alerts are routed to notification channels.
+# Deploy this to your AlertManager instance and restart:
+#
+#   docker cp alertmanager-config.yaml alertmanager:/etc/alertmanager/config.yml
+#   docker restart alertmanager
+#
+# Or update the AlertManager ConfigMap in Kubernetes:
+#
+#   kubectl create configmap alertmanager-config --from-file=alertmanager-config.yaml -n monitoring --dry-run -o yaml | kubectl apply -f -
+#   kubectl rollout restart statefulset/alertmanager -n monitoring
+
+global:
+  resolve_timeout: 5m
+  # Slack webhook URL (from Slack app configuration)
+  slack_api_url: "${SLACK_WEBHOOK_URL}"
+  # PagerDuty integration key (for critical incidents)
+  pagerduty_url: "https://events.pagerduty.com/v2/enqueue"
+  # Email SMTP settings
+  smtp_smarthost: "${SMTP_HOST}:${SMTP_PORT}"
+  smtp_auth_username: "${SMTP_USER}"
+  smtp_auth_password: "${SMTP_PASSWORD}"
+  smtp_from: "alerts@stellar-insights.example.com"
+
+# Top-level routing tree
+route:
+  # Default receiver for unmatched alerts
+  receiver: slack-default
+  # Group alerts by these labels to reduce noise
+  group_by: ['alertname', 'instance', 'slo_tier']
+  # Wait this long to group alerts together
+  group_wait: 10s
+  # Re-evaluate grouping every N seconds
+  group_interval: 10s
+  # Repeat notification after this duration if alert is not resolved
+  repeat_interval: 4h
+
+  # Child routes with specific handling
+  routes:
+    # CRITICAL: Page on-call immediately (no delay)
+    - match:
+        severity: critical
+      receiver: pagerduty-critical
+      group_wait: 0s          # No wait; send immediately
+      group_interval: 1m      # Regroup every 1 minute
+      repeat_interval: 15m    # Re-notify every 15 minutes if unresolved
+      continue: true          # Also send to default/email routes
+
+    # WARNINGS: Send to dev Slack (30-second batching)
+    - match:
+        severity: warning
+      receiver: slack-dev
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 8h     # Repeat daily for persistent warnings
+
+    # Audit log: Send all alerts to monitoring channel for historical record
+    - match_re:
+        severity: "critical|warning"
+      receiver: slack-monitoring
+      continue: true          # Also match other routes
+
+# Receivers define where alerts are sent
+receivers:
+  # Default: General dev Slack channel
+  - name: slack-default
+    slack_configs:
+      - channel: '#stellar-insights-dev'
+        title: '{{ .GroupLabels.alertname }}'
+        text: >
+          {{ range .Alerts }}
+            *{{ .Annotations.summary }}*
+            {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+  # Critical alerts: Page on-call via PagerDuty
+  - name: pagerduty-critical
+    slack_configs:
+      # First, ping the on-call Slack channel
+      - channel: '#stellar-insights-alerts'
+        title: '🚨 [CRITICAL] {{ .GroupLabels.alertname }}'
+        text: >
+          @here - CRITICAL ALERT requires immediate action
+          {{ range .Alerts }}
+            *{{ .Annotations.summary }}*
+            {{ .Annotations.description }}
+            Runbook: {{ .Annotations.runbook_url }}
+          {{ end }}
+        send_resolved: true
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'View Dashboard'
+            url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+          - type: button
+            text: 'View Runbook'
+            url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+    pagerduty_configs:
+      - service_key: "${PAGERDUTY_SERVICE_KEY}"
+        description: '[{{ .Status | upper }}] {{ .GroupLabels.alertname }}: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        details:
+          firing: '{{ range .Alerts.Firing }}{{ .Labels.instance }} - {{ .Annotations.description }}{{ end }}'
+          resolved: '{{ range .Alerts.Resolved }}{{ .Labels.instance }}{{ end }}'
+        # Link to relevant dashboard in PagerDuty incident
+        client_url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+        client: 'Prometheus'
+
+  # Warning alerts: Dev Slack only
+  - name: slack-dev
+    slack_configs:
+      - channel: '#stellar-insights-dev'
+        title: '⚠️ [WARNING] {{ .GroupLabels.alertname }}'
+        text: >
+          {{ range .Alerts }}
+            *{{ .Annotations.summary }}*
+            {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: 'warning'
+
+  # Audit/monitoring channel: All alerts for historical tracking
+  - name: slack-monitoring
+    slack_configs:
+      - channel: '#stellar-insights-monitoring'
+        title: '{{ .Status | upper }} - {{ .GroupLabels.alertname }}'
+        text: >
+          Timestamp: {{ .GroupLabels.alertname }}
+          {{ range .Alerts }}
+            {{ .Labels.instance }}: {{ .Annotations.summary }}
+          {{ end }}
+        send_resolved: false  # Only log firing alerts (not resolutions)
+
+# Inhibition rules: Suppress alerts when specific conditions are met
+inhibit_rules:
+  # Don't alert on 500 errors if the health check is down
+  # (the root cause is obvious)
+  - source_match:
+      severity: critical
+      alertname: HealthCheckEndpointDown
+    target_match:
+      severity: warning
+    equal: ['instance']
+
+  # Don't alert on high database latency if pool is exhausted
+  # (the pool exhaustion is the root cause)
+  - source_match:
+      alertname: DatabasePoolExhausted
+    target_match:
+      alertname: DatabaseQueryLatencyHigh
+    equal: ['instance']
+
+  # Don't alert on endpoint errors if circuit breaker is tripping
+  # (the circuit breaker is protecting; the upstream service is broken)
+  - source_match:
+      alertname: CircuitBreakerTripping
+    target_match_re:
+      alertname: ".*Errors"
+    equal: ['instance']

@@ -27,7 +27,7 @@ const STATUS_TABS: { label: string; value: ProposalStatus | "all" }[] = [
 export default function GovernancePage() {
   const { isAuthenticated, authToken } = useWallet();
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [total, setTotal] = useState(0);
+  const [_total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProposalStatus | "all">("all");

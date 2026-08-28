@@ -127,7 +127,7 @@ export class StellarInsightsWebSocket {
         url.searchParams.set("token", this.config.token);
       }
 
-      logger.debug("Connecting to WebSocket:", url.toString());
+      logger.debug("Connecting to WebSocket:", { url: url.toString() });
       this.ws = new WebSocket(url.toString());
 
       this.ws.onopen = this.handleOpen.bind(this);

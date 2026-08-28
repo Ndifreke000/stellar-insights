@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
-import { Corridor, Anchor, Asset } from '@types/index';
+import { Corridor, Anchor, Asset } from '@app-types/index';
 
 export type SearchableItem = Corridor | Anchor | Asset | Record<string, any>;
 
@@ -40,7 +40,7 @@ export interface UseSearchFunctionalityResult<T = SearchableItem> {
   loadMore: () => void;
 }
 
-const DEFAULT_CONFIG: SearchConfig = {
+const DEFAULT_CONFIG: Required<SearchConfig> = {
   debounceMs: 300,
   minChars: 1,
   maxResults: 50,
@@ -119,7 +119,11 @@ function performSearch<T extends SearchableItem>(
     // Apply filters
     let passesFilters = true;
     for (const filter of filters) {
-      const fieldValue = item[filter.field || ''];
+      // item is a union of specific shapes (Corridor | Anchor | Asset) plus a
+      // generic Record fallback; filtering is inherently dynamic-field access
+      // across that union, so narrow to Record<string, unknown> at the access
+      // point rather than losing type safety on the whole function.
+      const fieldValue = (item as Record<string, unknown>)[filter.field || ''];
       const operator = filter.operator || 'equals';
 
       switch (operator) {
@@ -164,7 +168,7 @@ export function useSearchFunctionality<T extends SearchableItem = SearchableItem
   items: T[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -298,7 +302,7 @@ export function useAdvancedSearch<T extends SearchableItem = SearchableItem>(
   searchFields: (keyof T)[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useAppIntents } from '@features/app_intents/useAppIntents';
 
-const SAMPLE_INTENTS = [
+const SAMPLE_INTENTS: { name: string; params: Record<string, string> }[] = [
   { name: 'ViewDashboard', params: { screen: 'dashboard' } },
   { name: 'CheckAnchors', params: { filter: 'active' } },
   { name: 'ShowCorridors', params: { region: 'all' } },

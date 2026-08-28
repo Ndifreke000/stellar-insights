@@ -90,3 +90,35 @@ async def test_context_manager():
         )
         result = await client.network.info()
         assert result["network"] == "testnet"
+
+
+@respx.mock
+async def test_prices_get_uses_asset_query_param(client):
+    route = respx.get(f"{BASE}/api/prices").mock(
+        return_value=httpx.Response(200, json={"asset": "XLM:native", "price_usd": 0.17, "stale": False, "timestamp": "t"})
+    )
+    result = await client.prices.get("XLM:native")
+    assert route.called
+    assert route.calls[0].request.url.params["asset"] == "XLM:native"
+    assert result["price_usd"] == 0.17
+
+
+@respx.mock
+async def test_prices_batch_joins_assets(client):
+    route = respx.get(f"{BASE}/api/prices/batch").mock(
+        return_value=httpx.Response(200, json={"prices": {"XLM:native": 0.17}, "stale": False, "timestamp": "t"})
+    )
+    await client.prices.batch(["XLM:native", "USDC:issuer"])
+    assert route.calls[0].request.url.params["assets"] == "XLM:native,USDC:issuer"
+
+
+@respx.mock
+async def test_prices_convert_to_usd(client):
+    route = respx.get(f"{BASE}/api/prices/convert").mock(
+        return_value=httpx.Response(200, json={"asset": "XLM:native", "amount": 100.0, "amount_usd": 17.0, "price_usd": 0.17, "timestamp": "t"})
+    )
+    result = await client.prices.convert_to_usd("XLM:native", 100.0)
+    params = route.calls[0].request.url.params
+    assert params["asset"] == "XLM:native"
+    assert params["amount"] == "100.0"
+    assert result["amount_usd"] == 17.0

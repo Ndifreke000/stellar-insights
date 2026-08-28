@@ -11,6 +11,7 @@
 use sqlx::Row;
 use std::sync::Arc;
 use stellar_insights_backend::database::Database;
+use stellar_insights_backend::rpc::StellarRpcClient;
 use stellar_insights_backend::services::snapshot::SnapshotService;
 use stellar_insights_backend::snapshot::schema::AnalyticsSnapshot;
 
@@ -104,7 +105,8 @@ async fn test_acceptance_criteria_1_aggregate_all_metrics() {
     println!("🧪 Testing Acceptance Criteria 1: Aggregate all metrics");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db, rpc, None, None);
 
     let snapshot = service.aggregate_all_metrics(1).await.unwrap();
 
@@ -132,7 +134,8 @@ async fn test_acceptance_criteria_2_serialize_deterministic_json() {
     println!("🧪 Testing Acceptance Criteria 2: Serialize to deterministic JSON");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db, rpc, None, None);
 
     let snapshot1 = service.aggregate_all_metrics(2).await.unwrap();
     let mut snapshot2 = service.aggregate_all_metrics(2).await.unwrap();
@@ -164,7 +167,8 @@ async fn test_acceptance_criteria_3_compute_sha256_hash() {
     println!("🧪 Testing Acceptance Criteria 3: Compute SHA-256 hash");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db, rpc, None, None);
 
     let snapshot = service.aggregate_all_metrics(3).await.unwrap();
 
@@ -191,7 +195,8 @@ async fn test_acceptance_criteria_4_store_hash_in_database() {
     println!("🧪 Testing Acceptance Criteria 4: Store hash in database");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db.clone(), None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db.clone(), rpc, None, None);
 
     let result = service.generate_and_submit_snapshot(4).await.unwrap();
 
@@ -219,7 +224,8 @@ async fn test_acceptance_criteria_5_and_6_contract_submission_and_verification()
     println!("🧪 Testing Acceptance Criteria 5 & 6: Submit to contract & verify (simulated)");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db, None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db, rpc, None, None);
 
     // Without contract service, submission should be skipped but other steps should work
     let result = service.generate_and_submit_snapshot(5).await.unwrap();
@@ -248,7 +254,8 @@ async fn test_complete_workflow() {
     println!("🧪 Testing Complete Workflow - All Acceptance Criteria");
 
     let db = setup_test_database().await;
-    let service = SnapshotService::new(db.clone(), None, None);
+    let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let service = SnapshotService::new(db.clone(), rpc, None, None);
 
     let epoch = 12345;
     let result = service.generate_and_submit_snapshot(epoch).await.unwrap();

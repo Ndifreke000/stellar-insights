@@ -6,7 +6,8 @@ mod events;
 use errors::Error;
 use events::{
     emit_cancelled, emit_dispute_raised, emit_dispute_resolved, emit_escrow_created,
-    emit_escrow_funded, emit_funds_released, emit_initialized, emit_refunded,
+    emit_escrow_funded, emit_funds_released, emit_initialized, emit_paused, emit_refunded,
+    emit_unpaused,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, token, Address, Env, String,
@@ -23,6 +24,26 @@ fn bump_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+fn require_not_locked(env: &Env) -> Result<(), Error> {
+    if env
+        .storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Locked)
+        .unwrap_or(false)
+    {
+        return Err(Error::Reentrancy);
+    }
+    Ok(())
+}
+
+fn set_locked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &true);
+}
+
+fn set_unlocked(env: &Env) {
+    env.storage().instance().set(&DataKey::Locked, &false);
 }
 
 // ============================================================================
@@ -80,6 +101,7 @@ pub enum DataKey {
     Paused,
     Version,
     Escrow(u64),
+    Locked,
 }
 
 // ============================================================================
@@ -137,6 +159,7 @@ impl EscrowServiceContract {
         }
         env.storage().instance().set(&DataKey::Paused, &true);
         bump_instance(&env);
+        emit_paused(&env, caller);
         Ok(())
     }
 
@@ -152,6 +175,7 @@ impl EscrowServiceContract {
         }
         env.storage().instance().set(&DataKey::Paused, &false);
         bump_instance(&env);
+        emit_unpaused(&env, caller);
         Ok(())
     }
 
@@ -232,6 +256,8 @@ impl EscrowServiceContract {
     /// The depositor transfers the agreed amount to this contract.
     /// Can only be called when the escrow is in the `Created` state.
     pub fn fund_escrow(env: Env, caller: Address, escrow_id: u64) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         let paused: bool = env
             .storage()
             .instance()
@@ -262,12 +288,13 @@ impl EscrowServiceContract {
             return Err(Error::DeadlineExpired);
         }
 
-        let token_client = token::Client::new(&env, &escrow.token);
-        token_client.transfer(&caller, &env.current_contract_address(), &escrow.amount);
-
-        escrow.state = EscrowState::Funded;
+        // Save values before mutating escrow
         let depositor = escrow.depositor.clone();
         let amount = escrow.amount;
+        let token = escrow.token.clone();
+
+        // Effect: update state before external call (CEI)
+        escrow.state = EscrowState::Funded;
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(escrow_id), &escrow);
@@ -276,6 +303,11 @@ impl EscrowServiceContract {
             ESCROW_TTL_THRESHOLD,
             ESCROW_TTL_EXTEND,
         );
+
+        // Interaction: external token call under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &token).transfer(&caller, &env.current_contract_address(), &amount);
+        set_unlocked(&env);
 
         emit_escrow_funded(&env, escrow_id, depositor, amount);
 
@@ -287,6 +319,8 @@ impl EscrowServiceContract {
     /// Only the depositor can release funds. The escrow must be in the `Funded`
     /// state (not disputed).
     pub fn release_funds(env: Env, caller: Address, escrow_id: u64) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         caller.require_auth();
 
         let mut escrow: Escrow = env
@@ -303,16 +337,16 @@ impl EscrowServiceContract {
             return Err(Error::Unauthorized);
         }
 
-        let token_client = token::Client::new(&env, &escrow.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &escrow.beneficiary,
-            &escrow.amount,
-        );
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
 
-        escrow.state = EscrowState::Released;
+        let token = escrow.token.clone();
         let beneficiary = escrow.beneficiary.clone();
         let amount = escrow.amount;
+
+        // Effect: update state before external call (CEI)
+        escrow.state = EscrowState::Released;
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(escrow_id), &escrow);
@@ -321,6 +355,15 @@ impl EscrowServiceContract {
             ESCROW_TTL_THRESHOLD,
             ESCROW_TTL_EXTEND,
         );
+
+        // Interaction: external token call under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &beneficiary,
+            &amount,
+        );
+        set_unlocked(&env);
 
         emit_funds_released(&env, escrow_id, beneficiary, amount);
 
@@ -332,6 +375,8 @@ impl EscrowServiceContract {
     /// Only the depositor can call this. The escrow must be `Funded` and the
     /// deadline must have passed.
     pub fn refund(env: Env, caller: Address, escrow_id: u64) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         caller.require_auth();
 
         let mut escrow: Escrow = env
@@ -348,21 +393,21 @@ impl EscrowServiceContract {
             return Err(Error::Unauthorized);
         }
 
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
         let now = env.ledger().timestamp();
         if now < escrow.deadline {
             return Err(Error::DeadlineNotExpired);
         }
 
-        let token_client = token::Client::new(&env, &escrow.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &escrow.depositor,
-            &escrow.amount,
-        );
-
-        escrow.state = EscrowState::Refunded;
+        let token = escrow.token.clone();
         let depositor = escrow.depositor.clone();
         let amount = escrow.amount;
+
+        // Effect: update state before external call (CEI)
+        escrow.state = EscrowState::Refunded;
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(escrow_id), &escrow);
@@ -371,6 +416,15 @@ impl EscrowServiceContract {
             ESCROW_TTL_THRESHOLD,
             ESCROW_TTL_EXTEND,
         );
+
+        // Interaction: external token call under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &depositor,
+            &amount,
+        );
+        set_unlocked(&env);
 
         emit_refunded(&env, escrow_id, depositor, amount);
 
@@ -424,6 +478,8 @@ impl EscrowServiceContract {
         escrow_id: u64,
         release_to_beneficiary: bool,
     ) -> Result<(), Error> {
+        require_not_locked(&env)?;
+
         caller.require_auth();
 
         let admin: Address = env
@@ -446,21 +502,20 @@ impl EscrowServiceContract {
             return Err(Error::NotDisputed);
         }
 
-        let token_client = token::Client::new(&env, &escrow.token);
+        if escrow.amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let token = escrow.token.clone();
         let (recipient, new_state) = if release_to_beneficiary {
             (escrow.beneficiary.clone(), EscrowState::Released)
         } else {
             (escrow.depositor.clone(), EscrowState::Refunded)
         };
-
-        token_client.transfer(
-            &env.current_contract_address(),
-            &recipient,
-            &escrow.amount,
-        );
-
         let winner = recipient.clone();
         let amount = escrow.amount;
+
+        // Effect: update state before external call (CEI)
         escrow.state = new_state;
         env.storage()
             .persistent()
@@ -470,6 +525,15 @@ impl EscrowServiceContract {
             ESCROW_TTL_THRESHOLD,
             ESCROW_TTL_EXTEND,
         );
+
+        // Interaction: external token call under reentrancy lock
+        set_locked(&env);
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &amount,
+        );
+        set_unlocked(&env);
 
         emit_dispute_resolved(&env, escrow_id, winner, amount);
 

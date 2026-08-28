@@ -33,14 +33,14 @@ describe('BarcodeScannerComponent', () => {
   });
 
   it('should handle scan button press', async () => {
-    const { getByText, getByA11yLabel } = render(<BarcodeScannerComponent />);
+    const { getByText, getByLabelText } = render(<BarcodeScannerComponent />);
 
     await waitFor(() => {
-      const startButton = getByA11yLabel('Start barcode scan');
+      const startButton = getByLabelText('Start barcode scan');
       expect(startButton).toBeDefined();
     });
 
-    const startButton = getByA11yLabel('Start barcode scan');
+    const startButton = getByLabelText('Start barcode scan');
     fireEvent.press(startButton);
 
     await waitFor(() => {
@@ -49,10 +49,10 @@ describe('BarcodeScannerComponent', () => {
   });
 
   it('should show result after scan completes', async () => {
-    const { getByA11yLabel, getByText } = render(<BarcodeScannerComponent />);
+    const { getByLabelText, getByText } = render(<BarcodeScannerComponent />);
 
     await waitFor(() => {
-      const startButton = getByA11yLabel('Start barcode scan');
+      const startButton = getByLabelText('Start barcode scan');
       expect(startButton).toBeDefined();
       fireEvent.press(startButton);
     });
@@ -66,10 +66,10 @@ describe('BarcodeScannerComponent', () => {
 
   it('should clear result when clear button is pressed', async () => {
     jest.useFakeTimers();
-    const { getByA11yLabel, getByText, queryByText } = render(<BarcodeScannerComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<BarcodeScannerComponent />);
 
     await waitFor(() => {
-      const startButton = getByA11yLabel('Start barcode scan');
+      const startButton = getByLabelText('Start barcode scan');
       fireEvent.press(startButton);
     });
 
@@ -79,7 +79,7 @@ describe('BarcodeScannerComponent', () => {
       expect(getByText('Scanned Barcode:')).toBeDefined();
     });
 
-    const clearButton = getByA11yLabel('Clear result');
+    const clearButton = getByLabelText('Clear result');
     fireEvent.press(clearButton);
 
     await waitFor(() => {

@@ -7,7 +7,7 @@ import {
   normalizeAnchorDetailResponse,
   useAnchorDetail,
 } from '@hooks/useAnchorDetail';
-import { ANCHOR_DETAIL_CACHE_PREFIX } from '@types/anchor';
+import { ANCHOR_DETAIL_CACHE_PREFIX } from '@app-types/anchor';
 
 jest.mock('@services/api', () => ({
   apiClient: {

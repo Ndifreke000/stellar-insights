@@ -23,8 +23,9 @@ describe('useFingerprintScanner', () => {
   it('should check biometric availability', async () => {
     const { result } = renderHook(() => useFingerprintScanner());
 
-    const bioAvailable = await act(async () => {
-      return await result.current.isBiometricAvailable();
+    let bioAvailable = false;
+    await act(async () => {
+      bioAvailable = await result.current.isBiometricAvailable();
     });
 
     expect(typeof bioAvailable).toBe('boolean');
@@ -87,8 +88,9 @@ describe('useFingerprintScanner', () => {
   it('should handle permission checks', async () => {
     const { result } = renderHook(() => useFingerprintScanner());
 
-    const hasPermission = await act(async () => {
-      return await result.current.hasPermission();
+    let hasPermission = false;
+    await act(async () => {
+      hasPermission = await result.current.hasPermission();
     });
 
     expect(typeof hasPermission).toBe('boolean');

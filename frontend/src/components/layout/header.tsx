@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from "react";
 import { Menu, Wallet, LogOut } from "lucide-react";
 import { useWallet } from "../lib/wallet-context";
 import { NotificationCenter } from "./notification-center";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -57,37 +58,6 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
     }
   }, [isConnected, address, showToast]); // Remove displayAddress from dependencies
 
-  const handleConnect = async () => {
-    try {
-      await connectWallet();
-    } catch (error) {
-      showToast({
-        type: 'error',
-        priority: 'high',
-        title: 'Connection Failed',
-        message: 'Failed to connect wallet. Please try again.',
-        category: 'system',
-        duration: 5000,
-      });
-    }
-  };
-
-  const handleDisconnect = () => {
-    try {
-      disconnectWallet();
-      setShowWalletMenu(false);
-    } catch (error) {
-      showToast({
-        type: 'error',
-        priority: 'medium',
-        title: 'Disconnection Failed',
-        message: 'Failed to disconnect wallet properly.',
-        category: 'system',
-        duration: 4000,
-      });
-    }
-  };
-
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 z-40">
       <div className="flex items-center justify-between h-full px-4 sm:px-6">
@@ -106,7 +76,7 @@ export function Header({ onMenuToggle, sidebarOpen }: HeaderProps) {
               <TrendingUpIcon className="w-5 h-5 text-white" />
             </div>
             <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:inline">
-              Stellar Insights
+              PayRaider
             </span>
           </div>
         </div>

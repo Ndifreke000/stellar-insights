@@ -2,7 +2,17 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
 use tracing::{info, warn};
+
+fn retry_strategy() -> impl Iterator<Item = Duration> {
+    ExponentialBackoff::from_millis(200)
+        .max_delay(Duration::from_secs(30))
+        .map(jitter)
+        .take(10)
+}
 
 use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
 use crate::services::account_merge_detector::AccountMergeDetector;
@@ -70,11 +80,12 @@ impl LedgerIngestionService {
         let start_ledger = if let Some(l) = self.get_last_ledger().await? {
             Some(l + 1)
         } else {
-            let health = self
-                .rpc_client
-                .check_health()
-                .await
-                .context("Failed to check health")?;
+            let client = &self.rpc_client;
+            let health = Retry::spawn(retry_strategy(), || async {
+                client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+            })
+            .await
+            .context("Failed to check health")?;
             Some(health.oldest_ledger)
         };
 
@@ -83,11 +94,16 @@ impl LedgerIngestionService {
             start_ledger, cursor
         );
 
-        let result = self
-            .rpc_client
-            .fetch_ledgers(start_ledger, batch_size, cursor.as_deref())
-            .await
-            .context("Failed to fetch ledgers")?;
+        let client = &self.rpc_client;
+        let cursor_ref = cursor.as_deref();
+        let result = Retry::spawn(retry_strategy(), || async {
+            client
+                .fetch_ledgers(start_ledger, batch_size, cursor_ref)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await
+        .context("Failed to fetch ledgers")?;
 
         let count = self.process_ledgers(&result).await?;
 
@@ -111,10 +127,15 @@ impl LedgerIngestionService {
             }
 
             // Fetch real payments from Horizon
-            match self
-                .rpc_client
-                .fetch_payments_for_ledger(ledger.sequence)
-                .await
+            let seq = ledger.sequence;
+            let client = &self.rpc_client;
+            match Retry::spawn(retry_strategy(), || async {
+                client
+                    .fetch_payments_for_ledger(seq)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+            })
+            .await
             {
                 Ok(payments) => {
                     for payment in payments {
@@ -146,10 +167,13 @@ impl LedgerIngestionService {
             }
 
             // Fetch and process transactions for fee bumps
-            match self
-                .rpc_client
-                .fetch_transactions_for_ledger(ledger.sequence)
-                .await
+            match Retry::spawn(retry_strategy(), || async {
+                client
+                    .fetch_transactions_for_ledger(seq)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+            })
+            .await
             {
                 Ok(transactions) => {
                     if let Err(e) = self

@@ -25,6 +25,12 @@ import {
   EnvironmentDetector,
 } from "./sdk-init.js";
 import { ApiClient, BatchApiClient, ApiClientError } from "./api-client.js";
+import {
+  acquireConnection,
+  releaseConnection,
+  closeAllConnections,
+  type EventHandler,
+} from "./websocket-manager.js";
 
 export interface NetworkConfig {
   rpcUrl: string;
@@ -53,10 +59,12 @@ export function createClient(
   config: Omit<StellarInsightsConfig, "baseUrl"> = {},
 ): StellarInsights {
   const networkConfig = NETWORKS[network];
-  return new StellarInsights({
+  const client = new StellarInsights({
     ...config,
     baseUrl: networkConfig.apiBaseUrl,
   });
+  client.wsNetwork = network;
+  return client;
 }
 
 export class StellarInsights {
@@ -77,6 +85,9 @@ export class StellarInsights {
   readonly apiClient: ApiClient;
 
   private readonly http: HttpClient;
+  private readonly eventHandlers = new Set<EventHandler>();
+  /** @internal */
+  wsNetwork: "mainnet" | "testnet" = "testnet";
 
   constructor(config: StellarInsightsConfig = {}) {
     this.http = new HttpClient(config);
@@ -95,6 +106,26 @@ export class StellarInsights {
     this.ml = new MlResource(this.http);
     this.governance = new GovernanceResource(this.http);
     this.assetVerification = new AssetVerificationResource(this.http);
+  }
+
+  subscribe(handler: EventHandler): void {
+    this.eventHandlers.add(handler);
+    const net = NETWORKS[this.wsNetwork];
+    acquireConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+  }
+
+  unsubscribe(handler: EventHandler): void {
+    this.eventHandlers.delete(handler);
+    const net = NETWORKS[this.wsNetwork];
+    releaseConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+  }
+
+  disconnect(): void {
+    const net = NETWORKS[this.wsNetwork];
+    for (const handler of this.eventHandlers) {
+      releaseConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+    }
+    this.eventHandlers.clear();
   }
 }
 
@@ -117,6 +148,10 @@ export { SDKInitializer, initializeForMobile, initializeForWeb, initializeForBac
 
 // API Client Core exports
 export { ApiClient, BatchApiClient, ApiClientError };
+
+// WebSocket exports
+export { closeAllConnections };
+export type { EventHandler } from "./websocket-manager.js";
 
 export type * from "./types.js";
 export type * from "./api-client.js";

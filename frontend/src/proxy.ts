@@ -12,17 +12,21 @@ const intlMiddleware = createMiddleware(routing);
  * Notes:
  * - `script-src 'unsafe-inline'` is required by Next.js for inline hydration scripts.
  *   A nonce-based approach can replace this once Next.js nonce support is wired up.
- * - `connect-src` includes wss: for WebSocket and *.sentry.io for error reporting.
+ * - `connect-src` includes wss: for WebSocket, *.sentry.io for error reporting,
+ *   and Stellar RPC/Horizon endpoints for contract calls.
  * - `upgrade-insecure-requests` is omitted in development to avoid breaking http://localhost.
  */
 function buildCsp(isProd: boolean): string {
   const directives: string[] = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    // 'unsafe-eval' is only added outside production: Next.js dev mode
+    // (Turbopack/Fast Refresh) evals modules to reconstruct call stacks,
+    // and without it every page load throws a CSP console error.
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://*.stellar.org",
     "font-src 'self'",
-    "connect-src 'self' wss: https: https://*.sentry.io",
+    "connect-src 'self' wss: https: https://*.sentry.io https://soroban-testnet.stellar.org https://stellar.api.onfinality.io https://horizon-testnet.stellar.org https://horizon.stellar.org",
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "object-src 'none'",
@@ -48,7 +52,7 @@ function applySecurityHeaders(response: NextResponse, isProd: boolean): void {
   );
 }
 
-export default function middleware(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   const isProd = process.env.NODE_ENV === "production";
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
@@ -60,12 +64,12 @@ export default function middleware(request: NextRequest) {
   return response;
 }
 
-function handleApiRequest(request: NextRequest, isProd: boolean) {
+async function handleApiRequest(request: NextRequest, isProd: boolean) {
   const response = NextResponse.next();
   applySecurityHeaders(response, isProd);
 
   if (request.method === "GET") {
-    const csrfToken = generateCsrfToken();
+    const csrfToken = await generateCsrfToken();
     response.cookies.set("csrf-token", csrfToken, {
       httpOnly: true,
       secure: isProd,
@@ -79,7 +83,7 @@ function handleApiRequest(request: NextRequest, isProd: boolean) {
 
   if (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)) {
     const cookieToken = request.cookies.get("csrf-token")?.value;
-    const headerToken = request.headers.get("X-CSRF-Token");
+    const headerToken = request.headers.get("X-CSRF-Token") ?? undefined;
 
     if (!validateCsrfToken(cookieToken, headerToken)) {
       return NextResponse.json(

@@ -37,6 +37,8 @@ export interface PredictionResponse {
   recommendation: string;
   alternative_routes: AlternativeRoute[];
   model_version: string;
+  /** True when the backend was unreachable and the result is locally generated. */
+  is_mock?: boolean;
 }
 
 // =========================

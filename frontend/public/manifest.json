@@ -1,6 +1,6 @@
 {
-  "name": "Stellar Insights",
-  "short_name": "Stellar Insights",
+  "name": "PayRaider",
+  "short_name": "PayRaider",
   "description": "Real-time payment analytics and reliability metrics for the Stellar network.",
   "start_url": "/",
   "scope": "/",

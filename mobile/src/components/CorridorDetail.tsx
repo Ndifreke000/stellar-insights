@@ -18,7 +18,7 @@ import {
   CorridorDataSource,
   CorridorDetailProps,
   CorridorMetrics,
-} from '@types/corridor';
+} from '@app-types/corridor';
 import { CorridorsStackParamList } from '@navigation/MainNavigator';
 
 type CorridorDetailRouteProp = RouteProp<CorridorsStackParamList, 'CorridorDetail'>;

@@ -13,14 +13,6 @@ export function TopCorridors({ corridors }: TopCorridorsProps) {
     (a, b) => b.success_rate - a.success_rate
   );
 
-  const getStatusColor = (successRate: number) => {
-    if (successRate >= 99) return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300';
-    if (successRate >= 97) return 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300';
-    if (successRate >= 95)
-      return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300';
-    return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300';
-  };
-
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',

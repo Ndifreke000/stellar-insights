@@ -88,13 +88,13 @@ variable "automatic_failover_enabled" {
 }
 
 variable "snapshot_retention_limit" {
-  description = "Number of days to retain snapshots (0-35)"
+  description = "Number of days to retain snapshots (0-35). If null, defaults to 7 days for production, 0 for dev/staging (cost optimization)"
   type        = number
-  default     = 0
+  default     = null
 
   validation {
-    condition     = var.snapshot_retention_limit >= 0 && var.snapshot_retention_limit <= 35
-    error_message = "Snapshot retention must be between 0 and 35 days"
+    condition     = var.snapshot_retention_limit == null || (var.snapshot_retention_limit >= 0 && var.snapshot_retention_limit <= 35)
+    error_message = "Snapshot retention must be null or between 0 and 35 days"
   }
 }
 
@@ -122,6 +122,17 @@ variable "environment" {
   validation {
     condition     = contains(["dev", "staging", "production"], var.environment)
     error_message = "Environment must be one of: dev, staging, production"
+  }
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch log retention period in days"
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.log_retention_days == null || (var.log_retention_days > 0 && var.log_retention_days <= 3653)
+    error_message = "Log retention must be null or between 1 and 3653 days"
   }
 }
 

@@ -110,14 +110,14 @@ export function useQueryMonitor() {
   // expose debug functions to window for manual debugging
   React.useEffect(() => {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      (window as any).__queryMonitor = {
+      (window as unknown as { __queryMonitor: unknown }).__queryMonitor = {
         logStats: logCacheStats,
         logState: () => {
           const cache = queryClient.getQueryCache();
           const queries = cache.getAll();
           logger.info('All Queries', {
             totalQueries: queries.length,
-            queryKeys: queries.map((q: any) => q.queryKey)
+            queryKeys: queries.map((q) => q.queryKey)
           });
         },
       };

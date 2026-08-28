@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback } from "react";
 
 export type NotificationType = "info" | "success" | "warning" | "error";
 
@@ -30,9 +30,39 @@ const NotificationContext = createContext<NotificationContextProps | undefined>(
 // Generate a random ID for notifications
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
+// Demo: Initial mock notifications to visualize the design
+const createMockNotifications = (): AppNotification[] => [
+  {
+    id: generateId(),
+    title: "Network Congestion",
+    message: "High traffic detected on the Stellar network. Settlement times may be slightly delayed.",
+    type: "warning",
+    read: false,
+    createdAt: Date.now() - 1000 * 60 * 5, // 5 mins ago
+  },
+  {
+    id: generateId(),
+    title: "Liquidity Alert",
+    message: "Liquidity pool XLM/USDC is experiencing high volatility.",
+    type: "error",
+    read: false,
+    createdAt: Date.now() - 1000 * 60 * 30, // 30 mins ago
+    actionLink: "/dashboard",
+    actionText: "View Pool",
+  },
+  {
+    id: generateId(),
+    title: "System Update Complete",
+    message: "The analytics engine has been successfully updated to v2.1.0.",
+    type: "success",
+    read: true,
+    createdAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
+  }
+];
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  
+  const [notifications, setNotifications] = useState<AppNotification[]>(createMockNotifications);
+
   // Calculate unread count
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -65,39 +95,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const clearAll = useCallback(() => {
     setNotifications([]);
-  }, []);
-
-  // Demo: Add some initial mock notifications to visualize the design
-  useEffect(() => {
-    const mockNotifications: AppNotification[] = [
-      {
-        id: generateId(),
-        title: "Network Congestion",
-        message: "High traffic detected on the Stellar network. Settlement times may be slightly delayed.",
-        type: "warning",
-        read: false,
-        createdAt: Date.now() - 1000 * 60 * 5, // 5 mins ago
-      },
-      {
-        id: generateId(),
-        title: "Liquidity Alert",
-        message: "Liquidity pool XLM/USDC is experiencing high volatility.",
-        type: "error",
-        read: false,
-        createdAt: Date.now() - 1000 * 60 * 30, // 30 mins ago
-        actionLink: "/dashboard",
-        actionText: "View Pool",
-      },
-      {
-        id: generateId(),
-        title: "System Update Complete",
-        message: "The analytics engine has been successfully updated to v2.1.0.",
-        type: "success",
-        read: true,
-        createdAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-      }
-    ];
-    setNotifications(mockNotifications);
   }, []);
 
   const value = {

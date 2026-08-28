@@ -7,7 +7,7 @@ import {
   parseCorridorAssets,
   useCorridorDetail,
 } from '@hooks/useCorridorDetail';
-import { CORRIDOR_DETAIL_CACHE_PREFIX } from '@types/corridor';
+import { CORRIDOR_DETAIL_CACHE_PREFIX } from '@app-types/corridor';
 
 jest.mock('@services/api', () => ({
   apiClient: {

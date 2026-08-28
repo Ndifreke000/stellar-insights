@@ -340,6 +340,7 @@ fn duration_until_next_hour(hour_utc: u32) -> std::time::Duration {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

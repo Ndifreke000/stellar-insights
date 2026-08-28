@@ -99,3 +99,17 @@ mobile/android/app/build/
 # ============================================
 requirements.md
 AGENTS.md
+somzilla.md
+
+# ============================================
+# Local AI / editor tooling — NEVER commit!
+# These directories hold local-machine state
+# (conversation plans, session settings, etc.)
+# that is meaningless to other contributors.
+# ============================================
+.claude/
+.kiro/
+.cursor/
+.aider/
+.cline/
+.continue/

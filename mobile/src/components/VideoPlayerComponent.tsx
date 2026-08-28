@@ -6,8 +6,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   TextInput,
-  Slider,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useVideoPlayer } from '../features/video_player/useVideoPlayer';
 
 const DEFAULT_VIDEO_URL = 'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4';
@@ -63,7 +63,7 @@ export const VideoPlayerComponent = () => {
 
   if (isLoading || isBuffering) {
     return (
-      <View style={styles.container} accessibilityRole="status">
+      <View style={styles.container} accessibilityLiveRegion="polite">
         <ActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.loadingText} accessibilityLabel="Loading video">
           {isBuffering ? 'Buffering...' : 'Loading video...'}
@@ -73,7 +73,7 @@ export const VideoPlayerComponent = () => {
   }
 
   return (
-    <View style={styles.container} accessibilityRole="main">
+    <View style={styles.container}>
       <View style={styles.header} accessible accessibilityRole="header">
         <Text style={styles.title}>Video Player</Text>
       </View>

@@ -20,7 +20,7 @@ import {
   FailedCorridorRef,
   FailureReason,
   IssuedAsset,
-} from '@types/anchor';
+} from '@app-types/anchor';
 import { AnchorsStackParamList } from '@navigation/MainNavigator';
 
 type AnchorDetailRouteProp = RouteProp<AnchorsStackParamList, 'AnchorDetail'>;

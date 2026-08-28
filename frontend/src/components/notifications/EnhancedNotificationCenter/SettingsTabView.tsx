@@ -16,9 +16,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CATEGORY_ICONS } from './util';
-import useEnhancedNotificationCenter from './useEnhancedNotificationCenter';
 import React from 'react';
-import { NotificationPreferences } from '@/types/notifications';
+import { NotificationPreferences, NotificationSound } from '@/types/notifications';
 
 const SettingsTabView = ({ updatePreferences, preferences }: {
   updatePreferences: (preferences: Partial<NotificationPreferences>) => void;
@@ -113,7 +112,7 @@ const SettingsTabView = ({ updatePreferences, preferences }: {
                   <Label className="text-sm font-medium">Sound Type</Label>
                   <Select
                     value={preferences.sound.soundType}
-                    onValueChange={(soundType: any) =>
+                    onValueChange={(soundType: NotificationSound['soundType']) =>
                       updatePreferences({
                         sound: { ...preferences.sound, soundType },
                       })

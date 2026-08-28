@@ -18,8 +18,8 @@ use crate::services::asset_verifier::AssetVerifier;
 /// Create asset verification routes
 pub fn routes(pool: SqlitePool) -> Router {
     Router::new()
-        .route("/verify/:code/:issuer", get(verify_asset))
-        .route("/:code/:issuer/verification", get(get_verification))
+        .route("/verify/{code}/{issuer}", get(verify_asset))
+        .route("/{code}/{issuer}/verification", get(get_verification))
         .route("/verified", get(list_verified_assets))
         .route("/report", post(report_suspicious_asset))
         .with_state(Arc::new(pool))

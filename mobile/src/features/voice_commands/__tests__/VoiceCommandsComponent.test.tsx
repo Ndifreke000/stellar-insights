@@ -24,10 +24,10 @@ describe('VoiceCommandsComponent', () => {
   });
 
   it('should display listen button after initialization', async () => {
-    const { getByA11yLabel } = render(<VoiceCommandsComponent />);
+    const { getByLabelText } = render(<VoiceCommandsComponent />);
 
     await waitFor(() => {
-      const listenButton = getByA11yLabel('Start listening for voice commands');
+      const listenButton = getByLabelText('Start listening for voice commands');
       expect(listenButton).toBeDefined();
     }, { timeout: 1000 });
   });
@@ -43,14 +43,14 @@ describe('VoiceCommandsComponent', () => {
   });
 
   it('should handle listen button press', async () => {
-    const { getByA11yLabel, getByText } = render(<VoiceCommandsComponent />);
+    const { getByLabelText, getByText } = render(<VoiceCommandsComponent />);
 
     await waitFor(() => {
-      const listenButton = getByA11yLabel('Start listening for voice commands');
+      const listenButton = getByLabelText('Start listening for voice commands');
       expect(listenButton).toBeDefined();
     });
 
-    const listenButton = getByA11yLabel('Start listening for voice commands');
+    const listenButton = getByLabelText('Start listening for voice commands');
     fireEvent.press(listenButton);
 
     await waitFor(() => {
@@ -59,10 +59,10 @@ describe('VoiceCommandsComponent', () => {
   });
 
   it('should show transcribed command after listening', async () => {
-    const { getByA11yLabel, getByText, queryByText } = render(<VoiceCommandsComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<VoiceCommandsComponent />);
 
     await waitFor(() => {
-      const listenButton = getByA11yLabel('Start listening for voice commands');
+      const listenButton = getByLabelText('Start listening for voice commands');
       fireEvent.press(listenButton);
     });
 
@@ -75,10 +75,10 @@ describe('VoiceCommandsComponent', () => {
 
   it('should clear result when clear button is pressed', async () => {
     jest.useFakeTimers();
-    const { getByA11yLabel, getByText, queryByText } = render(<VoiceCommandsComponent />);
+    const { getByLabelText, getByText, queryByText } = render(<VoiceCommandsComponent />);
 
     await waitFor(() => {
-      const listenButton = getByA11yLabel('Start listening for voice commands');
+      const listenButton = getByLabelText('Start listening for voice commands');
       fireEvent.press(listenButton);
     });
 

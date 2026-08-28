@@ -1,0 +1,51 @@
+# Prometheus scrape configuration for Stellar Insights
+#
+# Usage (local / dev):
+#   prometheus --config.file=monitoring/prometheus.yml
+#
+# Usage (Docker):
+#   docker run -p 9090:9090 \
+#     -v $PWD/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml \
+#     prom/prometheus
+#
+# The backend must be running and reachable at the target address.
+# Default backend port is 8080 (set BACKEND_PORT in backend/.env to override).
+
+global:
+  scrape_interval: 15s      # How often to scrape targets
+  evaluation_interval: 15s  # How often to evaluate alert rules
+
+# Load alert rules
+rule_files:
+  - "prometheus-alert-rules.yaml"
+
+# Alertmanager configuration (optional — comment out if not running alertmanager)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # targets: ['localhost:9093']  # Uncomment when alertmanager is running
+
+scrape_configs:
+  # ---- Stellar Insights backend (/metrics endpoint) -------------------------
+  - job_name: "stellar-insights"
+    static_configs:
+      - targets: ["localhost:8080"]
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    # Optional basic auth (not required in dev; enable in production):
+    # basic_auth:
+    #   username: metrics
+    #   password_file: /run/secrets/metrics_password
+
+  # ---- Testnet instance (if running a separate testnet backend) -------------
+  - job_name: "stellar-insights-testnet"
+    static_configs:
+      - targets: ["localhost:8081"]   # adjust port as needed
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  # ---- Prometheus self-scrape -----------------------------------------------
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

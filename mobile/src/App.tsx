@@ -15,6 +15,7 @@ import { processOfflineQueue } from './hooks/useOfflineQueue';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
 import { OfflineCachingIndicator } from './components/OfflineCaching';
 import { OfflineBanner } from './components/OfflineBanner';
+import { SyncStatusBanner } from './components/SyncStatusBanner';
 
 import { NetworkProvider, getCurrentNetwork } from '@config/network';
 
@@ -162,6 +163,7 @@ function App(): React.JSX.Element {
             <NavigationContainer linking={linking}>
               <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
               <OfflineBanner />
+              <SyncStatusBanner />
               <NetworkStatusIndicator />
               <OfflineCachingIndicator showCacheSize={true} />
               <RootNavigator />

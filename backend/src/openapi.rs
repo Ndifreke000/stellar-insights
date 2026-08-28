@@ -139,6 +139,7 @@ use utoipa::OpenApi;
         crate::api::governance::has_voted,
         crate::api::governance::add_comment,
         crate::api::governance::get_comments,
+        crate::api::governance::refresh_tally,
         // OAuth
         crate::api::oauth::authorize,
         crate::api::oauth::token,

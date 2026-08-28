@@ -1,7 +1,8 @@
-use soroban_sdk::{symbol_short, Address, Env};
+use soroban_sdk::{symbol_short, Address, Env, Vec};
 
-pub fn emit_initialized(env: &Env, threshold: u32) {
-    env.events().publish((symbol_short!("MSW_INI"),), threshold);
+pub fn emit_initialized(env: &Env, owners: &Vec<Address>, threshold: u32) {
+    env.events()
+        .publish((symbol_short!("MSW_INI"),), (owners.clone(), threshold));
 }
 
 pub fn emit_tx_proposed(env: &Env, tx_id: u64, proposer: Address, amount: i128) {

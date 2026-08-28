@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertRule {
     pub id: String,
     pub user_id: String,
@@ -20,6 +21,7 @@ pub struct AlertRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertHistory {
     pub id: String,
     pub rule_id: String,
@@ -36,6 +38,7 @@ pub struct AlertHistory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateAlertRuleRequest {
     #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
@@ -62,6 +65,7 @@ pub struct CreateAlertRuleRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(utoipa::ToSchema)]
 pub struct UpdateAlertRuleRequest {
     #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
@@ -86,6 +90,7 @@ pub struct UpdateAlertRuleRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct SnoozeAlertRequest {
     pub snoozed_until: DateTime<Utc>,
 }

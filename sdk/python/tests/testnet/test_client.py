@@ -50,9 +50,9 @@ async def test_list_prices(testnet_client: StellarInsights | None) -> None:
     if testnet_client is None:
         pytest.skip("Testnet credentials not available")
 
-    result = await testnet_client.prices.list()
+    result = await testnet_client.prices.batch(["XLM:native"])
     assert result is not None
-    assert isinstance(result, list)
+    assert "prices" in result
 
 
 @pytest.mark.testnet

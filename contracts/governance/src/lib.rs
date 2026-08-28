@@ -1,17 +1,31 @@
 #![no_std]
-extern crate std;
 
 mod errors;
 mod events;
 
-use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{
     emit_governance_initialized, emit_governance_param_changed, emit_governance_admin_changed,
     emit_parameter_proposal_created, emit_proposal_created,
     emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractclient, contractimpl, contracttype, Address, BytesN, Env, String};
+
+/// Interface shared by any contract that governance can administer (e.g.
+/// analytics). Declared locally via `#[contractclient]` — rather than
+/// depending on e.g. the `analytics` crate directly and using its generated
+/// client — because `analytics` is also a `#[contract]`/cdylib in its own
+/// right; linking its crate into governance's wasm binary would duplicate
+/// every `#[contractimpl]`-exported symbol (get_contract_info, set_admin,
+/// etc.) between the two contracts. `#[contractclient]` generates a client
+/// purely from this trait's signature, with no dependency on analytics'
+/// implementation.
+#[contractclient(name = "GovernedContractClient")]
+pub trait GovernedContract {
+    fn set_admin_by_governance(env: Env, caller: Address, new_admin: Address);
+    fn set_paused_by_governance(env: Env, caller: Address, paused: bool);
+    fn upgrade(env: Env, new_wasm_hash: BytesN<32>);
+}
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -143,6 +157,10 @@ impl GovernanceContract {
     ) -> Result<(), errors::Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(errors::Error::AlreadyInitialized);
+        }
+
+        if quorum > 10_000 {
+            return Err(errors::Error::InvalidQuorum);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -434,7 +452,9 @@ impl GovernanceContract {
 
     /// Finalize a proposal after the voting period has ended.
     /// Anyone can call this function once the deadline passes.
-    pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
+    /// `total_supply` is the circulating token supply used for basis-points quorum check:
+    /// quorum passes when `(votes_cast * 10_000) / total_supply >= quorum_bps`.
+    pub fn finalize(env: Env, proposal_id: u64, total_supply: u64) -> Result<ProposalStatus, Error> {
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -463,10 +483,18 @@ impl GovernanceContract {
                 total_voters: 0,
             });
 
-        let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+        let quorum_bps: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
 
-        // Determine outcome: passes if quorum met AND more for than against
-        let new_status = if tally.total_voters >= quorum && tally.votes_for > tally.votes_against {
+        if total_supply == 0 {
+            return Err(Error::InvalidTotalSupply);
+        }
+
+        // Quorum check: (votes_cast * 10_000) / total_supply >= quorum_bps
+        // Using u128 for the intermediate product to avoid overflow.
+        let votes_bps =
+            (tally.total_voters as u128 * 10_000) / total_supply as u128;
+
+        let new_status = if votes_bps >= quorum_bps as u128 && tally.votes_for > tally.votes_against {
             ProposalStatus::Passed
         } else {
             ProposalStatus::Failed
@@ -533,7 +561,7 @@ impl GovernanceContract {
             .get(&DataKey::ParameterAction(proposal_id))
         {
             let governance = env.current_contract_address();
-            let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+            let client = GovernedContractClient::new(&env, &proposal.target_contract);
             match action {
                 ParameterAction::SetAdmin(addr) => {
                     let _ = client.set_admin_by_governance(&governance, &addr);
@@ -546,7 +574,7 @@ impl GovernanceContract {
             // Upgrade proposal: invoke upgrade on the target contract with the approved wasm hash.
             let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
             if proposal.new_wasm_hash != zero_hash {
-                let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+                let client = GovernedContractClient::new(&env, &proposal.target_contract);
                 let _ = client.upgrade(&proposal.new_wasm_hash);
             }
         }
@@ -582,6 +610,9 @@ impl GovernanceContract {
             .ok_or(Error::AdminNotSet)?;
         if caller != admin {
             return Err(Error::UnauthorizedCaller);
+        }
+        if new_quorum > 10_000 {
+            return Err(Error::InvalidQuorum);
         }
         let old_quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
         env.storage().instance().set(&DataKey::Quorum, &new_quorum);

@@ -16,8 +16,14 @@ export interface OfflineStatus {
  * without pulling in the full PWA installation machinery.
  */
 export function useOfflineStatus(): OfflineStatus {
+  // Guard on `window`, not `navigator`: Node.js ships a built-in global
+  // `navigator` (for fetch-spec compatibility) that has no `onLine`
+  // property, so `typeof navigator !== 'undefined'` is true during SSR too.
+  // That made `navigator.onLine` evaluate to `undefined` (falsy) on the
+  // server, rendering the offline banner on every SSR pass and causing a
+  // hydration mismatch as soon as the real browser value took over.
   const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator !== 'undefined' ? navigator.onLine : true,
+    typeof window !== 'undefined' ? navigator.onLine : true,
   );
   const [justReconnected, setJustReconnected] = useState(false);
   const [offlineSince, setOfflineSince] = useState<Date | null>(null);

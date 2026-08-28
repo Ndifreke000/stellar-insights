@@ -11,6 +11,37 @@ members = [
   "multi-sig-wallet",
   "time-locked-transactions",
   "token-swap",
+  "upgrade",
+  "tests",
+  # Issue #2136 — Snapshot Verification Rewards
+  "snapshot-verification-rewards",
+  # Issue #2134 — Multi-Admin Support
+  "multi-admin",
+  # Issue #2135 — Contract Pause/Unpause
+  "pausable",
+]
+# `benches` and `tests` are host-side crates (dev/bench tooling, not deployable
+# contracts) and pull in soroban-sdk's testutils feature, which needs std and
+# so can't build for wasm32v1-none. Restrict the default member set so a plain
+# `cargo build --release --target wasm32v1-none` from this directory builds
+# only the real contracts; explicitly build `-p benches`/`-p tests` for those.
+default-members = [
+  "stellar_insights",
+  "analytics",
+  "access-control",
+  "governance",
+  "escrow",
+  "governance-voting",
+  "multi-sig-wallet",
+  "time-locked-transactions",
+  "token-swap",
+  "upgrade",
+  # Issue #2136 — Snapshot Verification Rewards
+  "snapshot-verification-rewards",
+  # Issue #2134 — Multi-Admin Support
+  "multi-admin",
+  # Issue #2135 — Contract Pause/Unpause
+  "pausable",
 ]
 
 # Clippy linting configuration for all contracts
@@ -20,8 +51,8 @@ expect_used = "deny"
 panic = "deny"
 
 [workspace.dependencies]
-soroban-sdk = "26.0.1"
-soroban-token-sdk = "26.0.1"
+soroban-sdk = "27.0.2"
+soroban-token-sdk = "27.0.2"
 
 # Release and bench profiles must stay in this workspace root only. Cargo ignores
 # `[profile.*]` in member crates (e.g. access-control, stellar_insights, governance)

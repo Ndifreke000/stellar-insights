@@ -25,4 +25,8 @@ pub enum Error {
     InvalidTitle = 10,
     /// Contract has already been initialized
     AlreadyInitialized = 11,
+    /// Quorum basis-points value exceeds 10 000 (100 %)
+    InvalidQuorum = 12,
+    /// total_supply passed to finalize must be greater than zero
+    InvalidTotalSupply = 13,
 }

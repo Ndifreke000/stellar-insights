@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useWatchApp } from '@hooks/useWatchApp';
 
-const SAMPLE_MESSAGES = [
+const SAMPLE_MESSAGES: { type: string; payload: Record<string, string> }[] = [
   { type: 'sync', payload: { screen: 'dashboard' } },
   { type: 'alert', payload: { message: 'Anchor update' } },
 ];
@@ -14,7 +14,7 @@ export const WatchAppComponent: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={styles.container} accessibilityLabel="Watch App screen">
       <Text style={styles.title}>Watch App</Text>
-      <Text style={styles.subtitle}>Apple Watch companion for Stellar Insights.</Text>
+      <Text style={styles.subtitle}>Apple Watch companion for PayRaider.</Text>
       <Text style={styles.status} accessibilityRole="text">
         {isSupported ? 'Watch App supported on this device.' : 'Watch App requires iOS.'}
       </Text>

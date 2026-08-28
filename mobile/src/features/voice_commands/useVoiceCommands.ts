@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
-import { useMMKVStorage } from 'react-native-mmkv';
+import { useMMKVBoolean } from 'react-native-mmkv';
 
 interface VoiceCommandsState {
   isListening: boolean;
@@ -37,7 +37,7 @@ export const useVoiceCommands = (): VoiceCommandsState => {
   const [error, setError] = useState<string | null>(null);
   const [commandResult, setCommandResult] = useState<string | null>(null);
   const listeningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [permissionsGranted, setPermissionsGranted] = useMMKVStorage(VOICE_PERMISSIONS_KEY, storage, false);
+  const [, setPermissionsGranted] = useMMKVBoolean(VOICE_PERMISSIONS_KEY, storage);
 
   const hasPermission = useCallback(async (): Promise<boolean> => {
     try {

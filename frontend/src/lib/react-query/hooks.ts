@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { logger } from '@/lib/logger';
 
@@ -53,7 +54,7 @@ export function useApiQuery<T>(
     staleTime?: number;
     refetchInterval?: number;
     enabled?: boolean;
-    retry?: boolean;
+    retry?: boolean | number;
   }
 ) {
   return useQuery({
@@ -127,9 +128,9 @@ export function useApiMutation<T, V>(
 export function useApiInfiniteQuery<T>(
   queryKey: readonly unknown[],
   queryFn: ({ pageParam }: { pageParam?: unknown }) => Promise<T>,
-  options?: {
+  options: {
     initialPageParam?: unknown;
-    getNextPageParam?: (lastPage: T) => unknown;
+    getNextPageParam: (lastPage: T) => unknown;
     enabled?: boolean;
   }
 ) {
@@ -148,7 +149,7 @@ export function useApiInfiniteQuery<T>(
 export function usePrefetchQuery() {
   const queryClient = useQueryClient();
 
-  return React.useCallback(
+  return useCallback(
     <T>(queryKey: readonly unknown[], queryFn: () => Promise<T>) => {
       queryClient.prefetchQuery({
         queryKey,
@@ -166,7 +167,7 @@ export function usePrefetchQuery() {
 export function useInvalidateQueries() {
   const queryClient = useQueryClient();
 
-  return React.useCallback(
+  return useCallback(
     (queryKey: readonly unknown[]) => {
       queryClient.invalidateQueries({ queryKey });
     },
@@ -180,7 +181,7 @@ export function useInvalidateQueries() {
 export function useResetQueries() {
   const queryClient = useQueryClient();
 
-  return React.useCallback(() => {
+  return useCallback(() => {
     queryClient.resetQueries();
   }, [queryClient]);
 }
@@ -189,12 +190,12 @@ export function useResetQueries() {
  * Hook for checking if query is fetching
  */
 export function useIsFetching(queryKey?: readonly unknown[]) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: queryKey || ['fetching'],
     queryFn: () => false,
     select: () => {
-      const queryClient = useQueryClient();
-      return queryClient.isFetching(queryKey);
+      return queryClient.isFetching(queryKey ? { queryKey } : undefined);
     },
     refetchInterval: 1000, // Check every second
   });
@@ -204,12 +205,12 @@ export function useIsFetching(queryKey?: readonly unknown[]) {
  * Hook for checking if query is stale
  */
 export function useIsStale(queryKey: readonly unknown[]) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey,
     queryFn: () => false,
     select: () => {
-      const queryClient = useQueryClient();
-      const query = queryClient.getQueryCache().find(queryKey);
+      const query = queryClient.getQueryCache().find({ queryKey });
       return query?.isStale() ?? false;
     },
     refetchInterval: 5000, // Check every 5 seconds

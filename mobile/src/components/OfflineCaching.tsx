@@ -107,7 +107,7 @@ export const OfflineCaching: React.FC<OfflineCachingProps> = ({
       {/* Status Card */}
       <View
         style={[styles.statusCard, { backgroundColor: isOnline ? '#E8F5E9' : '#FFF3E0' }]}
-        accessibilityRole="status"
+        accessibilityLiveRegion="polite"
         accessibilityLabel={`${isOnline ? 'Online' : 'Offline'} status`}>
         <View style={styles.statusBadge}>
           <View style={[styles.statusDot, { backgroundColor: isOnline ? '#4CAF50' : '#FF9800' }]} />

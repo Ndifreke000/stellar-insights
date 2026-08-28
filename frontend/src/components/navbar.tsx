@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Info, Phone, BookOpen, X, Menu } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./notifications";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 
 const navLinkKeys = [
   { key: "aboutUs", href: "/about", icon: Info, descKey: "learnAbout" },
@@ -13,7 +14,7 @@ const navLinkKeys = [
   { key: "contactUs", href: "/contact", icon: Phone, descKey: "reachOut" },
 ];
 
-export function Navbar() {
+export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } = {}) {
   const pathname = usePathname();
   const t = useTranslations("navbar");
   const [scrolled, setScrolled] = useState(false);
@@ -111,11 +112,24 @@ export function Navbar() {
             })}
           </ul>
 
-          {/* Right side: Theme toggle + notifications + hamburger (mobile) + brand tag (desktop) */}
+          {/* Right side: network switcher + theme + notifications + hamburger (mobile) + brand tag (desktop) */}
           <div className="flex items-center gap-2">
+            <NetworkSwitcher className="hidden sm:block" />
             <ThemeToggle />
             <NotificationBell />
 
+            {/* Sidebar hamburger — mobile only, opens the sidebar drawer */}
+            {onMobileMenuOpen && (
+              <button
+                className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                onClick={onMobileMenuOpen}
+                aria-label="Open sidebar navigation"
+              >
+                <Menu className="w-5 h-5" aria-hidden="true" />
+              </button>
+            )}
+
+            {/* Nav-link hamburger — toggles inline nav panel on small screens */}
             <button
               className="md:hidden navbar-hamburger"
               onClick={() => setMobileOpen((v) => !v)}
@@ -144,6 +158,9 @@ export function Navbar() {
           role="menu"
           aria-hidden={!mobileOpen}
         >
+          <div className="px-4 pb-3 sm:hidden">
+            <NetworkSwitcher className="w-full" />
+          </div>
           {navLinkKeys.map((link) => {
             const isActive = pathname === link.href;
             const Icon = link.icon;

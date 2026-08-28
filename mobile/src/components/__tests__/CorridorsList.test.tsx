@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 import { CorridorsList } from '@components/CorridorsList';
-import type { CorridorMetrics } from '@types/corridor';
+import type { CorridorMetrics } from '@app-types/corridor';
 
 const mockRefetch = jest.fn();
 const mockUseCorridorsList = jest.fn();

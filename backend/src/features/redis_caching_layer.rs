@@ -61,7 +61,7 @@ impl RedisCachingLayer {
         })?;
 
         let connection = client
-            .get_multiplexed_tokio_connection()
+            .get_multiplexed_async_connection()
             .await
             .map_err(|e| {
                 error!("Failed to connect to Redis: {}", e);
@@ -101,7 +101,7 @@ impl RedisCachingLayer {
             .arg(&serialized)
             .arg("EX")
             .arg(ttl)
-            .query_async::<_, Option<String>>(&mut conn)
+            .query_async::<Option<String>>(&mut conn)
             .await
             .map_err(|e| {
                 error!("Failed to set cache key {}: {}", key, e);
@@ -123,7 +123,7 @@ impl RedisCachingLayer {
         let mut conn = conn.clone();
         let value: Option<String> = redis::cmd("GET")
             .arg(key)
-            .query_async::<_, Option<String>>(&mut conn)
+            .query_async::<Option<String>>(&mut conn)
             .await
             .map_err(|e| {
                 error!("Failed to get cache key {}: {}", key, e);
@@ -157,7 +157,7 @@ impl RedisCachingLayer {
         let mut conn = conn.clone();
         redis::cmd("DEL")
             .arg(key)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| {
                 error!("Failed to delete cache key {}: {}", key, e);
@@ -178,7 +178,7 @@ impl RedisCachingLayer {
 
         let mut conn = conn.clone();
         redis::cmd("FLUSHDB")
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| {
                 error!("Failed to clear cache: {}", e);

@@ -1,0 +1,48 @@
+name: Regenerate SDK Bindings
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**/*.rs"
+      - "contracts/**/Cargo.toml"
+  pull_request:
+    paths:
+      - "contracts/**/*.rs"
+      - "contracts/**/Cargo.toml"
+
+jobs:
+  generate-typescript-bindings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install stellar-cli --locked
+
+      - name: Build contracts
+        working-directory: contracts
+        run: stellar contract build
+
+      - name: Generate TypeScript bindings
+        working-directory: sdk/typescript
+        env:
+          CONTRACT_ID: ${{ vars.SOROBAN_CONTRACT_ID }}
+          NETWORK: ${{ vars.STELLAR_NETWORK }}
+          RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+        run: bash scripts/generate-bindings.sh
+
+      - name: Check for binding changes
+        id: diff
+        run: |
+          git diff --exit-code sdk/typescript/generated/ || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit updated bindings
+        if: steps.diff.outputs.changed == 'true' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add sdk/typescript/generated/
+          git commit -m "chore: regenerate TypeScript SDK bindings"
+          git push

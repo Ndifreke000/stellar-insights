@@ -21,10 +21,21 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("REQUEST_TIMEOUT_SECONDS", validate_request_timeout),
     ("SLOW_QUERY_THRESHOLD_MS", validate_slow_query_threshold),
     ("JWT_SECRET", validate_jwt_secret),
+    ("ENCRYPTION_KEY", validate_encryption_key),
 ];
 
 /// Validates all required environment variables are set
 pub fn validate_env() -> Result<()> {
+    // STELLAR_NETWORK is a fatal startup guard: a missing or unknown value would
+    // silently route a testnet deployment against mainnet data.
+    match env::var("STELLAR_NETWORK") {
+        Ok(ref n) if n == "mainnet" || n == "testnet" => {}
+        Ok(ref n) => panic!(
+            "STELLAR_NETWORK must be set to 'mainnet' or 'testnet', got '{n}'"
+        ),
+        Err(_) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet'"),
+    }
+
     let mut errors = Vec::new();
 
     // Check required variables
@@ -61,6 +72,39 @@ pub fn validate_env() -> Result<()> {
                 Generate a secure secret with: openssl rand -base64 48",
                 jwt_secret.len()
             ));
+        }
+    }
+
+    // Specific, actionable validation for ENCRYPTION_KEY
+    if let Ok(encryption_key) = env::var("ENCRYPTION_KEY") {
+        if encryption_key == "CHANGE_ME_generate_with_openssl_rand_hex_32" {
+            errors.push(
+                "ENCRYPTION_KEY is set to the placeholder value. \
+                This is a critical security risk. \
+                Generate a secure encryption key with: openssl rand -hex 32"
+                    .to_string(),
+            );
+        } else if encryption_key.len() < 64 {
+            errors.push(format!(
+                "ENCRYPTION_KEY is too short ({} characters). \
+                Must be 64 characters (32 bytes as hex). \
+                Generate a secure encryption key with: openssl rand -hex 32",
+                encryption_key.len()
+            ));
+        }
+    }
+
+    // SNAPSHOT_CONTRACT_ID must not be the placeholder value when set.
+    // This is the primary contract ID consumed by ContractService for
+    // snapshot submission; a placeholder silently disables on-chain anchoring.
+    if let Ok(contract_id) = env::var("SNAPSHOT_CONTRACT_ID") {
+        if contract_id == "CHANGE_ME_source_contracts_env_testnet" {
+            errors.push(
+                "SNAPSHOT_CONTRACT_ID is set to the placeholder value. \
+                Source contracts/.env.testnet to get the real deployed contract ID: \
+                source contracts/.env.testnet && export SNAPSHOT_CONTRACT_ID=$STELLAR_INSIGHTS_CONTRACT_ID"
+                    .to_string(),
+            );
         }
     }
 
@@ -111,6 +155,22 @@ pub fn log_env_config() {
     // Network
     log_var("STELLAR_NETWORK");
     log_var("RPC_MOCK_MODE");
+
+    // Soroban contract IDs
+    log_var("SOROBAN_RPC_URL");
+    log_var("SNAPSHOT_CONTRACT_ID");
+    // Remaining contract IDs (optional; used by future services)
+    log_var("ACCESS_CONTROL_CONTRACT_ID");
+    log_var("ANALYTICS_CONTRACT_ID");
+    log_var("GOVERNANCE_CONTRACT_ID");
+    log_var("ESCROW_CONTRACT_ID");
+    log_var("TOKEN_SWAP_CONTRACT_ID");
+    log_var("MULTI_SIG_WALLET_CONTRACT_ID");
+    log_var("TIME_LOCKED_TRANSACTIONS_CONTRACT_ID");
+    log_var("UPGRADE_CONTRACT_ID");
+    if env::var("STELLAR_SOURCE_SECRET_KEY").is_ok() {
+        tracing::info!("  STELLAR_SOURCE_SECRET_KEY: [REDACTED]");
+    }
 
     // Pool config
     log_var("DB_POOL_MAX_CONNECTIONS");
@@ -210,6 +270,18 @@ fn validate_jwt_secret(value: &str) -> bool {
     value.len() >= 32
 }
 
+/// Validate encryption key
+/// Must not be the placeholder value and should be 64 characters (32 bytes as hex)
+fn validate_encryption_key(value: &str) -> bool {
+    // Check if it's the placeholder value
+    if value == "CHANGE_ME_generate_with_openssl_rand_hex_32" {
+        return false;
+    }
+
+    // Ensure minimum length of 64 characters (32 bytes × 2 for hex encoding)
+    value.len() >= 64
+}
+
 /// Validate REQUEST_TIMEOUT_SECONDS: must be in range [1, 300]
 fn validate_request_timeout(value: &str) -> bool {
     value
@@ -300,6 +372,22 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_encryption_key() {
+        // Valid keys (64+ characters)
+        assert!(validate_encryption_key("a".repeat(64).as_str()));
+        assert!(validate_encryption_key("0123456789abcdef".repeat(4).as_str()));
+
+        // Invalid - placeholder
+        assert!(!validate_encryption_key(
+            "CHANGE_ME_generate_with_openssl_rand_hex_32"
+        ));
+
+        // Invalid - too short
+        assert!(!validate_encryption_key("short"));
+        assert!(!validate_encryption_key("a".repeat(63).as_str()));
+    }
+
+    #[test]
     fn test_validate_positive_number() {
         assert!(validate_positive_number("1"));
         assert!(validate_positive_number("100"));
@@ -310,6 +398,8 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_jwt_placeholder() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var(
@@ -329,6 +419,7 @@ mod tests {
             "Error should include generation command, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -336,6 +427,8 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_short_jwt_secret() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var("JWT_SECRET", "tooshort");
@@ -352,6 +445,7 @@ mod tests {
             "Error should mention minimum length, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -359,13 +453,110 @@ mod tests {
 
     #[test]
     fn test_validate_env_accepts_valid_jwt_secret() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
-        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(64));
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
         let result = validate_env();
         assert!(result.is_ok(), "Should accept a valid JWT secret");
 
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_when_stellar_network_missing() {
+        let _guard = crate::lock_env_test();
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_on_unknown_network() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "devnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
+    }
+
+    #[test]
+    fn test_validate_env_rejects_encryption_key_placeholder() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "CHANGE_ME_generate_with_openssl_rand_hex_32",
+        );
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("placeholder"),
+            "Error should mention 'placeholder', got: {msg}"
+        );
+        assert!(
+            msg.contains("openssl rand -hex 32"),
+            "Error should include generation command, got: {msg}"
+        );
+
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_validate_env_rejects_short_encryption_key() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "tooshort");
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("too short"),
+            "Error should mention 'too short', got: {msg}"
+        );
+        assert!(
+            msg.contains("64 characters"),
+            "Error should mention minimum length, got: {msg}"
+        );
+
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_validate_env_accepts_valid_encryption_key() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "mainnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(64));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_ok(), "Should accept a valid ENCRYPTION_KEY");
+
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");

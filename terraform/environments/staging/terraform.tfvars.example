@@ -1,0 +1,59 @@
+# Staging Environment Variables
+# Cost estimate: $150-200/month (Multi-AZ, production-like setup)
+#
+# Breakdown:
+#   - NAT Gateways: ~$30/month (single NAT, can upgrade to per-AZ for HA)
+#   - ALB: ~$20/month
+#   - ECS (t3.small, 2 instances): ~$30/month
+#   - RDS PostgreSQL (db.t3.small Multi-AZ, 100GB): ~$80-100/month
+#   - ElastiCache Redis (cache.t3.small, 2-node): ~$20/month
+#   - Data transfer out: ~$10-20/month
+#
+# ✓ Multi-AZ deployment for HA testing
+# ✓ RDS Multi-AZ with automatic failover
+# ✓ Redis Multi-AZ with automatic failover
+# ✓ 14-day backup retention for RDS
+# ✓ CloudWatch monitoring and alarms
+# ✓ VPC Flow Logs for security
+# ✓ Auto-scaling: 2-4 tasks
+#
+# PURPOSE: Mirror production environment for pre-deployment testing
+# - Test infrastructure changes before production
+# - Load test new features
+# - Validate disaster recovery procedures
+# - Train on-call team with realistic setup
+#
+# Setup instructions:
+# 1. Copy this file to terraform.tfvars (git will ignore it)
+# 2. Ensure global infrastructure is deployed: cd ../global && terraform apply
+# 3. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="key=staging/terraform.tfstate" \
+#      -backend-config="region=us-east-1" \
+#      -backend-config="dynamodb_table=terraform-locks"
+# 4. Review plan: terraform plan
+# 5. Apply: terraform apply
+#
+# Pre-deployment Checklist:
+# [ ] Vault secrets configured (same as production)
+# [ ] RDS backup and restore tested
+# [ ] CloudWatch alarms configured and tested
+# [ ] Load testing plan defined (min 50 req/sec target)
+#
+# Post-deployment Validation:
+# [ ] Health check: GET /health returning 200 OK
+# [ ] Database connectivity verified
+# [ ] Vault secrets accessible
+# [ ] CloudWatch logs flowing
+# [ ] Perform at least one test restore from backup
+
+aws_region  = "us-east-1"
+environment = "staging"
+vpc_cidr    = "10.1.0.0/16"
+
+# Vault configuration (same as production)
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Alarm notifications (send to ops team)
+alarm_email = "ops-team@stellar-insights.com"

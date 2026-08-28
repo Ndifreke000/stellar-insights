@@ -392,6 +392,16 @@ pub async fn list_corridors(
             // Calculate metrics for each corridor
             let mut corridor_responses = Vec::new();
 
+            // Batch-fetch prices for every distinct source asset up front instead of
+            // awaiting price_feed.get_price() once per corridor below — with a large
+            // number of distinct corridors that turned into N sequential round trips.
+            let source_assets: Vec<String> = corridor_map
+                .keys()
+                .filter_map(|k| k.split("->").next())
+                .map(String::from)
+                .collect();
+            let prices = price_feed.get_prices(&source_assets).await;
+
             for (corridor_key, corridor_payments) in &corridor_map {
                 let total_attempts = corridor_payments.len() as i64;
 
@@ -417,8 +427,8 @@ pub async fn list_corridors(
                 let mut volume_usd: f64 = 0.0;
                 let source_asset_key = parts[0];
 
-                // Get price for source asset
-                if let Ok(price) = price_feed.get_price(source_asset_key).await {
+                // Get price for source asset from the batch fetched above
+                if let Some(&price) = prices.get(source_asset_key) {
                     for payment in corridor_payments {
                         if let Ok(amount) = payment.get_amount().parse::<f64>() {
                             volume_usd += amount * price;
@@ -794,6 +804,15 @@ pub async fn get_corridor_detail(
             ));
         }
 
+        // Batch-fetch prices for every distinct source asset up front (see #1785 —
+        // this used to be one price_feed.get_price().await per corridor below).
+        let related_source_assets: Vec<String> = corridor_map
+            .keys()
+            .filter_map(|k| k.split("->").next())
+            .map(String::from)
+            .collect();
+        let related_prices = price_feed.get_prices(&related_source_assets).await;
+
         // Build all corridor responses for related corridors lookup
         for (key, corr_payments) in &corridor_map {
             let total_attempts = corr_payments.len() as i64;
@@ -813,9 +832,9 @@ pub async fn get_corridor_detail(
                 continue;
             }
 
-            // Calculate volume
+            // Calculate volume from the batch fetched above
             let mut volume_usd = 0.0;
-            if let Ok(price) = price_feed.get_price(parts[0]).await {
+            if let Some(&price) = related_prices.get(parts[0]) {
                 for payment in corr_payments {
                     if let Ok(amount) = payment.get_amount().parse::<f64>() {
                         volume_usd += amount * price;
@@ -1041,7 +1060,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "XLM:native->XLM:native");
@@ -1070,7 +1090,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USDC:GISSUER");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "USDC:GISSUER->USDC:GISSUER");
@@ -1099,7 +1120,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USD:GUSDISSUER");
         assert_eq!(pair.destination_asset, "EUR:GEURISSUER");
         assert_eq!(pair.to_corridor_key(), "USD:GUSDISSUER->EUR:GEURISSUER");
@@ -1128,7 +1150,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "XLM:native->USDC:GISSUER");
@@ -1157,7 +1180,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "BRL:GBRLISSUER");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "BRL:GBRLISSUER->XLM:native");
@@ -1187,7 +1211,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "NGNT:GNGNTISSUER");
         assert_eq!(pair.destination_asset, "NGNT:GNGNTISSUER");
     }
@@ -1316,7 +1341,7 @@ mod tests {
 
         let related = find_related_corridors(target, &corridors);
         assert!(related.is_some());
-        let related_corridors = related.unwrap();
+        let related_corridors = related.expect("related corridors should be Some after asserting is_some");
         assert!(related_corridors.len() >= 2); // At least target and one related
     }
 }

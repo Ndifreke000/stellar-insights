@@ -13,6 +13,17 @@ interface AssetDistributionChartProps {
   assets: IssuedAsset[];
 }
 
+interface AssetChartDatum extends IssuedAsset {
+  value: number;
+  percent: number;
+  fill: string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload: AssetChartDatum }>;
+}
+
 const COLORS = [
   "#6366f1", // Indigo 500
   "#ec4899", // Pink 500
@@ -24,8 +35,7 @@ const COLORS = [
   "#14b8a6", // Teal 500
 ];
 
-const CustomTooltip = (props: any) => {
-  const { active, payload } = props;
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -129,7 +139,7 @@ export function AssetDistributionChart({
 
       {/* Legend */}
       <div className="mt-6 flex flex-wrap gap-3 justify-center">
-        {data.map((entry, index) => (
+        {data.map((entry) => (
           <div
             key={entry.asset_code}
             className="flex items-center gap-1.5 text-xs"

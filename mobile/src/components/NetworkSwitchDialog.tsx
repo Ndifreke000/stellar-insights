@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useNetworkSwitchDialog, getDialogConfig } from '@hooks/useNetworkSwitchDialog';
-import { StellarNetwork } from '@types/index';
+import { StellarNetwork } from '@app-types/index';
 import { useAppStore } from '@store/appStore';
 
 export interface NetworkSwitchDialogProps {

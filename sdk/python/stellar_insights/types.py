@@ -48,21 +48,38 @@ class Corridor:
     avg_latency_ms: float
 
 
+# Mirrors the backend's actual PriceResponse/PricesResponse/ConvertResponse
+# (backend/src/api/price_feed.rs) - the previous shape (change_24h, rate,
+# from_asset/to_asset) never matched what the API returns.
 @dataclass
 class Price:
     asset: str
     price_usd: float
-    change_24h: float
-    updated_at: str
+    stale: bool
+    timestamp: str
+
+
+@dataclass
+class PricesBatchResult:
+    prices: dict[str, float]
+    stale: bool
+    timestamp: str
 
 
 @dataclass
 class ConvertResult:
-    from_asset: str
-    to_asset: str
+    asset: str
     amount: float
-    converted_amount: float
-    rate: float
+    amount_usd: float
+    price_usd: float
+    timestamp: str
+
+
+@dataclass
+class PriceCacheStats:
+    total_cached: int
+    fresh_cached: int
+    timestamp: str
 
 
 @dataclass

@@ -53,7 +53,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
       accessibilityLabel={testID || 'Pull to refresh container'}
       testID={testID}>
       {isRefreshing && showLoadingIndicator && (
-        <View style={styles.loadingOverlay} accessibilityRole="status">
+        <View style={styles.loadingOverlay} accessibilityLiveRegion="polite">
           <ActivityIndicator
             size={Platform.select({ ios: 'large', android: 'large', default: 'large' })}
             color="#0066CC"
