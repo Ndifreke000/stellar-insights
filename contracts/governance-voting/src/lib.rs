@@ -8,7 +8,7 @@ use events::{
     emit_admin_changed, emit_initialized, emit_proposal_created, emit_proposal_finalized,
     emit_vote_cast, emit_voter_registered,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Map, String, Vec};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -87,6 +87,8 @@ pub enum DataKey {
     VoteCast(u64, Address),
     /// Ordered list of all registered voter addresses (for snapshot enumeration)
     VoterList,
+    /// Governance token used to derive voter weight from on-chain balance
+    VotingToken,
     /// Snapshot of every voter's weight captured at proposal creation: Map<Address, u64>
     ProposalWeightSnapshot(u64),
 }
@@ -105,11 +107,13 @@ impl GovernanceVotingContract {
     /// * `admin` — address that can register voters and change parameters.
     /// * `quorum` — minimum total weight-adjusted votes needed for a proposal to pass.
     /// * `voting_period` — voting window in seconds.
+    /// * `voting_token` — token contract whose balance determines voter weight.
     pub fn initialize(
         env: Env,
         admin: Address,
         quorum: u64,
         voting_period: u64,
+        voting_token: Address,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
@@ -129,6 +133,9 @@ impl GovernanceVotingContract {
             .set(&DataKey::Paused, &false);
         env.storage()
             .instance()
+            .set(&DataKey::VotingToken, &voting_token);
+        env.storage()
+            .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         emit_initialized(&env, admin, quorum, voting_period);
@@ -146,16 +153,26 @@ impl GovernanceVotingContract {
     // Voter Management
     // ========================================================================
 
-    /// Register a voter with a given voting weight.
-    ///
-    /// Admin-only. `weight` represents how many votes this address carries
-    /// (e.g. token balance snapshot). Must be > 0.
-    pub fn register_voter(
-        env: Env,
-        caller: Address,
-        voter: Address,
-        weight: u64,
-    ) -> Result<(), Error> {
+    fn compute_voter_weight(env: &Env, voter: &Address) -> Result<u64, Error> {
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingToken)
+            .ok_or(Error::VotingTokenNotSet)?;
+
+        let balance = token::Client::new(env, &token).balance(voter);
+        let weight = balance.try_into().map_err(|_| Error::Overflow)?;
+
+        if weight == 0 {
+            return Err(Error::InvalidVotingWeight);
+        }
+
+        Ok(weight)
+    }
+
+    /// Register a voter. Admin-only. Weight is derived from the voter's
+    /// governance-token balance at registration time.
+    pub fn register_voter(env: Env, caller: Address, voter: Address) -> Result<(), Error> {
         caller.require_auth();
 
         let admin: Address = env
@@ -168,14 +185,7 @@ impl GovernanceVotingContract {
             return Err(Error::Unauthorized);
         }
 
-        if weight == 0 {
-            return Err(Error::InvalidVotingWeight);
-        }
-
-        // Prevent overflow when weight is computed as token_balance * multiplier
-        // in the off-chain or on-chain weight calculation.
-        // Use checked_mul to prevent silent overflow wrapping:
-        // token_balance.checked_mul(multiplier).ok_or(Error::Overflow)?;
+        let weight = Self::compute_voter_weight(&env, &voter)?;
 
         env.storage()
             .persistent()
