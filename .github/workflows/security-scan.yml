@@ -2,22 +2,58 @@ name: Dependency Vulnerability Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+    branches: [main, develop]
   schedule:
     - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
 
 jobs:
   cargo-audit:
+    name: Cargo Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: rustsec/audit-check@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit backend dependencies
+        working-directory: ./backend
+        run: cargo audit --deny warnings
+
+      - name: Audit contracts dependencies
+        working-directory: ./contracts
+        run: cargo audit --deny warnings
+
+  cargo-sbom:
+    name: Generate Rust SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx
+
+      - name: Generate SBOM for backend
+        working-directory: ./backend
+        run: cargo cyclonedx --format json > sbom.json
+
+      - name: Upload backend SBOM
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: backend-sbom
+          path: backend/sbom.json
+          retention-days: 90
 
   npm-audit:
+    name: NPM Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +67,7 @@ jobs:
         working-directory: ./
 
       - name: Frontend npm audit
-        run: npm audit --audit-level=high || true
+        run: npm ci && npm audit --audit-level=high || true
         working-directory: ./frontend
 
       - name: Mobile npm audit
@@ -41,6 +77,33 @@ jobs:
       - name: SDK TypeScript npm audit
         run: npm audit --audit-level=high || true
         working-directory: ./sdk/typescript
+
+  npm-sbom:
+    name: Generate Frontend SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Generate frontend SBOM
+        working-directory: ./frontend
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.json
+
+      - name: Upload frontend SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-sbom
+          path: frontend/sbom.json
+          retention-days: 90
 
   pip-audit:
     runs-on: ubuntu-latest
@@ -54,3 +117,15 @@ jobs:
       - name: Install and run pip-audit
         run: pip install pip-audit && pip-audit
         working-directory: ./sdk/python
+
+  dependency-review:
+    name: Dependency Review (PRs only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0

@@ -57,13 +57,6 @@ jobs:
           terraform validate
           echo "✓ Production Terraform configuration is valid"
 
-      - name: Validate mainnet environment
-        working-directory: terraform/environments/mainnet
-        run: |
-          terraform init -backend=false
-          terraform validate
-          echo "✓ Mainnet Terraform configuration is valid"
-
   terraform-format:
     name: Check Terraform Format
     runs-on: ubuntu-latest
@@ -151,7 +144,7 @@ jobs:
       - name: Check tfvars.example files exist
         run: |
           missing=0
-          for env in dev staging production mainnet; do
+          for env in dev staging production; do
             if [ ! -f "terraform/environments/$env/terraform.tfvars.example" ]; then
               echo "❌ terraform/environments/$env/terraform.tfvars.example not found!"
               missing=$((missing + 1))
@@ -187,7 +180,7 @@ jobs:
           | dev | ~$50-70 | Single AZ, minimal resources |
           | staging | ~$150-200 | Multi-AZ, RDS + Redis |
           | production | ~$400-600 | Full HA, 3 AZs, enhanced monitoring |
-          | mainnet | ~$400-500 | Production-grade, mainnet workloads |
+          | production | ~$400-500 | Production-grade workloads |
 
           **Notes:**
           - Costs are estimates based on on-demand pricing (us-east-1)
