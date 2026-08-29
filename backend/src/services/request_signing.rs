@@ -77,7 +77,8 @@ impl RequestSigningService {
 
         if let Some(mut conn) = redis_conn.clone() {
             let key = format!("request_signing:nonce:{}", nonce);
-            conn.set_ex(&key, client_id, ttl_secs)
+            let ttl = u64::try_from(ttl_secs).unwrap_or(60);
+            conn.set_ex::<_, _, ()>(&key, client_id, ttl)
                 .await
                 .map_err(|e| anyhow!("Failed to record nonce: {}", e))?;
             Ok(())

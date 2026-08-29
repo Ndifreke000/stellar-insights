@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 // ── Entity Types ──────────────────────────────────────────────────────────────
 
 /// Anchor entity with metrics — payment service providers on the Stellar network.
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Anchor")]
 pub struct AnchorType {
     /// Unique identifier
@@ -37,7 +37,7 @@ pub struct AnchorType {
 }
 
 /// Asset entity issued by an anchor
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Asset")]
 pub struct AssetType {
     /// Unique identifier
@@ -59,7 +59,7 @@ pub struct AssetType {
 }
 
 /// Corridor entity representing a payment path
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Corridor")]
 pub struct CorridorType {
     /// Unique identifier
@@ -83,7 +83,7 @@ pub struct CorridorType {
 }
 
 /// Metric data point
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Metric")]
 pub struct MetricType {
     /// Unique identifier
@@ -103,7 +103,7 @@ pub struct MetricType {
 }
 
 /// Snapshot of entity state (on-chain verification)
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Snapshot")]
 pub struct SnapshotType {
     /// Unique identifier
@@ -125,7 +125,7 @@ pub struct SnapshotType {
 }
 
 /// Payment record
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "Payment")]
 pub struct PaymentType {
     /// Unique identifier
@@ -161,7 +161,7 @@ pub struct PaymentType {
 }
 
 /// Liquidity pool information
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "LiquidityPool")]
 pub struct LiquidityPoolType {
     /// Pool ID
@@ -207,7 +207,7 @@ pub struct LiquidityPoolType {
 }
 
 /// Liquidity pool snapshot
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "LiquidityPoolSnapshot")]
 pub struct LiquidityPoolSnapshotType {
     /// Snapshot ID
@@ -235,7 +235,7 @@ pub struct LiquidityPoolSnapshotType {
 }
 
 /// Liquidity pool aggregated statistics
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "LiquidityPoolStats")]
 pub struct LiquidityPoolStatsType {
     /// Total number of pools
@@ -257,7 +257,7 @@ pub struct LiquidityPoolStatsType {
 }
 
 /// Trustline statistics
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "TrustlineStat")]
 pub struct TrustlineStatType {
     /// Asset code
@@ -279,7 +279,7 @@ pub struct TrustlineStatType {
 }
 
 /// Trustline snapshot
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "TrustlineSnapshot")]
 pub struct TrustlineSnapshotType {
     /// Snapshot ID
@@ -301,7 +301,7 @@ pub struct TrustlineSnapshotType {
 }
 
 /// Trustline aggregate metrics
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "TrustlineMetrics")]
 pub struct TrustlineMetricsType {
     /// Total assets tracked
@@ -313,7 +313,7 @@ pub struct TrustlineMetricsType {
 }
 
 /// Anchor metrics history entry
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject, sqlx::FromRow)]
 #[graphql(name = "AnchorMetricsHistory")]
 pub struct AnchorMetricsHistoryType {
     /// Unique identifier

@@ -2,6 +2,7 @@ use async_graphql::http::GraphiQLSource;
 use async_graphql::Schema;
 use axum::{
     extract::{State, WebSocketUpgrade},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
     Json,
 };
@@ -38,21 +39,14 @@ pub async fn graphql_playground() -> impl IntoResponse {
 ///
 /// Upgrades HTTP connections to WebSocket for real-time subscription streams.
 pub async fn graphql_ws_handler(
-    ws: WebSocketUpgrade,
+    req: axum::http::Request<axum::body::Body>,
     State(schema): State<AppSchema>,
 ) -> Response {
-    ws.on_upgrade(move |socket| {
-        async_graphql_axum::GraphQLWebSocket::new(
-            socket,
-            schema,
-            async_graphql::Data::default(),
-        )
-        .on_operation(|_schema, _operation| async {
-            // Allow all operations
-            true
-        })
-        .serve()
-    })
+    let mut service = async_graphql_axum::GraphQLSubscription::new(schema);
+    match tower::ServiceExt::oneshot(&mut service, req).await {
+        Ok(response) => response,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 /// Health check endpoint for the GraphQL API.

@@ -69,7 +69,7 @@ pub async fn request_signing_middleware(
 
     // Extract and sort query parameters
     let mut query_params = BTreeMap::new();
-    if let Some(query) = req.uri.query() {
+    if let Some(query) = req.uri().query() {
         for param in query.split('&') {
             if let Some((key, value)) = param.split_once('=') {
                 query_params.insert(key.to_string(), value.to_string());

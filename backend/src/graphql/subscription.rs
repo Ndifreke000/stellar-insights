@@ -1,5 +1,5 @@
 use async_graphql::*;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -91,7 +92,7 @@ impl TwoFAService {
         for _ in 0..BACKUP_CODES_COUNT {
             let code = format!("{:06}", uuid::Uuid::new_v4().as_u64_pair().0 % 1000000);
             let code_id = Uuid::new_v4().to_string();
-            let hashed_code = format!("{:x}", sha2::Sha256::digest(code.as_bytes()));
+            let hashed_code = hex::encode(sha2::Sha256::digest(code.as_bytes()));
 
             sqlx::query(
                 r"
@@ -163,7 +164,7 @@ impl TwoFAService {
 
     /// Verify and consume a backup code
     pub async fn verify_backup_code(&self, user_id: &str, code: &str) -> Result<bool> {
-        let hashed_code = format!("{:x}", sha2::Sha256::digest(code.as_bytes()));
+        let hashed_code = hex::encode(sha2::Sha256::digest(code.as_bytes()));
 
         let result = sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
             "SELECT used_at FROM user_2fa_backup_codes WHERE user_id = ? AND hashed_code = ?",
@@ -174,11 +175,11 @@ impl TwoFAService {
         .await?;
 
         match result {
-            Some(Some(Some(_))) => {
+            Some(Some(_)) => {
                 // Code already used
                 Ok(false)
             }
-            Some(Some(None)) => {
+            Some(None) => {
                 // Valid unused code - mark as used
                 let now = Utc::now();
                 sqlx::query(

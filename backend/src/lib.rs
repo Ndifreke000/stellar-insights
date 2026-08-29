@@ -53,6 +53,7 @@ pub mod shutdown;
 pub mod snapshot;
 pub mod state;
 pub mod telegram;
+pub mod twofa;
 pub mod validation;
 pub mod vault;
 pub mod webhooks;

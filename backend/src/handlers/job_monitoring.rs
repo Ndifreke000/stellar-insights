@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::database::Database;
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::observability::job_metrics::get_job_status_summary;
 
 /// Query parameters for job monitoring endpoints

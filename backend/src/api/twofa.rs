@@ -11,18 +11,18 @@ use std::sync::Arc;
 
 use crate::twofa::TwoFAService;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct EnrollRequest {
     pub totp_secret: String,
     pub verification_code: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct VerifyCodeRequest {
     pub code: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct BackupCodeRequest {
     pub code: String,
 }
