@@ -1,5 +1,5 @@
 use async_graphql::*;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 use std::sync::Arc;
 
 use super::types::*;

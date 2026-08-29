@@ -74,6 +74,11 @@ pub enum ApiError {
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
+    Forbidden {
+        code: String,
+        message: String,
+        details: Option<HashMap<String, serde_json::Value>>,
+    },
     ServiceUnavailable {
         code: String,
         message: String,
@@ -147,6 +152,15 @@ impl ApiError {
         }
     }
 
+    /// Create a forbidden error.
+    pub fn forbidden(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Forbidden {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
     /// Create a ServiceUnavailable error
     pub fn service_unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::ServiceUnavailable {
@@ -164,6 +178,7 @@ impl ApiError {
             | Self::BadRequest { details: d, .. }
             | Self::InternalError { details: d, .. }
             | Self::Unauthorized { details: d, .. }
+            | Self::Forbidden { details: d, .. }
             | Self::ServiceUnavailable { details: d, .. } => {
                 *d = Some(details);
             }
@@ -178,6 +193,7 @@ impl ApiError {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
             Self::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::Forbidden { .. } => StatusCode::FORBIDDEN,
             Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
@@ -210,6 +226,11 @@ impl ApiError {
                 source.clone(),
             ),
             Self::Unauthorized {
+                code,
+                message,
+                details,
+            } => (code.clone(), message.clone(), details.clone(), None),
+            Self::Forbidden {
                 code,
                 message,
                 details,

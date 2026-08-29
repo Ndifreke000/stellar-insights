@@ -61,6 +61,7 @@ pub async fn query_audit_log(
         )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let count = entries.len();
 
     let response = json!({
         "entries": entries
@@ -77,7 +78,7 @@ pub async fn query_audit_log(
                 "event_type": e.event_type,
             }))
             .collect::<Vec<_>>(),
-        "count": entries.len(),
+        "count": count,
         "limit": limit,
         "offset": offset,
     });

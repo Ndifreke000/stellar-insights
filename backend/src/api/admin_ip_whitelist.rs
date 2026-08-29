@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::admin_ip_whitelist::IpWhitelistService;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct AddWhitelistRequest {
     pub ip_or_cidr: String,
     pub description: Option<String>,

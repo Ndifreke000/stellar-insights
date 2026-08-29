@@ -16,6 +16,67 @@ use crate::models::{
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseBackend {
+    Sqlite,
+    Postgres,
+}
+
+impl DatabaseBackend {
+    #[must_use]
+    pub fn default() -> Self {
+        Self::Sqlite
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let explicit = std::env::var("DB_BACKEND")
+            .or_else(|_| std::env::var("DATABASE_BACKEND"))
+            .unwrap_or_default();
+
+        if !explicit.trim().is_empty() {
+            return Self::parse(explicit.trim());
+        }
+
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
+        Self::from_database_url(&database_url)
+    }
+
+    pub fn from_database_url(database_url: &str) -> Result<Self> {
+        let trimmed = database_url.trim();
+        if trimmed.is_empty() {
+            return Ok(Self::default());
+        }
+
+        let scheme = trimmed
+            .split("://")
+            .next()
+            .unwrap_or(trimmed)
+            .trim()
+            .to_ascii_lowercase();
+
+        match scheme.as_str() {
+            "sqlite" | "sqlite3" => Ok(Self::Sqlite),
+            "postgres" | "postgresql" | "postgresql+psycopg" => Ok(Self::Postgres),
+            "" => Ok(Self::default()),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported database backend for DATABASE_URL '{database_url}'. Supported values: sqlite://... or postgresql://.... Set DB_BACKEND=sqlite|postgres to choose explicitly."
+            )),
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "sqlite" | "sqlite3" => Ok(Self::Sqlite),
+            "postgres" | "postgresql" | "pg" => Ok(Self::Postgres),
+            "" => Ok(Self::default()),
+            other => Err(anyhow::anyhow!(
+                "Unsupported database backend '{other}'. Supported values are 'sqlite' or 'postgres'."
+            )),
+        }
+    }
+}
+
 /// Configuration for database connection pool
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -152,6 +213,15 @@ impl PoolConfig {
     }
 
     pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        match DatabaseBackend::from_database_url(database_url)? {
+            DatabaseBackend::Sqlite => {}
+            DatabaseBackend::Postgres => {
+                return Err(anyhow::anyhow!(
+                    "Postgres support is configured but this build is SQLite-only. Keep DATABASE_URL as sqlite://... or set DB_BACKEND=sqlite. Postgres support requires additional migration and app-wide SQL compatibility work."
+                ));
+            }
+        }
+
         let sql_log = SqlLogConfig::from_env();
 
         let mut opts: SqliteConnectOptions = database_url

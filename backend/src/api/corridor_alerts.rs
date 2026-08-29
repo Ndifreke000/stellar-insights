@@ -128,7 +128,7 @@ async fn get_config(
         .ok_or_else(|| ApiError::not_found("CONFIG_NOT_FOUND", "Corridor alert config not found"))?;
 
     if config.user_id != auth_user.user_id {
-        return Err(ApiError::forbidden("Access denied"));
+        return Err(ApiError::forbidden("ACCESS_DENIED", "Access denied"));
     }
 
     Ok(Json(config))
