@@ -88,6 +88,14 @@ async fn main() -> anyhow::Result<()> {
     stellar_insights_backend::observability::metrics::init_metrics();
     tracing::info!("Stellar Insights Backend - Initializing Server");
 
+    // Initialize SecretsService (Vault with fallback to environment)
+    if let Ok(secrets_service) = stellar_insights_backend::vault::SecretsService::new().await {
+        if let Ok(secrets) = secrets_service.get_secrets().await {
+            tracing::info!("SecretsService initialized successfully (Vault/env)");
+            let _ = secrets;
+        }
+    }
+
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
     let pool = PoolConfig::from_env()

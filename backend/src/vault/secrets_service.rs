@@ -45,6 +45,29 @@ impl SecretsService {
         }
     }
 
+    /// Fetch JWT secret directly from Vault or environment
+    pub async fn get_jwt_secret(&self) -> Result<String, VaultError> {
+        let secrets = self.get_secrets().await?;
+        Ok(secrets.jwt_secret)
+    }
+
+    /// Synchronous helper to fetch secrets directly from environment
+    pub fn from_env() -> Result<ApplicationSecrets, VaultError> {
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .map_err(|_| VaultError::ConfigError("JWT_SECRET not set".to_string()))?;
+
+        let encryption_key = std::env::var("ENCRYPTION_KEY")
+            .unwrap_or_else(|_| "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string());
+
+        let database_password = std::env::var("DATABASE_PASSWORD").ok();
+
+        Ok(ApplicationSecrets {
+            jwt_secret,
+            encryption_key,
+            database_password,
+        })
+    }
+
     /// Fetch secrets from Vault
     async fn fetch_from_vault(
         &self,

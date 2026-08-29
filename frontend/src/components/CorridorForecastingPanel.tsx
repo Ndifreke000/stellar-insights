@@ -70,10 +70,15 @@ export function CorridorForecastingPanel({
           <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
             Corridor Intelligence // ML Forecasting
           </div>
-          <h2 className="text-3xl font-black tracking-tighter uppercase italic flex items-center gap-3">
-            <Activity className="w-7 h-7 text-accent" aria-hidden="true" />
-            Health Forecasting
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-black tracking-tighter uppercase italic flex items-center gap-3">
+              <Activity className="w-7 h-7 text-accent" aria-hidden="true" />
+              Health Forecasting
+            </h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              Preview / Demo Data
+            </span>
+          </div>
           <p className="text-sm text-muted-foreground mt-1 max-w-lg">
             Time-series forecasting predicts corridor health trends over the
             next 7 days. Alerts fire when predicted health drops below 70.
@@ -83,9 +88,22 @@ export function CorridorForecastingPanel({
         {alertCount > 0 && (
           <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm font-mono text-red-400">
             <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            {alertCount} corridor{alertCount !== 1 ? "s" : ""} at risk
+            {alertCount} corridor{alertCount !== 1 ? "s" : ""} at risk (preview)
           </div>
         )}
+      </div>
+
+      {/* Preview Data Notice */}
+      <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm">
+        <AlertTriangle className="w-5 h-5 shrink-0" aria-hidden="true" />
+        <div>
+          <span className="font-semibold uppercase tracking-wider text-xs block mb-0.5">
+            Preview / Simulated Data Notice
+          </span>
+          <span>
+            Corridor time-series forecasting and degradation alerts are generated using client-side preview models until the backend ML forecasting endpoint is deployed.
+          </span>
+        </div>
       </div>
 
       {/* Forecast cards */}

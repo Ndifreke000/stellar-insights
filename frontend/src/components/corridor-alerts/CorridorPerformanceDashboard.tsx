@@ -24,6 +24,7 @@ import {
   corridorAlertsApi,
   type CorridorPerformanceSummary,
   type CorridorAlertConfig,
+  type CorridorPerformanceSnapshot,
 } from "@/lib/alerts-api";
 import { useCorridorPerformanceAlerts } from "@/hooks/useCorridorPerformanceAlerts";
 import { CorridorPerformanceChart } from "./CorridorPerformanceChart";
@@ -56,6 +57,8 @@ export function CorridorPerformanceDashboard() {
   const [summaries, setSummaries] = useState<CorridorPerformanceSummary[]>([]);
   const [configs, setConfigs] = useState<CorridorAlertConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [editingConfig, setEditingConfig] = useState<CorridorAlertConfig | undefined>();
   const [showNewConfig, setShowNewConfig] = useState(false);
@@ -69,6 +72,7 @@ export function CorridorPerformanceDashboard() {
   });
 
   const fetchSummaries = useCallback(async () => {
+    setError(null);
     try {
       const [summaryData, configData] = await Promise.all([
         corridorAlertsApi.getPerformanceSummary(),
@@ -78,6 +82,7 @@ export function CorridorPerformanceDashboard() {
       setConfigs(configData);
     } catch (err) {
       logger.error("Failed to fetch corridor data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load corridor performance data");
     } finally {
       setLoading(false);
     }
@@ -94,11 +99,13 @@ export function CorridorPerformanceDashboard() {
   };
 
   const handleDeleteConfig = async (id: string) => {
+    setActionError(null);
     try {
       await corridorAlertsApi.deleteConfig(id);
       fetchSummaries();
     } catch (err) {
       logger.error("Failed to delete config:", err);
+      setActionError(err instanceof Error ? err.message : "Failed to delete alert configuration");
     }
   };
 
@@ -111,6 +118,33 @@ export function CorridorPerformanceDashboard() {
             <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (error && summaries.length === 0 && configs.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Corridor Performance Alerts</h1>
+            <p className="text-muted-foreground">
+              Monitor corridor metrics and manage alert thresholds
+            </p>
+          </div>
+        </div>
+        <Card className="border-red-500/30 bg-red-500/5">
+          <CardContent className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+            <AlertTriangle className="h-10 w-10 text-red-500" />
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Error Loading Corridor Data</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">{error}</p>
+            </div>
+            <Button onClick={fetchSummaries} variant="outline">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -129,6 +163,30 @@ export function CorridorPerformanceDashboard() {
           New Alert Config
         </Button>
       </div>
+
+      {error && (
+        <div className="flex items-center justify-between p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-500">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchSummaries}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="flex items-center justify-between p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-500">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setActionError(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {(showNewConfig || editingConfig) && (
         <CorridorAlertConfigForm
@@ -353,19 +411,43 @@ export function CorridorPerformanceDashboard() {
 }
 
 function CorridorDetail({ corridorKey }: { corridorKey: string }) {
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<CorridorPerformanceSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchSnapshots = useCallback(() => {
+    setLoading(true);
+    setError(null);
     corridorAlertsApi
       .getCorridorSnapshots(corridorKey)
-      .then(setSnapshots)
-      .catch((err) => logger.error("Failed to fetch snapshots:", err))
+      .then((data) => setSnapshots(data))
+      .catch((err) => {
+        logger.error("Failed to fetch snapshots:", err);
+        setError(err instanceof Error ? err.message : "Failed to load corridor snapshots");
+      })
       .finally(() => setLoading(false));
   }, [corridorKey]);
 
+  useEffect(() => {
+    fetchSnapshots();
+  }, [fetchSnapshots]);
+
   if (loading) {
     return <div className="text-muted-foreground py-4">Loading corridor data...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-500 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={fetchSnapshots}>
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   return (

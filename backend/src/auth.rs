@@ -98,9 +98,37 @@ impl AuthService {
         redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
         db_pool: SqlitePool,
     ) -> Self {
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.");
+        let jwt_secret = crate::vault::SecretsService::from_env()
+            .map(|s| s.jwt_secret)
+            .unwrap_or_else(|_| {
+                std::env::var("JWT_SECRET")
+                    .expect("JWT_SECRET environment variable is required. Generate a cryptographically secure random key of at least 32 bytes.")
+            });
 
+        assert!(
+            jwt_secret.len() >= 32,
+            "JWT_SECRET must be at least 32 characters for adequate security"
+        );
+        assert!(
+            !jwt_secret.starts_with("CHANGE_ME"),
+            "JWT_SECRET must not use a placeholder value — generate a cryptographically secure random key"
+        );
+
+        let session_service = crate::session::SessionService::new(db_pool.clone());
+
+        Self {
+            jwt_secret,
+            redis_connection,
+            db_pool,
+            session_service,
+        }
+    }
+
+    pub fn new_with_secret(
+        redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
+        db_pool: SqlitePool,
+        jwt_secret: String,
+    ) -> Self {
         assert!(
             jwt_secret.len() >= 32,
             "JWT_SECRET must be at least 32 characters for adequate security"

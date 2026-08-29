@@ -12,6 +12,7 @@ use aes_gcm::{
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 
 /// Encrypted data with metadata for storage and decryption
@@ -83,11 +84,11 @@ impl std::str::FromStr for EncryptedData {
 pub struct EncryptionService {
     primary_key: [u8; 32],
     key_version: u32,
-    // For future key rotation: previous_keys: HashMap<u32, [u8; 32]>
+    previous_keys: HashMap<u32, [u8; 32]>,
 }
 
 impl EncryptionService {
-    /// Create a new encryption service with a 256-bit key
+    /// Create a new encryption service with a 256-bit key (default version 1)
     ///
     /// # Arguments
     ///
@@ -97,6 +98,11 @@ impl EncryptionService {
     ///
     /// Result<Self, String> - Service instance or error if key format is invalid
     pub fn new(key_hex: &str) -> Result<Self, String> {
+        Self::new_with_version(key_hex, 1)
+    }
+
+    /// Create a new encryption service with an explicit key version
+    pub fn new_with_version(key_hex: &str, version: u32) -> Result<Self, String> {
         if key_hex.len() != 64 {
             return Err(format!(
                 "Encryption key must be 64 hex characters (32 bytes), got {}",
@@ -110,8 +116,37 @@ impl EncryptionService {
 
         Ok(Self {
             primary_key: key,
-            key_version: 1,
+            key_version: version,
+            previous_keys: HashMap::new(),
         })
+    }
+
+    /// Add a historical key version to support decrypting data encrypted prior to key rotation.
+    pub fn add_previous_key(&mut self, version: u32, key_hex: &str) -> Result<(), String> {
+        if key_hex.len() != 64 {
+            return Err(format!(
+                "Encryption key must be 64 hex characters (32 bytes), got {}",
+                key_hex.len()
+            ));
+        }
+
+        let mut key = [0u8; 32];
+        hex::decode_to_slice(key_hex, &mut key)
+            .map_err(|e| format!("Invalid hex key: {}", e))?;
+
+        self.previous_keys.insert(version, key);
+        Ok(())
+    }
+
+    /// Builder method to register a historical key version for key rotation.
+    pub fn with_previous_key(mut self, version: u32, key_hex: &str) -> Result<Self, String> {
+        self.add_previous_key(version, key_hex)?;
+        Ok(self)
+    }
+
+    /// Get current primary key version
+    pub fn key_version(&self) -> u32 {
+        self.key_version
     }
 
     /// Encrypt plaintext using AES-256-GCM with random nonce
@@ -139,16 +174,23 @@ impl EncryptionService {
 
     /// Decrypt ciphertext using AES-256-GCM
     ///
+    /// Supports the primary key version as well as previous key versions registered for rotation.
     /// Verifies the authentication tag as part of GCM decryption.
     pub fn decrypt(&self, encrypted: &EncryptedData) -> Result<String, String> {
-        if encrypted.key_version != self.key_version {
+        let key_bytes: &[u8; 32] = if encrypted.key_version == self.key_version {
+            &self.primary_key
+        } else if let Some(old_key) = self.previous_keys.get(&encrypted.key_version) {
+            old_key
+        } else {
             return Err(format!(
-                "Key version mismatch: data requires v{}, service has v{}",
-                encrypted.key_version, self.key_version
+                "Key version mismatch: data requires v{}, service has v{} and registered previous keys {:?}",
+                encrypted.key_version,
+                self.key_version,
+                self.previous_keys.keys().copied().collect::<Vec<_>>()
             ));
-        }
+        };
 
-        let cipher = Aes256Gcm::new((&self.primary_key).into());
+        let cipher = Aes256Gcm::new(key_bytes.into());
 
         let nonce_bytes = hex::decode(&encrypted.nonce)
             .map_err(|e| format!("Invalid nonce hex: {}", e))?;
@@ -271,5 +313,33 @@ mod tests {
         assert_eq!(deserialized.key_version, 1);
         assert_eq!(deserialized.nonce, "def456");
         assert_eq!(deserialized.ciphertext, "abc123");
+    }
+
+    #[test]
+    fn multi_key_version_decrypt_after_rotation() {
+        let old_key = test_key();
+        let service_v1 = EncryptionService::new_with_version(&old_key, 1).unwrap();
+        let plaintext = "secret-across-rotations";
+
+        // Encrypt with v1
+        let encrypted_v1 = service_v1.encrypt(plaintext).unwrap();
+        assert_eq!(encrypted_v1.key_version, 1);
+
+        // Rotate to v2 key and register old v1 key
+        let new_key = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let service_v2 = EncryptionService::new_with_version(new_key, 2)
+            .unwrap()
+            .with_previous_key(1, &old_key)
+            .unwrap();
+
+        // Encrypt new data with v2
+        let encrypted_v2 = service_v2.encrypt("new-secret").unwrap();
+        assert_eq!(encrypted_v2.key_version, 2);
+
+        // Decrypt v2 data with service_v2
+        assert_eq!(service_v2.decrypt(&encrypted_v2).unwrap(), "new-secret");
+
+        // Decrypt old v1 data with service_v2 using registered previous key
+        assert_eq!(service_v2.decrypt(&encrypted_v1).unwrap(), plaintext);
     }
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity, AlertTriangle, RefreshCw } from "lucide-react";
 import { getCorridors, CorridorMetrics } from "@/lib/api/corridors";
 import { mockCorridors } from "@/components/lib/mockCorridorData";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -21,14 +21,20 @@ export default function CorridorForecastingPage() {
   const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
 
   const loadCorridors = async () => {
     setLoading(true);
+    setError(null);
+    setIsUsingFallback(false);
     try {
       const data = await getCorridors({ limit: 6, sort_by: "health_score" });
       setCorridors(data);
     } catch (err) {
       logger.warn("Using mock corridor data for forecasting", err);
+      setError(err instanceof Error ? err.message : "Failed to load live corridor metrics from backend.");
+      setIsUsingFallback(true);
       setCorridors(mockCorridors as unknown as CorridorMetrics[]);
     } finally {
       setLoading(false);
@@ -74,6 +80,24 @@ export default function CorridorForecastingPage() {
             </button>
           </div>
         </div>
+
+        {isUsingFallback && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-sm text-amber-400">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0" aria-hidden="true" />
+              <span>
+                <strong>Live Data Unavailable:</strong> {error || "Could not retrieve live corridor metrics."} Showing offline preview data.
+              </span>
+            </div>
+            <button
+              onClick={loadCorridors}
+              disabled={loading}
+              className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors shrink-0"
+            >
+              Retry Live Sync
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
