@@ -10,7 +10,7 @@ import type { RootStackParamList } from './navigation/RootNavigator';
 import { useAppStore } from './store/appStore';
 import { useAuthStore } from './store/authStore';
 import { initializeApp } from './services/initialization';
-import { hasValidToken } from './services/tokenStorage';
+import { hasValidToken } from './services/auth';
 import { processOfflineQueue } from './hooks/useOfflineQueue';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
 import { OfflineCachingIndicator } from './components/OfflineCaching';

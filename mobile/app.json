@@ -1,8 +1,8 @@
 {
-  "name": "PayRaider",
-  "displayName": "PayRaider",
+  "name": "Stellar Insights",
+  "displayName": "Stellar Insights",
   "expo": {
-    "name": "PayRaider",
+    "name": "Stellar Insights",
     "slug": "stellar-insights",
     "version": "1.0.0",
     "orientation": "portrait",
