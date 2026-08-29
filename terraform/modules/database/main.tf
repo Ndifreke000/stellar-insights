@@ -173,8 +173,7 @@ resource "aws_db_instance" "postgresql" {
   iops              = var.storage_type == "gp3" ? var.iops : null
   storage_throughput = var.storage_type == "gp3" ? var.storage_throughput : null
 
-  # Deletion protection for production and mainnet
-  deletion_protection = contains(["production", "mainnet"], var.environment) ? true : false
+  deletion_protection = var.environment == "production" ? true : false
 
   tags = {
     Name = "stellar-insights-${var.environment}"

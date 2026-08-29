@@ -6,7 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { useBookmarks } from "@/hooks/useBookmarks";
 
 /**
- * Dashboard widget showing the user's bookmarked corridors and anchors.
+ * Dashboard widget showing bookmarked corridors and anchors on this device.
  * Renders nothing if there are no bookmarks.
  */
 export function BookmarksDashboardWidget() {
@@ -24,7 +24,7 @@ export function BookmarksDashboardWidget() {
           </h3>
         </div>
         <span className="text-[10px] font-mono text-muted-foreground">
-          {bookmarks.length} saved
+          {bookmarks.length} saved · this device
         </span>
       </div>
 

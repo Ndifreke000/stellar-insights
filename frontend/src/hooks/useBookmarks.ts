@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Bookmarks for corridors and anchors.
+ *
+ * Stored in localStorage on this device/browser only — not synced to the
+ * authenticated user account or other devices.
+ */
 import { useCallback, useMemo } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 

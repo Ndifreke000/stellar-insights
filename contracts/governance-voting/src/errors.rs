@@ -36,4 +36,6 @@ pub enum Error {
     Overflow = 15,
     /// Contract is paused (emergency stop) - integrates with #2141
     ContractPaused = 16,
+    /// Governance token not configured
+    VotingTokenNotSet = 17,
 }

@@ -37,7 +37,7 @@ export function BookmarkButton({
       onClick={handleClick}
       aria-pressed={active}
       aria-label={active ? `Remove ${label} from bookmarks` : `Bookmark ${label}`}
-      title={active ? "Remove bookmark" : "Add bookmark"}
+      title={active ? "Remove bookmark (this device only)" : "Add bookmark (this device only)"}
       className={`
         inline-flex items-center gap-1.5 px-2 py-1 rounded-lg
         text-[10px] font-mono uppercase tracking-wider

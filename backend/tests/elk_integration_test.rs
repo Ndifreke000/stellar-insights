@@ -48,7 +48,7 @@ async fn test_logstash_config_exists() {
 #[tokio::test]
 async fn test_elk_docker_compose_valid() {
     // Verify Docker Compose configuration is present
-    let compose_path = "elk/docker-compose.yml";
+    let compose_path = "docker-compose.elk.yml";
     assert!(
         std::path::Path::new(compose_path).exists(),
         "Docker Compose file must exist at {}",
