@@ -25,6 +25,10 @@ use crate::{
     validation::ValidatedJson,
 };
 
+pub fn routes(app_state: AppState) -> Router {
+    router().with_state(app_state)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         // Corridor alert config management
@@ -121,7 +125,7 @@ async fn get_config(
         .db
         .get_corridor_alert_config_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found("Corridor alert config not found"))?;
+        .ok_or_else(|| ApiError::not_found("CONFIG_NOT_FOUND", "Corridor alert config not found"))?;
 
     if config.user_id != auth_user.user_id {
         return Err(ApiError::forbidden("Access denied"));
@@ -361,7 +365,7 @@ async fn get_corridor_summary(
         .db
         .get_latest_snapshot_for_corridor(&corridor_key)
         .await?
-        .ok_or_else(|| ApiError::not_found("No performance data for this corridor"))?;
+        .ok_or_else(|| ApiError::not_found("CORRIDOR_SNAPSHOT_NOT_FOUND", "No performance data for this corridor"))?;
 
     let previous = state
         .db

@@ -90,6 +90,44 @@ pub fn is_encrypted(data: &str) -> bool {
     data.contains(':') && data.split(':').count() == 2
 }
 
+#[path = "crypto/encryption.rs"]
+pub mod encryption;
+
+pub use encryption::{EncryptedData, EncryptionService};
+
+/// High-level crypto service used by twofa and sensitive field storage
+#[derive(Clone)]
+pub struct CryptoService {
+    service: std::sync::Arc<EncryptionService>,
+}
+
+impl CryptoService {
+    pub fn new(key_hex: &str) -> Result<Self> {
+        EncryptionService::new(key_hex)
+            .map(|s| Self {
+                service: std::sync::Arc::new(s),
+            })
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn new_for_tests() -> Self {
+        let key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        Self::new(key).expect("valid test key")
+    }
+
+    pub fn encrypt(&self, plaintext: &str) -> Result<String> {
+        self.service
+            .encrypt(plaintext)
+            .map(|d| d.to_string())
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn decrypt(&self, encrypted_str: &str) -> Result<String> {
+        let data: EncryptedData = encrypted_str.parse().map_err(|e| anyhow!("{e}"))?;
+        self.service.decrypt(&data).map_err(|e| anyhow!("{e}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

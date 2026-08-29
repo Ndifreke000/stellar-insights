@@ -115,6 +115,8 @@ pub async fn verify_audit_log_integrity(
 
 pub fn routes(logger: Arc<AdminAuditLogger>) -> Router {
     Router::new()
+        .route("/", get(query_audit_log))
+        .route("/verify-integrity", axum::routing::post(verify_audit_log_integrity))
         .route("/admin/audit-log", get(query_audit_log))
         .route("/admin/audit-log/verify-integrity", axum::routing::post(verify_audit_log_integrity))
         .with_state(logger)

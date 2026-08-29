@@ -262,6 +262,13 @@ pub async fn regenerate_backup_codes(
 /// Create 2FA routes
 pub fn routes(twofa_service: Arc<TwoFAService>) -> Router {
     Router::new()
+        .route("/enroll/initiate", post(initiate_enrollment))
+        .route("/enroll/confirm", post(confirm_enrollment))
+        .route("/verify", post(verify_totp))
+        .route("/backup-code", post(verify_backup_code))
+        .route("/disable", post(disable_2fa))
+        .route("/regenerate-backup", post(regenerate_backup_codes))
+        // Support legacy full-path routes if merged at root
         .route("/api/auth/2fa/enroll/initiate", post(initiate_enrollment))
         .route("/api/auth/2fa/enroll/confirm", post(confirm_enrollment))
         .route("/api/auth/2fa/verify", post(verify_totp))

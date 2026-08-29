@@ -221,8 +221,10 @@ pub async fn check_whitelist(
 /// Create admin IP whitelist routes
 pub fn routes(service: Arc<IpWhitelistService>) -> Router {
     Router::new()
-        .route("/admin/ip-whitelist", get(list_whitelist))
-        .route("/admin/ip-whitelist", post(add_to_whitelist))
+        .route("/", get(list_whitelist).post(add_to_whitelist))
+        .route("/:ip_or_cidr", delete(remove_from_whitelist))
+        .route("/check", post(check_whitelist))
+        .route("/admin/ip-whitelist", get(list_whitelist).post(add_to_whitelist))
         .route("/admin/ip-whitelist/:ip_or_cidr", delete(remove_from_whitelist))
         .route("/admin/ip-whitelist/check", post(check_whitelist))
         .with_state(service)

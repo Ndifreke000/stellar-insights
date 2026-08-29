@@ -1,6 +1,7 @@
 pub mod account_merges;
 pub mod achievements;
 pub mod admin_ip_whitelist;
+pub mod audit_log;
 pub mod alerts;
 pub mod corridor_alerts;
 pub mod analytics_dashboard;

@@ -183,10 +183,11 @@ pub fn routes(
         .nest("/analytics", crate::api::analytics_dashboard::routes(app_state.clone()))
         .nest("/analytics", crate::api::failed_payments::routes(app_state.clone()))
         .nest("/analytics", crate::api::settlement_distribution::routes(app_state.clone()))
+        .nest("/corridor-alerts", crate::api::corridor_alerts::routes(app_state.clone()))
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // 6. OAuth routes
-    let oauth_routes = oauth::routes(pool);
+    let oauth_routes = oauth::routes(pool.clone());
 
     // 7. Email digest routes (#2130) — auth-gated: triggering a send is an
     // operator action, not something an anonymous caller should be able to do.
@@ -200,6 +201,25 @@ pub fn routes(
         )
         .layer(middleware::from_fn(auth_middleware));
 
+    // 8. Admin IP whitelist routes (#2219)
+    let ip_whitelist_service = Arc::new(crate::admin_ip_whitelist::IpWhitelistService::new(pool.clone()));
+    let admin_ip_whitelist_routes = Router::new()
+        .nest("/admin/ip-whitelist", crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()))
+        .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service));
+
+    // 9. Admin audit log routes (#2219)
+    let audit_logger = Arc::new(crate::admin_audit_log::AdminAuditLogger::new(pool.clone()));
+    let audit_log_routes = Router::new()
+        .nest("/admin/audit-log", crate::api::audit_log::routes(audit_logger.clone()))
+        .merge(crate::api::audit_log::routes(audit_logger));
+
+    // 10. 2FA routes (#2219)
+    let crypto = crate::crypto::CryptoService::new_for_tests();
+    let twofa_service = Arc::new(crate::twofa::TwoFAService::new(pool.clone(), crypto));
+    let twofa_routes = Router::new()
+        .nest("/auth/2fa", crate::api::twofa::routes(twofa_service.clone()))
+        .merge(crate::api::twofa::routes(twofa_service));
+
     // V1 router (mounted at /api/v1 and also preserved at root for compatibility)
     let v1_router = Router::new()
         .merge(cached_routes)
@@ -211,7 +231,10 @@ pub fn routes(
         .merge(rpc_routes)
         .merge(service_routes)
         .merge(oauth_routes)
-        .merge(digest_routes);
+        .merge(digest_routes)
+        .merge(admin_ip_whitelist_routes)
+        .merge(audit_log_routes)
+        .merge(twofa_routes);
 
     // Combine all routes
     Router::new()
