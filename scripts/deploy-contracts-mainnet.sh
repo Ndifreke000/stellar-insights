@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
-# Deploy all Soroban contracts to mainnet with step-by-step human approval gates.
+# Deploy the integrated Soroban contract to mainnet with a human approval gate.
 #
-# Usage:
-#   ./scripts/deploy-contracts-mainnet.sh [--source <identity>] [--fee <stroop>] [--dry-run]
-#
-# Prerequisites:
-#   - stellar CLI installed and authenticated (stellar keys list)
-#   - STELLAR_ACCOUNT env var set, or pass --source <identity>
-#   - Network: mainnet (https://horizon.stellar.org)
-#   - All contracts built for release first:
-#       cd contracts && cargo build --release --target wasm32v1-none
-#
-# Deploy order (respects contract dependencies):
-#   access-control → stellar_insights → analytics → governance →
-#   escrow → token-swap → multi-sig-wallet → time-locked-transactions → upgrade
-#
-# Each contract is deployed only after the operator presses Enter.
-# Ctrl-C at any gate aborts the run without deploying subsequent contracts.
+# Only stellar_insights is deployed — see contracts/archive/README.md.
 
 set -euo pipefail
 
@@ -180,107 +165,22 @@ EOF
 
 log "Starting mainnet deployment..."
 
-# 1. access-control — no dependencies
 echo ""
-info "Contract 1/9: access-control (no dependencies)"
-approval_gate "access-control"
-ACCESS_CONTROL_ID=$(deploy_contract \
-    "access-control" \
-    "${WASM_DIR}/access_control.wasm" \
-    "ACCESS_CONTROL_CONTRACT_ID")
-
-# 2. stellar_insights — depends on access-control
-echo ""
-info "Contract 2/9: stellar_insights (depends on access-control)"
-info "  ACCESS_CONTROL_CONTRACT_ID=${ACCESS_CONTROL_ID}"
+info "Contract: stellar_insights"
 approval_gate "stellar_insights"
 STELLAR_INSIGHTS_ID=$(deploy_contract \
     "stellar_insights" \
     "${WASM_DIR}/stellar_insights.wasm" \
     "STELLAR_INSIGHTS_CONTRACT_ID")
 
-# 3. analytics — depends on stellar_insights
-echo ""
-info "Contract 3/9: analytics (depends on stellar_insights)"
-info "  STELLAR_INSIGHTS_CONTRACT_ID=${STELLAR_INSIGHTS_ID}"
-approval_gate "analytics"
-ANALYTICS_ID=$(deploy_contract \
-    "analytics" \
-    "${WASM_DIR}/analytics.wasm" \
-    "ANALYTICS_CONTRACT_ID")
-
-# 4. governance — depends on analytics
-echo ""
-info "Contract 4/9: governance (depends on analytics)"
-info "  ANALYTICS_CONTRACT_ID=${ANALYTICS_ID}"
-approval_gate "governance"
-GOVERNANCE_ID=$(deploy_contract \
-    "governance" \
-    "${WASM_DIR}/governance.wasm" \
-    "GOVERNANCE_CONTRACT_ID")
-
-# 5. escrow — depends on stellar_insights
-echo ""
-info "Contract 5/9: escrow (depends on stellar_insights)"
-approval_gate "escrow"
-ESCROW_ID=$(deploy_contract \
-    "escrow" \
-    "${WASM_DIR}/escrow.wasm" \
-    "ESCROW_CONTRACT_ID")
-
-# 6. token-swap — depends on stellar_insights
-echo ""
-info "Contract 6/9: token-swap (depends on stellar_insights)"
-approval_gate "token-swap"
-TOKEN_SWAP_ID=$(deploy_contract \
-    "token-swap" \
-    "${WASM_DIR}/token_swap.wasm" \
-    "TOKEN_SWAP_CONTRACT_ID")
-
-# 7. multi-sig-wallet — depends on access-control
-echo ""
-info "Contract 7/9: multi-sig-wallet (depends on access-control)"
-approval_gate "multi-sig-wallet"
-MULTI_SIG_ID=$(deploy_contract \
-    "multi-sig-wallet" \
-    "${WASM_DIR}/multi_sig_wallet.wasm" \
-    "MULTI_SIG_WALLET_CONTRACT_ID")
-
-# 8. time-locked-transactions — depends on access-control
-echo ""
-info "Contract 8/9: time-locked-transactions (depends on access-control)"
-approval_gate "time-locked-transactions"
-TIME_LOCKED_ID=$(deploy_contract \
-    "time-locked-transactions" \
-    "${WASM_DIR}/time_locked_transactions.wasm" \
-    "TIME_LOCKED_TRANSACTIONS_CONTRACT_ID")
-
-# 9. upgrade — depends on governance
-echo ""
-info "Contract 9/9: upgrade (depends on governance)"
-info "  GOVERNANCE_CONTRACT_ID=${GOVERNANCE_ID}"
-approval_gate "upgrade"
-UPGRADE_ID=$(deploy_contract \
-    "upgrade" \
-    "${WASM_DIR}/upgrade.wasm" \
-    "UPGRADE_CONTRACT_ID")
-
 # ── Summary ────────────────────────────────────────────────────────────────────
 
 echo ""
 echo -e "${GRN}══════════════════════════════════════════════════════════${NC}"
-log "All contracts deployed successfully."
+log "Contract deployed successfully."
 log "Contract IDs written to: ${ENV_FILE}"
 echo ""
-echo "  ACCESS_CONTROL_CONTRACT_ID=${ACCESS_CONTROL_ID}"
 echo "  STELLAR_INSIGHTS_CONTRACT_ID=${STELLAR_INSIGHTS_ID}"
-echo "  ANALYTICS_CONTRACT_ID=${ANALYTICS_ID}"
-echo "  GOVERNANCE_CONTRACT_ID=${GOVERNANCE_ID}"
-echo "  ESCROW_CONTRACT_ID=${ESCROW_ID}"
-echo "  TOKEN_SWAP_CONTRACT_ID=${TOKEN_SWAP_ID}"
-echo "  MULTI_SIG_WALLET_CONTRACT_ID=${MULTI_SIG_ID}"
-echo "  TIME_LOCKED_TRANSACTIONS_CONTRACT_ID=${TIME_LOCKED_ID}"
-echo "  UPGRADE_CONTRACT_ID=${UPGRADE_ID}"
 echo ""
 log "Source the env file with: source ${ENV_FILE}"
 log "Run verification:         ./scripts/verify-contract-mainnet.sh"

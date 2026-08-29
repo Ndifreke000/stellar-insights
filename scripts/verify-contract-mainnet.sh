@@ -98,15 +98,7 @@ echo ""
 log "Verifying mainnet contracts from: ${ENV_FILE}"
 echo ""
 
-verify_contract "access-control"          "ACCESS_CONTROL_CONTRACT_ID"
-verify_contract "stellar_insights"        "STELLAR_INSIGHTS_CONTRACT_ID"
-verify_contract "analytics"               "ANALYTICS_CONTRACT_ID"
-verify_contract "governance"              "GOVERNANCE_CONTRACT_ID"
-verify_contract "escrow"                  "ESCROW_CONTRACT_ID"
-verify_contract "token-swap"              "TOKEN_SWAP_CONTRACT_ID"
-verify_contract "multi-sig-wallet"        "MULTI_SIG_WALLET_CONTRACT_ID"
-verify_contract "time-locked-transactions" "TIME_LOCKED_TRANSACTIONS_CONTRACT_ID"
-verify_contract "upgrade"                 "UPGRADE_CONTRACT_ID"
+verify_contract "stellar_insights" "STELLAR_INSIGHTS_CONTRACT_ID"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 

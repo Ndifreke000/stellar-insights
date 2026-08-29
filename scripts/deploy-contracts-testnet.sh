@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy all Soroban contracts to testnet in dependency order.
+# Deploy the integrated Soroban contract to testnet.
 # Outputs contract IDs to contracts/.env.testnet
 #
 # Usage: ./scripts/deploy-contracts-testnet.sh [--source <identity>] [--fee <stroop>]
@@ -9,9 +9,9 @@
 #   - STELLAR_ACCOUNT env var set, or pass --source <identity>
 #   - Network: testnet (https://soroban-testnet.stellar.org)
 #
-# Deploy order (respects contract dependencies):
-#   access-control → stellar_insights → analytics → governance →
-#   escrow → token-swap → multi-sig-wallet → time-locked-transactions → upgrade
+# Only stellar_insights is deployed — it is the sole contract wired to the
+# backend via SNAPSHOT_CONTRACT_ID. Other contract crates are archived; see
+# contracts/archive/README.md.
 
 set -euo pipefail
 
@@ -105,74 +105,18 @@ EOF
 log "Starting deployment to ${NETWORK}..."
 echo ""
 
-# 1. access-control — no dependencies
-ACCESS_CONTROL_ID=$(deploy_contract \
-    "access-control" \
-    "${WASM_DIR}/access_control.wasm" \
-    "ACCESS_CONTROL_CONTRACT_ID")
-
-# 2. stellar_insights — depends on access-control
 STELLAR_INSIGHTS_ID=$(deploy_contract \
     "stellar_insights" \
     "${WASM_DIR}/stellar_insights.wasm" \
     "STELLAR_INSIGHTS_CONTRACT_ID")
 
-# 3. analytics — depends on stellar_insights
-ANALYTICS_ID=$(deploy_contract \
-    "analytics" \
-    "${WASM_DIR}/analytics.wasm" \
-    "ANALYTICS_CONTRACT_ID")
-
-# 4. governance — depends on analytics
-GOVERNANCE_ID=$(deploy_contract \
-    "governance" \
-    "${WASM_DIR}/governance.wasm" \
-    "GOVERNANCE_CONTRACT_ID")
-
-# 5. escrow — depends on stellar_insights
-ESCROW_ID=$(deploy_contract \
-    "escrow" \
-    "${WASM_DIR}/escrow.wasm" \
-    "ESCROW_CONTRACT_ID")
-
-# 6. token-swap — depends on stellar_insights
-TOKEN_SWAP_ID=$(deploy_contract \
-    "token-swap" \
-    "${WASM_DIR}/token_swap.wasm" \
-    "TOKEN_SWAP_CONTRACT_ID")
-
-# 7. multi-sig-wallet — depends on access-control
-MULTI_SIG_ID=$(deploy_contract \
-    "multi-sig-wallet" \
-    "${WASM_DIR}/multi_sig_wallet.wasm" \
-    "MULTI_SIG_WALLET_CONTRACT_ID")
-
-# 8. time-locked-transactions — depends on access-control
-TIME_LOCKED_ID=$(deploy_contract \
-    "time-locked-transactions" \
-    "${WASM_DIR}/time_locked_transactions.wasm" \
-    "TIME_LOCKED_TRANSACTIONS_CONTRACT_ID")
-
-# 9. upgrade — depends on governance
-UPGRADE_ID=$(deploy_contract \
-    "upgrade" \
-    "${WASM_DIR}/upgrade.wasm" \
-    "UPGRADE_CONTRACT_ID")
-
 # ── Summary ────────────────────────────────────────────────────────────────────
 
 echo ""
-log "All contracts deployed successfully."
+log "Contract deployed successfully."
 log "Contract IDs written to: ${ENV_FILE}"
 echo ""
-echo "  ACCESS_CONTROL_CONTRACT_ID=${ACCESS_CONTROL_ID}"
 echo "  STELLAR_INSIGHTS_CONTRACT_ID=${STELLAR_INSIGHTS_ID}"
-echo "  ANALYTICS_CONTRACT_ID=${ANALYTICS_ID}"
-echo "  GOVERNANCE_CONTRACT_ID=${GOVERNANCE_ID}"
-echo "  ESCROW_CONTRACT_ID=${ESCROW_ID}"
-echo "  TOKEN_SWAP_CONTRACT_ID=${TOKEN_SWAP_ID}"
-echo "  MULTI_SIG_WALLET_CONTRACT_ID=${MULTI_SIG_ID}"
-echo "  TIME_LOCKED_TRANSACTIONS_CONTRACT_ID=${TIME_LOCKED_ID}"
-echo "  UPGRADE_CONTRACT_ID=${UPGRADE_ID}"
 echo ""
 log "Source the env file with: source ${ENV_FILE}"
+log "Set SNAPSHOT_CONTRACT_ID=\$STELLAR_INSIGHTS_CONTRACT_ID in backend/.env"
