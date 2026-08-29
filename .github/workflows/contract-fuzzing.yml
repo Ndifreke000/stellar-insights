@@ -8,8 +8,6 @@ on:
   pull_request:
     paths:
       - 'contracts/**'
-  # Allows the fuzz suite to be re-run on demand (e.g. after a wasm target
-  # migration) without pushing a no-op commit to contracts/.
   workflow_dispatch:
 
 jobs:
@@ -35,20 +33,6 @@ jobs:
           key: ${{ runner.os }}-contracts-fuzz-${{ hashFiles('contracts/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-contracts-fuzz-
 
-      - name: Run analytics fuzz tests (1000+ iterations via bolero)
-        working-directory: contracts
-        env:
-          BOLERO_ITERATIONS: 1000
-        run: cargo test --package analytics --test '*' fuzz_ -- --nocapture
-
-      - name: Run analytics property-based tests
-        working-directory: contracts
-        run: cargo test --package analytics fuzz_ -- --nocapture
-
-      - name: Run governance fuzz tests (property-based)
-        working-directory: contracts
-        run: cargo test --package governance fuzz_ -- --nocapture
-
-      - name: Run all contract tests (fail CI on any failure)
+      - name: Run stellar_insights contract tests
         working-directory: contracts
         run: cargo test --workspace -- --nocapture

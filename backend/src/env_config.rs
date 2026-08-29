@@ -159,15 +159,6 @@ pub fn log_env_config() {
     // Soroban contract IDs
     log_var("SOROBAN_RPC_URL");
     log_var("SNAPSHOT_CONTRACT_ID");
-    // Remaining contract IDs (optional; used by future services)
-    log_var("ACCESS_CONTROL_CONTRACT_ID");
-    log_var("ANALYTICS_CONTRACT_ID");
-    log_var("GOVERNANCE_CONTRACT_ID");
-    log_var("ESCROW_CONTRACT_ID");
-    log_var("TOKEN_SWAP_CONTRACT_ID");
-    log_var("MULTI_SIG_WALLET_CONTRACT_ID");
-    log_var("TIME_LOCKED_TRANSACTIONS_CONTRACT_ID");
-    log_var("UPGRADE_CONTRACT_ID");
     if env::var("STELLAR_SOURCE_SECRET_KEY").is_ok() {
         tracing::info!("  STELLAR_SOURCE_SECRET_KEY: [REDACTED]");
     }

@@ -59,7 +59,6 @@ const navGroups = [
       { key: "settlementDistribution", icon: Gauge, path: "/analytics/settlement-distribution" },
       { key: "calculator", icon: Calculator, path: "/calculator" },
       { key: "performance", icon: Gauge, path: "/performance" },
-      { key: "chartExport", icon: BarChart3, path: "/analytics/charts" },
     ],
   },
   {

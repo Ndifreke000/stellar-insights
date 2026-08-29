@@ -6,14 +6,7 @@
 
 #![cfg(feature = "testnet-integration")]
 
-mod access_control_test;
-mod escrow_test;
-mod governance_test;
-mod multi_sig_wallet_test;
 mod stellar_insights_test;
-mod time_locked_transactions_test;
-mod token_swap_test;
-mod upgrade_test;
 
 use std::env;
 

@@ -62,7 +62,19 @@ pub enum DataKey {
 // Data structures
 // ---------------------------------------------------------------------------
 
-/// A registered snapshot epoch with its expected hash
+/// A registered snapshot epoch (public metadata only — hash is not exposed)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisteredSnapshotPublic {
+    /// Epoch identifier
+    pub epoch: u64,
+    /// Ledger timestamp when registered
+    pub registered_at: u64,
+    /// Whether this epoch is still open for verification
+    pub active: bool,
+}
+
+/// A registered snapshot epoch with its expected hash (internal storage)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegisteredSnapshot {
@@ -211,6 +223,7 @@ impl SnapshotVerificationRewardsContract {
     /// Deactivate an epoch so it can no longer be verified.
     pub fn deactivate_epoch(env: Env, caller: Address, epoch: u64) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_not_paused(&env)?;
         Self::require_admin(&env, &caller)?;
 
         let mut snapshots: Map<u64, RegisteredSnapshot> = env
@@ -323,7 +336,10 @@ impl SnapshotVerificationRewardsContract {
                 .unwrap_or_else(|| Map::new(&env));
 
             let current = reward_map.get(verifier.clone()).unwrap_or(0);
-            reward_map.set(verifier.clone(), current + points_awarded);
+            let updated = current
+                .checked_add(points_awarded)
+                .ok_or(Error::PointsOverflow)?;
+            reward_map.set(verifier.clone(), updated);
 
             env.storage()
                 .persistent()
@@ -397,14 +413,25 @@ impl SnapshotVerificationRewardsContract {
     // Views
     // -----------------------------------------------------------------------
 
-    /// Get the registered snapshot record for an epoch.
-    pub fn get_registered_snapshot(env: Env, epoch: u64) -> Result<RegisteredSnapshot, Error> {
+    /// Get public metadata for a registered snapshot epoch.
+    ///
+    /// The expected hash is intentionally omitted so verifiers must compute it
+    /// independently from backend data rather than reading it from chain.
+    pub fn get_registered_snapshot(
+        env: Env,
+        epoch: u64,
+    ) -> Result<RegisteredSnapshotPublic, Error> {
         let snapshots: Map<u64, RegisteredSnapshot> = env
             .storage()
             .persistent()
             .get(&DataKey::RegisteredSnapshots)
             .ok_or(Error::EpochNotFound)?;
-        snapshots.get(epoch).ok_or(Error::EpochNotFound)
+        let record = snapshots.get(epoch).ok_or(Error::EpochNotFound)?;
+        Ok(RegisteredSnapshotPublic {
+            epoch: record.epoch,
+            registered_at: record.registered_at,
+            active: record.active,
+        })
     }
 
     /// Check if a verifier has already submitted a verification for an epoch.

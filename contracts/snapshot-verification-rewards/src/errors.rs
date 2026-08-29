@@ -28,4 +28,6 @@ pub enum Error {
     NoRewardsToClaim = 11,
     /// Reward amount must be greater than zero
     InvalidRewardAmount = 12,
+    /// Reward points overflow
+    PointsOverflow = 13,
 }
