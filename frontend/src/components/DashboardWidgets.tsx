@@ -6,7 +6,7 @@
  * Provides a drag-and-drop widget grid where users can:
  *  - Toggle widget visibility (add/remove)
  *  - Reorder widgets via drag-and-drop
- *  - Layouts are persisted per-user in localStorage
+ *  - Layouts are persisted per-device in localStorage (not synced to account)
  */
 
 import React, {
@@ -310,7 +310,7 @@ export function WidgetCustomizer({ definitions, isOpen, onClose }: WidgetCustomi
         <p className="text-[10px] text-muted-foreground font-mono">
           Toggle widgets on or off. Drag the{" "}
           <GripVertical className="inline w-3 h-3" /> handle on any widget to
-          reorder it in the grid.
+          reorder it in the grid. Layout is saved on this device only.
         </p>
 
         <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
