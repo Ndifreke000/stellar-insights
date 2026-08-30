@@ -131,8 +131,16 @@ export interface AnchorMetrics {
 }
 
 export interface AnchorsResponse {
-  anchors: AnchorMetrics[];
-  total: number;
+  data: AnchorMetrics[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    has_next: boolean;
+    has_prev: boolean;
+    next_offset: number | null;
+    prev_offset: number | null;
+  };
 }
 
 export interface ReliabilityDataPoint {
