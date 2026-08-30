@@ -38,31 +38,9 @@ const linking: LinkingOptions<RootStackParamList> = {
               CorridorDetail: 'corridors/:corridorId',
             },
           },
-          NFCSupport: 'nfc-support',
-          BluetoothSupport: 'bluetooth-support',
-          BeaconSupport: 'beacon-support',
-          AirDropIntegration: 'airdrop',
-          ShortcutsSupport: 'shortcuts',
-          AppIntents: 'app-intents',
-          QuickActions: 'quick-actions',
-          ShareExtension: 'share-extension',
-          ActionExtension: 'action-extension',
-          ForceTouch: 'force-touch',
-          HandoffSupport: 'handoff-support',
-          Geofencing: 'geofencing',
-          BackgroundSync: 'background-sync',
-          GestureControls: 'gesture-controls',
-          ContactsIntegration: 'contacts',
-          MapsIntegration: 'maps',
-          WidgetSupport: 'widget-support',
-          ThreeDTouchSupport: '3d-touch',
-          ShakeToRefresh: 'shake-to-refresh',
-          AppClips: 'app-clips',
-          LiveActivities: 'live-activities',
-          WatchApp: 'watch-app',
-          WearOSApp: 'wear-os-app',
-          VideoPlayer: 'video-player',
-          AudioRecording: 'audio-recording',
+          NetworkSwitchDialog: 'network-switch',
+          SearchFunctionality: 'search',
+          Settings: 'settings',
         },
       },
       Auth: {
@@ -168,7 +146,6 @@ function App(): React.JSX.Element {
               <OfflineCachingIndicator showCacheSize={true} />
               <RootNavigator />
             </NavigationContainer>
-            {/* Widget, 3D Touch, and Shake-to-Refresh are registered via MainNavigator */}
           </QueryClientProvider>
         </SafeAreaProvider>
       </NetworkProvider>

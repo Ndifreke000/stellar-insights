@@ -1,5 +1,12 @@
 # @stellar-insights/mcp-server
 
+> **Scope note:** This package is a distinct product surface — AI-agent
+> tooling for MCP-compatible clients — unrelated to the payment-corridor
+> dashboard/mobile app that is the core of this repository. It lives here for
+> convenience during early development, but is a candidate to be extracted into
+> its own repository once it stabilises. Do not treat it as part of the main
+> app's release scope.
+
 An [MCP](https://modelcontextprotocol.io) server that exposes Stellar Insights
 corridor, anchor, network and liquidity-pool analytics as tools for AI agents
 (Claude, ChatGPT, and other MCP-compatible clients). It's a thin adapter over
