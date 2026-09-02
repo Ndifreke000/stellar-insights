@@ -69,8 +69,8 @@ Or from a Rust integration test (no live SMTP required in unit tests):
 #[tokio::test]
 #[ignore = "requires local Mailpit SMTP stub on port 1025"]
 async fn test_digest_delivery_via_mailpit() {
-    use stellar_insights_backend::email::service::EmailService;
-    use stellar_insights_backend::email::report::{DigestReport, generate_html_report};
+    use payraider_backend::email::service::EmailService;
+    use payraider_backend::email::report::{DigestReport, generate_html_report};
 
     let service = EmailService::new(
         "localhost".to_string(),

@@ -1,6 +1,6 @@
 # Database Migration Workflow
 
-This guide covers how to author, test, and rollback database migrations for the Stellar Insights backend and frontend.
+This guide covers how to author, test, and rollback database migrations for the PayRaider backend and frontend.
 
 ## Overview
 
@@ -66,10 +66,10 @@ NNN_description.down.sql    (rollback migration)
    sqlx migrate run
    
    # Verify the schema change
-   sqlite3 stellar_insights.db ".schema users"
+   sqlite3 payraider.db ".schema users"
    
    # Test rollback (manual for now)
-   sqlite3 stellar_insights.db < migrations/NNN_description.down.sql
+   sqlite3 payraider.db < migrations/NNN_description.down.sql
    ```
 
 ### Backward-Compatible Migrations
@@ -177,7 +177,7 @@ This ensures every deployment runs pending migrations before the app becomes hea
 
 2. **Run the down migration**:
    ```bash
-   sqlite3 stellar_insights.db < backend/migrations/NNN_description.down.sql
+   sqlite3 payraider.db < backend/migrations/NNN_description.down.sql
    ```
 
 3. **Restart the app** to re-apply migrations from the current state.

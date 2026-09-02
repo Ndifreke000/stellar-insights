@@ -9,7 +9,7 @@
 #   - STELLAR_ACCOUNT env var set, or pass --source <identity>
 #   - Network: testnet (https://soroban-testnet.stellar.org)
 #
-# Only stellar_insights is deployed — it is the sole contract wired to the
+# Only payraider is deployed — it is the sole contract wired to the
 # backend via SNAPSHOT_CONTRACT_ID. Other contract crates are archived; see
 # contracts/archive/README.md.
 
@@ -105,10 +105,10 @@ EOF
 log "Starting deployment to ${NETWORK}..."
 echo ""
 
-STELLAR_INSIGHTS_ID=$(deploy_contract \
-    "stellar_insights" \
-    "${WASM_DIR}/stellar_insights.wasm" \
-    "STELLAR_INSIGHTS_CONTRACT_ID")
+PAYRAIDER_ID=$(deploy_contract \
+    "payraider" \
+    "${WASM_DIR}/payraider.wasm" \
+    "PAYRAIDER_CONTRACT_ID")
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ echo ""
 log "Contract deployed successfully."
 log "Contract IDs written to: ${ENV_FILE}"
 echo ""
-echo "  STELLAR_INSIGHTS_CONTRACT_ID=${STELLAR_INSIGHTS_ID}"
+echo "  PAYRAIDER_CONTRACT_ID=${PAYRAIDER_ID}"
 echo ""
 log "Source the env file with: source ${ENV_FILE}"
-log "Set SNAPSHOT_CONTRACT_ID=\$STELLAR_INSIGHTS_CONTRACT_ID in backend/.env"
+log "Set SNAPSHOT_CONTRACT_ID=\$PAYRAIDER_CONTRACT_ID in backend/.env"

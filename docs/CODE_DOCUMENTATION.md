@@ -1,4 +1,4 @@
-# Stellar Insights — Official Code Documentation
+# PayRaider — Official Code Documentation
 
 > **Real-time payment analytics for Stellar.**
 > Production-grade stack for measuring and improving cross-border payment reliability on the Stellar network.
@@ -33,7 +33,7 @@
 
 ## 1. Overview
 
-**Stellar Insights** is a full-stack, production-grade analytics and monitoring platform built specifically for the Stellar blockchain network. It gives developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on Stellar.
+**PayRaider** is a full-stack, production-grade analytics and monitoring platform built specifically for the Stellar blockchain network. It gives developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on Stellar.
 
 ### Core Problem Solved
 
@@ -54,7 +54,7 @@ The core problem it solves is **visibility**. The Stellar network processes thou
 ## 2. Repository Structure
 
 ```
-stellar-insights/
+payraider/
 ├── backend/        # Rust analytics engine + REST/GraphQL/WebSocket API
 ├── frontend/       # Next.js 16 dashboard with real-time updates
 ├── mobile/         # React Native mobile app (Expo)
@@ -173,7 +173,7 @@ The frontend maintains WebSocket connections to the backend for live updates. Se
 
 ### Contracts Overview
 
-**1. `stellar_insights` — Core Analytics Contract**
+**1. `payraider` — Core Analytics Contract**
 Stores cryptographic SHA-256 hashes of analytics snapshots on-chain, creating an immutable audit trail.
 
 Key functions:
@@ -235,9 +235,9 @@ Schedules transactions to execute at a future ledger timestamp.
 ### TypeScript SDK (`sdk/typescript/`)
 
 ```typescript
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { PayRaiderClient } from '@payraider/sdk';
 
-const client = new StellarInsightsClient({ apiKey: 'your-key' });
+const client = new PayRaiderClient({ apiKey: 'your-key' });
 
 const corridors = await client.corridors.list({ limit: 20 });
 const detail = await client.corridors.get('USDC:issuer->XLM:native');
@@ -247,9 +247,9 @@ const analytics = await client.analytics.network({ period: '7d' });
 ### Python SDK (`sdk/python/`)
 
 ```python
-from stellar_insights import StellarInsightsClient
+from payraider import PayRaiderClient
 
-client = StellarInsightsClient(api_key="your-key")
+client = PayRaiderClient(api_key="your-key")
 
 corridors = client.corridors.list(limit=20)
 detail = client.corridors.get("USDC:issuer->XLM:native")
@@ -262,7 +262,7 @@ detail = client.corridors.get("USDC:issuer->XLM:native")
 ### Base URLs
 
 - **Local Development:** `http://localhost:8080`
-- **Production:** `https://api.stellarinsights.io`
+- **Production:** `https://api.payraider.io`
 
 ### Authentication
 
@@ -271,7 +271,7 @@ Include your API key in the `Authorization` header:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.stellarinsights.io/api/anchors
+  https://api.payraider.io/api/anchors
 ```
 
 **OAuth 2.0**
@@ -411,7 +411,7 @@ Common Error Codes:
 ### Configuration Environment Variables
 
 ```env
-DATABASE_URL=sqlite:stellar_insights.db
+DATABASE_URL=sqlite:payraider.db
 SERVER_HOST=127.0.0.1
 SERVER_PORT=8080
 STELLAR_RPC_URL=https://stellar.api.onfinality.io/public
@@ -530,10 +530,10 @@ Query Parameters:
 
 ## 10. WebSocket API
 
-Real-time updates via WebSocket at `wss://api.stellarinsights.io/ws`.
+Real-time updates via WebSocket at `wss://api.payraider.io/ws`.
 
 ```javascript
-const ws = new WebSocket('wss://api.stellarinsights.io/ws');
+const ws = new WebSocket('wss://api.payraider.io/ws');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -723,7 +723,7 @@ Both lockfiles are committed to the repository and are the source of truth for r
 
 ## 17. Secrets Management
 
-Stellar Insights implements a comprehensive secrets management solution using **HashiCorp Vault** for secure storage, rotation, and audit logging of sensitive credentials.
+PayRaider implements a comprehensive secrets management solution using **HashiCorp Vault** for secure storage, rotation, and audit logging of sensitive credentials.
 
 ### Architecture
 

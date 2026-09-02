@@ -1,4 +1,4 @@
-# 🌐 Stellar Insights RPC API Documentation
+# 🌐 PayRaider RPC API Documentation
 
 **Version:** v0.1.0  
 **Last Updated:** February 26, 2026
@@ -87,7 +87,7 @@ Create `.env` file in backend directory:
 
 ```env
 # Database
-DATABASE_URL=sqlite:stellar_insights.db
+DATABASE_URL=sqlite:payraider.db
 
 # Server
 SERVER_HOST=127.0.0.1

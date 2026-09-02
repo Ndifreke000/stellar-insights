@@ -1,10 +1,10 @@
 # CI/CD Pipeline Optimization Guide
 
-This document outlines the optimizations applied to the Stellar Insights CI/CD pipelines for faster builds and deployments.
+This document outlines the optimizations applied to the PayRaider CI/CD pipelines for faster builds and deployments.
 
 ## Overview
 
-The Stellar Insights CI/CD system consists of multiple GitHub Actions workflows that run on every push and pull request. These pipelines have been optimized for:
+The PayRaider CI/CD system consists of multiple GitHub Actions workflows that run on every push and pull request. These pipelines have been optimized for:
 
 - **Dependency caching** to reduce install/build time
 - **Job parallelization** to run independent checks concurrently
@@ -312,7 +312,7 @@ gh run view $(gh run list --workflow=frontend-build.yml --limit=1 --json databas
 
 2. **Audit cache hit rates**
    ```bash
-   gh api repos/Ndifreke000/stellar-insights/actions/caches --jq '.caches | length'
+   gh api repos/Ndifreke000/payraider/actions/caches --jq '.caches | length'
    ```
 
 3. **Profile slow steps**
@@ -330,10 +330,10 @@ GitHub Actions caches automatically evict after 7 days of non-use. To manually c
 
 ```bash
 # List all caches
-gh api repos/Ndifreke000/stellar-insights/actions/caches --jq '.caches[] | .id'
+gh api repos/Ndifreke000/payraider/actions/caches --jq '.caches[] | .id'
 
 # Delete specific cache
-gh api repos/Ndifreke000/stellar-insights/actions/caches/{cache-id} -X DELETE
+gh api repos/Ndifreke000/payraider/actions/caches/{cache-id} -X DELETE
 ```
 
 ## Future Optimization Opportunities
@@ -384,7 +384,7 @@ gh api repos/Ndifreke000/stellar-insights/actions/caches/{cache-id} -X DELETE
 gh run view <run-id> --json jobs | jq '.jobs[] | select(.name | contains("Save")) | .conclusion'
 
 # Manually clear cache and retry
-gh api repos/Ndifreke000/stellar-insights/actions/caches --jq '.caches[] | .id' | xargs -I {} gh api repos/Ndifreke000/stellar-insights/actions/caches/{} -X DELETE
+gh api repos/Ndifreke000/payraider/actions/caches --jq '.caches[] | .id' | xargs -I {} gh api repos/Ndifreke000/payraider/actions/caches/{} -X DELETE
 ```
 
 ### Build performance regressed

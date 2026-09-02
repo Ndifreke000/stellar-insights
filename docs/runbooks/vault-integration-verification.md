@@ -3,7 +3,7 @@
 Verification steps for `backend/src/vault/` — the `VaultClient`, dynamic database
 credential generation, lease management, and KV v2 secret reads.
 
-Related issue: [#1858](https://github.com/Ndifreke000/stellar-insights/issues/1858).
+Related issue: [#1858](https://github.com/Ndifreke000/payraider/issues/1858).
 
 Fixing the rustdoc examples in `client.rs` made `cargo test --all-features` pass;
 it did **not** prove the integration works against a live Vault. Run the checks
@@ -39,13 +39,13 @@ configured and fall back to `DATABASE_URL`.
 ```bash
 # Vault deliberately unset / unreachable
 unset VAULT_ADDR VAULT_TOKEN
-cargo run --bin stellar-insights-backend
+cargo run --bin payraider-backend
 # Expect: a warning about Vault being unconfigured, then a normal startup on /health
 ```
 
 ```bash
 # Vault configured but unreachable — must degrade, not hang or crash
-VAULT_ADDR=http://127.0.0.1:1 VAULT_TOKEN=dummy cargo run --bin stellar-insights-backend
+VAULT_ADDR=http://127.0.0.1:1 VAULT_TOKEN=dummy cargo run --bin payraider-backend
 ```
 
 Failure mode to watch for: a startup that blocks indefinitely on the Vault HTTP
@@ -62,9 +62,9 @@ export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=<dev-root-token>
 
 # Short TTL so renewal is observable in minutes, not hours
-vault write database/roles/stellar-insights default_ttl=2m max_ttl=10m ...
+vault write database/roles/payraider default_ttl=2m max_ttl=10m ...
 
-cargo run --bin stellar-insights-backend
+cargo run --bin payraider-backend
 ```
 
 Then watch the logs for at least three renewal cycles (~6 minutes):
@@ -74,7 +74,7 @@ Then watch the logs for at least three renewal cycles (~6 minutes):
 - at `max_ttl` the client re-issues credentials rather than dying.
 
 ```bash
-vault lease list sys/leases/lookup/database/creds/stellar-insights
+vault lease list sys/leases/lookup/database/creds/payraider
 ```
 
 ## 4. Revocation

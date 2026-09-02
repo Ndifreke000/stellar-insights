@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stellar Insights uses Sentry for comprehensive frontend error tracking, including:
+PayRaider uses Sentry for comprehensive frontend error tracking, including:
 - Real-time error notifications
 - Source map support for readable stack traces
 - User context and breadcrumbs for debugging

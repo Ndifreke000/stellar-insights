@@ -1,8 +1,8 @@
-# Stellar Insights STRIDE Threat Model
+# PayRaider STRIDE Threat Model
 
 ## Methodology
 
-This threat model uses the STRIDE framework (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) to systematically identify and assess security risks across the Stellar Insights system.
+This threat model uses the STRIDE framework (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) to systematically identify and assess security risks across the PayRaider system.
 
 ---
 

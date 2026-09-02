@@ -3,7 +3,7 @@
 Covers the `BackupManager` subsystem (`backend/src/backup.rs`) — how backups are
 produced, how to verify one, and how to restore after data loss.
 
-Related issue: [#1857](https://github.com/Ndifreke000/stellar-insights/issues/1857).
+Related issue: [#1857](https://github.com/Ndifreke000/payraider/issues/1857).
 
 ## Configuration
 
@@ -15,7 +15,7 @@ Related issue: [#1857](https://github.com/Ndifreke000/stellar-insights/issues/18
 | `BACKUP_RETENTION_DAYS` | `30` | Age after which backups are pruned |
 | `BACKUP_SCHEDULE_HOUR_UTC` | `2` | Hour (UTC) the daily backup runs |
 
-Backups are written as `stellar_insights_<YYYYMMDD_HHMMSS>.db`, each with a
+Backups are written as `payraider_<YYYYMMDD_HHMMSS>.db`, each with a
 `.sha256` sidecar used for later integrity verification.
 
 ## Confirming backups are actually running
@@ -24,7 +24,7 @@ The code path existing is not evidence that backups happen. Check all three:
 
 1. **Logs** — look for `Database backup created` at the configured hour:
    ```bash
-   kubectl logs deploy/stellar-insights-backend --since=24h | grep "Database backup created"
+   kubectl logs deploy/payraider-backend --since=24h | grep "Database backup created"
    ```
 2. **Metrics** — `backup_size_bytes` should be non-zero and refreshed daily;
    `backup_verification_failure_total` should be flat.
@@ -36,15 +36,15 @@ If any of the three is missing, treat it as a failed backup, not a reporting gap
 
 1. **Stop the backend** so nothing writes to the database mid-restore.
    ```bash
-   kubectl scale deploy/stellar-insights-backend --replicas=0
+   kubectl scale deploy/payraider-backend --replicas=0
    ```
 2. **Pick the newest good backup.**
    ```bash
-   ls -lt "$BACKUP_DIR"/stellar_insights_*.db | head
+   ls -lt "$BACKUP_DIR"/payraider_*.db | head
    ```
 3. **Verify it before trusting it** — compare against the sidecar checksum:
    ```bash
-   sha256sum -c "$BACKUP_DIR/stellar_insights_<TIMESTAMP>.db.sha256"
+   sha256sum -c "$BACKUP_DIR/payraider_<TIMESTAMP>.db.sha256"
    ```
 4. **Move the damaged database aside** (never delete it — it may still be needed
    for forensics or partial recovery).
@@ -53,7 +53,7 @@ If any of the three is missing, treat it as a failed backup, not a reporting gap
    ```
 5. **Restore.**
    ```bash
-   cp "$BACKUP_DIR/stellar_insights_<TIMESTAMP>.db" "$BACKUP_DB_PATH"
+   cp "$BACKUP_DIR/payraider_<TIMESTAMP>.db" "$BACKUP_DB_PATH"
    ```
 6. **Check integrity of the restored file.**
    ```bash
@@ -61,7 +61,7 @@ If any of the three is missing, treat it as a failed backup, not a reporting gap
    ```
 7. **Bring the backend back up** and confirm `/health` is green.
    ```bash
-   kubectl scale deploy/stellar-insights-backend --replicas=1
+   kubectl scale deploy/payraider-backend --replicas=1
    ```
 
 ## Data loss window

@@ -1,6 +1,6 @@
 # Application Performance Monitoring (APM) Integration
 
-Stellar Insights integrates OpenTelemetry for distributed tracing and APM. This enables deep visibility into application performance, database queries, and inter-service communication.
+PayRaider integrates OpenTelemetry for distributed tracing and APM. This enables deep visibility into application performance, database queries, and inter-service communication.
 
 ## Overview
 
@@ -51,7 +51,7 @@ APM is **enabled by default** via OpenTelemetry integration. Set these environme
 export OTEL_ENABLED=true
 
 # Service name for traces
-export OTEL_SERVICE_NAME=stellar-insights-backend
+export OTEL_SERVICE_NAME=payraider-backend
 
 # OTLP endpoint (default: localhost:4318/v1/traces for Jaeger)
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
@@ -96,7 +96,7 @@ docker run -d \
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
-export OTEL_SERVICE_NAME=stellar-insights-backend
+export OTEL_SERVICE_NAME=payraider-backend
 ```
 
 ### Option 2: New Relic (Production)
@@ -116,12 +116,12 @@ export OTEL_SERVICE_NAME=stellar-insights-backend
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net:4318
 export OTEL_EXPORTER_OTLP_HEADERS="api-key=YOUR_LICENSE_KEY"
-export OTEL_SERVICE_NAME=stellar-insights-backend
+export OTEL_SERVICE_NAME=payraider-backend
 export OTEL_ENABLED=true
 ```
 
 4. Verify traces appear in New Relic UI:
-   - Go to APM → Services → stellar-insights-backend
+   - Go to APM → Services → payraider-backend
 
 ### Option 3: Datadog (Production)
 
@@ -141,7 +141,7 @@ export OTEL_ENABLED=true
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 export DD_AGENT_HOST=datadog-agent
 export DD_TRACE_AGENT_PORT=8126
-export OTEL_SERVICE_NAME=stellar-insights-backend
+export OTEL_SERVICE_NAME=payraider-backend
 export DD_TAGS="env:production,version:1.0.0"
 ```
 
@@ -328,9 +328,9 @@ pub mod redaction {
 ```yaml
 # In terraform or alerting config
 alert:
-  name: "Stellar Insights High Error Rate"
+  name: "PayRaider High Error Rate"
   query: |
-    avg:trace.web.request.errors{service:stellar-insights-backend} > 0.05
+    avg:trace.web.request.errors{service:payraider-backend} > 0.05
   thresholds:
     critical: 0.05
     warning: 0.02
@@ -351,7 +351,7 @@ alert:
 export OTEL_ENABLED=true
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net:4318
 export OTEL_EXPORTER_OTLP_HEADERS="api-key=${NEW_RELIC_LICENSE_KEY}"
-export OTEL_SERVICE_NAME=stellar-insights-backend
+export OTEL_SERVICE_NAME=payraider-backend
 export OTEL_RESOURCE_ATTRIBUTES="environment=production,pod.name=$(hostname)"
 ```
 

@@ -1,10 +1,10 @@
 # Mainnet Incident Response Runbook
 
-This guide provides a step-by-step procedure for responding to incidents on the Stellar Insights mainnet.
+This guide provides a step-by-step procedure for responding to incidents on the PayRaider mainnet.
 
 ## 1. Alert Triage
 When a PagerDuty alert fires, first:
-- Check Grafana dashboard at `https://grafana.example.com/d/stellar-insights`
+- Check Grafana dashboard at `https://grafana.example.com/d/payraider`
 - Identify which service or metric is in alarm
 - Verify if this is a false positive or real issue
 
@@ -28,9 +28,9 @@ When a PagerDuty alert fires, first:
   5. Investigate root cause of high load
 
 ### 2.3 Contract Pause Procedure
-To pause the stellar_insights contract:
+To pause the payraider contract:
 1. Connect to the contract admin account
-2. Execute `stellar_insights.pause()`
+2. Execute `payraider.pause()`
 3. Verify the contract is paused by checking state
 4. Notify stakeholders
 

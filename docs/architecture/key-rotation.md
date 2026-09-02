@@ -1,6 +1,6 @@
 # Cryptographic Key Rotation Architecture
 
-This document describes how to safely rotate three types of cryptographic keys used in Stellar Insights without service disruption: JWT_SECRET, ENCRYPTION_KEY, and SEP-10 server keypair.
+This document describes how to safely rotate three types of cryptographic keys used in PayRaider without service disruption: JWT_SECRET, ENCRYPTION_KEY, and SEP-10 server keypair.
 
 ## Overview
 
@@ -45,7 +45,7 @@ JWT tokens are short-lived (default: 1 hour) and used for API authentication. Ro
 3. Restart the backend service:
    ```bash
    # Kubernetes example
-   kubectl rollout restart deployment/stellar-insights-backend
+   kubectl rollout restart deployment/payraider-backend
    
    # Or docker-compose
    docker-compose restart backend
@@ -53,7 +53,7 @@ JWT tokens are short-lived (default: 1 hour) and used for API authentication. Ro
 
 4. Verify backend logs show validation against both secrets:
    ```bash
-   docker logs stellar-insights-backend | grep -i "jwt\|token\|validation"
+   docker logs payraider-backend | grep -i "jwt\|token\|validation"
    # Expected: No authentication errors for 15 minutes
    ```
 
@@ -67,13 +67,13 @@ JWT tokens are short-lived (default: 1 hour) and used for API authentication. Ro
 
 2. Restart backend again to complete rotation:
    ```bash
-   kubectl rollout restart deployment/stellar-insights-backend
+   kubectl rollout restart deployment/payraider-backend
    ```
 
 3. Verify only new secret is in use:
    ```bash
    # Check logs for no JWT validation errors
-   docker logs stellar-insights-backend | tail -50 | grep -i "jwt"
+   docker logs payraider-backend | tail -50 | grep -i "jwt"
    ```
 
 ### Validation
@@ -112,17 +112,17 @@ ENCRYPTION_KEY encrypts sensitive data at rest (e.g., API keys, PII, private key
    -- Find encrypted columns (typically stored as VARBINARY or TEXT)
    SELECT column_name, data_type 
    FROM information_schema.columns 
-   WHERE table_schema = 'stellar_insights'
+   WHERE table_schema = 'payraider'
      AND column_name LIKE '%encrypted%' OR column_name LIKE '%secret%';
    ```
 
 2. Backup the entire database:
    ```bash
    # PostgreSQL
-   pg_dump stellar_insights > backup_$(date +%Y%m%d_%H%M%S).sql
+   pg_dump payraider > backup_$(date +%Y%m%d_%H%M%S).sql
    
    # SQLite
-   cp stellar_insights.db stellar_insights.db.backup_$(date +%Y%m%d_%H%M%S)
+   cp payraider.db payraider.db.backup_$(date +%Y%m%d_%H%M%S)
    ```
 
 3. Schedule a maintenance window (all API requests will fail during this time):
@@ -160,7 +160,7 @@ ENCRYPTION_KEY encrypts sensitive data at rest (e.g., API keys, PII, private key
    #[tokio::main]
    async fn main() -> anyhow::Result<()> {
        let old_pool = SqlitePool::connect(&format!(
-           "sqlite://stellar_insights.db?key={}",
+           "sqlite://payraider.db?key={}",
            std::env::var("OLD_ENCRYPTION_KEY")?
        )).await?;
        
@@ -202,7 +202,7 @@ ENCRYPTION_KEY encrypts sensitive data at rest (e.g., API keys, PII, private key
 #### Phase 3: Deployment
 1. Update your deployment with new ENCRYPTION_KEY:
    ```bash
-   kubectl set env deployment/stellar-insights-backend \
+   kubectl set env deployment/payraider-backend \
      ENCRYPTION_KEY=$NEW_KEY
    ```
 
@@ -213,7 +213,7 @@ ENCRYPTION_KEY encrypts sensitive data at rest (e.g., API keys, PII, private key
 
 3. Monitor logs for decryption errors:
    ```bash
-   docker logs -f stellar-insights-backend | grep -i decrypt
+   docker logs -f payraider-backend | grep -i decrypt
    # Should show no errors
    ```
 
@@ -235,13 +235,13 @@ If decryption fails after deploying new key:
 1. Restore backup database:
    ```bash
    docker-compose down backend
-   cp stellar_insights.db.backup ~/
+   cp payraider.db.backup ~/
    docker-compose up -d backend
    ```
 
 2. Revert ENCRYPTION_KEY in deployment:
    ```bash
-   kubectl set env deployment/stellar-insights-backend \
+   kubectl set env deployment/payraider-backend \
      ENCRYPTION_KEY=$OLD_KEY
    ```
 
@@ -308,13 +308,13 @@ The SEP-10 server keypair is a Stellar Ed25519 keypair used for anchor authentic
 
 2. Restart backend (now validating with both old and new keys):
    ```bash
-   kubectl rollout restart deployment/stellar-insights-backend
+   kubectl rollout restart deployment/payraider-backend
    ```
 
 3. Monitor SEP-10 authentication (should succeed for both old and new keys):
    ```bash
    # Test SEP-10 challenge
-   curl https://api.stellar-insights.com/auth?account=GBRPYHIL...
+   curl https://api.payraider.com/auth?account=GBRPYHIL...
    # Should return a challenge signed by both the old and new key
    ```
 
@@ -326,7 +326,7 @@ The SEP-10 server keypair is a Stellar Ed25519 keypair used for anchor authentic
 
 2. Restart backend to use only the new key:
    ```bash
-   kubectl rollout restart deployment/stellar-insights-backend
+   kubectl rollout restart deployment/payraider-backend
    ```
 
 3. Update the TOML to remove the old key:
@@ -347,7 +347,7 @@ The SEP-10 server keypair is a Stellar Ed25519 keypair used for anchor authentic
 If SEP-10 authentication fails:
 1. Restore SEP10_KEYPAIR_OLD:
    ```bash
-   kubectl set env deployment/stellar-insights-backend \
+   kubectl set env deployment/payraider-backend \
      SEP10_KEYPAIR_OLD=$OLD_KEY
    ```
 

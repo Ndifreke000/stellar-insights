@@ -12,10 +12,10 @@ follow-up bug with the specific failure and link it from the doc.
 
 | Issue | Route | Doc |
 |---|---|---|
-| [#1820](https://github.com/Ndifreke000/stellar-insights/issues/1820) | `/alerts` | [1820-alerts.md](1820-alerts.md) |
-| [#1819](https://github.com/Ndifreke000/stellar-insights/issues/1819) | `/[locale]/network` | [1819-network-graph.md](1819-network-graph.md) |
-| [#1818](https://github.com/Ndifreke000/stellar-insights/issues/1818) | `/[locale]/calculator` | [1818-calculator.md](1818-calculator.md) |
-| [#1817](https://github.com/Ndifreke000/stellar-insights/issues/1817) | `/[locale]/transactions/builder` | [1817-transaction-builder.md](1817-transaction-builder.md) |
+| [#1820](https://github.com/Ndifreke000/payraider/issues/1820) | `/alerts` | [1820-alerts.md](1820-alerts.md) |
+| [#1819](https://github.com/Ndifreke000/payraider/issues/1819) | `/[locale]/network` | [1819-network-graph.md](1819-network-graph.md) |
+| [#1818](https://github.com/Ndifreke000/payraider/issues/1818) | `/[locale]/calculator` | [1818-calculator.md](1818-calculator.md) |
+| [#1817](https://github.com/Ndifreke000/payraider/issues/1817) | `/[locale]/transactions/builder` | [1817-transaction-builder.md](1817-transaction-builder.md) |
 
 ## Common setup
 

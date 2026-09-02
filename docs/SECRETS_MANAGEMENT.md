@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stellar Insights implements a comprehensive secrets management solution using HashiCorp Vault for secure storage, rotation, and audit logging of sensitive credentials.
+PayRaider implements a comprehensive secrets management solution using HashiCorp Vault for secure storage, rotation, and audit logging of sensitive credentials.
 
 ## Architecture
 
@@ -279,7 +279,7 @@ vault write auth/kubernetes/role/app \
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stellar-insights-backend
+  name: payraider-backend
 spec:
   template:
     metadata:
@@ -298,10 +298,10 @@ spec:
       serviceAccountName: app
       containers:
       - name: backend
-        image: stellar-insights:latest
+        image: payraider:latest
         env:
         - name: DATABASE_URL
-          value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/stellar_insights"
+          value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/payraider"
 ```
 
 ## Environment Variables
@@ -310,7 +310,7 @@ spec:
 
 ```bash
 # Use .env file (not in version control)
-DATABASE_URL=postgresql://user:password@localhost:5432/stellar_insights
+DATABASE_URL=postgresql://user:password@localhost:5432/payraider
 STELLAR_RPC_URL=https://rpc.stellar.org
 API_KEY=dev-api-key
 ```

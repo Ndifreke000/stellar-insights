@@ -1,6 +1,6 @@
 # Blue-Green Deployment Strategy
 
-This guide covers the zero-downtime blue-green deployment strategy for Stellar Insights backend.
+This guide covers the zero-downtime blue-green deployment strategy for PayRaider backend.
 
 ## Overview
 
@@ -192,12 +192,12 @@ aws elbv2 modify-listener \
 
 # 4. Terminate green tasks (optional)
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --desired-count 3  # Back to blue count
 
 # 5. Verify rollback
-curl -I https://api.stellar-insights.example.com/health
+curl -I https://api.payraider.example.com/health
 ```
 
 ### Rollback from Database Issue
@@ -228,22 +228,22 @@ See [DATABASE_MIGRATIONS.md](./DATABASE_MIGRATIONS.md#rollback-procedures) for d
 ```bash
 # Watch ECS service state
 aws ecs describe-services \
-  --cluster stellar-insights-production \
-  --services stellar-insights-service
+  --cluster payraider-production \
+  --services payraider-service
 
 # Check ALB target health
 aws elbv2 describe-target-health \
   --target-group-arn arn:aws:elasticloadbalancing:...
 
 # View CloudWatch logs
-aws logs tail /ecs/stellar-insights-production --follow
+aws logs tail /ecs/payraider-production --follow
 ```
 
 ### Green Task Logs
 
 ```bash
 # If green is unhealthy, check container logs
-aws logs tail /ecs/stellar-insights-production --follow \
+aws logs tail /ecs/payraider-production --follow \
   --filter-pattern "ERROR"
 ```
 
@@ -309,8 +309,8 @@ auto_rollback_events = ["DEPLOYMENT_FAILURE", "DEPLOYMENT_STOP_ON_ALARM"]
 **Fix**:
 ```bash
 aws ecs describe-services \
-  --cluster stellar-insights-production \
-  --services stellar-insights-service \
+  --cluster payraider-production \
+  --services payraider-service \
   --query 'services[0].events[0:3]'
 ```
 

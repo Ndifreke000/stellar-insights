@@ -1,6 +1,6 @@
 # QA: Network graph (`/[locale]/network`)
 
-**Issue:** [#1819](https://github.com/Ndifreke000/stellar-insights/issues/1819)
+**Issue:** [#1819](https://github.com/Ndifreke000/payraider/issues/1819)
 **Route(s):** `/[locale]/network`
 
 ## Background

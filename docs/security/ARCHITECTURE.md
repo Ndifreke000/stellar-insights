@@ -1,8 +1,8 @@
-# Stellar Insights Security Architecture
+# PayRaider Security Architecture
 
 ## System Overview
 
-Stellar Insights is a Rust/Axum backend API with a React frontend, providing data analytics for Stellar blockchain networks. The system ingests blockchain data, processes it, and exposes insights via REST APIs and GraphQL.
+PayRaider is a Rust/Axum backend API with a React frontend, providing data analytics for Stellar blockchain networks. The system ingests blockchain data, processes it, and exposes insights via REST APIs and GraphQL.
 
 ### Technology Stack
 - **Backend**: Rust/Axum (async web framework)

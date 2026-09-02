@@ -1,6 +1,6 @@
 # QA: Alerts (`/alerts`)
 
-**Issue:** [#1820](https://github.com/Ndifreke000/stellar-insights/issues/1820)
+**Issue:** [#1820](https://github.com/Ndifreke000/payraider/issues/1820)
 **Route(s):** `/alerts`
 
 ## Background

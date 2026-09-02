@@ -1,6 +1,6 @@
-# 📚 Stellar Insights Documentation
+# 📚 PayRaider Documentation
 
-Welcome to the Stellar Insights documentation hub. All project documentation has been organized here for easy access.
+Welcome to the PayRaider documentation hub. All project documentation has been organized here for easy access.
 
 ## 📖 Documentation Categories
 

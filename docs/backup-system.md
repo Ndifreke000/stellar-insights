@@ -1,12 +1,12 @@
 # Backup System Documentation
 
-This document describes the automated backup system for Stellar Insights infrastructure, including backup strategy, retention policy, restoration procedures, and disaster recovery integration.
+This document describes the automated backup system for PayRaider infrastructure, including backup strategy, retention policy, restoration procedures, and disaster recovery integration.
 
 > **Note:** This document describes the RDS PostgreSQL infrastructure as provisioned by `terraform/modules/database`. The backend application itself is currently compiled SQLite-only (`sqlx` with the `sqlite` feature; see `backend/Cargo.toml` and `docs/adr/0001-sqlite-vs-postgres.md`) and does not connect to this RDS instance. Treat the procedures below as accurate to the Terraform/RDS layer, not as a description of what the running application currently uses.
 
 ## Overview
 
-The Stellar Insights backup system provides automated daily backups of:
+The PayRaider backup system provides automated daily backups of:
 
 - **Primary Database**: RDS PostgreSQL (multi-AZ with automated backups)
 - **Backup Storage**: S3 bucket for long-term retention and off-site storage
@@ -41,7 +41,7 @@ Explicit snapshots are created daily via the backup job:
 
 - **Frequency**: Once per day at 2 AM UTC
 - **Trigger**: GitHub Actions scheduled workflow (`backup-database.yml`)
-- **Naming**: `stellar-insights-{environment}-backup-{YYYYMMDD-HHMMSS}`
+- **Naming**: `payraider-{environment}-backup-{YYYYMMDD-HHMMSS}`
 - **Tags**: Type, Environment, CreatedBy, Workflow
 
 **Benefit**: Explicit snapshots survive the RDS retention period, enabling long-term retention.
@@ -51,7 +51,7 @@ Explicit snapshots are created daily via the backup job:
 Snapshots are exported to Parquet format in S3:
 
 - **Frequency**: Daily (triggered after snapshot completion)
-- **Location**: `s3://stellar-insights-backups/database/{environment}/exports/`
+- **Location**: `s3://payraider-backups/database/{environment}/exports/`
 - **Format**: Parquet (efficient, queryable, column-oriented)
 - **Storage Class**: INTELLIGENT_TIERING (cost-optimized)
 
@@ -173,7 +173,7 @@ To monitor backup health:
 ```bash
 # List recent snapshots
 aws rds describe-db-snapshots \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --query 'DBSnapshots[0:5].[DBSnapshotIdentifier, SnapshotCreateTime, Status]' \
   --output table
 
@@ -183,7 +183,7 @@ aws rds describe-export-tasks \
   --output table
 
 # Monitor S3 backups
-aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human-readable
+aws s3 ls s3://payraider-backups/database/production/ --recursive --human-readable
 ```
 
 ## Database Restoration
@@ -199,7 +199,7 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 1. **Identify the snapshot you want to restore from**:
    ```bash
    aws rds describe-db-snapshots \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[-1:].{ID:DBSnapshotIdentifier, Created:SnapshotCreateTime}' \
      --output table
    ```
@@ -207,30 +207,30 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 2. **Create a new database instance from snapshot**:
    ```bash
    aws rds restore-db-instance-from-db-snapshot \
-     --db-instance-identifier stellar-insights-production-restored \
-     --db-snapshot-identifier stellar-insights-production-backup-20240119-020001 \
+     --db-instance-identifier payraider-production-restored \
+     --db-snapshot-identifier payraider-production-backup-20240119-020001 \
      --db-instance-class db.t3.medium \
      --multi-az \
      --vpc-security-group-ids sg-xxxxxxxx \
-     --db-subnet-group-name stellar-insights-db-production \
+     --db-subnet-group-name payraider-db-production \
      --publicly-accessible false
    ```
 
 3. **Wait for restoration to complete** (5-10 minutes):
    ```bash
    aws rds wait db-instance-available \
-     --db-instance-identifier stellar-insights-production-restored
+     --db-instance-identifier payraider-production-restored
    ```
 
 4. **Verify restored database**:
    ```bash
    # Check instance is healthy
    aws rds describe-db-instances \
-     --db-instance-identifier stellar-insights-production-restored \
+     --db-instance-identifier payraider-production-restored \
      --query 'DBInstances[0].[Endpoint.Address, DBInstanceStatus, AllocatedStorage]'
 
    # Connect and run queries
-   psql -h <new-endpoint> -U postgres -d stellar_insights -c "SELECT COUNT(*) FROM users;"
+   psql -h <new-endpoint> -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
    ```
 
 5. **If restored data looks good**: Update application connection string to new endpoint
@@ -240,9 +240,9 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 7. **Cleanup old instance** (once verified):
    ```bash
    aws rds delete-db-instance \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --create-final-snapshot \
-     --final-db-snapshot-identifier stellar-insights-production-backup-final-20240119
+     --final-db-snapshot-identifier payraider-production-backup-final-20240119
 
    # Rename restored instance to original name
    # (AWS doesn't support in-place rename, so manual DNS update needed)
@@ -263,7 +263,7 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 
    # Find matching snapshot
    aws rds describe-db-snapshots \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --query "DBSnapshots[?contains(DBSnapshotIdentifier, '${LAST_SUNDAY}')].{ID:DBSnapshotIdentifier, Age:CreateTime}" \
      --output table
    ```
@@ -281,7 +281,7 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 1. **List monthly backups**:
    ```bash
    aws rds describe-db-snapshots \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[].{ID:DBSnapshotIdentifier, Created:SnapshotCreateTime, Age:tags[?Key==`Type`].Value}' \
      --output table
    ```
@@ -301,14 +301,14 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 1. **Verify deletion**:
    ```bash
    aws rds describe-db-instances \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --query 'DBInstances[0].DBInstanceStatus'
    ```
 
 2. **Find latest good snapshot**:
    ```bash
    aws rds describe-db-snapshots \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[-1:].DBSnapshotIdentifier' \
      --output text
    ```
@@ -317,12 +317,12 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
    ```bash
    # Use original instance ID and configuration
    aws rds restore-db-instance-from-db-snapshot \
-     --db-instance-identifier stellar-insights-production \
+     --db-instance-identifier payraider-production \
      --db-snapshot-identifier <latest-snapshot> \
      --db-instance-class db.t3.medium \
      --multi-az \
      --vpc-security-group-ids sg-xxxxxxxx \
-     --db-subnet-group-name stellar-insights-db-production \
+     --db-subnet-group-name payraider-db-production \
      --enable-cloudwatch-logs-exports postgresql \
      --enable-iam-database-authentication
    ```
@@ -344,14 +344,14 @@ aws s3 ls s3://stellar-insights-backups/database/production/ --recursive --human
 #!/bin/bash
 # Monthly restore test
 SNAPSHOT=$(aws rds describe-db-snapshots \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[-1].DBSnapshotIdentifier' \
   --output text)
 
 echo "Testing restore from: $SNAPSHOT"
 
 # Create test instance
-TEST_ID="stellar-insights-production-restore-test-$(date +%s)"
+TEST_ID="payraider-production-restore-test-$(date +%s)"
 aws rds restore-db-instance-from-db-snapshot \
   --db-instance-identifier "$TEST_ID" \
   --db-snapshot-identifier "$SNAPSHOT" \
@@ -362,7 +362,7 @@ aws rds wait db-instance-available --db-instance-identifier "$TEST_ID"
 
 # Verify data integrity
 psql -h $(aws rds describe-db-instances --db-instance-identifier "$TEST_ID" --query 'DBInstances[0].Endpoint.Address' --output text) \
-  -U postgres -d stellar_insights -c "SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM analytics;"
+  -U postgres -d payraider -c "SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM analytics;"
 
 # Cleanup
 aws rds delete-db-instance --db-instance-identifier "$TEST_ID" --skip-final-snapshot
@@ -393,7 +393,7 @@ module "database" {
 
   # Enable automated backups
   skip_final_snapshot = false
-  final_snapshot_identifier = "stellar-insights-production-final-$(date +%s)"
+  final_snapshot_identifier = "payraider-production-final-$(date +%s)"
 
   # Encryption & monitoring
   storage_encrypted = true
@@ -409,7 +409,7 @@ module "database" {
 
 ```hcl
 resource "aws_s3_bucket" "backups" {
-  bucket = "stellar-insights-backups"
+  bucket = "payraider-backups"
 
   lifecycle {
     prevent_destroy = true  # Protect from accidental deletion
@@ -449,14 +449,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
 **Symptom**: Backup job failed or timed out in GitHub Actions
 
 **Diagnosis**:
-1. Check GitHub Actions logs: https://github.com/Ndifreke000/stellar-insights/actions/workflows/backup-database.yml
+1. Check GitHub Actions logs: https://github.com/Ndifreke000/payraider/actions/workflows/backup-database.yml
 2. Verify RDS instance is healthy:
    ```bash
-   aws rds describe-db-instances --db-instance-identifier stellar-insights-production
+   aws rds describe-db-instances --db-instance-identifier payraider-production
    ```
 3. Check RDS event logs:
    ```bash
-   aws rds describe-events --source-type db-instance --source-identifier stellar-insights-production
+   aws rds describe-events --source-type db-instance --source-identifier payraider-production
    ```
 
 **Solutions**:
@@ -498,7 +498,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
        "s3:GetObject*",
        "s3:DeleteObject*"
      ],
-     "Resource": "arn:aws:s3:::stellar-insights-backups/*"
+     "Resource": "arn:aws:s3:::payraider-backups/*"
    }
    ```
 

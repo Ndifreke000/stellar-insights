@@ -32,7 +32,7 @@ Authorization: Bearer <access_token>
 
 Response:
 {
-  "otpauth_uri": "otpauth://totp/stellar-insights:user@example.com?secret=...",
+  "otpauth_uri": "otpauth://totp/payraider:user@example.com?secret=...",
   "secret": "JBSWY3DPEBLW64TMMQ"
 }
 ```

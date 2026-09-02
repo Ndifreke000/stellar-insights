@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Stellar Insights Database Backup Script
+# PayRaider Database Backup Script
 # Purpose: Automated backup of RDS PostgreSQL database with retention policy
 # Usage: ./backup-database.sh [environment] [backup-type]
 # Examples:
@@ -21,12 +21,12 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENVIRONMENT="${1:-production}"
 BACKUP_TYPE="${2:-automated}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
-DB_IDENTIFIER="stellar-insights-${ENVIRONMENT}"
+DB_IDENTIFIER="payraider-${ENVIRONMENT}"
 
 # S3 backup location
-S3_BUCKET="${S3_BUCKET:-stellar-insights-backups}"
+S3_BUCKET="${S3_BUCKET:-payraider-backups}"
 S3_PREFIX="database/${ENVIRONMENT}"
-BACKUP_DIR="/tmp/stellar-insights-backups"
+BACKUP_DIR="/tmp/payraider-backups"
 
 # Retention policy (days)
 RETENTION_DAILY=7
@@ -147,14 +147,14 @@ export_snapshot_to_s3() {
 dump_database() {
   local endpoint="$1"
   local timestamp=$(date +%Y%m%d-%H%M%S)
-  local backup_file="${BACKUP_DIR}/stellar-insights-${ENVIRONMENT}-${timestamp}.sql.gz"
+  local backup_file="${BACKUP_DIR}/payraider-${ENVIRONMENT}-${timestamp}.sql.gz"
 
   mkdir -p "$BACKUP_DIR"
 
   log "Creating database dump: $backup_file"
 
   # Get database URL from environment or Terraform output
-  local db_name="${DB_NAME:-stellar_insights}"
+  local db_name="${DB_NAME:-payraider}"
   local db_user="${DB_USER:-postgres}"
 
   # Use pg_dump if direct access available
@@ -205,7 +205,7 @@ upload_backup_to_s3() {
 
 get_backup_timestamp() {
   local backup_key="$1"
-  # Extract timestamp from s3 key: database/production/manual/stellar-insights-production-20240115-143022.sql.gz
+  # Extract timestamp from s3 key: database/production/manual/payraider-production-20240115-143022.sql.gz
   local timestamp
   timestamp=$(echo "$backup_key" | sed -E 's/.*-([0-9]{8}-[0-9]{6})\..*$/\1/')
 
@@ -363,7 +363,7 @@ the restore manually in the AWS console or via AWS CLI:
    aws rds wait db-instance-available --db-instance-identifier $new_db_id
 
 4. Verify restored database:
-   psql -h <new-endpoint> -U postgres -d stellar_insights -c "SELECT COUNT(*) FROM users;"
+   psql -h <new-endpoint> -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
 
 5. If restore successful, switch application to new endpoint and delete old instance:
    aws rds delete-db-instance --db-instance-identifier $original_db_id --skip-final-snapshot
@@ -382,7 +382,7 @@ EOF
 
 main() {
   log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  log "Stellar Insights Database Backup System"
+  log "PayRaider Database Backup System"
   log "Environment: $ENVIRONMENT | Type: $BACKUP_TYPE"
   log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 

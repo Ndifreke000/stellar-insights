@@ -1,6 +1,6 @@
 # ELK Stack for Log Aggregation
 
-Stellar Insights uses an ELK (Elasticsearch, Logstash, Kibana) stack for centralized, structured log aggregation. This enables operators to search, filter, and analyze application logs across all environments.
+PayRaider uses an ELK (Elasticsearch, Logstash, Kibana) stack for centralized, structured log aggregation. This enables operators to search, filter, and analyze application logs across all environments.
 
 ## Architecture
 
@@ -43,7 +43,7 @@ Stellar Insights uses an ELK (Elasticsearch, Logstash, Kibana) stack for central
 
 ```bash
 # Start the ELK stack
-cd stellar-insights/elk
+cd payraider/elk
 docker-compose up -d
 
 # Wait for services to be healthy (30-60 seconds)
@@ -62,7 +62,7 @@ Add backend to `elk/docker-compose.yml`:
 backend:
   build: ../backend
   environment:
-    - DATABASE_URL=sqlite:./stellar_insights.db
+    - DATABASE_URL=sqlite:./payraider.db
     - LOG_FORMAT=json
     - RUST_LOG=backend=info,tower_http=info
   ports:
@@ -77,7 +77,7 @@ backend:
 
 ```bash
 # From your backend entrypoint or CI script
-./stellar-insights-backend 2>&1 | nc logstash 5000
+./payraider-backend 2>&1 | nc logstash 5000
 ```
 
 ## Logging Format
@@ -158,7 +158,7 @@ The pipeline in `elk/logstash/pipeline/logstash.conf` handles:
 
 ### Outputs
 
-- **Elasticsearch**: Daily indices (`stellar-insights-2026.08.25`)
+- **Elasticsearch**: Daily indices (`payraider-2026.08.25`)
 - **stdout**: Console output for debugging
 
 ## Kibana Queries
@@ -167,7 +167,7 @@ The pipeline in `elk/logstash/pipeline/logstash.conf` handles:
 
 1. Navigate to http://localhost:5601 (local) or your deployed Kibana URL
 2. Select Discover tab
-3. Choose `stellar-insights-*` index pattern
+3. Choose `payraider-*` index pattern
 4. Use the query syntax below
 
 ### Common Queries
@@ -264,7 +264,7 @@ For high availability and performance:
 ```hcl
 # terraform/modules/elasticsearch/main.tf
 resource "aws_opensearch_domain" "logs" {
-  domain_name           = "stellar-insights-logs"
+  domain_name           = "payraider-logs"
   engine_version        = "2.11"
   
   cluster_config {
@@ -321,7 +321,7 @@ Deploy as an ECS service behind an ALB:
 KibanaService:
   Type: AWS::ECS::Service
   Properties:
-    ServiceName: stellar-insights-kibana
+    ServiceName: payraider-kibana
     DesiredCount: 2
     LoadBalancers:
       - ContainerName: kibana
@@ -335,7 +335,7 @@ Automatically manage index retention:
 
 ```json
 {
-  "policy": "stellar-insights-ilm",
+  "policy": "payraider-ilm",
   "phases": {
     "hot": {
       "min_age": "0d",
@@ -425,7 +425,7 @@ curl http://logstash:9600/_node/pipelines
 
 ```bash
 # Delete old indices
-curl -X DELETE "localhost:9200/stellar-insights-2026.08.*"
+curl -X DELETE "localhost:9200/payraider-2026.08.*"
 
 # Increase disk allocation
 # (See production Terraform module above)
@@ -438,7 +438,7 @@ curl -X DELETE "localhost:9200/stellar-insights-2026.08.*"
 curl "localhost:9200/_cat/indices?s=docs.count:desc"
 
 # Optimize hot indices
-curl -X POST "localhost:9200/stellar-insights-latest/_forcemerge?max_num_segments=1"
+curl -X POST "localhost:9200/payraider-latest/_forcemerge?max_num_segments=1"
 ```
 
 ## References
@@ -464,7 +464,7 @@ curl -X POST "localhost:9200/stellar-insights-latest/_forcemerge?max_num_segment
 **A:** Create it manually:
 1. Kibana → Management → Index Patterns
 2. Click "Create" button
-3. Enter pattern: `stellar-insights-*`
+3. Enter pattern: `payraider-*`
 4. Select `@timestamp` as time field
 
 ### Q: Logs are truncated or missing fields?

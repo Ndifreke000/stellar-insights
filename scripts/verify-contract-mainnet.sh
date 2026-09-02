@@ -98,7 +98,7 @@ echo ""
 log "Verifying mainnet contracts from: ${ENV_FILE}"
 echo ""
 
-verify_contract "stellar_insights" "STELLAR_INSIGHTS_CONTRACT_ID"
+verify_contract "payraider" "PAYRAIDER_CONTRACT_ID"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 

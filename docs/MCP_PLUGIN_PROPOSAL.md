@@ -1,6 +1,6 @@
-# Stellar Insights MCP Plugin — Business Model, Architecture & Work Breakdown
+# PayRaider MCP Plugin — Business Model, Architecture & Work Breakdown
 
-Status: proposal. Scope: expose Stellar Insights corridor/anchor/network analytics
+Status: proposal. Scope: expose PayRaider corridor/anchor/network analytics
 to AI agents (Claude, ChatGPT, and other MCP-compatible clients) as a Model
 Context Protocol (MCP) server, distributed as an installable plugin.
 
@@ -8,7 +8,7 @@ Context Protocol (MCP) server, distributed as an installable plugin.
 
 ## 1. Why this, and why now
 
-Stellar Insights already has everything an MCP server needs except the adapter
+PayRaider already has everything an MCP server needs except the adapter
 layer itself: a stable versioned REST API (`/api/v1/*`), a GraphQL endpoint, an
 existing API-key auth/tiering system (anonymous / authenticated / premium), and
 a typed TypeScript SDK (`sdk/typescript/src/resources.ts`) wrapping every
@@ -22,7 +22,7 @@ Insights' schema is fixed and vertical, but that is actually an advantage for
 an *agent* tool surface: fixed, named, well-typed operations are exactly what
 MCP tools want, versus an agent having to write ad-hoc SQL. And Stellar
 Insights has one feature no generic chain-agnostic analytics product has: the
-`stellar_insights` Soroban contract anchors a SHA-256 hash of each analytics
+`payraider` Soroban contract anchors a SHA-256 hash of each analytics
 snapshot on-chain, so an agent can be given a tool that *proves* a metric
 hasn't been tampered with — not just asserts it.
 
@@ -63,7 +63,7 @@ Write-scoped tools (create anchor/corridor, submit governance vote) are a
 **separate, explicitly-opted-in SKU**, not bundled by default — see §3.4.
 
 ### 2.4 Distribution
-- npm package (`npx @stellar-insights/mcp-server`) — zero-install trial.
+- npm package (`npx @payraider/mcp-server`) — zero-install trial.
 - Listing in public MCP registries (mcp.so, Anthropic's directory) — this
   listing *is* the plugin distribution channel; no new storefront needed.
 - Claude Desktop / Claude Code config snippet in the SDK README, next to the
@@ -77,7 +77,7 @@ for the adapter itself.
 
 ### 2.6 Moat
 The `verify_snapshot` tool (on-chain hash verification via the
-`stellar_insights` Soroban contract) is not something a chain-agnostic tool
+`payraider` Soroban contract) is not something a chain-agnostic tool
 like Dune can offer for Stellar specifically without replicating this
 project's contract layer. That is the durable differentiator to lead with in
 any registry listing or marketing.
@@ -95,9 +95,9 @@ flowchart LR
     end
 
     subgraph "MCP Server (new — thin adapter)"
-        M[stellar-insights-mcp-server<br/>Node/TS, stdio + streamable HTTP]
+        M[payraider-mcp-server<br/>Node/TS, stdio + streamable HTTP]
         T[Tool layer<br/>Zod-typed tool defs]
-        R[Resource layer<br/>stellar-insights://corridor/id etc.]
+        R[Resource layer<br/>payraider://corridor/id etc.]
     end
 
     subgraph Existing, unchanged
@@ -106,7 +106,7 @@ flowchart LR
         AUTH[Existing API-key + JWT tiering]
         DB[(SQLite + Redis cache)]
         RPC[Stellar Horizon / Soroban RPC]
-        SC[Soroban contract:<br/>stellar_insights snapshot hash]
+        SC[Soroban contract:<br/>payraider snapshot hash]
     end
 
     A <-->|MCP tool calls| M
@@ -120,8 +120,8 @@ flowchart LR
 ```
 
 ### 3.2 Auth (reused, not rebuilt)
-The MCP server holds one `STELLAR_INSIGHTS_API_KEY` (env var, operator-supplied)
-and constructs a single `StellarInsightsClient` per process — identical to how
+The MCP server holds one `PAYRAIDER_API_KEY` (env var, operator-supplied)
+and constructs a single `PayRaiderClient` per process — identical to how
 any other SDK consumer authenticates today. Tier (free/pro/enterprise) is
 resolved server-side by the existing key, so quota enforcement needs no new
 code.
@@ -140,7 +140,7 @@ code.
 | `predict_anomaly` / `get_ml_status` | `MlResource` | |
 | `get_governance_proposals` | `GovernanceResource` | read-only |
 | `get_alert_history` | alerts routes | read-only; rule *creation* excluded |
-| `verify_snapshot` | Soroban `stellar_insights` contract + backend snapshot | the differentiator tool |
+| `verify_snapshot` | Soroban `payraider` contract + backend snapshot | the differentiator tool |
 
 ### 3.4 Security boundary
 Default tool surface is **read-only**. `create_anchor`, `create_corridor`,
@@ -151,7 +151,7 @@ content must not be able to mutate anchor registries or cast governance
 votes.
 
 ### 3.5 MCP resources (context, not just tools)
-`stellar-insights://corridor/{id}` and `stellar-insights://anchor/{id}` are
+`payraider://corridor/{id}` and `payraider://anchor/{id}` are
 exposed as MCP resource URIs so a user in Claude can attach "this corridor" to
 context directly, mirroring the existing corridor/anchor detail pages in the
 frontend.
@@ -171,16 +171,16 @@ a live backend until Phase 0 is complete.
 | 0.2 | Fix redis-rs API mismatch (`cache.rs`, `redis_caching_layer.rs`, `rate_limiting_advanced.rs`, `distributed_lock.rs`, `websocket.rs`, `api/gdpr.rs`, `ingestion/*`, `rate_limit.rs`) | Backend compiles against redis 1.3 | 0.1 | 2–4 days |
 | 0.3 | Fix hmac/sha2/digest version conflict (`webhooks/mod.rs`, `auth/sep10_simple.rs`, `request_signing_middleware.rs`) | Webhook signing + SEP-10 compile | 0.1 | 0.5–1 day |
 | 0.4 | Fix frontend `package-lock.json` drift (`@vitejs/plugin-react` ^4 vs ^6) | `npm install` succeeds with no flags | — | 0.5 day |
-| 1.1 | Scaffold `@stellar-insights/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | 0.5 day |
+| 1.1 | Scaffold `@payraider/mcp-server` package on `@modelcontextprotocol/sdk`, import `sdk/typescript` resources | Empty server boots, stdio transport | 0.2, 0.3 | 0.5 day |
 | 1.2 | Add streamable-HTTP transport option | Server runnable as hosted endpoint, not just local stdio | 1.1 | 0.5 day |
 | 2.1 | Implement read-only tool set (§3.3) with Zod schemas + descriptions | 11 working tools | 1.1 | 2–3 days |
 | 2.2 | Implement `verify_snapshot` (Soroban contract read + hash compare) | Differentiator tool working end-to-end | 2.1 | 1–2 days |
-| 2.3 | Implement MCP resource URIs (`stellar-insights://corridor/{id}`, `.../anchor/{id}`) | Agents can attach entities as context | 2.1 | 0.5 day |
+| 2.3 | Implement MCP resource URIs (`payraider://corridor/{id}`, `.../anchor/{id}`) | Agents can attach entities as context | 2.1 | 0.5 day |
 | 3.1 | API-key auth wiring + tier-aware error messages | Rate-limit errors surface cleanly to the agent | 1.1 | 0.5 day |
 | 3.2 | `--allow-writes` gate + write-tool implementations (kept off by default) | Opt-in write tools, off in default build | 2.1 | 1 day |
 | 4.1 | Integration tests against a running backend (real testnet data) | CI-runnable test suite | 0.2, 0.3 | 1–2 days |
 | 4.2 | Manual test in Claude Desktop / Claude Code | Verified working end-to-end in a real client | 2.1, 2.2 | 0.5 day |
-| 5.1 | npm publish (`@stellar-insights/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | 0.5 day |
+| 5.1 | npm publish (`@payraider/mcp-server`), README + config snippets | Installable via `npx` | 4.2 | 0.5 day |
 | 5.2 | Submit to MCP registries (mcp.so, Anthropic directory) | Public discoverability | 5.1 | 0.5 day |
 | 6.1 | Docs: add MCP section to `sdk/` README, cross-link from main README | Documented alongside existing SDKs | 5.1 | 0.5 day |
 

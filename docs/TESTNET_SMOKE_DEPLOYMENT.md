@@ -25,7 +25,7 @@ a live, deployed backend instance to exercise real HTTP and WebSocket endpoints.
 3. **Run the smoke tests**:
    ```bash
    cd backend
-   export TESTNET_API_URL="https://testnet.stellar-insights.example.com"
+   export TESTNET_API_URL="https://testnet.payraider.example.com"
    export TESTNET_API_KEY="your-api-key"
    cargo test --features testnet-smoke --test testnet_smoke
    ```

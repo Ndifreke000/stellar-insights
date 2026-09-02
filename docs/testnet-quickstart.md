@@ -1,6 +1,6 @@
 # Testnet Quickstart Guide
 
-This guide describes how to connect the entire Stellar Insights stack (backend, frontend, mobile, contracts, and SDK examples) to the Stellar Testnet.
+This guide describes how to connect the entire PayRaider stack (backend, frontend, mobile, contracts, and SDK examples) to the Stellar Testnet.
 
 > Verified against a real, start-to-finish testnet deployment (fresh keypair → Friendbot funding → all 9 contracts deployed via `scripts/deploy-contracts-testnet.sh`, IDs recorded in [`contracts/.env.testnet`](../contracts/.env.testnet)). The steps and gotchas below reflect what actually happened, not just what was expected to work.
 
@@ -77,7 +77,7 @@ To configure the backend to read from the testnet:
 
 ## Deploy contracts to testnet
 
-The workspace has **9 contracts** with dependency ordering (`access-control` and `stellar_insights` are depended on by most of the others). Deploying them one at a time by hand is error-prone — use the deploy script, which builds everything, deploys in the correct order, and records the results.
+The workspace has **9 contracts** with dependency ordering (`access-control` and `payraider` are depended on by most of the others). Deploying them one at a time by hand is error-prone — use the deploy script, which builds everything, deploys in the correct order, and records the results.
 
 1. **Make sure prerequisites are installed** (see above): `rustup target add wasm32v1-none` and the Stellar CLI.
 
@@ -88,7 +88,7 @@ The workspace has **9 contracts** with dependency ordering (`access-control` and
    (`my-identity` is the identity created in [Fund a testnet account](#fund-a-testnet-account-with-friendbot) above. You can also set `STELLAR_ACCOUNT=my-identity` instead of passing `--source`, and override the transaction fee with `--fee <stroops>`, default `100`.)
 
    This builds all contracts for release (`cargo build --release --target wasm32v1-none`), then deploys them in dependency order:
-   `access-control → stellar_insights → analytics → governance → escrow → token-swap → multi-sig-wallet → time-locked-transactions → upgrade`.
+   `access-control → payraider → analytics → governance → escrow → token-swap → multi-sig-wallet → time-locked-transactions → upgrade`.
 
 3. **Contract IDs are written to `contracts/.env.testnet`** as the deploy progresses (one line appended per successful deploy, so a partial run still leaves you with the IDs deployed so far). Source it to use the IDs in your shell:
    ```bash
@@ -100,7 +100,7 @@ The workspace has **9 contracts** with dependency ordering (`access-control` and
    | Contract | Env var | Contract ID |
    |---|---|---|
    | access-control | `ACCESS_CONTROL_CONTRACT_ID` | `CAZO4LD7NSWZFUJCB5ORHS3IBFJC76KHSOCPTHVDBDBISZJ72ACSHPH5` |
-   | stellar_insights | `STELLAR_INSIGHTS_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
+   | payraider | `PAYRAIDER_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
    | analytics | `ANALYTICS_CONTRACT_ID` | `CAJAIBW6BXRSM4CW76KRWM2UVDJOWYYPJROO2EIHB376MP6V3PGTORNF` |
    | governance | `GOVERNANCE_CONTRACT_ID` | `CCBGEJY2CNM7XOMV5D25NARRW6MKMFW3XOU72YQOMC7VUWHNENHM3JQV` |
    | escrow | `ESCROW_CONTRACT_ID` | `CCI3YVIWBXM5YMOJZGN26CZDVQ2WRZJFSOLU6FCF4KDZ3O2KFCI7RSI2` |
@@ -118,7 +118,7 @@ If you only need to (re)deploy one contract, e.g. after a local code change:
 cd contracts
 cargo build --target wasm32v1-none --release
 stellar contract deploy \
-  --wasm target/wasm32v1-none/release/stellar_insights.wasm \
+  --wasm target/wasm32v1-none/release/payraider.wasm \
   --source my-identity \
   --network testnet
 ```
@@ -174,7 +174,7 @@ To run SDK examples pointing to the testnet:
 1. Verify that your SDK configuration imports the testnet passphrase and endpoint.
 2. Example script usage:
    ```javascript
-   import { StellarSdk } from '@stellar-insights/sdk';
+   import { StellarSdk } from '@payraider/sdk';
 
    const sdk = new StellarSdk({
      network: 'testnet',

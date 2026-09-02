@@ -2,7 +2,7 @@
 
 ## Overview
 
-Request signing provides cryptographic protection against tampering and replay attacks for API calls. This document describes the request signing scheme used by Stellar Insights API.
+Request signing provides cryptographic protection against tampering and replay attacks for API calls. This document describes the request signing scheme used by PayRaider API.
 
 ## Signing Scheme
 

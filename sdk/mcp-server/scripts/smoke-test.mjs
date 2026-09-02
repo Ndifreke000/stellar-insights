@@ -7,12 +7,12 @@ const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Verifies the MCP handshake and tool/resource listing work end to end.
 // Uses a dummy API key since tools/list and resources/templates/list don't
-// call the Stellar Insights API - only actually invoking a tool would.
+// call the PayRaider API - only actually invoking a tool would.
 const transport = new StdioClientTransport({
   command: "npx",
   args: ["tsx", "src/index.ts"],
   cwd: packageRoot,
-  env: { ...process.env, STELLAR_INSIGHTS_API_KEY: process.env.STELLAR_INSIGHTS_API_KEY ?? "smoke-test-dummy-key" },
+  env: { ...process.env, PAYRAIDER_API_KEY: process.env.PAYRAIDER_API_KEY ?? "smoke-test-dummy-key" },
 });
 
 const client = new Client({ name: "smoke-test-client", version: "0.0.1" });

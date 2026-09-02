@@ -1,5 +1,5 @@
 #!/bin/bash
-# Complete Vault Setup Script for stellar-insights
+# Complete Vault Setup Script for payraider
 # Automates all Vault configuration including:
 # - KV v2 secrets engine
 # - Database dynamic secrets (PostgreSQL)
@@ -155,7 +155,7 @@ setup_policy() {
     
     # Create policy file
     cat > /tmp/stellar-app-policy.hcl <<'EOF'
-# Stellar Insights Application Policy
+# PayRaider Application Policy
 
 # Allow reading KV v2 secrets
 path "secret/data/stellar/*" {
@@ -301,7 +301,7 @@ verify_setup() {
 
 main() {
     echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}   Vault Setup for stellar-insights                      ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}   Vault Setup for payraider                      ${BLUE}║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
     
     validate_env
@@ -316,7 +316,7 @@ main() {
     verify_setup
     
     echo ""
-    echo -e "${GREEN}✓ Vault is ready for stellar-insights!${NC}"
+    echo -e "${GREEN}✓ Vault is ready for payraider!${NC}"
     echo ""
     echo "Next steps:"
     echo "  1. Update secret placeholders (price_feed_api_key, stellar_source_secret_key)"

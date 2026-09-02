@@ -14,7 +14,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}=== Stellar Insights Key Rotation Utility ===${NC}"
+echo -e "${YELLOW}=== PayRaider Key Rotation Utility ===${NC}"
 echo ""
 echo "This script assists with rotating three types of cryptographic keys:"
 echo "  1. JWT_SECRET (short-lived session tokens)"

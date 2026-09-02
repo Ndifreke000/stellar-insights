@@ -1,6 +1,6 @@
 # QA: Transaction builder + signature collector (`/[locale]/transactions/builder`)
 
-**Issue:** [#1817](https://github.com/Ndifreke000/stellar-insights/issues/1817)
+**Issue:** [#1817](https://github.com/Ndifreke000/payraider/issues/1817)
 **Route(s):** `/[locale]/transactions/builder`
 
 ## Background

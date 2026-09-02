@@ -1,11 +1,11 @@
-# Stellar Insights - Project Structure
+# PayRaider - Project Structure
 
-This document outlines the organized structure of the Stellar Insights monorepo.
+This document outlines the organized structure of the PayRaider monorepo.
 
 ## 📁 Root Structure
 
 ```
-stellar-insights/
+payraider/
 ├── 📱 mobile/           # React Native mobile app
 ├── 🌐 frontend/         # Next.js web application
 ├── ⚙️  backend/          # Rust API server

@@ -1,6 +1,6 @@
 # Disaster Recovery Plan
 
-This document defines the disaster recovery (DR) procedures for Stellar Insights infrastructure, including recovery objectives, failure scenarios, and detailed runbooks for incident response.
+This document defines the disaster recovery (DR) procedures for PayRaider infrastructure, including recovery objectives, failure scenarios, and detailed runbooks for incident response.
 
 ## Executive Summary
 
@@ -10,7 +10,7 @@ This document defines the disaster recovery (DR) procedures for Stellar Insights
 **Testing Frequency**: Monthly restore drill  
 **Approval Status**: Ready for implementation
 
-The Stellar Insights infrastructure is designed for high availability with automatic failover for most components. This plan documents manual recovery procedures for scenarios that cannot be handled automatically.
+The PayRaider infrastructure is designed for high availability with automatic failover for most components. This plan documents manual recovery procedures for scenarios that cannot be handled automatically.
 
 ## Recovery Objectives
 
@@ -45,7 +45,7 @@ The Stellar Insights infrastructure is designed for high availability with autom
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Route53 (DNS)                           │
-│              api.stellar-insights.com                       │
+│              api.payraider.com                       │
 └──────────────────────┬──────────────────────────────────────┘
                        │
         ┌──────────────┼──────────────┐
@@ -100,11 +100,11 @@ The Stellar Insights infrastructure is designed for high availability with autom
 
 ```bash
 # Health check will fail
-curl https://api.stellar-insights.com/health
+curl https://api.payraider.com/health
 # Returns 503 Service Unavailable
 
 # Application logs show database connection errors
-aws logs tail /ecs/stellar-insights-production --follow | grep "database\|psql\|connection"
+aws logs tail /ecs/payraider-production --follow | grep "database\|psql\|connection"
 ```
 
 #### Runbook: Database Recovery
@@ -116,13 +116,13 @@ aws logs tail /ecs/stellar-insights-production --follow | grep "database\|psql\|
 ```bash
 # Check instance status
 aws rds describe-db-instances \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --query 'DBInstances[0].[DBInstanceStatus, DBInstanceClass, MultiAZ]' \
   --output table
 
 # If status is "available", check connectivity
-psql -h stellar-insights-production.c0xxxxxxxxxxxx.us-east-1.rds.amazonaws.com \
-  -U postgres -d stellar_insights -c "SELECT 1;" --username postgres
+psql -h payraider-production.c0xxxxxxxxxxxx.us-east-1.rds.amazonaws.com \
+  -U postgres -d payraider -c "SELECT 1;" --username postgres
 # If this hangs, network connectivity is broken
 ```
 
@@ -131,7 +131,7 @@ psql -h stellar-insights-production.c0xxxxxxxxxxxx.us-east-1.rds.amazonaws.com \
 # View RDS events to understand what happened
 aws rds describe-events \
   --source-type db-instance \
-  --source-identifier stellar-insights-production \
+  --source-identifier payraider-production \
   --query 'Events[0:10].[EventCategories, Message, SourceType, SourceIdentifier]' \
   --output table
 ```
@@ -142,7 +142,7 @@ aws rds describe-events \
 
 # 1. Find latest good snapshot
 LATEST_SNAPSHOT=$(aws rds describe-db-snapshots \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[-1].DBSnapshotIdentifier' \
   --output text)
 
@@ -150,16 +150,16 @@ echo "Latest snapshot: $LATEST_SNAPSHOT"
 
 # 2. Create new instance from snapshot
 aws rds restore-db-instance-from-db-snapshot \
-  --db-instance-identifier stellar-insights-production-restore-$(date +%s) \
+  --db-instance-identifier payraider-production-restore-$(date +%s) \
   --db-snapshot-identifier "$LATEST_SNAPSHOT" \
   --db-instance-class db.t3.medium \
   --multi-az \
   --no-publicly-accessible \
   --vpc-security-group-ids sg-xxxxxxxx \
-  --db-subnet-group-name stellar-insights-db-production
+  --db-subnet-group-name payraider-db-production
 
 # 3. Wait for instance to be available (5-10 minutes)
-NEW_INSTANCE="stellar-insights-production-restore-$(date +%s)"
+NEW_INSTANCE="payraider-production-restore-$(date +%s)"
 aws rds wait db-instance-available --db-instance-identifier "$NEW_INSTANCE"
 
 # 4. Test new instance
@@ -168,14 +168,14 @@ NEW_ENDPOINT=$(aws rds describe-db-instances \
   --query 'DBInstances[0].Endpoint.Address' \
   --output text)
 
-psql -h "$NEW_ENDPOINT" -U postgres -d stellar_insights -c "SELECT COUNT(*) FROM users;"
+psql -h "$NEW_ENDPOINT" -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
 ```
 
 **Step 4: Switch Application Traffic** (2 min)
 ```bash
 # Option A: Update RDS endpoint in Secrets Manager
 aws secretsmanager update-secret \
-  --secret-id "stellar-insights/production/database" \
+  --secret-id "payraider/production/database" \
   --secret-string '{"host":"'$NEW_ENDPOINT'","username":"postgres",...}'
 
 # Option B: Update Route53 CNAME (if using custom domain)
@@ -185,7 +185,7 @@ aws route53 change-resource-record-sets \
     "Changes": [{
       "Action": "UPSERT",
       "ResourceRecordSet": {
-        "Name": "db.stellar-insights.com",
+        "Name": "db.payraider.com",
         "Type": "CNAME",
         "TTL": 60,
         "ResourceRecords": [{"Value": "'$NEW_ENDPOINT'"}]
@@ -195,8 +195,8 @@ aws route53 change-resource-record-sets \
 
 # Force application to reconnect
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --force-new-deployment
 ```
 
@@ -204,26 +204,26 @@ aws ecs update-service \
 ```bash
 # Watch ECS tasks reconnect to new database
 aws ecs describe-services \
-  --cluster stellar-insights-production \
-  --services stellar-insights-service \
+  --cluster payraider-production \
+  --services payraider-service \
   --query 'Services[0].DeploymentConfiguration' \
   --output table
 
 # Check application health
-curl -I https://api.stellar-insights.com/health
+curl -I https://api.payraider.com/health
 # Should return 200 OK
 
 # Monitor logs for errors
-aws logs tail /ecs/stellar-insights-production --follow
+aws logs tail /ecs/payraider-production --follow
 ```
 
 **Step 6: Cleanup** (2 min)
 ```bash
 # Once restored instance is confirmed healthy, delete old instance
 aws rds delete-db-instance \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --create-final-snapshot \
-  --final-db-snapshot-identifier stellar-insights-production-final-$(date +%s)
+  --final-db-snapshot-identifier payraider-production-final-$(date +%s)
 
 # Rename restored instance to original name
 # (AWS doesn't support rename, so DNS update was done above)
@@ -232,7 +232,7 @@ aws rds delete-db-instance \
 **Escalation**:
 - If restore fails, page on-call DBA and escalate to AWS support
 - If multiple snapshots are corrupted, restore from weekly or monthly backup
-- Contact: ops-critical@stellar-insights.com
+- Contact: ops-critical@payraider.com
 
 ---
 
@@ -266,8 +266,8 @@ CHECK TABLE table_name;  # MySQL
 ```bash
 # Stop accepting writes to prevent further corruption
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --desired-count 0
 
 echo "✓ Application traffic stopped"
@@ -279,8 +279,8 @@ sleep 30
 **Step 2: Assess Damage** (2 min)
 ```bash
 # Quick query to see extent of corruption
-psql -h stellar-insights-production.c0xxxx.us-east-1.rds.amazonaws.com \
-  -U postgres -d stellar_insights <<EOF
+psql -h payraider-production.c0xxxx.us-east-1.rds.amazonaws.com \
+  -U postgres -d payraider <<EOF
 SELECT relname, n_live_tup, n_dead_tup 
 FROM pg_stat_user_tables 
 ORDER BY n_dead_tup DESC;
@@ -288,7 +288,7 @@ EOF
 
 # Check backup retention period
 aws rds describe-db-instances \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --query 'DBInstances[0].BackupRetentionPeriod' \
   --output text
 ```
@@ -301,8 +301,8 @@ aws rds describe-db-instances \
 RESTORE_TIME="2024-01-19T14:15:00Z"  # Time before corruption
 
 aws rds restore-db-instance-to-point-in-time \
-  --source-db-instance-identifier stellar-insights-production \
-  --target-db-instance-identifier stellar-insights-production-pitr-$(date +%s) \
+  --source-db-instance-identifier payraider-production \
+  --target-db-instance-identifier payraider-production-pitr-$(date +%s) \
   --restore-time "$RESTORE_TIME" \
   --db-instance-class db.t3.medium \
   --multi-az \
@@ -310,19 +310,19 @@ aws rds restore-db-instance-to-point-in-time \
 
 # Wait for recovery
 aws rds wait db-instance-available \
-  --db-instance-identifier "stellar-insights-production-pitr-$(date +%s)"
+  --db-instance-identifier "payraider-production-pitr-$(date +%s)"
 ```
 
 **Step 4: Verify Data Integrity** (2 min)
 ```bash
-PITR_INSTANCE="stellar-insights-production-pitr-$(date +%s)"
+PITR_INSTANCE="payraider-production-pitr-$(date +%s)"
 
 # Check specific corrupted table
 PITR_ENDPOINT=$(aws rds describe-db-instances \
   --db-instance-identifier "$PITR_INSTANCE" \
   --query 'DBInstances[0].Endpoint.Address' --output text)
 
-psql -h "$PITR_ENDPOINT" -U postgres -d stellar_insights <<EOF
+psql -h "$PITR_ENDPOINT" -U postgres -d payraider <<EOF
 SELECT COUNT(*) as user_count FROM users;
 SELECT COUNT(*) as corrupted_records FROM users WHERE status = 'CORRUPTED';
 EOF
@@ -332,25 +332,25 @@ EOF
 ```bash
 # Update secrets manager
 aws secretsmanager update-secret \
-  --secret-id "stellar-insights/production/database" \
+  --secret-id "payraider/production/database" \
   --secret-string '{"host":"'$PITR_ENDPOINT'","username":"postgres",...}'
 
 # Restart application with new endpoint
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --desired-count 3  # Restart 3 tasks
 
 # Verify health
 sleep 30
-curl -I https://api.stellar-insights.com/health
+curl -I https://api.payraider.com/health
 ```
 
 **Step 6: Cleanup** (2 min)
 ```bash
 # Delete corrupted original instance
 aws rds delete-db-instance \
-  --db-instance-identifier stellar-insights-production \
+  --db-instance-identifier payraider-production \
   --skip-final-snapshot
 
 # Rename PITR instance to original name
@@ -360,7 +360,7 @@ aws rds delete-db-instance \
 **Escalation**:
 - If restore fails: Page on-call DBA
 - If multiple backups corrupted: Escalate to AWS support + security team (possible ransomware)
-- Contact: ops-critical@stellar-insights.com
+- Contact: ops-critical@payraider.com
 
 ---
 
@@ -377,7 +377,7 @@ aws rds delete-db-instance \
 # AWS status page: https://status.aws.amazon.com/
 
 # Application monitoring shows 100% error rate
-curl https://api.stellar-insights.com/health
+curl https://api.payraider.com/health
 # Connection timeout or refused
 ```
 
@@ -428,23 +428,23 @@ terraform apply \
 # Snapshots in original region are inaccessible
 
 # Download Parquet export from S3 (in alternate region)
-aws s3 cp s3://stellar-insights-backups-replica/database/production/exports/latest.parquet . \
+aws s3 cp s3://payraider-backups-replica/database/production/exports/latest.parquet . \
   --region us-west-2
 
 # Restore into new PostgreSQL instance
-pg_restore --host new-rds-endpoint --user postgres --database stellar_insights latest.parquet
+pg_restore --host new-rds-endpoint --user postgres --database payraider latest.parquet
 ```
 
 **Step 4: Redeploy Application** (5 min)
 ```bash
 # Pull latest image from ECR (assume cross-region replicated)
-aws ecr get-images --repository-name stellar-insights-backend --region us-west-2
+aws ecr get-images --repository-name payraider-backend --region us-west-2
 
 # Deploy to new ECS cluster
 aws ecs create-service \
-  --cluster stellar-insights-production-us-west-2 \
-  --service-name stellar-insights-service \
-  --task-definition stellar-insights-production \
+  --cluster payraider-production-us-west-2 \
+  --service-name payraider-service \
+  --task-definition payraider-production \
   --desired-count 3 \
   --region us-west-2
 ```
@@ -458,7 +458,7 @@ aws route53 change-resource-record-sets \
     "Changes": [{
       "Action": "UPSERT",
       "ResourceRecordSet": {
-        "Name": "api.stellar-insights.com",
+        "Name": "api.payraider.com",
         "Type": "A",
         "AliasTarget": {
           "HostedZoneId": "Z3AQMSTJ2NG68D",
@@ -470,21 +470,21 @@ aws route53 change-resource-record-sets \
   }'
 
 # Verify DNS propagation
-nslookup api.stellar-insights.com
+nslookup api.payraider.com
 # Should resolve to us-west-2 endpoint
 ```
 
 **Step 6: Validation & Monitoring** (5 min)
 ```bash
 # Test application
-curl https://api.stellar-insights.com/health
+curl https://api.payraider.com/health
 # Should return 200 OK
 
 # Monitor logs
-aws logs tail /ecs/stellar-insights-production-us-west-2 --follow
+aws logs tail /ecs/payraider-production-us-west-2 --follow
 
 # Check database connectivity
-psql -h new-rds-endpoint -U postgres -d stellar_insights -c "SELECT COUNT(*) FROM users;"
+psql -h new-rds-endpoint -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
 ```
 
 **Step 7: Failback (When Original Region Recovers)** (10 min)
@@ -503,7 +503,7 @@ psql -h new-rds-endpoint -U postgres -d stellar_insights -c "SELECT COUNT(*) FRO
 - Page on-call infrastructure team + DBA
 - Contact AWS support (Enterprise support for fastest response)
 - Consider manual traffic diversion while re-provisioning
-- Contact: ops-critical@stellar-insights.com, infrastructure@stellar-insights.com
+- Contact: ops-critical@payraider.com, infrastructure@payraider.com
 
 ---
 
@@ -518,13 +518,13 @@ psql -h new-rds-endpoint -U postgres -d stellar_insights -c "SELECT COUNT(*) FRO
 ```bash
 # ECS tasks fail to start or keep restarting
 aws ecs describe-tasks \
-  --cluster stellar-insights-production \
-  --tasks $(aws ecs list-tasks --cluster stellar-insights-production --service-name stellar-insights-service --query taskArns --output text) \
+  --cluster payraider-production \
+  --tasks $(aws ecs list-tasks --cluster payraider-production --service-name payraider-service --query taskArns --output text) \
   --query 'tasks[*].[taskArn, lastStatus, stoppedReason]' \
   --output table
 
 # Health checks failing
-curl https://api.stellar-insights.com/health
+curl https://api.payraider.com/health
 # Returns 503 or connection refused
 ```
 
@@ -537,8 +537,8 @@ curl https://api.stellar-insights.com/health
 ```bash
 # Scale down broken tasks
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --desired-count 0
 
 echo "✓ Bad deployment stopped"
@@ -548,13 +548,13 @@ echo "✓ Bad deployment stopped"
 ```bash
 # List recent task definitions (newest first)
 aws ecs describe-task-definition \
-  --task-definition stellar-insights-production \
+  --task-definition payraider-production \
   --query 'taskDefinition.taskDefinitionArn' \
   --output text
 
 # Get specific revision
 PREV_REVISION=$(aws ecs list-task-definitions \
-  --family-prefix stellar-insights-production \
+  --family-prefix payraider-production \
   --sort DESC \
   --query 'taskDefinitionArns[1]' \
   --output text)
@@ -566,8 +566,8 @@ echo "Previous task definition: $PREV_REVISION"
 ```bash
 # Update service to use previous task definition
 aws ecs update-service \
-  --cluster stellar-insights-production \
-  --service stellar-insights-service \
+  --cluster payraider-production \
+  --service payraider-service \
   --task-definition "$PREV_REVISION" \
   --desired-count 3
 
@@ -580,11 +580,11 @@ echo "✓ Rolled back to $PREV_REVISION"
 sleep 30
 
 # Check health
-curl https://api.stellar-insights.com/health
+curl https://api.payraider.com/health
 # Should return 200 OK
 
 # Monitor logs
-aws logs tail /ecs/stellar-insights-production --follow
+aws logs tail /ecs/payraider-production --follow
 ```
 
 **Step 5: Investigate Root Cause** (offline)
@@ -597,14 +597,14 @@ git log -1 --oneline
 
 # Verify Docker image in ECR
 aws ecr describe-images \
-  --repository-name stellar-insights-backend \
+  --repository-name payraider-backend \
   --query 'imageDetails[-1].[imageTags, imageSizeInBytes, imagePushedAt]'
 ```
 
 **Escalation**:
 - For quick rollback: DevOps team has permission
 - For investigation: Development team + DevOps
-- Contact: ops-critical@stellar-insights.com
+- Contact: ops-critical@payraider.com
 
 ---
 
@@ -622,7 +622,7 @@ When major incident occurs:
 2. **Notify Stakeholders**
    ```bash
    # Send notifications to:
-   # - ops-critical@stellar-insights.com
+   # - ops-critical@payraider.com
    # - #incidents Slack channel
    # - PagerDuty escalation policy
    # - Executive team (if customer-facing)
@@ -646,7 +646,7 @@ When major incident occurs:
 ### Escalation Contacts
 
 **Primary On-Call**:
-- PagerDuty: https://stellar-insights.pagerduty.com/
+- PagerDuty: https://payraider.pagerduty.com/
 - Page duty rotation escalates within 5 min if not acknowledged
 
 **Secondary Escalation**:
@@ -769,16 +769,16 @@ Do NOT perform changes during:
 
 ```bash
 # RDS snapshots
-aws rds describe-db-snapshots --db-instance-identifier stellar-insights-production
-aws rds create-db-snapshot --db-instance-identifier stellar-insights-production --db-snapshot-identifier manual-$(date +%s)
-aws rds restore-db-instance-from-db-snapshot --source-db-instance-identifier stellar-insights-production --target-db-instance-identifier restore-$(date +%s)
-aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier stellar-insights-production --restore-time 2024-01-19T14:00:00Z
+aws rds describe-db-snapshots --db-instance-identifier payraider-production
+aws rds create-db-snapshot --db-instance-identifier payraider-production --db-snapshot-identifier manual-$(date +%s)
+aws rds restore-db-instance-from-db-snapshot --source-db-instance-identifier payraider-production --target-db-instance-identifier restore-$(date +%s)
+aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier payraider-production --restore-time 2024-01-19T14:00:00Z
 
 # ECS operations
-aws ecs describe-services --cluster stellar-insights-production --services stellar-insights-service
-aws ecs update-service --cluster stellar-insights-production --service stellar-insights-service --desired-count 3
-aws ecs list-tasks --cluster stellar-insights-production
-aws ecs describe-tasks --cluster stellar-insights-production --tasks <task-arn>
+aws ecs describe-services --cluster payraider-production --services payraider-service
+aws ecs update-service --cluster payraider-production --service payraider-service --desired-count 3
+aws ecs list-tasks --cluster payraider-production
+aws ecs describe-tasks --cluster payraider-production --tasks <task-arn>
 
 # Route53 DNS
 aws route53 list-hosted-zones
@@ -786,15 +786,15 @@ aws route53 list-resource-record-sets --hosted-zone-id Z1234567890ABC
 aws route53 change-resource-record-sets --hosted-zone-id Z1234567890ABC --change-batch file://change.json
 
 # S3 backups
-aws s3 ls s3://stellar-insights-backups/database/ --recursive
-aws s3 cp s3://stellar-insights-backups/database/production/exports/latest.parquet .
+aws s3 ls s3://payraider-backups/database/ --recursive
+aws s3 cp s3://payraider-backups/database/production/exports/latest.parquet .
 ```
 
 ### PostgreSQL Commands
 
 ```bash
 # Connect to database
-psql -h <rds-endpoint> -U postgres -d stellar_insights
+psql -h <rds-endpoint> -U postgres -d payraider
 
 # Check table sizes
 SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) 
@@ -806,10 +806,10 @@ ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 SELECT COUNT(*) as row_count, MAX(updated_at) as last_update FROM users;
 
 # Dump database
-pg_dump -U postgres -d stellar_insights | gzip > backup.sql.gz
+pg_dump -U postgres -d payraider | gzip > backup.sql.gz
 
 # Restore database
-gunzip < backup.sql.gz | psql -U postgres -d stellar_insights
+gunzip < backup.sql.gz | psql -U postgres -d payraider
 ```
 
 ## Revision History
@@ -823,7 +823,7 @@ gunzip < backup.sql.gz | psql -U postgres -d stellar_insights
 **Document Classification**: Internal  
 **Last Review Date**: 2024-01-19  
 **Next Review Date**: 2024-04-19  
-**Owner**: DevOps Team (ops-critical@stellar-insights.com)
+**Owner**: DevOps Team (ops-critical@payraider.com)
 
 This document is version-controlled in the GitHub repository.  
 To suggest changes, open a PR or file an issue.

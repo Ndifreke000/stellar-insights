@@ -164,7 +164,7 @@ test_websocket_resilience() {
     if command -v docker &> /dev/null; then
       # Look for reconnection logs
       local reconnect_attempts
-      reconnect_attempts=$(docker logs stellar-insights-backend 2>&1 | grep -i "reconnect\|retry" | wc -l || echo "0")
+      reconnect_attempts=$(docker logs payraider-backend 2>&1 | grep -i "reconnect\|retry" | wc -l || echo "0")
 
       if [[ "$reconnect_attempts" -gt 0 ]]; then
         echo -e "${GREEN}✓ Backend log shows $reconnect_attempts reconnection attempts${NC}"

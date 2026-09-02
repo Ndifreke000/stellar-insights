@@ -85,7 +85,7 @@ trufflehog filesystem . --only-verified
 To report a security vulnerability, please follow these steps:
 
 1. **Do NOT** open a public GitHub issue for the vulnerability
-2. Contact the security team via email: security@stellar-insights.example.com (replace with actual contact)
+2. Contact the security team via email: security@payraider.example.com (replace with actual contact)
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce (if applicable)
@@ -246,6 +246,6 @@ Required for production:
 
 ## Contact and Escalation
 
-**Security Issues**: security@stellar-insights.example.com (replace with actual contact)  
-**GDPR/Privacy**: privacy@stellar-insights.example.com (replace with actual contact)  
+**Security Issues**: security@payraider.example.com (replace with actual contact)  
+**GDPR/Privacy**: privacy@payraider.example.com (replace with actual contact)  
 **Incident Response**: On-call security lead (contact via operations team)

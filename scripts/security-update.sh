@@ -1,10 +1,10 @@
 #!/bin/bash
-# Security Update Script for Stellar Insights Frontend
+# Security Update Script for PayRaider Frontend
 # This script updates vulnerable dependencies and verifies the fixes
 
 set -e
 
-echo "🔒 Stellar Insights - Security Update Script"
+echo "🔒 PayRaider - Security Update Script"
 echo "============================================="
 echo ""
 

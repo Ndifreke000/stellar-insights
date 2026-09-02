@@ -1,12 +1,12 @@
-# Stellar Insights — Detailed Project Description
+# PayRaider — Detailed Project Description
 
 ---
 
-## What Is Stellar Insights?
+## What Is PayRaider?
 
-Stellar Insights is a full-stack, production-grade analytics and monitoring platform built specifically for the **Stellar blockchain network**. Its primary purpose is to give developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on the Stellar network.
+PayRaider is a full-stack, production-grade analytics and monitoring platform built specifically for the **Stellar blockchain network**. Its primary purpose is to give developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on the Stellar network.
 
-The core problem it solves is visibility. The Stellar network processes thousands of cross-border payments between assets like USDC, EURC, XLM, BRL, NGN, and many more every day. While these payments are transparent on-chain, there has been no dedicated tool that aggregates that data, measures corridor-level success rates, tracks liquidity depth, monitors anchor health, and surfaces actionable insights to the people building on top of Stellar. Stellar Insights fills that gap.
+The core problem it solves is visibility. The Stellar network processes thousands of cross-border payments between assets like USDC, EURC, XLM, BRL, NGN, and many more every day. While these payments are transparent on-chain, there has been no dedicated tool that aggregates that data, measures corridor-level success rates, tracks liquidity depth, monitors anchor health, and surfaces actionable insights to the people building on top of Stellar. PayRaider fills that gap.
 
 The platform is not just a dashboard. It is a complete observability stack — from a high-performance Rust backend that ingests live RPC data from the Stellar Horizon API, to a Next.js frontend with real-time WebSocket updates, to Soroban smart contracts that anchor analytics snapshots on-chain for tamper-proof verification, to a React Native mobile app for monitoring on the go.
 
@@ -17,7 +17,7 @@ The platform is not just a dashboard. It is a complete observability stack — f
 The project is organized as a monorepo with six major components:
 
 ```
-stellar-insights/
+payraider/
 ├── backend/        Rust analytics engine + REST/GraphQL/WebSocket API
 ├── frontend/       Next.js 16 dashboard with real-time updates
 ├── mobile/         React Native mobile app (Expo)
@@ -202,7 +202,7 @@ The contracts layer is built with Soroban (Stellar's smart contract platform) in
 
 ### Contracts Overview
 
-**1. `stellar_insights` — Core Analytics Contract**
+**1. `payraider` — Core Analytics Contract**
 
 The primary contract. It stores cryptographic SHA-256 hashes of analytics snapshots on-chain, creating an immutable audit trail that anyone can verify. Key functions:
 
@@ -271,14 +271,14 @@ The mobile app provides on-the-go monitoring for corridor health and payment act
 
 ## SDKs
 
-Two client SDKs allow developers to integrate Stellar Insights data into their own applications.
+Two client SDKs allow developers to integrate PayRaider data into their own applications.
 
 **TypeScript SDK (`sdk/typescript/`)**
 
 ```typescript
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { PayRaiderClient } from '@payraider/sdk';
 
-const client = new StellarInsightsClient({ apiKey: 'your-key' });
+const client = new PayRaiderClient({ apiKey: 'your-key' });
 
 const corridors = await client.corridors.list({ limit: 20 });
 const detail = await client.corridors.get('USDC:issuer->XLM:native');
@@ -288,9 +288,9 @@ const analytics = await client.analytics.network({ period: '7d' });
 **Python SDK (`sdk/python/`)**
 
 ```python
-from stellar_insights import StellarInsightsClient
+from payraider import PayRaiderClient
 
-client = StellarInsightsClient(api_key="your-key")
+client = PayRaiderClient(api_key="your-key")
 
 corridors = client.corridors.list(limit=20)
 detail = client.corridors.get("USDC:issuer->XLM:native")
@@ -471,4 +471,4 @@ The repository has accumulated **1,779 commits** from **196+ contributors** acro
 
 ## Summary
 
-Stellar Insights is a comprehensive, production-ready analytics platform for the Stellar blockchain. It combines a high-performance Rust backend with real-time data ingestion, a polished Next.js dashboard with live WebSocket updates, Soroban smart contracts for on-chain data verification, a React Native mobile app, and a complete cloud infrastructure stack. The project is built to handle the demands of a real-time financial data platform — low latency, high availability, strong security, and full observability — while remaining accessible to open-source contributors through clear documentation, structured issue tracking, and automated quality gates.
+PayRaider is a comprehensive, production-ready analytics platform for the Stellar blockchain. It combines a high-performance Rust backend with real-time data ingestion, a polished Next.js dashboard with live WebSocket updates, Soroban smart contracts for on-chain data verification, a React Native mobile app, and a complete cloud infrastructure stack. The project is built to handle the demands of a real-time financial data platform — low latency, high availability, strong security, and full observability — while remaining accessible to open-source contributors through clear documentation, structured issue tracking, and automated quality gates.

@@ -1,6 +1,6 @@
 # State Management Patterns & Conventions
 
-This document outlines the state management patterns and conventions for the Stellar Insights frontend application.
+This document outlines the state management patterns and conventions for the PayRaider frontend application.
 
 ## Architecture Overview
 

@@ -11,7 +11,7 @@ cd "${REPO_ROOT}/contracts"
 echo "==> Ensuring wasm32v1-none target is installed"
 rustup target add wasm32v1-none
 
-echo "==> stellar_insights workspace tests"
+echo "==> payraider workspace tests"
 cargo test --workspace -- --nocapture
 
 echo "==> All active contract tests passed"

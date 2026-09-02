@@ -42,7 +42,7 @@ fail() {
 
 get_backup_timestamp() {
   local backup_key="$1"
-  # Extract timestamp from s3 key: database/production/manual/stellar-insights-production-20240115-143022.sql.gz
+  # Extract timestamp from s3 key: database/production/manual/payraider-production-20240115-143022.sql.gz
   echo "$backup_key" | sed -E 's/.*-([0-9]{8}-[0-9]{6})\..*$/\1/'
 }
 
@@ -120,11 +120,11 @@ should_retain_backup() {
 test_timestamp_extraction() {
   log "Testing timestamp extraction..."
 
-  local key1="database/production/manual/stellar-insights-production-20240115-143022.sql.gz"
+  local key1="database/production/manual/payraider-production-20240115-143022.sql.gz"
   local ts1=$(get_backup_timestamp "$key1")
   [ "$ts1" = "20240115-143022" ] && pass "Extract timestamp from S3 key" || fail "Extract timestamp: got $ts1"
 
-  local key2="database/staging/export/stellar-insights-staging-export-20240101-000000.sql"
+  local key2="database/staging/export/payraider-staging-export-20240101-000000.sql"
   local ts2=$(get_backup_timestamp "$key2")
   [ "$ts2" = "20240101-000000" ] && pass "Extract timestamp from export key" || fail "Extract timestamp from export"
 }

@@ -6,7 +6,7 @@ Short and specific summary: Create middleware to extract and validate network co
 
 ## Project Context
 
-This task is part of Phase 1: Backend Refactoring for the Stellar Insights multi-network architecture. The goal is to enable runtime network switching between testnet and mainnet by implementing proper network context management in the Rust backend.
+This task is part of Phase 1: Backend Refactoring for the PayRaider multi-network architecture. The goal is to enable runtime network switching between testnet and mainnet by implementing proper network context management in the Rust backend.
 
 ---
 

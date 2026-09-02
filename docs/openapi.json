@@ -1,11 +1,11 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Stellar Insights API",
+    "title": "PayRaider API",
     "description": "API for Stellar network analytics, anchor monitoring, and payment corridor insights",
     "contact": {
-      "name": "Stellar Insights Team",
-      "email": "support@stellarinsights.io"
+      "name": "PayRaider Team",
+      "email": "support@payraider.io"
     },
     "license": {
       "name": "MIT",
@@ -19,7 +19,7 @@
       "description": "Local development server"
     },
     {
-      "url": "https://api.stellarinsights.io",
+      "url": "https://api.payraider.io",
       "description": "Production server"
     }
   ],

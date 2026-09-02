@@ -1,10 +1,10 @@
-# Stellar Insights API Documentation
+# PayRaider API Documentation
 
 ## Overview
 
-The Stellar Insights API provides real-time payment analytics, anchor monitoring, and cross-border payment corridor insights for the Stellar network.
+The PayRaider API provides real-time payment analytics, anchor monitoring, and cross-border payment corridor insights for the Stellar network.
 
-**Base URL:** `https://api.stellarinsights.io`  
+**Base URL:** `https://api.payraider.io`  
 **API Version:** 1.0.0  
 **OpenAPI Spec:** `/api-docs/openapi.json`
 
@@ -12,7 +12,7 @@ The Stellar Insights API provides real-time payment analytics, anchor monitoring
 
 Access the interactive Swagger UI at:
 - **Development:** `http://localhost:8080/swagger-ui`
-- **Production:** `https://api.stellarinsights.io/swagger-ui`
+- **Production:** `https://api.payraider.io/swagger-ui`
 
 ## Authentication
 
@@ -22,7 +22,7 @@ Include your API key in the `Authorization` header:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.stellarinsights.io/api/anchors
+  https://api.payraider.io/api/anchors
 ```
 
 ### OAuth 2.0
@@ -106,7 +106,7 @@ Content-Type: application/json
 
 **Request:**
 ```bash
-curl -X GET "https://api.stellarinsights.io/api/anchors/anchor-123" \
+curl -X GET "https://api.payraider.io/api/anchors/anchor-123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -131,7 +131,7 @@ curl -X GET "https://api.stellarinsights.io/api/anchors/anchor-123" \
 
 **Request:**
 ```bash
-curl -X POST "https://api.stellarinsights.io/api/cost-calculator/estimate" \
+curl -X POST "https://api.payraider.io/api/cost-calculator/estimate" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -202,7 +202,7 @@ The API implements a three-tier rate limiting system based on client authenticat
    - Include key in `Authorization: Bearer YOUR_API_KEY` header
    - Keys follow format `si_live_*` (production) or `si_test_*` (testing)
 
-2. **Premium tier:** Contact support@stellarinsights.io with your use case
+2. **Premium tier:** Contact support@payraider.io with your use case
    - Specify your expected request volume
    - Include your API key ID
    - Include organization name and contact information
@@ -340,7 +340,7 @@ GET /api/anchors?page=1&limit=50&sort=name&order=asc
 Real-time updates via WebSocket:
 
 ```javascript
-const ws = new WebSocket('wss://api.stellarinsights.io/ws');
+const ws = new WebSocket('wss://api.payraider.io/ws');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -357,16 +357,16 @@ ws.onmessage = (event) => {
 
 ## SDKs and Libraries
 
-- **JavaScript/TypeScript:** `npm install @stellar-insights/sdk`
-- **Python:** `pip install stellar-insights`
-- **Go:** `go get github.com/stellar-insights/go-sdk`
+- **JavaScript/TypeScript:** `npm install @payraider/sdk`
+- **Python:** `pip install payraider`
+- **Go:** `go get github.com/payraider/go-sdk`
 
 ## Support
 
-- **Documentation:** https://docs.stellarinsights.io
-- **API Status:** https://status.stellarinsights.io
-- **Support Email:** support@stellarinsights.io
-- **GitHub Issues:** https://github.com/Ndifreke000/stellar-insights/issues
+- **Documentation:** https://docs.payraider.io
+- **API Status:** https://status.payraider.io
+- **Support Email:** support@payraider.io
+- **GitHub Issues:** https://github.com/Ndifreke000/payraider/issues
 
 ## Changelog
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy the integrated Soroban contract to mainnet with a human approval gate.
 #
-# Only stellar_insights is deployed — see contracts/archive/README.md.
+# Only payraider is deployed — see contracts/archive/README.md.
 
 set -euo pipefail
 
@@ -166,12 +166,12 @@ EOF
 log "Starting mainnet deployment..."
 
 echo ""
-info "Contract: stellar_insights"
-approval_gate "stellar_insights"
-STELLAR_INSIGHTS_ID=$(deploy_contract \
-    "stellar_insights" \
-    "${WASM_DIR}/stellar_insights.wasm" \
-    "STELLAR_INSIGHTS_CONTRACT_ID")
+info "Contract: payraider"
+approval_gate "payraider"
+PAYRAIDER_ID=$(deploy_contract \
+    "payraider" \
+    "${WASM_DIR}/payraider.wasm" \
+    "PAYRAIDER_CONTRACT_ID")
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 
@@ -180,7 +180,7 @@ echo -e "${GRN}═════════════════════�
 log "Contract deployed successfully."
 log "Contract IDs written to: ${ENV_FILE}"
 echo ""
-echo "  STELLAR_INSIGHTS_CONTRACT_ID=${STELLAR_INSIGHTS_ID}"
+echo "  PAYRAIDER_CONTRACT_ID=${PAYRAIDER_ID}"
 echo ""
 log "Source the env file with: source ${ENV_FILE}"
 log "Run verification:         ./scripts/verify-contract-mainnet.sh"

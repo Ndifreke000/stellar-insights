@@ -1,15 +1,15 @@
-# Deploying SLOs and Alerting for Stellar Insights Testnet
+# Deploying SLOs and Alerting for PayRaider Testnet
 
-This guide walks through deploying the SLO definitions and alert rules to your Stellar Insights testnet monitoring stack.
+This guide walks through deploying the SLO definitions and alert rules to your PayRaider testnet monitoring stack.
 
 ## Prerequisites
 
 - **Prometheus** running and scraping metrics from your backend
 - **AlertManager** deployed and accessible
 - **Grafana** for dashboard visualization (optional but recommended)
-- **Stellar Insights Backend** running with `/metrics` endpoint enabled
+- **PayRaider Backend** running with `/metrics` endpoint enabled
 
-Deployment status of monitoring infrastructure was audited in [Issue #1881](https://github.com/Ndifreke000/stellar-insights/issues/1881).
+Deployment status of monitoring infrastructure was audited in [Issue #1881](https://github.com/Ndifreke000/payraider/issues/1881).
 
 ---
 
@@ -46,9 +46,9 @@ kubectl create configmap prometheus-alert-rules \
 # prometheusSpec:
 #   ruleSelector:
 #     matchLabels:
-#       prometheus: "stellar-insights"
+#       prometheus: "payraider"
 #   additionalScrapeConfigs:
-#     - job_name: 'stellar-insights'
+#     - job_name: 'payraider'
 #       static_configs:
 #         - targets: ['localhost:8080']
 
@@ -76,7 +76,7 @@ alerting:
             - alertmanager:9093
 
 scrape_configs:
-  - job_name: 'stellar-insights'
+  - job_name: 'payraider'
     static_configs:
       - targets: ['localhost:8080']
     metrics_path: '/metrics'
@@ -99,7 +99,7 @@ Check Prometheus web UI at `http://prometheus:9090/alerts`:
 
 ```bash
 # Or query via API
-curl 'http://prometheus:9090/api/v1/rules' | jq '.data.groups[] | select(.name == "stellar_insights_testnet_slos")'
+curl 'http://prometheus:9090/api/v1/rules' | jq '.data.groups[] | select(.name == "payraider_testnet_slos")'
 ```
 
 ---
@@ -175,20 +175,20 @@ curl 'http://alertmanager:9093/api/v1/status' | jq '.data'
 
 ### Create Channels in Slack
 
-**#stellar-insights-alerts** (critical incidents)
-- Topic: "Critical alerts for Stellar Insights testnet (SEV-1 incidents)"
+**#payraider-alerts** (critical incidents)
+- Topic: "Critical alerts for PayRaider testnet (SEV-1 incidents)"
 - Description: "Real-time notifications for production incidents requiring immediate response"
 - Access: Restricted to on-call engineers + management
 - Notification settings: @here mentions enabled
 
-**#stellar-insights-dev** (warnings and dev alerts)
-- Topic: "Development team alerts for Stellar Insights testnet"
+**#payraider-dev** (warnings and dev alerts)
+- Topic: "Development team alerts for PayRaider testnet"
 - Description: "Non-critical alerts and warnings for developer investigation"
 - Access: All developers
 - Notification settings: Normal; no @here
 
-**#stellar-insights-monitoring** (audit log)
-- Topic: "Audit log of all Stellar Insights metrics and alerts"
+**#payraider-monitoring** (audit log)
+- Topic: "Audit log of all PayRaider metrics and alerts"
 - Description: "Historical record of all alerts fired (no action required)"
 - Access: Optional for interested developers
 - Notification settings: Off
@@ -200,7 +200,7 @@ For each channel that needs alerts:
 1. Go to Slack workspace → Settings & administration → Manage apps
 2. Search for "Incoming Webhooks"
 3. Click "Add to Slack"
-4. Select channel: **#stellar-insights-alerts**
+4. Select channel: **#payraider-alerts**
 5. Copy the webhook URL
 6. Set environment variable: `export SLACK_WEBHOOK_URL="https://hooks.slack.com/..."`
 7. Repeat for other channels if different webhooks are desired
@@ -214,7 +214,7 @@ PagerDuty automatically escalates critical incidents if they're not acknowledged
 ### Create PagerDuty Integration
 
 1. Log into PagerDuty
-2. Create a new Service for "Stellar Insights Testnet"
+2. Create a new Service for "PayRaider Testnet"
 3. In Service → Integrations → Add an integration → "Prometheus"
 4. Copy the "Integration Key"
 5. Set environment variable: `export PAGERDUTY_SERVICE_KEY="..."`
@@ -227,7 +227,7 @@ PagerDuty automatically escalates critical incidents if they're not acknowledged
    - **Level 2 (15 min):** Engineering manager
    - **Level 3 (30 min):** Team lead
 3. Create an on-call schedule that rotates weekly
-4. Attach schedule to the "Stellar Insights Testnet" service
+4. Attach schedule to the "PayRaider Testnet" service
 
 ### Test PagerDuty Integration
 
@@ -274,10 +274,10 @@ The Grafana community has Prometheus dashboards. To import one:
 
 ```bash
 # Copy the dashboard JSON (see below) to a file
-cat > /tmp/stellar-insights-dashboard.json << 'EOF'
+cat > /tmp/payraider-dashboard.json << 'EOF'
 {
   "dashboard": {
-    "title": "Stellar Insights Testnet - SLOs",
+    "title": "PayRaider Testnet - SLOs",
     "panels": [
       {
         "title": "Health Endpoint Availability",
@@ -310,7 +310,7 @@ EOF
 curl -X POST http://grafana:3000/api/dashboards/db \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $GRAFANA_API_KEY" \
-  -d @/tmp/stellar-insights-dashboard.json
+  -d @/tmp/payraider-dashboard.json
 ```
 
 ### Option C: Write Your Own
@@ -345,7 +345,7 @@ systemctl restart prometheus
 
 # Wait 2-5 minutes for alert to fire
 # Check Prometheus: http://prometheus:9090/alerts
-# Verify Slack notification arrived in #stellar-insights-alerts
+# Verify Slack notification arrived in #payraider-alerts
 # Check PagerDuty for incident creation
 
 # Revert the temporary change
@@ -399,7 +399,7 @@ cat > docs/runbooks/health-endpoint-down.md << 'EOF'
    ```
 2. Check backend logs:
    ```bash
-   docker logs stellar-insights-backend | tail -50
+   docker logs payraider-backend | tail -50
    ```
 3. Verify database connectivity:
    ```bash
@@ -411,9 +411,9 @@ cat > docs/runbooks/health-endpoint-down.md << 'EOF'
    ```
 
 ## Remediation
-- Restart backend: `docker restart stellar-insights-backend`
-- Restart database: `docker restart stellar-insights-postgres`
-- Restart cache: `docker restart stellar-insights-redis`
+- Restart backend: `docker restart payraider-backend`
+- Restart database: `docker restart payraider-postgres`
+- Restart cache: `docker restart payraider-redis`
 - If persistent, check logs for configuration errors
 
 ## Escalation
@@ -430,7 +430,7 @@ Reference them in alert annotations:
 
 ```yaml
 annotations:
-  runbook_url: "https://github.com/Ndifreke000/stellar-insights/blob/main/docs/runbooks/health-endpoint-down.md"
+  runbook_url: "https://github.com/Ndifreke000/payraider/blob/main/docs/runbooks/health-endpoint-down.md"
 ```
 
 ---
@@ -474,7 +474,7 @@ curl 'http://alertmanager:9093/api/v1/alerts' | jq '[.data[] | .labels.alertname
 
 ```bash
 # Check alert rules loaded
-curl http://prometheus:9090/api/v1/rules | jq '.data.groups[] | select(.name == "stellar_insights_testnet_slos")'
+curl http://prometheus:9090/api/v1/rules | jq '.data.groups[] | select(.name == "payraider_testnet_slos")'
 
 # Check if conditions are met
 curl 'http://prometheus:9090/api/v1/query?query=rate(http_errors_total{path="/health"}[5m])'
@@ -533,5 +533,5 @@ curl -X POST https://events.pagerduty.com/v2/enqueue \
 - **Prometheus AlertManager documentation:** https://prometheus.io/docs/alerting/latest/overview/
 - **PagerDuty integration guide:** https://www.pagerduty.com/docs/guides/prometheus-integration/
 - **Grafana dashboard best practices:** https://grafana.com/docs/grafana/latest/dashboards/
-- **Stellar Insights SLOs document:** `docs/SLOs_AND_ALERTING.md`
+- **PayRaider SLOs document:** `docs/SLOs_AND_ALERTING.md`
 - **Monitoring infrastructure audit:** Issue #1881

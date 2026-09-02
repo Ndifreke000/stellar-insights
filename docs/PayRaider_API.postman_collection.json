@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Stellar Insights API",
+    "name": "PayRaider API",
     "description": "Real-time payment analytics for Stellar",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

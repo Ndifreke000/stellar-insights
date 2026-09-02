@@ -1,6 +1,6 @@
 # QA: Calculator (`/[locale]/calculator`)
 
-**Issue:** [#1818](https://github.com/Ndifreke000/stellar-insights/issues/1818)
+**Issue:** [#1818](https://github.com/Ndifreke000/payraider/issues/1818)
 **Route(s):** `/[locale]/calculator`
 
 ## Background

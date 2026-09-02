@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the GDPR compliance features implemented in Stellar Insights, including:
+This document describes the GDPR compliance features implemented in PayRaider, including:
 - **Right to Access (Data Portability)** — Users can export their personal data
 - **Right to be Forgotten (Erasure)** — Users can request deletion of their personal data
 - **Consent Management** — Users can view and manage their privacy consents

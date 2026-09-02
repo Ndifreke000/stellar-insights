@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Emergency rollback script for stellar-insights backend
+# Emergency rollback script for payraider backend
 # Usage: ./scripts/rollback.sh <environment>
 
 AWS_REGION="us-east-1"
-CONTAINER_NAME="stellar-insights"
+CONTAINER_NAME="payraider"
 CONTAINER_PORT=8080
 
 usage() {
@@ -31,11 +31,11 @@ if [[ "$ENVIRONMENT" != "staging" && "$ENVIRONMENT" != "production" ]]; then
     exit 1
 fi
 
-CLUSTER="stellar-insights-${ENVIRONMENT}"
-SERVICE="stellar-insights-service"
-TASK_FAMILY="stellar-insights-${ENVIRONMENT}"
-CODEDEPLOY_APP="stellar-insights-${ENVIRONMENT}"
-CODEDEPLOY_GROUP="stellar-insights-${ENVIRONMENT}-dg"
+CLUSTER="payraider-${ENVIRONMENT}"
+SERVICE="payraider-service"
+TASK_FAMILY="payraider-${ENVIRONMENT}"
+CODEDEPLOY_APP="payraider-${ENVIRONMENT}"
+CODEDEPLOY_GROUP="payraider-${ENVIRONMENT}-dg"
 
 echo "=== Emergency Rollback ==="
 echo "Environment: ${ENVIRONMENT}"

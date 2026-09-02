@@ -180,7 +180,7 @@ check_backend_errors() {
 
   # Look for database connection errors
   local error_count
-  error_count=$(docker logs stellar-insights-backend 2>&1 | \
+  error_count=$(docker logs payraider-backend 2>&1 | \
     grep -iE "database|connection|pool|timeout|refused" | \
     wc -l || echo "0")
 

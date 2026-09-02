@@ -63,7 +63,7 @@ curl http://localhost:8080/api/anchors?limit=5
 ## Step 4 — Verify traces in the Jaeger UI
 
 1. Open http://localhost:16686
-2. In the **Service** dropdown select `stellar-insights-backend`
+2. In the **Service** dropdown select `payraider-backend`
 3. Click **Find Traces**
 4. You should see one trace per HTTP request.  Each trace has at minimum:
    - A root span named after the HTTP route (e.g. `GET /api/corridors`)

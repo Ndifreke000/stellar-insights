@@ -1,4 +1,4 @@
-# Branch Protection Policy for Stellar Insights
+# Branch Protection Policy for PayRaider
 
 This document defines the branch protection rules for the `main` branch to ensure code quality and prevent regressions now that CI is reliably green.
 
@@ -149,7 +149,7 @@ Before enabling in branch protection:
 
 ### Option A: GitHub Web UI
 
-1. Go to: https://github.com/Ndifreke000/stellar-insights/settings/branches
+1. Go to: https://github.com/Ndifreke000/payraider/settings/branches
 2. Click "Add rule" under "Branch protection rules"
 3. Branch name pattern: `main`
 4. Enable:
@@ -171,7 +171,7 @@ Before enabling in branch protection:
 # Requires: gh cli + admin permissions to repo
 
 # Enable required status checks
-gh api repos/Ndifreke000/stellar-insights/branches/main/protection \
+gh api repos/Ndifreke000/payraider/branches/main/protection \
   --input - << 'EOF'
 {
   "required_status_checks": {
@@ -194,7 +194,7 @@ If repo is managed by Terraform:
 
 ```hcl
 resource "github_branch_protection" "main" {
-  repository_id = data.github_repository.stellar_insights.node_id
+  repository_id = data.github_repository.payraider.node_id
   pattern       = "main"
 
   required_status_checks {
@@ -222,7 +222,7 @@ After enabling branch protection:
 
 ```bash
 # Check that protection is enabled
-gh api repos/Ndifreke000/stellar-insights/branches/main/protection
+gh api repos/Ndifreke000/payraider/branches/main/protection
 
 # Create a test PR that intentionally fails a check
 # (e.g., add a clippy warning)
@@ -274,7 +274,7 @@ When a new workflow is ready:
 1. Verify it's green for 1 week on all recent commits
 2. Update this document with workflow details
 3. Configure in branch protection
-4. Announce to team in #stellar-insights-dev
+4. Announce to team in #payraider-dev
 
 ### Removing Required Checks
 
