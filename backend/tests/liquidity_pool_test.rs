@@ -1,7 +1,7 @@
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
 async fn setup_liquidity_pool_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();

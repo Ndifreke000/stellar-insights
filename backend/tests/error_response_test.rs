@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use stellar_insights_backend::error::ApiError;
+use payraider_backend::error::ApiError;
 
 #[test]
 fn test_not_found_error_creation() {

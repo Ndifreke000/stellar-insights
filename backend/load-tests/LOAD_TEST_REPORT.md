@@ -41,10 +41,10 @@ k6 run backend/load-tests/mainnet_10k_tps.js
 
 ```bash
 # Run against staging environment
-BASE_URL=https://api-staging.stellar-insights.com k6 run backend/load-tests/mainnet_10k_tps.js
+BASE_URL=https://api-staging.payraider.com k6 run backend/load-tests/mainnet_10k_tps.js
 
 # With custom WebSocket endpoint
-WS_URL=wss://api-staging.stellar-insights.com/ws k6 run backend/load-tests/mainnet_10k_tps.js
+WS_URL=wss://api-staging.payraider.com/ws k6 run backend/load-tests/mainnet_10k_tps.js
 
 # With Horizon endpoint override
 HORIZON_URL=https://horizon-testnet.stellar.org k6 run backend/load-tests/mainnet_10k_tps.js
@@ -185,7 +185,7 @@ Threshold: error rate < 1 % under sustained load (< 5 % for WebSocket).
 
 ```bash
 # Watch for connection pool errors in real time
-docker logs -f stellar-insights-backend | grep -i "connection\|pool\|exhausted"
+docker logs -f payraider-backend | grep -i "connection\|pool\|exhausted"
 ```
 
 Expected log patterns near pool limit:
@@ -239,5 +239,5 @@ curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
 
 ```bash
 pkill -f "k6 run"
-docker logs stellar-insights-backend | tail -20
+docker logs payraider-backend | tail -20
 ```

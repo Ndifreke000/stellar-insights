@@ -19,7 +19,7 @@
 //! method exactly once regardless of the number of anchors returned.
 //!
 //! # References
-//! - GitHub Issue: stellar-insights#analytics-nplusone
+//! - GitHub Issue: payraider#analytics-nplusone
 //! - Fixed in: `AssetDb::get_assets_by_anchors` (`src/db/assets.rs`)
 
 use sqlx::SqlitePool;

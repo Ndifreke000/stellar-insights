@@ -11,7 +11,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use stellar_insights_backend::rate_limit::{
+use payraider_backend::rate_limit::{
     ClientIdentifier, ClientRateLimits, ClientTier, RateLimitConfig, RateLimiter,
 };
 

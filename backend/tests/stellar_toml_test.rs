@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use stellar_insights_backend::services::stellar_toml::StellarTomlClient;
+use payraider_backend::services::stellar_toml::StellarTomlClient;
 
 #[tokio::test]
 async fn test_domain_validation() {

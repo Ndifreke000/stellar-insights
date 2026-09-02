@@ -5,10 +5,10 @@
 //! survived — rather than only asserting that the scheduler fires.
 
 use std::path::Path;
-use stellar_insights_backend::backup::{BackupConfig, BackupManager};
+use payraider_backend::backup::{BackupConfig, BackupManager};
 use tempfile::tempdir;
 
-const LIVE_CONTENTS: &[u8] = b"SQLite format 3\0stellar-insights-live-data";
+const LIVE_CONTENTS: &[u8] = b"SQLite format 3\0payraider-live-data";
 
 fn config(db_path: &Path, backup_dir: &Path) -> BackupConfig {
     BackupConfig {
@@ -23,7 +23,7 @@ fn config(db_path: &Path, backup_dir: &Path) -> BackupConfig {
 #[tokio::test]
 async fn backup_then_restore_preserves_data() {
     let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("stellar_insights.db");
+    let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
     tokio::fs::write(&db_path, LIVE_CONTENTS)
         .await
@@ -55,7 +55,7 @@ async fn backup_then_restore_preserves_data() {
 #[tokio::test]
 async fn verify_backup_accepts_a_freshly_created_backup() {
     let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("stellar_insights.db");
+    let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
     tokio::fs::write(&db_path, LIVE_CONTENTS)
         .await
@@ -76,7 +76,7 @@ async fn verify_backup_accepts_a_freshly_created_backup() {
 #[tokio::test]
 async fn verify_backup_flags_a_corrupted_backup() {
     let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("stellar_insights.db");
+    let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
     tokio::fs::write(&db_path, LIVE_CONTENTS)
         .await

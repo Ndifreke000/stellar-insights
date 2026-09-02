@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 // Import the old feature-level API for backward compatibility tests
-use stellar_insights_backend::features::graphql_api::{GraphQLAPI, GraphQLAPIConfig};
-use stellar_insights_backend::models::graphql_api::GraphQLRequest;
+use payraider_backend::features::graphql_api::{GraphQLAPI, GraphQLAPIConfig};
+use payraider_backend::models::graphql_api::GraphQLRequest;
 
 fn old_request(query: &str) -> GraphQLRequest {
     GraphQLRequest {
@@ -245,10 +245,10 @@ async fn create_test_db() -> SqlitePool {
 }
 
 /// Build a test schema with in-memory database
-async fn create_test_schema() -> stellar_insights_backend::graphql::AppSchema {
+async fn create_test_schema() -> payraider_backend::graphql::AppSchema {
     let pool = Arc::new(create_test_db().await);
     let (broadcast_tx, _) = broadcast::channel::<String>(10);
-    stellar_insights_backend::graphql::build_schema(pool, broadcast_tx)
+    payraider_backend::graphql::build_schema(pool, broadcast_tx)
 }
 
 #[tokio::test]

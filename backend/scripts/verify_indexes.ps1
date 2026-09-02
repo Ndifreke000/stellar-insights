@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$DB_URL = if ($env:DATABASE_URL) { $env:DATABASE_URL } else { "sqlite:./stellar_insights.db" }
+$DB_URL = if ($env:DATABASE_URL) { $env:DATABASE_URL } else { "sqlite:./payraider.db" }
 $DB_PATH = $DB_URL -replace "^sqlite:", ""
 
 Write-Host "==========================================" -ForegroundColor Cyan

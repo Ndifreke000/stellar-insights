@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod ip_whitelist_tests {
     use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-    use stellar_insights_backend::admin_ip_whitelist::IpWhitelistService;
+    use payraider_backend::admin_ip_whitelist::IpWhitelistService;
 
     async fn setup_test_db() -> SqlitePool {
         let db_url = "sqlite::memory:";

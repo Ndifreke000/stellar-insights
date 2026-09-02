@@ -2,7 +2,7 @@
 mod session_tests {
     use chrono::Utc;
     use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-    use stellar_insights_backend::session::SessionService;
+    use payraider_backend::session::SessionService;
     use std::time::Duration;
 
     async fn setup_test_db() -> SqlitePool {

@@ -25,7 +25,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 mkdir -p "$RESULTS_DIR"
 
 echo -e "${BLUE}==============================================================================${NC}"
-echo -e "${BLUE}STELLAR INSIGHTS - LOAD TEST SUITE${NC}"
+echo -e "${BLUE}PAYRAIDER - LOAD TEST SUITE${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
 echo ""
 echo -e "${GREEN}Base URL:${NC} $BASE_URL"
@@ -175,7 +175,7 @@ echo ""
 # Generate summary file
 summary_file="$RESULTS_DIR/summary_${TIMESTAMP}.txt"
 {
-    echo "STELLAR INSIGHTS - LOAD TEST SUMMARY"
+    echo "PAYRAIDER - LOAD TEST SUMMARY"
     echo "===================================="
     echo ""
     echo "Date: $(date)"

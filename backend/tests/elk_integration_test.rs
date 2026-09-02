@@ -124,13 +124,13 @@ async fn test_kibana_config_exists() {
 
 #[tokio::test]
 async fn test_index_pattern_configured() {
-    // Verify Kibana has index pattern for stellar-insights logs
+    // Verify Kibana has index pattern for payraider logs
     let kibana_config = std::fs::read_to_string("elk/kibana/dashboard.json")
         .expect("Failed to read Kibana config");
     
     assert!(
-        kibana_config.contains("stellar-insights"),
-        "Kibana must be configured with stellar-insights index pattern"
+        kibana_config.contains("payraider"),
+        "Kibana must be configured with payraider index pattern"
     );
 }
 

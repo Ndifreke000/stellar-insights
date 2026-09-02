@@ -1,8 +1,8 @@
 use anyhow::Result;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::services::aggregation::{AggregationConfig, AggregationService};
+use payraider_backend::database::Database;
+use payraider_backend::services::aggregation::{AggregationConfig, AggregationService};
 use tracing::{info, Level};
 use tracing_subscriber;
 
@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     // Connect to database
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:./stellar_insights.db".to_string());
+        .unwrap_or_else(|_| "sqlite:./payraider.db".to_string());
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)

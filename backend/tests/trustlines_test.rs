@@ -1,7 +1,7 @@
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::trustline_analyzer::TrustlineAnalyzer;
 
 async fn setup_trustline_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();

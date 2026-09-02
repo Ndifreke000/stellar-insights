@@ -1,6 +1,6 @@
 use std::env;
 use std::sync::Mutex;
-use stellar_insights_backend::database::PoolConfig;
+use payraider_backend::database::PoolConfig;
 
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -104,7 +104,7 @@ async fn test_pool_creation() {
 
 #[tokio::test]
 async fn test_pool_metrics() {
-    use stellar_insights_backend::database::Database;
+    use payraider_backend::database::Database;
 
     let config = PoolConfig::default();
     let pool = config.create_pool("sqlite::memory:").await.unwrap();
@@ -119,7 +119,7 @@ async fn test_pool_metrics() {
 
 #[tokio::test]
 async fn test_pool_exhaustion_handling() {
-    use stellar_insights_backend::error::{ApiError, DatabaseError};
+    use payraider_backend::error::{ApiError, DatabaseError};
 
     // DatabaseError::PoolExhausted maps to ServiceUnavailable (503)
     let db_err = DatabaseError::PoolExhausted;

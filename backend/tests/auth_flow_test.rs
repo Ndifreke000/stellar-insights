@@ -5,8 +5,8 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use stellar_insights_backend::api::auth;
-use stellar_insights_backend::auth::{AuthService, User};
+use payraider_backend::api::auth;
+use payraider_backend::auth::{AuthService, User};
 use tokio::sync::RwLock;
 use tower::util::ServiceExt;
 

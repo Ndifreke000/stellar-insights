@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use stellar_insights_backend::rate_limit::{
+use payraider_backend::rate_limit::{
     ClientIdentifier, ClientRateLimits, ClientTier, RateLimitConfig, RateLimiter,
 };
 
@@ -303,7 +303,7 @@ async fn test_rate_limit_info_includes_client_id() {
 async fn test_rate_limit_headers() {
     use axum::http::{header, StatusCode};
     use axum::response::IntoResponse;
-    use stellar_insights_backend::rate_limit::{add_rate_limit_headers, RateLimitInfo};
+    use payraider_backend::rate_limit::{add_rate_limit_headers, RateLimitInfo};
 
     let info = RateLimitInfo {
         limit: 100,

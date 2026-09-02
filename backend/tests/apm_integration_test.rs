@@ -37,7 +37,7 @@ fn test_opentelemetry_dependencies_present() {
     // This test just ensures the module is reachable
     
     // Check if we can import opentelemetry
-    use stellar_insights_backend::observability;
+    use payraider_backend::observability;
     
     // APM module should exist
     let _ = observability::apm::ApmConfig::from_env();
@@ -45,13 +45,13 @@ fn test_opentelemetry_dependencies_present() {
 
 #[test]
 fn test_apm_config_defaults() {
-    use stellar_insights_backend::observability::apm::ApmConfig;
+    use payraider_backend::observability::apm::ApmConfig;
     
     let config = ApmConfig::from_env();
     
     // Should have reasonable defaults
     assert!(!config.service_name.is_empty(), "Service name must be set");
-    assert!(config.service_name.contains("stellar-insights"), "Service name should contain stellar-insights");
+    assert!(config.service_name.contains("payraider"), "Service name should contain payraider");
     
     assert!(!config.otlp_endpoint.is_empty(), "OTLP endpoint must be set");
     assert!(config.otlp_endpoint.contains("4318") || config.otlp_endpoint.contains("4317"), 
@@ -60,7 +60,7 @@ fn test_apm_config_defaults() {
 
 #[test]
 fn test_sensitive_data_redaction() {
-    use stellar_insights_backend::observability::apm::redaction;
+    use payraider_backend::observability::apm::redaction;
     
     // Test that sensitive keywords trigger redaction
     let test_cases = vec![

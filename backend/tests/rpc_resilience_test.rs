@@ -7,13 +7,13 @@ use failsafe::{backoff, failure_policy, Config};
 use tokio::time;
 use uuid::Uuid;
 
-use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::rpc::circuit_breaker::{
+use payraider_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::rpc::circuit_breaker::{
     rpc_circuit_breaker, CircuitBreaker, SharedCircuitBreaker,
 };
-use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
-use stellar_insights_backend::rpc::stellar::StellarRpcClient;
+use payraider_backend::rpc::error::{with_retry, RetryConfig, RpcError};
+use payraider_backend::rpc::stellar::StellarRpcClient;
 
 fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCircuitBreaker {
     let backoff = backoff::constant(timeout);

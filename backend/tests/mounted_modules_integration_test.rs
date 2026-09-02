@@ -16,17 +16,17 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-use stellar_insights_backend::api::{admin_ip_whitelist, audit_log, corridor_alerts, failed_payments, settlement_distribution, twofa};
-use stellar_insights_backend::admin_audit_log::AdminAuditLogger;
-use stellar_insights_backend::admin_ip_whitelist::IpWhitelistService;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::crypto::CryptoService;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::twofa::TwoFAService;
-use stellar_insights_backend::websocket::WsState;
+use payraider_backend::api::{admin_ip_whitelist, audit_log, corridor_alerts, failed_payments, settlement_distribution, twofa};
+use payraider_backend::admin_audit_log::AdminAuditLogger;
+use payraider_backend::admin_ip_whitelist::IpWhitelistService;
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::crypto::CryptoService;
+use payraider_backend::database::Database;
+use payraider_backend::ingestion::DataIngestionService;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::state::AppState;
+use payraider_backend::twofa::TwoFAService;
+use payraider_backend::websocket::WsState;
 
 const TEST_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS corridor_alert_configs (

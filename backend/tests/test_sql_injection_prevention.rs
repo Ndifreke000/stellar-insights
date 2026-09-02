@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
-use stellar_insights_backend::models::asset_verification::VerificationStatus;
-use stellar_insights_backend::services::asset_verifier::AssetVerifier;
+use payraider_backend::models::asset_verification::VerificationStatus;
+use payraider_backend::services::asset_verifier::AssetVerifier;
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();

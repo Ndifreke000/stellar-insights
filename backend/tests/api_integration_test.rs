@@ -16,18 +16,18 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-use stellar_insights_backend::api::{anchors::get_anchors, webhooks};
-use stellar_insights_backend::auth_middleware::AuthUser;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::handlers::{health_check, pool_metrics};
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::price_feed::{
+use payraider_backend::api::{anchors::get_anchors, webhooks};
+use payraider_backend::auth_middleware::AuthUser;
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::database::Database;
+use payraider_backend::handlers::{health_check, pool_metrics};
+use payraider_backend::ingestion::DataIngestionService;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::websocket::WsState;
+use payraider_backend::state::AppState;
+use payraider_backend::websocket::WsState;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 

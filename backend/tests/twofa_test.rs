@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod twofa_tests {
     use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-    use stellar_insights_backend::twofa::TwoFAService;
-    use stellar_insights_backend::crypto::CryptoService;
+    use payraider_backend::twofa::TwoFAService;
+    use payraider_backend::crypto::CryptoService;
 
     async fn setup_test_db() -> SqlitePool {
         let db_url = "sqlite::memory:";
@@ -56,7 +56,7 @@ mod twofa_tests {
 
         assert!(otpauth_uri.contains("otpauth://totp"));
         assert!(otpauth_uri.contains("user@example.com"));
-        assert!(otpauth_uri.contains("stellar-insights"));
+        assert!(otpauth_uri.contains("payraider"));
         assert!(!secret.is_empty());
         assert_eq!(secret.len(), 32); // base32 encoded 20 bytes
     }

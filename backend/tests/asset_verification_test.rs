@@ -1,9 +1,9 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
-use stellar_insights_backend::models::asset_verification::{
+use payraider_backend::models::asset_verification::{
     StellarTomlData, VerificationResult, VerificationStatus,
 };
-use stellar_insights_backend::services::asset_verifier::AssetVerifier;
+use payraider_backend::services::asset_verifier::AssetVerifier;
 
 /// Helper function to create a test database
 async fn create_test_db() -> Result<SqlitePool> {

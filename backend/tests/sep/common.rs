@@ -81,17 +81,17 @@ pub async fn response_json(app: Router, request: Request<Body>) -> (StatusCode, 
 }
 
 pub fn sep24_router() -> Router {
-    stellar_insights_backend::api::sep24_proxy::routes()
+    payraider_backend::api::sep24_proxy::routes()
 }
 
 pub fn sep31_router() -> Router {
-    stellar_insights_backend::api::sep31_proxy::routes()
+    payraider_backend::api::sep31_proxy::routes()
 }
 
 pub fn sep10_router() -> Router {
     use std::sync::Arc;
-    use stellar_insights_backend::api::sep10;
-    use stellar_insights_backend::auth::sep10_simple::Sep10Service;
+    use payraider_backend::api::sep10;
+    use payraider_backend::auth::sep10_simple::Sep10Service;
 
     let service = Arc::new(
         Sep10Service::new(

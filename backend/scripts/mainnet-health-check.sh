@@ -7,15 +7,15 @@ set -euo pipefail
 # Optional: kubectl (for in-cluster pod readiness check)
 #
 # Environment:
-#   MAINNET_URL       Base URL of the deployed API (default: https://api.stellar-insights.com)
+#   MAINNET_URL       Base URL of the deployed API (default: https://api.payraider.com)
 #   HORIZON_URL       Stellar Horizon endpoint (default: https://horizon.stellar.org)
-#   NAMESPACE         Kubernetes namespace for optional pod check (default: stellar-insights-mainnet)
+#   NAMESPACE         Kubernetes namespace for optional pod check (default: payraider-mainnet)
 #   TIMEOUT_SECONDS   Max wait for /health to become ready (default: 180)
 #   MAX_LEDGER_LAG    Max allowed ledger gap between Horizon tip and indexed ledger (default: 12 ≈ 60s)
 
-MAINNET_URL="${MAINNET_URL:-https://api.stellar-insights.com}"
+MAINNET_URL="${MAINNET_URL:-https://api.payraider.com}"
 HORIZON_URL="${HORIZON_URL:-https://horizon.stellar.org}"
-NAMESPACE="${NAMESPACE:-stellar-insights-mainnet}"
+NAMESPACE="${NAMESPACE:-payraider-mainnet}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-180}"
 MAX_LEDGER_LAG="${MAX_LEDGER_LAG:-12}"
 

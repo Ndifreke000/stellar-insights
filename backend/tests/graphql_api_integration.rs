@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use stellar_insights_backend::graphql;
+use payraider_backend::graphql;
 
 /// Create an in-memory SQLite database with all required tables
 async fn create_test_db() -> SqlitePool {

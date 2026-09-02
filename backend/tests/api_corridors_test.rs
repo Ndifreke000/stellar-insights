@@ -9,12 +9,12 @@ use std::sync::Arc;
 use tower::util::ServiceExt;
 
 // Use correct handlers from the updated API
-use stellar_insights_backend::api::corridors::{get_corridor_detail, list_corridors};
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::request_id::request_id_middleware;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::price_feed::{
+use payraider_backend::api::corridors::{get_corridor_detail, list_corridors};
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::database::Database;
+use payraider_backend::request_id::request_id_middleware;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
 
