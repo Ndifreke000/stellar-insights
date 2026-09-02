@@ -1,5 +1,5 @@
 /**
- * WebSocket client for real-time updates from the Stellar Insights backend
+ * WebSocket client for real-time updates from the PayRaider backend
  */
 import { logger } from "@/lib/logger";
 
@@ -76,7 +76,7 @@ export interface WebSocketConfig {
   maxReconnectAttempts?: number;
 }
 
-export class StellarInsightsWebSocket {
+export class PayRaiderWebSocket {
   private ws: WebSocket | null = null;
   private config: Required<WebSocketConfig>;
   private listeners: Map<WsMessageType, Set<WsEventHandler>> = new Map();
@@ -356,16 +356,16 @@ export class StellarInsightsWebSocket {
 }
 
 // Singleton instance for easy access
-let wsInstance: StellarInsightsWebSocket | null = null;
+let wsInstance: PayRaiderWebSocket | null = null;
 
 /**
  * Get the singleton WebSocket instance
  */
 export function getWebSocketInstance(
   config?: WebSocketConfig,
-): StellarInsightsWebSocket {
+): PayRaiderWebSocket {
   if (!wsInstance) {
-    wsInstance = new StellarInsightsWebSocket(config);
+    wsInstance = new PayRaiderWebSocket(config);
   }
   return wsInstance;
 }

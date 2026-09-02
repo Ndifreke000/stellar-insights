@@ -15,7 +15,7 @@
   },
   "layout": {
     "sidebar": {
-      "stellarInsights": "INSIGHTS",
+      "payRaider": "INSIGHTS",
       "home": "Home",
       "terminal": "Terminal",
       "corridors": "Corridors",
@@ -59,7 +59,7 @@
     "learnAbout": "Learn about PayRaider",
     "getStarted": "Get started with our platform",
     "reachOut": "Reach out to our team",
-    "stellarInsights": "PayRaider",
+    "payRaider": "PayRaider",
     "toggleMenu": "Toggle navigation menu"
   },
   "home": {
@@ -93,7 +93,7 @@
       "readSpec": "Read Specification"
     },
     "footer": {
-      "stellarInsights": "PayRaider",
+      "payRaider": "PayRaider",
       "networkStatus": "Network Status",
       "apiKeys": "API Keys",
       "governance": "Governance",

@@ -146,7 +146,7 @@ export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } =
 
             <div className="hidden md:flex items-center gap-2 navbar-brand-tag">
               <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-              <span>{t("stellarInsights")}</span>
+              <span>{t("payRaider")}</span>
             </div>
           </div>
         </div>

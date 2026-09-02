@@ -1,5 +1,5 @@
 /**
- * API Client for Stellar Insights
+ * API Client for PayRaider
  * Handles all API calls to the backend
  */
 import { monitoring } from "../monitoring";

@@ -356,7 +356,7 @@ export const useAppStore = create<AppState & AppActions>()(
         }))
       ),
       {
-        name: 'stellar-insights-app-store',
+        name: 'payraider-app-store',
         // Only persist certain parts of the state
         partialize: (state) => ({
           sidebarCollapsed: state.sidebarCollapsed,
