@@ -6,7 +6,7 @@ Stellar Insights is a Rust/Axum backend API with a React frontend, providing dat
 
 ### Technology Stack
 - **Backend**: Rust/Axum (async web framework)
-- **Database**: SQLite (primary), PostgreSQL (optional)
+- **Database**: SQLite (compiled-in only; see docs/adr/0001-sqlite-vs-postgres.md)
 - **Cache**: Redis (ElastiCache)
 - **Frontend**: React (separate deployment)
 - **Authentication**: JWT, SEP-10 (Stellar) 
@@ -170,7 +170,7 @@ Stellar Insights is a Rust/Axum backend API with a React frontend, providing dat
 │ 5. Update replay state (for idempotency)            │
 └──────────────────────┬─────────────────────────────────┘
                        ↓
-┌─ Database (SQLite/PostgreSQL) ────────────────────────┐
+┌─ Database (SQLite) ────────────────────────────────────┐
 │ - transactions, payments, trustlines                  │
 │ - liquidity_pools, contract_events                   │
 │ - metrics, snapshots (historical analytics)          │
