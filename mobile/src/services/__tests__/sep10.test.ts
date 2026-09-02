@@ -106,15 +106,15 @@ describe('requestChallenge', () => {
 
     await requestChallenge({
       account: VALID_ACCOUNT,
-      home_domain: 'stellarinsights.com',
-      client_domain: 'mobile.stellarinsights.com',
+      home_domain: 'payraider.com',
+      client_domain: 'mobile.payraider.com',
       memo: '12345',
     });
 
     expect(mockPost).toHaveBeenCalledWith('/api/sep10/auth', {
       account: VALID_ACCOUNT,
-      home_domain: 'stellarinsights.com',
-      client_domain: 'mobile.stellarinsights.com',
+      home_domain: 'payraider.com',
+      client_domain: 'mobile.payraider.com',
       memo: '12345',
     });
   });

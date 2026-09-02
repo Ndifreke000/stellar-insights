@@ -1,10 +1,10 @@
 /**
- * Encrypted MMKV storage for Stellar Insights mobile.
+ * Encrypted MMKV storage for PayRaider mobile.
  *
  * ## Security fix
  * The previous implementation used a hardcoded literal `encryptionKey`:
  *
- *     encryptionKey: 'stellar-insights-encryption-key'
+ *     encryptionKey: 'payraider-encryption-key'
  *
  * This defeated the purpose of MMKV encryption — anyone with the source code
  * had the key.  The fix generates a cryptographically random 32-byte key on
@@ -30,8 +30,8 @@ import * as Keychain from 'react-native-keychain';
 // Internal constants
 // ---------------------------------------------------------------------------
 
-const MMKV_STORAGE_ID = 'stellar-insights-storage';
-const KEYCHAIN_SERVICE = 'com.stellarinsights.storage.key';
+const MMKV_STORAGE_ID = 'payraider-storage';
+const KEYCHAIN_SERVICE = 'com.payraider.storage.key';
 
 // ---------------------------------------------------------------------------
 // Module-level instance (set by initializeStorage)

@@ -121,7 +121,7 @@ describe('LoginScreen', () => {
   it('renders correctly', () => {
     const { getByText, getByLabelText } = render(<LoginScreen />);
 
-    expect(getByText('Stellar Insights')).toBeTruthy();
+    expect(getByText('PayRaider')).toBeTruthy();
     expect(getByLabelText('Email or username')).toBeTruthy();
     expect(getByLabelText('Password')).toBeTruthy();
     expect(getByLabelText('Sign in')).toBeTruthy();

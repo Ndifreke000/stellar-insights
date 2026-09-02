@@ -1,5 +1,5 @@
 /**
- * SEP-10 mobile authentication client for Stellar Insights.
+ * SEP-10 mobile authentication client for PayRaider.
  *
  * SEP-10 is the Stellar Ecosystem Proposal that defines a standard challenge/
  * response authentication protocol for Stellar-based services.  The backend
@@ -19,7 +19,7 @@
  * // 2. Request a challenge for the user's Stellar account
  * const challenge = await sep10.requestChallenge({
  *   account: 'G...',
- *   home_domain: 'stellarinsights.com',
+ *   home_domain: 'payraider.com',
  * });
  *
  * // 3. Sign challenge.transaction with the account's private key (app-specific)

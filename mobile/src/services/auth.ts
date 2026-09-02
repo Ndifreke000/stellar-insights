@@ -1,5 +1,5 @@
 /**
- * Centralised auth-token store for Stellar Insights mobile.
+ * Centralised auth-token store for PayRaider mobile.
  *
  * Previously split across `auth.ts` (expo-secure-store, key "…tokens") and
  * `tokenStorage.ts` (expo-secure-store, key "…token"), causing the login screen
@@ -10,7 +10,7 @@
  * This file is now the **single** token storage module:
  *  - Uses `react-native-keychain` (already a declared dependency, works in
  *    bare RN with no Expo toolchain required).
- *  - Single keychain service name: `com.stellarinsights.auth.tokens`.
+ *  - Single keychain service name: `com.payraider.auth.tokens`.
  *  - Re-exports the `tokenStorage.ts` API surface
  *    (`saveToken`, `getToken`, `getTokenExpiry`, `removeToken`, `clearAll`,
  *    `hasValidToken`) so existing call sites in `App.tsx` and
@@ -31,7 +31,7 @@ import { storage } from './storage';
 // ---------------------------------------------------------------------------
 
 /** Keychain service name — every read and write in this file uses this value. */
-const SERVICE = 'com.stellarinsights.auth.tokens';
+const SERVICE = 'com.payraider.auth.tokens';
 
 /**
  * Key within the stored JSON payload that carries the optional token expiry

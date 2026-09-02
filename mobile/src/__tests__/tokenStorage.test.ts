@@ -20,7 +20,7 @@ import {
 // ---------------------------------------------------------------------------
 
 // The keychain is keyed by service name.  We simulate a single-entry store
-// because auth.ts uses one service ('com.stellarinsights.auth.tokens').
+// because auth.ts uses one service ('com.payraider.auth.tokens').
 const keychainStore: Record<string, string> = {};
 
 jest.mock('react-native-keychain', () => ({
@@ -77,7 +77,7 @@ jest.mock('@store/authStore', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SERVICE = 'com.stellarinsights.auth.tokens';
+const SERVICE = 'com.payraider.auth.tokens';
 
 function clearKeychainStore() {
   Object.keys(keychainStore).forEach(k => delete keychainStore[k]);

@@ -200,7 +200,7 @@ Configure Firebase for push notifications:
 
 ```bash
 cd ios
-xcodebuild -workspace StellarInsights.xcworkspace -scheme StellarInsights -configuration Release
+xcodebuild -workspace PayRaider.xcworkspace -scheme PayRaider -configuration Release
 ```
 
 ### Android

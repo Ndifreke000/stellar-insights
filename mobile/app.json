@@ -1,17 +1,17 @@
 {
-  "name": "Stellar Insights",
-  "displayName": "Stellar Insights",
+  "name": "PayRaider",
+  "displayName": "PayRaider",
   "expo": {
-    "name": "Stellar Insights",
-    "slug": "stellar-insights",
+    "name": "PayRaider",
+    "slug": "payraider",
     "version": "1.0.0",
     "orientation": "portrait",
     "ios": {
-      "bundleIdentifier": "com.stellarinsights.app",
+      "bundleIdentifier": "com.payraider.app",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.stellarinsights.app",
+      "package": "com.payraider.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

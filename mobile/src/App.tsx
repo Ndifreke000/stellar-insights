@@ -20,7 +20,7 @@ import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { NetworkProvider, getCurrentNetwork } from '@config/network';
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['stellar-insights://'],
+  prefixes: ['payraider://'],
   config: {
     screens: {
       Main: {
