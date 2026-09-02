@@ -1,18 +1,18 @@
 # Staging Environment Variables
-# Cost estimate: $150-200/month
+# Cost estimate: ~$96/month (see module.compute's cost_estimate output)
 #
 # Breakdown:
 #   - NAT Gateway: ~$30/month (1 for cost efficiency)
 #   - ALB: ~$20/month
-#   - ECS (t3.small): ~$30/month
-#   - RDS PostgreSQL (db.t3.small, 100GB): ~$60/month
+#   - ECS (t3.small): ~$20/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
 #   - ElastiCache Redis (cache.t3.small, single node): ~$20/month
-#   - Data transfer out: ~$20-30/month
+#   - Data transfer out: ~$10/month
 #
 # ✓ Adequate for testing and integration testing
-# ✓ Automatic RDS backups (7 days retention)
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots (see docs/backup-system.md)
 # ✓ CloudWatch monitoring enabled
-# ✓ 2 AZs (not fully redundant, cost-optimized)
+# ✓ 2 AZs for networking/caching (backend is a single pinned instance -- see ADR 0001)
 
 aws_region  = "us-east-1"
 environment = "staging"
@@ -25,7 +25,7 @@ vpc_cidr    = "10.1.0.0/16"
 # 4. Run: terraform apply
 #
 # When complete:
-# - Note RDS endpoint from outputs
 # - Configure VAULT_ADDR in GitHub Actions
 # - Run Vault setup scripts: scripts/setup-vault-complete.sh
-# - Test: psql -h <rds_endpoint> -U postgres -d payraider
+# - Test: exec into the running task and check /data/payraider.db exists
+# - Verify the litestream sidecar is replicating: check its CloudWatch logs

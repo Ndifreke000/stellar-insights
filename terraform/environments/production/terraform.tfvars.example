@@ -1,23 +1,26 @@
 # Production Environment Variables
-# Cost estimate: $400-600/month (full HA, 3 AZs, production-grade)
+# Cost estimate: ~$142/month (see module.compute's cost_estimate output)
 #
 # Breakdown:
 #   - NAT Gateways: ~$90/month (3 total, 1 per AZ for HA)
 #   - ALB: ~$20/month
-#   - ECS (t3.small, 3 instances): ~$90/month
-#   - RDS PostgreSQL (db.t3.medium Multi-AZ, 500GB): ~$150-200/month
+#   - ECS (t3.small, 1 pinned instance): ~$16/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
 #   - ElastiCache Redis (cache.t3.small, Multi-AZ): ~$40/month
-#   - Data transfer out: ~$30-50/month
-#   - Backups & monitoring: ~$10-20/month
+#   - Data transfer out: ~$20/month
+#   - Backups & monitoring: ~$10/month
 #
-# ✓ Full high availability (3 AZs)
-# ✓ Multi-AZ RDS with automatic failover
+# ✓ Full high availability for networking/Redis (3 AZs)
 # ✓ Multi-AZ Redis with automatic failover
-# ✓ 30-day backup retention for RDS
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots
+#   (see docs/backup-system.md)
 # ✓ Enhanced CloudWatch monitoring
 # ✓ VPC Flow Logs for security and troubleshooting
-# ✓ Auto-scaling enabled (scale to 3-10 tasks based on load)
-# ✓ Blue-green deployments with automatic rollback
+# ✗ No auto-scaling, no backend HA: pinned to 1 task. SQLite permits
+#   exactly one writer -- see ADR 0001.
+# ✓ Blue-green deployments with automatic rollback (though note: still
+#   briefly runs old+new tasks concurrently during cutover, a known
+#   unresolved edge case against the single-writer constraint)
 #
 # CRITICAL: This is a PRODUCTION environment
 # - ALL changes require code review and approval
@@ -44,7 +47,7 @@
 # [ ] All Vault secrets configured (DATABASE_URL, JWT_SECRET, OAuth credentials, etc)
 # [ ] SSL/TLS certificates in ACM for domain
 # [ ] Route53 DNS records configured and tested
-# [ ] RDS backup and restore tested in staging
+# [ ] Litestream replication and restore tested in staging (see docs/backup-system.md)
 # [ ] CloudWatch alarms configured and tested
 # [ ] GitHub Actions deployment variables and secrets in place
 # [ ] Load test completed: minimum 100 req/sec
@@ -65,7 +68,7 @@
 #
 # Ongoing Operations:
 # - Weekly: Monitor CloudWatch dashboards and alarms
-# - Weekly: Review RDS backup status and retention
+# - Weekly: Review Litestream replication status and backup.rs snapshot retention
 # - Monthly: Test restore procedure from backup
 # - Monthly: Review scaling metrics and adjust if needed
 # - Quarterly: Run disaster recovery drill with team

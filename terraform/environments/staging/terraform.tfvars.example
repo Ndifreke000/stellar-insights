@@ -1,21 +1,22 @@
 # Staging Environment Variables
-# Cost estimate: $150-200/month (Multi-AZ, production-like setup)
+# Cost estimate: ~$96/month (see module.compute's cost_estimate output)
 #
 # Breakdown:
 #   - NAT Gateways: ~$30/month (single NAT, can upgrade to per-AZ for HA)
 #   - ALB: ~$20/month
-#   - ECS (t3.small, 2 instances): ~$30/month
-#   - RDS PostgreSQL (db.t3.small Multi-AZ, 100GB): ~$80-100/month
+#   - ECS (t3.small, 1 pinned instance): ~$20/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
 #   - ElastiCache Redis (cache.t3.small, 2-node): ~$20/month
-#   - Data transfer out: ~$10-20/month
+#   - Data transfer out: ~$10/month
 #
-# ✓ Multi-AZ deployment for HA testing
-# ✓ RDS Multi-AZ with automatic failover
+# ✓ Multi-AZ networking/caching for HA testing (backend is a single
+#   pinned instance -- see ADR 0001)
 # ✓ Redis Multi-AZ with automatic failover
-# ✓ 14-day backup retention for RDS
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots
+#   (see docs/backup-system.md)
 # ✓ CloudWatch monitoring and alarms
 # ✓ VPC Flow Logs for security
-# ✓ Auto-scaling: 2-4 tasks
+# ✗ No auto-scaling: pinned to 1 task (SQLite single-writer constraint)
 #
 # PURPOSE: Mirror production environment for pre-deployment testing
 # - Test infrastructure changes before production
@@ -37,9 +38,10 @@
 #
 # Pre-deployment Checklist:
 # [ ] Vault secrets configured (same as production)
-# [ ] RDS backup and restore tested
+# [ ] Litestream replication and restore tested (see docs/backup-system.md)
+# [ ] EFS volume mounts and persists across a task restart
 # [ ] CloudWatch alarms configured and tested
-# [ ] Load testing plan defined (min 50 req/sec target)
+# [ ] Load testing plan defined against the single pinned instance
 #
 # Post-deployment Validation:
 # [ ] Health check: GET /health returning 200 OK
