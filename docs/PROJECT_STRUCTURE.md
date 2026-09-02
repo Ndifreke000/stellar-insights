@@ -49,7 +49,7 @@ Next.js web application with:
 ### ⚙️ Backend (`backend/`)
 Rust API server with:
 - Axum web framework
-- SQLx database integration (PostgreSQL)
+- SQLx database integration (SQLite)
 - Job scheduling
 - Observability/metrics
 - Multi-network support
