@@ -10,6 +10,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::admin_ip_whitelist::IpWhitelistService;
+use crate::auth_middleware::AdminUser;
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct AddWhitelistRequest {
@@ -94,11 +95,10 @@ impl IntoResponse for IpWhitelistApiError {
     tag = "Admin"
 )]
 pub async fn list_whitelist(
-    State(_service): State<Arc<IpWhitelistService>>,
+    State(service): State<Arc<IpWhitelistService>>,
+    _admin: AdminUser,
 ) -> Result<Response, IpWhitelistApiError> {
-    // TODO: Verify admin auth + IP whitelist check in middleware
-    // Fetch all whitelist entries
-    let entries = _service
+    let entries = service
         .get_all_entries()
         .await
         .map_err(|_| IpWhitelistApiError::ServerError)?;
@@ -133,21 +133,41 @@ pub async fn list_whitelist(
     tag = "Admin"
 )]
 pub async fn add_to_whitelist(
-    State(_service): State<Arc<IpWhitelistService>>,
-    Json(_request): Json<AddWhitelistRequest>,
+    State(service): State<Arc<IpWhitelistService>>,
+    admin: AdminUser,
+    Json(request): Json<AddWhitelistRequest>,
 ) -> Result<Response, IpWhitelistApiError> {
-    // TODO: Verify admin auth + IP whitelist check
-    // Validate the IP/CIDR format
-    // Check that current request IP is already in whitelist (lockout avoidance)
-    // Add to whitelist
-    // Log action to audit log
+    // This previously didn't call the service at all -- it returned a
+    // "success" response built straight from the request body, without
+    // ever writing to admin_ip_whitelist. IpWhitelistService::add_to_whitelist
+    // (admin_ip_whitelist.rs) already existed, validated, and worked; it
+    // just wasn't being called.
+    let entry = service
+        .add_to_whitelist(
+            &request.ip_or_cidr,
+            request.description,
+            Some(&admin.0.user_id),
+        )
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Invalid IP") {
+                IpWhitelistApiError::InvalidIp
+            } else if msg.contains("UNIQUE constraint") {
+                IpWhitelistApiError::AlreadyExists
+            } else {
+                IpWhitelistApiError::ServerError
+            }
+        })?;
 
     let response = json!({
         "message": "IP added to whitelist",
         "entry": {
-            "ip_or_cidr": _request.ip_or_cidr,
-            "description": _request.description,
-            "added_at": chrono::Utc::now(),
+            "id": entry.id,
+            "ip_or_cidr": entry.ip_or_cidr,
+            "description": entry.description,
+            "added_by_user_id": entry.added_by_user_id,
+            "added_at": entry.added_at,
         }
     });
 
@@ -167,15 +187,32 @@ pub async fn add_to_whitelist(
     tag = "Admin"
 )]
 pub async fn remove_from_whitelist(
-    State(_service): State<Arc<IpWhitelistService>>,
+    State(service): State<Arc<IpWhitelistService>>,
+    _admin: AdminUser,
     axum::extract::Path(ip_or_cidr): axum::extract::Path<String>,
 ) -> Result<StatusCode, IpWhitelistApiError> {
-    // TODO: Verify admin auth + IP whitelist check
-    // Check that this would not be a lockout (keep at least one entry or current IP)
-    // Remove from whitelist
-    // Log action to audit log
+    // This previously discarded ip_or_cidr and always returned 204 without
+    // touching the table at all -- IpWhitelistService::remove_from_whitelist
+    // already existed and worked, it just wasn't called.
+    //
+    // Lockout avoidance: refuse to remove the last remaining entry. This is
+    // a coarse version of the TODO's intent ("keep at least one entry or
+    // current IP") -- it doesn't verify the *caller's* IP specifically
+    // stays whitelisted (this handler has no access to the connecting IP
+    // today), just that the whitelist can't be emptied outright.
+    let count = service
+        .count_entries()
+        .await
+        .map_err(|_| IpWhitelistApiError::ServerError)?;
+    if count <= 1 {
+        return Err(IpWhitelistApiError::FailedClosed);
+    }
 
-    let _ = ip_or_cidr;
+    service
+        .remove_from_whitelist(&ip_or_cidr)
+        .await
+        .map_err(|_| IpWhitelistApiError::ServerError)?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
