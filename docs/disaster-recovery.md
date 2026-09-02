@@ -22,7 +22,7 @@ The PayRaider infrastructure is designed for high availability with automatic fa
 |---|---|---|
 | Single server failure | 5 min | Auto-healing via ECS/ALB |
 | Single AZ outage | 10 min | Multi-AZ failover automatic |
-| Database failure | 10 min | Restore from automated snapshot |
+| Database failure | 5-10 min | Litestream restore onto the EFS volume |
 | Entire region loss | 30 min | Manual re-provisioning |
 | Data corruption | 15 min | Restore from clean backup |
 | Application code loss | 5 min | Redeploy from ECR + GitHub |
@@ -33,7 +33,7 @@ The PayRaider infrastructure is designed for high availability with automatic fa
 
 | Failure Scenario | RPO | Backup Frequency | Notes |
 |---|---|---|---|
-| Database loss | 24 hours | Daily automated snapshot | RDS backups are continuous |
+| Database loss | Seconds | Litestream continuous S3 replication | Point-in-time recovery; see docs/backup-system.md |
 | Accidental data deletion | 7 days | Daily snapshots + weekly + monthly | Can restore to point-in-time |
 | Ransomware/corruption | 30 days | Immutable monthly backups | S3 versioning enabled |
 | Long-term compliance | 180 days | Monthly snapshots | Archived to Glacier after 90 days |
@@ -62,31 +62,34 @@ The PayRaider infrastructure is designed for high availability with automatic fa
     │  • Blue-green deployment ready         │
     └───┬──────────────┬──────────────┬──────┘
         │              │              │
-    ┌───▼───┐      ┌───▼───┐      ┌──▼───┐
-    │ECS-A  │      │ECS-B  │      │ECS-C │   (3+ ECS tasks)
-    │       │      │       │      │      │   Auto-scaling 3-10
-    └───┬───┘      └───┬───┘      └──┬───┘
-        │              │              │
-    ┌───▼──────────────▼──────────────▼──────┐
-    │ Shared Resources (Multi-AZ)            │
-    ├────────────────────────────────────────┤
-    │ • RDS PostgreSQL (primary)             │
-    │ • RDS PostgreSQL (standby replica)     │
-    │ • ElastiCache Redis                    │
-    │ • EBS volumes (encrypted)              │
-    │ • Secrets in AWS Secrets Manager       │
-    │ • Configuration in Parameter Store     │
+    ┌───▼──────────────────────────────────┐
+    │ ECS (1 pinned task)                   │
+    │ • payraider container                 │
+    │ • litestream sidecar                  │   No horizontal scaling --
+    └───┬────────────────────────────────────┘   see ADR 0001
+        │
+    ┌───▼────────────────────────────────────┐
+    │ Shared/Regional Resources              │
+    ├─────────────────────────────────────────┤
+    │ • EFS volume (SQLite database file)    │
+    │ • ElastiCache Redis (Multi-AZ)         │
+    │ • Secrets in Vault                     │
     └────────────────────────────────────────┘
-        │              │
-        ▼              ▼
+        │
+        ▼
     ┌───────────────────────────┐
-    │ S3 Backup Buckets         │
-    │ • Database snapshots      │
-    │ • Parquet exports         │
+    │ S3 Backup Bucket          │
+    │ • Litestream replica      │
+    │   (continuous, WAL-level) │
     │ • Application logs        │
-    │ • Disaster recovery data  │
     └───────────────────────────┘
 ```
+
+There is deliberately no database-tier failover here: SQLite permits exactly
+one writer, so the backend runs as a single pinned task rather than the
+3-AZ/N-instance topology the diagram above used to show for RDS. See
+`docs/adr/0001-sqlite-vs-postgres.md` for why, and `docs/backup-system.md`
+for the full backup/restore story.
 
 ## Failure Scenarios & Runbooks
 
@@ -94,7 +97,13 @@ The PayRaider infrastructure is designed for high availability with automatic fa
 
 **Duration**: Minutes  
 **Scope**: Users cannot query data  
-**Cause Examples**: Crashed instance, network misconfiguration, security group mismatch
+**Cause Examples**: EFS mount failure, corrupted SQLite file, task crash-looping
+
+There's no separate database instance to fail independently of the backend
+here -- "database unavailable" means either the single backend task is
+down, or it's up but can't read `/data/payraider.db` (EFS mount issue or a
+corrupted file). See `docs/adr/0001-sqlite-vs-postgres.md` for why there's
+one pinned task instead of a Multi-AZ instance with failover.
 
 #### Detection
 
@@ -103,135 +112,76 @@ The PayRaider infrastructure is designed for high availability with automatic fa
 curl https://api.payraider.com/health
 # Returns 503 Service Unavailable
 
-# Application logs show database connection errors
-aws logs tail /ecs/payraider-production --follow | grep "database\|psql\|connection"
+# Application logs show database errors
+aws logs tail /ecs/payraider-production --follow | grep "database\|sqlite\|SQLITE"
 ```
 
 #### Runbook: Database Recovery
 
-**Time to Execute**: 10-15 minutes  
-**Requires**: AWS console access + psql CLI
+**Time to Execute**: 5-10 minutes  
+**Requires**: AWS console access, ECS exec access
 
-**Step 1: Verify Database Status** (1 min)
+**Step 1: Determine if it's the task or the volume** (1 min)
 ```bash
-# Check instance status
-aws rds describe-db-instances \
-  --db-instance-identifier payraider-production \
-  --query 'DBInstances[0].[DBInstanceStatus, DBInstanceClass, MultiAZ]' \
-  --output table
-
-# If status is "available", check connectivity
-psql -h payraider-production.c0xxxxxxxxxxxx.us-east-1.rds.amazonaws.com \
-  -U postgres -d payraider -c "SELECT 1;" --username postgres
-# If this hangs, network connectivity is broken
-```
-
-**Step 2: Check Recent Events** (1 min)
-```bash
-# View RDS events to understand what happened
-aws rds describe-events \
-  --source-type db-instance \
-  --source-identifier payraider-production \
-  --query 'Events[0:10].[EventCategories, Message, SourceType, SourceIdentifier]' \
-  --output table
-```
-
-**Step 3: Restore from Snapshot if Instance Unrecoverable** (8-10 min)
-```bash
-# If instance cannot be recovered, restore from latest snapshot
-
-# 1. Find latest good snapshot
-LATEST_SNAPSHOT=$(aws rds describe-db-snapshots \
-  --db-instance-identifier payraider-production \
-  --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[-1].DBSnapshotIdentifier' \
-  --output text)
-
-echo "Latest snapshot: $LATEST_SNAPSHOT"
-
-# 2. Create new instance from snapshot
-aws rds restore-db-instance-from-db-snapshot \
-  --db-instance-identifier payraider-production-restore-$(date +%s) \
-  --db-snapshot-identifier "$LATEST_SNAPSHOT" \
-  --db-instance-class db.t3.medium \
-  --multi-az \
-  --no-publicly-accessible \
-  --vpc-security-group-ids sg-xxxxxxxx \
-  --db-subnet-group-name payraider-db-production
-
-# 3. Wait for instance to be available (5-10 minutes)
-NEW_INSTANCE="payraider-production-restore-$(date +%s)"
-aws rds wait db-instance-available --db-instance-identifier "$NEW_INSTANCE"
-
-# 4. Test new instance
-NEW_ENDPOINT=$(aws rds describe-db-instances \
-  --db-instance-identifier "$NEW_INSTANCE" \
-  --query 'DBInstances[0].Endpoint.Address' \
-  --output text)
-
-psql -h "$NEW_ENDPOINT" -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
-```
-
-**Step 4: Switch Application Traffic** (2 min)
-```bash
-# Option A: Update RDS endpoint in Secrets Manager
-aws secretsmanager update-secret \
-  --secret-id "payraider/production/database" \
-  --secret-string '{"host":"'$NEW_ENDPOINT'","username":"postgres",...}'
-
-# Option B: Update Route53 CNAME (if using custom domain)
-aws route53 change-resource-record-sets \
-  --hosted-zone-id Z1234567890ABC \
-  --change-batch '{
-    "Changes": [{
-      "Action": "UPSERT",
-      "ResourceRecordSet": {
-        "Name": "db.payraider.com",
-        "Type": "CNAME",
-        "TTL": 60,
-        "ResourceRecords": [{"Value": "'$NEW_ENDPOINT'"}]
-      }
-    }]
-  }'
-
-# Force application to reconnect
-aws ecs update-service \
-  --cluster payraider-production \
-  --service payraider-service \
-  --force-new-deployment
-```
-
-**Step 5: Monitor Recovery** (5 min)
-```bash
-# Watch ECS tasks reconnect to new database
+# Is the task even running?
 aws ecs describe-services \
-  --cluster payraider-production \
-  --services payraider-service \
-  --query 'Services[0].DeploymentConfiguration' \
-  --output table
+  --cluster payraider-production --services payraider-service \
+  --query 'services[0].deployments'
 
-# Check application health
+# If a task is running, exec in and check the file directly
+aws ecs execute-command --cluster payraider-production \
+  --task <task-id> --container payraider --interactive \
+  --command "/bin/sh -c 'ls -la /data/ && sqlite3 /data/payraider.db \"PRAGMA integrity_check;\"'"
+```
+
+**Step 2a: If the task is crash-looping (not an EFS/file issue)** (2-5 min)
+```bash
+# Check recent task stop reasons
+aws ecs describe-tasks --cluster payraider-production --tasks <task-id> \
+  --query 'tasks[0].[stoppedReason,containers[].reason]'
+
+# Force a fresh deployment
+aws ecs update-service --cluster payraider-production \
+  --service payraider-service --force-new-deployment
+```
+
+**Step 2b: If `/data/payraider.db` is missing or fails `PRAGMA integrity_check`** (5-8 min)
+
+Restore the latest Litestream replica onto the volume. See
+`docs/backup-system.md` for the full command reference; summary:
+
+```bash
+# 1. Restore the latest replica to a local file
+litestream restore -o /tmp/restored.db \
+  s3://payraider-db-backups-<account>/production/payraider.db
+
+# 2. Stop the task (Recreate deployment strategy means there's only ever
+#    one, so this is a brief outage, not a failover)
+aws ecs update-service --cluster payraider-production \
+  --service payraider-service --desired-count 0
+
+# 3. Copy the restored file onto the EFS volume (via a one-off task with
+#    the same volume mounted, or an EFS access point mounted locally)
+#    then restart
+aws ecs update-service --cluster payraider-production \
+  --service payraider-service --desired-count 1
+```
+
+**Step 3: Verify** (2 min)
+```bash
 curl -I https://api.payraider.com/health
 # Should return 200 OK
-
-# Monitor logs for errors
 aws logs tail /ecs/payraider-production --follow
 ```
 
-**Step 6: Cleanup** (2 min)
-```bash
-# Once restored instance is confirmed healthy, delete old instance
-aws rds delete-db-instance \
-  --db-instance-identifier payraider-production \
-  --create-final-snapshot \
-  --final-db-snapshot-identifier payraider-production-final-$(date +%s)
-
-# Rename restored instance to original name
-# (AWS doesn't support rename, so DNS update was done above)
-```
-
 **Escalation**:
-- If restore fails, page on-call DBA and escalate to AWS support
-- If multiple snapshots are corrupted, restore from weekly or monthly backup
+- If the EFS mount itself is broken (not just the file), escalate to
+  whoever owns the Terraform (`terraform/modules/compute/ecs/main.tf`'s
+  `aws_efs_mount_target` resources) -- this is an infra-level failure, not
+  a data one
+- If the Litestream replica is also unusable, restore from `backup.rs`'s
+  local snapshots instead (see `docs/backup-system.md`, accepting more
+  data loss)
 - Contact: ops-critical@payraider.com
 
 ---
@@ -239,127 +189,68 @@ aws rds delete-db-instance \
 ### Scenario 2: Data Corruption (Accidental Deletion/Update)
 
 **Duration**: Hours to days  
-**Scope**: Application data is corrupted but instance is running  
-**Cause Examples**: Bug in migration, accidental DELETE without WHERE, ransomware
+**Scope**: Application data is corrupted but the task is running  
+**Cause Examples**: Bug in migration, accidental DELETE without WHERE
 
 #### Detection
 
 ```bash
-# Alert monitoring might notice unusual activity
-# Or discovered via user report
+# Alert monitoring might notice unusual activity, or discovered via user report
 
-# Check what changed recently
-SELECT * FROM users WHERE updated_at > NOW() - INTERVAL '1 hour' ORDER BY updated_at DESC;
+# Check what changed recently (exec into the running task)
+sqlite3 /data/payraider.db "SELECT * FROM users WHERE updated_at > datetime('now', '-1 hour') ORDER BY updated_at DESC;"
 
-# Verify table integrity
-PRAGMA integrity_check;  # SQLite
-CHECK TABLE table_name;  # MySQL
-# PostgreSQL doesn't have built-in check, use pg_dump to validate
+# Verify database integrity
+sqlite3 /data/payraider.db "PRAGMA integrity_check;"
 ```
 
-#### Runbook: Restore from Clean Backup
+#### Runbook: Point-in-Time Restore from Litestream
 
-**Time to Execute**: 15-20 minutes  
-**Data Loss**: Maximum 24 hours (last daily backup)
+**Time to Execute**: 10-15 minutes  
+**Data Loss**: Seconds to minutes (Litestream replicates continuously, not
+on a daily schedule -- restore to just before the bad write)
 
 **Step 1: Freeze Application** (1 min)
 ```bash
-# Stop accepting writes to prevent further corruption
-aws ecs update-service \
-  --cluster payraider-production \
-  --service payraider-service \
-  --desired-count 0
-
-echo "✓ Application traffic stopped"
-
-# Wait for existing connections to drain (30s)
-sleep 30
+# Stop the task to prevent further writes
+aws ecs update-service --cluster payraider-production \
+  --service payraider-service --desired-count 0
 ```
 
-**Step 2: Assess Damage** (2 min)
+**Step 2: Restore to a point in time before the corruption** (5 min)
 ```bash
-# Quick query to see extent of corruption
-psql -h payraider-production.c0xxxx.us-east-1.rds.amazonaws.com \
-  -U postgres -d payraider <<EOF
-SELECT relname, n_live_tup, n_dead_tup 
-FROM pg_stat_user_tables 
-ORDER BY n_dead_tup DESC;
-EOF
-
-# Check backup retention period
-aws rds describe-db-instances \
-  --db-instance-identifier payraider-production \
-  --query 'DBInstances[0].BackupRetentionPeriod' \
-  --output text
-```
-
-**Step 3: Create New Instance from Backup Before Corruption** (8-10 min)
-```bash
-# Point-in-time recovery: restore to a time BEFORE corruption occurred
 # Estimate: if corruption was detected at 14:30, restore to 14:15
-
-RESTORE_TIME="2024-01-19T14:15:00Z"  # Time before corruption
-
-aws rds restore-db-instance-to-point-in-time \
-  --source-db-instance-identifier payraider-production \
-  --target-db-instance-identifier payraider-production-pitr-$(date +%s) \
-  --restore-time "$RESTORE_TIME" \
-  --db-instance-class db.t3.medium \
-  --multi-az \
-  --no-publicly-accessible
-
-# Wait for recovery
-aws rds wait db-instance-available \
-  --db-instance-identifier "payraider-production-pitr-$(date +%s)"
+litestream restore -o /tmp/restored.db \
+  -timestamp 2026-09-01T14:15:00Z \
+  s3://payraider-db-backups-<account>/production/payraider.db
 ```
 
-**Step 4: Verify Data Integrity** (2 min)
+**Step 3: Verify Data Integrity** (2 min)
 ```bash
-PITR_INSTANCE="payraider-production-pitr-$(date +%s)"
-
-# Check specific corrupted table
-PITR_ENDPOINT=$(aws rds describe-db-instances \
-  --db-instance-identifier "$PITR_INSTANCE" \
-  --query 'DBInstances[0].Endpoint.Address' --output text)
-
-psql -h "$PITR_ENDPOINT" -U postgres -d payraider <<EOF
-SELECT COUNT(*) as user_count FROM users;
-SELECT COUNT(*) as corrupted_records FROM users WHERE status = 'CORRUPTED';
-EOF
+sqlite3 /tmp/restored.db "SELECT COUNT(*) FROM users;"
+sqlite3 /tmp/restored.db "PRAGMA integrity_check;"
 ```
 
-**Step 5: Switch Application to Restored Instance** (3 min)
+**Step 4: Copy the restored file onto the EFS volume and restart** (3 min)
+
+Via a one-off task with the same EFS volume mounted (or an EFS access
+point mounted locally), copy `/tmp/restored.db` to `/data/payraider.db`,
+then:
+
 ```bash
-# Update secrets manager
-aws secretsmanager update-secret \
-  --secret-id "payraider/production/database" \
-  --secret-string '{"host":"'$PITR_ENDPOINT'","username":"postgres",...}'
+aws ecs update-service --cluster payraider-production \
+  --service payraider-service --desired-count 1
 
-# Restart application with new endpoint
-aws ecs update-service \
-  --cluster payraider-production \
-  --service payraider-service \
-  --desired-count 3  # Restart 3 tasks
-
-# Verify health
 sleep 30
 curl -I https://api.payraider.com/health
 ```
 
-**Step 6: Cleanup** (2 min)
-```bash
-# Delete corrupted original instance
-aws rds delete-db-instance \
-  --db-instance-identifier payraider-production \
-  --skip-final-snapshot
-
-# Rename PITR instance to original name
-# (Done via DNS/Secrets Manager, AWS doesn't support rename)
-```
-
 **Escalation**:
-- If restore fails: Page on-call DBA
-- If multiple backups corrupted: Escalate to AWS support + security team (possible ransomware)
+- If the Litestream replica is also corrupted for the relevant window,
+  fall back to `backup.rs`'s local snapshots (see `docs/backup-system.md`)
+  -- coarser granularity (daily), so expect more data loss
+- If corruption is suspected to be malicious rather than a bug: escalate
+  to the security team before restoring, to preserve evidence
 - Contact: ops-critical@payraider.com
 
 ---
@@ -411,28 +302,34 @@ terraform apply \
   -var aws_region=us-west-2 \
   -var vpc_cidr=10.4.0.0/16 \
   -target=module.networking \
-  -target=module.database \
-  -target=module.caching
+  -target=module.caching \
+  -target=module.compute  # includes the EFS volume -- see terraform/modules/compute/ecs/main.tf
 
 # Note: This assumes Terraform state is accessible
 # (State bucket should be in separate region or cross-region replicated)
 
 # Option B: Manual provision via AWS console
-# Create VPC → subnets → security groups → RDS → ECS cluster
+# Create VPC → subnets → security groups → EFS → ECS cluster
 # (Much slower, only as last resort)
 ```
 
 **Step 3: Restore Database from Backup** (5-10 min)
 ```bash
-# Restore from latest backup in S3 (cross-region)
-# Snapshots in original region are inaccessible
+# The Litestream S3 bucket (terraform/global/backups.tf) is regional and
+# NOT cross-region replicated by default -- if the whole region hosting it
+# is down, this bucket is unreachable too. Restore onto the new EFS volume
+# from whatever the most recent accessible source is:
 
-# Download Parquet export from S3 (in alternate region)
-aws s3 cp s3://payraider-backups-replica/database/production/exports/latest.parquet . \
-  --region us-west-2
+# If the backups bucket's region is still reachable:
+litestream restore -o /tmp/restored.db \
+  s3://payraider-db-backups-<account>/production/payraider.db
 
-# Restore into new PostgreSQL instance
-pg_restore --host new-rds-endpoint --user postgres --database payraider latest.parquet
+# If not, fall back to the last local snapshot pulled out of backup.rs's
+# BACKUP_DIR before the region went down (see docs/backup-system.md) --
+# expect more data loss in this path
+
+# Then copy /tmp/restored.db onto the new region's EFS volume before
+# starting the ECS service.
 ```
 
 **Step 4: Redeploy Application** (5 min)
@@ -440,12 +337,12 @@ pg_restore --host new-rds-endpoint --user postgres --database payraider latest.p
 # Pull latest image from ECR (assume cross-region replicated)
 aws ecr get-images --repository-name payraider-backend --region us-west-2
 
-# Deploy to new ECS cluster
+# Deploy to new ECS cluster (desired-count 1 -- see ADR 0001, no horizontal scaling)
 aws ecs create-service \
   --cluster payraider-production-us-west-2 \
   --service-name payraider-service \
   --task-definition payraider-production \
-  --desired-count 3 \
+  --desired-count 1 \
   --region us-west-2
 ```
 
@@ -483,8 +380,8 @@ curl https://api.payraider.com/health
 # Monitor logs
 aws logs tail /ecs/payraider-production-us-west-2 --follow
 
-# Check database connectivity
-psql -h new-rds-endpoint -U postgres -d payraider -c "SELECT COUNT(*) FROM users;"
+# Check the database file is present and intact (exec into the task)
+sqlite3 /data/payraider.db "SELECT COUNT(*) FROM users;"
 ```
 
 **Step 7: Failback (When Original Region Recovers)** (10 min)
@@ -768,48 +665,46 @@ Do NOT perform changes during:
 ### AWS CLI Commands
 
 ```bash
-# RDS snapshots
-aws rds describe-db-snapshots --db-instance-identifier payraider-production
-aws rds create-db-snapshot --db-instance-identifier payraider-production --db-snapshot-identifier manual-$(date +%s)
-aws rds restore-db-instance-from-db-snapshot --source-db-instance-identifier payraider-production --target-db-instance-identifier restore-$(date +%s)
-aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier payraider-production --restore-time 2024-01-19T14:00:00Z
+# Litestream (see docs/backup-system.md for the full reference)
+litestream restore -o ./restored.db s3://payraider-db-backups-<account>/production/payraider.db
+litestream restore -o ./restored.db -timestamp <RFC3339> s3://payraider-db-backups-<account>/production/payraider.db
 
 # ECS operations
 aws ecs describe-services --cluster payraider-production --services payraider-service
-aws ecs update-service --cluster payraider-production --service payraider-service --desired-count 3
+aws ecs update-service --cluster payraider-production --service payraider-service --desired-count 1
 aws ecs list-tasks --cluster payraider-production
 aws ecs describe-tasks --cluster payraider-production --tasks <task-arn>
+aws ecs execute-command --cluster payraider-production --task <task-id> --container payraider --interactive --command "/bin/sh"
 
 # Route53 DNS
 aws route53 list-hosted-zones
 aws route53 list-resource-record-sets --hosted-zone-id Z1234567890ABC
 aws route53 change-resource-record-sets --hosted-zone-id Z1234567890ABC --change-batch file://change.json
 
-# S3 backups
-aws s3 ls s3://payraider-backups/database/ --recursive
-aws s3 cp s3://payraider-backups/database/production/exports/latest.parquet .
+# S3 (Litestream replica + backup.rs local-snapshot uploads, if configured)
+aws s3 ls s3://payraider-db-backups-<account>/production/ --recursive
 ```
 
-### PostgreSQL Commands
+### SQLite Commands
 
 ```bash
-# Connect to database
-psql -h <rds-endpoint> -U postgres -d payraider
+# Connect to database (exec into the running task, or use the restored file locally)
+sqlite3 /data/payraider.db
 
-# Check table sizes
-SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) 
-FROM pg_tables 
-WHERE schemaname NOT IN ('pg_catalog', 'information_schema') 
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+# Check table sizes (SQLite has no pg_total_relation_size equivalent;
+# dbstat is the closest built-in)
+SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY bytes DESC;
 
 # Verify specific table
 SELECT COUNT(*) as row_count, MAX(updated_at) as last_update FROM users;
 
-# Dump database
-pg_dump -U postgres -d payraider | gzip > backup.sql.gz
+# Integrity check
+sqlite3 /data/payraider.db "PRAGMA integrity_check;"
 
-# Restore database
-gunzip < backup.sql.gz | psql -U postgres -d payraider
+# Manual backup (see docs/backup-system.md for what backup.rs already
+# does on a schedule -- this is the ad hoc version)
+sqlite3 /data/payraider.db ".backup /tmp/manual-backup.db"
+gzip /tmp/manual-backup.db
 ```
 
 ## Revision History
