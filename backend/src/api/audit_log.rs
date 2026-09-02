@@ -11,6 +11,7 @@ use std::sync::Arc;
 use utoipa::IntoParams;
 
 use crate::admin_audit_log::AdminAuditLogger;
+use crate::auth_middleware::AdminUser;
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct AuditLogQuery {
@@ -47,6 +48,7 @@ pub struct AuditLogEntryResponse {
 )]
 pub async fn query_audit_log(
     State(logger): State<Arc<AdminAuditLogger>>,
+    _admin: AdminUser,
     Query(params): Query<AuditLogQuery>,
 ) -> Result<Response, StatusCode> {
     let limit = params.limit.unwrap_or(100).min(1000);
@@ -99,6 +101,7 @@ pub async fn query_audit_log(
 )]
 pub async fn verify_audit_log_integrity(
     State(logger): State<Arc<AdminAuditLogger>>,
+    _admin: AdminUser,
 ) -> Result<Response, StatusCode> {
     let result = logger
         .verify_integrity()

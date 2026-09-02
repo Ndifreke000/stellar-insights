@@ -212,11 +212,15 @@ pub fn routes(
         .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service))
         .layer(middleware::from_fn(auth_middleware));
 
-    // 9. Admin audit log routes (#2219)
+    // 9. Admin audit log routes (#2219). Like admin_ip_whitelist_routes
+    // above, this had no auth_middleware layer -- query_audit_log and
+    // verify_audit_log_integrity took no auth extractor at all, so anyone
+    // could read the audit log or trigger integrity checks unauthenticated.
     let audit_logger = Arc::new(crate::admin_audit_log::AdminAuditLogger::new(pool.clone()));
     let audit_log_routes = Router::new()
         .nest("/admin/audit-log", crate::api::audit_log::routes(audit_logger.clone()))
-        .merge(crate::api::audit_log::routes(audit_logger));
+        .merge(crate::api::audit_log::routes(audit_logger))
+        .layer(middleware::from_fn(auth_middleware));
 
     // 10. 2FA routes (#2219)
     let crypto = crate::crypto::CryptoService::new_for_tests();
@@ -255,8 +259,9 @@ pub fn routes(
         .merge(audit_log_routes)
         .merge(twofa_routes)
         // auth_middleware (layered on protected_routes, protected_webhook_routes,
-        // gdpr_routes, digest_routes, admin_ip_whitelist_routes, and the
-        // protected half of auth_routes, above) requires these two
+        // gdpr_routes, digest_routes, admin_ip_whitelist_routes,
+        // audit_log_routes, and the protected half of auth_routes, above)
+        // requires these two
         // extensions to be present on the request or it fails every
         // request. Nothing constructed them anywhere in this codebase
         // before this -- every one of those "protected" groups would 500
