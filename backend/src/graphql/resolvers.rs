@@ -146,10 +146,10 @@ impl QueryRoot {
             CorridorType,
             r#"
             SELECT
-                id, source_asset_code, source_asset_issuer,
+                id as "id!", source_asset_code, source_asset_issuer,
                 destination_asset_code, destination_asset_issuer,
-                reliability_score, status,
-                created_at as "created_at: _", updated_at as "updated_at: _"
+                reliability_score as "reliability_score!", status as "status!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             FROM corridors
             WHERE id = ?
             "#,
@@ -248,9 +248,9 @@ impl QueryRoot {
             AssetType,
             r#"
             SELECT
-                id, anchor_id, asset_code, asset_issuer,
-                total_supply, num_holders,
-                created_at as "created_at: _", updated_at as "updated_at: _"
+                id as "id!", anchor_id, asset_code, asset_issuer,
+                total_supply, num_holders as "num_holders!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             FROM assets
             WHERE anchor_id = ?
             ORDER BY num_holders DESC
@@ -321,8 +321,9 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id, entity_type, data, hash, epoch,
-                timestamp as "timestamp: _", created_at as "created_at: _"
+                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                data as "data!", hash, epoch,
+                timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
             WHERE entity_id = ? AND entity_type = ?
             ORDER BY timestamp DESC
@@ -353,8 +354,9 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id, entity_type, data, hash, epoch,
-                timestamp as "timestamp: _", created_at as "created_at: _"
+                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                data as "data!", hash, epoch,
+                timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
             WHERE epoch IS NOT NULL
             ORDER BY epoch DESC
@@ -384,8 +386,9 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id, entity_type, data, hash, epoch,
-                timestamp as "timestamp: _", created_at as "created_at: _"
+                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                data as "data!", hash, epoch,
+                timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
             WHERE epoch = ?
             LIMIT 1
