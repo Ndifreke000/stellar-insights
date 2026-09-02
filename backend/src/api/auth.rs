@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest};
+use crate::auth_middleware::AuthUser;
 
 const TOKEN_ENDPOINT_LIMIT_PER_MINUTE: usize = 5;
 const ACCOUNT_LOCKOUT_THRESHOLD: u32 = 5;
@@ -38,6 +39,12 @@ pub enum AuthApiError {
     AccountLocked { retry_after_seconds: u64 },
     CaptchaRequired,
     RateLimited { retry_after_seconds: u64 },
+    /// Session doesn't exist, is already revoked/expired, or belongs to a
+    /// different user. Deliberately the same response for "doesn't exist"
+    /// and "not yours" -- returning 403 for the latter would let a caller
+    /// enumerate other users' valid session IDs by the status code alone.
+    SessionNotFound,
+    InternalError,
 }
 
 impl IntoResponse for AuthApiError {
@@ -76,6 +83,18 @@ impl IntoResponse for AuthApiError {
                 "RATE_LIMITED",
                 "Too many authentication attempts. Please try again later.".to_string(),
                 Some(retry_after_seconds),
+            ),
+            Self::SessionNotFound => (
+                StatusCode::NOT_FOUND,
+                "SESSION_NOT_FOUND",
+                "Session not found".to_string(),
+                None,
+            ),
+            Self::InternalError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "An internal error occurred".to_string(),
+                None,
             ),
         };
 
@@ -334,17 +353,32 @@ pub async fn logout(
 )]
 pub async fn list_sessions(
     State(auth_service): State<Arc<AuthService>>,
-    headers: HeaderMap,
+    auth_user: AuthUser,
 ) -> Result<Response, AuthApiError> {
-    // Extract user_id from Bearer token (simplified - in production use proper auth middleware)
-    let _auth_header = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .ok_or(AuthApiError::InvalidToken)?;
+    let sessions = auth_service
+        .session_service()
+        .list_active_sessions(&auth_user.user_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
 
-    // For now, return placeholder (actual implementation requires auth middleware)
+    let sessions_json: Vec<_> = sessions
+        .into_iter()
+        .map(|s| {
+            let is_current = auth_user.session_id.as_deref() == Some(s.id.as_str());
+            json!({
+                "id": s.id,
+                "device_user_agent": s.device_user_agent,
+                "ip_address": s.ip_address,
+                "created_at": s.created_at,
+                "last_activity_at": s.last_activity_at,
+                "expires_at": s.expires_at,
+                "is_current": is_current,
+            })
+        })
+        .collect();
+
     let body = json!({
-        "sessions": []
+        "sessions": sessions_json
     });
 
     Ok((StatusCode::OK, Json(body)).into_response())
@@ -363,11 +397,29 @@ pub async fn list_sessions(
 )]
 pub async fn revoke_session(
     State(auth_service): State<Arc<AuthService>>,
+    auth_user: AuthUser,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, AuthApiError> {
-    // TODO: Verify user owns this session before revoking
-    // For now, accept the revocation request
-    let _ = session_id;
+    // get_active_session (not a raw lookup) also rejects already-expired/
+    // revoked sessions, so this doubles as "does it still exist to revoke".
+    let session = auth_service
+        .session_service()
+        .get_active_session(&session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?
+        .ok_or(AuthApiError::SessionNotFound)?;
+
+    if session.user_id != auth_user.user_id {
+        // Same response as "doesn't exist" -- see SessionNotFound's doc comment.
+        return Err(AuthApiError::SessionNotFound);
+    }
+
+    auth_service
+        .session_service()
+        .revoke_session(&session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -383,8 +435,19 @@ pub async fn revoke_session(
 )]
 pub async fn revoke_other_sessions(
     State(auth_service): State<Arc<AuthService>>,
+    auth_user: AuthUser,
 ) -> Result<Response, AuthApiError> {
-    // TODO: Extract current session_id from auth context and revoke others
+    // Requires the token to actually carry a session_id -- a token issued
+    // without one (see Claims::session_id) has no "current session" to
+    // exclude, so there's nothing safe to do here.
+    let current_session_id = auth_user.session_id.ok_or(AuthApiError::InvalidToken)?;
+
+    auth_service
+        .session_service()
+        .revoke_all_other_sessions(&auth_user.user_id, &current_session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
+
     let body = json!({
         "message": "Other sessions revoked"
     });
@@ -393,12 +456,23 @@ pub async fn revoke_other_sessions(
 
 /// Create auth routes
 pub fn routes(auth_service: Arc<AuthService>) -> Router {
-    Router::new()
+    // Public: no token exists yet to check.
+    let public = Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/refresh", post(refresh))
-        .route("/api/auth/logout", post(logout))
+        .route("/api/auth/logout", post(logout));
+
+    // Protected: these act on the caller's own session(s), so they need a
+    // verified identity. AuthUser (used inside the handlers) only resolves
+    // from request extensions that auth_middleware populates -- without
+    // this layer they'd 401 with AuthError::MissingToken on every call.
+    let protected = Router::new()
         .route("/api/auth/sessions", get(list_sessions))
         .route("/api/auth/sessions/:session_id", delete(revoke_session))
         .route("/api/auth/sessions/revoke-others", post(revoke_other_sessions))
-        .with_state(auth_service)
+        .layer(axum::middleware::from_fn(
+            crate::auth_middleware::auth_middleware,
+        ));
+
+    public.merge(protected).with_state(auth_service)
 }
