@@ -201,11 +201,16 @@ pub fn routes(
         )
         .layer(middleware::from_fn(auth_middleware));
 
-    // 8. Admin IP whitelist routes (#2219)
+    // 8. Admin IP whitelist routes (#2219). This previously had no
+    // auth_middleware layer at all -- the comment referenced #2219 as
+    // though it required auth, but nothing enforced it; each handler had a
+    // "TODO: Verify admin auth" that was never followed up. Added the same
+    // layer every other protected group here uses.
     let ip_whitelist_service = Arc::new(crate::admin_ip_whitelist::IpWhitelistService::new(pool.clone()));
     let admin_ip_whitelist_routes = Router::new()
         .nest("/admin/ip-whitelist", crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()))
-        .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service));
+        .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service))
+        .layer(middleware::from_fn(auth_middleware));
 
     // 9. Admin audit log routes (#2219)
     let audit_logger = Arc::new(crate::admin_audit_log::AdminAuditLogger::new(pool.clone()));
@@ -220,6 +225,19 @@ pub fn routes(
         .nest("/auth/2fa", crate::api::twofa::routes(twofa_service.clone()))
         .merge(crate::api::twofa::routes(twofa_service));
 
+    // 11. Login/refresh/logout/session-management routes. AuthService was
+    // never constructed anywhere in this codebase before, so this whole
+    // group (crate::api::auth) was unreachable dead code -- not merged into
+    // any router. redis_connection is optional at the type level
+    // (Option<MultiplexedConnection>, see auth.rs's own `if let Some`
+    // usage) and only affects a fast-path cache in login/refresh/logout, so
+    // None here doesn't reduce correctness of session management.
+    let auth_service = Arc::new(crate::auth::AuthService::new(
+        Arc::new(tokio::sync::RwLock::new(None)),
+        pool.clone(),
+    ));
+    let auth_routes = crate::api::auth::routes(auth_service.clone());
+
     // V1 router (mounted at /api/v1 and also preserved at root for compatibility)
     let v1_router = Router::new()
         .merge(cached_routes)
@@ -233,8 +251,23 @@ pub fn routes(
         .merge(oauth_routes)
         .merge(digest_routes)
         .merge(admin_ip_whitelist_routes)
+        .merge(auth_routes)
         .merge(audit_log_routes)
-        .merge(twofa_routes);
+        .merge(twofa_routes)
+        // auth_middleware (layered on protected_routes, protected_webhook_routes,
+        // gdpr_routes, digest_routes, admin_ip_whitelist_routes, and the
+        // protected half of auth_routes, above) requires these two
+        // extensions to be present on the request or it fails every
+        // request. Nothing constructed them anywhere in this codebase
+        // before this -- every one of those "protected" groups would 500
+        // (Extension rejection), not 401, on every call. Applied here so
+        // one Extension layer covers all of them via the merged router.
+        .layer(axum::Extension(crate::auth_middleware::JwtSecret(
+            Arc::from(auth_service.jwt_secret()),
+        )))
+        .layer(axum::Extension(crate::auth_middleware::TokenRevocationStore(
+            Arc::new(auth_service.db_pool().clone()),
+        )));
 
     // Combine all routes
     Router::new()
