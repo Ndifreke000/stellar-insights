@@ -45,10 +45,15 @@ impl QueryRoot {
             AnchorType,
             r#"
             SELECT
-                id, name, stellar_account, home_domain,
-                total_transactions, successful_transactions, failed_transactions,
-                total_volume_usd, avg_settlement_time_ms, reliability_score,
-                status, created_at as "created_at: _", updated_at as "updated_at: _"
+                id as "id!", name, stellar_account, home_domain,
+                total_transactions as "total_transactions!",
+                successful_transactions as "successful_transactions!",
+                failed_transactions as "failed_transactions!",
+                total_volume_usd as "total_volume_usd!",
+                avg_settlement_time_ms as "avg_settlement_time_ms!",
+                reliability_score as "reliability_score!",
+                status as "status!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             FROM anchors
             WHERE id = ?
             "#,
