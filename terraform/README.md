@@ -6,6 +6,8 @@ This directory contains Terraform modules and configurations for provisioning an
 
 The Stellar Insights infrastructure is designed for **high availability, scalability, and disaster recovery** across three AWS availability zones (AZs). All components are deployed with Multi-AZ redundancy in production and staging environments.
 
+> **Note:** The `database` module below provisions RDS PostgreSQL, but the backend application is currently compiled SQLite-only and will refuse to start against a `postgres://` `DATABASE_URL` (see `backend/src/database.rs` and `docs/adr/0001-sqlite-vs-postgres.md`). This module reflects the IaC as written, not what the running application connects to today.
+
 ### Architecture Components
 
 - **Networking**: VPC with public/private subnets across 3 AZs, security groups, NAT gateways, route tables
