@@ -3,4 +3,4 @@
 //! Run with:
 //!   cargo test -p contract-integration-tests --test fuzz
 
-mod stellar_insights_fuzz;
+mod payraider_fuzz;

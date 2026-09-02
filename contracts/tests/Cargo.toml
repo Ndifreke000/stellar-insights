@@ -18,4 +18,4 @@ testnet-integration = []
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-stellar-insights = { path = "../stellar_insights" }
+payraider = { path = "../payraider" }

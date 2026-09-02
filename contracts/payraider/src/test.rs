@@ -40,8 +40,8 @@ fn count_contract_events_with_topic0(env: &Env, topic0: Symbol) -> usize {
 #[test]
 fn test_initialization() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
 
@@ -55,8 +55,8 @@ fn test_initialization() {
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_cannot_reinitialize() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin1 = Address::generate(&env);
     let admin2 = Address::generate(&env);
@@ -70,8 +70,8 @@ fn test_successful_snapshot_submission() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -90,8 +90,8 @@ fn test_retrieve_snapshot_by_epoch() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -110,8 +110,8 @@ fn test_latest_snapshot_retrieval() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -137,8 +137,8 @@ fn test_unauthorized_caller_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let unauthorized = Address::generate(&env);
@@ -160,8 +160,8 @@ fn test_duplicate_epoch_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -184,8 +184,8 @@ fn test_invalid_epoch_zero_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -203,8 +203,8 @@ fn test_older_epoch_rejected() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -229,8 +229,8 @@ fn test_snapshot_submitted_event() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -277,8 +277,8 @@ fn test_event_payload_matches_stored_data() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -316,8 +316,8 @@ fn test_event_emitted_on_each_valid_submission() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -341,8 +341,8 @@ fn test_event_emitted_on_each_valid_submission() {
 #[test]
 fn test_get_nonexistent_snapshot_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -355,8 +355,8 @@ fn test_get_nonexistent_snapshot_fails() {
 #[test]
 fn test_latest_snapshot_empty_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -371,8 +371,8 @@ fn test_multiple_snapshots_different_epochs() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -401,8 +401,8 @@ fn test_non_sequential_epochs() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -426,8 +426,8 @@ fn test_admin_not_set_error() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     // Try to submit without initializing
     let caller = Address::generate(&env);
@@ -537,8 +537,8 @@ fn test_error_messages_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let attacker = Address::generate(&env);
@@ -558,8 +558,8 @@ fn test_error_messages_invalid_epoch_zero() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -578,8 +578,8 @@ fn test_error_messages_duplicate_epoch() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -597,8 +597,8 @@ fn test_error_messages_duplicate_epoch() {
 #[test]
 fn test_error_messages_snapshot_not_found() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -617,8 +617,8 @@ fn test_error_messages_admin_not_set() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let caller = Address::generate(&env);
     let result = client.try_submit_snapshot(&1, &create_test_hash(&env, 1), &caller);
@@ -646,8 +646,8 @@ fn test_error_log_context_returns_self() {
 fn test_set_admin_success_updates_admin() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
@@ -662,8 +662,8 @@ fn test_set_admin_success_updates_admin() {
 fn test_set_admin_emits_admin_transferred_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
@@ -711,8 +711,8 @@ fn test_set_admin_emits_admin_transferred_event() {
 fn test_set_admin_unauthorized_caller_returns_error() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let attacker = Address::generate(&env);
@@ -729,8 +729,8 @@ fn test_set_admin_unauthorized_caller_returns_error() {
 fn test_set_admin_unauthorized_emits_no_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let attacker = Address::generate(&env);
@@ -750,10 +750,10 @@ fn test_set_admin_unauthorized_emits_no_event() {
 // ── Governance-driven parameter updates (#2137) ──────────────────────────────
 
 /// Register the contract with an admin and a configured governance address.
-fn setup_governed(env: &Env) -> (StellarInsightsContractClient<'_>, Address, Address) {
+fn setup_governed(env: &Env) -> (PayRaiderContractClient<'_>, Address, Address) {
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(env, &contract_id);
 
     let admin = Address::generate(env);
     let governance = Address::generate(env);
@@ -768,8 +768,8 @@ fn setup_governed(env: &Env) -> (StellarInsightsContractClient<'_>, Address, Add
 fn test_governance_starts_unset() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     client.initialize(&Address::generate(&env));
 
     assert_eq!(client.get_governance(), None);
@@ -787,8 +787,8 @@ fn test_admin_can_configure_governance() {
 fn test_non_admin_cannot_configure_governance() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let stranger = Address::generate(&env);
@@ -824,8 +824,8 @@ fn test_non_governance_cannot_transfer_admin() {
 fn test_governance_admin_transfer_rejected_when_unconfigured() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
@@ -891,8 +891,8 @@ fn test_governance_admin_transfer_grants_submission_rights() {
 fn test_fresh_deploy_is_stamped_at_current_storage_version() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     client.initialize(&Address::generate(&env));
 
     assert_eq!(client.get_storage_version(), CURRENT_STORAGE_VERSION);
@@ -902,8 +902,8 @@ fn test_fresh_deploy_is_stamped_at_current_storage_version() {
 fn test_migrate_is_a_noop_on_a_fresh_deploy() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
@@ -916,8 +916,8 @@ fn test_migrate_is_a_noop_on_a_fresh_deploy() {
 fn test_migrate_advances_pre_versioning_storage() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
@@ -936,8 +936,8 @@ fn test_migrate_advances_pre_versioning_storage() {
 fn test_migrate_is_idempotent() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
@@ -954,8 +954,8 @@ fn test_migrate_is_idempotent() {
 fn test_migrate_refuses_storage_from_a_newer_build() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
@@ -974,8 +974,8 @@ fn test_migrate_refuses_storage_from_a_newer_build() {
 fn test_migrate_rejects_an_unrelated_caller() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
@@ -1004,8 +1004,8 @@ fn test_governance_may_run_the_migration() {
 fn test_upgrade_rejects_a_zero_wasm_hash() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     client.initialize(&Address::generate(&env));
 
     // An all-zero hash is not a real Wasm blob; installing it would leave the
@@ -1018,8 +1018,8 @@ fn test_upgrade_rejects_a_zero_wasm_hash() {
 fn test_upgrade_rejected_while_paused() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
     client.pause(&admin);
@@ -1034,8 +1034,8 @@ fn test_upgrade_rejected_while_paused() {
 fn test_migration_preserves_the_rollback_guard() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
 

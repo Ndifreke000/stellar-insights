@@ -1,7 +1,7 @@
-//! Testnet integration tests for the stellar_insights contract.
+//! Testnet integration tests for the payraider contract.
 //!
 //! Covers every read-only public function to confirm the deployed contract at
-//! `STELLAR_INSIGHTS_CONTRACT_ID` actually responds correctly over the live
+//! `PAYRAIDER_CONTRACT_ID` actually responds correctly over the live
 //! Soroban RPC — not just that deployment succeeded.
 //!
 //! Run with:
@@ -50,18 +50,18 @@ fn invoke_read_only(rpc_url: &str, contract_id: &str, method: &str, _args: &[&st
     }
 }
 
-// ── Issue #1846 — stellar_insights read-only surface ─────────────────────────
+// ── Issue #1846 — payraider read-only surface ─────────────────────────
 
 /// get_version returns a non-empty semver-style string.
 #[test]
-fn test_stellar_insights_get_version_live() {
+fn test_payraider_get_version_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "get_version", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.get_version() failed on testnet: {:?}",
+        "payraider.get_version() failed on testnet: {:?}",
         result
     );
     let version = result.unwrap();
@@ -73,70 +73,70 @@ fn test_stellar_insights_get_version_live() {
 
 /// get_metadata returns a response (fields validated via JSON-RPC result).
 #[test]
-fn test_stellar_insights_get_metadata_live() {
+fn test_payraider_get_metadata_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "get_metadata", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.get_metadata() failed on testnet: {:?}",
+        "payraider.get_metadata() failed on testnet: {:?}",
         result
     );
 }
 
 /// get_contract_info returns combined metadata + runtime state.
 #[test]
-fn test_stellar_insights_get_contract_info_live() {
+fn test_payraider_get_contract_info_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "get_contract_info", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.get_contract_info() failed on testnet: {:?}",
+        "payraider.get_contract_info() failed on testnet: {:?}",
         result
     );
 }
 
 /// get_admin returns the configured administrator address.
 #[test]
-fn test_stellar_insights_get_admin_live() {
+fn test_payraider_get_admin_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "get_admin", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.get_admin() failed on testnet: {:?}",
+        "payraider.get_admin() failed on testnet: {:?}",
         result
     );
 }
 
 /// is_paused reflects the contract's operational state (expected: false).
 #[test]
-fn test_stellar_insights_is_paused_live() {
+fn test_payraider_is_paused_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "is_paused", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.is_paused() failed on testnet: {:?}",
+        "payraider.is_paused() failed on testnet: {:?}",
         result
     );
 }
 
 /// get_latest_epoch returns a u64 (may be 0 if no snapshot has been submitted yet).
 #[test]
-fn test_stellar_insights_get_latest_epoch_live() {
+fn test_payraider_get_latest_epoch_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     let result = invoke_read_only(&rpc, &id, "get_latest_epoch", &[]);
     assert!(
         result.is_ok(),
-        "stellar_insights.get_latest_epoch() failed on testnet: {:?}",
+        "payraider.get_latest_epoch() failed on testnet: {:?}",
         result
     );
 }
@@ -145,9 +145,9 @@ fn test_stellar_insights_get_latest_epoch_live() {
 /// error indicating no snapshot has been submitted yet — both are acceptable
 /// for a freshly deployed contract.
 #[test]
-fn test_stellar_insights_latest_snapshot_live() {
+fn test_payraider_latest_snapshot_live() {
     let rpc = rpc_url();
-    let id = contract_id("STELLAR_INSIGHTS_CONTRACT_ID");
+    let id = contract_id("PAYRAIDER_CONTRACT_ID");
 
     // An error here means the contract is reachable but has no data yet,
     // which is still a successful invocation from a deployment standpoint.

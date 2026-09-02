@@ -1,15 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-  "stellar_insights",
+  "payraider",
   "benches",
   "tests",
 ]
-# Only stellar_insights is integrated with the backend (SNAPSHOT_CONTRACT_ID).
+# Only payraider is integrated with the backend (SNAPSHOT_CONTRACT_ID).
 # Other contract crates remain in contracts/ for reference but are excluded
 # from the workspace so CI does not build or test dead code. See archive/README.md.
 default-members = [
-  "stellar_insights",
+  "payraider",
 ]
 
 # Clippy linting configuration for all contracts

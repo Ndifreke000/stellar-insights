@@ -6,7 +6,7 @@
 
 #![cfg(feature = "testnet-integration")]
 
-mod stellar_insights_test;
+mod payraider_test;
 
 use std::env;
 

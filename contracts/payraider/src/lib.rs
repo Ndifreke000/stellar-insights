@@ -106,10 +106,10 @@ pub struct ContractInfo {
 }
 
 #[contract]
-pub struct StellarInsightsContract;
+pub struct PayRaiderContract;
 
 #[contractimpl]
-impl StellarInsightsContract {
+impl PayRaiderContract {
     /// Initialize the contract with an admin address
     ///
     /// # Arguments
@@ -914,14 +914,14 @@ impl StellarInsightsContract {
     /// Get public contract metadata
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
-            name: String::from_str(&env, "Stellar Insights Core"),
+            name: String::from_str(&env, "PayRaider Core"),
             version: String::from_str(&env, VERSION),
-            author: String::from_str(&env, "Stellar Insights Team"),
+            author: String::from_str(&env, "PayRaider Team"),
             description: String::from_str(
                 &env,
                 "Core analytics snapshot contract for Stellar network",
             ),
-            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            repository: String::from_str(&env, "https://github.com/payraider/contracts"),
             license: String::from_str(&env, "MIT"),
         }
     }

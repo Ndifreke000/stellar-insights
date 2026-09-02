@@ -8,7 +8,7 @@ These directories are **not** workspace members and are **not** built or tested 
 
 They were removed from the active workspace in #2227 because nothing outside
 `contracts/` references, deploys, or calls them. The backend only integrates
-with `stellar_insights` via `SNAPSHOT_CONTRACT_ID`.
+with `payraider` via `SNAPSHOT_CONTRACT_ID`.
 
 To restore a contract to the workspace, add it back to `contracts/Cargo.toml`
 `members` and wire it into a real product flow first.

@@ -1,4 +1,4 @@
-//! Fuzz-style property tests for the stellar_insights (analytics snapshot) contract.
+//! Fuzz-style property tests for the payraider (analytics snapshot) contract.
 //!
 //! Covers: epoch IDs (zero, monotonicity, duplicates), hash inputs (all-zero),
 //! and caller authorization.
@@ -7,11 +7,11 @@
 #![allow(clippy::expect_used)]
 
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
-use stellar_insights::{StellarInsightsContract, StellarInsightsContractClient};
+use payraider::{PayRaiderContract, PayRaiderContractClient};
 
-fn setup(env: &Env) -> (StellarInsightsContractClient, Address) {
-    let id = env.register_contract(None, StellarInsightsContract);
-    let client = StellarInsightsContractClient::new(env, &id);
+fn setup(env: &Env) -> (PayRaiderContractClient, Address) {
+    let id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(env, &id);
     let admin = Address::generate(env);
     client.initialize(&admin);
     (client, admin)
