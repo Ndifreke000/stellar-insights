@@ -127,6 +127,11 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "litestream_bucket_name" {
+  description = "S3 bucket name Litestream replicates the SQLite database to (see terraform/global/backups.tf)"
+  type        = string
+}
+
 variable "security_groups" {
   description = "Security group IDs for ECS tasks"
   type        = list(string)

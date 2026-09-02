@@ -36,6 +36,10 @@ data "aws_ecr_repository" "backend" {
   name = "payraider-backend"
 }
 
+data "aws_s3_bucket" "db_backups" {
+  bucket = "payraider-db-backups-${data.aws_caller_identity.current.account_id}"
+}
+
 # ============================================================================
 # NETWORKING (2 AZs, Multi-AZ ready)
 # ============================================================================
@@ -140,6 +144,7 @@ module "compute" {
 
   subnets         = module.networking.private_app_subnet_ids
   vpc_id          = module.networking.vpc_id
+  litestream_bucket_name = data.aws_s3_bucket.db_backups.id
   security_groups = [module.networking.security_group_backend_id]
   target_group_arn = module.load_balancing.target_group_arn
 

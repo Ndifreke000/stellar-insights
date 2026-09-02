@@ -182,6 +182,41 @@ resource "aws_efs_access_point" "backend_data" {
   }
 }
 
+# Task role needs S3 access for the Litestream sidecar to replicate the
+# SQLite database, scoped to this environment's prefix in the shared
+# backups bucket (terraform/global/backups.tf).
+resource "aws_iam_role_policy" "task_litestream_access" {
+  name = "payraider-${var.environment}-litestream-access"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::${var.litestream_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "${var.environment}/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::${var.litestream_bucket_name}/${var.environment}/*"
+      }
+    ]
+  })
+}
+
 # Task role (not execution role) needs EFS client permissions -- the task
 # itself mounts the volume at container start, scoped to this one access
 # point only.
@@ -446,6 +481,42 @@ resource "aws_ecs_task_definition" "app" {
         timeout     = var.health_check_timeout
         retries     = 3
         startPeriod = 60
+      }
+    },
+    {
+      # Litestream sidecar: continuous replication of the SQLite database
+      # to S3 (ADR 0001's "durability story" hardening item). Uses the
+      # stock litestream/litestream image with CLI args, no custom image
+      # or config file needed -- credentials come from the task role via
+      # the IAM condition scoped in aws_iam_role_policy.task_litestream_access.
+      #
+      # Shares the same EFS-backed "data" volume as the main container so
+      # it can tail the WAL directly, and is non-essential: if it dies,
+      # ECS restarts just this container rather than cycling the backend.
+      name      = "litestream"
+      image     = "litestream/litestream:0.3.13"
+      essential = false
+      command = [
+        "replicate",
+        "/data/payraider.db",
+        "s3://${var.litestream_bucket_name}/${var.environment}/payraider.db"
+      ]
+
+      mountPoints = [
+        {
+          sourceVolume  = "data"
+          containerPath = "/data"
+          readOnly      = false
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-region"        = data.aws_caller_identity.current.account
+          "awslogs-stream-prefix" = "litestream"
+        }
       }
     }
   ])

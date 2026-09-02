@@ -38,6 +38,10 @@ data "aws_ecr_repository" "backend" {
   name = "payraider-backend"
 }
 
+data "aws_s3_bucket" "db_backups" {
+  bucket = "payraider-db-backups-${data.aws_caller_identity.current.account_id}"
+}
+
 # ============================================================================
 # NETWORKING (2 AZs for dev, cost-optimized)
 # ============================================================================
@@ -118,18 +122,24 @@ module "compute" {
   launch_type     = "FARGATE"
   enable_fargate  = true
 
+  # Pinned to 1: SQLite permits exactly one writer, and there is no
+  # shared storage that would let two task replicas safely share one
+  # database file. See ADR 0001.
   desired_count = 1
   min_size      = 1
-  max_size      = 2
+  max_size      = 1
 
   subnets         = module.networking.private_app_subnet_ids
   vpc_id          = module.networking.vpc_id
+  litestream_bucket_name = data.aws_s3_bucket.db_backups.id
   security_groups = [module.networking.security_group_backend_id]
   target_group_arn = module.load_balancing.target_group_arn
 
-  # Configuration (dev uses SQLite, not RDS)
+  # Configuration. db_url points at the EFS mount (see the EFS wiring in
+  # the ecs module) so it's consistent with staging/production, not a
+  # container-local path that the mounted volume would sit unused next to.
   vault_addr = var.vault_addr
-  db_url     = "sqlite:///./payraider.db"
+  db_url     = "sqlite:///data/payraider.db"
   redis_url  = module.caching.redis_connection_string
 
   environment         = var.environment
