@@ -183,7 +183,7 @@ pub async fn remove_from_whitelist(
 #[utoipa::path(
     post,
     path = "/admin/ip-whitelist/check",
-    request_body = serde_json::json!({"ip": "192.168.1.1"}),
+    request_body(content = serde_json::Value, description = "IP address to check, e.g. {\"ip\": \"192.168.1.1\"}"),
     responses(
         (status = 200, description = "Check result returned"),
         (status = 400, description = "Invalid IP format"),
