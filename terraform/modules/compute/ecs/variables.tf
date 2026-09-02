@@ -122,6 +122,11 @@ variable "subnets" {
   }
 }
 
+variable "vpc_id" {
+  description = "VPC ID, used for the EFS mount targets' security group"
+  type        = string
+}
+
 variable "security_groups" {
   description = "Security group IDs for ECS tasks"
   type        = list(string)

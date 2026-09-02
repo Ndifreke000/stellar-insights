@@ -75,8 +75,7 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
       {
         Effect = "Allow"
         Action = [
-          "vault:ReadSecret",
-          "vault:GetDatabaseCredentials"
+          "vault:ReadSecret"
         ]
         Resource = "*"
       },
@@ -90,6 +89,119 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
         Condition = {
           StringLike = {
             "s3:prefix" = "artifacts/*"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# ============================================================================
+# EFS: persistent storage for the SQLite database file
+# ============================================================================
+#
+# The backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md) and is
+# pinned to a single task (desired_count = 1, see the environment configs).
+# Fargate's local storage is ephemeral -- without a mounted volume, every
+# task restart or redeploy would silently wipe the database. EFS gives that
+# single task durable, restart-safe storage.
+#
+# This is new infrastructure, not a rename -- it has not been validated
+# with `terraform validate`/`plan` (no terraform CLI in this environment).
+# Review carefully, and run a real plan before applying.
+
+resource "aws_efs_file_system" "backend_data" {
+  creation_token = "payraider-backend-data-${var.environment}"
+  encrypted      = true
+
+  lifecycle_policy {
+    transition_to_ia = "AFTER_30_DAYS"
+  }
+
+  tags = {
+    Name = "payraider-backend-data-${var.environment}"
+  }
+}
+
+resource "aws_security_group" "efs" {
+  name_prefix = "payraider-efs-${var.environment}-"
+  description = "Security group for EFS mount targets (backend SQLite data)"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = var.security_groups
+    description     = "Allow NFS from backend ECS tasks"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound"
+  }
+
+  tags = {
+    Name = "payraider-efs-sg-${var.environment}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_efs_mount_target" "backend_data" {
+  for_each        = toset(var.subnets)
+  file_system_id  = aws_efs_file_system.backend_data.id
+  subnet_id       = each.value
+  security_groups = [aws_security_group.efs.id]
+}
+
+resource "aws_efs_access_point" "backend_data" {
+  file_system_id = aws_efs_file_system.backend_data.id
+
+  posix_user {
+    uid = 1000
+    gid = 1000
+  }
+
+  root_directory {
+    path = "/payraider-data"
+    creation_info {
+      owner_uid   = 1000
+      owner_gid   = 1000
+      permissions = "0755"
+    }
+  }
+
+  tags = {
+    Name = "payraider-backend-data-ap-${var.environment}"
+  }
+}
+
+# Task role (not execution role) needs EFS client permissions -- the task
+# itself mounts the volume at container start, scoped to this one access
+# point only.
+resource "aws_iam_role_policy" "task_efs_access" {
+  name = "payraider-${var.environment}-efs-access"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite"
+        ]
+        Resource = aws_efs_file_system.backend_data.arn
+        Condition = {
+          StringEquals = {
+            "elasticfilesystem:AccessPointArn" = aws_efs_access_point.backend_data.arn
           }
         }
       }
@@ -260,6 +372,18 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
+  volume {
+    name = "data"
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.backend_data.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.backend_data.id
+        iam             = "ENABLED"
+      }
+    }
+  }
+
   container_definitions = jsonencode([
     {
       name      = "payraider"
@@ -270,6 +394,14 @@ resource "aws_ecs_task_definition" "app" {
           containerPort = var.container_port
           hostPort      = var.container_port
           protocol      = "tcp"
+        }
+      ]
+
+      mountPoints = [
+        {
+          sourceVolume  = "data"
+          containerPath = "/data"
+          readOnly      = false
         }
       ]
 

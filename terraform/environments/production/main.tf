@@ -142,6 +142,7 @@ module "compute" {
   max_size      = 1  # For Fargate, this controls max task count
 
   subnets         = module.networking.private_app_subnet_ids
+  vpc_id          = module.networking.vpc_id
   security_groups = [module.networking.security_group_backend_id]
   target_group_arn = module.load_balancing.target_group_arn
 
