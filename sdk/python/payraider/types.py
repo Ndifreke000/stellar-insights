@@ -1,4 +1,4 @@
-"""Typed dataclasses for Stellar Insights API responses."""
+"""Typed dataclasses for PayRaider API responses."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -1,10 +1,10 @@
 {
-  "name": "@stellar-insights/mcp-server",
+  "name": "@payraider/mcp-server",
   "version": "0.1.0",
-  "description": "MCP server exposing Stellar Insights corridor/anchor/network analytics as tools for AI agents",
+  "description": "MCP server exposing PayRaider corridor/anchor/network analytics as tools for AI agents",
   "type": "module",
   "bin": {
-    "stellar-insights-mcp-server": "dist/index.js"
+    "payraider-mcp-server": "dist/index.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,7 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@stellar-insights/sdk": "file:../typescript",
+    "@payraider/sdk": "file:../typescript",
     "zod": "^4.4.3"
   },
   "devDependencies": {

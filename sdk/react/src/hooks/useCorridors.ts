@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import type { Corridor, PaginatedResponse, PaginationParams } from "@stellar-insights/sdk";
-import { useStellarInsightsClient } from "../StellarInsightsProvider.js";
+import type { Corridor, PaginatedResponse, PaginationParams } from "@payraider/sdk";
+import { usePayRaiderClient } from "../PayRaiderProvider.js";
 
 export interface UseCorridorsResult {
   data: PaginatedResponse<Corridor> | null;
@@ -11,7 +11,7 @@ export interface UseCorridorsResult {
 
 /** Fetches the list of payment corridors, optionally paginated. */
 export function useCorridors(params?: PaginationParams): UseCorridorsResult {
-  const client = useStellarInsightsClient();
+  const client = usePayRaiderClient();
   const [data, setData] = useState<PaginatedResponse<Corridor> | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(true);

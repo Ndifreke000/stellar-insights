@@ -6,10 +6,10 @@ from typing import AsyncGenerator
 
 import pytest
 
-from stellar_insights import StellarInsights
+from payraider import PayRaider
 
 # Environment variables for testnet configuration
-TESTNET_API_URL = os.getenv("TESTNET_API_URL", "https://testnet-api.stellarinsights.io")
+TESTNET_API_URL = os.getenv("TESTNET_API_URL", "https://testnet-api.payraider.io")
 TESTNET_SECRET_KEY = os.getenv("TESTNET_SECRET_KEY")
 
 
@@ -29,11 +29,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
 
 
 @pytest.fixture
-async def testnet_client() -> AsyncGenerator[StellarInsights | None, None]:
+async def testnet_client() -> AsyncGenerator[PayRaider | None, None]:
     """Create a testnet client if credentials are available.
 
     Yields:
-        StellarInsights client configured for testnet, or None if credentials missing.
+        PayRaider client configured for testnet, or None if credentials missing.
         The client is async context manager that handles cleanup.
 
     Usage:
@@ -47,7 +47,7 @@ async def testnet_client() -> AsyncGenerator[StellarInsights | None, None]:
         yield None
         return
 
-    async with StellarInsights(
+    async with PayRaider(
         api_key=TESTNET_SECRET_KEY,
         base_url=TESTNET_API_URL,
     ) as client:

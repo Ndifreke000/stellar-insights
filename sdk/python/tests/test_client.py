@@ -1,16 +1,16 @@
-"""Tests for the Stellar Insights Python SDK."""
+"""Tests for the PayRaider Python SDK."""
 import pytest
 import httpx
 import respx
 
-from stellar_insights import StellarInsights, StellarInsightsError
+from payraider import PayRaider, PayRaiderError
 
-BASE = "https://api.stellarinsights.io"
+BASE = "https://api.payraider.io"
 
 
 @pytest.fixture
 def client():
-    return StellarInsights(api_key="test-key", max_retries=0)
+    return PayRaider(api_key="test-key", max_retries=0)
 
 
 @respx.mock
@@ -39,7 +39,7 @@ async def test_raises_on_401(client):
     respx.get(f"{BASE}/api/anchors").mock(
         return_value=httpx.Response(401, json={"error": "UNAUTHORIZED", "message": "Invalid API key"})
     )
-    with pytest.raises(StellarInsightsError) as exc_info:
+    with pytest.raises(PayRaiderError) as exc_info:
         await client.anchors.list()
     assert exc_info.value.status == 401
     assert exc_info.value.code == "UNAUTHORIZED"
@@ -50,14 +50,14 @@ async def test_raises_on_404(client):
     respx.get(f"{BASE}/api/anchors/missing").mock(
         return_value=httpx.Response(404, json={"error": "NOT_FOUND", "message": "Anchor not found"})
     )
-    with pytest.raises(StellarInsightsError) as exc_info:
+    with pytest.raises(PayRaiderError) as exc_info:
         await client.anchors.get("missing")
     assert exc_info.value.status == 404
 
 
 @respx.mock
 async def test_retries_on_429():
-    client = StellarInsights(api_key="test-key", max_retries=2, retry_delay=0)
+    client = PayRaider(api_key="test-key", max_retries=2, retry_delay=0)
     route = respx.post(f"{BASE}/api/cost-calculator/estimate").mock(
         side_effect=[
             httpx.Response(429, json={"error": "RATE_LIMITED", "message": "Too many requests"}),
@@ -84,7 +84,7 @@ async def test_post_body(client):
 
 @respx.mock
 async def test_context_manager():
-    async with StellarInsights(api_key="test-key") as client:
+    async with PayRaider(api_key="test-key") as client:
         respx.get(f"{BASE}/api/network").mock(
             return_value=httpx.Response(200, json={"network": "testnet", "passphrase": "x", "horizon_url": "y", "rpc_url": "z"})
         )

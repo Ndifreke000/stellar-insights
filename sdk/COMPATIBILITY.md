@@ -1,6 +1,6 @@
 # SDK Compatibility Matrix
 
-This document outlines the compatibility between Stellar Insights SDK versions and the Stellar ecosystem, including testnet and mainnet support status.
+This document outlines the compatibility between PayRaider SDK versions and the Stellar ecosystem, including testnet and mainnet support status.
 
 ## Compatibility Table
 
@@ -12,7 +12,7 @@ This document outlines the compatibility between Stellar Insights SDK versions a
 
 ## Versioning Policy
 
-Stellar Insights SDKs follow **Semantic Versioning** (MAJOR.MINOR.PATCH):
+PayRaider SDKs follow **Semantic Versioning** (MAJOR.MINOR.PATCH):
 
 - **MAJOR**: Breaking changes (contract ABI changes, removed endpoints, significant API changes)
 - **MINOR**: New features, backward-compatible additions (new endpoints, new blockchain data types)
@@ -49,7 +49,7 @@ Stellar Insights SDKs follow **Semantic Versioning** (MAJOR.MINOR.PATCH):
 1. **Backup configuration and state**:
    ```bash
    # Database
-   pg_dump stellar_insights > backup_$(date +%Y%m%d).sql
+   pg_dump payraider > backup_$(date +%Y%m%d).sql
 
    # Environment
    cp .env .env.backup

@@ -1,6 +1,6 @@
-import type { StellarInsightsConfig, ApiError } from "./types.js";
+import type { PayRaiderConfig, ApiError } from "./types.js";
 
-const DEFAULT_BASE_URL = "https://api.stellarinsights.io";
+const DEFAULT_BASE_URL = "https://api.payraider.io";
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY = 500;
 const DEFAULT_TIMEOUT = 30_000;
@@ -8,7 +8,7 @@ const DEFAULT_TIMEOUT = 30_000;
 /** Errors that should trigger a retry */
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-export class StellarInsightsError extends Error {
+export class PayRaiderError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: string,
@@ -16,7 +16,7 @@ export class StellarInsightsError extends Error {
     public readonly requestId?: string,
   ) {
     super(message);
-    this.name = "StellarInsightsError";
+    this.name = "PayRaiderError";
   }
 }
 
@@ -27,7 +27,7 @@ export class HttpClient {
   private readonly timeout: number;
   private token: string | undefined;
 
-  constructor(config: StellarInsightsConfig) {
+  constructor(config: PayRaiderConfig) {
     this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelay = config.retryDelay ?? DEFAULT_RETRY_DELAY;
@@ -115,7 +115,7 @@ export class HttpClient {
     } catch {
       // ignore parse errors
     }
-    throw new StellarInsightsError(
+    throw new PayRaiderError(
       res.status,
       body.error ?? "UNKNOWN_ERROR",
       body.message ?? res.statusText,

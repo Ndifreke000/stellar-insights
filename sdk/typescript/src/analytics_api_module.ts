@@ -1,11 +1,11 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type { AnalyticsAPIModuleParams, AnalyticsAPIModuleResult } from "./types/analytics_api_module.js";
 import { SDKError } from "./sdk_error.js";
 
 export class AnalyticsAPIModule {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 

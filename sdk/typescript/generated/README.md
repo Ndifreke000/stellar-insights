@@ -1,6 +1,6 @@
 # Generated Soroban Bindings
 
-This directory contains auto-generated TypeScript bindings for the Stellar Insights Soroban contracts.
+This directory contains auto-generated TypeScript bindings for the PayRaider Soroban contracts.
 
 **Do not edit files in this directory manually.** They will be overwritten on the next generation run.
 

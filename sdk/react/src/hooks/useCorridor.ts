@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import type { CorridorDetail } from "@stellar-insights/sdk";
-import { useStellarInsightsClient } from "../StellarInsightsProvider.js";
+import type { CorridorDetail } from "@payraider/sdk";
+import { usePayRaiderClient } from "../PayRaiderProvider.js";
 
 export interface UseCorridorResult {
   data: CorridorDetail | null;
@@ -14,7 +14,7 @@ export interface UseCorridorResult {
  * (e.g. `useCorridor("USDC", "BRL")`).
  */
 export function useCorridor(source: string, destination: string): UseCorridorResult {
-  const client = useStellarInsightsClient();
+  const client = usePayRaiderClient();
   const [data, setData] = useState<CorridorDetail | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(true);

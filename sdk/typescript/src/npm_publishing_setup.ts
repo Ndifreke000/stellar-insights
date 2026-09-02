@@ -1,4 +1,4 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type { NPMPublishingSetupParams, NPMPublishingSetupResult } from "./types/npm_publishing_setup.js";
 import { SDKError } from "./sdk_error.js";
 
@@ -9,9 +9,9 @@ const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$
 const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 
 export class NPMPublishingSetup {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 

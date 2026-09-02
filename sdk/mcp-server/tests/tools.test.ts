@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { StellarInsights } from "@stellar-insights/sdk";
-import type { StellarInsightsClient } from "../src/sdk-types.js";
+import { PayRaider } from "@payraider/sdk";
+import type { PayRaiderClient } from "../src/sdk-types.js";
 import { READ_ONLY_TOOLS } from "../src/tools.js";
 
 function mockFetchOnce(body: unknown, status = 200) {
@@ -13,10 +13,10 @@ function mockFetchOnce(body: unknown, status = 200) {
 }
 
 describe("READ_ONLY_TOOLS", () => {
-  let client: StellarInsightsClient;
+  let client: PayRaiderClient;
 
   beforeEach(() => {
-    client = new StellarInsights({ apiKey: "test-key", baseUrl: "https://example.test" });
+    client = new PayRaider({ apiKey: "test-key", baseUrl: "https://example.test" });
   });
 
   afterEach(() => {

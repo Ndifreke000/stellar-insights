@@ -9,7 +9,7 @@ export function buildServer(): McpServer {
   const client = createClientFromEnv();
 
   const server = new McpServer({
-    name: "stellar-insights",
+    name: "payraider",
     version: "0.1.0",
   });
 
@@ -23,7 +23,7 @@ export function buildServer(): McpServer {
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          return { content: [{ type: "text", text: `Stellar Insights API error: ${message}` }], isError: true };
+          return { content: [{ type: "text", text: `PayRaider API error: ${message}` }], isError: true };
         }
       },
     );
@@ -34,7 +34,7 @@ export function buildServer(): McpServer {
   if (ALLOW_WRITES) {
     // Write-scoped tools (transactions, governance votes, alert-rule and
     // webhook management) are a deliberately separate, opt-in module —
-    // not yet implemented. Flip STELLAR_INSIGHTS_MCP_ALLOW_WRITES=true only
+    // not yet implemented. Flip PAYRAIDER_MCP_ALLOW_WRITES=true only
     // once that module exists; today this branch is a no-op by design.
   }
 
@@ -48,6 +48,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("stellar-insights-mcp-server failed to start:", err);
+  console.error("payraider-mcp-server failed to start:", err);
   process.exit(1);
 });

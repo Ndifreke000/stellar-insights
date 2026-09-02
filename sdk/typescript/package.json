@@ -1,15 +1,15 @@
 {
-  "name": "@stellar-insights/sdk",
+  "name": "@payraider/sdk",
   "version": "1.0.0",
-  "description": "Official TypeScript SDK for the Stellar Insights API",
-  "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/sdk/typescript#readme",
+  "description": "Official TypeScript SDK for the PayRaider API",
+  "homepage": "https://github.com/Ndifreke000/payraider/tree/main/sdk/typescript#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
+    "url": "git+https://github.com/Ndifreke000/payraider.git",
     "directory": "sdk/typescript"
   },
   "bugs": {
-    "url": "https://github.com/Ndifreke000/stellar-insights/issues"
+    "url": "https://github.com/Ndifreke000/payraider/issues"
   },
   "publishConfig": {
     "access": "public"

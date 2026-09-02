@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import httpx
 
-DEFAULT_BASE_URL = "https://api.stellarinsights.io"
+DEFAULT_BASE_URL = "https://api.payraider.io"
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 0.5  # seconds
 DEFAULT_TIMEOUT = 30.0  # seconds
@@ -16,7 +16,7 @@ DEFAULT_TIMEOUT = 30.0  # seconds
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
 
-class StellarInsightsError(Exception):
+class PayRaiderError(Exception):
     """Raised when the API returns an error response."""
 
     def __init__(self, status: int, code: str, message: str, request_id: Optional[str] = None) -> None:
@@ -26,7 +26,7 @@ class StellarInsightsError(Exception):
         self.request_id = request_id
 
     def __repr__(self) -> str:
-        return f"StellarInsightsError(status={self.status}, code={self.code!r}, message={str(self)!r})"
+        return f"PayRaiderError(status={self.status}, code={self.code!r}, message={str(self)!r})"
 
 
 class HttpClient:
@@ -102,7 +102,7 @@ class HttpClient:
             body = response.json()
         except Exception:
             body = {}
-        raise StellarInsightsError(
+        raise PayRaiderError(
             status=response.status_code,
             code=body.get("error", "UNKNOWN_ERROR"),
             message=body.get("message", response.reason_phrase or "Unknown error"),

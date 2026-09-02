@@ -65,7 +65,7 @@ describe("Soroban contract types", () => {
       metadata: {
         name: "Governance",
         version: "1.0.0",
-        author: "Stellar Insights",
+        author: "PayRaider",
         description: "Governance contract",
         repository: "https://github.com/...",
         license: "MIT",
@@ -99,7 +99,7 @@ describe("Soroban contract types", () => {
     const metadata: PublicMetadata = {
       name: "Governance",
       version: "1.0.0",
-      author: "Stellar Insights",
+      author: "PayRaider",
       description: "Governance contract",
       repository: "https://github.com/...",
       license: "MIT",

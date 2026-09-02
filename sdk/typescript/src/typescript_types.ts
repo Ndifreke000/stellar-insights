@@ -1,11 +1,11 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type { TypeScriptTypesParams, TypeScriptTypesResult } from "./types/typescript_types.js";
 import { SDKError } from "./sdk_error.js";
 
 export class TypeScriptTypes {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 

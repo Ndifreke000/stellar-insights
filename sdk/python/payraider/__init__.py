@@ -1,9 +1,9 @@
-"""Stellar Insights Python SDK."""
+"""PayRaider Python SDK."""
 from __future__ import annotations
 
 from typing import Optional
 
-from .http import HttpClient, StellarInsightsError
+from .http import HttpClient, PayRaiderError
 from .resources import (
     AlertsResource,
     AnchorsResource,
@@ -22,12 +22,12 @@ from .resources import (
 )
 
 
-class StellarInsights:
-    """Async client for the Stellar Insights API.
+class PayRaider:
+    """Async client for the PayRaider API.
 
     Usage::
 
-        async with StellarInsights(api_key="sk_...") as client:
+        async with PayRaider(api_key="sk_...") as client:
             anchors = await client.anchors.list()
     """
 
@@ -36,7 +36,7 @@ class StellarInsights:
         *,
         api_key: Optional[str] = None,
         access_token: Optional[str] = None,
-        base_url: str = "https://api.stellarinsights.io",
+        base_url: str = "https://api.payraider.io",
         max_retries: int = 3,
         retry_delay: float = 0.5,
         timeout: float = 30.0,
@@ -67,11 +67,11 @@ class StellarInsights:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def __aenter__(self) -> "StellarInsights":
+    async def __aenter__(self) -> "PayRaider":
         return self
 
     async def __aexit__(self, *_: object) -> None:
         await self.aclose()
 
 
-__all__ = ["StellarInsights", "StellarInsightsError"]
+__all__ = ["PayRaider", "PayRaiderError"]

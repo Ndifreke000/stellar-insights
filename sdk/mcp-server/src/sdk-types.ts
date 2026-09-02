@@ -1,7 +1,7 @@
 /**
- * The subset of @stellar-insights/sdk's StellarInsights client this package
- * depends on. @stellar-insights/sdk does not currently ship its own .d.ts
- * (see src/types/stellar-insights-sdk.d.ts), so this interface stands in for
+ * The subset of @payraider/sdk's PayRaider client this package
+ * depends on. @payraider/sdk does not currently ship its own .d.ts
+ * (see src/types/payraider-sdk.d.ts), so this interface stands in for
  * it rather than typing everything as `any`.
  */
 export interface PaginationParams {
@@ -11,7 +11,7 @@ export interface PaginationParams {
   order?: "asc" | "desc";
 }
 
-export interface StellarInsightsClient {
+export interface PayRaiderClient {
   corridors: {
     list(params?: PaginationParams): Promise<unknown>;
     get(source: string, destination: string): Promise<unknown>;

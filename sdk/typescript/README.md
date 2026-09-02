@@ -1,17 +1,17 @@
-# @stellar-insights/sdk
+# @payraider/sdk
 
-Official TypeScript SDK for the [Stellar Insights](https://github.com/Ndifreke000/stellar-insights) API — payment corridor reliability, liquidity, trustline, and network-health data for the Stellar network.
+Official TypeScript SDK for the [PayRaider](https://github.com/Ndifreke000/payraider) API — payment corridor reliability, liquidity, trustline, and network-health data for the Stellar network.
 
 ## Install
 
 ```bash
-npm install @stellar-insights/sdk
+npm install @payraider/sdk
 ```
 
 ## Quickstart
 
 ```ts
-import { createClient } from "@stellar-insights/sdk";
+import { createClient } from "@payraider/sdk";
 
 const client = createClient("mainnet"); // or "testnet"
 
@@ -21,16 +21,16 @@ const usdcBrl = await client.corridors.get("USDC", "BRL");
 
 ### Custom configuration
 
-`createClient` covers the common case of pointing at Stellar Insights' own
+`createClient` covers the common case of pointing at PayRaider' own
 hosted API on mainnet or testnet. To talk to a self-hosted backend, or to
-set an API key, construct `StellarInsights` directly:
+set an API key, construct `PayRaider` directly:
 
 ```ts
-import { StellarInsights } from "@stellar-insights/sdk";
+import { PayRaider } from "@payraider/sdk";
 
-const client = new StellarInsights({
+const client = new PayRaider({
   baseUrl: "https://your-backend.example.com",
-  apiKey: process.env.STELLAR_INSIGHTS_API_KEY,
+  apiKey: process.env.PAYRAIDER_API_KEY,
 });
 ```
 
@@ -80,7 +80,7 @@ for version history and compatibility guarantees.
 ## Framework helpers
 
 Building a React app? See
-[`@stellar-insights/react`](../react) for hooks and pre-built components on
+[`@payraider/react`](../react) for hooks and pre-built components on
 top of this SDK.
 
 ## License
