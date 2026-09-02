@@ -1,10 +1,10 @@
 # Terraform Infrastructure as Code
 
-This directory contains Terraform modules and configurations for provisioning and managing the Stellar Insights infrastructure on AWS.
+This directory contains Terraform modules and configurations for provisioning and managing the PayRaider infrastructure on AWS.
 
 ## Overview
 
-The Stellar Insights infrastructure is designed for **high availability, scalability, and disaster recovery** across three AWS availability zones (AZs). All components are deployed with Multi-AZ redundancy in production and staging environments.
+The PayRaider infrastructure is designed for **high availability, scalability, and disaster recovery** across three AWS availability zones (AZs). All components are deployed with Multi-AZ redundancy in production and staging environments.
 
 > **Note:** The `database` module below provisions RDS PostgreSQL, but the backend application is currently compiled SQLite-only and will refuse to start against a `postgres://` `DATABASE_URL` (see `backend/src/database.rs` and `docs/adr/0001-sqlite-vs-postgres.md`). This module reflects the IaC as written, not what the running application connects to today.
 
@@ -126,9 +126,9 @@ terraform plan
 terraform apply
 
 # The global module creates:
-# - S3 bucket: stellar-insights-terraform-state-ACCOUNT_ID
+# - S3 bucket: payraider-terraform-state-ACCOUNT_ID
 # - DynamoDB table: terraform-locks
-# - ECR repositories: stellar-insights-backend
+# - ECR repositories: payraider-backend
 # - IAM roles: terraform-executor, github-actions-iam-role
 ```
 
@@ -148,7 +148,7 @@ cp terraform.tfvars.example terraform.tfvars
 
 # Initialize backend
 terraform init \
-  -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+  -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
   -backend-config="key=production/terraform.tfstate" \
   -backend-config="region=us-east-1" \
   -backend-config="dynamodb_table=terraform-locks"
@@ -170,7 +170,7 @@ terraform show
 terraform output
 
 # Monitor deployment progress
-aws ecs describe-services --cluster stellar-insights-production --services stellar-insights-service
+aws ecs describe-services --cluster payraider-production --services payraider-service
 ```
 
 ## Environment-Specific Configurations
@@ -236,20 +236,20 @@ Database backups are automatically created per the RDS backup retention policy (
 ```bash
 # Create manual snapshot
 aws rds create-db-snapshot \
-  --db-instance-identifier stellar-insights-production \
-  --db-snapshot-identifier stellar-insights-production-manual-$(date +%Y%m%d)
+  --db-instance-identifier payraider-production \
+  --db-snapshot-identifier payraider-production-manual-$(date +%Y%m%d)
 ```
 
 #### Restore from Backup
 
 ```bash
 # List available snapshots
-aws rds describe-db-snapshots --db-instance-identifier stellar-insights-production
+aws rds describe-db-snapshots --db-instance-identifier payraider-production
 
 # Restore to new database
 aws rds restore-db-instance-from-db-snapshot \
-  --db-instance-identifier stellar-insights-production-restored \
-  --db-snapshot-identifier stellar-insights-production-manual-20240101
+  --db-instance-identifier payraider-production-restored \
+  --db-snapshot-identifier payraider-production-manual-20240101
 ```
 
 ### Updating Images
@@ -258,10 +258,10 @@ Container images are pushed to ECR and deployed via CodeDeploy:
 
 ```bash
 # Build and push image to ECR
-docker build -t stellar-insights-backend:TAG backend/
+docker build -t payraider-backend:TAG backend/
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ECR_REPOSITORY_URL
-docker tag stellar-insights-backend:TAG ECR_REPOSITORY_URL/stellar-insights-backend:TAG
-docker push ECR_REPOSITORY_URL/stellar-insights-backend:TAG
+docker tag payraider-backend:TAG ECR_REPOSITORY_URL/payraider-backend:TAG
+docker push ECR_REPOSITORY_URL/payraider-backend:TAG
 
 # CodeDeploy CI/CD workflow will automatically:
 # 1. Register new ECS task definition
@@ -360,7 +360,7 @@ terraform fmt -recursive terraform/
 
 ```bash
 # Ensure S3 bucket and DynamoDB table exist
-aws s3 ls s3://stellar-insights-terraform-state-ACCOUNT_ID/
+aws s3 ls s3://payraider-terraform-state-ACCOUNT_ID/
 aws dynamodb describe-table --table-name terraform-locks
 
 # If missing, run global module first
@@ -381,10 +381,10 @@ terraform plan
 
 ```bash
 # Check ECS service status
-aws ecs describe-services --cluster stellar-insights-production --services stellar-insights-service
+aws ecs describe-services --cluster payraider-production --services payraider-service
 
 # View ECS task logs
-aws logs tail /ecs/stellar-insights-production --follow
+aws logs tail /ecs/payraider-production --follow
 
 # Check CodeDeploy deployment status
 aws deploy get-deployment --deployment-id deployment-id
@@ -394,13 +394,13 @@ aws deploy get-deployment --deployment-id deployment-id
 
 ```bash
 # Verify security groups
-aws ec2 describe-security-groups --filters "Name=group-name,Values=stellar-insights-*"
+aws ec2 describe-security-groups --filters "Name=group-name,Values=payraider-*"
 
 # Check route tables
 aws ec2 describe-route-tables --filters "Name=vpc-id,Values=VPC_ID"
 
 # Test database connectivity (from ECS task)
-psql -h RDS_ENDPOINT -U postgres -d stellar_insights -c "SELECT 1;"
+psql -h RDS_ENDPOINT -U postgres -d payraider -c "SELECT 1;"
 ```
 
 ## Cost Optimization
@@ -432,10 +432,10 @@ aws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-31 --granul
 
 - **AWS Documentation**: https://docs.aws.amazon.com/
 - **Terraform Registry**: https://registry.terraform.io/
-- **Stellar Insights Docs**: See [../docs/](../docs/)
+- **PayRaider Docs**: See [../docs/](../docs/)
 - **Disaster Recovery**: [../docs/disaster-recovery.md](../docs/disaster-recovery.md)
 - **Backup System**: [../docs/backup-system.md](../docs/backup-system.md)
 
 ## License
 
-This Terraform configuration is part of the Stellar Insights project and follows the same license terms.
+This Terraform configuration is part of the PayRaider project and follows the same license terms.

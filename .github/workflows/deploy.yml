@@ -22,7 +22,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: stellar-insights-backend
+  ECR_REPOSITORY: payraider-backend
 
 jobs:
   deploy:
@@ -39,12 +39,12 @@ jobs:
         run: |
           ENV="${{ github.event.inputs.environment || 'production' }}"
           echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
-          echo "cluster=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
-          echo "service=stellar-insights-service" >> "$GITHUB_OUTPUT"
-          echo "task_family=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
-          echo "container_name=stellar-insights" >> "$GITHUB_OUTPUT"
-          echo "codedeploy_app=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
-          echo "codedeploy_group=stellar-insights-${ENV}-dg" >> "$GITHUB_OUTPUT"
+          echo "cluster=payraider-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "service=payraider-service" >> "$GITHUB_OUTPUT"
+          echo "task_family=payraider-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "container_name=payraider" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_app=payraider-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_group=payraider-${ENV}-dg" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -151,7 +151,7 @@ jobs:
 
           # Get green target group ARN from service
           TG_ARNS=$(aws elbv2 describe-load-balancers \
-            --names "stellar-insights-alb-${{ steps.env.outputs.environment }}" \
+            --names "payraider-alb-${{ steps.env.outputs.environment }}" \
             --query 'LoadBalancers[0].LoadBalancerArn' \
             --output text)
 

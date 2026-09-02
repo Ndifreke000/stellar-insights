@@ -26,7 +26,7 @@ vpc_cidr = "10.0.0.0/16"
 # ✓ No backups beyond 7 days
 
 # Next steps:
-# 1. Run: terraform init -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+# 1. Run: terraform init -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
 # 2. Run: terraform plan
 # 3. Review cost: terraform plan | grep -i cost || echo "(run with cost plugin)"
 # 4. Run: terraform apply

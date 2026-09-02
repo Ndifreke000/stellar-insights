@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stellar-insights-frontend
-  namespace: stellar-insights
+  name: payraider-frontend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: frontend
     version: v1
 spec:
@@ -16,16 +16,16 @@ spec:
       maxUnavailable: 0  # Zero downtime
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: frontend
   template:
     metadata:
       labels:
-        app: stellar-insights
+        app: payraider
         component: frontend
         version: v1
     spec:
-      serviceAccountName: stellar-insights-frontend
+      serviceAccountName: payraider-frontend
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -35,7 +35,7 @@ spec:
       
       containers:
       - name: frontend
-        image: stellar-insights/frontend:latest
+        image: payraider/frontend:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -47,7 +47,7 @@ spec:
         - name: NEXT_PUBLIC_API_URL
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-frontend-config
+              name: payraider-frontend-config
               key: api-url
         
         # Environment

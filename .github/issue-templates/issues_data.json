@@ -37,15 +37,15 @@
   },
   {
     "number": 4,
-    "title": "🔴 CRITICAL: Multiple Compilation Errors in stellar-insights Contract",
+    "title": "🔴 CRITICAL: Multiple Compilation Errors in payraider Contract",
     "labels": ["critical", "bug", "contracts", "compilation-error"],
     "priority": "P0",
     "area": "Contracts",
-    "file": "contracts/stellar_insights/src/lib.rs",
+    "file": "contracts/payraider/src/lib.rs",
     "estimate": "1-2 hours",
     "description": "18 compilation errors preventing contract build",
     "impact": "Blocks main contract deployment",
-    "solution": "Run cargo clippy --package stellar-insights --all-targets to see detailed errors and fix systematically"
+    "solution": "Run cargo clippy --package payraider --all-targets to see detailed errors and fix systematically"
   },
   {
     "number": 5,

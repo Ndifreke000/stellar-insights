@@ -33,6 +33,6 @@ jobs:
           key: ${{ runner.os }}-contracts-fuzz-${{ hashFiles('contracts/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-contracts-fuzz-
 
-      - name: Run stellar_insights contract tests
+      - name: Run payraider contract tests
         working-directory: contracts
         run: cargo test --workspace -- --nocapture

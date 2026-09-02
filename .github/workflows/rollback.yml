@@ -31,10 +31,10 @@ jobs:
         run: |
           ENV="${{ github.event.inputs.environment }}"
           echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
-          echo "codedeploy_app=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
-          echo "codedeploy_group=stellar-insights-${ENV}-dg" >> "$GITHUB_OUTPUT"
-          echo "task_family=stellar-insights-${ENV}" >> "$GITHUB_OUTPUT"
-          echo "container_name=stellar-insights" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_app=payraider-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "codedeploy_group=payraider-${ENV}-dg" >> "$GITHUB_OUTPUT"
+          echo "task_family=payraider-${ENV}" >> "$GITHUB_OUTPUT"
+          echo "container_name=payraider" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -77,8 +77,8 @@ jobs:
         run: |
           # Get the current (broken) revision
           CURRENT_REV=$(aws ecs describe-services \
-            --cluster "stellar-insights-${{ steps.env.outputs.environment }}" \
-            --services "stellar-insights-service" \
+            --cluster "payraider-${{ steps.env.outputs.environment }}" \
+            --services "payraider-service" \
             --query 'services[0].taskDefinition' \
             --output text)
 

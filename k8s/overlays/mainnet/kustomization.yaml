@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: stellar-insights-mainnet
+namespace: payraider-mainnet
 
 bases:
 - ../../
@@ -19,15 +19,15 @@ patches:
 - path: redis-patch.yaml
 
 images:
-- name: stellar-insights/backend
+- name: payraider/backend
   newTag: v1.0.0
-- name: stellar-insights/frontend
+- name: payraider/frontend
   newTag: v1.0.0
 
 configMapGenerator:
-- name: stellar-insights-config
+- name: payraider-config
   behavior: merge
   literals:
   - stellar-network=mainnet
   - rust-log=warn
-  - cors-allowed-origins=https://stellar-insights.com
+  - cors-allowed-origins=https://payraider.com

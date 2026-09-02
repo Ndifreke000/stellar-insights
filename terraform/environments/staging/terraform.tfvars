@@ -20,7 +20,7 @@ vpc_cidr    = "10.1.0.0/16"
 
 # Next steps:
 # 1. Ensure terraform/global/ has been applied (S3 state bucket, DynamoDB locks)
-# 2. Run: terraform init -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+# 2. Run: terraform init -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
 # 3. Run: terraform plan
 # 4. Run: terraform apply
 #
@@ -28,4 +28,4 @@ vpc_cidr    = "10.1.0.0/16"
 # - Note RDS endpoint from outputs
 # - Configure VAULT_ADDR in GitHub Actions
 # - Run Vault setup scripts: scripts/setup-vault-complete.sh
-# - Test: psql -h <rds_endpoint> -U postgres -d stellar_insights
+# - Test: psql -h <rds_endpoint> -U postgres -d payraider

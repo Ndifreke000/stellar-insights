@@ -44,7 +44,7 @@ variable "environment" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "enable_cost_alerts" {

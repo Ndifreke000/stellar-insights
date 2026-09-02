@@ -1,16 +1,16 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: stellar-insights-backend
+    name: payraider-backend
   minReplicas: 3
   maxReplicas: 10
   metrics:

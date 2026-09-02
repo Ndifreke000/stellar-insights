@@ -15,9 +15,9 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: stellar-insights-backend
+  ECR_REPOSITORY: payraider-backend
   K8S_OVERLAY: k8s/overlays/testnet
-  K8S_NAMESPACE: stellar-insights-testnet
+  K8S_NAMESPACE: payraider-testnet
 
 jobs:
   test:
@@ -111,12 +111,12 @@ jobs:
       - name: Apply testnet overlay
         run: |
           kubectl kustomize "${{ env.K8S_OVERLAY }}" \
-            | sed "s|stellar-insights/backend:testnet|${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:testnet-${{ github.sha }}|g" \
+            | sed "s|payraider/backend:testnet|${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:testnet-${{ github.sha }}|g" \
             | kubectl apply -f -
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/testnet-stellar-insights-backend \
+          kubectl rollout status deployment/testnet-payraider-backend \
             -n "${{ env.K8S_NAMESPACE }}" --timeout=10m
 
       - name: Run backend smoke tests

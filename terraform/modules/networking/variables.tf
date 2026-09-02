@@ -87,7 +87,7 @@ variable "private_db_subnet_cidrs" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "tags" {

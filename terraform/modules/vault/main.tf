@@ -12,7 +12,7 @@
 # ============================================================================
 
 resource "aws_iam_role" "vault_oidc" {
-  name = "stellar-insights-vault-oidc-${var.environment}"
+  name = "payraider-vault-oidc-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -21,7 +21,7 @@ resource "aws_iam_role" "vault_oidc" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::aws:repo/github:Ndifreke000/stellar-insights:*"
+          Federated = "arn:aws:iam::aws:repo/github:Ndifreke000/payraider:*"
         }
         Condition = {
           StringEquals = {
@@ -33,7 +33,7 @@ resource "aws_iam_role" "vault_oidc" {
   })
 
   tags = {
-    Name = "stellar-insights-vault-oidc-${var.environment}"
+    Name = "payraider-vault-oidc-${var.environment}"
   }
 }
 
@@ -78,7 +78,7 @@ resource "aws_iam_role_policy" "vault_oidc_policy" {
 # 4. Database Secret Engine:
 #    Enable at path: database/
 #    Create connection to RDS PostgreSQL
-#    Create role: stellar-insights-${environment}
+#    Create role: payraider-${environment}
 #    Dynamic credentials: 1 hour TTL
 #
 # 5. Policies:

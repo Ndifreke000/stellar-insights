@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: stellar-insights-config
-  namespace: stellar-insights
+  name: payraider-config
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 data:
   # Stellar Network Configuration
   stellar-network: "mainnet"
@@ -18,7 +18,7 @@ data:
   log-format: "json"
   
   # CORS Configuration
-  cors-allowed-origins: "https://stellar-insights.com,https://www.stellar-insights.com"
+  cors-allowed-origins: "https://payraider.com,https://www.payraider.com"
   
   # Database Pool Configuration
   db-pool-max-connections: "20"

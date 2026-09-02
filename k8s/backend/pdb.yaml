@@ -1,15 +1,15 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
 spec:
   minAvailable: 2  # Always keep at least 2 pods running
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: backend
   unhealthyPodEvictionPolicy: IfHealthyBudget

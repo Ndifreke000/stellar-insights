@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 1.5"
 
   backend "s3" {
-    bucket         = "stellar-insights-terraform-state-ACCOUNT_ID"
+    bucket         = "payraider-terraform-state-ACCOUNT_ID"
     key            = "dev/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
@@ -23,7 +23,7 @@ provider "aws" {
   default_tags {
     tags = {
       Environment = var.environment
-      Project     = "stellar-insights"
+      Project     = "payraider"
       ManagedBy   = "terraform"
       CreatedAt   = timestamp()
     }
@@ -35,7 +35,7 @@ data "aws_caller_identity" "current" {}
 
 # Get ECR repository URLs from global stack
 data "aws_ecr_repository" "backend" {
-  name = "stellar-insights-backend"
+  name = "payraider-backend"
 }
 
 # ============================================================================
@@ -59,11 +59,11 @@ module "networking" {
 module "caching" {
   source = "../../modules/caching"
 
-  cache_subnet_group_name = "stellar-insights-cache-${var.environment}"
+  cache_subnet_group_name = "payraider-cache-${var.environment}"
   cache_subnet_ids        = module.networking.private_db_subnet_ids
   security_group_ids      = [module.networking.security_group_redis_id]
 
-  cluster_id               = "stellar-insights-${var.environment}"
+  cluster_id               = "payraider-${var.environment}"
   node_type               = "cache.t3.micro"
   num_cache_nodes         = 1
   engine_version          = "7.0"
@@ -80,20 +80,20 @@ module "caching" {
 module "load_balancing" {
   source = "../../modules/load_balancing"
 
-  name               = "stellar-insights-alb-${var.environment}"
+  name               = "payraider-alb-${var.environment}"
   internal           = false
   load_balancer_type = "application"
   subnets            = module.networking.public_subnet_ids
   security_groups    = [module.networking.security_group_alb_id]
 
-  target_group_name = "stellar-insights-targets-${var.environment}"
+  target_group_name = "payraider-targets-${var.environment}"
   target_port       = 8080
 
   # ACM Certificate (create manually first in AWS Console)
   # For dev testing, can use self-signed.
   # Path: AWS Console → ACM → Request certificate → import custom
   certificate_arn = "arn:aws:acm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:certificate/REPLACE_WITH_CERT_ID"
-  domain_name     = "dev-api.stellar-insights.local"
+  domain_name     = "dev-api.payraider.local"
 
   # Logging disabled for dev cost savings
   enable_logs = false
@@ -108,7 +108,7 @@ module "load_balancing" {
 module "compute" {
   source = "../../modules/compute/ecs"
 
-  cluster_name    = "stellar-insights-${var.environment}"
+  cluster_name    = "payraider-${var.environment}"
   container_image = "${data.aws_ecr_repository.backend.repository_url}:latest"
   container_port  = 8080
   container_cpu   = 256
@@ -128,7 +128,7 @@ module "compute" {
 
   # Configuration (dev uses SQLite, not RDS)
   vault_addr = var.vault_addr
-  db_url     = "sqlite:///./stellar_insights.db"
+  db_url     = "sqlite:///./payraider.db"
   redis_url  = module.caching.redis_connection_string
 
   environment         = var.environment
@@ -232,4 +232,4 @@ output "cost_estimate" {
 # 3. Vault: Run setup-vault-complete.sh after creating HCP account
 # 4. GitHub Actions: Configure VAULT_ADDR and VAULT_TOKEN in repo secrets
 # 5. ECS Deployment: Push backend image to ECR, trigger deployment
-# 6. Health Check: curl https://dev-api.stellar-insights.local/health
+# 6. Health Check: curl https://dev-api.payraider.local/health

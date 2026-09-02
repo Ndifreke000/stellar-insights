@@ -26,7 +26,7 @@ fi
 AWS_REGION="${1:-us-east-1}"
 ENVIRONMENT="${2:-dev}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET_NAME="stellar-insights-terraform-state-${ACCOUNT_ID}"
+BUCKET_NAME="payraider-terraform-state-${ACCOUNT_ID}"
 STATE_PATH="terraform/environments/${ENVIRONMENT}"
 
 echo -e "${GREEN}=== Terraform State Backend Initialization ===${NC}"
@@ -83,4 +83,4 @@ echo "3. Apply the configuration:"
 echo -e "   ${YELLOW}terraform apply${NC}"
 echo ""
 echo "Tip: Set AWS_PROFILE if using multiple AWS credentials:"
-echo -e "   ${YELLOW}AWS_PROFILE=stellar-insights terraform plan${NC}"
+echo -e "   ${YELLOW}AWS_PROFILE=payraider terraform plan${NC}"

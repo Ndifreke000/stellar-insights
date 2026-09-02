@@ -7,7 +7,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
   retention_in_days = var.log_retention_days
 
   tags = {
-    Name = "stellar-insights-ecs-logs-${var.environment}"
+    Name = "payraider-ecs-logs-${var.environment}"
   }
 }
 
@@ -17,7 +17,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
 
 # Task Execution Role (used by ECS agent to pull image and write logs)
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "stellar-insights-ecs-task-execution-${var.environment}"
+  name = "payraider-ecs-task-execution-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -33,7 +33,7 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-task-execution-${var.environment}"
+    Name = "payraider-ecs-task-execution-${var.environment}"
   }
 }
 
@@ -44,7 +44,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
 
 # Task Role (used by the application inside the container)
 resource "aws_iam_role" "ecs_task_role" {
-  name = "stellar-insights-ecs-task-${var.environment}"
+  name = "payraider-ecs-task-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -60,13 +60,13 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-task-${var.environment}"
+    Name = "payraider-ecs-task-${var.environment}"
   }
 }
 
 # Task role policy: allow reading from Vault and writing to S3 for artifacts
 resource "aws_iam_role_policy" "ecs_task_policy" {
-  name = "stellar-insights-ecs-task-policy"
+  name = "payraider-ecs-task-policy"
   role = aws_iam_role.ecs_task_role.id
 
   policy = jsonencode({
@@ -100,7 +100,7 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
 # EC2 Instance Profile Role (only needed for EC2 launch type)
 resource "aws_iam_role" "ecs_instance_role" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name  = "stellar-insights-ecs-instance-${var.environment}"
+  name  = "payraider-ecs-instance-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -116,7 +116,7 @@ resource "aws_iam_role" "ecs_instance_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-instance-${var.environment}"
+    Name = "payraider-ecs-instance-${var.environment}"
   }
 }
 
@@ -128,7 +128,7 @@ resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
 
 resource "aws_iam_instance_profile" "ecs" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name  = "stellar-insights-ecs-instance-profile-${var.environment}"
+  name  = "payraider-ecs-instance-profile-${var.environment}"
   role  = aws_iam_role.ecs_instance_role[0].name
 }
 
@@ -145,7 +145,7 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = {
-    Name = "stellar-insights-ecs-cluster-${var.environment}"
+    Name = "payraider-ecs-cluster-${var.environment}"
   }
 }
 
@@ -166,7 +166,7 @@ data "aws_ami" "ecs_optimized" {
 
 resource "aws_launch_template" "ecs" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name_prefix   = "stellar-insights-ecs-"
+  name_prefix   = "payraider-ecs-"
   image_id      = data.aws_ami.ecs_optimized[0].id
   instance_type = var.instance_type
 
@@ -202,7 +202,7 @@ resource "aws_launch_template" "ecs" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name = "stellar-insights-ecs-${var.environment}"
+      Name = "payraider-ecs-${var.environment}"
     }
   }
 
@@ -232,7 +232,7 @@ resource "aws_autoscaling_group" "ecs" {
 
   tag {
     key                 = "Name"
-    value               = "stellar-insights-ecs-${var.environment}"
+    value               = "payraider-ecs-${var.environment}"
     propagate_at_launch = true
   }
 
@@ -252,7 +252,7 @@ resource "aws_autoscaling_group" "ecs" {
 # ============================================================================
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = "stellar-insights-${var.environment}"
+  family                   = "payraider-${var.environment}"
   network_mode             = "awsvpc"
   requires_compatibilities = var.launch_type == "FARGATE" ? ["FARGATE"] : ["EC2"]
   cpu                      = var.container_cpu
@@ -262,7 +262,7 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name      = "stellar-insights"
+      name      = "payraider"
       image     = var.container_image
       essential = true
       portMappings = [
@@ -319,7 +319,7 @@ resource "aws_ecs_task_definition" "app" {
   ])
 
   tags = {
-    Name = "stellar-insights-task-${var.environment}"
+    Name = "payraider-task-${var.environment}"
   }
 }
 
@@ -328,7 +328,7 @@ resource "aws_ecs_task_definition" "app" {
 # ============================================================================
 
 resource "aws_ecs_service" "app" {
-  name            = "stellar-insights-service"
+  name            = "payraider-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
@@ -342,7 +342,7 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "stellar-insights"
+    container_name   = "payraider"
     container_port   = var.container_port
   }
 
@@ -360,7 +360,7 @@ resource "aws_ecs_service" "app" {
   ]
 
   tags = {
-    Name = "stellar-insights-service-${var.environment}"
+    Name = "payraider-service-${var.environment}"
   }
 
   lifecycle {
@@ -383,7 +383,7 @@ resource "aws_appautoscaling_target" "ecs_target" {
 
 resource "aws_appautoscaling_policy" "ecs_target_cpu" {
   count              = var.enable_auto_scaling ? 1 : 0
-  name               = "stellar-insights-cpu-scaling-${var.environment}"
+  name               = "payraider-cpu-scaling-${var.environment}"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_target[0].resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_target[0].scalable_dimension
@@ -402,11 +402,11 @@ resource "aws_appautoscaling_policy" "ecs_target_cpu" {
 # ============================================================================
 
 resource "aws_secretsmanager_secret" "database_url" {
-  name                    = "stellar-insights/database-url-${var.environment}"
+  name                    = "payraider/database-url-${var.environment}"
   recovery_window_in_days = 7
 
   tags = {
-    Name = "stellar-insights-db-url-${var.environment}"
+    Name = "payraider-db-url-${var.environment}"
   }
 }
 
@@ -417,11 +417,11 @@ resource "aws_secretsmanager_secret_version" "database_url" {
 }
 
 resource "aws_secretsmanager_secret" "redis_url" {
-  name                    = "stellar-insights/redis-url-${var.environment}"
+  name                    = "payraider/redis-url-${var.environment}"
   recovery_window_in_days = 7
 
   tags = {
-    Name = "stellar-insights-redis-url-${var.environment}"
+    Name = "payraider-redis-url-${var.environment}"
   }
 }
 

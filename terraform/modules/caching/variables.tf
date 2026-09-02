@@ -139,5 +139,5 @@ variable "log_retention_days" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }

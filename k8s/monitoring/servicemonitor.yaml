@@ -1,16 +1,16 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
     prometheus: kube-prometheus
 spec:
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: backend
   endpoints:
   - port: metrics
@@ -21,10 +21,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: stellar-insights-backend-metrics
-  namespace: stellar-insights
+  name: payraider-backend-metrics
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
 spec:
   type: ClusterIP
@@ -34,5 +34,5 @@ spec:
     targetPort: 9090
     protocol: TCP
   selector:
-    app: stellar-insights
+    app: payraider
     component: backend

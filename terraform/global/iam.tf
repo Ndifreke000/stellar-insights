@@ -22,7 +22,7 @@ resource "aws_iam_role" "terraform_executor" {
         }
         Condition = {
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:Ndifreke000/stellar-insights:*"
+            "token.actions.githubusercontent.com:sub" = "repo:Ndifreke000/payraider:*"
           }
         }
       }

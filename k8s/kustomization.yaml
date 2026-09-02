@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: stellar-insights
+namespace: payraider
 
 resources:
 - namespace.yaml
@@ -29,11 +29,11 @@ resources:
 - monitoring/servicemonitor.yaml
 
 commonLabels:
-  app: stellar-insights
+  app: payraider
   managed-by: kustomize
 
 images:
-- name: stellar-insights/backend
+- name: payraider/backend
   newTag: latest
-- name: stellar-insights/frontend
+- name: payraider/frontend
   newTag: latest

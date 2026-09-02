@@ -1,11 +1,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: stellar-insights-alerts
-  namespace: stellar-insights
+  name: payraider-alerts
+  namespace: payraider
 spec:
   groups:
-    - name: stellar-insights.rules
+    - name: payraider.rules
       interval: 30s
       rules:
         - alert: HighErrorRate

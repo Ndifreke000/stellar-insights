@@ -1,10 +1,10 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -75,10 +75,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-frontend
-  namespace: stellar-insights
+  name: payraider-frontend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -116,10 +116,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-database
-  namespace: stellar-insights
+  name: payraider-database
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -149,10 +149,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-redis
-  namespace: stellar-insights
+  name: payraider-redis
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:

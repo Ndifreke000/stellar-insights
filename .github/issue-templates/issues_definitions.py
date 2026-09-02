@@ -52,16 +52,16 @@ ISSUES = [
     
     {
         "number": 4,
-        "title": "🔴 CRITICAL: Multiple Compilation Errors in stellar-insights Contract",
+        "title": "🔴 CRITICAL: Multiple Compilation Errors in payraider Contract",
         "labels": ["critical", "bug", "contracts", "compilation-error", "P0"],
         "priority": "P0 - Critical",
         "area": "Contracts",
-        "file": "contracts/stellar_insights/src/lib.rs",
+        "file": "contracts/payraider/src/lib.rs",
         "estimate": "1-2 hours",
-        "description": "18 compilation errors preventing contract build. Error: 'could not compile stellar-insights (lib) due to 18 previous errors'",
+        "description": "18 compilation errors preventing contract build. Error: 'could not compile payraider (lib) due to 18 previous errors'",
         "impact": "❌ Blocks main contract deployment\n❌ Prevents integration testing",
-        "solution": "Run cargo clippy --package stellar-insights --all-targets to see detailed errors and fix systematically",
-        "verification": "cd contracts && cargo clippy --package stellar-insights --all-targets"
+        "solution": "Run cargo clippy --package payraider --all-targets to see detailed errors and fix systematically",
+        "verification": "cd contracts && cargo clippy --package payraider --all-targets"
     },
     
     {
@@ -512,7 +512,7 @@ ISSUES = [
         "labels": ["medium-priority", "contracts", "configuration", "P2"],
         "priority": "P2 - Medium",
         "area": "Contracts",
-        "file": "contracts/access-control/Cargo.toml, contracts/stellar_insights/Cargo.toml, contracts/governance/Cargo.toml",
+        "file": "contracts/access-control/Cargo.toml, contracts/payraider/Cargo.toml, contracts/governance/Cargo.toml",
         "estimate": "15 minutes",
         "description": "Warning: profiles for non-root package will be ignored. Profile sections in individual contracts ignored",
         "impact": "⚠️ Confusing warnings\n⚠️ Profiles not applied\n⚠️ Build configuration unclear",
@@ -526,7 +526,7 @@ ISSUES = [
         "labels": ["medium-priority", "contracts", "code-quality", "P2"],
         "priority": "P2 - Medium",
         "area": "Contracts",
-        "file": "contracts/stellar_insights/src/lib.rs",
+        "file": "contracts/payraider/src/lib.rs",
         "estimate": "1-2 hours",
         "description": "14 unreachable pattern warnings in match statements",
         "impact": "⚠️ Dead code\n⚠️ Logic errors\n⚠️ Confusing code",

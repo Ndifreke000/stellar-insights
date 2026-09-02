@@ -2,7 +2,7 @@
 # Stores: backend, frontend Docker images for deployment
 
 resource "aws_ecr_repository" "backend" {
-  name                 = "stellar-insights-backend"
+  name                 = "payraider-backend"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -21,7 +21,7 @@ resource "aws_ecr_repository" "backend" {
 }
 
 resource "aws_ecr_repository" "frontend" {
-  name                 = "stellar-insights-frontend"
+  name                 = "payraider-frontend"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {

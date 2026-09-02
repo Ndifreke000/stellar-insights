@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
     version: v1
 spec:
@@ -16,12 +16,12 @@ spec:
       maxUnavailable: 0  # Zero downtime
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: backend
   template:
     metadata:
       labels:
-        app: stellar-insights
+        app: payraider
         component: backend
         version: v1
       annotations:
@@ -29,7 +29,7 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: stellar-insights-backend
+      serviceAccountName: payraider-backend
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -40,7 +40,7 @@ spec:
       # Init container for database migrations
       initContainers:
       - name: db-migration
-        image: stellar-insights/backend:latest
+        image: payraider/backend:latest
         imagePullPolicy: IfNotPresent
         command: ["/bin/sh", "-c"]
         args:
@@ -51,7 +51,7 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: database-url
         securityContext:
           allowPrivilegeEscalation: false
@@ -69,7 +69,7 @@ spec:
       
       containers:
       - name: backend
-        image: stellar-insights/backend:latest
+        image: payraider/backend:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -84,28 +84,28 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: database-url
         
         # Redis Configuration
         - name: REDIS_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: redis-url
         
         # JWT Secret
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: jwt-secret
         
         # Encryption Key
         - name: ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: encryption-key
         
         # Server Configuration
@@ -118,26 +118,26 @@ spec:
         - name: STELLAR_NETWORK
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-network
         
         - name: STELLAR_RPC_URL_MAINNET
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-rpc-url-mainnet
         
         - name: STELLAR_HORIZON_URL_MAINNET
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-horizon-url-mainnet
         
         # Logging
         - name: RUST_LOG
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: rust-log
         
         - name: LOG_FORMAT
@@ -147,27 +147,27 @@ spec:
         - name: CORS_ALLOWED_ORIGINS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: cors-allowed-origins
         
         # Database Pool Configuration
         - name: DB_POOL_MAX_CONNECTIONS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: db-pool-max-connections
         
         - name: DB_POOL_MIN_CONNECTIONS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: db-pool-min-connections
         
         # Admin IP Whitelist
         - name: ADMIN_IP_WHITELIST
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: admin-ip-whitelist
         
         - name: ADMIN_IP_TRUST_PROXY
@@ -179,7 +179,7 @@ spec:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: otel-endpoint
               optional: true
         

@@ -71,7 +71,7 @@ variable "storage_type" {
 }
 
 variable "engine_version" {
-  description = "PostgreSQL engine version (14.x preferred for Stellar Insights)"
+  description = "PostgreSQL engine version (14.x preferred for PayRaider)"
   type        = string
   default     = "14.8"
 
@@ -84,7 +84,7 @@ variable "engine_version" {
 variable "db_name" {
   description = "Name of the initial database to create"
   type        = string
-  default     = "stellar_insights"
+  default     = "payraider"
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9_]*$", var.db_name))
@@ -217,5 +217,5 @@ variable "environment" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }

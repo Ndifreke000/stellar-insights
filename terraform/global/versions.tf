@@ -18,7 +18,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "stellar-insights"
+      Project     = "payraider"
       Environment = var.environment
       ManagedBy   = "Terraform"
       CreatedAt   = timestamp()

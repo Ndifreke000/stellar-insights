@@ -20,7 +20,7 @@
 # 2. Ensure global infrastructure is deployed: cd ../global && terraform apply
 # 3. Initialize backend:
 #    terraform init \
-#      -backend-config="bucket=stellar-insights-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
 #      -backend-config="key=dev/terraform.tfstate" \
 #      -backend-config="region=us-east-1" \
 #      -backend-config="dynamodb_table=terraform-locks"
@@ -28,9 +28,9 @@
 # 5. Apply: terraform apply
 #
 # Post-deployment:
-# - Verify ECS cluster is healthy: aws ecs describe-clusters --clusters stellar-insights-dev
+# - Verify ECS cluster is healthy: aws ecs describe-clusters --clusters payraider-dev
 # - Check health check status: aws elbv2 describe-target-health --target-group-arn <TARGET_GROUP_ARN>
-# - View logs: aws logs tail /ecs/stellar-insights-dev --follow
+# - View logs: aws logs tail /ecs/payraider-dev --follow
 
 aws_region  = "us-east-1"
 environment = "dev"

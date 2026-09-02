@@ -8,12 +8,12 @@ resource "aws_kms_key" "rds" {
   enable_key_rotation     = true
 
   tags = {
-    Name = "stellar-insights-rds-${var.environment}"
+    Name = "payraider-rds-${var.environment}"
   }
 }
 
 resource "aws_kms_alias" "rds" {
-  name          = "alias/stellar-insights-rds-${var.environment}"
+  name          = "alias/payraider-rds-${var.environment}"
   target_key_id = aws_kms_key.rds.key_id
 }
 
@@ -26,7 +26,7 @@ resource "aws_db_subnet_group" "database" {
   subnet_ids = var.db_subnet_ids
 
   tags = {
-    Name = "stellar-insights-db-subnet-${var.environment}"
+    Name = "payraider-db-subnet-${var.environment}"
   }
 }
 
@@ -35,7 +35,7 @@ resource "aws_db_subnet_group" "database" {
 # ============================================================================
 
 resource "aws_db_parameter_group" "postgresql" {
-  name   = "stellar-insights-postgresql-${var.environment}"
+  name   = "payraider-postgresql-${var.environment}"
   family = "postgres14"
 
   # Performance tuning for PostgreSQL 14
@@ -82,7 +82,7 @@ resource "aws_db_parameter_group" "postgresql" {
 
   # Maintenance windows
   tags = {
-    Name = "stellar-insights-pg14-${var.environment}"
+    Name = "payraider-pg14-${var.environment}"
   }
 }
 
@@ -93,7 +93,7 @@ resource "aws_db_parameter_group" "postgresql" {
 resource "aws_iam_role" "rds_enhanced_monitoring" {
   count = var.enable_enhanced_monitoring ? 1 : 0
 
-  name = "stellar-insights-rds-monitoring-${var.environment}"
+  name = "payraider-rds-monitoring-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -109,7 +109,7 @@ resource "aws_iam_role" "rds_enhanced_monitoring" {
   })
 
   tags = {
-    Name = "stellar-insights-rds-monitoring-${var.environment}"
+    Name = "payraider-rds-monitoring-${var.environment}"
   }
 }
 
@@ -153,7 +153,7 @@ resource "aws_db_instance" "postgresql" {
   backup_retention_period = var.backup_retention_period != null ? var.backup_retention_period : (var.environment == "production" ? 7 : (var.environment == "staging" ? 3 : 1))
   backup_window           = var.backup_window
   skip_final_snapshot     = var.skip_final_snapshot
-  final_snapshot_identifier = var.skip_final_snapshot ? null : "stellar-insights-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "payraider-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
   # Maintenance
   auto_minor_version_upgrade  = var.auto_minor_version_upgrade
@@ -176,7 +176,7 @@ resource "aws_db_instance" "postgresql" {
   deletion_protection = var.environment == "production" ? true : false
 
   tags = {
-    Name = "stellar-insights-${var.environment}"
+    Name = "payraider-${var.environment}"
   }
 
   depends_on = [
@@ -195,7 +195,7 @@ resource "aws_db_instance" "postgresql" {
 # ============================================================================
 
 resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
-  alarm_name          = "stellar-insights-rds-cpu-${var.environment}"
+  alarm_name          = "payraider-rds-cpu-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -212,7 +212,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "rds_connections" {
-  alarm_name          = "stellar-insights-rds-connections-${var.environment}"
+  alarm_name          = "payraider-rds-connections-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "DatabaseConnections"
@@ -229,7 +229,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "rds_storage" {
-  alarm_name          = "stellar-insights-rds-storage-${var.environment}"
+  alarm_name          = "payraider-rds-storage-${var.environment}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "FreeStorageSpace"
@@ -247,7 +247,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage" {
 
 resource "aws_cloudwatch_metric_alarm" "rds_replication_lag" {
   count               = var.multi_az ? 1 : 0
-  alarm_name          = "stellar-insights-rds-replication-lag-${var.environment}"
+  alarm_name          = "payraider-rds-replication-lag-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "AuroraBinlogReplicaLag"
@@ -273,6 +273,6 @@ resource "aws_cloudwatch_log_group" "rds_postgresql" {
   retention_in_days = var.environment == "production" ? 30 : (var.environment == "staging" ? 14 : 7)
 
   tags = {
-    Name = "stellar-insights-rds-logs-${var.environment}"
+    Name = "payraider-rds-logs-${var.environment}"
   }
 }

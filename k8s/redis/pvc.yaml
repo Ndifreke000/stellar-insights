@@ -2,9 +2,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: redis-data
-  namespace: stellar-insights
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis
 spec:
   accessModes:

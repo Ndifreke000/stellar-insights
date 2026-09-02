@@ -1,8 +1,8 @@
-# Stellar Insights Kubernetes Deployment Guide
+# PayRaider Kubernetes Deployment Guide
 
 ## Architecture Overview
 
-The stellar-insights application is deployed as a containerized microservices architecture on Kubernetes with the following components:
+The payraider application is deployed as a containerized microservices architecture on Kubernetes with the following components:
 
 ### Core Services
 - **Backend API** (`backend/`): Soroban RPC indexer and analytics API
@@ -102,7 +102,7 @@ Secrets are externalized and stored outside the repository for security. Require
 1. **Database Credentials** (`config/secrets.yaml` - not committed)
    - `DATABASE_USER`: PostgreSQL username (default: postgres)
    - `DATABASE_PASSWORD`: PostgreSQL password (minimum 16 characters, special chars)
-   - `DATABASE_NAME`: PostgreSQL database name (default: stellar_insights)
+   - `DATABASE_NAME`: PostgreSQL database name (default: payraider)
 
 2. **Backend Secrets**
    - `SOROBAN_RPC_URL`: Stellar Soroban RPC endpoint (e.g., https://soroban-testnet.stellar.org)
@@ -112,7 +112,7 @@ Secrets are externalized and stored outside the repository for security. Require
 
 3. **TLS Certificate Secrets**
    - Managed by cert-manager with Let's Encrypt (production) or self-signed (development)
-   - Secret name: `stellar-insights-tls`
+   - Secret name: `payraider-tls`
 
 ### Environment Configuration
 ConfigMaps define environment-specific configuration:
@@ -149,16 +149,16 @@ k8s/overlays/
 
 ```bash
 # Clone repository
-git clone https://github.com/Ndifreke000/stellar-insights.git
-cd stellar-insights/k8s
+git clone https://github.com/Ndifreke000/payraider.git
+cd payraider/k8s
 
 # Create secrets file (not tracked by git)
 cat > config/secrets.yaml <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
-  name: stellar-insights-secrets
-  namespace: stellar-insights
+  name: payraider-secrets
+  namespace: payraider
 type: Opaque
 stringData:
   DATABASE_PASSWORD: "$(openssl rand -base64 32)"
@@ -182,40 +182,40 @@ ENVIRONMENT=testnet
 kubectl apply -k overlays/$ENVIRONMENT
 
 # Verify deployment
-kubectl get all -n stellar-insights
-kubectl get events -n stellar-insights --sort-by='.lastTimestamp'
+kubectl get all -n payraider
+kubectl get events -n payraider --sort-by='.lastTimestamp'
 ```
 
 ### 3. Create Secrets
 
 ```bash
 # Create database password
-kubectl create secret generic stellar-insights-secrets \
+kubectl create secret generic payraider-secrets \
   --from-literal=DATABASE_PASSWORD="$(openssl rand -base64 32)" \
   --from-literal=JWT_SECRET="$(openssl rand -base64 32)" \
   --from-literal=REDIS_PASSWORD="$(openssl rand -base64 32)" \
-  -n stellar-insights
+  -n payraider
 
 # Create TLS certificate secret (if not using cert-manager)
-kubectl create secret tls stellar-insights-tls \
+kubectl create secret tls payraider-tls \
   --cert=path/to/cert.crt \
   --key=path/to/key.key \
-  -n stellar-insights
+  -n payraider
 ```
 
 ### 4. Wait for Readiness
 
 ```bash
 # Backend readiness
-kubectl rollout status deployment/stellar-insights-backend -n stellar-insights
+kubectl rollout status deployment/payraider-backend -n payraider
 
 # Frontend readiness
-kubectl rollout status deployment/stellar-insights-frontend -n stellar-insights
+kubectl rollout status deployment/payraider-frontend -n payraider
 
 # Database readiness
 kubectl wait --for=condition=ready pod \
-  -l app=stellar-insights,component=database \
-  -n stellar-insights \
+  -l app=payraider,component=database \
+  -n payraider \
   --timeout=300s
 ```
 
@@ -223,19 +223,19 @@ kubectl wait --for=condition=ready pod \
 
 ```bash
 # Check pod status
-kubectl get pods -n stellar-insights
+kubectl get pods -n payraider
 
 # View logs
-kubectl logs -f deployment/stellar-insights-backend -n stellar-insights
-kubectl logs -f deployment/stellar-insights-frontend -n stellar-insights
+kubectl logs -f deployment/payraider-backend -n payraider
+kubectl logs -f deployment/payraider-frontend -n payraider
 
 # Test API endpoint
-BACKEND_POD=$(kubectl get pod -l app=stellar-insights,component=backend \
-  -n stellar-insights -o jsonpath='{.items[0].metadata.name}')
-kubectl exec $BACKEND_POD -n stellar-insights -- curl -s http://localhost:8080/health
+BACKEND_POD=$(kubectl get pod -l app=payraider,component=backend \
+  -n payraider -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $BACKEND_POD -n payraider -- curl -s http://localhost:8080/health
 
 # Test Ingress
-kubectl get ingress -n stellar-insights
+kubectl get ingress -n payraider
 # Wait for LoadBalancer IP assignment (check status column)
 ```
 
@@ -246,13 +246,13 @@ HPA policies are configured for backend and frontend:
 
 ```bash
 # View HPA status
-kubectl get hpa -n stellar-insights
+kubectl get hpa -n payraider
 
 # Manual scaling (temporary override of HPA)
-kubectl scale deployment stellar-insights-backend --replicas=5 -n stellar-insights
+kubectl scale deployment payraider-backend --replicas=5 -n payraider
 
 # Monitor autoscaling
-kubectl describe hpa stellar-insights-backend -n stellar-insights
+kubectl describe hpa payraider-backend -n payraider
 ```
 
 Scaling thresholds:
@@ -264,8 +264,8 @@ PDBs ensure HA during voluntary disruptions (cluster upgrades, drains):
 
 ```bash
 # Verify PDB configuration
-kubectl get pdb -n stellar-insights
-kubectl describe pdb stellar-insights-backend -n stellar-insights
+kubectl get pdb -n payraider
+kubectl describe pdb payraider-backend -n payraider
 ```
 
 Constraints:
@@ -277,12 +277,12 @@ Database and Redis require persistent volumes:
 
 ```bash
 # Check PVC status
-kubectl get pvc -n stellar-insights
+kubectl get pvc -n payraider
 
 # Resize PVC (for growing databases)
-kubectl patch pvc stellar-insights-database-data -p \
+kubectl patch pvc payraider-database-data -p \
   '{"spec":{"resources":{"requests":{"storage":"50Gi"}}}}' \
-  -n stellar-insights
+  -n payraider
 ```
 
 ## Monitoring and Observability
@@ -290,18 +290,18 @@ kubectl patch pvc stellar-insights-database-data -p \
 ### Prometheus Metrics
 Prometheus scrapes metrics from all services via ServiceMonitor:
 
-- Backend: `http://stellar-insights-backend:8080/metrics` (30s scrape interval)
+- Backend: `http://payraider-backend:8080/metrics` (30s scrape interval)
 - Frontend: Not instrumented (static serving)
 
 ### Querying Metrics
 
 ```bash
 # Port-forward Prometheus
-kubectl port-forward svc/prometheus-server 9090:9090 -n stellar-insights
+kubectl port-forward svc/prometheus-server 9090:9090 -n payraider
 
 # Example PromQL queries (visit http://localhost:9090)
 # API latency (p95): histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
-# Memory usage: container_memory_usage_bytes{pod=~"stellar-insights-backend.*"}
+# Memory usage: container_memory_usage_bytes{pod=~"payraider-backend.*"}
 # Request rate: rate(http_requests_total[1m])
 ```
 
@@ -313,7 +313,7 @@ Define alerts in `monitoring/prometheus-rules.yaml`:
 kubectl apply -f monitoring/prometheus-rules.yaml
 
 # View active alerts
-kubectl exec prometheus-0 -n stellar-insights -- \
+kubectl exec prometheus-0 -n payraider -- \
   curl -s http://localhost:9090/api/v1/alerts | jq '.data.alerts'
 ```
 
@@ -323,25 +323,25 @@ kubectl exec prometheus-0 -n stellar-insights -- \
 
 ```bash
 # Check deployment history
-kubectl rollout history deployment/stellar-insights-backend -n stellar-insights
+kubectl rollout history deployment/payraider-backend -n payraider
 
 # Rollback to previous version
-kubectl rollout undo deployment/stellar-insights-backend -n stellar-insights
+kubectl rollout undo deployment/payraider-backend -n payraider
 
 # Rollback to specific revision
-kubectl rollout undo deployment/stellar-insights-backend --to-revision=2 -n stellar-insights
+kubectl rollout undo deployment/payraider-backend --to-revision=2 -n payraider
 ```
 
 ### Database Recovery
 
 ```bash
 # Backup database
-kubectl exec -it stellar-insights-database-0 -n stellar-insights -- \
-  pg_dump -U postgres stellar_insights | gzip > backup-$(date +%s).sql.gz
+kubectl exec -it payraider-database-0 -n payraider -- \
+  pg_dump -U postgres payraider | gzip > backup-$(date +%s).sql.gz
 
 # Restore from backup
-kubectl exec -i stellar-insights-database-0 -n stellar-insights -- \
-  psql -U postgres stellar_insights < backup-1234567890.sql
+kubectl exec -i payraider-database-0 -n payraider -- \
+  psql -U postgres payraider < backup-1234567890.sql
 ```
 
 ## Troubleshooting
@@ -350,25 +350,25 @@ kubectl exec -i stellar-insights-database-0 -n stellar-insights -- \
 
 1. **Pods stuck in Pending**
    ```bash
-   kubectl describe pod <pod-name> -n stellar-insights
+   kubectl describe pod <pod-name> -n payraider
    # Check: resource requests vs available nodes, PVC binding
    ```
 
 2. **CrashLoopBackOff**
    ```bash
-   kubectl logs <pod-name> -n stellar-insights --previous
+   kubectl logs <pod-name> -n payraider --previous
    # Check: missing secrets, invalid env vars, disk space
    ```
 
 3. **Ingress not routing traffic**
    ```bash
-   kubectl describe ingress stellar-insights -n stellar-insights
+   kubectl describe ingress payraider -n payraider
    # Check: TLS cert status, backend service health, ingress controller logs
    ```
 
 4. **Database connection errors**
    ```bash
-   kubectl exec <backend-pod> -n stellar-insights -- \
+   kubectl exec <backend-pod> -n payraider -- \
      env | grep DATABASE
    # Verify credentials match secrets
    ```
@@ -377,13 +377,13 @@ kubectl exec -i stellar-insights-database-0 -n stellar-insights -- \
 
 ```bash
 # Enable debug logging in backend
-kubectl set env deployment/stellar-insights-backend LOG_LEVEL=debug -n stellar-insights
+kubectl set env deployment/payraider-backend LOG_LEVEL=debug -n payraider
 
 # Stream logs from all backend replicas
-kubectl logs -f -l app=stellar-insights,component=backend -n stellar-insights
+kubectl logs -f -l app=payraider,component=backend -n payraider
 
 # Interactive shell in pod
-kubectl exec -it <pod-name> -n stellar-insights -- /bin/sh
+kubectl exec -it <pod-name> -n payraider -- /bin/sh
 ```
 
 ## Performance Tuning
@@ -405,10 +405,10 @@ resources:
 Backend uses pgbouncer for database connection pooling:
 
 ```bash
-kubectl set env deployment/stellar-insights-backend \
+kubectl set env deployment/payraider-backend \
   DB_POOL_SIZE=20 \
   DB_POOL_MIN_SIZE=5 \
-  -n stellar-insights
+  -n payraider
 ```
 
 ## Security Hardening
@@ -418,8 +418,8 @@ Microsegmentation is enforced via network-policy.yaml:
 
 ```bash
 # Verify network policy
-kubectl get networkpolicy -n stellar-insights
-kubectl describe networkpolicy default-deny -n stellar-insights
+kubectl get networkpolicy -n payraider
+kubectl describe networkpolicy default-deny -n payraider
 ```
 
 ### RBAC
@@ -427,8 +427,8 @@ Per-service service accounts follow least-privilege principle:
 
 ```bash
 # View role bindings
-kubectl get rolebindings -n stellar-insights
-kubectl describe rolebinding stellar-insights-backend -n stellar-insights
+kubectl get rolebindings -n payraider
+kubectl describe rolebinding payraider-backend -n payraider
 ```
 
 ### Image Security
@@ -436,14 +436,14 @@ Use image scanning and signed images in production:
 
 ```bash
 # Scan images
-trivy image stellar-insights/backend:latest
+trivy image payraider/backend:latest
 
 # Use private registry with authentication
 kubectl create secret docker-registry regcred \
   --docker-server=private.registry.com \
   --docker-username=user \
   --docker-password=pass \
-  -n stellar-insights
+  -n payraider
 ```
 
 ## Maintenance
@@ -461,7 +461,7 @@ kubectl create secret docker-registry regcred \
 kubectl kustomize overlays/$ENVIRONMENT | kubectl apply -f -
 
 # Monitor rollout
-kubectl rollout status deployment/stellar-insights-backend -n stellar-insights
+kubectl rollout status deployment/payraider-backend -n payraider
 ```
 
 ## Support and Documentation
@@ -474,13 +474,13 @@ kubectl rollout status deployment/stellar-insights-backend -n stellar-insights
 ## FAQ
 
 **Q: How do I scale the application?**
-A: HPA automatically scales based on CPU utilization. For manual control: `kubectl scale deployment stellar-insights-backend --replicas=N -n stellar-insights`
+A: HPA automatically scales based on CPU utilization. For manual control: `kubectl scale deployment payraider-backend --replicas=N -n payraider`
 
 **Q: How do I update environment variables?**
-A: Update ConfigMaps in `config/configmap.yaml`, then redeploy or restart pods: `kubectl rollout restart deployment/stellar-insights-backend -n stellar-insights`
+A: Update ConfigMaps in `config/configmap.yaml`, then redeploy or restart pods: `kubectl rollout restart deployment/payraider-backend -n payraider`
 
 **Q: How do I change database password?**
-A: Update the secret and restart pods: `kubectl delete secret stellar-insights-secrets` and recreate with new password.
+A: Update the secret and restart pods: `kubectl delete secret payraider-secrets` and recreate with new password.
 
 **Q: What's the upgrade process?**
 A: Kustomize overlays handle environment-specific configuration. Update image tags and apply new manifests with `kubectl apply -k overlays/$ENVIRONMENT`.

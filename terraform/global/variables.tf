@@ -29,7 +29,7 @@ variable "enable_mfa_delete" {
 variable "terraform_state_bucket_prefix" {
   description = "Prefix for Terraform state bucket name"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "enable_versioning" {

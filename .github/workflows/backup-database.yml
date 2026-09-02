@@ -32,7 +32,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  S3_BUCKET: stellar-insights-backups
+  S3_BUCKET: payraider-backups
 
 jobs:
   backup:
@@ -81,7 +81,7 @@ jobs:
           fi
 
           # Check if RDS instance exists
-          DB_ID="stellar-insights-${{ steps.env.outputs.environment }}"
+          DB_ID="payraider-${{ steps.env.outputs.environment }}"
           if aws rds describe-db-instances \
             --db-instance-identifier "$DB_ID" \
             --region "${{ env.AWS_REGION }}" &>/dev/null; then
@@ -94,7 +94,7 @@ jobs:
       - name: Create RDS snapshot
         id: snapshot
         run: |
-          DB_ID="stellar-insights-${{ steps.env.outputs.environment }}"
+          DB_ID="payraider-${{ steps.env.outputs.environment }}"
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           SNAPSHOT_ID="${DB_ID}-backup-${TIMESTAMP}"
 
@@ -156,7 +156,7 @@ jobs:
         run: |
           SNAPSHOT_ID="${{ steps.snapshot.outputs.snapshot_id }}"
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          EXPORT_ID="stellar-insights-export-$(date +%s)"
+          EXPORT_ID="payraider-export-$(date +%s)"
 
           echo "Exporting snapshot to S3: $EXPORT_ID"
 
@@ -182,14 +182,14 @@ jobs:
           echo "Verifying RDS snapshots..."
 
           aws rds describe-db-snapshots \
-            --db-instance-identifier "stellar-insights-${{ steps.env.outputs.environment }}" \
+            --db-instance-identifier "payraider-${{ steps.env.outputs.environment }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'DBSnapshots[0:5].[DBSnapshotIdentifier, SnapshotCreateTime, Status, AllocatedStorage]' \
             --output table
 
       - name: Cleanup old snapshots (retention policy)
         run: |
-          DB_ID="stellar-insights-${{ steps.env.outputs.environment }}"
+          DB_ID="payraider-${{ steps.env.outputs.environment }}"
           RETENTION_DAYS=30
           CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y-%m-%d)
 
@@ -227,7 +227,7 @@ jobs:
       - name: Generate backup report
         if: always()
         run: |
-          DB_ID="stellar-insights-${{ steps.env.outputs.environment }}"
+          DB_ID="payraider-${{ steps.env.outputs.environment }}"
 
           echo "## Backup Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -264,12 +264,12 @@ jobs:
           This job backs up the ${{ steps.env.outputs.environment }} database daily.
 
           Troubleshooting:
-          1. Check RDS instance status: aws rds describe-db-instances --db-instance-identifier stellar-insights-${{ steps.env.outputs.environment }}
+          1. Check RDS instance status: aws rds describe-db-instances --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
           2. Verify IAM role has backup permissions: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-executor
           3. Check S3 bucket exists and role has access: s3://${{ env.S3_BUCKET }}
           4. Review full logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           Next steps:
-          - Manual snapshot: aws rds create-db-snapshot --db-instance-identifier stellar-insights-${{ steps.env.outputs.environment }}
-          - Check snapshot status: aws rds describe-db-snapshots --db-instance-identifier stellar-insights-${{ steps.env.outputs.environment }}
+          - Manual snapshot: aws rds create-db-snapshot --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
+          - Check snapshot status: aws rds describe-db-snapshots --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
           EOF
