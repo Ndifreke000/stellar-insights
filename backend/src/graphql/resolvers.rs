@@ -321,7 +321,7 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                id as "id!", entity_id as "entity_id!", entity_type as "entity_type!",
                 data as "data!", hash, epoch,
                 timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
@@ -354,7 +354,7 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                id as "id!", entity_id as "entity_id!", entity_type as "entity_type!",
                 data as "data!", hash, epoch,
                 timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
@@ -386,7 +386,7 @@ impl QueryRoot {
             SnapshotType,
             r#"
             SELECT
-                id, entity_id as "entity_id!", entity_type as "entity_type!",
+                id as "id!", entity_id as "entity_id!", entity_type as "entity_type!",
                 data as "data!", hash, epoch,
                 timestamp as "timestamp: _", created_at as "created_at!: _"
             FROM snapshots
@@ -699,9 +699,9 @@ impl QueryRoot {
             TrustlineSnapshotType,
             r#"
             SELECT
-                id, asset_code, asset_issuer, total_trustlines,
+                id as "id!", asset_code, asset_issuer, total_trustlines,
                 authorized_trustlines, unauthorized_trustlines, total_supply,
-                snapshot_at
+                snapshot_at as "snapshot_at!: _"
             FROM trustline_snapshots
             WHERE asset_code = ? AND asset_issuer = ?
             ORDER BY snapshot_at DESC
@@ -734,10 +734,11 @@ impl QueryRoot {
             AnchorMetricsHistoryType,
             r#"
             SELECT
-                id, anchor_id, timestamp, success_rate, failure_rate,
+                id as "id!", anchor_id, timestamp, success_rate, failure_rate,
                 reliability_score, total_transactions, successful_transactions,
-                failed_transactions, avg_settlement_time_ms, volume_usd,
-                created_at as "created_at: _"
+                failed_transactions, avg_settlement_time_ms as "avg_settlement_time_ms: i32",
+                volume_usd,
+                created_at as "created_at!: _"
             FROM anchor_metrics_history
             WHERE anchor_id = ?
             ORDER BY timestamp DESC
