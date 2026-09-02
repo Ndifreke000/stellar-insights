@@ -8,12 +8,18 @@ metadata:
     component: backend
     version: v1
 spec:
-  replicas: 3
+  # Pinned to 1: SQLite (docs/adr/0001-sqlite-vs-postgres.md) permits
+  # exactly one writer and there is no shared storage for multiple
+  # replicas to safely share one database file.
+  replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0  # Zero downtime
+    # Recreate, not RollingUpdate: the backend-data PVC below is
+    # ReadWriteOnce, so a new pod cannot mount it until the old pod
+    # releases it. RollingUpdate's maxSurge would deadlock trying to
+    # schedule a second pod against an already-mounted RWO volume.
+    # This means brief downtime on every deploy -- the real cost of a
+    # single-writer file database, not a bug to route around.
+    type: Recreate
   selector:
     matchLabels:
       app: payraider
@@ -248,7 +254,9 @@ spec:
           mountPath: /app/cache
         - name: logs
           mountPath: /app/logs
-      
+        - name: data
+          mountPath: /data
+
       # Volumes
       volumes:
       - name: tmp
@@ -257,6 +265,9 @@ spec:
         emptyDir: {}
       - name: logs
         emptyDir: {}
+      - name: data
+        persistentVolumeClaim:
+          claimName: payraider-backend-data
       
       # Pod scheduling
       affinity:

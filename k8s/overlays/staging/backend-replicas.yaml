@@ -3,4 +3,5 @@ kind: Deployment
 metadata:
   name: payraider-backend
 spec:
-  replicas: 2
+  # Pinned to 1: SQLite single-writer, no shared storage across replicas.
+  replicas: 1

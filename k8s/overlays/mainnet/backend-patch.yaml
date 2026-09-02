@@ -4,7 +4,10 @@ metadata:
   name: payraider-backend
   namespace: payraider-mainnet
 spec:
-  replicas: 3
+  # Pinned to 1: SQLite (docs/adr/0001-sqlite-vs-postgres.md) permits
+  # exactly one writer and there is no shared storage for multiple
+  # replicas to safely share one database file.
+  replicas: 1
   template:
     spec:
       affinity:

@@ -11,8 +11,13 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: payraider-backend
-  minReplicas: 3
-  maxReplicas: 10
+  # Pinned to 1/1 (effectively disabled): SQLite (see
+  # docs/adr/0001-sqlite-vs-postgres.md) permits exactly one writer,
+  # and the backend-data PVC is ReadWriteOnce, so a scaled-up second
+  # pod could not mount it. Do not raise these without first adding a
+  # real multi-writer story.
+  minReplicas: 1
+  maxReplicas: 1
   metrics:
   # CPU-based scaling
   - type: Resource

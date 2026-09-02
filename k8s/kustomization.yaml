@@ -10,8 +10,8 @@ resources:
 - backend/deployment.yaml
 - backend/service.yaml
 - backend/hpa.yaml
-- backend/pdb.yaml
 - backend/serviceaccount.yaml
+- backend/pvc.yaml
 - frontend/deployment.yaml
 - frontend/service.yaml
 - frontend/hpa.yaml
