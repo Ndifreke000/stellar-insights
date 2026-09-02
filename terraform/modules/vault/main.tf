@@ -68,19 +68,16 @@ resource "aws_iam_role_policy" "vault_oidc_policy" {
 #
 # 2. Enable Secret Engines:
 #    Path: secret/ (KV v2)
-#    Path: database/
 #
 # 3. Create Secrets (KV v2):
 #    secret/stellar/jwt-secret - JWT signing key
 #    secret/stellar/oauth-clients - OAuth client credentials
 #    secret/stellar/webhooks - Zapier webhook config
 #
-# 4. Database Secret Engine:
-#    Enable at path: database/
-#    Create connection to RDS PostgreSQL
-#    Create role: payraider-${environment}
-#    Dynamic credentials: 1 hour TTL
+# Note: no Database Secret Engine -- the backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md), so there's no RDS connection
+# for Vault to issue dynamic credentials against.
 #
-# 5. Policies:
-#    stellar-app-policy: read secrets, get DB creds
+# 4. Policies:
+#    stellar-app-policy: read secrets
 #    stellar-ci-policy: rotate secrets, auth setup
