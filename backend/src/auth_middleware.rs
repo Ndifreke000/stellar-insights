@@ -28,6 +28,7 @@ pub struct AuthUser {
     /// token carries one (see Claims::session_id). Needed to distinguish
     /// "this session" from "this user's other sessions".
     pub session_id: Option<String>,
+    pub is_admin: bool,
 }
 
 impl<S> axum::extract::FromRequestParts<S> for AuthUser
@@ -45,6 +46,33 @@ where
             .get::<Self>()
             .cloned()
             .ok_or(AuthError::MissingToken)
+    }
+}
+
+/// Like AuthUser, but only resolves for a user with is_admin = true.
+/// Rejects with AuthError::Forbidden for a valid, authenticated non-admin
+/// -- distinct from AuthError::MissingToken/InvalidToken, which mean "we
+/// don't know who this is" rather than "we know exactly who this is, and
+/// they're not allowed here".
+#[derive(Debug, Clone)]
+pub struct AdminUser(pub AuthUser);
+
+impl<S> axum::extract::FromRequestParts<S> for AdminUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let auth_user = AuthUser::from_request_parts(parts, state).await?;
+        if auth_user.is_admin {
+            Ok(Self(auth_user))
+        } else {
+            Err(AuthError::Forbidden)
+        }
     }
 }
 
@@ -81,6 +109,7 @@ pub async fn auth_middleware(
         user_id: claims.sub,
         username: claims.username,
         session_id: claims.session_id,
+        is_admin: claims.is_admin,
     };
     req.extensions_mut().insert(auth_user);
 
@@ -154,6 +183,8 @@ fn validate_access_token(token: &str, secret: &str) -> Result<Claims, AuthError>
 pub enum AuthError {
     MissingToken,
     InvalidToken,
+    /// Authenticated, but not an admin (see AdminUser).
+    Forbidden,
 }
 
 impl IntoResponse for AuthError {
@@ -161,6 +192,7 @@ impl IntoResponse for AuthError {
         let (status, message) = match self {
             Self::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
             Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "Admin access required"),
         };
 
         let body = json!({

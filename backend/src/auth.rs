@@ -30,6 +30,7 @@ const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
 pub struct User {
     pub id: String,
     pub username: String,
+    pub is_admin: bool,
 }
 
 /// Login request
@@ -83,6 +84,11 @@ pub struct Claims {
     pub session_id: Option<String>, // Session ID for device/session tracking
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sid: Option<String>, // Refresh token JTI (for refresh token validation)
+    /// `#[serde(default)]`: tokens issued before this field existed decode
+    /// to `false` rather than failing, matching the users.is_admin
+    /// column's own default.
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 /// Authentication service
@@ -178,10 +184,11 @@ impl AuthService {
             id: String,
             username: String,
             password_hash: String,
+            is_admin: bool,
         }
 
         let record = sqlx::query_as::<_, UserRecord>(
-            "SELECT id, username, password_hash FROM users WHERE username = $1",
+            "SELECT id, username, password_hash, is_admin FROM users WHERE username = $1",
         )
         .bind(username)
         .fetch_optional(&self.db_pool)
@@ -200,6 +207,7 @@ impl AuthService {
         Ok(User {
             id: record.id,
             username: record.username,
+            is_admin: record.is_admin,
         })
     }
 
@@ -219,6 +227,7 @@ impl AuthService {
             jti: Some(Uuid::new_v4().to_string()),
             session_id: session_id.map(|s| s.to_string()),
             sid: None,
+            is_admin: user.is_admin,
         };
 
         encode(
@@ -245,6 +254,7 @@ impl AuthService {
             jti: Some(refresh_token_jti.to_string()),
             session_id: session_id.map(|s| s.to_string()),
             sid: Some(refresh_token_jti.to_string()),
+            is_admin: user.is_admin,
         };
 
         encode(
@@ -380,10 +390,17 @@ impl AuthService {
         // Validate refresh token
         let claims = self.validate_refresh_token(&request.refresh_token).await?;
 
-        // Create user from claims
+        // Create user from claims. is_admin carries over from the refresh
+        // token's own claims (set at login, see generate_refresh_token)
+        // rather than a fresh DB lookup -- if an admin is demoted, that
+        // takes effect on their next full login, not their next refresh.
+        // Acceptable here: refresh tokens are already short-lived relative
+        // to how often role changes should matter, and re-querying on
+        // every refresh would add a DB round-trip to the cheapest path.
         let user = User {
             id: claims.sub,
             username: claims.username,
+            is_admin: claims.is_admin,
         };
 
         // Touch session if session_id is present
