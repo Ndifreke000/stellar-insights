@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
+use crate::auth_middleware::AuthUser;
 use crate::twofa::TwoFAService;
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
@@ -24,6 +25,13 @@ pub struct VerifyCodeRequest {
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct BackupCodeRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct DisableTwoFaRequest {
+    /// Current TOTP or backup code, proving the caller still controls the
+    /// second factor before it's removed.
     pub code: String,
 }
 
@@ -100,14 +108,18 @@ impl IntoResponse for TwoFAApiError {
     tag = "Auth"
 )]
 pub async fn initiate_enrollment(
-    State(_twofa_service): State<Arc<TwoFAService>>,
+    State(twofa_service): State<Arc<TwoFAService>>,
+    auth_user: AuthUser,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract user_id from JWT claims via auth middleware
-    // For now, return placeholder
-    let response = json!({
-        "otpauth_uri": "otpauth://totp/payraider:user?secret=JBSWY3DPEBLW64TMMQ======&issuer=payraider&digits=6",
-        "secret": "JBSWY3DPEBLW64TMMQ"
-    });
+    // Generates a fresh per-user secret. Not persisted yet -- persistence
+    // happens in confirm_enrollment, only after the caller proves they can
+    // produce a valid code from it (see enroll_2fa there). If they never
+    // confirm, nothing was ever stored for a secret nobody's app has.
+    let (otpauth_uri, secret) = twofa_service
+        .generate_totp_secret(&auth_user.user_id, &auth_user.username)
+        .map_err(|_| TwoFAApiError::ServerError)?;
+
+    let response = EnrollmentQRResponse { otpauth_uri, secret };
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }
@@ -125,19 +137,39 @@ pub async fn initiate_enrollment(
     tag = "Auth"
 )]
 pub async fn confirm_enrollment(
-    State(_twofa_service): State<Arc<TwoFAService>>,
-    Json(_request): Json<EnrollRequest>,
+    State(twofa_service): State<Arc<TwoFAService>>,
+    auth_user: AuthUser,
+    Json(request): Json<EnrollRequest>,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract user_id from JWT claims
-    // Verify the provided TOTP code against the secret
-    // If valid, activate 2FA and generate backup codes
-    // Return backup codes to user
+    // Store the secret (disabled) first, so verify_totp_code below reads
+    // against the same secret the client's authenticator app was just
+    // given -- not some other stale one from a prior attempt.
+    twofa_service
+        .enroll_2fa(&auth_user.user_id, &request.totp_secret)
+        .await
+        .map_err(|_| TwoFAApiError::EnrollmentFailed)?;
 
-    let backup_codes = vec![
-        "123456".to_string(),
-        "234567".to_string(),
-        "345678".to_string(),
-    ];
+    let verified = twofa_service
+        .verify_totp_code(&auth_user.user_id, &request.verification_code)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
+
+    if !verified {
+        // Left as a disabled, unconfirmed row -- INSERT OR REPLACE on the
+        // next attempt overwrites it. It grants nothing while is_enabled
+        // is false, so there's no need to delete it here.
+        return Err(TwoFAApiError::InvalidCode);
+    }
+
+    twofa_service
+        .activate_2fa(&auth_user.user_id)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
+
+    let backup_codes = twofa_service
+        .generate_backup_codes(&auth_user.user_id)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
 
     let response = EnrollResponse {
         backup_codes,
@@ -162,11 +194,16 @@ pub async fn verify_totp(
     State(_twofa_service): State<Arc<TwoFAService>>,
     Json(_request): Json<VerifyCodeRequest>,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract session_id from context (pending 2FA state)
-    // Verify the TOTP code
-    // If valid, upgrade session to fully authenticated
-    // Return new access token
-
+    // NOT WIRED UP -- deliberately left as a stub, not fixed in the same
+    // pass as the other 2FA handlers. AuthService::login() (auth.rs) has
+    // no 2FA integration at all: no is_2fa_enabled check, no concept of a
+    // "pending" login that needs a second factor before a real access
+    // token is issued. This handler needs that concept designed first (a
+    // short-lived pre-auth token? a server-side pending-login table?) --
+    // it's a real design decision for the login flow, not a mechanical
+    // service-call wiring like the enrollment/disable/regenerate handlers
+    // were. twofa::TwoFAService::verify_totp_code is real now (see
+    // twofa.rs) and ready to be called once that design exists.
     let response = json!({
         "message": "2FA verification successful",
         "access_token": "..."
@@ -190,11 +227,9 @@ pub async fn verify_backup_code(
     State(_twofa_service): State<Arc<TwoFAService>>,
     Json(_request): Json<BackupCodeRequest>,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract session_id from context
-    // Verify the backup code (one-time use)
-    // If valid, mark as used and upgrade session
-    // Return new access token
-
+    // NOT WIRED UP -- same reason as verify_totp above: needs a pending-2FA
+    // login design that doesn't exist yet. twofa::TwoFAService::
+    // verify_backup_code is real and ready to be called once it does.
     let response = json!({
         "message": "Backup code verified. Consider regenerating your backup codes.",
         "access_token": "..."
@@ -207,19 +242,42 @@ pub async fn verify_backup_code(
 #[utoipa::path(
     post,
     path = "/api/auth/2fa/disable",
+    request_body = DisableTwoFaRequest,
     responses(
         (status = 200, description = "2FA disabled"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized or invalid confirmation code")
     ),
     tag = "Auth"
 )]
 pub async fn disable_2fa(
-    State(_twofa_service): State<Arc<TwoFAService>>,
+    State(twofa_service): State<Arc<TwoFAService>>,
+    auth_user: AuthUser,
+    Json(request): Json<DisableTwoFaRequest>,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract user_id from JWT claims
-    // Require current TOTP code or backup code as confirmation
-    // Disable 2FA
-    // Log the action in audit log
+    // Require a still-valid TOTP or backup code before disabling -- without
+    // this, anyone with just a stolen access token could strip 2FA off an
+    // account, exactly the case 2FA exists to raise the bar against.
+    let totp_ok = twofa_service
+        .verify_totp_code(&auth_user.user_id, &request.code)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
+    let backup_ok = if totp_ok {
+        false // short-circuit: don't consume a backup code if TOTP already matched
+    } else {
+        twofa_service
+            .verify_backup_code(&auth_user.user_id, &request.code)
+            .await
+            .map_err(|_| TwoFAApiError::ServerError)?
+    };
+
+    if !totp_ok && !backup_ok {
+        return Err(TwoFAApiError::InvalidCode);
+    }
+
+    twofa_service
+        .disable_2fa(&auth_user.user_id)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
 
     let response = json!({
         "message": "2FA disabled"
@@ -239,17 +297,23 @@ pub async fn disable_2fa(
     tag = "Auth"
 )]
 pub async fn regenerate_backup_codes(
-    State(_twofa_service): State<Arc<TwoFAService>>,
+    State(twofa_service): State<Arc<TwoFAService>>,
+    auth_user: AuthUser,
 ) -> Result<Response, TwoFAApiError> {
-    // TODO: Extract user_id from JWT claims
-    // Generate new backup codes (invalidates old ones)
-    // Return new backup codes
+    if !twofa_service
+        .is_2fa_enabled(&auth_user.user_id)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?
+    {
+        return Err(TwoFAApiError::NotEnrolled);
+    }
 
-    let backup_codes = vec![
-        "111111".to_string(),
-        "222222".to_string(),
-        "333333".to_string(),
-    ];
+    // generate_backup_codes deletes existing codes first (see twofa.rs),
+    // so this does invalidate the old set as the endpoint promises.
+    let backup_codes = twofa_service
+        .generate_backup_codes(&auth_user.user_id)
+        .await
+        .map_err(|_| TwoFAApiError::ServerError)?;
 
     let response = json!({
         "backup_codes": backup_codes,
@@ -261,19 +325,31 @@ pub async fn regenerate_backup_codes(
 
 /// Create 2FA routes
 pub fn routes(twofa_service: Arc<TwoFAService>) -> Router {
-    Router::new()
+    // Protected: act on the caller's own enrollment, so they need a
+    // verified identity (AuthUser, populated by auth_middleware).
+    let protected = Router::new()
         .route("/enroll/initiate", post(initiate_enrollment))
         .route("/enroll/confirm", post(confirm_enrollment))
-        .route("/verify", post(verify_totp))
-        .route("/backup-code", post(verify_backup_code))
         .route("/disable", post(disable_2fa))
         .route("/regenerate-backup", post(regenerate_backup_codes))
-        // Support legacy full-path routes if merged at root
         .route("/api/auth/2fa/enroll/initiate", post(initiate_enrollment))
         .route("/api/auth/2fa/enroll/confirm", post(confirm_enrollment))
-        .route("/api/auth/2fa/verify", post(verify_totp))
-        .route("/api/auth/2fa/backup-code", post(verify_backup_code))
         .route("/api/auth/2fa/disable", post(disable_2fa))
         .route("/api/auth/2fa/regenerate-backup", post(regenerate_backup_codes))
-        .with_state(twofa_service)
+        .layer(axum::middleware::from_fn(
+            crate::auth_middleware::auth_middleware,
+        ));
+
+    // Public (deliberately outside auth_middleware): called mid-login,
+    // before a full access token exists. See the NOT WIRED UP comments on
+    // verify_totp/verify_backup_code -- they're stubs until login gets a
+    // pending-2FA design, but they must stay reachable without a token
+    // regardless, so they're never behind this layer.
+    let public = Router::new()
+        .route("/verify", post(verify_totp))
+        .route("/backup-code", post(verify_backup_code))
+        .route("/api/auth/2fa/verify", post(verify_totp))
+        .route("/api/auth/2fa/backup-code", post(verify_backup_code));
+
+    public.merge(protected).with_state(twofa_service)
 }
