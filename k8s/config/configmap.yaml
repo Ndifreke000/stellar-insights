@@ -41,6 +41,13 @@ data:
   
   # Compression
   compression-min-size: "1024"
+
+  # Litestream (continuous SQLite backup to S3 -- see ADR 0001's
+  # durability hardening item). Bucket is shared across environments
+  # with a per-environment key prefix, matching terraform/global/backups.tf.
+  litestream-s3-bucket: "payraider-db-backups"
+  litestream-s3-path: "k8s/payraider.db"
+  aws-region: "us-east-1"
   
   # Price Feed Configuration
   price-feed-provider: "coingecko"

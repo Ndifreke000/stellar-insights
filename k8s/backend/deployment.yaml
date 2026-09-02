@@ -257,6 +257,67 @@ spec:
         - name: data
           mountPath: /data
 
+      # Litestream sidecar: continuous replication of the SQLite database
+      # to S3 (ADR 0001's durability hardening item), mirroring the ECS
+      # task's litestream sidecar (terraform/modules/compute/ecs/main.tf).
+      # Shares the same PVC as the backend container.
+      - name: litestream
+        image: litestream/litestream:0.3.13
+        imagePullPolicy: IfNotPresent
+        args:
+        - replicate
+        - /data/payraider.db
+        - $(LITESTREAM_REPLICA_URL)
+        env:
+        - name: LITESTREAM_S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: litestream-s3-bucket
+        - name: LITESTREAM_S3_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: litestream-s3-path
+        - name: LITESTREAM_REPLICA_URL
+          value: "s3://$(LITESTREAM_S3_BUCKET)/$(LITESTREAM_S3_PATH)"
+        - name: AWS_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: aws-region
+        # On EKS, prefer IRSA on the payraider-backend ServiceAccount
+        # instead of these static keys (see secret-template.yaml).
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: payraider-secrets
+              key: litestream-aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payraider-secrets
+              key: litestream-aws-secret-access-key
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: litestream-tmp
+          mountPath: /tmp
+
       # Volumes
       volumes:
       - name: tmp
@@ -264,6 +325,8 @@ spec:
       - name: cache
         emptyDir: {}
       - name: logs
+        emptyDir: {}
+      - name: litestream-tmp
         emptyDir: {}
       - name: data
         persistentVolumeClaim:
