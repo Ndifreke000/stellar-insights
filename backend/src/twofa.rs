@@ -1,8 +1,12 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::Utc;
-use sha2::{Digest, Sha256};
+use hmac::{Hmac, KeyInit, Mac};
+use sha1::Sha1;
+use sha2::Digest;
 use sqlx::SqlitePool;
 use uuid::Uuid;
+
+type HmacSha1 = Hmac<Sha1>;
 
 // TOTP parameters: 30-second time step, 6-digit codes
 const TOTP_TIME_STEP_SECONDS: u64 = 30;
@@ -150,17 +154,38 @@ impl TwoFAService {
         }
     }
 
-    /// Verify TOTP code (placeholder - requires totp library implementation)
+    /// Verify a TOTP code (RFC 6238) against the user's stored secret.
+    ///
+    /// Checks the current 30-second time step and one step on either side
+    /// (±30s) to tolerate clock drift between server and authenticator app
+    /// -- standard practice; without it, most real devices would fail
+    /// verification intermittently even with the correct code.
     pub async fn verify_totp_code(&self, user_id: &str, code: &str) -> Result<bool> {
-        if code.len() != TOTP_DIGIT_COUNT {
+        if code.len() != TOTP_DIGIT_COUNT || !code.bytes().all(|b| b.is_ascii_digit()) {
             return Ok(false);
         }
 
-        // TODO: Implement TOTP verification using time-based algorithm
-        // This requires adding a TOTP library (e.g., totp-lite or totp-rs) to Cargo.toml
-        // For now, return false as placeholder
-        let _ = (self.get_totp_secret(user_id).await, code);
-        Ok(false)
+        let Some(secret_base32) = self.get_totp_secret(user_id).await? else {
+            return Ok(false);
+        };
+
+        let Some(secret_bytes) =
+            base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &secret_base32)
+        else {
+            return Ok(false);
+        };
+
+        let current_step = (Utc::now().timestamp().max(0) as u64) / TOTP_TIME_STEP_SECONDS;
+
+        let candidate_steps = [
+            current_step.saturating_sub(1),
+            current_step,
+            current_step + 1,
+        ];
+
+        Ok(candidate_steps
+            .iter()
+            .any(|&step| totp_code_for_step(&secret_bytes, step) == code))
     }
 
     /// Verify and consume a backup code
@@ -221,5 +246,47 @@ impl TwoFAService {
         .await?;
 
         Ok(count)
+    }
+}
+
+/// RFC 6238 TOTP code for one time step: HMAC-SHA1 the step counter (as an
+/// 8-byte big-endian value) with the shared secret, then dynamically
+/// truncate to a 6-digit code per RFC 4226 §5.3/5.4.
+fn totp_code_for_step(secret: &[u8], step: u64) -> String {
+    let mut mac =
+        <HmacSha1 as KeyInit>::new_from_slice(secret).expect("HMAC accepts a key of any length");
+    mac.update(&step.to_be_bytes());
+    let digest = mac.finalize().into_bytes();
+
+    let offset = (digest[digest.len() - 1] & 0x0f) as usize;
+    let binary = ((u32::from(digest[offset]) & 0x7f) << 24)
+        | (u32::from(digest[offset + 1]) << 16)
+        | (u32::from(digest[offset + 2]) << 8)
+        | u32::from(digest[offset + 3]);
+
+    format!("{:06}", binary % 1_000_000)
+}
+
+#[cfg(test)]
+mod totp_tests {
+    use super::totp_code_for_step;
+
+    /// RFC 6238 Appendix B test vector: secret "12345678901234567890"
+    /// (ASCII), T=59s -> time step 1 (59 / 30 = 1), SHA1 8-digit code
+    /// "94287082". Our TOTP_DIGIT_COUNT is 6, so we check the low 6 digits
+    /// (binary % 10^6 == binary % 10^8 % 10^6, since 10^6 divides 10^8),
+    /// i.e. "287082".
+    #[test]
+    fn matches_rfc6238_sha1_test_vector() {
+        let secret = b"12345678901234567890";
+        assert_eq!(totp_code_for_step(secret, 1), "287082");
+    }
+
+    /// RFC 6238 Appendix B, T=1111111109s -> step 37037036,
+    /// 8-digit code "07081804" -> low 6 digits "081804".
+    #[test]
+    fn matches_rfc6238_sha1_test_vector_2() {
+        let secret = b"12345678901234567890";
+        assert_eq!(totp_code_for_step(secret, 37_037_036), "081804");
     }
 }
