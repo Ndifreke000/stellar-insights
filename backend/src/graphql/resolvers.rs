@@ -734,7 +734,7 @@ impl QueryRoot {
             AnchorMetricsHistoryType,
             r#"
             SELECT
-                id as "id!", anchor_id, timestamp, success_rate, failure_rate,
+                id as "id!", anchor_id, timestamp as "timestamp: _", success_rate, failure_rate,
                 reliability_score, total_transactions, successful_transactions,
                 failed_transactions, avg_settlement_time_ms as "avg_settlement_time_ms: i32",
                 volume_usd,
