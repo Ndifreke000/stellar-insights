@@ -36,7 +36,7 @@ This threat model uses the STRIDE framework (Spoofing, Tampering, Repudiation, I
 |--------|----------|-----------|-------------------|-----|--------|
 | Tamper with HTTP request body | High | Medium | HMAC-SHA256 signatures | Only on signed endpoints | Mitigated |
 | Tamper with query parameters | High | Medium | HMAC-SHA256 (canonical format) | Included in signature | Mitigated |
-| Modify database records directly | High | Low | RDS encryption, backups | IAM access controls weak | Gap |
+| Modify database records directly | High | Low | EFS encryption, Litestream/backup.rs backups | IAM access controls weak | Gap |
 | Modify audit logs | Low | Very Low | Chained hashes (append-only) | Hash chain validation missing | Gap |
 | Replay signed requests | Medium | Low | Timestamp + nonce tracking | 5-min window could be shorter | Mitigated |
 | Fake admin audit entries | Low | Very Low | Audit log append-only | No signed/attested entries | Gap |
@@ -90,18 +90,20 @@ This threat model uses the STRIDE framework (Spoofing, Tampering, Repudiation, I
 | Redis in-memory data exposure | Medium | Low | At-rest encryption, auth token | Snapshots might not be encrypted | Gap |
 
 ### Mitigations
-- ✅ Implemented: Encrypted at rest (KMS) for RDS
+- ✅ Implemented: EFS encryption at rest for the SQLite volume
+  (`aws_efs_file_system.backend_data`, `encrypted = true`)
 - ✅ Implemented: Non-revealing error messages on signature failure
 - ✅ Implemented: API keys stored as hashes, not plaintext
 - ✅ Implemented: S3 lifecycle policies (transition to Glacier, delete)
-- ⚠️ Gap: Backup encryption (verify RDS snapshot encryption)
+- ⚠️ Gap: Litestream backups bucket uses SSE-S3 (AWS-managed keys), not
+  customer-managed KMS -- see `docs/security/KNOWN_GAPS.md` #2
 - ⚠️ Gap: Log redaction (audit logs, CloudWatch may contain PII)
 - ⚠️ Gap: Secret management (JW Secret, API key secret in Vault vs plaintext)
 - ⚠️ Gap: Redis snapshot encryption not verified
 
 **Recommendations**:
 1. Implement log redaction for sensitive fields (user_id → hash)
-2. Verify RDS automated backup encryption is enabled
+2. Move the Litestream backups bucket to customer-managed KMS encryption
 3. Migrate secrets to AWS Secrets Manager or HashiCorp Vault
 4. Audit CloudWatch logs for PII leakage
 5. Enable Redis snapshot encryption
@@ -230,7 +232,7 @@ This threat model uses the STRIDE framework (Spoofing, Tampering, Repudiation, I
 
 ## 10. Next Steps for Audit Preparation
 
-- [ ] Verify backup encryption is enabled on RDS
+- [ ] Move the Litestream backups bucket to customer-managed KMS (currently SSE-S3)
 - [ ] Audit all secret management (JWT secret, API signing secret location)
 - [ ] Implement log redaction for all PII fields
 - [ ] Document and review all authorization checks (per-endpoint)

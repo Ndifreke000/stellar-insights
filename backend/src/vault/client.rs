@@ -261,6 +261,12 @@ impl VaultClient {
     /// These credentials are automatically managed by the lease system to ensure
     /// they don't expire during application runtime.
     ///
+    /// **Currently unused**: the backend is SQLite-only
+    /// (`docs/adr/0001-sqlite-vs-postgres.md`), so there is no Postgres
+    /// instance for Vault's database secrets engine to issue credentials
+    /// against, and no call site in this codebase invokes this method.
+    /// Kept for if that decision is revisited.
+    ///
     /// # Arguments
     ///
     /// * `role` - Database role for credential generation (e.g., "read-write", "read-only")

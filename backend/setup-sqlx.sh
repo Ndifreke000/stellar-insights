@@ -1,32 +1,18 @@
 #!/bin/bash
 # Setup script for SQLx compile-time verification
+#
+# The backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md) --
+# `sqlx` in Cargo.toml only enables the "sqlite" feature. This just needs a
+# local SQLite file, not a database server.
 
 set -e
 
 echo "🔧 Setting up database for SQLx compile-time verification..."
 
-# Check if Docker is available
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
-    exit 1
-fi
-
-# Check if PostgreSQL container is already running
-if docker ps | grep -q stellar-postgres; then
-    echo "✅ PostgreSQL container is already running"
-else
-    echo "🐳 Starting PostgreSQL container..."
-    docker run --name stellar-postgres \
-      -e POSTGRES_PASSWORD=password \
-      -e POSTGRES_DB=payraider \
-      -p 5432:5432 -d postgres:14
-    
-    echo "⏳ Waiting for PostgreSQL to be ready..."
-    sleep 5
-fi
+DB_FILE="./payraider.db"
 
 # Set DATABASE_URL
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/payraider"
+export DATABASE_URL="sqlite://${DB_FILE}"
 echo "DATABASE_URL=$DATABASE_URL" > .env
 
 echo "✅ Database URL set in .env file"
@@ -34,7 +20,13 @@ echo "✅ Database URL set in .env file"
 # Check if sqlx-cli is installed
 if ! command -v sqlx &> /dev/null; then
     echo "📦 Installing sqlx-cli..."
-    cargo install sqlx-cli --no-default-features --features postgres,sqlite
+    cargo install sqlx-cli --no-default-features --features sqlite
+fi
+
+# Create the database file if it doesn't exist yet
+if [ ! -f "${DB_FILE}" ]; then
+    echo "🗄️  Creating SQLite database at ${DB_FILE}..."
+    sqlx database create
 fi
 
 # Run migrations if they exist

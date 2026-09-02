@@ -96,21 +96,20 @@ if [[ "${ENVIRONMENT}" == "dev" ]]; then
 elif [[ "${ENVIRONMENT}" == "staging" ]]; then
     echo "ALB: \$20/month"
     echo "NAT Gateway: \$30/month"
-    echo "ECS t3.small: \$60/month"
-    echo "RDS t3.small: \$60/month"
+    echo "ECS t3.small (1 pinned instance): \$20/month"
+    echo "EFS (SQLite volume): ~\$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md"
     echo "ElastiCache: \$20/month"
-    echo "Data transfer: \$15/month"
-    echo -e "Total: ${YELLOW}~\$205/month${NC}"
+    echo "Data transfer: \$10/month"
+    echo -e "Total: ${YELLOW}~\$96/month${NC}"
 elif [[ "${ENVIRONMENT}" == "production" ]]; then
     echo "ALB: \$20/month"
     echo "NAT Gateways (3x): \$90/month"
-    echo "ECS t3.small (3x): \$90/month"
-    echo "ECS auto-scaling: \$30/month"
-    echo "RDS Multi-AZ: \$150/month"
+    echo "ECS t3.small (1 pinned instance, no auto-scaling): \$16/month"
+    echo "EFS (SQLite volume): ~\$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md"
     echo "ElastiCache Multi-AZ: \$40/month"
     echo "Data transfer: \$20/month"
     echo "CloudWatch: \$10/month"
-    echo -e "Total: ${YELLOW}~\$450/month${NC}"
+    echo -e "Total: ${YELLOW}~\$142/month${NC}"
 fi
 echo ""
 

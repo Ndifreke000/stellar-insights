@@ -1,9 +1,21 @@
 name: Automated Database Backup
 
+# DEPRECATED: this workflow automates backups against an RDS PostgreSQL
+# instance that no longer exists (see terraform/global -- the RDS module
+# was removed; the backend is SQLite-only, docs/adr/0001-sqlite-vs-postgres.md).
+# Every `aws rds ...` step below will fail against nothing.
+#
+# The scheduled trigger is disabled below so this doesn't fail daily on a
+# cron. workflow_dispatch is left in case anyone needs to reference the old
+# logic while rewriting this around Litestream (continuous S3 replication,
+# already running as an ECS/k8s sidecar -- see docs/backup-system.md) and
+# backup.rs's local snapshots. Not rewritten here -- ~280 lines of RDS-
+# specific steps need a real rewrite, not a rushed one in the same pass
+# that found the problem.
+
 on:
-  schedule:
-    # Run daily at 2 AM UTC (off-peak hours for most users)
-    - cron: '0 2 * * *'
+  # schedule trigger removed -- see deprecation note above. Was:
+  #   - cron: '0 2 * * *'  # Daily at 2 AM UTC
   workflow_dispatch:
     inputs:
       environment:

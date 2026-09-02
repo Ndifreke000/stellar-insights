@@ -24,12 +24,22 @@ This document consolidates security findings from the threat model and architect
 
 ### 2. Backup Encryption Verification
 
-**Issue**: RDS automated backups may not be encrypted with customer-managed KMS keys  
-**Risk**: AWS service account compromise could expose backups  
+**Issue**: there is no RDS -- the backend is SQLite-only
+(`docs/adr/0001-sqlite-vs-postgres.md`). Backups are the Litestream S3
+replica (`terraform/global/backups.tf`, SSE with AWS-managed keys, not
+customer-managed KMS) and `backup.rs`'s local snapshots (unencrypted at
+rest unless the underlying EFS/PVC volume encryption covers them)  
+**Risk**: AWS service account compromise, or unencrypted local snapshots
+on a compromised host, could expose backups  
 **Recommendation**:
-- Verify RDS snapshots use customer-managed KMS encryption (not AWS-managed)
-- Enable automated snapshot copy to secondary region with separate KMS key
-- Test restore from snapshot in non-production
+- Move the Litestream backups bucket to customer-managed KMS encryption
+  instead of SSE-S3 (`aws_s3_bucket_server_side_encryption_configuration`
+  in `terraform/global/backups.tf`)
+- Also flagged as unresolved in `docs/disaster-recovery.md`'s Scenario 3:
+  this bucket is regional, not cross-region replicated -- a full region
+  loss takes the backups down with the primary
+- Test restore from the Litestream replica in non-production
+  (`litestream restore`, see `docs/backup-system.md`)
 
 **Owner**: DevOps  
 **Effort**: 1 day  

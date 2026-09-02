@@ -1,5 +1,25 @@
 #!/bin/bash
 
+# ============================================================================
+# DEPRECATED: this script automates backups against an RDS PostgreSQL
+# instance that no longer exists in this repo's infrastructure. The
+# backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md), and the
+# terraform RDS module was removed. Every `aws rds ...` call below will
+# fail against nothing.
+#
+# The real backup story now is:
+#   - Litestream sidecar: continuous replication to S3 (see
+#     terraform/modules/compute/ecs/main.tf and
+#     k8s/backend/deployment.yaml)
+#   - backend/src/backup.rs: periodic local snapshots
+# See docs/backup-system.md for the full picture and restore commands.
+#
+# This script (and the .github/workflows/backup-database.yml workflow that
+# calls it) needs a real rewrite around `litestream` -- not done here; left
+# as flagged follow-up work rather than a rushed, unverified rewrite of
+# ~480 lines of automation in the same pass that found the problem.
+# ============================================================================
+
 # PayRaider Database Backup Script
 # Purpose: Automated backup of RDS PostgreSQL database with retention policy
 # Usage: ./backup-database.sh [environment] [backup-type]

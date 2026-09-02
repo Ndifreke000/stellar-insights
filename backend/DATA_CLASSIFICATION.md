@@ -76,12 +76,16 @@ This document classifies all sensitive data in payraider and defines encryption 
 
 ### 1. Database Encryption at Rest (Baseline)
 
-**Implementation:** Use the database provider's native encryption:
-- **SQLite (Development):** SQLite does not natively support encryption at rest. File-level encryption is expected (OS-level or filesystem-level)
-- **PostgreSQL (Production):** Enable transparent data encryption (TDE) via:
-  - `pgcrypto` extension for specific columns (manual application-level encryption)
-  - LUKS disk encryption (filesystem-level)
-  - AWS RDS with encrypted storage (managed provider-level encryption)
+**Implementation:** The backend is SQLite-only in every environment
+(`docs/adr/0001-sqlite-vs-postgres.md`) -- there is no separate dev/production
+database technology, only different storage backing the same SQLite file:
+- **Local development:** SQLite does not natively support encryption at
+  rest. File-level encryption is expected (OS-level or filesystem-level)
+- **Production (ECS/k8s):** the SQLite file lives on an EFS volume (ECS) or
+  a PVC (k8s). EFS encryption at rest is enabled by default
+  (`aws_efs_file_system.backend_data`, `encrypted = true` in
+  `terraform/modules/compute/ecs/main.tf`); PVC-level encryption depends on
+  the cluster's StorageClass/CSI driver configuration
 
 **Benefit:** Protects against raw disk/backup access without key access.
 
@@ -116,11 +120,14 @@ This document classifies all sensitive data in payraider and defines encryption 
 
 **Requirement:** Backups must inherit the same encryption guarantees as primary storage.
 
-**Implementation:**
-- If using managed backups (AWS RDS, DigitalOcean, etc.), enable encrypted backups (default for most providers)
-- If using file-based backups (`.sql` dumps), encrypt using `gpg`:
+**Implementation:** see `docs/backup-system.md` for the full backup story
+(Litestream continuous S3 replication + `backup.rs` periodic local
+snapshots). The Litestream replica inherits the backups S3 bucket's
+SSE encryption (`terraform/global/backups.tf`). For local snapshots taken
+outside that pipeline, encrypt with `gpg`:
   ```bash
-  pg_dump database | gpg --symmetric --cipher-algo AES256 > backup.sql.gpg
+  sqlite3 payraider.db ".backup /tmp/backup.db"
+  gpg --symmetric --cipher-algo AES256 -o backup.db.gpg /tmp/backup.db
   ```
 - Store backup encryption keys in Vault, separate from database encryption keys
 

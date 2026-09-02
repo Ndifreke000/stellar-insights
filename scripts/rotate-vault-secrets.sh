@@ -85,26 +85,6 @@ rotate_api_keys() {
     log_warn "  - Stellar network keys (coordinate with team)"
 }
 
-# Check DB credential TTL
-check_db_credentials() {
-    log_info "Checking PostgreSQL dynamic credential status..."
-    
-    RESPONSE=$(curl -s -X GET \
-        "$VAULT_ADDR/v1/database/creds/stellar-app" \
-        -H "X-Vault-Token: $VAULT_TOKEN")
-    
-    LEASE_ID=$(echo "$RESPONSE" | jq -r '.lease_id')
-    TTL=$(echo "$RESPONSE" | jq -r '.lease_duration')
-    
-    if [ "$LEASE_ID" != "null" ]; then
-        log_info "Dynamic DB credentials valid for $TTL seconds"
-        log_info "Lease ID: $LEASE_ID"
-    else
-        log_error "Failed to get dynamic credentials"
-        return 1
-    fi
-}
-
 # Audit log
 audit_rotation() {
     local secret_name=$1
@@ -147,7 +127,9 @@ main() {
             rotate_jwt_secret
             rotate_oauth_secrets
             rotate_api_keys
-            check_db_credentials
+            # No dynamic DB credential check: the backend is SQLite-only
+            # (docs/adr/0001-sqlite-vs-postgres.md), database-url is a
+            # static KV secret, not a Vault database-engine lease.
             audit_rotation "all_secrets"
             ;;
         *)

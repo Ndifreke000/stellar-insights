@@ -18,11 +18,17 @@ The payraider application is deployed as a containerized microservices architect
   - PDB: Minimum 1 available replica during disruptions
 
 ### Data Layer
-- **PostgreSQL Database** (`database/`): Primary data store
-  - StatefulSet: Single-replica (not horizontally scaled)
-  - Port: 5432 (service)
-  - Persistent volume: 10Gi (configurable)
-  - Storage class: Must support read-write-once (RWO)
+- **SQLite Database**: primary data store. There is no separate database
+  pod/StatefulSet -- the backend is SQLite-only
+  (`docs/adr/0001-sqlite-vs-postgres.md`), so the database is a file on a
+  volume mounted directly into the backend Deployment.
+  - `backend/pvc.yaml`: 5Gi PersistentVolumeClaim (`payraider-backend-data`),
+    `ReadWriteOnce`, mounted at `/data`
+  - Backend `replicas: 1`, `strategy: Recreate` (not RollingUpdate) --
+    the RWO volume can't be mounted by two pods at once, and SQLite
+    permits exactly one writer anyway
+  - A `litestream` sidecar container in the same Deployment continuously
+    replicates the database file to S3 -- see `docs/backup-system.md`
 
 - **Redis Cache** (`redis/`): In-memory session and cache store
   - StatefulSet: Single-replica
@@ -99,10 +105,9 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 ### Secrets Management
 Secrets are externalized and stored outside the repository for security. Required secrets:
 
-1. **Database Credentials** (`config/secrets.yaml` - not committed)
-   - `DATABASE_USER`: PostgreSQL username (default: postgres)
-   - `DATABASE_PASSWORD`: PostgreSQL password (minimum 16 characters, special chars)
-   - `DATABASE_NAME`: PostgreSQL database name (default: payraider)
+1. **Database** (`config/secrets.yaml` - not committed)
+   - `database-url`: SQLite file path (`sqlite:///data/payraider.db`) -- not
+     network credentials, see `docs/adr/0001-sqlite-vs-postgres.md`
 
 2. **Backend Secrets**
    - `SOROBAN_RPC_URL`: Stellar Soroban RPC endpoint (e.g., https://soroban-testnet.stellar.org)
@@ -161,11 +166,10 @@ metadata:
   namespace: payraider
 type: Opaque
 stringData:
-  DATABASE_PASSWORD: "$(openssl rand -base64 32)"
-  JWT_SECRET: "$(openssl rand -base64 32)"
-  SESSION_SECRET: "$(openssl rand -base64 32)"
-  REDIS_PASSWORD: "$(openssl rand -base64 32)"
-  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  database-url: "sqlite:///data/payraider.db"
+  jwt-secret: "$(openssl rand -base64 48)"
+  encryption-key: "$(openssl rand -hex 32)"
+  redis-url: "redis://:$(openssl rand -base64 32)@redis:6379"
 EOF
 
 # Validate manifests
@@ -189,11 +193,11 @@ kubectl get events -n payraider --sort-by='.lastTimestamp'
 ### 3. Create Secrets
 
 ```bash
-# Create database password
+# Create secrets (see config/secret-template.yaml for the full set)
 kubectl create secret generic payraider-secrets \
-  --from-literal=DATABASE_PASSWORD="$(openssl rand -base64 32)" \
-  --from-literal=JWT_SECRET="$(openssl rand -base64 32)" \
-  --from-literal=REDIS_PASSWORD="$(openssl rand -base64 32)" \
+  --from-literal=database-url="sqlite:///data/payraider.db" \
+  --from-literal=jwt-secret="$(openssl rand -base64 48)" \
+  --from-literal=encryption-key="$(openssl rand -hex 32)" \
   -n payraider
 
 # Create TLS certificate secret (if not using cert-manager)
@@ -334,14 +338,19 @@ kubectl rollout undo deployment/payraider-backend --to-revision=2 -n payraider
 
 ### Database Recovery
 
-```bash
-# Backup database
-kubectl exec -it payraider-database-0 -n payraider -- \
-  pg_dump -U postgres payraider | gzip > backup-$(date +%s).sql.gz
+No separate database pod to exec into -- the SQLite file lives on the
+backend pod's mounted volume. See `docs/backup-system.md` for the full
+story (Litestream continuous S3 replication + backup.rs local snapshots).
 
-# Restore from backup
-kubectl exec -i payraider-database-0 -n payraider -- \
-  psql -U postgres payraider < backup-1234567890.sql
+```bash
+# Manual backup (exec into the backend pod)
+kubectl exec -it deployment/payraider-backend -n payraider -c backend -- \
+  sh -c 'sqlite3 /data/payraider.db ".backup /tmp/backup.db" && cat /tmp/backup.db' \
+  > backup-$(date +%s).db
+
+# Restore from a Litestream replica (see docs/backup-system.md for the
+# litestream restore command), then copy the restored file onto the pod
+kubectl cp ./restored.db payraider/<pod-name>:/data/payraider.db -c backend
 ```
 
 ## Troubleshooting

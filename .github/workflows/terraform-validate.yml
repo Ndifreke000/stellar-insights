@@ -118,11 +118,12 @@ jobs:
       - name: Check for unencrypted storage
         run: |
           echo "Checking for encryption configuration..."
-          # Verify RDS encryption is enabled
-          if grep -r "storage_encrypted" terraform/modules/database/ --include="*.tf" | grep -q "true"; then
-            echo "✓ RDS storage encryption enabled"
+          # No RDS module (see docs/adr/0001-sqlite-vs-postgres.md) --
+          # verify the EFS volume backing the SQLite database is encrypted
+          if grep -A2 'resource "aws_efs_file_system"' terraform/modules/compute/ecs/main.tf | grep -q "encrypted *= *true"; then
+            echo "✓ EFS storage encryption enabled"
           else
-            echo "⚠️ Warning: RDS storage encryption may not be enabled"
+            echo "⚠️ Warning: EFS storage encryption may not be enabled"
           fi
 
   terraform-documentation:
@@ -177,15 +178,18 @@ jobs:
 
           | Environment | Est. Monthly | Components |
           |---|---|---|
-          | dev | ~$50-70 | Single AZ, minimal resources |
-          | staging | ~$150-200 | Multi-AZ, RDS + Redis |
-          | production | ~$400-600 | Full HA, 3 AZs, enhanced monitoring |
-          | production | ~$400-500 | Production-grade workloads |
+          | dev | ~$65 | Single AZ, 1 pinned ECS task, EFS + Redis |
+          | staging | ~$96 | Multi-AZ networking/Redis, 1 pinned ECS task, EFS |
+          | production | ~$142 | Multi-AZ networking/Redis, 1 pinned ECS task, EFS |
+
+          No RDS in any environment -- the backend is SQLite-only
+          (docs/adr/0001-sqlite-vs-postgres.md), which is most of why these
+          are lower than a typical Multi-AZ RDS setup would cost.
 
           **Notes:**
           - Costs are estimates based on on-demand pricing (us-east-1)
           - Actual costs may vary based on data transfer and usage
-          - RDS backup storage included in monthly estimates
+          - Litestream S3 backup storage included in monthly estimates
           - NAT Gateway costs ~$30/month per AZ
           - See [terraform/README.md](terraform/README.md#cost-optimization) for cost optimization tips
 

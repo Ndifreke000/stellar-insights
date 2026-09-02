@@ -1,8 +1,9 @@
 #!/bin/bash
 # Complete Vault Setup Script for payraider
 # Automates all Vault configuration including:
-# - KV v2 secrets engine
-# - Database dynamic secrets (PostgreSQL)
+# - KV v2 secrets engine (including the SQLite database_url -- see
+#   docs/adr/0001-sqlite-vs-postgres.md; no dynamic DB secrets engine,
+#   there's no network database for it to issue credentials against)
 # - AppRole authentication
 # - Policies
 # - Audit logging
@@ -14,11 +15,6 @@ set -e
 
 VAULT_ADDR="${VAULT_ADDR:-}"
 VAULT_TOKEN="${VAULT_TOKEN:-}"
-DB_HOST="${DB_HOST:-db.example.com}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-stellar}"
-DB_ADMIN_USER="${DB_ADMIN_USER:-vault_admin}"
-DB_ADMIN_PASS="${DB_ADMIN_PASS:-}"
 
 # Colors
 RED='\033[0;31m'
@@ -76,6 +72,11 @@ setup_kv_engine() {
 create_secrets() {
     log_step "Creating base secrets..."
     
+    # Database URL. SQLite-only backend (docs/adr/0001-sqlite-vs-postgres.md)
+    # -- a file path, not network credentials.
+    vault kv put secret/stellar/database_url value="sqlite:///data/payraider.db"
+    log_success "Created database_url"
+
     # JWT Secret
     JWT_SECRET=$(openssl rand -hex 32)
     vault kv put secret/stellar/jwt_secret value="$JWT_SECRET"
@@ -104,50 +105,12 @@ create_secrets() {
     log_warn "  vault kv put secret/stellar/stellar_source_secret_key key='SBXXXXXX...'"
 }
 
-# Setup PostgreSQL dynamic secrets
-setup_postgres_secrets() {
-    log_step "Setting up PostgreSQL dynamic secrets..."
-    
-    # Check if DB_ADMIN_PASS is set
-    if [ -z "$DB_ADMIN_PASS" ]; then
-        log_warn "DB_ADMIN_PASS not provided, skipping PostgreSQL setup"
-        log_warn "To complete: configure database secret engine manually"
-        return
-    fi
-    
-    # Enable database secret engine
-    vault secrets enable database 2>/dev/null || {
-        log_warn "Database secrets engine already enabled"
-    }
-    
-    # Configure PostgreSQL connection
-    vault write database/config/postgresql \
-        plugin_name=postgresql-database-plugin \
-        allowed_roles="stellar-app,read-only" \
-        connection_url="postgresql://{{username}}:{{password}}@${DB_HOST}:${DB_PORT}/${DB_NAME}" \
-        username="$DB_ADMIN_USER" \
-        password="$DB_ADMIN_PASS"
-    
-    log_success "PostgreSQL configured"
-    
-    # Create stellar-app role
-    vault write database/roles/stellar-app \
-        db_name=postgresql \
-        creation_statements="CREATE USER \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO \"{{name}}\";" \
-        default_ttl="1h" \
-        max_ttl="24h"
-    
-    log_success "stellar-app database role created"
-    
-    # Create read-only role
-    vault write database/roles/read-only \
-        db_name=postgresql \
-        creation_statements="CREATE USER \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE $DB_NAME TO \"{{name}}\"; GRANT USAGE ON SCHEMA public TO \"{{name}}\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";" \
-        default_ttl="1h" \
-        max_ttl="24h"
-    
-    log_success "read-only database role created"
-}
+# Dynamic database secrets: not applicable. The backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md) -- database_url is a static KV
+# secret (created in create_secrets above), not a Vault database-engine
+# lease against a Postgres instance. If that decision is ever reversed,
+# this is the function to bring back (see git history for the old
+# PostgreSQL dynamic-secrets version).
 
 # Setup Vault policy
 setup_policy() {
@@ -308,7 +271,6 @@ main() {
     test_vault_connection
     setup_kv_engine
     create_secrets
-    setup_postgres_secrets
     setup_policy
     setup_approle
     setup_github_oidc

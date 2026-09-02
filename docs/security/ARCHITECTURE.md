@@ -10,7 +10,8 @@ PayRaider is a Rust/Axum backend API with a React frontend, providing data analy
 - **Cache**: Redis (ElastiCache)
 - **Frontend**: React (separate deployment)
 - **Authentication**: JWT, SEP-10 (Stellar) 
-- **Infrastructure**: AWS (RDS, ElastiCache, ECS, ALB, CloudWatch)
+- **Infrastructure**: AWS (EFS, ElastiCache, ECS, ALB, CloudWatch) -- no RDS,
+  see docs/adr/0001-sqlite-vs-postgres.md
 
 ---
 
@@ -285,7 +286,7 @@ PayRaider is a Rust/Axum backend API with a React frontend, providing data analy
 
 | Dependency | Risk | Mitigation |
 |------------|------|-----------|
-| AWS (RDS, ElastiCache, S3) | Service availability | Multi-AZ, automated backups, failover |
+| AWS (EFS, ElastiCache, S3) | Service availability | Litestream continuous replication, ElastiCache Multi-AZ failover |
 | Stellar Horizon API | Data availability | Fallback nodes, retry logic |
 | Redis | In-memory data loss | Snapshots, replay logs |
 | TLS/Crypto libraries | Cryptographic vulnerabilities | Regular updates, dependency scanning |

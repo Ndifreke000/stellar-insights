@@ -49,14 +49,6 @@ spec:
       port: 53
     - protocol: TCP
       port: 53
-  # Postgres: database access
-  - to:
-    - podSelector:
-        matchLabels:
-          component: database
-    ports:
-    - protocol: TCP
-      port: 5432
   # Redis: cache access
   - to:
     - podSelector:
@@ -112,39 +104,6 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: payraider-database
-  namespace: payraider
-  labels:
-    app: payraider
-spec:
-  podSelector:
-    matchLabels:
-      component: database
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  # Only allow traffic from backend
-  - from:
-    - podSelector:
-        matchLabels:
-          component: backend
-    ports:
-    - protocol: TCP
-      port: 5432
-  egress:
-  # Allow DNS
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: UDP
-      port: 53
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
