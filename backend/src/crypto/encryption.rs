@@ -7,7 +7,7 @@
 /// - Support for key versioning
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, Payload},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
 use rand::Rng;
@@ -157,12 +157,12 @@ impl EncryptionService {
         let cipher = Aes256Gcm::new((&self.primary_key).into());
 
         // Generate random 96-bit nonce (standard for GCM)
-        let mut rng = rand::thread_rng();
-        let nonce_bytes: [u8; 12] = rng.gen();
+        let mut rng = rand::rng();
+        let nonce_bytes: [u8; 12] = rng.random();
         let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(&nonce, plaintext.as_bytes() as Payload)
+            .encrypt(&nonce, plaintext.as_bytes())
             .map_err(|e| format!("Encryption failed: {}", e))?;
 
         Ok(EncryptedData {
@@ -204,7 +204,7 @@ impl EncryptionService {
             .map_err(|e| format!("Invalid ciphertext hex: {}", e))?;
 
         let plaintext_bytes = cipher
-            .decrypt(nonce, ciphertext_bytes.as_slice() as Payload)
+            .decrypt(nonce, ciphertext_bytes.as_slice())
             .map_err(|e| format!("Decryption failed (authentication tag invalid?): {}", e))?;
 
         String::from_utf8(plaintext_bytes)
