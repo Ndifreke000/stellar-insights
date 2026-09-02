@@ -51,31 +51,11 @@ module "networking" {
 }
 
 # ============================================================================
-# DATABASE (RDS PostgreSQL - staging only)
+# DATABASE: none provisioned here. The backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md) -- there is no RDS instance to
+# manage. The SQLite file lives on the EFS volume mounted into the ECS
+# task (see module.compute / EFS wiring below).
 # ============================================================================
-
-module "database" {
-  source = "../../modules/database"
-
-  db_subnet_group_name = "payraider-db-${var.environment}"
-  vpc_security_group_ids = [module.networking.security_group_database_id]
-  db_subnet_ids        = module.networking.private_db_subnet_ids
-
-  identifier         = "payraider-${var.environment}"
-  instance_class     = "db.t3.micro"
-  allocated_storage  = 100
-  storage_type       = "gp3"
-  engine_version     = "14.8"
-
-  multi_az                 = false  # Single-AZ for staging cost efficiency
-  backup_retention_period  = 7
-  enable_cloudwatch_logs_exports = ["postgresql"]
-  enable_enhanced_monitoring = false
-
-  environment = var.environment
-
-  depends_on = [module.networking]
-}
 
 # ============================================================================
 # CACHING (Redis - single node for staging)
@@ -148,9 +128,15 @@ module "compute" {
   launch_type     = "FARGATE"
   enable_fargate  = true
 
-  desired_count = 2
-  min_size      = 2
-  max_size      = 4
+  # Pinned to 1: SQLite permits exactly one writer, and there is no
+  # shared storage that would let two task replicas safely share one
+  # database file. Do not raise this above 1 without first adding a
+  # real multi-writer story (Postgres migration) -- see ADR 0001,
+  # "Revisit this decision when... horizontal scaling of the backend
+  # becomes a requirement."
+  desired_count = 1
+  min_size      = 1
+  max_size      = 1
 
   subnets         = module.networking.private_app_subnet_ids
   security_groups = [module.networking.security_group_backend_id]
@@ -161,15 +147,15 @@ module "compute" {
 
   # Configuration
   vault_addr = var.vault_addr
-  db_url     = "postgresql://postgres@${module.database.rds_address}:5432/payraider"
+  db_url     = "sqlite:///data/payraider.db"
   redis_url  = module.caching.redis_connection_string
 
   environment         = var.environment
   log_retention_days = 14
-  enable_auto_scaling = true
+  enable_auto_scaling = false
   cpu_target_percentage = 70
 
-  depends_on = [module.load_balancing, module.database, module.caching]
+  depends_on = [module.load_balancing, module.caching]
 }
 
 # ============================================================================
@@ -234,12 +220,6 @@ output "alb_dns_name" {
   value       = module.load_balancing.alb_dns_name
 }
 
-output "database_endpoint" {
-  description = "RDS PostgreSQL endpoint"
-  value       = module.database.rds_endpoint
-  sensitive   = false
-}
-
 output "redis_endpoint" {
   description = "Redis endpoint"
   value       = module.caching.primary_endpoint
@@ -267,11 +247,11 @@ output "cost_estimate" {
     nat_gateway          = "$30/month"
     fargate_vcpu_hours   = "$12/month"  # ~300 vCPU-hours @ $0.04/vCPU-hour
     fargate_memory_hours = "$8/month"   # ~400 GB-hours @ $0.008/GB-hour
-    rds_t3_micro        = "$30/month"
+    efs_storage          = "~$1/month"  # SQLite file is tiny relative to RDS
     redis_cache          = "$20/month"
     data_transfer        = "$10/month"
     cloudwatch_logs      = "$5/month"
-    total_monthly        = "~$125/month"
+    total_monthly        = "~$96/month"
     savings_vs_ec2       = "~$80/month (39% savings from Fargate migration)"
   }
 }
