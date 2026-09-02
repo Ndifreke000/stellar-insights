@@ -84,3 +84,25 @@ See [`contracts/archive/README.md`](contracts/archive/README.md).
 - History has been cleaned to reduce clone size.
 - Use `git lfs` for large binaries.
 - For full operational details, see `docs/` and module READMEs.
+
+## SDK status
+
+`sdk/` ships four packages: `typescript`, `python`, `react`, and `mcp-server`.
+**Neither the mobile app nor the web frontend currently consumes any of them.**
+The mobile app makes API calls via its own internal `axios`-based `apiClient`
+(`mobile/src/services/api.ts`); the frontend has its own `src/lib/api-client.ts`.
+The TypeScript SDK is published publicly (`"publishConfig": {"access": "public"}`)
+but its correctness against the real backend API is therefore untested by any
+internal usage.
+
+Known gaps:
+- **`@stellar-insights/sdk` (typescript):** public, but not imported by mobile or frontend.
+- **`@stellar-insights/react`:** wraps the TypeScript SDK, also not consumed internally.
+- **`@stellar-insights/mcp-server`:** a separate product surface (AI-agent tooling);
+  candidate for extraction into its own repository. See
+  [`sdk/mcp-server/README.md`](sdk/mcp-server/README.md).
+
+The storage library situation in mobile is intentionally kept simple:
+`react-native-mmkv` (encrypted, MMKV-based) for general key-value storage,
+`react-native-keychain` for the MMKV encryption key and auth tokens,
+and `react-native-biometrics` for biometric prompts. All three are actively used.
