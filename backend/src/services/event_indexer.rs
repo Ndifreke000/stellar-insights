@@ -14,13 +14,13 @@
 //!
 //! ```rust,no_run
 //! use std::sync::Arc;
-//! use stellar_insights_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
-//! use stellar_insights_backend::database::Database;
+//! use payraider_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
+//! use payraider_backend::database::Database;
 //! use sqlx::SqlitePool;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let pool = SqlitePool::connect("sqlite://stellar_insights.db").await?;
+//!     let pool = SqlitePool::connect("sqlite://payraider.db").await?;
 //!     let db = Arc::new(Database::new(pool));
 //!     let indexer = EventIndexer::new(db);
 //!

@@ -38,7 +38,7 @@ impl DatabaseBackend {
         }
 
         let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
+            .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
         Self::from_database_url(&database_url)
     }
 

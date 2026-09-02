@@ -27,7 +27,7 @@ impl BackupConfig {
         let db_path = std::env::var("BACKUP_DB_PATH")
             .ok()
             .or_else(|| sqlite_path_from_database_url(&database_url))
-            .unwrap_or_else(|| "stellar_insights.db".to_string());
+            .unwrap_or_else(|| "payraider.db".to_string());
 
         let backup_dir = std::env::var("BACKUP_DIR").unwrap_or_else(|_| "./backups".to_string());
         let keep_days = std::env::var("BACKUP_RETENTION_DAYS")
@@ -88,7 +88,7 @@ impl BackupManager {
             .context("Failed to create backup directory")?;
 
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("stellar_insights_{}.db", timestamp);
+        let filename = format!("payraider_{}.db", timestamp);
         let destination = Path::new(&self.config.backup_dir).join(filename);
 
         tokio::fs::copy(&self.config.db_path, &destination)
@@ -347,12 +347,12 @@ mod tests {
     #[test]
     fn parses_sqlite_path() {
         assert_eq!(
-            sqlite_path_from_database_url("sqlite://stellar_insights.db"),
-            Some("stellar_insights.db".to_string())
+            sqlite_path_from_database_url("sqlite://payraider.db"),
+            Some("payraider.db".to_string())
         );
         assert_eq!(
-            sqlite_path_from_database_url("sqlite:./stellar_insights.db"),
-            Some("./stellar_insights.db".to_string())
+            sqlite_path_from_database_url("sqlite:./payraider.db"),
+            Some("./payraider.db".to_string())
         );
         assert_eq!(sqlite_path_from_database_url("sqlite::memory:"), None);
     }

@@ -105,9 +105,9 @@ fn normalize_ip_for_rate_limit(ip: &str) -> String {
     }
 }
 
-/// Comma-separated user/API-key IDs in `STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS` map to premium tier.
+/// Comma-separated user/API-key IDs in `PAYRAIDER_PREMIUM_CLIENT_IDS` map to premium tier.
 fn client_id_has_premium_env_override(client_id: &str) -> bool {
-    std::env::var("STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS")
+    std::env::var("PAYRAIDER_PREMIUM_CLIENT_IDS")
         .ok()
         .is_some_and(|raw| raw.split(',').any(|part| part.trim() == client_id))
 }

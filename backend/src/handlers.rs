@@ -301,15 +301,15 @@ pub async fn get_prometheus_metrics() -> impl IntoResponse {
 #[cfg(test)]
 fn render_pool_metrics_prometheus(metrics: &crate::database::PoolMetrics) -> String {
     format!(
-        "# HELP stellar_insights_db_pool_size Database pool size\n\
-# TYPE stellar_insights_db_pool_size gauge\n\
-stellar_insights_db_pool_size {}\n\
-# HELP stellar_insights_db_pool_idle Database pool idle connections\n\
-# TYPE stellar_insights_db_pool_idle gauge\n\
-stellar_insights_db_pool_idle {}\n\
-# HELP stellar_insights_db_pool_active Database pool active connections\n\
-# TYPE stellar_insights_db_pool_active gauge\n\
-stellar_insights_db_pool_active {}\n",
+        "# HELP payraider_db_pool_size Database pool size\n\
+# TYPE payraider_db_pool_size gauge\n\
+payraider_db_pool_size {}\n\
+# HELP payraider_db_pool_idle Database pool idle connections\n\
+# TYPE payraider_db_pool_idle gauge\n\
+payraider_db_pool_idle {}\n\
+# HELP payraider_db_pool_active Database pool active connections\n\
+# TYPE payraider_db_pool_active gauge\n\
+payraider_db_pool_active {}\n",
         metrics.size, metrics.idle, metrics.active
     )
 }
@@ -387,9 +387,9 @@ mod tests {
         let metrics = crate::database::PoolMetrics::new(12, 3, 9);
         let rendered = render_pool_metrics_prometheus(&metrics);
 
-        assert!(rendered.contains("stellar_insights_db_pool_size 12"));
-        assert!(rendered.contains("stellar_insights_db_pool_idle 3"));
-        assert!(rendered.contains("stellar_insights_db_pool_active 9"));
-        assert!(rendered.contains("# TYPE stellar_insights_db_pool_size gauge"));
+        assert!(rendered.contains("payraider_db_pool_size 12"));
+        assert!(rendered.contains("payraider_db_pool_idle 3"));
+        assert!(rendered.contains("payraider_db_pool_active 9"));
+        assert!(rendered.contains("# TYPE payraider_db_pool_size gauge"));
     }
 }

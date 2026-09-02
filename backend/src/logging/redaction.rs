@@ -5,7 +5,7 @@ use std::fmt;
 ///
 /// Usage:
 /// ```rust
-/// use stellar_insights_backend::logging::redaction::Redacted;
+/// use payraider_backend::logging::redaction::Redacted;
 ///
 /// let sensitive_data = "secret_value";
 /// tracing::info!("Processing data: {:?}", Redacted(&sensitive_data));

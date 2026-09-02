@@ -18,7 +18,7 @@ else
     echo "🐳 Starting PostgreSQL container..."
     docker run --name stellar-postgres \
       -e POSTGRES_PASSWORD=password \
-      -e POSTGRES_DB=stellar_insights \
+      -e POSTGRES_DB=payraider \
       -p 5432:5432 -d postgres:14
     
     echo "⏳ Waiting for PostgreSQL to be ready..."
@@ -26,7 +26,7 @@ else
 fi
 
 # Set DATABASE_URL
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/stellar_insights"
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/payraider"
 echo "DATABASE_URL=$DATABASE_URL" > .env
 
 echo "✅ Database URL set in .env file"

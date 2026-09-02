@@ -3,12 +3,12 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Stellar Insights API",
+        title = "PayRaider API",
         version = "1.0.0",
         description = "API for Stellar network analytics, anchor monitoring, and payment corridor insights",
         contact(
-            name = "Stellar Insights Team",
-            email = "support@stellarinsights.io"
+            name = "PayRaider Team",
+            email = "support@payraider.io"
         ),
         license(
             name = "MIT",
@@ -17,7 +17,7 @@ use utoipa::OpenApi;
     ),
     servers(
         (url = "http://localhost:8080", description = "Local development server"),
-        (url = "https://api.stellarinsights.io", description = "Production server")
+        (url = "https://api.payraider.io", description = "Production server")
     ),
     paths(
         // Anchors

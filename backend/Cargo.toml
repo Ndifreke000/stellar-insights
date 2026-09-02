@@ -1,8 +1,8 @@
 [package]
-name = "stellar-insights-backend"
+name = "payraider-backend"
 version = "0.1.0"
 edition = "2021"
-default-run = "stellar-insights-backend"
+default-run = "payraider-backend"
 
 # Clippy linting configuration
 [lints.clippy]
@@ -103,7 +103,7 @@ async-stream = "0.3"
 
 
 
-# [dependencies.stellar-insights-apm]
+# [dependencies.payraider-apm]
 # path = "apm"
 # optional = true
 

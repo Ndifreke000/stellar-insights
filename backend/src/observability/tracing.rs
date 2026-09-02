@@ -39,7 +39,7 @@ fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Trac
 
     global::set_tracer_provider(provider.clone());
     let _ = OTEL_PROVIDER.set(provider.clone());
-    Ok(provider.tracer("stellar-insights-backend"))
+    Ok(provider.tracer("payraider-backend"))
 }
 
 /// Initialize tracing. When `LOG_DIR` is set, logs are also written to a rotating file
@@ -71,7 +71,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
         std::fs::create_dir_all(dir)?;
         let appender = RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
-            .filename_prefix("stellar-insights")
+            .filename_prefix("payraider")
             .filename_suffix("log")
             .max_log_files(MAX_LOG_FILES)
             .build(dir)?;

@@ -61,7 +61,7 @@ impl std::str::FromStr for EncryptedData {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::crypto::EncryptionService;
+/// use payraider_backend::crypto::EncryptionService;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {

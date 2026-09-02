@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tokio::time::sleep;
 
-use stellar_insights_backend::observability::job_metrics::{
+use payraider_backend::observability::job_metrics::{
     JobMetricsCollector, JobRegistry, get_job_status_summary,
 };
 
@@ -13,7 +13,7 @@ async fn test_job_metrics_collection() {
     metrics.complete_success();
 
     // Verify metrics were recorded
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let job_info = registry.get_job_info("test-job");
     
     assert!(job_info.is_some());
@@ -33,7 +33,7 @@ async fn test_job_failure_tracking() {
     metrics.complete_failure("Test error message");
 
     // Verify failure metrics
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let job_info = registry.get_job_info("test-failure-job");
     
     assert!(job_info.is_some());
@@ -57,7 +57,7 @@ async fn test_consecutive_failures() {
     metrics3.complete_failure("Third error");
 
     // Verify consecutive failures
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let job_info = registry.get_job_info("consecutive-test-job");
     
     assert!(job_info.is_some());
@@ -102,7 +102,7 @@ async fn test_multiple_job_types() {
     cache_metrics.complete_success();
 
     // Verify all jobs are tracked
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     
     assert_eq!(registry.get_all_jobs().len(), 4);
     assert!(registry.get_job_info("corridor-refresh").is_some());
@@ -132,7 +132,7 @@ fn test_error_classification() {
     
     // The error classification should work (we can't easily test the exact classification
     // without exposing internal methods, but we can verify the metrics are recorded)
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let info = registry.get_job_info("error-classification-test").unwrap();
     assert_eq!(info.total_failures, 1);
 }
@@ -143,7 +143,7 @@ async fn test_job_timeout() {
     sleep(Duration::from_millis(50)).await;
     metrics.complete_timeout();
 
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let job_info = registry.get_job_info("timeout-test-job");
     
     assert!(job_info.is_some());
@@ -163,7 +163,7 @@ async fn test_job_registry_persistence() {
     metrics2.complete_failure("Second operation failed");
 
     // Verify registry shows both operations
-    let registry = stellar_insights_backend::observability::job_metrics::JOB_REGISTRY.read().await;
+    let registry = payraider_backend::observability::job_metrics::JOB_REGISTRY.read().await;
     let info = registry.get_job_info("persistence-test-job").unwrap();
     
     assert_eq!(info.total_executions, 2);

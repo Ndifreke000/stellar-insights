@@ -16,7 +16,7 @@ use crate::vault::{VaultConfig, VaultError};
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+/// use payraider_backend::vault::{VaultClient, VaultConfig};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -85,7 +85,7 @@ struct KvData {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::client::DatabaseCredentials;
+/// use payraider_backend::vault::client::DatabaseCredentials;
 ///
 /// // Credentials received from Vault
 /// let creds: DatabaseCredentials = DatabaseCredentials {
@@ -129,7 +129,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -191,7 +191,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -272,7 +272,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {

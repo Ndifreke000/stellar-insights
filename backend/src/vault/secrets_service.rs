@@ -7,7 +7,7 @@ use crate::vault::{VaultClient, VaultError};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Application secrets needed by stellar-insights
+/// Application secrets needed by payraider
 #[derive(Debug, Clone)]
 pub struct ApplicationSecrets {
     pub jwt_secret: String,

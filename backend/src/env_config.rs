@@ -102,7 +102,7 @@ pub fn validate_env() -> Result<()> {
             errors.push(
                 "SNAPSHOT_CONTRACT_ID is set to the placeholder value. \
                 Source contracts/.env.testnet to get the real deployed contract ID: \
-                source contracts/.env.testnet && export SNAPSHOT_CONTRACT_ID=$STELLAR_INSIGHTS_CONTRACT_ID"
+                source contracts/.env.testnet && export SNAPSHOT_CONTRACT_ID=$PAYRAIDER_CONTRACT_ID"
                     .to_string(),
             );
         }
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_sqlite_url() {
-        let url = "sqlite:./stellar_insights.db";
+        let url = "sqlite:./payraider.db";
         assert_eq!(sanitize_database_url(url), url);
     }
 

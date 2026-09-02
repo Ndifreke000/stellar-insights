@@ -186,7 +186,7 @@ impl StellarTomlClient {
     ) -> Result<Self> {
         let http_client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            .user_agent("StellarInsights/1.0")
+            .user_agent("PayRaider/1.0")
             .redirect(reqwest::redirect::Policy::limited(3))
             .build()?;
 

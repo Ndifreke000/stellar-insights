@@ -1,6 +1,6 @@
 //! Application Performance Monitoring (APM) integration via OpenTelemetry
 //!
-//! This module provides APM instrumentation for Stellar Insights, enabling:
+//! This module provides APM instrumentation for PayRaider, enabling:
 //! - Request/response trace collection
 //! - Database query performance tracking
 //! - Error event collection
@@ -28,7 +28,7 @@ impl ApmConfig {
             .unwrap_or(true);
 
         let service_name = std::env::var("OTEL_SERVICE_NAME")
-            .unwrap_or_else(|_| "stellar-insights-backend".to_string());
+            .unwrap_or_else(|_| "payraider-backend".to_string());
 
         let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:4318/v1/traces".to_string());

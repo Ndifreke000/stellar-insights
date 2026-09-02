@@ -19,7 +19,7 @@ pub async fn deprecation_middleware(req: Request<Body>, next: Next) -> Response 
             HeaderValue::from_static("</api/v2/>; rel=\"successor-version\""),
         );
 
-        if let Ok(value) = HeaderValue::from_str("API v1 is deprecated. Please migrate to v2. See https://docs.stellar-insights.com/api-versioning") {
+        if let Ok(value) = HeaderValue::from_str("API v1 is deprecated. Please migrate to v2. See https://docs.payraider.com/api-versioning") {
             response.headers_mut().insert("Warning", value);
         }
     }

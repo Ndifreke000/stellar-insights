@@ -21,7 +21,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-use stellar_insights_backend::{
+use payraider_backend::{
     alerts::AlertManager,
     api::v1::routes,
     backup::{BackupConfig, BackupManager},
@@ -84,12 +84,12 @@ async fn main() -> anyhow::Result<()> {
         .context("Environment validation failed - please check your configuration")?;
 
     let _tracing_guard =
-        stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
-    stellar_insights_backend::observability::metrics::init_metrics();
-    tracing::info!("Stellar Insights Backend - Initializing Server");
+        payraider_backend::observability::tracing::init_tracing("payraider-backend")?;
+    payraider_backend::observability::metrics::init_metrics();
+    tracing::info!("PayRaider Backend - Initializing Server");
 
     // Initialize SecretsService (Vault with fallback to environment)
-    if let Ok(secrets_service) = stellar_insights_backend::vault::SecretsService::new().await {
+    if let Ok(secrets_service) = payraider_backend::vault::SecretsService::new().await {
         if let Ok(secrets) = secrets_service.get_secrets().await {
             tracing::info!("SecretsService initialized successfully (Vault/env)");
             let _ = secrets;
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
+        .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
     let pool = PoolConfig::from_env()
         .create_pool(&db_url)
         .await
@@ -154,11 +154,11 @@ async fn main() -> anyhow::Result<()> {
                         active,
                         size
                     );
-                    stellar_insights_backend::observability::metrics::record_pool_error(
+                    payraider_backend::observability::metrics::record_pool_error(
                         "near_exhaustion",
                     );
                 }
-                stellar_insights_backend::observability::metrics::set_pool_connections(
+                payraider_backend::observability::metrics::set_pool_connections(
                     active,
                     idle as usize,
                     size,
@@ -226,26 +226,26 @@ async fn main() -> anyhow::Result<()> {
     let _etag_caching_support = ETagCachingSupport::new(Default::default());
     let _batch_endpoints = BatchEndpoints::new(Default::default());
     let _response_compression = ResponseCompression::new(
-        stellar_insights_backend::models::response_compression::CompressionConfig::from_env(),
+        payraider_backend::models::response_compression::CompressionConfig::from_env(),
     );
     if let Err(e) = _response_compression.validate() {
         tracing::warn!("Response compression config invalid: {}", e);
     }
 
     let _push_notification_service = PushNotificationService::new(
-        stellar_insights_backend::models::push_notification_service::Config::default(),
+        payraider_backend::models::push_notification_service::Config::default(),
     );
     tracing::info!("Push notification service initialized");
 
     // Initialize SEP-10 for mobile (issue #1376)
     let _sep10_for_mobile = Sep10ForMobile::new(
-        stellar_insights_backend::models::sep10_for_mobile::Config::default(),
+        payraider_backend::models::sep10_for_mobile::Config::default(),
     );
     tracing::info!("SEP-10 for mobile initialized");
 
     // Initialize push notification registration (issue #1377)
     let _push_notification_registration = PushNotificationRegistration::new(
-        stellar_insights_backend::models::push_notification_registration::Config::default(),
+        payraider_backend::models::push_notification_registration::Config::default(),
     );
     tracing::info!("Push notification registration initialized");
 
@@ -291,7 +291,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Configure rate limits for expensive operations
-    use stellar_insights_backend::rate_limit::{ClientRateLimits, RateLimitConfig};
+    use payraider_backend::rate_limit::{ClientRateLimits, RateLimitConfig};
 
     // Export endpoints (CSV/Excel generation)
     rate_limiter
@@ -472,7 +472,7 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!(
             "CORS: wildcard origin ('*') is not permitted in production. \
             Set CORS_ALLOWED_ORIGINS to comma-separated list of actual frontend domains. \
-            Example: https://stellar-insights.com,https://app.stellar-insights.com"
+            Example: https://payraider.com,https://app.payraider.com"
         );
     }
 
@@ -571,7 +571,7 @@ async fn main() -> anyhow::Result<()> {
     // WebSocket routes are excluded from the timeout layer — WS connections
     // are long-lived and must not be killed by the HTTP request timeout.
     let ws_routes = Router::new()
-        .route("/ws", stellar_insights_backend::websocket::ws_route())
+        .route("/ws", payraider_backend::websocket::ws_route())
         .with_state(Arc::clone(&ws_state))
         .layer(cors.clone());
 
@@ -588,10 +588,10 @@ async fn main() -> anyhow::Result<()> {
         pool.clone(),
         cache.clone(),
     )
-    .merge(stellar_insights_backend::api::api_analytics::routes(db.clone()));
+    .merge(payraider_backend::api::api_analytics::routes(db.clone()));
 
     // Admin routes (backfill, etc.) — mounted at /admin
-    let admin_routes = stellar_insights_backend::api::backfill::routes(backfill_job);
+    let admin_routes = payraider_backend::api::backfill::routes(backfill_job);
 
     // ── Consolidated GraphQL API (Issues #2121-#2125) ────────────────────────────
     //
@@ -602,23 +602,23 @@ async fn main() -> anyhow::Result<()> {
     //   - Subscription resolvers for real-time updates via WebSocket
     //   - Query complexity/depth limiting via async-graphql
     let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
-    let graphql_schema = stellar_insights_backend::graphql::build_schema(
+    let graphql_schema = payraider_backend::graphql::build_schema(
         pool.clone(),
         broadcast_tx,
     );
     let graphql_routes = Router::new()
         .route(
             "/graphql",
-            post(stellar_insights_backend::graphql::handlers::graphql_handler)
-                .get(stellar_insights_backend::graphql::handlers::graphql_playground),
+            post(payraider_backend::graphql::handlers::graphql_handler)
+                .get(payraider_backend::graphql::handlers::graphql_playground),
         )
         .route(
             "/graphql/ws",
-            get(stellar_insights_backend::graphql::handlers::graphql_ws_handler),
+            get(payraider_backend::graphql::handlers::graphql_ws_handler),
         )
         .route(
             "/graphql/health",
-            get(stellar_insights_backend::graphql::handlers::graphql_health_handler),
+            get(payraider_backend::graphql::handlers::graphql_health_handler),
         )
         .with_state(graphql_schema);
 
@@ -628,14 +628,14 @@ async fn main() -> anyhow::Result<()> {
         .merge(ws_routes)
         .route("/swagger-ui/{*path}", get(|| async { "Swagger UI documentation" }))
         .layer(middleware::from_fn(
-            stellar_insights_backend::payload_limit::payload_limit_middleware,
+            payraider_backend::payload_limit::payload_limit_middleware,
         ))
         .layer(middleware::from_fn(
-            stellar_insights_backend::api_deprecation_middleware::deprecation_middleware,
+            payraider_backend::api_deprecation_middleware::deprecation_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             db.clone(),
-            stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
+            payraider_backend::api_analytics_middleware::api_analytics_middleware,
         ))
         // Concurrency limiter — rejects excess requests with 503 instead of letting them pile up
         .layer(middleware::from_fn_with_state(
@@ -729,7 +729,7 @@ async fn main() -> anyhow::Result<()> {
 
     log_shutdown_summary(start_shutdown);
     tracing::info!("Server shutdown complete");
-    stellar_insights_backend::observability::tracing::shutdown_tracing();
+    payraider_backend::observability::tracing::shutdown_tracing();
 
     Ok(())
 }

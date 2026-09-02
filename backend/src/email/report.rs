@@ -44,7 +44,7 @@ pub fn generate_html_report(report: &DigestReport) -> String {
     </style>
 </head>
 <body>
-    <h1>Stellar Insights - {} Performance Report</h1>
+    <h1>PayRaider - {} Performance Report</h1>
 
     <h2>Overview</h2>
     <p>Total Volume: <span class="metric">${:.2}</span></p>

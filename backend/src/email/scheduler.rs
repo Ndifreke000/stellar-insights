@@ -108,7 +108,7 @@ impl DigestScheduler {
         for recipient in &self.recipients {
             match self.email_service.send_html(
                 recipient,
-                &format!("Stellar Insights - {period} Performance Report"),
+                &format!("PayRaider - {period} Performance Report"),
                 &html,
             ) {
                 Ok(()) => sent += 1,

@@ -81,7 +81,7 @@ Automated API scanning against a running staging instance:
 
 # Run baseline (quick, ~5 minutes)
 docker run -t --rm owasp/zap2docker-stable \
-  zap-baseline.py -t https://staging-api.stellar-insights.internal \
+  zap-baseline.py -t https://staging-api.payraider.internal \
   -J /tmp/zap-report.json
 
 # Check findings
@@ -95,15 +95,15 @@ Scan Docker images for vulnerabilities:
 ```bash
 # Build the backend image
 cd backend
-docker build -t stellar-insights-backend:dev .
+docker build -t payraider-backend:dev .
 
 # Scan with Trivy
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-  aquasec/trivy image stellar-insights-backend:dev
+  aquasec/trivy image payraider-backend:dev
 
 # Show only HIGH and CRITICAL
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-  aquasec/trivy image --severity HIGH,CRITICAL stellar-insights-backend:dev
+  aquasec/trivy image --severity HIGH,CRITICAL payraider-backend:dev
 ```
 
 ### 6. Kubernetes Config Validation
@@ -236,7 +236,7 @@ PR: #XXXX
 5. Remediate in hotfix branch
 6. Fast-track review and deployment
 
-**Contact:** security@stellar-insights.internal
+**Contact:** security@payraider.internal
 
 ## Tools & References
 

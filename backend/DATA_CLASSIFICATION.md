@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document classifies all sensitive data in stellar-insights and defines encryption requirements per storage layer and data category.
+This document classifies all sensitive data in payraider and defines encryption requirements per storage layer and data category.
 
 ## Data Classification Levels
 

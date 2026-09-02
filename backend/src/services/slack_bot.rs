@@ -95,7 +95,7 @@ impl SlackBotService {
                     "title": format!("{} {}", emoji, title),
                     "text": alert.message,
                     "fields": fields,
-                    "footer": "Stellar Insights",
+                    "footer": "PayRaider",
                     "ts": chrono::Utc::now().timestamp()
                 }
             ]

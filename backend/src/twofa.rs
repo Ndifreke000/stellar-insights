@@ -43,7 +43,7 @@ impl TwoFAService {
 
         // Generate otpauth URI for QR code
         let otpauth_uri = format!(
-            "otpauth://totp/stellar-insights:{}?secret={}&issuer=stellar-insights&digits={}",
+            "otpauth://totp/payraider:{}?secret={}&issuer=payraider&digits={}",
             username, secret_base32, TOTP_DIGIT_COUNT
         );
 

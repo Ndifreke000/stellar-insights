@@ -105,7 +105,7 @@ pub async fn initiate_enrollment(
     // TODO: Extract user_id from JWT claims via auth middleware
     // For now, return placeholder
     let response = json!({
-        "otpauth_uri": "otpauth://totp/stellar-insights:user?secret=JBSWY3DPEBLW64TMMQ======&issuer=stellar-insights&digits=6",
+        "otpauth_uri": "otpauth://totp/payraider:user?secret=JBSWY3DPEBLW64TMMQ======&issuer=payraider&digits=6",
         "secret": "JBSWY3DPEBLW64TMMQ"
     });
 

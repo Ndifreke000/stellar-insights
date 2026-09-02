@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stellar Insights uses HashiCorp Vault for secure secrets management. This document covers:
+PayRaider uses HashiCorp Vault for secure secrets management. This document covers:
 - Local development setup with Vault dev mode
 - Production Vault configuration
 - Secret paths and naming conventions
@@ -97,8 +97,8 @@ The application will initialize the `SecretsService` which will:
 ```bash
 vault auth enable approle
 
-# Create a role for stellar-insights
-vault write auth/approle/role/stellar-insights \
+# Create a role for payraider
+vault write auth/approle/role/payraider \
   token_ttl=1h \
   token_max_ttl=4h \
   secret_id_ttl=24h \
@@ -108,7 +108,7 @@ vault write auth/approle/role/stellar-insights \
 
 ### 2. Create Policies
 
-Create a policy file `stellar-insights-policy.hcl`:
+Create a policy file `payraider-policy.hcl`:
 
 ```hcl
 path "kv/data/app/secrets" {
@@ -135,18 +135,18 @@ path "sys/leases/renew" {
 Apply the policy:
 
 ```bash
-vault policy write stellar-insights stellar-insights-policy.hcl
-vault write auth/approle/role/stellar-insights policies=stellar-insights
+vault policy write payraider payraider-policy.hcl
+vault write auth/approle/role/payraider policies=payraider
 ```
 
 ### 3. Generate AppRole Credentials
 
 ```bash
 # Get role ID
-vault read auth/approle/role/stellar-insights/role-id
+vault read auth/approle/role/payraider/role-id
 
 # Generate secret ID
-vault write -f auth/approle/role/stellar-insights/secret-id
+vault write -f auth/approle/role/payraider/secret-id
 ```
 
 Save both values securely (use your infrastructure's secret management for CI/CD, Kubernetes secrets, etc.)
@@ -169,7 +169,7 @@ Set environment variables on deployment:
 export VAULT_ADDR="https://vault.production.internal:8200"
 export VAULT_ROLE_ID="your-role-id"
 export VAULT_SECRET_ID="your-secret-id"
-export VAULT_NAMESPACE="stellar-insights" # if using namespaces
+export VAULT_NAMESPACE="payraider" # if using namespaces
 
 # Database
 export DB_ROLE="stellar-app"
@@ -190,7 +190,7 @@ All application secrets are stored under `kv/app/secrets`:
 ### Example: Fetching Secrets
 
 ```rust
-use stellar_insights_backend::vault::{SecretsService, VaultConfig};
+use payraider_backend::vault::{SecretsService, VaultConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

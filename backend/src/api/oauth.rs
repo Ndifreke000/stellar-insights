@@ -436,7 +436,7 @@ pub async fn me(
     }
 
     Ok(Json(OAuthIdentity {
-        connection_label: format!("Stellar Insights ({})", claims.username),
+        connection_label: format!("PayRaider ({})", claims.username),
         user_id: claims.sub,
         username: claims.username,
         client_id: claims.client_id,
