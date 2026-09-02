@@ -98,10 +98,15 @@ async fn main() -> anyhow::Result<()> {
 
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
-    let pool = PoolConfig::from_env()
+    let pool_config = PoolConfig::from_env();
+    let pool = pool_config
         .create_pool(&db_url)
         .await
         .context("Failed to create database pool")?;
+    let write_pool = pool_config
+        .create_write_pool(&db_url)
+        .await
+        .context("Failed to create database write pool")?;
 
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -109,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to run database migrations")?;
     tracing::info!("Database migrations completed successfully");
 
-    let db = Arc::new(Database::new(pool.clone()));
+    let db = Arc::new(Database::with_write_pool(pool.clone(), write_pool));
 
     // Database pool metrics logger
     let pool_metrics_handle: JoinHandle<()> = {
@@ -134,6 +139,14 @@ async fn main() -> anyhow::Result<()> {
                         "Database pool idle connections are low"
                     );
                 }
+
+                let write_metrics = pool_metrics_db.write_pool_metrics();
+                tracing::info!(
+                    write_pool_size = write_metrics.size,
+                    write_pool_idle = write_metrics.idle,
+                    write_pool_active = write_metrics.active,
+                    "Database write pool metrics"
+                );
             }
         })
     };

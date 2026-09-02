@@ -212,7 +212,11 @@ impl PoolConfig {
             .unwrap_or(DEFAULT_BUSY_TIMEOUT_MS)
     }
 
-    pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+    /// Builds the SQLite connection options shared by every pool this app
+    /// opens against `database_url`: WAL journal mode, `busy_timeout`, and
+    /// query logging. Split out so `create_pool` (reads) and
+    /// `create_write_pool` (writes) can't drift out of sync on these.
+    fn build_connect_options(database_url: &str) -> Result<SqliteConnectOptions> {
         match DatabaseBackend::from_database_url(database_url)? {
             DatabaseBackend::Sqlite => {}
             DatabaseBackend::Postgres => {
@@ -259,6 +263,15 @@ impl PoolConfig {
             }
         }
 
+        Ok(opts)
+    }
+
+    /// Read-side pool. Sized by DB_POOL_MAX_CONNECTIONS (default 100) --
+    /// reasonable for reads, which don't block each other or the writer
+    /// under WAL. See `create_write_pool` for the write-side pool.
+    pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let opts = Self::build_connect_options(database_url)?;
+
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
@@ -268,6 +281,40 @@ impl PoolConfig {
             .connect_with(opts)
             .await
             .context("Failed to create SQLite connection pool")?;
+
+        Ok(pool)
+    }
+
+    /// Write-side pool, sized small on purpose. SQLite permits exactly one
+    /// writer at a time regardless of how many connections a pool offers --
+    /// a large pool here doesn't buy write throughput, it just buys more
+    /// ways to queue behind the same lock (see
+    /// docs/adr/0001-sqlite-vs-postgres.md, "The pool is sized as though
+    /// writes were parallel"). Routing writes through a small dedicated
+    /// pool keeps that queueing from eating into the read pool's capacity
+    /// under write-heavy load.
+    ///
+    /// Sized via DB_WRITE_POOL_MAX_CONNECTIONS (default 2: one active
+    /// writer plus one queued behind busy_timeout, rather than erroring
+    /// immediately on the second concurrent write attempt).
+    pub async fn create_write_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let opts = Self::build_connect_options(database_url)?;
+
+        let max_connections = std::env::var("DB_WRITE_POOL_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(2);
+
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(max_connections)
+            .min_connections(1)
+            .acquire_timeout(Duration::from_secs(self.connect_timeout_seconds))
+            .idle_timeout(Some(Duration::from_secs(self.idle_timeout_seconds)))
+            .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
+            .connect_with(opts)
+            .await
+            .context("Failed to create SQLite write connection pool")?;
 
         Ok(pool)
     }
@@ -335,6 +382,13 @@ impl PoolMetrics {
 
 pub struct Database {
     pool: SqlitePool,
+    /// Dedicated write-side pool (see `PoolConfig::create_write_pool`).
+    /// Defaults to a clone of `pool` when constructed via `Database::new`,
+    /// so existing callers are unaffected until they opt into
+    /// `Database::with_write_pool`. Not yet consumed by any write call
+    /// site -- see the module-level doc comment on `create_write_pool`
+    /// for why that migration is deliberately not done here.
+    write_pool: SqlitePool,
     pub admin_audit_logger: AdminAuditLogger,
     /// Threshold in milliseconds above which a query is logged as slow at WARN level.
     /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
@@ -344,6 +398,13 @@ pub struct Database {
 impl Database {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
+        Self::with_write_pool(pool.clone(), pool)
+    }
+
+    /// Like `new`, but with an explicit write-side pool (see
+    /// `PoolConfig::create_write_pool`) instead of reusing the read pool.
+    #[must_use]
+    pub fn with_write_pool(pool: SqlitePool, write_pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         let slow_query_threshold_ms = std::env::var("SLOW_QUERY_THRESHOLD_MS")
             .ok()
@@ -352,6 +413,7 @@ impl Database {
             .clamp(1, 60_000); // 1ms minimum, 60s maximum
         Self {
             pool,
+            write_pool,
             admin_audit_logger,
             slow_query_threshold_ms,
         }
@@ -432,6 +494,13 @@ impl Database {
         &self.pool
     }
 
+    /// Dedicated write-side pool. See the field doc comment on
+    /// `Database::write_pool` -- not yet used by any write call site.
+    #[must_use]
+    pub const fn write_pool(&self) -> &SqlitePool {
+        &self.write_pool
+    }
+
     /// Performs a basic connectivity check against the database.
     pub async fn health_check(&self) -> Result<()> {
         sqlx::query("SELECT 1")
@@ -445,6 +514,17 @@ impl Database {
     pub fn pool_metrics(&self) -> PoolMetrics {
         let size = self.pool.size();
         let idle = self.pool.num_idle();
+        let active = size.saturating_sub(idle as u32);
+
+        PoolMetrics::new(size, idle, active)
+    }
+
+    /// Metrics for the dedicated write pool (see `write_pool`). Idle == 0
+    /// with active > 0 for a sustained period is the signal to look at
+    /// `DB_WRITE_POOL_MAX_CONNECTIONS` -- see ADR 0001.
+    pub fn write_pool_metrics(&self) -> PoolMetrics {
+        let size = self.write_pool.size();
+        let idle = self.write_pool.num_idle();
         let active = size.saturating_sub(idle as u32);
 
         PoolMetrics::new(size, idle, active)
