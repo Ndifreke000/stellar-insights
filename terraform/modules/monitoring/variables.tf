@@ -4,7 +4,7 @@ variable "cluster_name" {
 }
 
 variable "log_group_names" {
-  description = "Map of log group names (ecs, rds, alb)"
+  description = "Map of log group names (e.g. ecs, alb)"
   type        = map(string)
   default     = {}
 }

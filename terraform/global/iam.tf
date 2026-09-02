@@ -88,14 +88,6 @@ resource "aws_iam_role_policy" "terraform_infrastructure" {
         Resource = "*"
       },
       {
-        Sid    = "RDS"
-        Effect = "Allow"
-        Action = [
-          "rds:*"
-        ]
-        Resource = "*"
-      },
-      {
         Sid    = "ElastiCache"
         Effect = "Allow"
         Action = [

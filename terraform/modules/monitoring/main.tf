@@ -45,19 +45,6 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/RDS", "CPUUtilization", { stat = "Average" }],
-            [".", "DatabaseConnections", { stat = "Average" }]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "RDS Performance"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
             ["AWS/ApplicationELB", "TargetResponseTime", { stat = "Average" }],
             [".", "HTTPCode_Target_5XX_Count", { stat = "Sum" }]
           ]
