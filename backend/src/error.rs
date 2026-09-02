@@ -261,6 +261,7 @@ impl std::fmt::Display for ApiError {
             Self::BadRequest { message, .. } => write!(f, "{}", message),
             Self::InternalError { message, .. } => write!(f, "{}", message),
             Self::Unauthorized { message, .. } => write!(f, "{}", message),
+            Self::Forbidden { message, .. } => write!(f, "{}", message),
             Self::ServiceUnavailable { message, .. } => write!(f, "{}", message),
         }
     }
