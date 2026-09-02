@@ -591,9 +591,9 @@ ws.onmessage = (event) => {
 
 ### Kubernetes
 
-- Backend deployment with HPA (Horizontal Pod Autoscaler) and PDB (Pod Disruption Budget)
+- Backend deployment with HPA (neutered to 1/1 -- SQLite single-writer, see ADR 0001) and a persistent volume (PVC) for the SQLite database
 - Frontend deployment with HPA and PDB
-- PostgreSQL StatefulSet
+- Litestream sidecar replicating the SQLite database to S3
 - Redis deployment
 - Ingress with TLS termination
 - Network policies for pod-to-pod communication
@@ -606,7 +606,7 @@ ws.onmessage = (event) => {
 
 - **Networking** — VPC, subnets, security groups
 - **Compute** — ECS Fargate tasks for backend and frontend
-- **Database** — RDS PostgreSQL with read replicas
+- **Database** — none; SQLite on an EFS volume (see docs/adr/0001-sqlite-vs-postgres.md), with a Litestream sidecar for continuous S3 backup
 - **Caching** — ElastiCache Redis
 - **Load Balancing** — Application Load Balancer with WAF
 - **Monitoring** — CloudWatch dashboards and alarms
@@ -743,12 +743,10 @@ PayRaider implements a comprehensive secrets management solution using **HashiCo
 ### Secret Storage Example
 
 ```bash
-# Database credentials
-vault kv put secret/database/postgres \
-  username=postgres \
-  password=secure-password \
-  host=db.example.com \
-  port=5432
+# Database URL. The backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md)
+# -- this is a file path on the mounted volume, not network credentials.
+vault kv put secret/database/payraider \
+  database-url=sqlite:///data/payraider.db
 
 # API keys
 vault kv put secret/api/stellar \

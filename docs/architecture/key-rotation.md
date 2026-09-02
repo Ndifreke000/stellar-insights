@@ -107,21 +107,21 @@ ENCRYPTION_KEY encrypts sensitive data at rest (e.g., API keys, PII, private key
 ### Procedure
 
 #### Phase 1: Planning
-1. Identify all encrypted fields in the database:
+1. Identify all encrypted fields in the database. The backend is SQLite-only
+   (docs/adr/0001-sqlite-vs-postgres.md); `information_schema` doesn't exist
+   in SQLite, use `pragma_table_info` instead:
    ```sql
-   -- Find encrypted columns (typically stored as VARBINARY or TEXT)
-   SELECT column_name, data_type 
-   FROM information_schema.columns 
-   WHERE table_schema = 'payraider'
-     AND column_name LIKE '%encrypted%' OR column_name LIKE '%secret%';
+   -- Find encrypted columns (typically stored as BLOB or TEXT) across all tables
+   SELECT m.name AS table_name, p.name AS column_name, p.type
+   FROM sqlite_master m
+   JOIN pragma_table_info(m.name) p
+   WHERE m.type = 'table'
+     AND (p.name LIKE '%encrypted%' OR p.name LIKE '%secret%');
    ```
 
-2. Backup the entire database:
+2. Backup the entire database (see docs/backup-system.md for the full
+   Litestream/backup.rs story; this is the quick manual version):
    ```bash
-   # PostgreSQL
-   pg_dump payraider > backup_$(date +%Y%m%d_%H%M%S).sql
-   
-   # SQLite
    cp payraider.db payraider.db.backup_$(date +%Y%m%d_%H%M%S)
    ```
 

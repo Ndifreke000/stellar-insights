@@ -312,9 +312,9 @@ The project ships with a complete infrastructure-as-code and container orchestra
 
 A full Kubernetes deployment under `k8s/` with:
 
-- Backend deployment with HPA (Horizontal Pod Autoscaler) and PDB (Pod Disruption Budget)
+- Backend deployment with HPA (neutered to 1/1 -- SQLite single-writer, see ADR 0001) and a persistent volume (PVC) for the SQLite database
 - Frontend deployment with HPA and PDB
-- PostgreSQL StatefulSet
+- Litestream sidecar replicating the SQLite database to S3
 - Redis deployment
 - Ingress with TLS termination
 - Network policies for pod-to-pod communication
@@ -329,7 +329,7 @@ AWS infrastructure under `terraform/` with modules for:
 
 - **Networking** — VPC, subnets, security groups
 - **Compute** — ECS Fargate tasks for backend and frontend
-- **Database** — RDS PostgreSQL with read replicas
+- **Database** — none; SQLite on an EFS volume (see docs/adr/0001-sqlite-vs-postgres.md), with a Litestream sidecar for continuous S3 backup
 - **Caching** — ElastiCache Redis
 - **Load balancing** — Application Load Balancer with WAF
 - **Monitoring** — CloudWatch dashboards and alarms

@@ -97,12 +97,10 @@ vault secrets enable -path=secret kv-v2
 ### Store Secrets
 
 ```bash
-# Database credentials
-vault kv put secret/database/postgres \
-  username=postgres \
-  password=secure-password \
-  host=db.example.com \
-  port=5432
+# Database URL. The backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md)
+# -- this is a file path on the mounted volume, not network credentials.
+vault kv put secret/database/payraider \
+  database-url=sqlite:///data/payraider.db
 
 # API keys
 vault kv put secret/api/stellar \
@@ -119,48 +117,38 @@ vault kv put secret/encryption \
 
 ```bash
 # Get all secrets
-vault kv get secret/database/postgres
+vault kv get secret/database/payraider
 
 # Get specific field
-vault kv get -field=password secret/database/postgres
+vault kv get -field=database-url secret/database/payraider
 
 # Get as JSON
-vault kv get -format=json secret/database/postgres
+vault kv get -format=json secret/database/payraider
 ```
 
 ## Secret Rotation
 
-### Configure Rotation Policy
+### Database Credentials: Not Applicable
+
+Vault's Database Secret Engine issues time-limited dynamic credentials
+against a network database (Postgres, MySQL, etc.). The backend is
+SQLite-only (`docs/adr/0001-sqlite-vs-postgres.md`) -- `database-url` is a
+file path on the mounted volume, not a username/password pair, so there is
+nothing here for Vault to rotate dynamically. If the SQLite decision is ever
+reversed, this is the section to bring back.
+
+### Rotating Other Secrets
+
+JWT signing keys, encryption keys, and API credentials are static KV v2
+secrets. Rotate by writing a new version (KV v2 keeps history, so the
+previous version stays available for graceful rollover):
 
 ```bash
-# Enable database secrets engine
-vault secrets enable database
+vault kv put secret/jwt-secret value="$(openssl rand -base64 48)"
+vault kv put secret/encryption-key value="$(openssl rand -hex 32)"
 
-# Configure PostgreSQL connection
-vault write database/config/postgresql \
-  plugin_name=postgresql-database-plugin \
-  allowed_roles="readonly,readwrite" \
-  connection_url="postgresql://{{username}}:{{password}}@db.example.com:5432/postgres" \
-  username="vault" \
-  password="vault-password"
-
-# Create rotation policy (90 days)
-vault write database/roles/readwrite \
-  db_name=postgresql \
-  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';" \
-  default_ttl="2160h" \
-  max_ttl="2592h"
-```
-
-### Automatic Rotation
-
-```bash
-# Enable automatic rotation
-vault write sys/leases/lookup/database/creds/readwrite \
-  increment=2160h
-
-# Check rotation status
-vault read database/creds/readwrite
+# Roll back if needed
+vault kv rollback -version=2 secret/jwt-secret
 ```
 
 ## Audit Logging
@@ -205,7 +193,7 @@ vault audit list -detailed
   "request": {
     "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     "operation": "read",
-    "path": "secret/data/database/postgres",
+    "path": "secret/data/database/payraider",
     "data": {},
     "remote_address": "10.0.0.1"
   },
@@ -213,8 +201,7 @@ vault audit list -detailed
     "auth": null,
     "data": {
       "data": {
-        "password": "***",
-        "username": "***"
+        "database-url": "***"
       }
     }
   },
@@ -286,22 +273,19 @@ spec:
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "app"
-        vault.hashicorp.com/agent-inject-secret-database: "secret/data/database/postgres"
+        vault.hashicorp.com/agent-inject-secret-database: "secret/data/database/payraider"
         vault.hashicorp.com/agent-inject-template-database: |
-          {{- with secret "secret/data/database/postgres" -}}
-          export DB_USER="{{ .Data.data.username }}"
-          export DB_PASSWORD="{{ .Data.data.password }}"
-          export DB_HOST="{{ .Data.data.host }}"
-          export DB_PORT="{{ .Data.data.port }}"
+          {{- with secret "secret/data/database/payraider" -}}
+          export DATABASE_URL="{{ .Data.data.database-url }}"
           {{- end }}
     spec:
       serviceAccountName: app
       containers:
       - name: backend
         image: payraider:latest
-        env:
-        - name: DATABASE_URL
-          value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/payraider"
+        # DATABASE_URL comes from the Vault Agent template above
+        # (sqlite:///data/payraider.db -- a file path, not network
+        # credentials; see docs/adr/0001-sqlite-vs-postgres.md)
 ```
 
 ## Environment Variables
@@ -310,7 +294,7 @@ spec:
 
 ```bash
 # Use .env file (not in version control)
-DATABASE_URL=postgresql://user:password@localhost:5432/payraider
+DATABASE_URL=sqlite:///data/payraider.db
 STELLAR_RPC_URL=https://rpc.stellar.org
 API_KEY=dev-api-key
 ```
@@ -347,10 +331,8 @@ vault token renew
 ### 3. Rotate Secrets Regularly
 
 ```bash
-# Rotate database password every 90 days
-vault write -f database/rotate-root/postgresql
-
-# Rotate API keys
+# No database password to rotate -- SQLite, not a network database
+# (docs/adr/0001-sqlite-vs-postgres.md). Rotate API keys instead:
 vault kv put secret/api/stellar api_key=new-key
 ```
 
@@ -408,7 +390,7 @@ vault login -method=kubernetes role=app
 vault kv list secret/
 
 # Check path
-vault kv get secret/database/postgres
+vault kv get secret/database/payraider
 
 # Verify permissions
 vault policy read app-policy

@@ -163,7 +163,7 @@ variable "vault_addr" {
 }
 
 variable "db_url" {
-  description = "Database connection URL (postgresql://user:pass@host:5432/db)"
+  description = "SQLite database URL (sqlite:///data/payraider.db) -- see docs/adr/0001-sqlite-vs-postgres.md"
   type        = string
   sensitive   = true
 }

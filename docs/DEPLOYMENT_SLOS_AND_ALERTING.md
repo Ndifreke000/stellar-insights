@@ -411,8 +411,9 @@ cat > docs/runbooks/health-endpoint-down.md << 'EOF'
    ```
 
 ## Remediation
-- Restart backend: `docker restart payraider-backend`
-- Restart database: `docker restart payraider-postgres`
+- Restart backend: `docker restart payraider-backend` (SQLite is a file on
+  the backend's mounted volume, not a separate service -- restarting the
+  backend is restarting "the database" here)
 - Restart cache: `docker restart payraider-redis`
 - If persistent, check logs for configuration errors
 

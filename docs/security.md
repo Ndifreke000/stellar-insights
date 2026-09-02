@@ -216,7 +216,7 @@ npm audit
 Required for production:
 - `JWT_SECRET` — Signing key for JWT tokens (min 32 bytes, cryptographically random)
 - `API_SIGNING_SECRET` — Key for HMAC-SHA256 request signing (min 32 bytes)
-- `DATABASE_URL` — Database connection string (postgres:// or sqlite://)
+- `DATABASE_URL` — SQLite file path (sqlite://...); the backend is SQLite-only, see docs/adr/0001-sqlite-vs-postgres.md
 - `REDIS_URL` — Redis connection string (redis://)
 - `AWS_REGION` — AWS region for KMS, S3, etc.
 - `AWS_KMS_KEY_ID` — Customer-managed KMS key for encryption
