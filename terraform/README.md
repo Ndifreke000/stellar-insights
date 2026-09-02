@@ -6,12 +6,14 @@ This directory contains Terraform modules and configurations for provisioning an
 
 The PayRaider infrastructure is designed for **high availability, scalability, and disaster recovery** across three AWS availability zones (AZs). All components are deployed with Multi-AZ redundancy in production and staging environments.
 
-> **Note:** The `database` module below provisions RDS PostgreSQL, but the backend application is currently compiled SQLite-only and will refuse to start against a `postgres://` `DATABASE_URL` (see `backend/src/database.rs` and `docs/adr/0001-sqlite-vs-postgres.md`). This module reflects the IaC as written, not what the running application connects to today.
-
 ### Architecture Components
 
 - **Networking**: VPC with public/private subnets across 3 AZs, security groups, NAT gateways, route tables
-- **Database**: RDS PostgreSQL (Multi-AZ) with automated backups, enhanced monitoring, and encryption
+- **Database**: SQLite, on an EFS volume mounted into the single (pinned
+  `desired_count = 1`) backend task. There is no RDS instance -- see
+  `docs/adr/0001-sqlite-vs-postgres.md` for why, and `docs/backup-system.md`
+  for how the database is backed up (Litestream continuous S3 replication +
+  periodic local snapshots) without one.
 - **Caching**: ElastiCache Redis cluster (Multi-AZ with automatic failover)
 - **Compute**: ECS Fargate for containerized backend workloads with auto-scaling
 - **Load Balancing**: Application Load Balancer (ALB) with HTTPS/TLS and blue-green deployment support
@@ -27,7 +29,8 @@ terraform/
 ├── global/                            # Shared infrastructure (all environments)
 │   ├── versions.tf                    # Terraform version and provider constraints
 │   ├── variables.tf                   # Global variables (AWS account, ECR repos)
-│   ├── s3.tf                          # S3 buckets (state, ALB logs, backups)
+│   ├── s3.tf                          # S3 buckets (state, ALB logs)
+│   ├── backups.tf                     # S3 bucket for Litestream SQLite replication
 │   ├── dynamodb.tf                    # DynamoDB for Terraform state locking
 │   ├── ecr.tf                         # ECR repositories for container images
 │   ├── iam.tf                         # IAM roles and policies
@@ -64,17 +67,12 @@ terraform/
     │   ├── route_tables.tf
     │   ├── nat.tf
     │   └── versions.tf
-    ├── database/                      # RDS PostgreSQL
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   ├── outputs.tf
-    │   └── versions.tf
     ├── caching/                       # ElastiCache Redis
     │   ├── main.tf
     │   ├── variables.tf
     │   ├── outputs.tf
     │   └── versions.tf
-    ├── compute/ecs/                   # ECS Fargate cluster
+    ├── compute/ecs/                   # ECS Fargate cluster, EFS volume, Litestream sidecar
     │   ├── main.tf
     │   ├── variables.tf
     │   ├── outputs.tf
@@ -166,7 +164,7 @@ terraform apply tfplan
 # Check infrastructure status
 terraform show
 
-# Output key values (ALB DNS, RDS endpoint, etc.)
+# Output key values (ALB DNS, Redis endpoint, etc.)
 terraform output
 
 # Monitor deployment progress
@@ -175,13 +173,22 @@ aws ecs describe-services --cluster payraider-production --services payraider-se
 
 ## Environment-Specific Configurations
 
+Only three environments exist under `terraform/environments/`: `dev`,
+`staging`, `production`. (There is a `k8s/overlays/mainnet/` for the k8s
+deployment path, but no corresponding Terraform environment -- if you're
+looking for one, it hasn't been created yet.)
+
+**Backend replicas are pinned to 1 in all three**, and auto-scaling is
+disabled. SQLite permits exactly one writer and there is no shared storage
+for multiple replicas to safely use the same database file -- see
+`docs/adr/0001-sqlite-vs-postgres.md`.
+
 ### Development (`terraform/environments/dev/`)
 
-- **Instance sizes**: Minimal (t3.small compute, t3.micro database)
-- **Replicas**: 1 (cost optimized)
-- **Backup retention**: 7 days
+- **Instance sizes**: Minimal (t3.small compute)
+- **Replicas**: 1
 - **Multi-AZ**: Disabled (single AZ, cost optimized)
-- **Cost estimate**: ~$50/month
+- **Cost estimate**: ~$65/month
 
 ```bash
 cd terraform/environments/dev
@@ -192,65 +199,42 @@ terraform apply
 
 ### Staging (`terraform/environments/staging/`)
 
-- **Instance sizes**: Medium (t3.medium compute, t3.medium database)
-- **Replicas**: 2
-- **Backup retention**: 14 days
-- **Multi-AZ**: Enabled
-- **Cost estimate**: ~$150/month
+- **Instance sizes**: Medium (t3.medium compute)
+- **Replicas**: 1
+- **Multi-AZ**: Enabled (networking/caching; not applicable to the
+  single-instance backend)
+- **Cost estimate**: ~$96/month
 
 ### Production (`terraform/environments/production/`)
 
-- **Instance sizes**: Medium (t3.medium compute, t3.medium database)
-- **Replicas**: 3
-- **Backup retention**: 30 days
-- **Multi-AZ**: Enabled, across 3 AZs
-- **Auto-scaling**: 3-10 tasks based on CPU/memory
-- **Cost estimate**: ~$330/month
-
-### Mainnet (`terraform/environments/mainnet/`)
-
-- **Instance sizes**: Large (t3.large compute, t3.medium database)
-- **Replicas**: 3 per AZ
-- **Backup retention**: 30 days
-- **Multi-AZ**: Enabled, across 3 AZs
-- **Cost estimate**: ~$400-500/month
+- **Instance sizes**: Medium (t3.medium compute)
+- **Replicas**: 1
+- **Multi-AZ**: Enabled (networking/caching; not applicable to the
+  single-instance backend)
+- **Cost estimate**: ~$142/month
 
 ## Common Operations
 
 ### Scaling Compute
 
-```bash
-# Update desired task count in terraform.tfvars
-desired_count = 5
+**The backend cannot be horizontally scaled** in its current form --
+`desired_count` is pinned to 1 in every environment's `module "compute"`
+call, on purpose. Raising it without first giving the backend a real
+multi-writer story would mean multiple tasks either fighting over one
+`ReadWriteOnce`-mounted EFS file or (worse, if the volume config allowed it)
+corrupting it. See `docs/adr/0001-sqlite-vs-postgres.md`, "Revisit this
+decision when... horizontal scaling of the backend becomes a requirement."
 
-# Apply changes
-terraform apply
-```
+Other compute resources (`container_cpu`, `container_memory`) can be scaled
+vertically as normal via `terraform.tfvars`.
 
 ### Database Backup & Restore
 
-Database backups are automatically created per the RDS backup retention policy (30 days for production).
-
-#### Manual Backup
-
-```bash
-# Create manual snapshot
-aws rds create-db-snapshot \
-  --db-instance-identifier payraider-production \
-  --db-snapshot-identifier payraider-production-manual-$(date +%Y%m%d)
-```
-
-#### Restore from Backup
-
-```bash
-# List available snapshots
-aws rds describe-db-snapshots --db-instance-identifier payraider-production
-
-# Restore to new database
-aws rds restore-db-instance-from-db-snapshot \
-  --db-instance-identifier payraider-production-restored \
-  --db-snapshot-identifier payraider-production-manual-20240101
-```
+There is no RDS instance and no `aws rds` command applies here. See
+[`docs/backup-system.md`](../docs/backup-system.md) for the actual backup
+story: a Litestream sidecar continuously replicating the SQLite file to S3
+(with `litestream restore` commands), plus `backup.rs`'s periodic local
+snapshots.
 
 ### Updating Images
 
@@ -290,9 +274,10 @@ terraform apply -var="alarm_email=new-email@example.com"
 Each module has its own `README` (or is documented in the main.tf):
 
 - **networking**: VPC topology, security groups, routing
-- **database**: RDS configuration, backup retention, encryption
 - **caching**: Redis cluster, auto-failover, backup snapshots
-- **compute/ecs**: ECS task definitions, auto-scaling, health checks
+- **compute/ecs**: ECS task definitions, EFS volume for the SQLite database,
+  Litestream sidecar, health checks (no auto-scaling -- see "Scaling
+  Compute" above)
 - **load_balancing**: ALB listener rules, target groups, SSL/TLS
 - **monitoring**: CloudWatch log groups, dashboards, alarm thresholds
 - **codedeploy**: Blue-green deployment strategy, health checks, rollback
@@ -311,7 +296,7 @@ terraform refresh
 
 # Manual state operations (use with caution!)
 terraform state list
-terraform state show aws_rds_cluster_instance.primary
+terraform state show module.compute.aws_efs_file_system.backend_data
 terraform state mv old_name new_name
 terraform state rm resource_name  # Only if removing from management
 ```
@@ -322,17 +307,25 @@ terraform state rm resource_name  # Only if removing from management
 
 All infrastructure is designed for disaster recovery:
 
-1. **Database backups** are retained for 30 days (production) with automated snapshots
-2. **Multi-AZ failover** is automatic for RDS and Redis
+1. **Database**: Litestream continuously replicates SQLite to S3 (point-in-time
+   recovery), plus periodic local snapshots via `backup.rs`. See
+   `docs/backup-system.md`. There is no automatic failover for the database
+   itself -- it's a single EFS-backed volume behind a single task, by design
+   (see ADR 0001).
+2. **Multi-AZ failover** is automatic for Redis (and for networking/ALB)
 3. **Infrastructure as Code** allows entire environment to be re-provisioned from git
-4. **Blue-green deployments** allow instant rollback to previous version
+4. **Blue-green deployments** allow instant rollback to previous version, though
+   note the backend Deployment/ECS service currently briefly runs old+new
+   tasks concurrently during cutover even at desired_count=1 -- a known,
+   unresolved edge case against the single-writer constraint (see the
+   staging/production terraform comments).
 
 See [Disaster Recovery Plan](../docs/disaster-recovery.md) for detailed runbooks.
 
 ## Security Considerations
 
-- **Encryption**: RDS encryption at rest (KMS), in-transit (SSL/TLS)
-- **Network isolation**: Private subnets for database/cache, NACLs for ingress control
+- **Encryption**: EFS encryption at rest, S3 backups bucket SSE, in-transit (SSL/TLS)
+- **Network isolation**: Private subnets for cache/EFS, NACLs for ingress control
 - **Secrets management**: All credentials stored in Vault, not in Terraform
 - **IAM policies**: Least-privilege roles for ECS tasks, CodeDeploy, monitoring
 - **Audit logging**: VPC Flow Logs, CloudTrail for all AWS API calls
@@ -399,16 +392,18 @@ aws ec2 describe-security-groups --filters "Name=group-name,Values=payraider-*"
 # Check route tables
 aws ec2 describe-route-tables --filters "Name=vpc-id,Values=VPC_ID"
 
-# Test database connectivity (from ECS task)
-psql -h RDS_ENDPOINT -U postgres -d payraider -c "SELECT 1;"
+# Test the EFS mount is working (exec into the running task/pod)
+ls -la /data/payraider.db
 ```
 
 ## Cost Optimization
 
 The infrastructure is designed for cost-efficiency:
 
-- **Fargate auto-scaling**: Scale down to 1 task during off-hours
-- **RDS**: t3.medium for most workloads, but right-size based on workload
+- **No RDS**: the SQLite/EFS/Litestream setup is a fraction of Multi-AZ RDS's
+  cost (~$1/month EFS storage vs. ~$30-150/month RDS, see the cost_estimate
+  outputs in each environment) -- a side effect of ADR 0001, not a deliberate
+  cost optimization on its own
 - **Single NAT**: Using one NAT gateway instead of per-AZ saves ~$30/month
 - **Spot instances**: Can be enabled for non-critical environments (dev)
 
