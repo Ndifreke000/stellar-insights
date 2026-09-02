@@ -2,6 +2,8 @@
 
 This document describes the automated backup system for Stellar Insights infrastructure, including backup strategy, retention policy, restoration procedures, and disaster recovery integration.
 
+> **Note:** This document describes the RDS PostgreSQL infrastructure as provisioned by `terraform/modules/database`. The backend application itself is currently compiled SQLite-only (`sqlx` with the `sqlite` feature; see `backend/Cargo.toml` and `docs/adr/0001-sqlite-vs-postgres.md`) and does not connect to this RDS instance. Treat the procedures below as accurate to the Terraform/RDS layer, not as a description of what the running application currently uses.
+
 ## Overview
 
 The Stellar Insights backup system provides automated daily backups of:
