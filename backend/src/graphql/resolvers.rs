@@ -844,10 +844,15 @@ impl MutationRoot {
             INSERT INTO anchors (id, name, stellar_account, home_domain)
             VALUES (?, ?, ?, ?)
             RETURNING
-                id, name, stellar_account, home_domain,
-                total_transactions, successful_transactions, failed_transactions,
-                total_volume_usd, avg_settlement_time_ms, reliability_score,
-                status, created_at as "created_at: _", updated_at as "updated_at: _"
+                id as "id!", name, stellar_account, home_domain,
+                total_transactions as "total_transactions!",
+                successful_transactions as "successful_transactions!",
+                failed_transactions as "failed_transactions!",
+                total_volume_usd as "total_volume_usd!",
+                avg_settlement_time_ms as "avg_settlement_time_ms!",
+                reliability_score as "reliability_score!",
+                status as "status!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             "#,
             id,
             input.name,
@@ -894,10 +899,10 @@ impl MutationRoot {
             ON CONFLICT (source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)
             DO UPDATE SET updated_at = CURRENT_TIMESTAMP
             RETURNING
-                id, source_asset_code, source_asset_issuer,
+                id as "id!", source_asset_code, source_asset_issuer,
                 destination_asset_code, destination_asset_issuer,
-                reliability_score, status,
-                created_at as "created_at: _", updated_at as "updated_at: _"
+                reliability_score as "reliability_score!", status as "status!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             "#,
             id,
             input.source_asset_code,
@@ -953,10 +958,15 @@ impl MutationRoot {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             RETURNING
-                id, name, stellar_account, home_domain,
-                total_transactions, successful_transactions, failed_transactions,
-                total_volume_usd, avg_settlement_time_ms, reliability_score,
-                status, created_at as "created_at: _", updated_at as "updated_at: _"
+                id as "id!", name, stellar_account, home_domain,
+                total_transactions as "total_transactions!",
+                successful_transactions as "successful_transactions!",
+                failed_transactions as "failed_transactions!",
+                total_volume_usd as "total_volume_usd!",
+                avg_settlement_time_ms as "avg_settlement_time_ms!",
+                reliability_score as "reliability_score!",
+                status as "status!",
+                created_at as "created_at!: _", updated_at as "updated_at!: _"
             "#,
             input.total_transactions,
             input.successful_transactions,
