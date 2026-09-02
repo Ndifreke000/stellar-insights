@@ -148,6 +148,28 @@ impl AuthService {
         }
     }
 
+    /// The resolved JWT signing secret (from Vault or JWT_SECRET), for
+    /// wiring `auth_middleware`'s `JwtSecret` extension to the same value
+    /// this service uses to issue tokens.
+    #[must_use]
+    pub fn jwt_secret(&self) -> &str {
+        &self.jwt_secret
+    }
+
+    /// Session management (list/revoke), for HTTP handlers that need to act
+    /// on a specific session rather than the whole login/refresh/logout flow.
+    #[must_use]
+    pub const fn session_service(&self) -> &crate::session::SessionService {
+        &self.session_service
+    }
+
+    /// Database pool, for wiring `auth_middleware`'s `TokenRevocationStore`
+    /// extension to the same database this service uses.
+    #[must_use]
+    pub const fn db_pool(&self) -> &SqlitePool {
+        &self.db_pool
+    }
+
     /// Authenticate user with credentials against the database.
     /// Passwords are verified using argon2 — never stored or compared in plaintext.
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {

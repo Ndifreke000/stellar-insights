@@ -24,6 +24,10 @@ pub struct TokenRevocationStore(pub Arc<SqlitePool>);
 pub struct AuthUser {
     pub user_id: String,
     pub username: String,
+    /// Session ID tied to the token that authenticated this request, if the
+    /// token carries one (see Claims::session_id). Needed to distinguish
+    /// "this session" from "this user's other sessions".
+    pub session_id: Option<String>,
 }
 
 impl<S> axum::extract::FromRequestParts<S> for AuthUser
@@ -76,6 +80,7 @@ pub async fn auth_middleware(
     let auth_user = AuthUser {
         user_id: claims.sub,
         username: claims.username,
+        session_id: claims.session_id,
     };
     req.extensions_mut().insert(auth_user);
 
