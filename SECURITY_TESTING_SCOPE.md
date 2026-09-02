@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document defines the attack surface for stellar-insights security testing and the continuous automated penetration testing framework.
+This document defines the attack surface for payraider security testing and the continuous automated penetration testing framework.
 
 ## Attack Surface Scope
 
@@ -136,7 +136,7 @@ profiles:
     request_timeout: 45
 
 target:
-  url: https://staging-api.stellar-insights.internal
+  url: https://staging-api.payraider.internal
   auth:
     method: api_key
     header: Authorization
@@ -199,7 +199,7 @@ jobs:
       - name: Run ZAP Baseline
         uses: zaproxy/action-baseline@v0.7.0
         with:
-          target: https://staging-api.stellar-insights.internal
+          target: https://staging-api.payraider.internal
           rules_file_name: '.zap-rules.tsv'
           
   container-scan:
@@ -209,7 +209,7 @@ jobs:
       - name: Scan with Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'stellar-insights-backend:latest'
+          image-ref: 'payraider-backend:latest'
           
   k8s-config-scan:
     runs-on: ubuntu-latest
@@ -312,7 +312,7 @@ export ZAPSCAN_TOKEN="${{ secrets.ZAPSCAN_TOKEN }}"
 {
   "scan_date": "2026-08-26",
   "scanner": "owasp-zap",
-  "target": "https://staging-api.stellar-insights.internal",
+  "target": "https://staging-api.payraider.internal",
   "summary": {
     "total_alerts": 12,
     "critical": 0,

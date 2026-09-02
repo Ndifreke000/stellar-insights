@@ -1,6 +1,6 @@
 version: '3.8'
 
-# Production ELK stack for Stellar Insights
+# Production ELK stack for PayRaider
 #
 # Key differences from docker-compose.elk.yml (dev):
 #   - xpack.security.enabled=true on Elasticsearch (auth required)
@@ -27,10 +27,10 @@ services:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
       - xpack.monitoring.collection.enabled=true
-      - cluster.name=stellar-insights-prod
+      - cluster.name=payraider-prod
       - node.name=stellar-prod-node-1
       # ILM: allow auto-creation of indices via policy
-      - action.auto_create_index=.monitoring*,.watches,.triggered_watches,.watcher-history*,.ml*,stellar-insights*
+      - action.auto_create_index=.monitoring*,.watches,.triggered_watches,.watcher-history*,.ml*,payraider*
     ports:
       - "127.0.0.1:9200:9200"   # Bind to loopback only; expose via authenticated reverse proxy
     volumes:
@@ -104,7 +104,7 @@ services:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=elastic
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
-      - SERVER_NAME=stellar-insights-kibana
+      - SERVER_NAME=payraider-kibana
       - MONITORING_ENABLED=true
     depends_on:
       elasticsearch:
@@ -124,7 +124,7 @@ services:
     volumes:
       - kibana_data:/usr/share/kibana/data
 
-  # Filebeat: ships backend container logs and /var/log/stellar-insights/ to Logstash
+  # Filebeat: ships backend container logs and /var/log/payraider/ to Logstash
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.11.0
     container_name: stellar-filebeat-prod

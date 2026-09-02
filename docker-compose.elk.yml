@@ -11,7 +11,7 @@ services:
       # Production minimum: -Xms2g -Xmx2g for mainnet transaction volume.
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - xpack.monitoring.collection.enabled=true
-      - cluster.name=stellar-insights-cluster
+      - cluster.name=payraider-cluster
       - node.name=stellar-node-1
     ports:
       - "9200:9200"

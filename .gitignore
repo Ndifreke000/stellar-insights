@@ -36,7 +36,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 dev.db
-stellar_insights.db
+payraider.db
 
 # Environment files - NEVER commit!
 .env

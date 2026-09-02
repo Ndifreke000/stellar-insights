@@ -1,8 +1,8 @@
 {
-  "name": "stellar-insights",
+  "name": "payraider",
   "private": true,
   "version": "0.0.1",
-  "description": "Repo-root tooling for stellar-insights: E2E acceptance tests (Playwright) and commit linting.",
+  "description": "Repo-root tooling for payraider: E2E acceptance tests (Playwright) and commit linting.",
   "scripts": {
     "test:acceptance": "playwright test",
     "check:folder-size": "bash scripts/check_folder_size.sh"
