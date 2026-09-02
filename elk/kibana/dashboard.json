@@ -2,14 +2,14 @@
   "version": "8.12.2",
   "index-patterns": [
     {
-      "title": "stellar-insights-*",
+      "title": "payraider-*",
       "timeFieldName": "@timestamp"
     }
   ],
   "dashboards": [
     {
-      "id": "stellar-insights-overview",
-      "title": "Stellar Insights API Overview",
+      "id": "payraider-overview",
+      "title": "PayRaider API Overview",
       "description": "Overview dashboard for API performance and errors"
     }
   ],

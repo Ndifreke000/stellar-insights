@@ -1,4 +1,4 @@
-# ELK Stack for Stellar Insights
+# ELK Stack for PayRaider
 
 This directory contains the Elasticsearch, Logstash, and Kibana (ELK) stack configuration for centralized log aggregation.
 
@@ -16,7 +16,7 @@ docker-compose ps
 # Open http://localhost:5601 in your browser
 
 # View logs
-# 1. Create index pattern: Management → Index Patterns → Create "stellar-insights-*"
+# 1. Create index pattern: Management → Index Patterns → Create "payraider-*"
 # 2. Discover tab → Select index pattern
 ```
 
@@ -102,7 +102,7 @@ backend:
   ports:
     - "8080:8080"
   environment:
-    - DATABASE_URL=sqlite:./stellar_insights.db
+    - DATABASE_URL=sqlite:./payraider.db
     - LOG_FORMAT=json
     - RUST_LOG=info
   depends_on:
@@ -134,7 +134,7 @@ The backend also redacts at source via the request/response logging middleware:
 1. Open http://localhost:5601
 2. Create index pattern:
    - Management → Index Patterns
-   - New pattern: `stellar-insights-*`
+   - New pattern: `payraider-*`
    - Time field: `@timestamp`
 
 ### Query Examples
@@ -230,7 +230,7 @@ For production, use:
 telnet localhost 5000
 
 # Check Logstash logs
-docker logs stellar-insights-logstash
+docker logs payraider-logstash
 
 # Verify port is listening
 netstat -ln | grep 5000
@@ -253,7 +253,7 @@ curl http://localhost:9200/_cat/allocation
 
 ```bash
 # Check Kibana logs
-docker logs stellar-insights-kibana
+docker logs payraider-kibana
 
 # Verify Elasticsearch connection
 curl http://localhost:9200 (from within Kibana container)

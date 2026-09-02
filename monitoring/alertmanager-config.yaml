@@ -1,4 +1,4 @@
-# AlertManager Configuration for Stellar Insights Testnet
+# AlertManager Configuration for PayRaider Testnet
 #
 # This file configures how Prometheus alerts are routed to notification channels.
 # Deploy this to your AlertManager instance and restart:
@@ -21,7 +21,7 @@ global:
   smtp_smarthost: "${SMTP_HOST}:${SMTP_PORT}"
   smtp_auth_username: "${SMTP_USER}"
   smtp_auth_password: "${SMTP_PASSWORD}"
-  smtp_from: "alerts@stellar-insights.example.com"
+  smtp_from: "alerts@payraider.example.com"
 
 # Top-level routing tree
 route:
@@ -66,7 +66,7 @@ receivers:
   # Default: General dev Slack channel
   - name: slack-default
     slack_configs:
-      - channel: '#stellar-insights-dev'
+      - channel: '#payraider-dev'
         title: '{{ .GroupLabels.alertname }}'
         text: >
           {{ range .Alerts }}
@@ -80,7 +80,7 @@ receivers:
   - name: pagerduty-critical
     slack_configs:
       # First, ping the on-call Slack channel
-      - channel: '#stellar-insights-alerts'
+      - channel: '#payraider-alerts'
         title: '🚨 [CRITICAL] {{ .GroupLabels.alertname }}'
         text: >
           @here - CRITICAL ALERT requires immediate action
@@ -111,7 +111,7 @@ receivers:
   # Warning alerts: Dev Slack only
   - name: slack-dev
     slack_configs:
-      - channel: '#stellar-insights-dev'
+      - channel: '#payraider-dev'
         title: '⚠️ [WARNING] {{ .GroupLabels.alertname }}'
         text: >
           {{ range .Alerts }}
@@ -124,7 +124,7 @@ receivers:
   # Audit/monitoring channel: All alerts for historical tracking
   - name: slack-monitoring
     slack_configs:
-      - channel: '#stellar-insights-monitoring'
+      - channel: '#payraider-monitoring'
         title: '{{ .Status | upper }} - {{ .GroupLabels.alertname }}'
         text: >
           Timestamp: {{ .GroupLabels.alertname }}

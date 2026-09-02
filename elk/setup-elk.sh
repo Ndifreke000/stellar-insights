@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Setting up ELK Stack for Stellar Insights..."
+echo "🚀 Setting up ELK Stack for PayRaider..."
 
 # Wait for Elasticsearch to be ready
 echo "⏳ Waiting for Elasticsearch..."
@@ -13,25 +13,25 @@ echo "✅ Elasticsearch is ready"
 
 # Create ILM policy
 echo "📋 Creating Index Lifecycle Management policy..."
-curl -X PUT "http://localhost:9200/_ilm/policy/stellar-insights-policy" \
+curl -X PUT "http://localhost:9200/_ilm/policy/payraider-policy" \
   -H 'Content-Type: application/json' \
   -d @elk/elasticsearch/config/ilm-policy.json
 echo "✅ ILM policy created"
 
 # Create index template
 echo "📝 Creating index template..."
-curl -X PUT "http://localhost:9200/_index_template/stellar-insights-template" \
+curl -X PUT "http://localhost:9200/_index_template/payraider-template" \
   -H 'Content-Type: application/json' \
   -d @elk/elasticsearch/config/index-template.json
 echo "✅ Index template created"
 
 # Create initial index with alias
 echo "🔗 Creating initial index..."
-curl -X PUT "http://localhost:9200/stellar-insights-000001" \
+curl -X PUT "http://localhost:9200/payraider-000001" \
   -H 'Content-Type: application/json' \
   -d '{
   "aliases": {
-    "stellar-insights": {
+    "payraider": {
       "is_write_index": true
     }
   }
@@ -55,12 +55,12 @@ echo "✅ Dashboards imported"
 
 # Create index pattern
 echo "🔍 Creating index pattern..."
-curl -X POST "http://localhost:5601/api/saved_objects/index-pattern/stellar-insights-pattern" \
+curl -X POST "http://localhost:5601/api/saved_objects/index-pattern/payraider-pattern" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -d '{
   "attributes": {
-    "title": "stellar-insights-*",
+    "title": "payraider-*",
     "timeFieldName": "@timestamp"
   }
 }'

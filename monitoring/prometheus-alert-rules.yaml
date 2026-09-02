@@ -1,5 +1,5 @@
 groups:
-  - name: stellar_insights_testnet_slos
+  - name: payraider_testnet_slos
     interval: 30s
     rules:
       # ========================================================================
@@ -19,7 +19,7 @@ groups:
             Health check endpoint at {{ $labels.instance }} has error rate {{ $value | humanizePercentage }} over the last 5m.
             This indicates the backend may have connectivity issues with database, cache, or RPC.
           runbook_url: "https://docs.example.com/runbooks/health-endpoint-down"
-          dashboard_url: "https://grafana.example.com/d/stellar-insights"
+          dashboard_url: "https://grafana.example.com/d/payraider"
 
       - alert: HealthCheckHighLatency
         expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/health"}[5m])) > 1.0
@@ -301,13 +301,13 @@ groups:
           runbook_url: "https://docs.example.com/runbooks/cascading-failure"
 
       - alert: NoMetricsScraped
-        expr: up{job="stellar-insights"} == 0
+        expr: up{job="payraider"} == 0
         for: 3m
         labels:
           severity: critical
           slo_tier: global
         annotations:
-          summary: "Prometheus cannot scrape metrics from stellar-insights"
+          summary: "Prometheus cannot scrape metrics from payraider"
           description: |
             Prometheus target {{ $labels.instance }} has been down for 3 minutes.
             Backend may be crashed or network connectivity is broken.

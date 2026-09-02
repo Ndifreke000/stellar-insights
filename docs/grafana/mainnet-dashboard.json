@@ -1,17 +1,17 @@
 {
-  "title": "Stellar Insights — Mainnet Health",
+  "title": "PayRaider — Mainnet Health",
   "uid": "stellar-mainnet-health",
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "15s",
-  "tags": ["stellar-insights", "mainnet", "health"],
+  "tags": ["payraider", "mainnet", "health"],
   "templating": {
     "list": [
       {
         "name": "job",
         "type": "constant",
-        "current": { "value": "stellar-insights-mainnet" }
+        "current": { "value": "payraider-mainnet" }
       }
     ]
   },

@@ -1,5 +1,5 @@
 ---
-## Filebeat configuration for Stellar Insights
+## Filebeat configuration for PayRaider
 
 # Enable Docker support
 filebeat.inputs:

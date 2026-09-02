@@ -1,11 +1,11 @@
 {
-  "title": "Stellar Insights Backend Observability",
+  "title": "PayRaider Backend Observability",
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
   "tags": [
-    "stellar-insights",
+    "payraider",
     "backend",
     "observability"
   ],

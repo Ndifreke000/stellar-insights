@@ -1,4 +1,4 @@
-# Prometheus scrape configuration for Stellar Insights
+# Prometheus scrape configuration for PayRaider
 #
 # Usage (local / dev):
 #   prometheus --config.file=monitoring/prometheus.yml
@@ -27,8 +27,8 @@ alerting:
           # targets: ['localhost:9093']  # Uncomment when alertmanager is running
 
 scrape_configs:
-  # ---- Stellar Insights backend (/metrics endpoint) -------------------------
-  - job_name: "stellar-insights"
+  # ---- PayRaider backend (/metrics endpoint) -------------------------
+  - job_name: "payraider"
     static_configs:
       - targets: ["localhost:8080"]
     metrics_path: "/metrics"
@@ -39,7 +39,7 @@ scrape_configs:
     #   password_file: /run/secrets/metrics_password
 
   # ---- Testnet instance (if running a separate testnet backend) -------------
-  - job_name: "stellar-insights-testnet"
+  - job_name: "payraider-testnet"
     static_configs:
       - targets: ["localhost:8081"]   # adjust port as needed
     metrics_path: "/metrics"

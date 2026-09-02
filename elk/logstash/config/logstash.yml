@@ -1,5 +1,5 @@
 ---
-## Logstash configuration for Stellar Insights
+## Logstash configuration for PayRaider
 
 # Pipeline configuration
 pipeline.id: main
