@@ -8,10 +8,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
+use utoipa::IntoParams;
 
 use crate::admin_audit_log::AdminAuditLogger;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct AuditLogQuery {
     pub user_id: Option<String>,
     pub action: Option<String>,
