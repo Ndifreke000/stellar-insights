@@ -78,7 +78,7 @@ stellar-strkey = "0.0.8"
 ed25519-dalek = "2"
 base32 = "0.5"
 base64 = "0.22"
-jsonwebtoken = "10.4"
+jsonwebtoken = { version = "10.4", features = ["rust_crypto"] }
 utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 urlencoding = "2.1"
