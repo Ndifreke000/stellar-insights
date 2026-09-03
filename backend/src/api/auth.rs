@@ -450,10 +450,10 @@ pub async fn list_sessions(
     Ok((StatusCode::OK, Json(body)).into_response())
 }
 
-/// DELETE /api/auth/sessions/:session_id - Revoke specific session
+/// DELETE /api/auth/sessions/{session_id} - Revoke specific session
 #[utoipa::path(
     delete,
-    path = "/api/auth/sessions/:session_id",
+    path = "/api/auth/sessions/{session_id}",
     responses(
         (status = 204, description = "Session revoked"),
         (status = 401, description = "Unauthorized"),
@@ -535,7 +535,7 @@ pub fn routes(auth_service: Arc<AuthService>) -> Router {
     // this layer they'd 401 with AuthError::MissingToken on every call.
     let protected = Router::new()
         .route("/api/auth/sessions", get(list_sessions))
-        .route("/api/auth/sessions/:session_id", delete(revoke_session))
+        .route("/api/auth/sessions/{session_id}", delete(revoke_session))
         .route("/api/auth/sessions/revoke-others", post(revoke_other_sessions))
         .layer(axum::middleware::from_fn(
             crate::auth_middleware::auth_middleware,

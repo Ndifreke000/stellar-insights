@@ -174,10 +174,10 @@ pub async fn add_to_whitelist(
     Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
-/// DELETE /admin/ip-whitelist/:ip_or_cidr - Remove IP from whitelist
+/// DELETE /admin/ip-whitelist/{ip_or_cidr} - Remove IP from whitelist
 #[utoipa::path(
     delete,
-    path = "/admin/ip-whitelist/:ip_or_cidr",
+    path = "/admin/ip-whitelist/{ip_or_cidr}",
     responses(
         (status = 204, description = "Entry removed from whitelist"),
         (status = 401, description = "Unauthorized"),
@@ -259,10 +259,10 @@ pub async fn check_whitelist(
 pub fn routes(service: Arc<IpWhitelistService>) -> Router {
     Router::new()
         .route("/", get(list_whitelist).post(add_to_whitelist))
-        .route("/:ip_or_cidr", delete(remove_from_whitelist))
+        .route("/{ip_or_cidr}", delete(remove_from_whitelist))
         .route("/check", post(check_whitelist))
         .route("/admin/ip-whitelist", get(list_whitelist).post(add_to_whitelist))
-        .route("/admin/ip-whitelist/:ip_or_cidr", delete(remove_from_whitelist))
+        .route("/admin/ip-whitelist/{ip_or_cidr}", delete(remove_from_whitelist))
         .route("/admin/ip-whitelist/check", post(check_whitelist))
         .with_state(service)
 }
