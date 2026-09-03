@@ -417,13 +417,14 @@ async fn main() -> anyhow::Result<()> {
     // on whether the optional Telegram bot below happens to be enabled.
     let (alert_manager, _alert_rx) =
         AlertManager::new_with_webhooks(Arc::new(WebhookEventService::new(pool.clone())));
+    let alert_manager = Arc::new(alert_manager);
 
     // Corridor Performance Monitor — evaluates corridor metrics against user
     // alert configs every 60 seconds and triggers alerts when thresholds are breached.
     let (corridor_monitor, _corridor_alert_rx) =
-        crate::services::corridor_performance_monitor::CorridorPerformanceMonitor::new(
+        payraider_backend::services::corridor_performance_monitor::CorridorPerformanceMonitor::new(
             db.clone(),
-            Arc::clone(&alert_manager),
+            alert_manager.clone(),
         );
     let corridor_monitor = Arc::new(corridor_monitor);
     let corridor_monitor_handle = corridor_monitor.spawn(60);
@@ -616,7 +617,7 @@ async fn main() -> anyhow::Result<()> {
     //   - Query complexity/depth limiting via async-graphql
     let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
     let graphql_schema = payraider_backend::graphql::build_schema(
-        pool.clone(),
+        Arc::new(pool.clone()),
         broadcast_tx,
     );
     let graphql_routes = Router::new()

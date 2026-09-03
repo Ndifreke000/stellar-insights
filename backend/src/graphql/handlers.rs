@@ -39,8 +39,8 @@ pub async fn graphql_playground() -> impl IntoResponse {
 ///
 /// Upgrades HTTP connections to WebSocket for real-time subscription streams.
 pub async fn graphql_ws_handler(
-    req: axum::http::Request<axum::body::Body>,
     State(schema): State<AppSchema>,
+    req: axum::http::Request<axum::body::Body>,
 ) -> Response {
     let mut service = async_graphql_axum::GraphQLSubscription::new(schema);
     match tower::ServiceExt::oneshot(&mut service, req).await {
