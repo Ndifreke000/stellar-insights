@@ -19,16 +19,6 @@ pub struct EnrollRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-pub struct VerifyCodeRequest {
-    pub code: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-pub struct BackupCodeRequest {
-    pub code: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct DisableTwoFaRequest {
     /// Current TOTP or backup code, proving the caller still controls the
     /// second factor before it's removed.
@@ -179,65 +169,6 @@ pub async fn confirm_enrollment(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
-/// POST /api/auth/2fa/verify - Verify TOTP code during login
-#[utoipa::path(
-    post,
-    path = "/api/auth/2fa/verify",
-    request_body = VerifyCodeRequest,
-    responses(
-        (status = 200, description = "2FA verification successful"),
-        (status = 401, description = "Invalid code")
-    ),
-    tag = "Auth"
-)]
-pub async fn verify_totp(
-    State(_twofa_service): State<Arc<TwoFAService>>,
-    Json(_request): Json<VerifyCodeRequest>,
-) -> Result<Response, TwoFAApiError> {
-    // NOT WIRED UP -- deliberately left as a stub, not fixed in the same
-    // pass as the other 2FA handlers. AuthService::login() (auth.rs) has
-    // no 2FA integration at all: no is_2fa_enabled check, no concept of a
-    // "pending" login that needs a second factor before a real access
-    // token is issued. This handler needs that concept designed first (a
-    // short-lived pre-auth token? a server-side pending-login table?) --
-    // it's a real design decision for the login flow, not a mechanical
-    // service-call wiring like the enrollment/disable/regenerate handlers
-    // were. twofa::TwoFAService::verify_totp_code is real now (see
-    // twofa.rs) and ready to be called once that design exists.
-    let response = json!({
-        "message": "2FA verification successful",
-        "access_token": "..."
-    });
-
-    Ok((StatusCode::OK, Json(response)).into_response())
-}
-
-/// POST /api/auth/2fa/backup-code - Verify backup code during login
-#[utoipa::path(
-    post,
-    path = "/api/auth/2fa/backup-code",
-    request_body = BackupCodeRequest,
-    responses(
-        (status = 200, description = "Backup code verification successful"),
-        (status = 401, description = "Invalid or expired backup code")
-    ),
-    tag = "Auth"
-)]
-pub async fn verify_backup_code(
-    State(_twofa_service): State<Arc<TwoFAService>>,
-    Json(_request): Json<BackupCodeRequest>,
-) -> Result<Response, TwoFAApiError> {
-    // NOT WIRED UP -- same reason as verify_totp above: needs a pending-2FA
-    // login design that doesn't exist yet. twofa::TwoFAService::
-    // verify_backup_code is real and ready to be called once it does.
-    let response = json!({
-        "message": "Backup code verified. Consider regenerating your backup codes.",
-        "access_token": "..."
-    });
-
-    Ok((StatusCode::OK, Json(response)).into_response())
-}
-
 /// POST /api/auth/2fa/disable - Disable 2FA
 #[utoipa::path(
     post,
@@ -340,16 +271,12 @@ pub fn routes(twofa_service: Arc<TwoFAService>) -> Router {
             crate::auth_middleware::auth_middleware,
         ));
 
-    // Public (deliberately outside auth_middleware): called mid-login,
-    // before a full access token exists. See the NOT WIRED UP comments on
-    // verify_totp/verify_backup_code -- they're stubs until login gets a
-    // pending-2FA design, but they must stay reachable without a token
-    // regardless, so they're never behind this layer.
-    let public = Router::new()
-        .route("/verify", post(verify_totp))
-        .route("/backup-code", post(verify_backup_code))
-        .route("/api/auth/2fa/verify", post(verify_totp))
-        .route("/api/auth/2fa/backup-code", post(verify_backup_code));
-
-    public.merge(protected).with_state(twofa_service)
+    // The former public (no-auth) group here -- /verify and /backup-code --
+    // was two permanently-fake stub handlers that always returned
+    // "access_token": "..." without checking anything, because login() had
+    // no 2FA integration to hook them into. That integration now exists
+    // (AuthService::login/complete_2fa_login, api/auth.rs's real
+    // POST /api/auth/verify-2fa), so the stubs were removed rather than
+    // left as a second, non-functional "verify 2FA" contract.
+    protected.with_state(twofa_service)
 }

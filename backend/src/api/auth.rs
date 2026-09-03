@@ -11,7 +11,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest};
+use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest, VerifyTwoFaRequest};
 use crate::auth_middleware::AuthUser;
 
 const TOKEN_ENDPOINT_LIMIT_PER_MINUTE: usize = 5;
@@ -233,12 +233,18 @@ async fn clear_failed_login_state(username: &str) {
 }
 
 /// POST /api/auth/login - User login
+///
+/// Response is one of two shapes, distinguished by `status`:
+/// - `{"status":"success","access_token":...,"refresh_token":...,"expires_in":...}`
+/// - `{"status":"two_fa_required","pending_token":...,"expires_in":...}` --
+///   the account has 2FA enabled; call POST /api/auth/verify-2fa with this
+///   `pending_token` and a TOTP/backup code to get real tokens.
 #[utoipa::path(
     post,
     path = "/api/auth/login",
     request_body = LoginRequest,
     responses(
-        (status = 200, description = "Login successful"),
+        (status = 200, description = "Login successful, or 2FA required (see status field)"),
         (status = 401, description = "Invalid credentials")
     ),
     tag = "Auth"
@@ -279,6 +285,66 @@ pub async fn login(
         .login(request, device_user_agent, &ip_address)
         .await
         .map_err(|_| AuthApiError::InvalidCredentials);
+    match response {
+        Ok(login_response) => {
+            clear_failed_login_state(&account_key).await;
+            Ok((StatusCode::OK, Json(login_response)).into_response())
+        }
+        Err(e) => {
+            record_failed_login(&account_key).await;
+            Err(e)
+        }
+    }
+}
+
+/// POST /api/auth/verify-2fa - Complete a 2FA-gated login
+#[utoipa::path(
+    post,
+    path = "/api/auth/verify-2fa",
+    request_body = VerifyTwoFaRequest,
+    responses(
+        (status = 200, description = "Login successful"),
+        (status = 401, description = "Invalid/expired pending token, or invalid code")
+    ),
+    tag = "Auth"
+)]
+pub async fn verify_2fa(
+    State(auth_service): State<Arc<AuthService>>,
+    headers: HeaderMap,
+    Json(request): Json<VerifyTwoFaRequest>,
+) -> Result<Response, AuthApiError> {
+    // Rate-limit/lockout keyed by the pending token itself, not username --
+    // the caller hasn't proven who they are yet (that's what this endpoint
+    // checks), and decoding the token first just to get a username would
+    // let an attacker probe token validity via response-timing differences
+    // before the real check below runs. Each pending token is also already
+    // single-use and 5 minutes old at most (see AuthService::login), which
+    // bounds how much this key can ever be reused for anyway.
+    let account_key = format!("2fa:{}", request.pending_token);
+    if let Some(retry_after_seconds) = check_rate_limit_for_account(&account_key).await {
+        return Err(AuthApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+    preflight_login_guards(&account_key, &headers).await?;
+
+    let device_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let ip_address = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let response = auth_service
+        .complete_2fa_login(request, device_user_agent, &ip_address)
+        .await
+        .map_err(|_| AuthApiError::InvalidCredentials);
+
     match response {
         Ok(login_response) => {
             clear_failed_login_state(&account_key).await;
@@ -459,6 +525,7 @@ pub fn routes(auth_service: Arc<AuthService>) -> Router {
     // Public: no token exists yet to check.
     let public = Router::new()
         .route("/api/auth/login", post(login))
+        .route("/api/auth/verify-2fa", post(verify_2fa))
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/logout", post(logout));
 
