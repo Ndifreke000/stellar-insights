@@ -56,8 +56,16 @@ impl SecretsService {
         let jwt_secret = std::env::var("JWT_SECRET")
             .map_err(|_| VaultError::ConfigError("JWT_SECRET not set".to_string()))?;
 
+        // Previously fell back to a hardcoded key baked into source when
+        // ENCRYPTION_KEY was unset -- inconsistent with jwt_secret just
+        // above (which fails hard) and with fetch_from_env below (its own
+        // instance-method twin, which already required this var). Every
+        // secret this key protects (2FA TOTP secrets, via crypto::
+        // CryptoService::from_env) was silently encrypted with a key
+        // visible to anyone reading this repo whenever the env var was
+        // merely unset, rather than failing loudly.
         let encryption_key = std::env::var("ENCRYPTION_KEY")
-            .unwrap_or_else(|_| "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string());
+            .map_err(|_| VaultError::ConfigError("ENCRYPTION_KEY not set".to_string()))?;
 
         let database_password = std::env::var("DATABASE_PASSWORD").ok();
 

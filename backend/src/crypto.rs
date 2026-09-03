@@ -115,6 +115,36 @@ impl CryptoService {
         Self::new(key).expect("valid test key")
     }
 
+    /// Build the field-encryption service from the real `ENCRYPTION_KEY`
+    /// (Vault or env var), refusing the well-known placeholder value the
+    /// same way `AuthService::new` refuses a placeholder `JWT_SECRET`.
+    ///
+    /// This is the constructor production call sites must use.
+    /// `api/v1/mod.rs` previously called `new_for_tests()` directly to
+    /// build the `TwoFAService` that encrypts every user's TOTP secret --
+    /// every deployment of this open-source repo was encrypting 2FA
+    /// secrets with the same hardcoded key visible in source, regardless
+    /// of any `ENCRYPTION_KEY` set in its environment.
+    #[must_use]
+    pub fn from_env() -> Self {
+        let key = crate::vault::SecretsService::from_env()
+            .map(|s| s.encryption_key)
+            .unwrap_or_else(|_| {
+                std::env::var("ENCRYPTION_KEY").expect(
+                    "ENCRYPTION_KEY environment variable is required. Generate a random \
+                     64-character hex string (32 bytes), e.g. `openssl rand -hex 32`.",
+                )
+            });
+
+        assert!(
+            key != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "ENCRYPTION_KEY must not use the well-known placeholder/test value — \
+             generate a real random key"
+        );
+
+        Self::new(&key).unwrap_or_else(|e| panic!("Invalid ENCRYPTION_KEY: {e}"))
+    }
+
     pub fn encrypt(&self, plaintext: &str) -> Result<String> {
         self.service
             .encrypt(plaintext)

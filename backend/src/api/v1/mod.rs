@@ -222,8 +222,12 @@ pub fn routes(
         .merge(crate::api::audit_log::routes(audit_logger))
         .layer(middleware::from_fn(auth_middleware));
 
-    // 10. 2FA routes (#2219)
-    let crypto = crate::crypto::CryptoService::new_for_tests();
+    // 10. 2FA routes (#2219). Previously built with
+    // CryptoService::new_for_tests() -- a hardcoded key baked into source,
+    // used to encrypt every user's TOTP secret in every deployment
+    // regardless of environment config. Now sourced from the real
+    // ENCRYPTION_KEY (Vault or env), same as jwt_secret is resolved below.
+    let crypto = crate::crypto::CryptoService::from_env();
     let twofa_service = Arc::new(crate::twofa::TwoFAService::new(pool.clone(), crypto));
     let twofa_routes = Router::new()
         .nest("/auth/2fa", crate::api::twofa::routes(twofa_service.clone()))
