@@ -24,6 +24,212 @@
     }
   ],
   "paths": {
+    "/admin/audit-log": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "GET /admin/audit-log - Query audit log with filters",
+        "operationId": "query_audit_log",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit log entries returned"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/audit-log/verify-integrity": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "POST /admin/audit-log/verify-integrity - Verify audit log integrity",
+        "operationId": "verify_audit_log_integrity",
+        "responses": {
+          "200": {
+            "description": "Integrity check results"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/ip-whitelist": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "GET /admin/ip-whitelist - List all whitelisted IPs",
+        "operationId": "list_whitelist",
+        "responses": {
+          "200": {
+            "description": "Whitelist entries returned"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Access denied (IP not whitelisted)"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "POST /admin/ip-whitelist - Add IP to whitelist",
+        "operationId": "add_to_whitelist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddWhitelistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Entry added to whitelist"
+          },
+          "400": {
+            "description": "Invalid IP or CIDR"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Access denied (IP not whitelisted)"
+          }
+        }
+      }
+    },
+    "/admin/ip-whitelist/check": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "POST /admin/ip-whitelist/check - Check if an IP is whitelisted",
+        "operationId": "check_whitelist",
+        "requestBody": {
+          "description": "IP address to check, e.g. {\"ip\": \"192.168.1.1\"}",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Check result returned"
+          },
+          "400": {
+            "description": "Invalid IP format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/ip-whitelist/{ip_or_cidr}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "DELETE /admin/ip-whitelist/{ip_or_cidr} - Remove IP from whitelist",
+        "operationId": "remove_from_whitelist",
+        "parameters": [
+          {
+            "name": "ip_or_cidr",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Entry removed from whitelist"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Access denied (IP not whitelisted)"
+          },
+          "404": {
+            "description": "Entry not found"
+          }
+        }
+      }
+    },
     "/api/account-merges/destinations": {
       "get": {
         "tags": [
@@ -1119,12 +1325,104 @@
         }
       }
     },
+    "/api/auth/2fa/disable": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/2fa/disable - Disable 2FA",
+        "operationId": "disable_2fa",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableTwoFaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "2FA disabled"
+          },
+          "401": {
+            "description": "Unauthorized or invalid confirmation code"
+          }
+        }
+      }
+    },
+    "/api/auth/2fa/enroll/confirm": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/2fa/enroll/confirm - Confirm 2FA enrollment",
+        "operationId": "confirm_enrollment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Enrollment confirmed - return backup codes"
+          },
+          "400": {
+            "description": "Invalid enrollment request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/2fa/enroll/initiate": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/2fa/enroll/initiate - Start 2FA enrollment",
+        "operationId": "initiate_enrollment",
+        "responses": {
+          "200": {
+            "description": "Enrollment initiated - return QR code"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/2fa/regenerate-backup": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/2fa/regenerate-backup - Regenerate backup codes",
+        "operationId": "regenerate_backup_codes",
+        "responses": {
+          "200": {
+            "description": "Backup codes regenerated"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
           "Auth"
         ],
         "summary": "POST /api/auth/login - User login",
+        "description": "Response is one of two shapes, distinguished by `status`:\n- `{\"status\":\"success\",\"access_token\":...,\"refresh_token\":...,\"expires_in\":...}`\n- `{\"status\":\"two_fa_required\",\"pending_token\":...,\"expires_in\":...}` --\n  the account has 2FA enabled; call POST /api/auth/verify-2fa with this\n  `pending_token` and a TOTP/backup code to get real tokens.",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -1138,7 +1436,7 @@
         },
         "responses": {
           "200": {
-            "description": "Login successful"
+            "description": "Login successful, or 2FA required (see status field)"
           },
           "401": {
             "description": "Invalid credentials"
@@ -1196,6 +1494,97 @@
           },
           "401": {
             "description": "Invalid or expired token"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "GET /api/auth/sessions - List active sessions for authenticated user",
+        "operationId": "list_sessions",
+        "responses": {
+          "200": {
+            "description": "Active sessions listed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/sessions/revoke-others - Revoke all other sessions",
+        "operationId": "revoke_other_sessions",
+        "responses": {
+          "200": {
+            "description": "Other sessions revoked"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "DELETE /api/auth/sessions/{session_id} - Revoke specific session",
+        "operationId": "revoke_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/auth/verify-2fa": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /api/auth/verify-2fa - Complete a 2FA-gated login",
+        "operationId": "verify_2fa",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTwoFaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful"
+          },
+          "401": {
+            "description": "Invalid/expired pending token, or invalid code"
           }
         }
       }
@@ -4170,6 +4559,23 @@
           }
         }
       },
+      "AddWhitelistRequest": {
+        "type": "object",
+        "required": [
+          "ip_or_cidr"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ip_or_cidr": {
+            "type": "string"
+          }
+        }
+      },
       "AlertHistory": {
         "type": "object",
         "required": [
@@ -5041,6 +5447,18 @@
         ],
         "description": "POST /api/sep24/deposit/interactive"
       },
+      "DisableTwoFaRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Current TOTP or backup code, proving the caller still controls the\nsecond factor before it's removed."
+          }
+        }
+      },
       "EndpointStat": {
         "type": "object",
         "required": [
@@ -5062,6 +5480,21 @@
             "type": "string"
           },
           "method": {
+            "type": "string"
+          }
+        }
+      },
+      "EnrollRequest": {
+        "type": "object",
+        "required": [
+          "totp_secret",
+          "verification_code"
+        ],
+        "properties": {
+          "totp_secret": {
+            "type": "string"
+          },
+          "verification_code": {
             "type": "string"
           }
         }
@@ -6721,6 +7154,22 @@
           }
         }
       },
+      "VerifyTwoFaRequest": {
+        "type": "object",
+        "description": "Request body for completing a 2FA-gated login.",
+        "required": [
+          "pending_token",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "pending_token": {
+            "type": "string"
+          }
+        }
+      },
       "WebhookResponse": {
         "type": "object",
         "description": "Webhook creation response",
@@ -6917,7 +7366,11 @@
     },
     {
       "name": "Auth",
-      "description": "Authentication endpoints"
+      "description": "Authentication, session, and 2FA endpoints"
+    },
+    {
+      "name": "Admin",
+      "description": "Admin-only endpoints (IP whitelist, audit log) -- require an admin account (is_admin)"
     },
     {
       "name": "Cache",
