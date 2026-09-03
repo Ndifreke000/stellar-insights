@@ -263,7 +263,11 @@ impl TwoFAService {
 /// RFC 6238 TOTP code for one time step: HMAC-SHA1 the step counter (as an
 /// 8-byte big-endian value) with the shared secret, then dynamically
 /// truncate to a 6-digit code per RFC 4226 §5.3/5.4.
-fn totp_code_for_step(secret: &[u8], step: u64) -> String {
+///
+/// pub(crate): auth.rs's pending_2fa_tests computes an expected code
+/// independently of verify_totp_code to test the login-flow plumbing, not
+/// TOTP correctness itself (already covered by totp_tests below).
+pub(crate) fn totp_code_for_step(secret: &[u8], step: u64) -> String {
     let mut mac =
         <HmacSha1 as KeyInit>::new_from_slice(secret).expect("HMAC accepts a key of any length");
     mac.update(&step.to_be_bytes());

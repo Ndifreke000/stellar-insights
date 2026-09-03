@@ -24,7 +24,7 @@ fn create_auth_router() -> Router {
         // from_env() explicitly rejects.
         std::env::set_var(
             "ENCRYPTION_KEY",
-            "1111111111111111111111111111111111111111111111111111111111ab",
+            "11111111111111111111111111111111111111111111111111111111111111ab",
         );
     }
 
@@ -118,7 +118,7 @@ async fn test_token_generation_and_validation_for_access_tokens() {
         // from_env() explicitly rejects.
         std::env::set_var(
             "ENCRYPTION_KEY",
-            "1111111111111111111111111111111111111111111111111111111111ab",
+            "11111111111111111111111111111111111111111111111111111111111111ab",
         );
     }
 
@@ -129,9 +129,10 @@ async fn test_token_generation_and_validation_for_access_tokens() {
     let user = User {
         id: "user-1".to_string(),
         username: "test-user".to_string(),
+        is_admin: false,
     };
 
-    let access_token = auth_service.generate_access_token(&user).unwrap();
+    let access_token = auth_service.generate_access_token(&user, None).unwrap();
     let claims = auth_service.validate_token(&access_token).unwrap();
 
     assert_eq!(claims.sub, "user-1");

@@ -258,6 +258,8 @@ async fn test_webhook_routes_mount_at_api_v1_webhooks() {
                 req.extensions_mut().insert(AuthUser {
                     user_id: "test-user".to_string(),
                     username: "tester".to_string(),
+                    session_id: None,
+                    is_admin: false,
                 });
                 Ok::<_, axum::response::Response>(next.run(req).await)
             },

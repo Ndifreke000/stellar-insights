@@ -684,3 +684,151 @@ impl IntoResponse for Sep10AuthError {
         (status, axum::Json(body)).into_response()
     }
 }
+
+#[cfg(test)]
+mod pending_2fa_tests {
+    use super::*;
+    use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+
+    async fn migrated_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        pool
+    }
+
+    fn test_service(pool: SqlitePool) -> AuthService {
+        // AuthService::new_with_secret still builds a real TwoFAService
+        // internally (CryptoService::from_env), so this needs a real-shaped
+        // ENCRYPTION_KEY even though the JWT secret is passed explicitly.
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "33333333333333333333333333333333333333333333333333333333333333ef",
+        );
+        AuthService::new_with_secret(
+            Arc::new(RwLock::new(None)),
+            pool,
+            "pending_2fa_test_jwt_secret_at_least_32_bytes_long".to_string(),
+        )
+    }
+
+    async fn insert_user(pool: &SqlitePool, id: &str, username: &str, password: &str) {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+        sqlx::query(
+            "INSERT INTO users (id, username, password_hash, created_at, updated_at) \
+             VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+        )
+        .bind(id)
+        .bind(username)
+        .bind(&hash)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    /// End-to-end: a 2FA-enrolled account's login stops at TwoFaRequired, a
+    /// wrong code is rejected, the correct TOTP code completes the login,
+    /// and the same pending_token cannot be replayed afterward.
+    #[tokio::test]
+    async fn login_with_2fa_enabled_requires_and_completes_verify_2fa() {
+        let pool = migrated_pool().await;
+        insert_user(&pool, "user-2fa-test-1", "twofa_tester", "correct horse battery staple").await;
+        let service = test_service(pool);
+
+        // No 2FA enrolled yet: login should succeed immediately.
+        let outcome = service
+            .login(
+                LoginRequest {
+                    username: "twofa_tester".to_string(),
+                    password: "correct horse battery staple".to_string(),
+                },
+                None,
+                "127.0.0.1",
+            )
+            .await
+            .unwrap();
+        assert!(matches!(outcome, LoginOutcome::Success(_)));
+
+        // Enroll and activate 2FA directly via the service's own (private,
+        // but visible to this descendant module) twofa field -- mirrors
+        // what api/twofa.rs's initiate_enrollment + confirm_enrollment do.
+        let (_, secret) = service
+            .twofa
+            .generate_totp_secret("user-2fa-test-1", "twofa_tester")
+            .unwrap();
+        service
+            .twofa
+            .enroll_2fa("user-2fa-test-1", &secret)
+            .await
+            .unwrap();
+        service.twofa.activate_2fa("user-2fa-test-1").await.unwrap();
+
+        // Now login must stop short of issuing real tokens.
+        let outcome = service
+            .login(
+                LoginRequest {
+                    username: "twofa_tester".to_string(),
+                    password: "correct horse battery staple".to_string(),
+                },
+                None,
+                "127.0.0.1",
+            )
+            .await
+            .unwrap();
+        let pending_token = match outcome {
+            LoginOutcome::TwoFaRequired { pending_token, .. } => pending_token,
+            LoginOutcome::Success(_) => panic!("expected 2FA to be required"),
+        };
+
+        // A wrong code must not complete the login.
+        let rejected = service
+            .complete_2fa_login(
+                VerifyTwoFaRequest {
+                    pending_token: pending_token.clone(),
+                    code: "000000".to_string(),
+                },
+                None,
+                "127.0.0.1",
+            )
+            .await;
+        assert!(rejected.is_err());
+
+        // The correct TOTP code, computed independently the same way
+        // twofa.rs's own RFC 6238 tests do, must complete the login.
+        let secret_bytes =
+            base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &secret).unwrap();
+        let step = (Utc::now().timestamp().max(0) as u64) / 30;
+        let code = crate::twofa::totp_code_for_step(&secret_bytes, step);
+
+        let completed = service
+            .complete_2fa_login(
+                VerifyTwoFaRequest {
+                    pending_token: pending_token.clone(),
+                    code,
+                },
+                None,
+                "127.0.0.1",
+            )
+            .await
+            .unwrap();
+        assert!(!completed.access_token.is_empty());
+        assert!(!completed.refresh_token.is_empty());
+
+        // The same pending_token must not be usable a second time, even
+        // with a (still currently valid) correct code.
+        let replay = service
+            .complete_2fa_login(
+                VerifyTwoFaRequest {
+                    pending_token,
+                    code: crate::twofa::totp_code_for_step(&secret_bytes, step),
+                },
+                None,
+                "127.0.0.1",
+            )
+            .await;
+        assert!(replay.is_err());
+    }
+}
