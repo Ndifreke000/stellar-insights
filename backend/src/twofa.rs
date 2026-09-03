@@ -226,6 +226,17 @@ impl TwoFAService {
         }
     }
 
+    /// Verify a code presented mid-login (see AuthService::complete_2fa_login):
+    /// tries it as a TOTP code first, then as a backup code. A matching
+    /// backup code is consumed (see verify_backup_code); a matching TOTP
+    /// code is not, since TOTP codes are naturally single-use per time step.
+    pub async fn verify_login_code(&self, user_id: &str, code: &str) -> Result<bool> {
+        if self.verify_totp_code(user_id, code).await? {
+            return Ok(true);
+        }
+        self.verify_backup_code(user_id, code).await
+    }
+
     /// Disable 2FA for user
     pub async fn disable_2fa(&self, user_id: &str) -> Result<()> {
         sqlx::query("UPDATE user_2fa_secrets SET is_enabled = FALSE WHERE user_id = ?")

@@ -17,6 +17,16 @@ fn create_auth_router() -> Router {
             "test_jwt_secret_key_that_is_long_enough_for_tests_32",
         );
     }
+    if std::env::var("ENCRYPTION_KEY").is_err() {
+        // AuthService::new now also builds a TwoFAService (CryptoService::
+        // from_env), which panics without a real ENCRYPTION_KEY -- 64 hex
+        // chars, distinct from the well-known test/placeholder value that
+        // from_env() explicitly rejects.
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "1111111111111111111111111111111111111111111111111111111111ab",
+        );
+    }
 
     let redis = Arc::new(RwLock::new(None));
     // Use an in-memory database for testing AuthService if no real pool is available
@@ -99,6 +109,16 @@ async fn test_token_generation_and_validation_for_access_tokens() {
         std::env::set_var(
             "JWT_SECRET",
             "test_jwt_secret_key_that_is_long_enough_for_tests_32",
+        );
+    }
+    if std::env::var("ENCRYPTION_KEY").is_err() {
+        // AuthService::new now also builds a TwoFAService (CryptoService::
+        // from_env), which panics without a real ENCRYPTION_KEY -- 64 hex
+        // chars, distinct from the well-known test/placeholder value that
+        // from_env() explicitly rejects.
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "1111111111111111111111111111111111111111111111111111111111ab",
         );
     }
 

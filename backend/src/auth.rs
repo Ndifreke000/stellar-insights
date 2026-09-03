@@ -21,6 +21,13 @@ use uuid::Uuid;
 // Token expiry constants
 const ACCESS_TOKEN_EXPIRY_HOURS: i64 = 1;
 const REFRESH_TOKEN_EXPIRY_DAYS: i64 = 7;
+/// How long a pending-2FA token (issued by login() when the account has 2FA
+/// enabled, consumed by complete_2fa_login()) stays valid. Short on purpose:
+/// it only needs to survive the gap between typing a password and typing a
+/// 6-digit code, and a short window bounds how long a leaked pending token
+/// (e.g. from a compromised client-side log) is useful to an attacker who
+/// still needs the second factor to do anything with it.
+const PENDING_2FA_TOKEN_EXPIRY_MINUTES: i64 = 5;
 
 // WARNING: Demo credentials removed for security. Use database-backed user store.
 // See SEC-001 in SECURITY_AUDIT.md
@@ -47,6 +54,34 @@ pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: i64,
+}
+
+/// Result of a login attempt: either the account has no 2FA and login
+/// completed immediately, or it does and the caller must now present a TOTP
+/// or backup code to `AuthService::complete_2fa_login` before real tokens
+/// are issued.
+#[derive(Debug, Serialize)]
+#[serde(tag = "status")]
+pub enum LoginOutcome {
+    #[serde(rename = "success")]
+    Success(LoginResponse),
+    #[serde(rename = "two_fa_required")]
+    TwoFaRequired {
+        /// Short-lived token identifying this login attempt. Not a
+        /// credential on its own -- it only proves "this client already
+        /// supplied a correct password", and complete_2fa_login still
+        /// requires a valid TOTP/backup code before issuing real tokens.
+        pending_token: String,
+        expires_in: i64,
+    },
+}
+
+/// Request body for completing a 2FA-gated login.
+#[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
+pub struct VerifyTwoFaRequest {
+    pub pending_token: String,
+    pub code: String,
 }
 
 /// Refresh token request
@@ -97,6 +132,7 @@ pub struct AuthService {
     redis_connection: Arc<RwLock<Option<MultiplexedConnection>>>,
     db_pool: SqlitePool,
     session_service: crate::session::SessionService,
+    twofa: crate::twofa::TwoFAService,
 }
 
 impl AuthService {
@@ -121,12 +157,14 @@ impl AuthService {
         );
 
         let session_service = crate::session::SessionService::new(db_pool.clone());
+        let twofa = crate::twofa::TwoFAService::new(db_pool.clone(), crate::crypto::CryptoService::from_env());
 
         Self {
             jwt_secret,
             redis_connection,
             db_pool,
             session_service,
+            twofa,
         }
     }
 
@@ -145,12 +183,14 @@ impl AuthService {
         );
 
         let session_service = crate::session::SessionService::new(db_pool.clone());
+        let twofa = crate::twofa::TwoFAService::new(db_pool.clone(), crate::crypto::CryptoService::from_env());
 
         Self {
             jwt_secret,
             redis_connection,
             db_pool,
             session_service,
+            twofa,
         }
     }
 
@@ -352,18 +392,97 @@ impl AuthService {
         Ok(())
     }
 
-    /// Login flow with session and device tracking
+    /// Login flow with session and device tracking. If the account has 2FA
+    /// enabled, this stops short of issuing real tokens and instead returns
+    /// a pending_token that must be presented to complete_2fa_login along
+    /// with a TOTP/backup code.
     pub async fn login(
         &self,
         request: LoginRequest,
         device_user_agent: Option<String>,
         ip_address: &str,
-    ) -> Result<LoginResponse> {
+    ) -> Result<LoginOutcome> {
         // Authenticate user
         let user = self
             .authenticate(&request.username, &request.password)
             .await?;
 
+        if self.twofa.is_2fa_enabled(&user.id).await? {
+            let pending_token = self.generate_pending_2fa_token(&user)?;
+            return Ok(LoginOutcome::TwoFaRequired {
+                pending_token,
+                expires_in: PENDING_2FA_TOKEN_EXPIRY_MINUTES * 60,
+            });
+        }
+
+        self.complete_login(&user, device_user_agent, ip_address)
+            .await
+            .map(LoginOutcome::Success)
+    }
+
+    /// Verify the code from a pending 2FA login (see login's TwoFaRequired
+    /// branch) and, if valid, finish the login exactly as the no-2FA path
+    /// would: create a session and issue real tokens.
+    pub async fn complete_2fa_login(
+        &self,
+        request: VerifyTwoFaRequest,
+        device_user_agent: Option<String>,
+        ip_address: &str,
+    ) -> Result<LoginResponse> {
+        let claims = self.validate_token(&request.pending_token)?;
+
+        if claims.token_type != "pending_2fa" {
+            return Err(anyhow!("Invalid token type"));
+        }
+
+        let jti = claims
+            .jti
+            .clone()
+            .ok_or_else(|| anyhow!("Pending 2FA token missing jti"))?;
+
+        // Single-use: a pending token that's already been consumed (a prior
+        // successful verify) must not grant a second independent session.
+        let revocation_store =
+            crate::auth_middleware::TokenRevocationStore(Arc::new(self.db_pool.clone()));
+        if crate::auth_middleware::is_token_revoked(&revocation_store, &jti)
+            .await
+            .map_err(|e| anyhow!("Revocation check failed: {e}"))?
+        {
+            return Err(anyhow!("Pending 2FA token already used"));
+        }
+
+        if !self.twofa.verify_login_code(&claims.sub, &request.code).await? {
+            return Err(anyhow!("Invalid 2FA code"));
+        }
+
+        // Consume the token now that it's done its job, so a replay of the
+        // same pending_token + code (e.g. a retried request) can't mint a
+        // second session.
+        crate::auth_middleware::revoke_token(&revocation_store, &jti, &claims.sub, claims.exp)
+            .await
+            .map_err(|e| anyhow!("Failed to revoke pending 2FA token: {e}"))?;
+
+        // Reconstructed from the pending token's own claims rather than a
+        // fresh DB lookup -- same tradeoff already made in refresh() below
+        // for is_admin: acceptable given the token is only 5 minutes old.
+        let user = User {
+            id: claims.sub,
+            username: claims.username,
+            is_admin: claims.is_admin,
+        };
+
+        self.complete_login(&user, device_user_agent, ip_address).await
+    }
+
+    /// Shared tail of both login paths: create a session and issue real
+    /// access/refresh tokens for an already-authenticated (password, and
+    /// 2FA if enabled) user.
+    async fn complete_login(
+        &self,
+        user: &User,
+        device_user_agent: Option<String>,
+        ip_address: &str,
+    ) -> Result<LoginResponse> {
         // Create session with device tracking
         let refresh_token_jti = Uuid::new_v4().to_string();
         let session = self
@@ -372,8 +491,8 @@ impl AuthService {
             .await?;
 
         // Generate tokens with session_id
-        let access_token = self.generate_access_token(&user, Some(&session.id))?;
-        let refresh_token = self.generate_refresh_token(&user, Some(&session.id), &refresh_token_jti)?;
+        let access_token = self.generate_access_token(user, Some(&session.id))?;
+        let refresh_token = self.generate_refresh_token(user, Some(&session.id), &refresh_token_jti)?;
 
         // Store refresh token
         self.store_refresh_token(&refresh_token, &user.id).await?;
@@ -383,6 +502,37 @@ impl AuthService {
             refresh_token,
             expires_in: ACCESS_TOKEN_EXPIRY_HOURS * 3600,
         })
+    }
+
+    /// Short-lived token identifying a password-verified, 2FA-pending login
+    /// attempt. Deliberately carries no session_id (no session exists yet)
+    /// and a distinct token_type so it can't be mistaken for, or used as, a
+    /// real access/refresh token by auth_middleware (which only accepts
+    /// token_type == "access").
+    fn generate_pending_2fa_token(&self, user: &User) -> Result<String> {
+        let expiration = Utc::now()
+            .checked_add_signed(Duration::minutes(PENDING_2FA_TOKEN_EXPIRY_MINUTES))
+            .ok_or_else(|| anyhow!("Invalid timestamp"))?
+            .timestamp();
+
+        let claims = Claims {
+            sub: user.id.clone(),
+            username: user.username.clone(),
+            exp: expiration,
+            iat: Utc::now().timestamp(),
+            token_type: "pending_2fa".to_string(),
+            jti: Some(Uuid::new_v4().to_string()),
+            session_id: None,
+            sid: None,
+            is_admin: user.is_admin,
+        };
+
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
+        )
+        .map_err(|e| anyhow!("Failed to generate pending 2FA token: {e}"))
     }
 
     /// Refresh access token and touch session

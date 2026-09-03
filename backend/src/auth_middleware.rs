@@ -117,7 +117,10 @@ pub async fn auth_middleware(
 }
 
 /// Returns true when the jti is in the revocations table and has not yet expired.
-async fn is_token_revoked(
+///
+/// pub(crate) so AuthService::complete_2fa_login (auth.rs) can also use it
+/// to enforce that a pending-2FA token is single-use.
+pub(crate) async fn is_token_revoked(
     store: &TokenRevocationStore,
     jti: &str,
 ) -> Result<bool, sqlx::Error> {
