@@ -466,12 +466,6 @@ checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
 name = "base32"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23ce669cd6c8588f79e15cf450314f9638f967fc5770ff1c7c1deb0925ea7cfa"
-
-[[package]]
-name = "base32"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "022dfe9eb35f19ebbcb51e0b40a5ab759f46ad60cadf7297e0bd085afb50e076"
@@ -2909,7 +2903,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
- "base32 0.5.1",
+ "base32",
  "base64 0.22.1",
  "chrono",
  "criterion",
@@ -2943,7 +2937,7 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.0",
  "sqlx",
- "stellar-strkey 0.0.8",
+ "stellar-strkey",
  "stellar-xdr",
  "tempfile",
  "thiserror 2.0.20",
@@ -4426,17 +4420,6 @@ checksum = "d7beae5182595e9a8b683fa98c4317f956c9a2dec3b9716990d20023cc60c766"
 
 [[package]]
 name = "stellar-strkey"
-version = "0.0.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12d2bf45e114117ea91d820a846fd1afbe3ba7d717988fee094ce8227a3bf8bd"
-dependencies = [
- "base32 0.4.0",
- "crate-git-revision",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "stellar-strkey"
 version = "0.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee1832fb50c651ad10f734aaf5d31ca5acdfb197a6ecda64d93fcdb8885af913"
@@ -4458,7 +4441,7 @@ dependencies = [
  "ethnum",
  "hex",
  "sha2 0.10.9",
- "stellar-strkey 0.0.13",
+ "stellar-strkey",
 ]
 
 [[package]]

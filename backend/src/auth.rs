@@ -688,7 +688,7 @@ impl IntoResponse for Sep10AuthError {
 #[cfg(test)]
 mod pending_2fa_tests {
     use super::*;
-    use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+    use argon2::password_hash::PasswordHasher;
 
     async fn migrated_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -712,9 +712,10 @@ mod pending_2fa_tests {
     }
 
     async fn insert_user(pool: &SqlitePool, id: &str, username: &str, password: &str) {
-        let salt = SaltString::generate(&mut OsRng);
+        // argon2 0.6's hash_password generates its own random salt
+        // internally now (see models/api_key.rs's identical fix).
         let hash = Argon2::default()
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .unwrap()
             .to_string();
         sqlx::query(

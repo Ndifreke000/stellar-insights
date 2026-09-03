@@ -1,5 +1,5 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
 };
 use serde::{Deserialize, Serialize};
@@ -93,9 +93,11 @@ pub fn extract_key_prefix(plain_key: &str) -> String {
 /// it can be verified later with `verify_api_key`.
 #[must_use]
 pub fn hash_api_key(plain_key: &str) -> String {
-    let salt = SaltString::generate(&mut OsRng);
+    // argon2 0.6's hash_password generates its own random salt internally
+    // (via the getrandom feature, on by default) -- password-hash 0.6
+    // dropped the separate SaltString type this used to take explicitly.
     Argon2::default()
-        .hash_password(plain_key.as_bytes(), &salt)
+        .hash_password(plain_key.as_bytes())
         .expect("argon2 hash failed")
         .to_string()
 }
