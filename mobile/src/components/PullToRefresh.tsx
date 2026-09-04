@@ -125,8 +125,8 @@ export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListPro
         refreshControl={
           <RefreshControl {...(refreshControlProps as any)} onRefresh={handleRefresh} />
         }
-        ListHeaderComponent={ListHeaderComponent}
-        ListFooterComponent={ListFooterComponent}
+        ListHeaderComponent={ListHeaderComponent ?? undefined}
+        ListFooterComponent={ListFooterComponent ?? undefined}
         onEndReached={onEndReached}
         onEndReachedThreshold={onEndReachedThreshold}
         contentContainerStyle={contentContainerStyle}
