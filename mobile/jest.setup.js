@@ -15,7 +15,8 @@ jest.mock('react-native-reanimated', () => {
   return Reanimated;
 });
 
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+// react-native 0.87 moved this from Libraries/Animated/ into src/private/animated/.
+jest.mock('react-native/src/private/animated/NativeAnimatedHelper');
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
