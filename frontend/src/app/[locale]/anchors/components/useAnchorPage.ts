@@ -26,7 +26,7 @@ const useAnchorPage = () => {
 
         // Fetch data from the backend API
         const response = await fetchAnchors({ limit: 100, offset: 0 });
-        setAnchors(response.data);
+        setAnchors(response.anchors);
       } catch (err) {
         logger.error('Failed to fetch anchors:', err);
         setError(err instanceof Error ? err.message : 'Failed to load anchors');

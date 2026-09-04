@@ -19,7 +19,6 @@ interface StateDevtoolsObject {
     totalQueries: number;
     activeQueries: number;
     staleQueries: number;
-    averageStaleTime: number;
   };
 }
 
@@ -65,9 +64,7 @@ function StateDevTools() {
           const cache = queryClient.getQueryCache();
           logger.debug('Query Cache:', { queries: cache.getAll() });
         },
-        invalidateAll: () => {
-          queryClient.invalidateQueries();
-        },
+        invalidateAll: () => queryClient.invalidateQueries(),
         getQueryData: (queryKey: string[]) => {
           const query = queryClient.getQueryCache().find({ queryKey });
           return query?.state.data;
@@ -81,7 +78,6 @@ function StateDevTools() {
             totalQueries: queries.length,
             activeQueries: queries.filter((q: Query) => q.getObserversCount() > 0).length,
             staleQueries: queries.filter((q: Query) => q.isStale()).length,
-            averageStaleTime: queries.reduce((acc: number, q: Query) => acc + q.state.staleTime, 0) / queries.length,
           };
         },
       };
@@ -104,7 +100,7 @@ export function useDebugTools() {
         if (debugTools?.getPerformance) {
           const perf = debugTools.getPerformance();
           if (perf.staleQueries > 0) {
-            console.warn(`Performance: ${perf.staleQueries} stale queries, average stale time: ${perf.averageStaleTime}ms`);
+            console.warn(`Performance: ${perf.staleQueries} stale queries`);
           }
         }
       }, 30000);

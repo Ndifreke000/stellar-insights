@@ -4,7 +4,13 @@
  */
 import { monitoring } from "../monitoring";
 import { logger } from "@/lib/logger";
-import { AnchorsResponse, MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
+import { MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
+// AnchorsResponse comes from ./anchor, not ./types -- lib/api/types.ts had its
+// own conflicting AnchorsResponse ({ data, pagination }) that didn't match
+// what GET /anchors actually returns ({ anchors, total }, see the backend's
+// AnchorsResponse in backend/src/api/anchors.rs). Using it here silently typed
+// getAnchors() wrong; see also useAnchorPage.ts's response.data bug, same root cause.
+import { AnchorsResponse } from "./anchor";
 
 import { config } from '@/config';
 export const API_BASE_URL = config.apiUrl;

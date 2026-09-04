@@ -130,18 +130,11 @@ export interface AnchorMetrics {
   status: string;
 }
 
-export interface AnchorsResponse {
-  data: AnchorMetrics[];
-  pagination: {
-    limit: number;
-    offset: number;
-    total: number;
-    has_next: boolean;
-    has_prev: boolean;
-    next_offset: number | null;
-    prev_offset: number | null;
-  };
-}
+// AnchorsResponse used to be declared here as { data, pagination }, which
+// never matched what GET /anchors actually returns ({ anchors, total } --
+// see backend/src/api/anchors.rs and lib/api/anchor.ts's AnchorsResponse,
+// the correct shape). Removed rather than fixed in place since api.ts now
+// imports the correct one from ./anchor directly.
 
 export interface ReliabilityDataPoint {
   timestamp: string;

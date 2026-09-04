@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  TooltipValueType,
 } from "recharts";
 import { CorridorDetailData } from "@/lib/api/corridors";
 
@@ -137,7 +138,7 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
             tickLine={false}
           />
           <Tooltip
-            formatter={(value?: number) => {
+            formatter={(value?: TooltipValueType) => {
               if (typeof value !== "number") return ["-", "Volume"];
               return [`$${value.toLocaleString()}`, "Volume"];
             }}
@@ -203,7 +204,7 @@ export function SlippageCompareChart({ corridors }: CompareChartsProps) {
           />
           <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
           <Tooltip
-            formatter={(value?: number) => {
+            formatter={(value?: TooltipValueType) => {
               if (typeof value !== "number") return ["-", "Slippage"];
               return [`${value.toFixed(2)} bps`, "Slippage"];
             }}

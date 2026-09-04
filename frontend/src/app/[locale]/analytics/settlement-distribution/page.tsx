@@ -21,6 +21,7 @@ import {
   Tooltip,
   Legend,
   CartesianGrid,
+  TooltipValueType,
 } from "recharts";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function TrendChart({ data }: { data: SettlementTrendPoint[] }) {
               fontSize: 10,
               fontFamily: "monospace",
             }}
-            formatter={(v: number) => [formatMs(v), ""]}
+            formatter={(v?: TooltipValueType) => [formatMs(typeof v === 'number' ? v : Number(v ?? 0)), ""]}
           />
           <Legend
             wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }}

@@ -66,7 +66,7 @@ export function CorridorPerformanceDashboard() {
 
   const { alerts: realtimeAlerts } = useCorridorPerformanceAlerts({
     onAlert: (alert) => {
-      logger.debug("Real-time corridor alert:", alert);
+      logger.debug("Real-time corridor alert:", { ...alert });
       fetchSummaries();
     },
   });

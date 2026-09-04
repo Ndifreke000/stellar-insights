@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  TooltipValueType,
 } from "recharts";
 import type { Metric, AppError } from "@/lib/monitoring";
 
@@ -161,7 +162,7 @@ export default function PerformancePage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis type="number" unit="ms" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="endpoint" tick={{ fontSize: 11 }} width={140} />
-                <Tooltip formatter={(v?: number): [string, string] => [`${v ?? 0}ms`, "Avg latency"]} />
+                <Tooltip formatter={(v?: TooltipValueType): [string, string] => [`${typeof v === 'number' ? v : Number(v ?? 0)}ms`, "Avg latency"]} />
                 <Bar dataKey="latency" fill="rgb(99,102,241)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

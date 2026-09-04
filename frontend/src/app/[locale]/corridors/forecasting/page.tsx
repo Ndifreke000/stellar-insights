@@ -32,7 +32,7 @@ export default function CorridorForecastingPage() {
       const data = await getCorridors({ limit: 6, sort_by: "health_score" });
       setCorridors(data);
     } catch (err) {
-      logger.warn("Using mock corridor data for forecasting", err);
+      logger.warn("Using mock corridor data for forecasting", { error: err });
       setError(err instanceof Error ? err.message : "Failed to load live corridor metrics from backend.");
       setIsUsingFallback(true);
       setCorridors(mockCorridors as unknown as CorridorMetrics[]);

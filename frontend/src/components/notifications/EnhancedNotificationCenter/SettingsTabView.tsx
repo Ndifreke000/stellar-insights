@@ -112,9 +112,9 @@ const SettingsTabView = ({ updatePreferences, preferences }: {
                   <Label className="text-sm font-medium">Sound Type</Label>
                   <Select
                     value={preferences.sound.soundType}
-                    onValueChange={(soundType: NotificationSound['soundType']) =>
+                    onValueChange={(soundType) =>
                       updatePreferences({
-                        sound: { ...preferences.sound, soundType },
+                        sound: { ...preferences.sound, soundType: soundType as NotificationSound['soundType'] },
                       })
                     }
                   >
