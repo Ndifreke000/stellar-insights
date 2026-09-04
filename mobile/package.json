@@ -39,7 +39,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@babel/core": "^7.23.7",
+    "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
     "@babel/runtime": "^8.0.0",
     "@react-native/babel-preset": "^0.73.19",
