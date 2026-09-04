@@ -28,7 +28,7 @@ describe('useSecureTokenStorage', () => {
   it('loads the stored token on mount', async () => {
     mockGetToken.mockResolvedValue('stored-token');
 
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     expect(result.current.isLoading).toBe(true);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -37,13 +37,13 @@ describe('useSecureTokenStorage', () => {
   });
 
   it('exposes a null token when none is stored', async () => {
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.token).toBeNull();
   });
 
   it('saves a token and reflects it in state', async () => {
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
@@ -57,7 +57,7 @@ describe('useSecureTokenStorage', () => {
 
   it('removes a token and clears state', async () => {
     mockGetToken.mockResolvedValue('stored-token');
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.token).toBe('stored-token'));
 
     await act(async () => {
@@ -71,7 +71,7 @@ describe('useSecureTokenStorage', () => {
   it('surfaces a read error without throwing', async () => {
     mockGetToken.mockRejectedValue(new Error('read failed'));
 
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.token).toBeNull();
@@ -80,7 +80,7 @@ describe('useSecureTokenStorage', () => {
 
   it('surfaces a save error without throwing', async () => {
     mockSaveToken.mockRejectedValue(new Error('write failed'));
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
@@ -93,7 +93,7 @@ describe('useSecureTokenStorage', () => {
 
   it('surfaces a remove error without throwing', async () => {
     mockRemoveToken.mockRejectedValue(new Error('remove failed'));
-    const { result } = renderHook(() => useSecureTokenStorage());
+    const { result } = await renderHook(() => useSecureTokenStorage());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {

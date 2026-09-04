@@ -126,8 +126,8 @@ describe('MainNavigator', () => {
     }).not.toThrow();
   });
 
-  it('mounts the anchors stack when the Anchors tab is active', () => {
-    const { getByText } = render(
+  it('mounts the anchors stack when the Anchors tab is active', async () => {
+    const { getByText } = await render(
       <NavigationContainer initialState={createTabInitialState('Anchors')}>
         <MainNavigator />
       </NavigationContainer>,
@@ -136,8 +136,8 @@ describe('MainNavigator', () => {
     expect(getByText('Anchors List')).toBeTruthy();
   });
 
-  it('mounts the corridors stack when the Corridors tab is active', () => {
-    const { getByText } = render(
+  it('mounts the corridors stack when the Corridors tab is active', async () => {
+    const { getByText } = await render(
       <NavigationContainer initialState={createTabInitialState('Corridors')}>
         <MainNavigator />
       </NavigationContainer>,

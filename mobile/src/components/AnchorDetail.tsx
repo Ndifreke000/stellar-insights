@@ -284,6 +284,7 @@ export const AnchorDetail: React.FC<AnchorDetailProps> = ({
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
+        testID="anchor-detail-scroll"
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl

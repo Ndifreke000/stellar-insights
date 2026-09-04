@@ -13,9 +13,9 @@ describe('useSplashScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('starts in loading state', () => {
+  it('starts in loading state', async () => {
     mockedInitializeApp.mockReturnValue(new Promise(() => {})); // never resolves
-    const { result } = renderHook(() => useSplashScreen());
+    const { result } = await renderHook(() => useSplashScreen());
 
     expect(result.current.status).toBe('loading');
     expect(result.current.isVisible).toBe(true);
@@ -24,7 +24,7 @@ describe('useSplashScreen', () => {
 
   it('transitions to ready after successful initialization', async () => {
     mockedInitializeApp.mockResolvedValue();
-    const { result } = renderHook(() => useSplashScreen());
+    const { result } = await renderHook(() => useSplashScreen());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
@@ -34,7 +34,7 @@ describe('useSplashScreen', () => {
 
   it('transitions to error state when initialization fails', async () => {
     mockedInitializeApp.mockRejectedValue(new Error('DB init failed'));
-    const { result } = renderHook(() => useSplashScreen());
+    const { result } = await renderHook(() => useSplashScreen());
 
     await waitFor(() => expect(result.current.status).toBe('error'));
 
@@ -44,16 +44,16 @@ describe('useSplashScreen', () => {
 
   it('uses generic message for non-Error rejections', async () => {
     mockedInitializeApp.mockRejectedValue('string error');
-    const { result } = renderHook(() => useSplashScreen());
+    const { result } = await renderHook(() => useSplashScreen());
 
     await waitFor(() => expect(result.current.status).toBe('error'));
 
     expect(result.current.error).toBe('Initialization failed');
   });
 
-  it('exposes a platformName string', () => {
+  it('exposes a platformName string', async () => {
     mockedInitializeApp.mockReturnValue(new Promise(() => {}));
-    const { result } = renderHook(() => useSplashScreen());
+    const { result } = await renderHook(() => useSplashScreen());
 
     expect(typeof result.current.platformName).toBe('string');
     expect(result.current.platformName.length).toBeGreaterThan(0);

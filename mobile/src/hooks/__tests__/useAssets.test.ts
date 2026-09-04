@@ -31,7 +31,7 @@ describe('useAssets', () => {
     const mockData = generateMockAssetsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -49,7 +49,7 @@ describe('useAssets', () => {
       pagination: { total: mockData.total },
     });
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -65,7 +65,7 @@ describe('useAssets', () => {
     await AsyncStorage.setItem(ASSETS_LIST_CACHE_KEY, JSON.stringify(mockData));
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -81,7 +81,7 @@ describe('useAssets', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -96,7 +96,7 @@ describe('useAssets', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -110,7 +110,7 @@ describe('useAssets', () => {
     const mockData = generateMockAssetsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -131,7 +131,7 @@ describe('useAssets', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -151,7 +151,7 @@ describe('useAssets', () => {
       new Error('Storage read failed'),
     );
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -163,7 +163,7 @@ describe('useAssets', () => {
   it('handles NetInfo fetch failures as offline', async () => {
     (NetInfo.fetch as jest.Mock).mockRejectedValue(new Error('NetInfo unavailable'));
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -177,7 +177,7 @@ describe('useAssets', () => {
     const mockData = generateMockAssetsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAssets());
+    const { result } = await renderHook(() => useAssets());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

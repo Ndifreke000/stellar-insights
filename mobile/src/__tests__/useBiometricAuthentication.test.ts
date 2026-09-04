@@ -29,7 +29,7 @@ describe('useBiometricAuthentication', () => {
     mockIsAvailable.mockResolvedValue(true);
     mockGetType.mockResolvedValue('FaceID');
 
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     expect(result.current.isLoading).toBe(true);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -39,7 +39,7 @@ describe('useBiometricAuthentication', () => {
   });
 
   it('reports unavailable biometrics', async () => {
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.isAvailable).toBe(false);
     expect(result.current.biometricType).toBe('None');
@@ -47,7 +47,7 @@ describe('useBiometricAuthentication', () => {
 
   it('resolves true when authentication succeeds', async () => {
     mockAuthenticate.mockResolvedValue(true);
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     let outcome = false;
@@ -60,7 +60,7 @@ describe('useBiometricAuthentication', () => {
 
   it('resolves false when the user cancels', async () => {
     mockAuthenticate.mockResolvedValue(false);
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     let outcome = true;
@@ -72,7 +72,7 @@ describe('useBiometricAuthentication', () => {
 
   it('surfaces a hardware error via the error field and resolves false', async () => {
     mockAuthenticate.mockRejectedValue(new Error('hardware error'));
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     let outcome = true;
@@ -87,7 +87,7 @@ describe('useBiometricAuthentication', () => {
 
   it('surfaces an availability-probe error', async () => {
     mockIsAvailable.mockRejectedValue(new Error('probe failed'));
-    const { result } = renderHook(() => useBiometricAuthentication());
+    const { result } = await renderHook(() => useBiometricAuthentication());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBe('Unable to check biometric availability');
   });

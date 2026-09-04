@@ -31,7 +31,7 @@ describe('useCorridorDetail', () => {
     const mockData = generateMockCorridorData('USDC-PHP');
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-PHP' }),
     );
 
@@ -52,7 +52,7 @@ describe('useCorridorDetail', () => {
     );
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-PHP' }),
     );
 
@@ -70,7 +70,7 @@ describe('useCorridorDetail', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-NGN' }),
     );
 
@@ -87,7 +87,7 @@ describe('useCorridorDetail', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-PHP' }),
     );
 
@@ -100,7 +100,7 @@ describe('useCorridorDetail', () => {
   });
 
   it('sets error when corridor id is missing', async () => {
-    const { result } = renderHook(() => useCorridorDetail({ corridorId: '' }));
+    const { result } = await renderHook(() => useCorridorDetail({ corridorId: '' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -113,7 +113,7 @@ describe('useCorridorDetail', () => {
     const mockData = generateMockCorridorData('USDC-PHP');
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-PHP' }),
     );
 
@@ -139,7 +139,7 @@ describe('useCorridorDetail', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-JPY' }),
     );
 
@@ -160,7 +160,7 @@ describe('useCorridorDetail', () => {
       new Error('Storage read failed'),
     );
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useCorridorDetail({ corridorId: 'USDC-PHP' }),
     );
 

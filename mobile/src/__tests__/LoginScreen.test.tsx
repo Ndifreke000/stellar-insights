@@ -64,7 +64,7 @@ function makeAxiosError(status?: number) {
 }
 
 function fillForm(
-  api: ReturnType<typeof render>,
+  api: Awaited<ReturnType<typeof render>>,
   identifier = 'user@example.com',
   password = 'password123',
 ) {
@@ -118,8 +118,8 @@ describe('LoginScreen', () => {
     });
   });
 
-  it('renders correctly', () => {
-    const { getByText, getByLabelText } = render(<LoginScreen />);
+  it('renders correctly', async () => {
+    const { getByText, getByLabelText } = await render(<LoginScreen />);
 
     expect(getByText('PayRaider')).toBeTruthy();
     expect(getByLabelText('Email or username')).toBeTruthy();
@@ -128,7 +128,7 @@ describe('LoginScreen', () => {
   });
 
   it('shows validation errors on empty submit', async () => {
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
 
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -140,7 +140,7 @@ describe('LoginScreen', () => {
   });
 
   it('shows an inline error for an invalid email format', async () => {
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
 
     fillForm(screen, 'bad@email', 'password123');
     fireEvent.press(screen.getByLabelText('Sign in'));
@@ -151,8 +151,8 @@ describe('LoginScreen', () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
-  it('toggles password visibility', () => {
-    const screen = render(<LoginScreen />);
+  it('toggles password visibility', async () => {
+    const screen = await render(<LoginScreen />);
     const passwordInput = screen.getByLabelText('Password');
 
     expect(passwordInput.props.secureTextEntry).toBe(true);
@@ -166,7 +166,7 @@ describe('LoginScreen', () => {
     mockPost.mockResolvedValue(SUCCESS_RESPONSE);
     const onLoginSuccess = jest.fn();
 
-    const screen = render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
+    const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
     fillForm(screen, 'user@example.com', 'password123');
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -190,7 +190,7 @@ describe('LoginScreen', () => {
       }),
     );
 
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     fillForm(screen);
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -208,7 +208,7 @@ describe('LoginScreen', () => {
   it('shows a global error banner on wrong credentials', async () => {
     mockPost.mockRejectedValue(makeAxiosError(401));
 
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     fillForm(screen);
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -223,7 +223,7 @@ describe('LoginScreen', () => {
   it('shows a network error banner when the request fails to reach the server', async () => {
     mockPost.mockRejectedValue(makeAxiosError());
 
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     fillForm(screen);
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -237,7 +237,7 @@ describe('LoginScreen', () => {
   });
 
   it('hides the biometric button when biometrics are unavailable', async () => {
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     await waitFor(() => expect(mockGetToken).toHaveBeenCalled());
     expect(screen.queryByLabelText(/Sign in with/)).toBeNull();
   });
@@ -249,7 +249,7 @@ describe('LoginScreen', () => {
     mockBiometricAuthenticate.mockResolvedValue(true);
     const onLoginSuccess = jest.fn();
 
-    const screen = render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
+    const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
     const button = await screen.findByLabelText('Sign in with Face ID');
 
     fireEvent.press(button);
@@ -267,7 +267,7 @@ describe('LoginScreen', () => {
     mockGetToken.mockResolvedValue('stored-token');
     mockBiometricAuthenticate.mockResolvedValue(false);
 
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     const button = await screen.findByLabelText('Sign in with Touch ID');
 
     fireEvent.press(button);
@@ -288,7 +288,7 @@ describe('LoginScreen', () => {
     saveToken.mockRejectedValueOnce(new Error('keychain unavailable'));
     const onLoginSuccess = jest.fn();
 
-    const screen = render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
+    const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
     fillForm(screen);
     fireEvent.press(screen.getByLabelText('Sign in'));
 
@@ -302,7 +302,7 @@ describe('LoginScreen', () => {
     mockGetToken.mockResolvedValueOnce('stored-token').mockResolvedValue(null);
     mockBiometricAuthenticate.mockResolvedValue(true);
 
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
     const button = await screen.findByLabelText('Sign in with Face ID');
 
     fireEvent.press(button);
@@ -316,7 +316,7 @@ describe('LoginScreen', () => {
   });
 
   it('clears a field error once the user edits the field', async () => {
-    const screen = render(<LoginScreen />);
+    const screen = await render(<LoginScreen />);
 
     fireEvent.press(screen.getByLabelText('Sign in'));
     await waitFor(() => {

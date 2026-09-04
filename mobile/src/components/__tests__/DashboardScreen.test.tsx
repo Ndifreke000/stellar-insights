@@ -46,20 +46,20 @@ describe('Dashboard Screen', () => {
     jest.clearAllMocks();
   });
 
-  it('renders correctly', () => {
+  it('renders correctly', async () => {
     mockUseDashboardScreen.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = await render(<DashboardScreen />);
 
     expect(getByText('Dashboard')).toBeTruthy();
     expect(getByText('Top Corridors')).toBeTruthy();
     expect(getByText('USDC→PHP')).toBeTruthy();
   });
 
-  it('renders stat cards with formatted values', () => {
+  it('renders stat cards with formatted values', async () => {
     mockUseDashboardScreen.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = await render(<DashboardScreen />);
 
     expect(getByText('Volume (24h)')).toBeTruthy();
     expect(getByText('$72.0K')).toBeTruthy();
@@ -69,12 +69,12 @@ describe('Dashboard Screen', () => {
     expect(getByText('28')).toBeTruthy();
   });
 
-  it('shows loading state with accessibility label', () => {
+  it('shows loading state with accessibility label', async () => {
     mockUseDashboardScreen.mockReturnValue(
       mockHookReturn({ stats: null, corridorPerformance: [], loading: true }),
     );
 
-    const { getByLabelText } = render(<DashboardScreen />);
+    const { getByLabelText } = await render(<DashboardScreen />);
 
     expect(getByLabelText('Loading dashboard')).toBeTruthy();
   });
@@ -88,7 +88,7 @@ describe('Dashboard Screen', () => {
       }),
     );
 
-    const { getByLabelText } = render(<DashboardScreen />);
+    const { getByLabelText } = await render(<DashboardScreen />);
 
     fireEvent.press(getByLabelText('Retry loading dashboard'));
     await waitFor(() => {
@@ -96,7 +96,7 @@ describe('Dashboard Screen', () => {
     });
   });
 
-  it('shows mock sample-data banner when live data is unavailable', () => {
+  it('shows mock sample-data banner when live data is unavailable', async () => {
     mockUseDashboardScreen.mockReturnValue(
       mockHookReturn({
         dataSource: 'mock',
@@ -104,7 +104,7 @@ describe('Dashboard Screen', () => {
       }),
     );
 
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = await render(<DashboardScreen />);
 
     expect(
       getByText('Live data unavailable. Showing sample dashboard.'),
@@ -116,7 +116,7 @@ describe('Dashboard Screen', () => {
     ).toBeTruthy();
   });
 
-  it('shows offline cached feedback banner', () => {
+  it('shows offline cached feedback banner', async () => {
     mockUseDashboardScreen.mockReturnValue(
       mockHookReturn({
         isOffline: true,
@@ -126,16 +126,16 @@ describe('Dashboard Screen', () => {
       }),
     );
 
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = await render(<DashboardScreen />);
 
     expect(getByText('Offline — showing saved dashboard.')).toBeTruthy();
   });
 
-  it('invokes onCorridorPress when a corridor row is pressed', () => {
+  it('invokes onCorridorPress when a corridor row is pressed', async () => {
     mockUseDashboardScreen.mockReturnValue(mockHookReturn());
     const onCorridorPress = jest.fn();
 
-    const { getByText } = render(
+    const { getByText } = await render(
       <DashboardScreen onCorridorPress={onCorridorPress} />,
     );
 
@@ -143,7 +143,7 @@ describe('Dashboard Screen', () => {
     expect(onCorridorPress).toHaveBeenCalledWith('USDC→PHP');
   });
 
-  it('formats large and small values and negative/neutral growth', () => {
+  it('formats large and small values and negative/neutral growth', async () => {
     mockUseDashboardScreen.mockReturnValue(
       mockHookReturn({
         stats: {
@@ -163,7 +163,7 @@ describe('Dashboard Screen', () => {
       }),
     );
 
-    const { getByText, getByLabelText } = render(<DashboardScreen />);
+    const { getByText, getByLabelText } = await render(<DashboardScreen />);
 
     expect(getByText('$2.4M')).toBeTruthy();
     expect(getByText('-5.3%')).toBeTruthy();
@@ -172,12 +172,12 @@ describe('Dashboard Screen', () => {
     expect(getByLabelText(/Success Rate.*no change/)).toBeTruthy();
   });
 
-  it('shows an empty state when no corridor data is available', () => {
+  it('shows an empty state when no corridor data is available', async () => {
     mockUseDashboardScreen.mockReturnValue(
       mockHookReturn({ corridorPerformance: [] }),
     );
 
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = await render(<DashboardScreen />);
 
     expect(getByText('No corridor data available')).toBeTruthy();
   });

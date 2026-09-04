@@ -89,22 +89,22 @@ describe('Anchors List', () => {
     jest.clearAllMocks();
   });
 
-  it('renders correctly', () => {
+  it('renders correctly', async () => {
     mockUseAnchorsList.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('Anchors List')).toBeTruthy();
     expect(getByText('MoneyGram Access')).toBeTruthy();
     expect(getByText('AnchorUSD')).toBeTruthy();
   });
 
-  it('shows loading state with accessibility label', () => {
+  it('shows loading state with accessibility label', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({ anchors: [], total: 0, loading: true }),
     );
 
-    const { getByLabelText } = render(<AnchorsList />);
+    const { getByLabelText } = await render(<AnchorsList />);
 
     expect(getByLabelText('Loading anchors list')).toBeTruthy();
   });
@@ -118,7 +118,7 @@ describe('Anchors List', () => {
       }),
     );
 
-    const { getByLabelText } = render(<AnchorsList />);
+    const { getByLabelText } = await render(<AnchorsList />);
 
     fireEvent.press(getByLabelText('Retry loading anchors list'));
     await waitFor(() => {
@@ -126,7 +126,7 @@ describe('Anchors List', () => {
     });
   });
 
-  it('shows mock sample-data banner when live data is unavailable', () => {
+  it('shows mock sample-data banner when live data is unavailable', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({
         dataSource: 'mock',
@@ -134,7 +134,7 @@ describe('Anchors List', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('Live data unavailable. Showing sample anchors.')).toBeTruthy();
     expect(
@@ -144,7 +144,7 @@ describe('Anchors List', () => {
     ).toBeTruthy();
   });
 
-  it('shows offline cached feedback banner', () => {
+  it('shows offline cached feedback banner', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({
         isOffline: true,
@@ -154,26 +154,26 @@ describe('Anchors List', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('Offline — showing saved anchors.')).toBeTruthy();
   });
 
-  it('shows empty state when no anchors are available', () => {
+  it('shows empty state when no anchors are available', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({ anchors: [], total: 0 }),
     );
 
-    const { getByLabelText } = render(<AnchorsList />);
+    const { getByLabelText } = await render(<AnchorsList />);
 
     expect(getByLabelText('No anchors available')).toBeTruthy();
   });
 
-  it('calls onAnchorPress when an anchor card is pressed', () => {
+  it('calls onAnchorPress when an anchor card is pressed', async () => {
     const onAnchorPress = jest.fn();
     mockUseAnchorsList.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <AnchorsList onAnchorPress={onAnchorPress} />,
     );
 
@@ -186,10 +186,10 @@ describe('Anchors List', () => {
     expect(onAnchorPress).toHaveBeenCalledWith('anchor-1');
   });
 
-  it('navigates to anchor detail when no onAnchorPress is provided', () => {
+  it('navigates to anchor detail when no onAnchorPress is provided', async () => {
     mockUseAnchorsList.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(<AnchorsList />);
+    const { getByLabelText } = await render(<AnchorsList />);
 
     fireEvent.press(
       getByLabelText(
@@ -202,22 +202,22 @@ describe('Anchors List', () => {
     });
   });
 
-  it('refetches when pull-to-refresh is triggered', () => {
+  it('refetches when pull-to-refresh is triggered', async () => {
     mockUseAnchorsList.mockReturnValue(mockHookReturn());
 
-    const { UNSAFE_getByType } = render(<AnchorsList />);
-    const flatList = UNSAFE_getByType(require('react-native').FlatList);
+    const { getByTestId } = await render(<AnchorsList />);
+    const flatList = getByTestId('anchors-list');
     flatList.props.refreshControl.props.onRefresh();
 
     expect(mockRefetch).toHaveBeenCalledTimes(1);
   });
 
-  it('renders status badges for healthy, degraded, critical, and unknown anchors', () => {
+  it('renders status badges for healthy, degraded, critical, and unknown anchors', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({ anchors: SAMPLE_ANCHORS, total: 4 }),
     );
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('Healthy')).toBeTruthy();
     expect(getByText('Degraded')).toBeTruthy();
@@ -225,7 +225,7 @@ describe('Anchors List', () => {
     expect(getByText('Unknown')).toBeTruthy();
   });
 
-  it('formats large transaction counts and short addresses', () => {
+  it('formats large transaction counts and short addresses', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({
         anchors: [
@@ -239,13 +239,13 @@ describe('Anchors List', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('GSHORT')).toBeTruthy();
     expect(getByText('2.4M / 2.5M transactions · Failure rate 5.0%')).toBeTruthy();
   });
 
-  it('formats thousands in transaction counts', () => {
+  it('formats thousands in transaction counts', async () => {
     mockUseAnchorsList.mockReturnValue(
       mockHookReturn({
         anchors: [
@@ -259,7 +259,7 @@ describe('Anchors List', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorsList />);
+    const { getByText } = await render(<AnchorsList />);
 
     expect(getByText('4.2K / 5.5K transactions · Failure rate 0.8%')).toBeTruthy();
   });

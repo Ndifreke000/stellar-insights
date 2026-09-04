@@ -198,6 +198,7 @@ export const CorridorsList: React.FC<CorridorsListProps> = ({ onCorridorPress })
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
+        testID="corridors-list"
         data={corridors}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}

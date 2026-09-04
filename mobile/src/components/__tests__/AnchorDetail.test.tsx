@@ -81,21 +81,21 @@ describe('Anchor Detail', () => {
     });
   });
 
-  it('renders correctly', () => {
+  it('renders correctly', async () => {
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     expect(getByText('MoneyGram Access')).toBeTruthy();
     expect(getByText('Issued Assets')).toBeTruthy();
   });
 
-  it('shows loading state with accessibility label', () => {
+  it('shows loading state with accessibility label', async () => {
     mockUseAnchorDetail.mockReturnValue(
       mockHookReturn({ data: null, loading: true }),
     );
 
-    const { getByLabelText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     expect(getByLabelText('Loading anchor detail')).toBeTruthy();
   });
@@ -108,7 +108,7 @@ describe('Anchor Detail', () => {
       }),
     );
 
-    const { getByLabelText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     fireEvent.press(getByLabelText('Retry loading anchor detail'));
     await waitFor(() => {
@@ -116,7 +116,7 @@ describe('Anchor Detail', () => {
     });
   });
 
-  it('shows mock sample-data banner when live data is unavailable', () => {
+  it('shows mock sample-data banner when live data is unavailable', async () => {
     mockUseAnchorDetail.mockReturnValue(
       mockHookReturn({
         dataSource: 'mock',
@@ -124,7 +124,7 @@ describe('Anchor Detail', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     expect(getByText('Live data unavailable. Showing sample data.')).toBeTruthy();
     expect(
@@ -134,7 +134,7 @@ describe('Anchor Detail', () => {
     ).toBeTruthy();
   });
 
-  it('shows offline cached feedback banner', () => {
+  it('shows offline cached feedback banner', async () => {
     mockUseAnchorDetail.mockReturnValue(
       mockHookReturn({
         isOffline: true,
@@ -144,15 +144,15 @@ describe('Anchor Detail', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     expect(getByText('Offline — showing saved anchor data.')).toBeTruthy();
   });
 
-  it('uses navigation callbacks when props are not provided', () => {
+  it('uses navigation callbacks when props are not provided', async () => {
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     fireEvent.press(getByLabelText('Go back to anchors list'));
     expect(mockGoBack).toHaveBeenCalledTimes(1);
@@ -164,12 +164,12 @@ describe('Anchor Detail', () => {
     });
   });
 
-  it('uses provided navigation callbacks when supplied', () => {
+  it('uses provided navigation callbacks when supplied', async () => {
     const onGoBack = jest.fn();
     const onNavigateToCorridor = jest.fn();
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <AnchorDetail
         anchorId="anchor-1"
         onGoBack={onGoBack}
@@ -185,21 +185,21 @@ describe('Anchor Detail', () => {
     expect(mockGoBack).not.toHaveBeenCalled();
   });
 
-  it('shows default error message when data is unavailable', () => {
+  it('shows default error message when data is unavailable', async () => {
     mockUseAnchorDetail.mockReturnValue(
       mockHookReturn({ data: null, error: null }),
     );
 
-    const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
     expect(getByText('Failed to load anchor data')).toBeTruthy();
   });
 
-  it('covers reliability score color branches', () => {
+  it('covers reliability score color branches', async () => {
     const warningData = createMockAnchorData('anchor-1');
     warningData.anchor.reliability_score = 80;
     mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data: warningData }));
 
-    const { getByText, rerender } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText, rerender } = await render(<AnchorDetail anchorId="anchor-1" />);
     expect(getByText('80.0')).toBeTruthy();
 
     const criticalData = createMockAnchorData('anchor-1');
@@ -209,14 +209,14 @@ describe('Anchor Detail', () => {
     expect(getByText('60.0')).toBeTruthy();
   });
 
-  it('covers status style branches', () => {
+  it('covers status style branches', async () => {
     const statuses = ['yellow', 'red', 'unknown'] as const;
 
-    statuses.forEach(status => {
+    for (const status of statuses) {
       const data = createMockAnchorData('anchor-1');
       data.anchor.status = status;
       mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data }));
-      const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+      const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
       if (status === 'yellow') {
         expect(getByText('Degraded')).toBeTruthy();
       } else if (status === 'red') {
@@ -224,20 +224,20 @@ describe('Anchor Detail', () => {
       } else {
         expect(getByText('Unknown')).toBeTruthy();
       }
-    });
+    }
   });
 
-  it('refetches when pull-to-refresh is triggered', () => {
+  it('refetches when pull-to-refresh is triggered', async () => {
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
-    const { UNSAFE_getByType } = render(<AnchorDetail anchorId="anchor-1" />);
-    const scrollView = UNSAFE_getByType(require('react-native').ScrollView);
+    const { getByTestId } = await render(<AnchorDetail anchorId="anchor-1" />);
+    const scrollView = getByTestId('anchor-detail-scroll');
     scrollView.props.refreshControl.props.onRefresh();
 
     expect(mockRefetch).toHaveBeenCalledTimes(1);
   });
 
-  it('renders short addresses and varied asset volume formats', () => {
+  it('renders short addresses and varied asset volume formats', async () => {
     const data = createMockAnchorData('anchor-1');
     data.anchor.stellar_account = 'GSHORT';
     data.anchor.total_transactions = 0;
@@ -262,7 +262,7 @@ describe('Anchor Detail', () => {
     ];
     mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data }));
 
-    const { getByLabelText, getByText, getAllByText } = render(
+    const { getByLabelText, getByText, getAllByText } = await render(
       <AnchorDetail anchorId="anchor-1" />,
     );
 
@@ -271,7 +271,7 @@ describe('Anchor Detail', () => {
     expect(getByText('Uptime')).toBeTruthy();
   });
 
-  it('shows cache feedback banner styling for non-mock data source', () => {
+  it('shows cache feedback banner styling for non-mock data source', async () => {
     mockUseAnchorDetail.mockReturnValue(
       mockHookReturn({
         dataSource: 'cache',
@@ -279,11 +279,11 @@ describe('Anchor Detail', () => {
       }),
     );
 
-    const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
     expect(getByText('Offline — showing saved anchor data.')).toBeTruthy();
   });
 
-  it('covers additional status aliases', () => {
+  it('covers additional status aliases', async () => {
     const aliases = [
       { status: 'active', label: 'Healthy' },
       { status: 'healthy', label: 'Healthy' },
@@ -292,34 +292,34 @@ describe('Anchor Detail', () => {
       { status: 'critical', label: 'Critical' },
     ] as const;
 
-    aliases.forEach(({ status, label }) => {
+    for (const { status, label } of aliases) {
       const data = createMockAnchorData('anchor-1');
       data.anchor.status = status;
       mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data }));
-      const { getByText } = render(<AnchorDetail anchorId="anchor-1" />);
+      const { getByText } = await render(<AnchorDetail anchorId="anchor-1" />);
       expect(getByText(label)).toBeTruthy();
-    });
+    }
   });
 
-  it('omits optional sections when data is not provided', () => {
+  it('omits optional sections when data is not provided', async () => {
     const data = createMockAnchorData('anchor-1');
     data.issued_assets = [];
     data.top_failure_reasons = [];
     data.recent_failed_corridors = [];
     mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data }));
 
-    const { queryByText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { queryByText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
     expect(queryByText('Issued Assets')).toBeNull();
     expect(queryByText('Top Failure Reasons')).toBeNull();
     expect(queryByText('Recent Failed Corridors')).toBeNull();
   });
 
-  it('does not navigate to corridor when parent navigator is unavailable', () => {
+  it('does not navigate to corridor when parent navigator is unavailable', async () => {
     mockGetParent.mockReturnValue(null);
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(<AnchorDetail anchorId="anchor-1" />);
+    const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
     fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
 
     expect(mockParentNavigate).not.toHaveBeenCalled();

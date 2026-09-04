@@ -92,21 +92,21 @@ describe('Corridor Detail', () => {
     jest.clearAllMocks();
   });
 
-  it('renders correctly', () => {
+  it('renders correctly', async () => {
     mockUseCorridorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     expect(getByText('USDC → PHP')).toBeTruthy();
     expect(getByText('Pair: USDC-PHP')).toBeTruthy();
   });
 
-  it('shows loading state with accessibility label', () => {
+  it('shows loading state with accessibility label', async () => {
     mockUseCorridorDetail.mockReturnValue(
       mockHookReturn({ data: null, loading: true }),
     );
 
-    const { getByLabelText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByLabelText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     expect(getByLabelText('Loading corridor detail')).toBeTruthy();
   });
@@ -119,7 +119,7 @@ describe('Corridor Detail', () => {
       }),
     );
 
-    const { getByLabelText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByLabelText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     fireEvent.press(getByLabelText('Retry loading corridor detail'));
     await waitFor(() => {
@@ -127,7 +127,7 @@ describe('Corridor Detail', () => {
     });
   });
 
-  it('shows mock sample-data banner when live data is unavailable', () => {
+  it('shows mock sample-data banner when live data is unavailable', async () => {
     mockUseCorridorDetail.mockReturnValue(
       mockHookReturn({
         dataSource: 'mock',
@@ -135,7 +135,7 @@ describe('Corridor Detail', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     expect(getByText('Live data unavailable. Showing sample data.')).toBeTruthy();
     expect(
@@ -145,7 +145,7 @@ describe('Corridor Detail', () => {
     ).toBeTruthy();
   });
 
-  it('shows offline cached feedback banner', () => {
+  it('shows offline cached feedback banner', async () => {
     mockUseCorridorDetail.mockReturnValue(
       mockHookReturn({
         isOffline: true,
@@ -155,15 +155,15 @@ describe('Corridor Detail', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     expect(getByText('Offline — showing saved corridor data.')).toBeTruthy();
   });
 
-  it('uses navigation callbacks when props are not provided', () => {
+  it('uses navigation callbacks when props are not provided', async () => {
     mockUseCorridorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByLabelText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
     fireEvent.press(getByLabelText('Go back to corridors list'));
     expect(mockGoBack).toHaveBeenCalledTimes(1);
@@ -174,12 +174,12 @@ describe('Corridor Detail', () => {
     });
   });
 
-  it('uses provided navigation callbacks when supplied', () => {
+  it('uses provided navigation callbacks when supplied', async () => {
     const onGoBack = jest.fn();
     const onNavigateToCorridor = jest.fn();
     mockUseCorridorDetail.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <CorridorDetail
         corridorId="USDC-PHP"
         onGoBack={onGoBack}
@@ -195,21 +195,21 @@ describe('Corridor Detail', () => {
     expect(mockGoBack).not.toHaveBeenCalled();
   });
 
-  it('shows default error message when data is unavailable', () => {
+  it('shows default error message when data is unavailable', async () => {
     mockUseCorridorDetail.mockReturnValue(
       mockHookReturn({ data: null, error: null }),
     );
 
-    const { getByText } = render(<CorridorDetail corridorId="USDC-PHP" />);
+    const { getByText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
     expect(getByText('Failed to load corridor data')).toBeTruthy();
   });
 
-  it('covers low and warning health score branches', () => {
+  it('covers low and warning health score branches', async () => {
     const warningData = createMockCorridorData('USDC-PHP');
     warningData.corridor.health_score = 80;
     mockUseCorridorDetail.mockReturnValue(mockHookReturn({ data: warningData }));
 
-    const { getByText, rerender } = render(
+    const { getByText, rerender } = await render(
       <CorridorDetail corridorId="USDC-PHP" />,
     );
     expect(getByText('80.0')).toBeTruthy();
@@ -221,11 +221,11 @@ describe('Corridor Detail', () => {
     expect(getByText('60.0')).toBeTruthy();
   });
 
-  it('refetches when pull-to-refresh is triggered', () => {
+  it('refetches when pull-to-refresh is triggered', async () => {
     mockUseCorridorDetail.mockReturnValue(mockHookReturn());
 
-    const { UNSAFE_getByType } = render(<CorridorDetail corridorId="USDC-PHP" />);
-    const scrollView = UNSAFE_getByType(require('react-native').ScrollView);
+    const { getByTestId } = await render(<CorridorDetail corridorId="USDC-PHP" />);
+    const scrollView = getByTestId('corridor-detail-scroll');
     scrollView.props.refreshControl.props.onRefresh();
 
     expect(mockRefetch).toHaveBeenCalledTimes(1);

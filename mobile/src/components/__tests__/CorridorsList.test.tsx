@@ -117,22 +117,22 @@ describe('Corridors List', () => {
     jest.clearAllMocks();
   });
 
-  it('renders correctly', () => {
+  it('renders correctly', async () => {
     mockUseCorridorsList.mockReturnValue(mockHookReturn());
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('Corridors List')).toBeTruthy();
     expect(getByText('USDC → PHP')).toBeTruthy();
     expect(getByText('USDC → JPY')).toBeTruthy();
   });
 
-  it('shows loading state with accessibility label', () => {
+  it('shows loading state with accessibility label', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({ corridors: [], total: 0, loading: true }),
     );
 
-    const { getByLabelText } = render(<CorridorsList />);
+    const { getByLabelText } = await render(<CorridorsList />);
 
     expect(getByLabelText('Loading corridors list')).toBeTruthy();
   });
@@ -146,7 +146,7 @@ describe('Corridors List', () => {
       }),
     );
 
-    const { getByLabelText } = render(<CorridorsList />);
+    const { getByLabelText } = await render(<CorridorsList />);
 
     fireEvent.press(getByLabelText('Retry loading corridors list'));
     await waitFor(() => {
@@ -154,7 +154,7 @@ describe('Corridors List', () => {
     });
   });
 
-  it('shows mock sample-data banner when live data is unavailable', () => {
+  it('shows mock sample-data banner when live data is unavailable', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({
         dataSource: 'mock',
@@ -162,7 +162,7 @@ describe('Corridors List', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('Live data unavailable. Showing sample corridors.')).toBeTruthy();
     expect(
@@ -172,7 +172,7 @@ describe('Corridors List', () => {
     ).toBeTruthy();
   });
 
-  it('shows offline cached feedback banner', () => {
+  it('shows offline cached feedback banner', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({
         isOffline: true,
@@ -182,26 +182,26 @@ describe('Corridors List', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('Offline — showing saved corridors.')).toBeTruthy();
   });
 
-  it('shows empty state when no corridors are available', () => {
+  it('shows empty state when no corridors are available', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({ corridors: [], total: 0 }),
     );
 
-    const { getByLabelText } = render(<CorridorsList />);
+    const { getByLabelText } = await render(<CorridorsList />);
 
     expect(getByLabelText('No corridors available')).toBeTruthy();
   });
 
-  it('calls onCorridorPress when a corridor card is pressed', () => {
+  it('calls onCorridorPress when a corridor card is pressed', async () => {
     const onCorridorPress = jest.fn();
     mockUseCorridorsList.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <CorridorsList onCorridorPress={onCorridorPress} />,
     );
 
@@ -214,10 +214,10 @@ describe('Corridors List', () => {
     expect(onCorridorPress).toHaveBeenCalledWith('USDC-PHP');
   });
 
-  it('navigates to corridor detail when no onCorridorPress is provided', () => {
+  it('navigates to corridor detail when no onCorridorPress is provided', async () => {
     mockUseCorridorsList.mockReturnValue(mockHookReturn());
 
-    const { getByLabelText } = render(<CorridorsList />);
+    const { getByLabelText } = await render(<CorridorsList />);
 
     fireEvent.press(
       getByLabelText(
@@ -230,29 +230,29 @@ describe('Corridors List', () => {
     });
   });
 
-  it('refetches when pull-to-refresh is triggered', () => {
+  it('refetches when pull-to-refresh is triggered', async () => {
     mockUseCorridorsList.mockReturnValue(mockHookReturn());
 
-    const { UNSAFE_getByType } = render(<CorridorsList />);
-    const flatList = UNSAFE_getByType(require('react-native').FlatList);
+    const { getByTestId } = await render(<CorridorsList />);
+    const flatList = getByTestId('corridors-list');
     flatList.props.refreshControl.props.onRefresh();
 
     expect(mockRefetch).toHaveBeenCalledTimes(1);
   });
 
-  it('renders health badges for healthy, fair, and critical corridors', () => {
+  it('renders health badges for healthy, fair, and critical corridors', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({ corridors: SAMPLE_CORRIDORS.slice(0, 3), total: 3 }),
     );
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('Healthy')).toBeTruthy();
     expect(getByText('Fair')).toBeTruthy();
     expect(getByText('Critical')).toBeTruthy();
   });
 
-  it('formats liquidity values below one thousand', () => {
+  it('formats liquidity values below one thousand', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({
         corridors: [{ ...SAMPLE_CORRIDORS[3], liquidity_depth_usd: 750 }],
@@ -260,12 +260,12 @@ describe('Corridors List', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('$750')).toBeTruthy();
   });
 
-  it('formats liquidity values in millions and thousands', () => {
+  it('formats liquidity values in millions and thousands', async () => {
     mockUseCorridorsList.mockReturnValue(
       mockHookReturn({
         corridors: [SAMPLE_CORRIDORS[0], { ...SAMPLE_CORRIDORS[3], liquidity_depth_usd: 1500 }],
@@ -273,7 +273,7 @@ describe('Corridors List', () => {
       }),
     );
 
-    const { getByText } = render(<CorridorsList />);
+    const { getByText } = await render(<CorridorsList />);
 
     expect(getByText('$6.2M')).toBeTruthy();
     expect(getByText('$1.5K')).toBeTruthy();
