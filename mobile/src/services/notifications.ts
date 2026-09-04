@@ -1,5 +1,12 @@
 import notifee, { AndroidImportance } from '@notifee/react-native';
-import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
+import {
+  AuthorizationStatus,
+  getMessaging,
+  getToken,
+  onMessage,
+  requestPermission,
+  type RemoteMessage,
+} from '@react-native-firebase/messaging';
 import { Platform } from 'react-native';
 import { z } from 'zod';
 
@@ -18,9 +25,7 @@ const NotificationPayloadSchema = z.object({
 
 type ValidatedPayload = z.infer<typeof NotificationPayloadSchema>;
 
-function parsePayload(
-  remoteMessage: FirebaseMessagingTypes.RemoteMessage,
-): ValidatedPayload | null {
+function parsePayload(remoteMessage: RemoteMessage): ValidatedPayload | null {
   const result = NotificationPayloadSchema.safeParse(remoteMessage);
   if (!result.success) {
     console.warn(
@@ -33,17 +38,22 @@ function parsePayload(
 }
 
 export async function setupNotifications(): Promise<void> {
-  const authStatus = await messaging().requestPermission();
+  // v26's modular API replaces the old messaging()-callable/namespace
+  // pattern: an explicit Messaging instance is obtained once and passed to
+  // each free function, rather than each call implicitly resolving one.
+  const messagingInstance = getMessaging();
+
+  const authStatus = await requestPermission(messagingInstance);
   const enabled =
-    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-    authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    authStatus === AuthorizationStatus.AUTHORIZED ||
+    authStatus === AuthorizationStatus.PROVISIONAL;
 
   if (!enabled) {
     console.log('[Notifications] Permission denied');
     return;
   }
 
-  const token = await messaging().getToken();
+  const token = await getToken(messagingInstance);
   console.log('[Notifications] FCM token registered');
 
   if (Platform.OS === 'android') {
@@ -54,7 +64,7 @@ export async function setupNotifications(): Promise<void> {
     });
   }
 
-  messaging().onMessage(async remoteMessage => {
+  onMessage(messagingInstance, async remoteMessage => {
     const payload = parsePayload(remoteMessage);
     if (!payload) {
       return;
