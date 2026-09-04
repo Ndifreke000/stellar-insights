@@ -178,7 +178,7 @@ export function useSearchFunctionality<T extends SearchableItem = SearchableItem
   const [currentPage, setCurrentPage] = React.useState(0);
 
   // Debounce search
-  const debounceTimer = React.useRef<NodeJS.Timeout>();
+  const debounceTimer = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
   const performSearchOperation = React.useCallback(() => {
     if (query.length < mergedConfig.minChars) {
@@ -311,7 +311,7 @@ export function useAdvancedSearch<T extends SearchableItem = SearchableItem>(
   const [allResults, setAllResults] = React.useState<SearchResult<T>[]>([]);
   const [currentPage, setCurrentPage] = React.useState(0);
 
-  const debounceTimer = React.useRef<NodeJS.Timeout>();
+  const debounceTimer = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
   const performSearchOperation = React.useCallback(() => {
     if (query.length < mergedConfig.minChars) {
