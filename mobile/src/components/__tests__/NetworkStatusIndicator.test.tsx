@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer from 'react-test-renderer';
-import { Text } from 'react-native';
+import { render } from '@testing-library/react-native';
 import { NetworkStatusIndicator } from '../NetworkStatusIndicator';
 import { useNetworkStatusIndicator } from '@hooks/useNetworkStatusIndicator';
 
@@ -25,15 +24,14 @@ describe('NetworkStatusIndicator', () => {
     });
   });
 
-  it('renders correctly', () => {
-    const tree = renderer.create(<NetworkStatusIndicator />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+  it('renders correctly', async () => {
+    const { getByText } = await render(<NetworkStatusIndicator />);
 
-    expect(texts).toContain('Network Status Indicator');
-    expect(texts).toContain('Offline mode active');
+    expect(getByText('Network Status Indicator')).toBeTruthy();
+    expect(getByText('Offline mode active')).toBeTruthy();
   });
 
-  it('renders nothing when hidden', () => {
+  it('renders nothing when hidden', async () => {
     mockedUseNetworkStatusIndicator.mockReturnValue({
       status: 'online',
       message: 'Back online',
@@ -45,8 +43,8 @@ describe('NetworkStatusIndicator', () => {
       show: jest.fn(),
     });
 
-    const tree = renderer.create(<NetworkStatusIndicator />);
+    const { toJSON } = await render(<NetworkStatusIndicator />);
 
-    expect(tree.toJSON()).toBeNull();
+    expect(toJSON()).toBeNull();
   });
 });

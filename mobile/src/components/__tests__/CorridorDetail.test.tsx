@@ -121,7 +121,7 @@ describe('Corridor Detail', () => {
 
     const { getByLabelText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
-    fireEvent.press(getByLabelText('Retry loading corridor detail'));
+    await fireEvent.press(getByLabelText('Retry loading corridor detail'));
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
@@ -165,10 +165,10 @@ describe('Corridor Detail', () => {
 
     const { getByLabelText } = await render(<CorridorDetail corridorId="USDC-PHP" />);
 
-    fireEvent.press(getByLabelText('Go back to corridors list'));
+    await fireEvent.press(getByLabelText('Go back to corridors list'));
     expect(mockGoBack).toHaveBeenCalledTimes(1);
 
-    fireEvent.press(getByLabelText('Open corridor USDC to JPY'));
+    await fireEvent.press(getByLabelText('Open corridor USDC to JPY'));
     expect(mockPush).toHaveBeenCalledWith('CorridorDetail', {
       corridorId: 'corridor-2',
     });
@@ -187,8 +187,8 @@ describe('Corridor Detail', () => {
       />,
     );
 
-    fireEvent.press(getByLabelText('Go back to corridors list'));
-    fireEvent.press(getByLabelText('Open corridor USDC to JPY'));
+    await fireEvent.press(getByLabelText('Go back to corridors list'));
+    await fireEvent.press(getByLabelText('Open corridor USDC to JPY'));
 
     expect(onGoBack).toHaveBeenCalledTimes(1);
     expect(onNavigateToCorridor).toHaveBeenCalledWith('corridor-2');
@@ -217,7 +217,7 @@ describe('Corridor Detail', () => {
     const criticalData = createMockCorridorData('USDC-PHP');
     criticalData.corridor.health_score = 60;
     mockUseCorridorDetail.mockReturnValue(mockHookReturn({ data: criticalData }));
-    rerender(<CorridorDetail corridorId="USDC-PHP" />);
+    await rerender(<CorridorDetail corridorId="USDC-PHP" />);
     expect(getByText('60.0')).toBeTruthy();
   });
 

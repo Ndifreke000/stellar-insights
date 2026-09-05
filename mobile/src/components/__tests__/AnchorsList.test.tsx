@@ -120,7 +120,7 @@ describe('Anchors List', () => {
 
     const { getByLabelText } = await render(<AnchorsList />);
 
-    fireEvent.press(getByLabelText('Retry loading anchors list'));
+    await fireEvent.press(getByLabelText('Retry loading anchors list'));
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
@@ -177,7 +177,7 @@ describe('Anchors List', () => {
       <AnchorsList onAnchorPress={onAnchorPress} />,
     );
 
-    fireEvent.press(
+    await fireEvent.press(
       getByLabelText(
         'MoneyGram Access, Healthy, reliability 99.2 percent, uptime 99.2 percent',
       ),
@@ -191,7 +191,7 @@ describe('Anchors List', () => {
 
     const { getByLabelText } = await render(<AnchorsList />);
 
-    fireEvent.press(
+    await fireEvent.press(
       getByLabelText(
         'MoneyGram Access, Healthy, reliability 99.2 percent, uptime 99.2 percent',
       ),

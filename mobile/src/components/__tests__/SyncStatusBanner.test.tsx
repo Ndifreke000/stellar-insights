@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { SyncStatusBanner } from '../SyncStatusBanner';
 import { useAppStore } from '@store/appStore';
 import { useOfflineQueue } from '@hooks/useOfflineQueue';
@@ -37,34 +36,32 @@ describe('SyncStatusBanner', () => {
     mockedUseOfflineQueue.mockReturnValue(defaultQueueState);
   });
 
-  it('renders nothing when online with no pending or failed items', () => {
-    const tree = renderer.create(<SyncStatusBanner />);
-    expect(tree.toJSON()).toBeNull();
+  it('renders nothing when online with no pending or failed items', async () => {
+    const { toJSON } = await render(<SyncStatusBanner />);
+    expect(toJSON()).toBeNull();
   });
 
-  it('shows syncing indicator when isSyncing is true', () => {
+  it('shows syncing indicator when isSyncing is true', async () => {
     mockedUseAppStore.mockReturnValue({
       isSyncing: true,
       isOnline: true,
     } as ReturnType<typeof useAppStore>);
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
-    expect(texts).toContain('Syncing…');
+    const { getByText } = await render(<SyncStatusBanner />);
+    expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('shows syncing indicator when queue isProcessing', () => {
+  it('shows syncing indicator when queue isProcessing', async () => {
     mockedUseOfflineQueue.mockReturnValue({
       ...defaultQueueState,
       isProcessing: true,
     });
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
-    expect(texts).toContain('Syncing…');
+    const { getByText } = await render(<SyncStatusBanner />);
+    expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('shows failed banner when failed items exist', () => {
+  it('shows failed banner when failed items exist', async () => {
     mockedUseOfflineQueue.mockReturnValue({
       ...defaultQueueState,
       items: [
@@ -81,13 +78,12 @@ describe('SyncStatusBanner', () => {
       ],
     });
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
-    expect(texts.some(t => String(t).includes('1 sync'))).toBe(true);
-    expect(texts.some(t => String(t).includes('failed'))).toBe(true);
+    const { getByText } = await render(<SyncStatusBanner />);
+    expect(getByText(/1 sync/)).toBeTruthy();
+    expect(getByText(/failed/)).toBeTruthy();
   });
 
-  it('calls retryFailed when Retry is pressed', () => {
+  it('calls retryFailed when Retry is pressed', async () => {
     const retryFailed = jest.fn().mockResolvedValue(undefined);
     mockedUseOfflineQueue.mockReturnValue({
       ...defaultQueueState,
@@ -105,19 +101,15 @@ describe('SyncStatusBanner', () => {
       ],
     });
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    const retryBtn = tree.root.findByProps({
-      accessibilityLabel: 'Retry failed sync requests',
-    });
+    const { getByLabelText } = await render(<SyncStatusBanner />);
+    const retryBtn = getByLabelText('Retry failed sync requests');
 
-    act(() => {
-      retryBtn.props.onPress();
-    });
+    await fireEvent.press(retryBtn);
 
     expect(retryFailed).toHaveBeenCalled();
   });
 
-  it('calls onRetry prop when Retry is pressed', () => {
+  it('calls onRetry prop when Retry is pressed', async () => {
     const onRetry = jest.fn();
     const retryFailed = jest.fn().mockResolvedValue(undefined);
     mockedUseOfflineQueue.mockReturnValue({
@@ -136,19 +128,15 @@ describe('SyncStatusBanner', () => {
       ],
     });
 
-    const tree = renderer.create(<SyncStatusBanner onRetry={onRetry} />);
-    const retryBtn = tree.root.findByProps({
-      accessibilityLabel: 'Retry failed sync requests',
-    });
+    const { getByLabelText } = await render(<SyncStatusBanner onRetry={onRetry} />);
+    const retryBtn = getByLabelText('Retry failed sync requests');
 
-    act(() => {
-      retryBtn.props.onPress();
-    });
+    await fireEvent.press(retryBtn);
 
     expect(onRetry).toHaveBeenCalled();
   });
 
-  it('shows pending banner when offline with queued items', () => {
+  it('shows pending banner when offline with queued items', async () => {
     mockedUseAppStore.mockReturnValue({
       isSyncing: false,
       isOnline: false,
@@ -168,29 +156,27 @@ describe('SyncStatusBanner', () => {
       ],
     });
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
-    expect(texts.some(t => String(t).includes('1 update'))).toBe(true);
+    const { getByText } = await render(<SyncStatusBanner />);
+    expect(getByText(/1 update/)).toBeTruthy();
   });
 
-  it('renders nothing when offline but queue is empty', () => {
+  it('renders nothing when offline but queue is empty', async () => {
     mockedUseAppStore.mockReturnValue({
       isSyncing: false,
       isOnline: false,
     } as ReturnType<typeof useAppStore>);
 
-    const tree = renderer.create(<SyncStatusBanner />);
-    expect(tree.toJSON()).toBeNull();
+    const { toJSON } = await render(<SyncStatusBanner />);
+    expect(toJSON()).toBeNull();
   });
 
-  it('uses provided testID', () => {
+  it('uses provided testID', async () => {
     mockedUseAppStore.mockReturnValue({
       isSyncing: true,
       isOnline: true,
     } as ReturnType<typeof useAppStore>);
 
-    const tree = renderer.create(<SyncStatusBanner testID="sync-banner" />);
-    const el = tree.root.findByProps({ testID: 'sync-banner' });
-    expect(el).toBeTruthy();
+    const { getByTestId } = await render(<SyncStatusBanner testID="sync-banner" />);
+    expect(getByTestId('sync-banner')).toBeTruthy();
   });
 });

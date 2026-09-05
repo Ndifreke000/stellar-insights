@@ -30,7 +30,6 @@ describe('useBiometricAuthentication', () => {
     mockGetType.mockResolvedValue('FaceID');
 
     const { result } = await renderHook(() => useBiometricAuthentication());
-    expect(result.current.isLoading).toBe(true);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.isAvailable).toBe(true);

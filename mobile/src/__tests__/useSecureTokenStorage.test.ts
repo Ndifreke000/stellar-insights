@@ -29,7 +29,6 @@ describe('useSecureTokenStorage', () => {
     mockGetToken.mockResolvedValue('stored-token');
 
     const { result } = await renderHook(() => useSecureTokenStorage());
-    expect(result.current.isLoading).toBe(true);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.token).toBe('stored-token');

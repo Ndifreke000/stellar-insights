@@ -90,7 +90,7 @@ describe('Dashboard Screen', () => {
 
     const { getByLabelText } = await render(<DashboardScreen />);
 
-    fireEvent.press(getByLabelText('Retry loading dashboard'));
+    await fireEvent.press(getByLabelText('Retry loading dashboard'));
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
@@ -139,7 +139,7 @@ describe('Dashboard Screen', () => {
       <DashboardScreen onCorridorPress={onCorridorPress} />,
     );
 
-    fireEvent.press(getByText('USDC→PHP'));
+    await fireEvent.press(getByText('USDC→PHP'));
     expect(onCorridorPress).toHaveBeenCalledWith('USDC→PHP');
   });
 

@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer from 'react-test-renderer';
-import { ActivityIndicator, Text } from 'react-native';
+import { render } from '@testing-library/react-native';
 import { SplashScreen } from '../SplashScreen';
 import { useSplashScreen } from '@hooks/useSplashScreen';
 
@@ -23,15 +22,14 @@ describe('SplashScreen', () => {
     mockedUseSplashScreen.mockReturnValue(baseResult);
   });
 
-  it('renders correctly in loading state', () => {
-    const tree = renderer.create(<SplashScreen />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
+  it('renders correctly in loading state', async () => {
+    const { getByText, getByLabelText } = await render(<SplashScreen />);
 
-    expect(texts).toContain('PayRaider');
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(getByText('PayRaider')).toBeTruthy();
+    expect(getByLabelText('Loading')).toBeTruthy();
   });
 
-  it('shows error message in error state', () => {
+  it('shows error message in error state', async () => {
     mockedUseSplashScreen.mockReturnValue({
       ...baseResult,
       status: 'error',
@@ -39,14 +37,13 @@ describe('SplashScreen', () => {
       isVisible: false,
     });
 
-    const tree = renderer.create(<SplashScreen />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
+    const { getByText, queryByLabelText } = await render(<SplashScreen />);
 
-    expect(texts).toContain('DB init failed');
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(getByText('DB init failed')).toBeTruthy();
+    expect(queryByLabelText('Loading')).toBeNull();
   });
 
-  it('shows fallback error message when error is null', () => {
+  it('shows fallback error message when error is null', async () => {
     mockedUseSplashScreen.mockReturnValue({
       ...baseResult,
       status: 'error',
@@ -54,32 +51,30 @@ describe('SplashScreen', () => {
       isVisible: false,
     });
 
-    const tree = renderer.create(<SplashScreen />);
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
+    const { getByText } = await render(<SplashScreen />);
 
-    expect(texts).toContain('Something went wrong. Please restart the app.');
+    expect(getByText('Something went wrong. Please restart the app.')).toBeTruthy();
   });
 
-  it('hides spinner in ready state', () => {
+  it('hides spinner in ready state', async () => {
     mockedUseSplashScreen.mockReturnValue({
       ...baseResult,
       status: 'ready',
       isVisible: false,
     });
 
-    const tree = renderer.create(<SplashScreen />);
+    const { queryByLabelText } = await render(<SplashScreen />);
 
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(queryByLabelText('Loading')).toBeNull();
   });
 
-  it('has accessibility label on container', () => {
-    const tree = renderer.create(<SplashScreen />);
-    const root = tree.toJSON() as renderer.ReactTestRendererJSON;
+  it('has accessibility label on container', async () => {
+    const { getByLabelText } = await render(<SplashScreen />);
 
-    expect(root.props.accessibilityLabel).toBe('Loading PayRaider');
+    expect(getByLabelText('Loading PayRaider')).toBeTruthy();
   });
 
-  it('has error accessibility label when in error state', () => {
+  it('has error accessibility label when in error state', async () => {
     mockedUseSplashScreen.mockReturnValue({
       ...baseResult,
       status: 'error',
@@ -87,9 +82,8 @@ describe('SplashScreen', () => {
       isVisible: false,
     });
 
-    const tree = renderer.create(<SplashScreen />);
-    const root = tree.toJSON() as renderer.ReactTestRendererJSON;
+    const { getByLabelText } = await render(<SplashScreen />);
 
-    expect(root.props.accessibilityLabel).toBe('Initialization error: Network error');
+    expect(getByLabelText('Initialization error: Network error')).toBeTruthy();
   });
 });

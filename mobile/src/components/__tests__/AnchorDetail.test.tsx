@@ -110,7 +110,7 @@ describe('Anchor Detail', () => {
 
     const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
-    fireEvent.press(getByLabelText('Retry loading anchor detail'));
+    await fireEvent.press(getByLabelText('Retry loading anchor detail'));
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
@@ -154,10 +154,10 @@ describe('Anchor Detail', () => {
 
     const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
 
-    fireEvent.press(getByLabelText('Go back to anchors list'));
+    await fireEvent.press(getByLabelText('Go back to anchors list'));
     expect(mockGoBack).toHaveBeenCalledTimes(1);
 
-    fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
+    await fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
     expect(mockParentNavigate).toHaveBeenCalledWith('Corridors', {
       screen: 'CorridorDetail',
       params: { corridorId: 'USDC-PHP' },
@@ -177,8 +177,8 @@ describe('Anchor Detail', () => {
       />,
     );
 
-    fireEvent.press(getByLabelText('Go back to anchors list'));
-    fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
+    await fireEvent.press(getByLabelText('Go back to anchors list'));
+    await fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
 
     expect(onGoBack).toHaveBeenCalledTimes(1);
     expect(onNavigateToCorridor).toHaveBeenCalledWith('USDC-PHP');
@@ -205,7 +205,7 @@ describe('Anchor Detail', () => {
     const criticalData = createMockAnchorData('anchor-1');
     criticalData.anchor.reliability_score = 60;
     mockUseAnchorDetail.mockReturnValue(mockHookReturn({ data: criticalData }));
-    rerender(<AnchorDetail anchorId="anchor-1" />);
+    await rerender(<AnchorDetail anchorId="anchor-1" />);
     expect(getByText('60.0')).toBeTruthy();
   });
 
@@ -320,7 +320,7 @@ describe('Anchor Detail', () => {
     mockUseAnchorDetail.mockReturnValue(mockHookReturn());
 
     const { getByLabelText } = await render(<AnchorDetail anchorId="anchor-1" />);
-    fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
+    await fireEvent.press(getByLabelText('Open failed corridor USDC-PHP'));
 
     expect(mockParentNavigate).not.toHaveBeenCalled();
   });

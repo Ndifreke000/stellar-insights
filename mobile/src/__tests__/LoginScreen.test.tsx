@@ -63,13 +63,13 @@ function makeAxiosError(status?: number) {
   };
 }
 
-function fillForm(
+async function fillForm(
   api: Awaited<ReturnType<typeof render>>,
   identifier = 'user@example.com',
   password = 'password123',
 ) {
-  fireEvent.changeText(api.getByLabelText('Email or username'), identifier);
-  fireEvent.changeText(api.getByLabelText('Password'), password);
+  await fireEvent.changeText(api.getByLabelText('Email or username'), identifier);
+  await fireEvent.changeText(api.getByLabelText('Password'), password);
 }
 
 describe('useLoginScreen validators', () => {
@@ -103,13 +103,13 @@ describe('useLoginScreen validators', () => {
 });
 
 describe('LoginScreen', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     mockGetToken.mockResolvedValue(null);
     mockIsBiometricAvailable.mockResolvedValue(false);
     mockGetBiometricType.mockResolvedValue('None');
     mockBiometricAuthenticate.mockResolvedValue(false);
-    act(() => {
+    await act(async () => {
       useAuthStore.setState({
         user: null,
         tokens: null,
@@ -130,7 +130,7 @@ describe('LoginScreen', () => {
   it('shows validation errors on empty submit', async () => {
     const screen = await render(<LoginScreen />);
 
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(screen.getByText('Email or username is required')).toBeTruthy();
@@ -142,8 +142,8 @@ describe('LoginScreen', () => {
   it('shows an inline error for an invalid email format', async () => {
     const screen = await render(<LoginScreen />);
 
-    fillForm(screen, 'bad@email', 'password123');
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen, 'bad@email', 'password123');
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(screen.getByText('Enter a valid email address')).toBeTruthy();
@@ -157,7 +157,7 @@ describe('LoginScreen', () => {
 
     expect(passwordInput.props.secureTextEntry).toBe(true);
 
-    fireEvent.press(screen.getByLabelText('Show password'));
+    await fireEvent.press(screen.getByLabelText('Show password'));
     expect(passwordInput.props.secureTextEntry).toBe(false);
     expect(screen.getByLabelText('Hide password')).toBeTruthy();
   });
@@ -167,8 +167,8 @@ describe('LoginScreen', () => {
     const onLoginSuccess = jest.fn();
 
     const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
-    fillForm(screen, 'user@example.com', 'password123');
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen, 'user@example.com', 'password123');
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(onLoginSuccess).toHaveBeenCalledTimes(1);
@@ -191,8 +191,8 @@ describe('LoginScreen', () => {
     );
 
     const screen = await render(<LoginScreen />);
-    fillForm(screen);
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen);
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(screen.getByLabelText('Sign in').props.accessibilityState.busy).toBe(
@@ -209,8 +209,8 @@ describe('LoginScreen', () => {
     mockPost.mockRejectedValue(makeAxiosError(401));
 
     const screen = await render(<LoginScreen />);
-    fillForm(screen);
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen);
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(
@@ -224,8 +224,8 @@ describe('LoginScreen', () => {
     mockPost.mockRejectedValue(makeAxiosError());
 
     const screen = await render(<LoginScreen />);
-    fillForm(screen);
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen);
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => {
       expect(
@@ -252,7 +252,7 @@ describe('LoginScreen', () => {
     const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
     const button = await screen.findByLabelText('Sign in with Face ID');
 
-    fireEvent.press(button);
+    await fireEvent.press(button);
 
     await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledTimes(1));
     expect(mockBiometricAuthenticate).toHaveBeenCalledWith(
@@ -270,7 +270,7 @@ describe('LoginScreen', () => {
     const screen = await render(<LoginScreen />);
     const button = await screen.findByLabelText('Sign in with Touch ID');
 
-    fireEvent.press(button);
+    await fireEvent.press(button);
 
     await waitFor(() => {
       expect(
@@ -289,8 +289,8 @@ describe('LoginScreen', () => {
     const onLoginSuccess = jest.fn();
 
     const screen = await render(<LoginScreen onLoginSuccess={onLoginSuccess} />);
-    fillForm(screen);
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fillForm(screen);
+    await fireEvent.press(screen.getByLabelText('Sign in'));
 
     await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledTimes(1));
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
@@ -305,7 +305,7 @@ describe('LoginScreen', () => {
     const screen = await render(<LoginScreen />);
     const button = await screen.findByLabelText('Sign in with Face ID');
 
-    fireEvent.press(button);
+    await fireEvent.press(button);
 
     await waitFor(() => {
       expect(
@@ -318,12 +318,12 @@ describe('LoginScreen', () => {
   it('clears a field error once the user edits the field', async () => {
     const screen = await render(<LoginScreen />);
 
-    fireEvent.press(screen.getByLabelText('Sign in'));
+    await fireEvent.press(screen.getByLabelText('Sign in'));
     await waitFor(() => {
       expect(screen.getByText('Password is required')).toBeTruthy();
     });
 
-    fireEvent.changeText(screen.getByLabelText('Password'), 'newpassword');
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'newpassword');
     expect(screen.queryByText('Password is required')).toBeNull();
   });
 });

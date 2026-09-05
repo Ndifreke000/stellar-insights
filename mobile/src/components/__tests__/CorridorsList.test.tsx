@@ -148,7 +148,7 @@ describe('Corridors List', () => {
 
     const { getByLabelText } = await render(<CorridorsList />);
 
-    fireEvent.press(getByLabelText('Retry loading corridors list'));
+    await fireEvent.press(getByLabelText('Retry loading corridors list'));
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
@@ -205,7 +205,7 @@ describe('Corridors List', () => {
       <CorridorsList onCorridorPress={onCorridorPress} />,
     );
 
-    fireEvent.press(
+    await fireEvent.press(
       getByLabelText(
         'USDC to PHP, Healthy, success rate 92.5 percent, health score 94',
       ),
@@ -219,7 +219,7 @@ describe('Corridors List', () => {
 
     const { getByLabelText } = await render(<CorridorsList />);
 
-    fireEvent.press(
+    await fireEvent.press(
       getByLabelText(
         'USDC to PHP, Healthy, success rate 92.5 percent, health score 94',
       ),
