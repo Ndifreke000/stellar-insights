@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, RefreshControlProps } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@store/appStore';
 
 export interface UsePullToRefreshResult {
@@ -96,9 +96,14 @@ export function usePullToRefresh(config?: PullToRefreshConfig): UsePullToRefresh
 
 /**
  * Standalone function to manually trigger refresh
- * Useful for manual refresh buttons outside of FlatList context
+ * Useful for manual refresh buttons outside of FlatList context.
+ *
+ * Takes the QueryClient explicitly rather than calling useQueryClient()
+ * itself -- this is a plain async function meant to be invoked from event
+ * handlers (e.g. a refresh button's onPress), not from render, so it can't
+ * call a hook internally. Callers get their queryClient the normal way
+ * (useQueryClient() in their own component) and pass it through.
  */
-export async function refreshAllQueries(): Promise<void> {
-  const queryClient = useQueryClient();
+export async function refreshAllQueries(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries();
 }
