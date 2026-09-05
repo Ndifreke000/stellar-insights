@@ -66,9 +66,9 @@ async function runMigrations(): Promise<void> {
   const stored = await safeGet<number>(DB_VERSION_KEY);
   const version = stored ?? 0;
 
-  if (version < 1) {
+  if (version < CURRENT_DB_VERSION) {
     // v1: initial schema — nothing to migrate from a previous version.
-    await safeSet(DB_VERSION_KEY, 1);
+    await safeSet(DB_VERSION_KEY, CURRENT_DB_VERSION);
   }
 }
 

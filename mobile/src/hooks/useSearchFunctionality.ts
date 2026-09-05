@@ -1,5 +1,4 @@
 import React from 'react';
-import { Platform } from 'react-native';
 import { Corridor, Anchor, Asset } from '@app-types/index';
 
 export type SearchableItem = Corridor | Anchor | Asset | Record<string, any>;
@@ -168,7 +167,10 @@ export function useSearchFunctionality<T extends SearchableItem = SearchableItem
   items: T[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
+  const mergedConfig = React.useMemo(
+    () => ({ ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars }),
+    [config],
+  );
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -302,7 +304,10 @@ export function useAdvancedSearch<T extends SearchableItem = SearchableItem>(
   searchFields: (keyof T)[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
+  const mergedConfig = React.useMemo(
+    () => ({ ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars }),
+    [config],
+  );
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);

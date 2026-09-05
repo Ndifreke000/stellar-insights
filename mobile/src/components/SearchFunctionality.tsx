@@ -2,9 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   Text,
@@ -14,7 +12,6 @@ import {
 import {
   useSearchFunctionality,
   SearchableItem,
-  SearchResult,
   SearchConfig,
 } from '@hooks/useSearchFunctionality';
 
@@ -39,7 +36,7 @@ export const SearchFunctionality: React.FC<SearchFunctionalityProps> = ({
   onItemPress,
   placeholder = 'Search...',
   config,
-  showFilters = true,
+  showFilters: _showFilters = true,
   contentContainerStyle,
   testID,
 }) => {

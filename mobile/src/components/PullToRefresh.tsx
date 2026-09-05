@@ -5,7 +5,6 @@ import {
   Platform,
   RefreshControl,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from 'react-native';
@@ -27,25 +26,18 @@ export interface PullToRefreshProps {
  */
 export const PullToRefresh: React.FC<PullToRefreshProps> = ({
   children,
-  onRefresh: customOnRefresh,
-  isLoading = false,
+  onRefresh: _customOnRefresh,
+  isLoading: _isLoading = false,
   config,
   contentContainerStyle,
   showLoadingIndicator = true,
   testID,
 }) => {
-  const { isRefreshing, onRefresh, refreshControlProps } = usePullToRefresh(config);
-
-  const handleRefresh = React.useCallback(async () => {
-    try {
-      if (customOnRefresh) {
-        await customOnRefresh();
-      }
-      await onRefresh();
-    } catch (error) {
-      console.warn('Refresh failed:', error);
-    }
-  }, [onRefresh, customOnRefresh]);
+  // This component only shows a loading overlay driven by the hook's own
+  // isRefreshing state -- it doesn't render a scrollable/RefreshControl-
+  // capable view itself (unlike PullToRefreshList below), so the hook's
+  // onRefresh/refreshControlProps have nothing to attach to here.
+  const { isRefreshing } = usePullToRefresh(config);
 
   return (
     <View
@@ -92,7 +84,7 @@ export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListPro
       renderItem,
       keyExtractor,
       onRefresh: customOnRefresh,
-      isLoading = false,
+      isLoading: _isLoading = false,
       config,
       contentContainerStyle,
       ListHeaderComponent,
@@ -103,7 +95,10 @@ export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListPro
     },
     ref
   ) => {
-    const { isRefreshing, onRefresh, refreshControlProps } = usePullToRefresh(config);
+    // isRefreshing isn't read directly here -- refreshControlProps already
+    // carries it as its own `refreshing` field, spread into RefreshControl
+    // below.
+    const { onRefresh, refreshControlProps } = usePullToRefresh(config);
 
     const handleRefresh = React.useCallback(async () => {
       try {

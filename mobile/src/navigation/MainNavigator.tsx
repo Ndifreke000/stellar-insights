@@ -75,7 +75,7 @@ function AnchorsNavigator() {
 
 // Wrapper component for Network Switch
 const NetworkSwitchScreen = () => {
-  const [dialogVisible, setDialogVisible] = React.useState(true);
+  const [, setDialogVisible] = React.useState(true);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

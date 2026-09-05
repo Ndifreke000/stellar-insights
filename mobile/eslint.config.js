@@ -5,6 +5,7 @@
 // the base array below; the two custom rules are carried over as-is).
 const baseConfig = require('@react-native/eslint-config/flat');
 const typescriptPlugin = require('@typescript-eslint/eslint-plugin');
+const jestPlugin = require('eslint-plugin-jest');
 
 module.exports = [
   ...baseConfig,
@@ -20,6 +21,19 @@ module.exports = [
     rules: {
       'ft-flow/define-flow-type': 'off',
       'ft-flow/use-flow-type': 'off',
+    },
+  },
+  {
+    // jest.setup.js runs under Jest (it's the setupFilesAfterEach entry) but
+    // doesn't match the base config's test-file glob
+    // (**/*.{spec,test}.{js,ts,tsx} or **/__{mocks,tests}__/**), so it never
+    // got the jest global (jest.mock, jest.fn, ...) registered -- every
+    // reference to `jest` in this file was flagged as undefined.
+    files: ['jest.setup.js'],
+    languageOptions: {
+      globals: {
+        ...jestPlugin.environments.globals.globals,
+      },
     },
   },
   {

@@ -22,10 +22,10 @@ const TAB_ROUTE_NAMES = [
 ] as const;
 
 function mockScreen(label: string) {
-  const React = require('react') as typeof import('react');
+  const ReactModule = require('react') as typeof import('react');
   const { Text } = require('react-native');
   return function MockScreen() {
-    return React.createElement(Text, null, label);
+    return ReactModule.createElement(Text, null, label);
   };
 }
 

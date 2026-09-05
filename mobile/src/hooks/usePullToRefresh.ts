@@ -15,11 +15,6 @@ export interface PullToRefreshConfig {
   enabled?: boolean;
 }
 
-const PLATFORM_THRESHOLDS = {
-  ios: 50,
-  android: 60,
-};
-
 /**
  * Hook for managing pull-to-refresh functionality
  * Provides platform-specific optimization and query client integration
@@ -28,14 +23,6 @@ export function usePullToRefresh(config?: PullToRefreshConfig): UsePullToRefresh
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const queryClient = useQueryClient();
   const { isOnline } = useAppStore();
-
-  const thresholds = config?.platformThreshold || PLATFORM_THRESHOLDS;
-  const platformThreshold =
-    Platform.select({
-      ios: thresholds.ios / 100,
-      android: thresholds.android / 100,
-      default: 0.5,
-    }) || 0.5;
 
   const onRefresh = React.useCallback(async () => {
     if (!isOnline) {

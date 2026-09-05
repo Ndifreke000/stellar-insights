@@ -93,7 +93,6 @@ function getCacheSizeInBytes(cache: Map<string, CacheEntry>): number {
  */
 export function useOfflineCache(config?: OfflineCacheConfig): UseOfflineCacheResult {
   const [cache, setCache] = React.useState<Map<string, CacheEntry>>(() => readCache());
-  const { isOnline } = useAppStore();
   const queryClient = useQueryClient();
 
   const ttl = config?.ttl || CACHE_EXPIRY_MS;

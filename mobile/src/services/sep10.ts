@@ -41,7 +41,6 @@
 
 import { apiClient } from './api';
 import { storeAuthTokens, clearAuthTokens } from './auth';
-import { useAuthStore } from '@store/authStore';
 import type { AuthTokens } from '@app-types/index';
 
 // ---------------------------------------------------------------------------

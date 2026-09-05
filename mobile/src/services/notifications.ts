@@ -53,7 +53,9 @@ export async function setupNotifications(): Promise<void> {
     return;
   }
 
-  const token = await getToken(messagingInstance);
+  // TODO: send this token to the backend for push targeting -- currently
+  // only obtained to trigger registration on the OS side.
+  await getToken(messagingInstance);
   console.log('[Notifications] FCM token registered');
 
   if (Platform.OS === 'android') {
