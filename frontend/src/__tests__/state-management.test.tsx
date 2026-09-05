@@ -203,7 +203,7 @@ describe('State Management', () => {
       );
 
       // Initial load
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockFetchAnchors().anchors);
 
       // Invalidate and refetch
@@ -211,8 +211,8 @@ describe('State Management', () => {
         refetch();
       });
 
-      await waitFor(() => expect(result.current.isFetching).toBe(true);
-      await waitFor(() => expect(result.current.isSuccess).toBe(true);
+      await waitFor(() => expect(result.current.isFetching).toBe(true));
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
     });
 
     it('should handle mutations', async () => {
@@ -231,7 +231,7 @@ describe('State Management', () => {
         wrapper: TestWrapper,
       });
 
-      await waitFor(() => result.current.isSuccess).toBe(true);
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.data).toEqual({
         id: 'test-transaction-id',
         url: 'https://anchor.example.com/deposit?token=undefined',
@@ -256,7 +256,7 @@ describe('State Management', () => {
       }
     );
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockFetchAnchors().anchors);
   });
 });
@@ -269,7 +269,7 @@ it('should handle query invalidation', async () => {
     }
   );
 
-  await waitFor(() => expect(result.current.isSuccess).toBe(true);
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
   // Test with invalid data
   const invalidQuery = renderHook(
@@ -284,10 +284,9 @@ it('should handle query invalidation', async () => {
     )
   );
 
-  await waitFor(() => expect(invalidQuery.current.isError).toBe(true);
+  await waitFor(() => expect(invalidQuery.current.isError).toBe(true));
   expect(invalidQuery.error?.message).toBe('Invalid query');
 });
-  });
 
 describe('Integration', () => {
   it('should work together - React Query + Zustand', async () => {
@@ -318,7 +317,6 @@ describe('Integration', () => {
     expect(notifications).toHaveLength(1);
     expect(notifications[0].type).toBe('info');
   });
-});
 });
 
 // Add React Query tests
@@ -362,8 +360,9 @@ describe('React Query Integration', () => {
           wrapper: TestWrapper,
         }
       )
-      
-      await waitFor(() => expect(result.current.isError).toBe(true));
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
     expect(addNotification).toHaveBeenCalledTimes(1);
 
     const notifications = useAppStore.getState().notifications;

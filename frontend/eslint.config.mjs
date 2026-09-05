@@ -14,6 +14,16 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // Plain CommonJS Node scripts (e.g. scripts/i18n-audit.js) run via
+    // `node scripts/foo.js` directly, without a build step -- they must use
+    // require(), not ESM import, since this package.json has no
+    // "type": "module".
+    files: ["scripts/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     rules: {
       "no-console": "off",
       // Allow intentionally-unused bindings (e.g. required callback/positional

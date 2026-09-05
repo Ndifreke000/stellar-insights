@@ -77,6 +77,7 @@ export function ChartExportButton({
                 hover:bg-slate-800 transition-colors text-left"
               role="menuitem"
             >
+              {/* eslint-disable-next-line jsx-a11y/alt-text -- lucide-react icon, not an <img>; no `alt` prop exists on it, hence aria-hidden instead */}
               <Image className="w-3 h-3 text-accent" aria-hidden="true" />
               PNG Image
             </button>

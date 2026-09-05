@@ -12,10 +12,6 @@ export default function GdprSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSummary();
-  }, []);
-
   const loadSummary = async () => {
     try {
       setLoading(true);
@@ -30,6 +26,10 @@ export default function GdprSettingsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadSummary();
+  }, []);
 
   const renderOverview = () => (
     <div className="space-y-6">
