@@ -60,7 +60,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@playwright/test": "1.62.1",
-    "@vitejs/plugin-react": "^6.0.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "autocannon": "^8.0.0",
     "axe-core": "^4.12.0",
     "eslint": "^9.39.3",
