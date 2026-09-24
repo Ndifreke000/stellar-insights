@@ -11,8 +11,10 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+use crate::auth::brute_force;
 use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest, VerifyTwoFaRequest};
 use crate::auth_middleware::AuthUser;
+use crate::observability::metrics::record_auth_security_event;
 
 const TOKEN_ENDPOINT_LIMIT_PER_MINUTE: usize = 5;
 const ACCOUNT_LOCKOUT_THRESHOLD: u32 = 5;
@@ -38,6 +40,7 @@ pub enum AuthApiError {
     InvalidToken,
     AccountLocked { retry_after_seconds: u64 },
     CaptchaRequired,
+    CaptchaInvalid,
     RateLimited { retry_after_seconds: u64 },
     /// Session doesn't exist, is already revoked/expired, or belongs to a
     /// different user. Deliberately the same response for "doesn't exist"
@@ -74,6 +77,12 @@ impl IntoResponse for AuthApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 "CAPTCHA_REQUIRED",
                 "CAPTCHA verification required after repeated failed login attempts".to_string(),
+                None,
+            ),
+            Self::CaptchaInvalid => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "CAPTCHA_INVALID",
+                "CAPTCHA verification failed".to_string(),
                 None,
             ),
             Self::RateLimited {
@@ -117,7 +126,18 @@ impl IntoResponse for AuthApiError {
     }
 }
 
-async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
+/// Client IP as reported by the ingress (first X-Forwarded-For hop).
+pub(crate) fn client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+pub(crate) async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
     let now = Instant::now();
     let mut windows = TOKEN_RATE_LIMIT_WINDOWS.lock().await;
     let entries = windows
@@ -151,10 +171,15 @@ async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
     None
 }
 
-async fn preflight_login_guards(username: &str, headers: &HeaderMap) -> Result<(), AuthApiError> {
+pub(crate) async fn preflight_login_guards(
+    username: &str,
+    headers: &HeaderMap,
+    client_ip: &str,
+) -> Result<(), AuthApiError> {
     let account = username.to_lowercase();
     let now = Instant::now();
     let mut states = FAILED_LOGIN_STATE.lock().await;
+    let mut captcha_token = None;
     if let Some(state) = states.get_mut(&account) {
         if let Some(lock_until) = state.lockout_until {
             if now < lock_until {
@@ -187,14 +212,29 @@ async fn preflight_login_guards(username: &str, headers: &HeaderMap) -> Result<(
                 );
                 return Err(AuthApiError::CaptchaRequired);
             }
+            captcha_token = Some(captcha.to_string());
+        }
+    }
+    // Don't hold the lock across the provider round-trip.
+    drop(states);
+
+    if let Some(token) = captcha_token {
+        if !brute_force::verify_captcha(&token, client_ip).await {
+            tracing::warn!(
+                username = %account,
+                client_ip,
+                "Suspicious auth attempt blocked: CAPTCHA verification failed"
+            );
+            return Err(AuthApiError::CaptchaInvalid);
         }
     }
 
     Ok(())
 }
 
-async fn record_failed_login(username: &str) {
+pub(crate) async fn record_failed_login(endpoint: &str, username: &str, client_ip: &str) {
     let account = username.to_lowercase();
+    brute_force::record_failure(endpoint, &account, client_ip);
     let now = Instant::now();
     let mut states = FAILED_LOGIN_STATE.lock().await;
     let state = states.entry(account.clone()).or_insert(FailedAuthState {
@@ -211,6 +251,7 @@ async fn record_failed_login(username: &str) {
 
     if state.failed_attempts >= ACCOUNT_LOCKOUT_THRESHOLD {
         state.lockout_until = Some(now + ACCOUNT_LOCKOUT_DURATION);
+        record_auth_security_event(endpoint, "account_locked");
         tracing::warn!(
             username = %account,
             failed_attempts = state.failed_attempts,
@@ -226,7 +267,7 @@ async fn record_failed_login(username: &str) {
     }
 }
 
-async fn clear_failed_login_state(username: &str) {
+pub(crate) async fn clear_failed_login_state(username: &str) {
     let account = username.to_lowercase();
     let mut states = FAILED_LOGIN_STATE.lock().await;
     states.remove(&account);
@@ -261,25 +302,20 @@ pub async fn login(
             retry_after_seconds,
             "Token endpoint rate limit exceeded for account"
         );
+        record_auth_security_event("login", "rate_limited");
         return Err(AuthApiError::RateLimited {
             retry_after_seconds,
         });
     }
 
-    preflight_login_guards(&request.username, &headers).await?;
+    let ip_address = client_ip(&headers);
+    preflight_login_guards(&request.username, &headers, &ip_address).await?;
 
     // Extract device user agent and IP for session tracking
     let device_user_agent = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-
-    let ip_address = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
 
     let response = auth_service
         .login(request, device_user_agent, &ip_address)
@@ -291,7 +327,7 @@ pub async fn login(
             Ok((StatusCode::OK, Json(login_response)).into_response())
         }
         Err(e) => {
-            record_failed_login(&account_key).await;
+            record_failed_login("login", &account_key, &ip_address).await;
             Err(e)
         }
     }
@@ -326,19 +362,13 @@ pub async fn verify_2fa(
             retry_after_seconds,
         });
     }
-    preflight_login_guards(&account_key, &headers).await?;
+    let ip_address = client_ip(&headers);
+    preflight_login_guards(&account_key, &headers, &ip_address).await?;
 
     let device_user_agent = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-
-    let ip_address = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
 
     let response = auth_service
         .complete_2fa_login(request, device_user_agent, &ip_address)
@@ -351,7 +381,7 @@ pub async fn verify_2fa(
             Ok((StatusCode::OK, Json(login_response)).into_response())
         }
         Err(e) => {
-            record_failed_login(&account_key).await;
+            record_failed_login("verify_2fa", &account_key, &ip_address).await;
             Err(e)
         }
     }
@@ -370,12 +400,24 @@ pub async fn verify_2fa(
 )]
 pub async fn refresh(
     State(auth_service): State<Arc<AuthService>>,
+    headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Response, AuthApiError> {
-    let response = auth_service
-        .refresh(request)
-        .await
-        .map_err(|_| AuthApiError::InvalidToken)?;
+    // Refresh tokens are opaque, so the refresh endpoint is limited per client IP.
+    let ip_address = client_ip(&headers);
+    if let Some(retry_after_seconds) =
+        check_rate_limit_for_account(&format!("refresh:{ip_address}")).await
+    {
+        record_auth_security_event("refresh", "rate_limited");
+        return Err(AuthApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+
+    let response = auth_service.refresh(request).await.map_err(|_| {
+        brute_force::record_failure("refresh", &format!("ip:{ip_address}"), &ip_address);
+        AuthApiError::InvalidToken
+    })?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }

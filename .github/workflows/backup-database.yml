@@ -1,25 +1,24 @@
-name: Automated Database Backup
+name: Database Backup Verification
 
-# DEPRECATED: this workflow automates backups against an RDS PostgreSQL
-# instance that no longer exists (see terraform/global -- the RDS module
-# was removed; the backend is SQLite-only, docs/adr/0001-sqlite-vs-postgres.md).
-# Every `aws rds ...` step below will fail against nothing.
+# Restores the Litestream replica of each environment's SQLite database from S3 and
+# verifies it (scripts/verify-backup.sh): replica freshness, PRAGMA integrity_check,
+# foreign keys, applied migrations and required tables. A weekly point-in-time
+# recovery test restores the state from 24 hours ago.
 #
-# The scheduled trigger is disabled below so this doesn't fail daily on a
-# cron. workflow_dispatch is left in case anyone needs to reference the old
-# logic while rewriting this around Litestream (continuous S3 replication,
-# already running as an ECS/k8s sidecar -- see docs/backup-system.md) and
-# backup.rs's local snapshots. Not rewritten here -- ~280 lines of RDS-
-# specific steps need a real rewrite, not a rushed one in the same pass
-# that found the problem.
+# Replaces the earlier RDS snapshot workflow; the backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md, docs/backup-system.md).
+#
+# Requires the `backup-verifier` role (terraform/global/backups.tf) and the
+# AWS_ACCOUNT_ID secret.
 
 on:
-  # schedule trigger removed -- see deprecation note above. Was:
-  #   - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  schedule:
+    - cron: '30 3 * * *'  # Daily restore test at 03:30 UTC
+    - cron: '0 4 * * 0'   # Weekly point-in-time recovery test, Sundays 04:00 UTC
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to backup'
+        description: 'Environment replica to verify'
         required: true
         default: 'production'
         type: choice
@@ -28,260 +27,117 @@ on:
           - staging
           - production
           - mainnet
-      backup_type:
-        description: 'Backup type'
+      target:
+        description: '"latest" or an RFC 3339 timestamp for point-in-time recovery'
         required: true
-        default: 'manual'
-        type: choice
-        options:
-          - automated
-          - manual
-          - verify
+        default: 'latest'
 
 permissions:
   id-token: write
   contents: read
+  issues: write
 
 env:
   AWS_REGION: us-east-1
-  S3_BUCKET: payraider-backups
+  LITESTREAM_VERSION: v0.3.13
 
 jobs:
-  backup:
-    name: Backup Database
+  verify:
+    name: Verify ${{ github.event.inputs.environment || 'production' }} backup
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set environment
-        id: env
+      - name: Resolve target
+        id: target
         run: |
-          ENV="${{ github.event.inputs.environment || 'production' }}"
-          BACKUP_TYPE="${{ github.event.inputs.backup_type || 'automated' }}"
-
-          # Scheduled runs use 'automated', manual dispatch uses selected type
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            BACKUP_TYPE="automated"
+          ENVIRONMENT="${{ github.event.inputs.environment || 'production' }}"
+          TARGET="${{ github.event.inputs.target || 'latest' }}"
+          if [ "${{ github.event.schedule }}" = "0 4 * * 0" ]; then
+            TARGET="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           fi
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
-          echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
-          echo "backup_type=${BACKUP_TYPE}" >> "$GITHUB_OUTPUT"
+      - name: Install Litestream and sqlite3
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 jq
+          curl -fsSL -o litestream.deb \
+            "https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-amd64.deb"
+          sudo dpkg -i litestream.deb
+          litestream version
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-executor
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-verifier
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify backup prerequisites
-        run: |
-          echo "Checking backup prerequisites..."
+      - name: Restore and verify
+        env:
+          LITESTREAM_REPLICA_URL: s3://payraider-db-backups-${{ secrets.AWS_ACCOUNT_ID }}/${{ steps.target.outputs.environment }}/payraider.db
+          BACKUP_REPORT_DIR: backup-verification
+          BACKUP_ALERT_WEBHOOK_URL: ${{ secrets.BACKUP_ALERT_WEBHOOK_URL }}
+        run: ./scripts/verify-backup.sh "${{ steps.target.outputs.target }}"
 
-          # Verify AWS CLI is available
-          aws --version
-
-          # Check if S3 bucket exists
-          if aws s3 ls "s3://${S3_BUCKET}" --region "${{ env.AWS_REGION }}" &>/dev/null; then
-            echo "✓ S3 bucket found: $S3_BUCKET"
-          else
-            echo "⚠ S3 bucket not found: $S3_BUCKET"
-            echo "  Creating bucket..."
-            aws s3 mb "s3://${S3_BUCKET}" --region "${{ env.AWS_REGION }}" || true
-          fi
-
-          # Check if RDS instance exists
-          DB_ID="payraider-${{ steps.env.outputs.environment }}"
-          if aws rds describe-db-instances \
-            --db-instance-identifier "$DB_ID" \
-            --region "${{ env.AWS_REGION }}" &>/dev/null; then
-            echo "✓ RDS instance found: $DB_ID"
-          else
-            echo "❌ RDS instance not found: $DB_ID"
-            exit 1
-          fi
-
-      - name: Create RDS snapshot
-        id: snapshot
-        run: |
-          DB_ID="payraider-${{ steps.env.outputs.environment }}"
-          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          SNAPSHOT_ID="${DB_ID}-backup-${TIMESTAMP}"
-
-          echo "Creating RDS snapshot: $SNAPSHOT_ID"
-
-          aws rds create-db-snapshot \
-            --db-instance-identifier "$DB_ID" \
-            --db-snapshot-identifier "$SNAPSHOT_ID" \
-            --region "${{ env.AWS_REGION }}" \
-            --tags \
-              "Key=Type,Value=${{ steps.env.outputs.backup_type }}" \
-              "Key=Environment,Value=${{ steps.env.outputs.environment }}" \
-              "Key=CreatedBy,Value=github-actions" \
-              "Key=Workflow,Value=backup-database" \
-            --query 'DBSnapshot.DBSnapshotIdentifier' \
-            --output text
-
-          echo "snapshot_id=${SNAPSHOT_ID}" >> "$GITHUB_OUTPUT"
-          echo "✓ Snapshot creation initiated: $SNAPSHOT_ID"
-
-      - name: Wait for snapshot completion
-        timeout-minutes: 60
-        run: |
-          SNAPSHOT_ID="${{ steps.snapshot.outputs.snapshot_id }}"
-
-          echo "Waiting for snapshot completion (max 60 minutes)..."
-
-          # Check snapshot status every 30 seconds, up to 120 times
-          for i in {1..120}; do
-            STATUS=$(aws rds describe-db-snapshots \
-              --db-snapshot-identifier "$SNAPSHOT_ID" \
-              --region "${{ env.AWS_REGION }}" \
-              --query 'DBSnapshots[0].Status' \
-              --output text)
-
-            PERCENT=$(aws rds describe-db-snapshots \
-              --db-snapshot-identifier "$SNAPSHOT_ID" \
-              --region "${{ env.AWS_REGION }}" \
-              --query 'DBSnapshots[0].PercentProgress' \
-              --output text)
-
-            echo "Status: $STATUS | Progress: $PERCENT%"
-
-            if [ "$STATUS" = "available" ]; then
-              echo "✓ Snapshot complete!"
-              break
-            fi
-
-            if [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
-              echo "❌ Snapshot failed with status: $STATUS"
-              exit 1
-            fi
-
-            sleep 30
-          done
-
-      - name: Export snapshot to S3
-        id: export
-        run: |
-          SNAPSHOT_ID="${{ steps.snapshot.outputs.snapshot_id }}"
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          EXPORT_ID="payraider-export-$(date +%s)"
-
-          echo "Exporting snapshot to S3: $EXPORT_ID"
-
-          # Create export task (asynchronous, may take 10-20 minutes)
-          aws rds start-export-task \
-            --export-task-identifier "$EXPORT_ID" \
-            --source-arn "arn:aws:rds:${{ env.AWS_REGION }}:${ACCOUNT_ID}:snapshot:${SNAPSHOT_ID}" \
-            --s3-bucket-name "${{ env.S3_BUCKET }}" \
-            --s3-prefix "database/${{ steps.env.outputs.environment }}/exports" \
-            --iam-role-arn "arn:aws:iam::${ACCOUNT_ID}:role/rds-s3-export-role" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'ExportTaskIdentifier' \
-            --output text || {
-              echo "⚠ S3 export not available (may not have rds-s3-export-role)"
-              echo "Continuing with snapshot backup only"
-            }
-
-          echo "export_id=${EXPORT_ID}" >> "$GITHUB_OUTPUT"
-          echo "✓ Export task initiated"
-
-      - name: Verify backup in S3
-        run: |
-          echo "Verifying RDS snapshots..."
-
-          aws rds describe-db-snapshots \
-            --db-instance-identifier "payraider-${{ steps.env.outputs.environment }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'DBSnapshots[0:5].[DBSnapshotIdentifier, SnapshotCreateTime, Status, AllocatedStorage]' \
-            --output table
-
-      - name: Cleanup old snapshots (retention policy)
-        run: |
-          DB_ID="payraider-${{ steps.env.outputs.environment }}"
-          RETENTION_DAYS=30
-          CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y-%m-%d)
-
-          echo "Cleaning up snapshots older than $CUTOFF_DATE..."
-
-          # Get all snapshots and filter old ones
-          snapshots=$(aws rds describe-db-snapshots \
-            --db-instance-identifier "$DB_ID" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "DBSnapshots[?SnapshotCreateTime<'${CUTOFF_DATE}'].[DBSnapshotIdentifier]" \
-            --output text)
-
-          deleted=0
-          if [ -z "$snapshots" ]; then
-            echo "✓ No snapshots older than $CUTOFF_DATE to delete"
-          else
-            for snapshot in $snapshots; do
-              # Skip if snapshot is being used by export task
-              if aws rds describe-export-tasks \
-                --query "ExportTasks[?SourceArn=='arn:aws:rds:${{ env.AWS_REGION }}:$(aws sts get-caller-identity --query Account --output text):snapshot:${snapshot}']" \
-                --region "${{ env.AWS_REGION }}" &>/dev/null; then
-                echo "  ⏳ Skipping (export in progress): $snapshot"
-              else
-                echo "  🗑 Deleting old snapshot: $snapshot"
-                aws rds delete-db-snapshot \
-                  --db-snapshot-identifier "$snapshot" \
-                  --region "${{ env.AWS_REGION }}" \
-                  --skip-final-snapshot || echo "  ⚠ Failed to delete: $snapshot"
-                ((deleted++)) || true
-              fi
-            done
-            echo "✓ Deleted $deleted old snapshots"
-          fi
-
-      - name: Generate backup report
+      - name: Summarize
         if: always()
         run: |
-          DB_ID="payraider-${{ steps.env.outputs.environment }}"
+          if [ -f backup-verification/latest.json ]; then
+            {
+              echo "### Backup verification: ${{ steps.target.outputs.environment }} (${{ steps.target.outputs.target }})"
+              echo '```json'
+              cat backup-verification/latest.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-          echo "## Backup Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Environment** | \`${{ steps.env.outputs.environment }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Type** | \`${{ steps.env.outputs.backup_type }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Snapshot ID** | \`${{ steps.snapshot.outputs.snapshot_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Export Task** | \`${{ steps.export.outputs.export_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **S3 Bucket** | \`${{ env.S3_BUCKET }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Region** | \`${{ env.AWS_REGION }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Workflow Run** | [View](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Retention Policy" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Daily backups: Keep for 7 days" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Weekly backups: Keep Sundays for 28 days" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Monthly backups: Keep 1st of month for 180 days" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Recent Snapshots" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-          aws rds describe-db-snapshots \
-            --db-instance-identifier "$DB_ID" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'DBSnapshots[0:5].[DBSnapshotIdentifier, SnapshotCreateTime, Status, AllocatedStorage]' \
-            --output table >> "$GITHUB_STEP_SUMMARY" || echo "Error fetching snapshots" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-verification-${{ steps.target.outputs.environment }}
+          path: backup-verification/
+          if-no-files-found: ignore
+          retention-days: 90
 
-      - name: Notify on failure
-        if: failure()
-        run: |
-          cat << 'EOF'
-          ❌ Database backup failed!
+      - name: Open or update tracking issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Backup] Database backup verification failing';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Restore verification of the **${{ steps.target.outputs.environment }}** Litestream replica failed (target: \`${{ steps.target.outputs.target }}\`).`,
+              '',
+              `- Workflow run: ${runUrl}`,
+              '- The report is attached to the run as an artifact and in the job summary.',
+              '- Restore procedures: docs/backup-system.md',
+            ].join('\n');
 
-          This job backs up the ${{ steps.env.outputs.environment }} database daily.
-
-          Troubleshooting:
-          1. Check RDS instance status: aws rds describe-db-instances --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
-          2. Verify IAM role has backup permissions: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-executor
-          3. Check S3 bucket exists and role has access: s3://${{ env.S3_BUCKET }}
-          4. Review full logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          Next steps:
-          - Manual snapshot: aws rds create-db-snapshot --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
-          - Check snapshot status: aws rds describe-db-snapshots --db-instance-identifier payraider-${{ steps.env.outputs.environment }}
-          EOF
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'backup',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['backup', 'infrastructure'],
+              });
+            }

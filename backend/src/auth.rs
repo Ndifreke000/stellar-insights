@@ -1,3 +1,4 @@
+pub mod brute_force;
 pub mod oauth;
 /// SEP-10 authentication — canonical implementation.
 ///

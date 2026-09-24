@@ -7,6 +7,10 @@ on:
     branches: [main, develop]
   schedule:
     - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   cargo-audit:
@@ -66,9 +70,45 @@ jobs:
         run: npm audit --audit-level=high || true
         working-directory: ./
 
-      - name: Frontend npm audit
-        run: npm ci && npm audit --audit-level=high || true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # The frontend installs with pnpm (see frontend-lint.yml), so audit the pnpm
+      # lockfile. High/critical advisories in production dependencies fail the job
+      # on main and on the weekly schedule (which also opens a tracking issue, see
+      # the `alert` job). On pull requests the existing backlog is reported but not
+      # blocking; newly introduced vulnerable dependencies are blocked by the
+      # dependency-review job instead.
+      - name: Frontend audit (production dependencies)
+        id: frontend_audit
         working-directory: ./frontend
+        run: |
+          pnpm audit --prod --json > pnpm-audit-report.json || true
+          if pnpm audit --prod --audit-level=high; then
+            echo "vulnerable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "vulnerable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload frontend audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-audit-report
+          path: frontend/pnpm-audit-report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Fail on high/critical frontend vulnerabilities
+        if: steps.frontend_audit.outputs.vulnerable == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "::warning::Frontend has high/critical advisories in production dependencies (see frontend-audit-report artifact). Not blocking PRs; tracked via the security issue."
+          else
+            echo "::error::Frontend has high/critical advisories in production dependencies (see frontend-audit-report artifact)."
+            exit 1
+          fi
 
       - name: Mobile npm audit
         run: npm audit --audit-level=high || true
@@ -129,3 +169,53 @@ jobs:
         with:
           fail-on-severity: high
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+
+  alert:
+    name: Alert on vulnerability findings
+    needs: [cargo-audit, npm-audit]
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Security] Dependency vulnerabilities detected';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              'The dependency vulnerability scan found high/critical advisories.',
+              '',
+              `- Workflow run: ${runUrl}`,
+              `- Commit: ${context.sha}`,
+              '',
+              'Download the audit report artifacts from the run for details.',
+              'See SECURITY.md for the patching SLA.',
+            ].join('\n');
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['security', 'dependencies'],
+              });
+            }

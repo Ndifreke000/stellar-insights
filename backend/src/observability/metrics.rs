@@ -183,6 +183,19 @@ lazy_static! {
         &["result"]
     )
     .expect("Failed to register backup_verifications_total counter");
+    pub static ref AUTH_SECURITY_EVENTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "auth_security_events_total",
+            "Authentication security events (failures, lockouts, brute-force alerts) by endpoint"
+        ),
+        &["endpoint", "event"]
+    )
+    .expect("Failed to register auth_security_events_total counter");
+    pub static ref BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS: IntGauge = IntGauge::new(
+        "backup_last_success_timestamp_seconds",
+        "Unix time of the most recent backup that passed verification"
+    )
+    .expect("Failed to register backup_last_success_timestamp_seconds gauge");
     pub static ref BACKUP_SIZE_BYTES: IntGauge = IntGauge::new(
         "backup_size_bytes",
         "Size of the most recent backup in bytes"
@@ -271,6 +284,8 @@ pub fn init_metrics() {
         DB_QUERY_DURATION_BY_OPERATION,
         BACKUP_VERIFICATIONS_TOTAL,
         BACKUP_SIZE_BYTES,
+        BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS,
+        AUTH_SECURITY_EVENTS_TOTAL,
         STELLAR_LEDGER_LAG_SECONDS,
         STELLAR_TRANSACTION_SUCCESS_RATE,
         STELLAR_ANCHOR_HEALTH,
@@ -434,11 +449,18 @@ pub fn record_backup_verification_success() {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&["success"])
         .inc();
+    BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS.set(chrono::Utc::now().timestamp());
 }
 
 pub fn record_backup_verification_failure(reason: &str) {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&[reason])
+        .inc();
+}
+
+pub fn record_auth_security_event(endpoint: &str, event: &str) {
+    AUTH_SECURITY_EVENTS_TOTAL
+        .with_label_values(&[endpoint, event])
         .inc();
 }
 

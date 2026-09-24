@@ -13,7 +13,12 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
+use crate::api::auth::{
+    check_rate_limit_for_account, clear_failed_login_state, preflight_login_guards,
+    record_failed_login, AuthApiError,
+};
 use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
+use crate::observability::metrics::record_auth_security_event;
 
 const SEP10_CHALLENGE_LIMIT_PER_MINUTE: usize = 10;
 static SEP10_CHALLENGE_WINDOWS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
@@ -85,6 +90,13 @@ fn extract_max_time(transaction: &str) -> Option<i64> {
     json["expires_at"].as_i64()
 }
 
+/// Decode the base64 challenge transaction and return the client account it was issued to.
+fn extract_client_account(transaction: &str) -> Option<String> {
+    let bytes = BASE64.decode(transaction).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json["client"].as_str().map(str::to_string)
+}
+
 /// GET /api/sep10/info - Get SEP-10 server information
 #[utoipa::path(
     get,
@@ -130,6 +142,7 @@ pub async fn request_challenge(
             retry_after_seconds,
             "SEP-10 challenge rate limit exceeded"
         );
+        record_auth_security_event("sep10_challenge", "rate_limited");
         return Err(Sep10ApiError::RateLimited {
             retry_after_seconds,
         });
@@ -156,8 +169,31 @@ pub async fn request_challenge(
 )]
 pub async fn verify_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
+    headers: HeaderMap,
     Json(request): Json<VerificationRequest>,
 ) -> Result<Response, Sep10ApiError> {
+    // Same per-account rate limit, backoff, lockout and CAPTCHA escalation as the
+    // login endpoint. Unreadable challenges carry no account, so they are keyed by IP.
+    let client_ip = extract_client_ip(&headers);
+    let account_key = format!(
+        "sep10:{}",
+        extract_client_account(&request.transaction).unwrap_or_else(|| format!("ip:{client_ip}"))
+    );
+    if let Some(retry_after_seconds) = check_rate_limit_for_account(&account_key).await {
+        tracing::warn!(
+            client_ip = %client_ip,
+            retry_after_seconds,
+            "SEP-10 token endpoint rate limit exceeded for account"
+        );
+        record_auth_security_event("sep10_verify", "rate_limited");
+        return Err(Sep10ApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+    preflight_login_guards(&account_key, &headers, &client_ip)
+        .await
+        .map_err(Sep10ApiError::Auth)?;
+
     // Enforce time bounds before any signature work: reject expired challenges
     // immediately with HTTP 401 rather than letting them reach service logic.
     let max_time = extract_max_time(&request.transaction).ok_or_else(|| {
@@ -169,12 +205,16 @@ pub async fn verify_challenge(
         return Err(Sep10ApiError::ChallengeExpired);
     }
 
-    let response = sep10_service
-        .verify_challenge(request)
-        .await
-        .map_err(|e| Sep10ApiError::VerificationFailed(e.to_string()))?;
-
-    Ok((StatusCode::OK, Json(response)).into_response())
+    match sep10_service.verify_challenge(request).await {
+        Ok(response) => {
+            clear_failed_login_state(&account_key).await;
+            Ok((StatusCode::OK, Json(response)).into_response())
+        }
+        Err(e) => {
+            record_failed_login("sep10_verify", &account_key, &client_ip).await;
+            Err(Sep10ApiError::VerificationFailed(e.to_string()))
+        }
+    }
 }
 
 /// POST /api/sep10/logout - Invalidate SEP-10 session
@@ -211,11 +251,14 @@ pub enum Sep10ApiError {
     ChallengeExpired,
     LogoutFailed(String),
     RateLimited { retry_after_seconds: u64 },
+    /// Lockout / backoff / CAPTCHA rejection from the shared auth guards.
+    Auth(AuthApiError),
 }
 
 impl IntoResponse for Sep10ApiError {
     fn into_response(self) -> Response {
         let (status, message, retry_after) = match self {
+            Self::Auth(err) => return err.into_response(),
             Self::ChallengeGenerationFailed(msg) => (
                 StatusCode::BAD_REQUEST,
                 format!("Challenge generation failed: {msg}"),
@@ -241,7 +284,7 @@ impl IntoResponse for Sep10ApiError {
             } => (
                 StatusCode::TOO_MANY_REQUESTS,
                 format!(
-                    "Too many SEP-10 challenge requests. Retry after {retry_after_seconds} seconds"
+                    "Too many SEP-10 authentication requests. Retry after {retry_after_seconds} seconds"
                 ),
                 Some(retry_after_seconds),
             ),
