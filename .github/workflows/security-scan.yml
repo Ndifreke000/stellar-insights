@@ -155,7 +155,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install and run pip-audit
-        run: pip install pip-audit && pip-audit
+        run: pip install --upgrade pip setuptools pip-audit && pip-audit
         working-directory: ./sdk/python
 
   dependency-review:

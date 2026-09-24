@@ -70,6 +70,7 @@ logs/
 # ============================================
 coverage/
 .nyc_output/
+backup-verification/
 
 # ============================================
 # Build artifacts

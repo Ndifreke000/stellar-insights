@@ -566,12 +566,22 @@ When major incident occurs:
 **Participants**: 2-3 person team (DBA + DevOps + Eng)
 
 **Procedure**:
-1. Select random backup (weekly or monthly)
-2. Provision temporary database instance
-3. Restore from backup
-4. Verify data integrity (row counts, checksums)
-5. Document findings and lessons learned
-6. Delete temporary instance
+1. Run automated restoration and integrity verification:
+   ```bash
+   ./scripts/restore-backup.sh latest
+   ```
+   Or for a specific point-in-time snapshot:
+   ```bash
+   ./scripts/restore-backup.sh 2026-09-01T12:00:00Z
+   ```
+2. Verify integrity checks pass:
+   - `PRAGMA integrity_check` returns `ok`
+   - `PRAGMA foreign_key_check` returns 0 violations
+   - Core tables (`anchors`, `corridors`, etc.) verified with expected row counts
+3. Confirm RTO compliance (completed in < 4 hours, drill target < 20 minutes)
+4. Confirm RPO compliance (data freshness <= 1 hour)
+5. Review generated JSON report in `backup-verification/`
+6. Document findings and lessons learned
 7. Report results in postmortem
 
 **Success Criteria**:
@@ -661,6 +671,19 @@ Do NOT perform changes during:
 - [AWS Disaster Recovery Solutions](https://aws.amazon.com/disaster-recovery/)
 
 ## Appendix: Tool References
+
+### Automated Restore & Verification Script
+
+```bash
+# Automated restore and integrity check (supports 'latest', ISO timestamp, or local file)
+./scripts/restore-backup.sh latest
+
+# Restore with explicit destination file
+./scripts/restore-backup.sh latest /path/to/destination.db
+
+# Dry run mode (validates integrity and RTO/RPO without touching destination)
+./scripts/restore-backup.sh latest --dry-run
+```
 
 ### AWS CLI Commands
 
