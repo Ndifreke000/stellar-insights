@@ -69,6 +69,14 @@ jobs:
           export DATABASE_URL="sqlite:./test_migrations.db"
           sqlite3 test_migrations.db ".tables" | grep -q "anchors" && echo "✓ Database tables created"
 
+      - name: Verify development seed data loads cleanly
+        working-directory: backend
+        run: |
+          chmod +x seed_data.sh
+          ./seed_data.sh test_migrations.db
+          ./seed_data.sh test_migrations.db --reset
+          echo "✓ Seed data script ran and reset successfully against a freshly migrated database"
+
       - name: Enforce rollback migration files
         working-directory: backend
         run: |
