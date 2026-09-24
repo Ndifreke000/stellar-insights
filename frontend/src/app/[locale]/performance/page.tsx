@@ -100,7 +100,7 @@ export default function PerformancePage() {
   const apiLatencies = useMemo(() => {
     const latencyMap = new Map<string, number[]>();
     for (const m of rawMetrics) {
-      if (m.name === "api-latency" && m.metadata?.endpoint) {
+      if (m.name === "api-response-time" && m.metadata?.endpoint) {
         const ep = m.metadata.endpoint as string;
         if (!latencyMap.has(ep)) latencyMap.set(ep, []);
         latencyMap.get(ep)!.push(m.value);

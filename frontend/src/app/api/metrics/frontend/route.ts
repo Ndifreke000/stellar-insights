@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Metric, AppError } from "@/lib/monitoring";
+import { FRONTEND_METRICS_ENDPOINT, type Metric, type AppError } from "@/lib/monitoring";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -13,10 +13,9 @@ export async function POST(request: Request) {
     errors?: AppError[];
   };
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (backendUrl) {
+  if (process.env.NEXT_PUBLIC_API_URL) {
     try {
-      await fetch(`${backendUrl}/api/metrics/frontend`, {
+      await fetch(FRONTEND_METRICS_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ metrics, errors }),

@@ -1,6 +1,7 @@
 /**
  * Frontend Monitoring Utility
- * Handles tracking of performance metrics and application errors.
+ * Handles tracking of performance metrics (Web Vitals, page loads, API latency)
+ * and application errors, and ships them to the backend RUM endpoint.
  */
 import { logger } from "@/lib/logger";
 
@@ -21,6 +22,27 @@ export interface AppError {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Performance budgets (Core Web Vitals "good" thresholds). Values in ms, CLS unitless.
+ * Kept in sync with the backend budgets in `observability/frontend_metrics.rs`.
+ */
+export const PERFORMANCE_BUDGETS: Record<string, number> = {
+  "web-vitals-lcp": 2500,
+  "web-vitals-fid": 100,
+  "web-vitals-inp": 200,
+  "web-vitals-cls": 0.1,
+  "web-vitals-fcp": 1800,
+  "web-vitals-ttfb": 800,
+  "page-load-time": 3000,
+  "api-response-time": 1000,
+};
+
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+).replace(/\/api\/?$/, "");
+/** Backend RUM endpoint (POST ingests a batch, GET returns the summary). */
+export const FRONTEND_METRICS_ENDPOINT = `${API_BASE_URL}/api/metrics/frontend`;
+
 class Monitoring {
   private static instance: Monitoring;
   private metricsBuffer: Metric[] = [];
@@ -32,6 +54,11 @@ class Monitoring {
     if (typeof window !== "undefined") {
       // Automatic flushing
       setInterval(() => this.flush(), this.FLUSH_INTERVAL);
+      // Flush remaining data when the page is hidden/unloaded
+      window.addEventListener("pagehide", () => this.flush());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") this.flush();
+      });
     }
   }
 
@@ -59,6 +86,7 @@ class Monitoring {
     };
 
     logger.debug(`[Monitoring] Metric: ${name} = ${value}`, metadata);
+    this.checkBudget(metric);
     this.metricsBuffer.push(metric);
 
     if (this.metricsBuffer.length >= this.MAX_BUFFER_SIZE) {
@@ -91,10 +119,40 @@ class Monitoring {
   }
 
   /**
-   * Track API call latency
+   * Track the latency of an API call. `status` 0 means a network failure.
    */
-  public trackApiLatency(endpoint: string, latencyMs: number) {
-    this.trackMetric("api-latency", latencyMs, { endpoint });
+  public trackApiCall(
+    endpoint: string,
+    method: string,
+    status: number,
+    durationMs: number,
+  ) {
+    // Strip query strings and IDs to keep the endpoint label low-cardinality
+    const normalized = endpoint
+      .split("?")[0]
+      .replace(/^https?:\/\/[^/]+/, "")
+      .replace(/\/[0-9a-f-]{16,}|\/G[A-Z2-7]{55}|\/\d+/g, "/:id");
+    this.trackMetric("api-response-time", durationMs, {
+      endpoint: normalized,
+      method: method.toUpperCase(),
+      status,
+    });
+    if (status === 0 || status >= 500) {
+      this.trackMetric("api-error", 1, { endpoint: normalized, status });
+    }
+  }
+
+  /**
+   * Warn when a metric exceeds its performance budget
+   */
+  private checkBudget(metric: Metric) {
+    const budget = PERFORMANCE_BUDGETS[metric.name];
+    if (budget !== undefined && metric.value > budget) {
+      logger.warn(
+        `[Monitoring] Performance budget exceeded: ${metric.name} = ${metric.value.toFixed(2)} (budget ${budget}) on ${metric.path}`,
+        metric.metadata,
+      );
+    }
   }
 
   /**
