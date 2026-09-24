@@ -1,5 +1,8 @@
 # PayRaider
 
+[![Coverage](https://codecov.io/gh/Ndifreke000/stellar-insights/branch/main/graph/badge.svg)](https://codecov.io/gh/Ndifreke000/stellar-insights)
+[![Coverage CI](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml/badge.svg)](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml)
+
 **Real-time payment analytics for Stellar.**
 
 A lean, production-grade stack for measuring and improving cross-border payment reliability.
