@@ -80,11 +80,58 @@ pub enum DataKey {
     Quorum,
     VotingPeriod,
     Version,
+    /// Legacy: all proposals in one map. Read-only fallback; new writes use `Proposal(id)`.
     Proposals,
+    /// Legacy: all votes for a proposal in one map. Read-only fallback; new writes use `Vote`.
     Votes(u64),
     VoteTally(u64),
     /// Parameter-update action for a proposal (when present, proposal is parameter type).
     ParameterAction(u64),
+    /// One entry per proposal so reads/writes cost O(1) instead of O(proposals).
+    Proposal(u64),
+    /// One entry per (proposal, voter) so voting costs O(1) instead of O(voters).
+    Vote(u64, Address),
+}
+
+const EMPTY_TALLY: VoteTally = VoteTally {
+    votes_for: 0,
+    votes_against: 0,
+    votes_abstain: 0,
+    total_voters: 0,
+};
+
+fn load_proposal(env: &Env, proposal_id: u64) -> Result<Proposal, Error> {
+    let persistent = env.storage().persistent();
+    if let Some(p) = persistent.get(&DataKey::Proposal(proposal_id)) {
+        return Ok(p);
+    }
+    persistent
+        .get::<_, Map<u64, Proposal>>(&DataKey::Proposals)
+        .and_then(|m| m.get(proposal_id))
+        .ok_or(Error::ProposalNotFound)
+}
+
+fn save_proposal(env: &Env, proposal: &Proposal) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::Proposal(proposal.id), proposal);
+}
+
+fn voted(env: &Env, proposal_id: u64, voter: &Address) -> bool {
+    let persistent = env.storage().persistent();
+    persistent.has(&DataKey::Vote(proposal_id, voter.clone()))
+        || persistent
+            .get::<_, Map<Address, VoteChoice>>(&DataKey::Votes(proposal_id))
+            .is_some_and(|m| m.contains_key(voter.clone()))
+}
+
+/// Allocate the next proposal id and read the voting period (instance storage, single access each).
+fn next_proposal(env: &Env) -> (u64, u64) {
+    let instance = env.storage().instance();
+    let count: u64 = instance.get(&DataKey::ProposalCount).unwrap_or(0) + 1;
+    let voting_period: u64 = instance.get(&DataKey::VotingPeriod).unwrap_or(0);
+    instance.set(&DataKey::ProposalCount, &count);
+    (count, voting_period)
 }
 
 // ============================================================================
@@ -129,15 +176,12 @@ impl GovernanceContract {
             return Err(errors::Error::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::ProposalCount, &0u64);
-        env.storage().instance().set(&DataKey::Quorum, &quorum);
-        env.storage()
-            .instance()
-            .set(&DataKey::VotingPeriod, &voting_period);
-        env.storage()
-            .instance()
-            .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        let instance = env.storage().instance();
+        instance.set(&DataKey::Admin, &admin);
+        instance.set(&DataKey::ProposalCount, &0u64);
+        instance.set(&DataKey::Quorum, &quorum);
+        instance.set(&DataKey::VotingPeriod, &voting_period);
+        instance.set(&DataKey::Version, &String::from_str(&env, VERSION));
 
         emit_governance_initialized(&env, admin, quorum, voting_period);
 
@@ -175,21 +219,9 @@ impl GovernanceContract {
             return Err(Error::InvalidTitle);
         }
 
-        let voting_period: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::VotingPeriod)
-            .unwrap_or(0);
-
+        let (count, voting_period) = next_proposal(&env);
         let now = env.ledger().timestamp();
         let voting_ends_at = now + voting_period;
-
-        let mut count: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ProposalCount)
-            .unwrap_or(0);
-        count += 1;
 
         let proposal = Proposal {
             id: count,
@@ -201,39 +233,11 @@ impl GovernanceContract {
             created_at: now,
             voting_ends_at,
         };
+        save_proposal(&env, &proposal);
 
-        // Store proposal in the proposals map
-        let mut proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-        proposals.set(count, proposal);
         env.storage()
             .persistent()
-            .set(&DataKey::Proposals, &proposals);
-
-        // Initialize vote tally
-        let tally = VoteTally {
-            votes_for: 0,
-            votes_against: 0,
-            votes_abstain: 0,
-            total_voters: 0,
-        };
-        env.storage()
-            .persistent()
-            .set(&DataKey::VoteTally(count), &tally);
-
-        // Initialize votes map for this proposal
-        let votes: Map<Address, VoteChoice> = Map::new(&env);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Votes(count), &votes);
-
-        // Update proposal count
-        env.storage()
-            .instance()
-            .set(&DataKey::ProposalCount, &count);
+            .set(&DataKey::VoteTally(count), &EMPTY_TALLY);
 
         emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
 
@@ -264,21 +268,9 @@ impl GovernanceContract {
             return Err(Error::InvalidTitle);
         }
 
-        let voting_period: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::VotingPeriod)
-            .unwrap_or(0);
-
+        let (count, voting_period) = next_proposal(&env);
         let now = env.ledger().timestamp();
         let voting_ends_at = now + voting_period;
-
-        let mut count: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ProposalCount)
-            .unwrap_or(0);
-        count += 1;
 
         let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
         let proposal = Proposal {
@@ -292,38 +284,11 @@ impl GovernanceContract {
             voting_ends_at,
         };
 
-        let mut proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-        proposals.set(count, proposal);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Proposals, &proposals);
+        save_proposal(&env, &proposal);
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::ParameterAction(count), &action);
-
-        let tally = VoteTally {
-            votes_for: 0,
-            votes_against: 0,
-            votes_abstain: 0,
-            total_voters: 0,
-        };
-        env.storage()
-            .persistent()
-            .set(&DataKey::VoteTally(count), &tally);
-
-        let votes: Map<Address, VoteChoice> = Map::new(&env);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Votes(count), &votes);
-
-        env.storage()
-            .instance()
-            .set(&DataKey::ProposalCount, &count);
+        let persistent = env.storage().persistent();
+        persistent.set(&DataKey::ParameterAction(count), &action);
+        persistent.set(&DataKey::VoteTally(count), &EMPTY_TALLY);
 
         emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
 
@@ -339,14 +304,7 @@ impl GovernanceContract {
     ) -> Result<(), Error> {
         voter.require_auth();
 
-        // Get the proposal
-        let proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let proposal = proposals.get(proposal_id).ok_or(Error::ProposalNotFound)?;
+        let proposal = load_proposal(&env, proposal_id)?;
 
         // Check proposal is still active
         if proposal.status != ProposalStatus::Active {
@@ -360,33 +318,18 @@ impl GovernanceContract {
         }
 
         // Check voter has not already voted
-        let mut votes: Map<Address, VoteChoice> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Votes(proposal_id))
-            .unwrap_or_else(|| Map::new(&env));
-
-        if votes.contains_key(voter.clone()) {
+        if voted(&env, proposal_id, &voter) {
             return Err(Error::AlreadyVoted);
         }
 
-        // Record the vote
-        votes.set(voter.clone(), choice.clone());
-        env.storage()
-            .persistent()
-            .set(&DataKey::Votes(proposal_id), &votes);
+        // Record the vote (per-voter key: O(1) regardless of voter count)
+        let persistent = env.storage().persistent();
+        persistent.set(&DataKey::Vote(proposal_id, voter.clone()), &choice);
 
         // Update tally
-        let mut tally: VoteTally = env
-            .storage()
-            .persistent()
+        let mut tally: VoteTally = persistent
             .get(&DataKey::VoteTally(proposal_id))
-            .unwrap_or(VoteTally {
-                votes_for: 0,
-                votes_against: 0,
-                votes_abstain: 0,
-                total_voters: 0,
-            });
+            .unwrap_or(EMPTY_TALLY);
 
         match choice {
             VoteChoice::For => tally.votes_for += 1,
@@ -395,9 +338,7 @@ impl GovernanceContract {
         }
         tally.total_voters += 1;
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::VoteTally(proposal_id), &tally);
+        persistent.set(&DataKey::VoteTally(proposal_id), &tally);
 
         let choice_val = choice as u32;
         emit_vote_cast(&env, proposal_id, voter, choice_val);
@@ -408,13 +349,7 @@ impl GovernanceContract {
     /// Finalize a proposal after the voting period has ended.
     /// Anyone can call this function once the deadline passes.
     pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
-        let mut proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut proposal = proposals.get(proposal_id).ok_or(Error::ProposalNotFound)?;
+        let mut proposal = load_proposal(&env, proposal_id)?;
 
         // Must still be active
         if proposal.status != ProposalStatus::Active {
@@ -431,12 +366,7 @@ impl GovernanceContract {
             .storage()
             .persistent()
             .get(&DataKey::VoteTally(proposal_id))
-            .unwrap_or(VoteTally {
-                votes_for: 0,
-                votes_against: 0,
-                votes_abstain: 0,
-                total_voters: 0,
-            });
+            .unwrap_or(EMPTY_TALLY);
 
         let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
 
@@ -447,11 +377,8 @@ impl GovernanceContract {
             ProposalStatus::Failed
         };
 
-        proposal.status = new_status.clone();
-        proposals.set(proposal_id, proposal);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Proposals, &proposals);
+        proposal.status = new_status;
+        save_proposal(&env, &proposal);
 
         let status_val = new_status.clone() as u32;
         emit_proposal_finalized(
@@ -481,13 +408,7 @@ impl GovernanceContract {
             return Err(Error::UnauthorizedCaller);
         }
 
-        let mut proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut proposal = proposals.get(proposal_id).ok_or(Error::ProposalNotFound)?;
+        let mut proposal = load_proposal(&env, proposal_id)?;
 
         if proposal.status != ProposalStatus::Passed {
             return Err(Error::ProposalNotPassed);
@@ -512,11 +433,8 @@ impl GovernanceContract {
         // Upgrade proposals: execution is off-chain (deploy new WASM); we only mark executed here.
 
         proposal.status = ProposalStatus::Executed;
-        let target_contract = proposal.target_contract.clone();
-        proposals.set(proposal_id, proposal);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Proposals, &proposals);
+        save_proposal(&env, &proposal);
+        let target_contract = proposal.target_contract;
 
         emit_proposal_executed(&env, proposal_id, caller, target_contract);
 
@@ -529,13 +447,7 @@ impl GovernanceContract {
 
     /// Get a proposal by ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<Proposal, Error> {
-        let proposals: Map<u64, Proposal> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Proposals)
-            .unwrap_or_else(|| Map::new(&env));
-
-        proposals.get(proposal_id).ok_or(Error::ProposalNotFound)
+        load_proposal(&env, proposal_id)
     }
 
     /// Get the vote tally for a proposal.
@@ -548,13 +460,7 @@ impl GovernanceContract {
 
     /// Check if an address has voted on a proposal.
     pub fn has_voted(env: Env, proposal_id: u64, voter: Address) -> bool {
-        let votes: Map<Address, VoteChoice> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Votes(proposal_id))
-            .unwrap_or_else(|| Map::new(&env));
-
-        votes.contains_key(voter)
+        voted(&env, proposal_id, &voter)
     }
 
     /// Get the parameter action for a proposal (if it is a parameter-update proposal).
@@ -566,25 +472,11 @@ impl GovernanceContract {
 
     /// Get contract configuration (admin, quorum, voting_period, proposal_count).
     pub fn get_config(env: Env) -> Result<(Address, u64, u64, u64), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
-
-        let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
-
-        let voting_period: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::VotingPeriod)
-            .unwrap_or(0);
-
-        let proposal_count: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ProposalCount)
-            .unwrap_or(0);
+        let instance = env.storage().instance();
+        let admin: Address = instance.get(&DataKey::Admin).ok_or(Error::AdminNotSet)?;
+        let quorum: u64 = instance.get(&DataKey::Quorum).unwrap_or(0);
+        let voting_period: u64 = instance.get(&DataKey::VotingPeriod).unwrap_or(0);
+        let proposal_count: u64 = instance.get(&DataKey::ProposalCount).unwrap_or(0);
 
         Ok((admin, quorum, voting_period, proposal_count))
     }

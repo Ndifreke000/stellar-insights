@@ -49,11 +49,12 @@ async function fetchApi<T>(
     const duration = performance.now() - startTime;
 
     // Track API performance
-    monitoring.trackMetric("api-response-time", duration, {
+    monitoring.trackApiCall(
       endpoint,
-      status: response.status,
-      method: options.method || "GET",
-    });
+      options.method || "GET",
+      response.status,
+      duration,
+    );
 
     if (!response.ok) {
       let errorData;

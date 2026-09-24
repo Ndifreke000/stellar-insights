@@ -1,3 +1,5 @@
+import { monitoring } from "@/lib/monitoring";
+
 /**
  * API Client with CSRF Protection
  * 
@@ -50,11 +52,24 @@ async function apiFetch(url: string, options: ApiOptions = {}): Promise<Response
     requestHeaders['X-CSRF-Token'] = csrfToken;
   }
   
-  const response = await fetch(url, {
-    ...restOptions,
-    method,
-    headers: requestHeaders,
-  });
+  const startTime = performance.now();
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...restOptions,
+      method,
+      headers: requestHeaders,
+    });
+  } catch (error) {
+    monitoring.trackApiCall(url, method || "GET", 0, performance.now() - startTime);
+    throw error;
+  }
+  monitoring.trackApiCall(
+    url,
+    method || "GET",
+    response.status,
+    performance.now() - startTime,
+  );
   
   // Handle CSRF token errors
   if (response.status === 403) {

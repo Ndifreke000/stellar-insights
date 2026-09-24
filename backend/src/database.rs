@@ -144,6 +144,11 @@ impl PoolConfig {
 
         opts = opts.journal_mode(SqliteJournalMode::Wal);
 
+        // Always log statements above the slow query threshold at WARN, with elapsed time,
+        // independent of the general statement log level.
+        let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
+        opts = opts.log_slow_statements(log::LevelFilter::Warn, threshold);
+
         if sql_log.level != log::LevelFilter::Off {
             if sql_log.log_all_in_dev {
                 opts = opts.log_statements(sql_log.level);
@@ -152,8 +157,6 @@ impl PoolConfig {
                     sql_log.level
                 );
             } else {
-                let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
-                opts = opts.log_slow_statements(sql_log.level, threshold);
                 tracing::info!(
                     "SQL query logging: slow queries only (> {} ms) at level {:?} (production)",
                     sql_log.slow_query_threshold_ms,
@@ -232,6 +235,7 @@ impl Database {
     pub fn new(pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         let slow_query_threshold_ms = std::env::var("SLOW_QUERY_THRESHOLD_MS")
+            .or_else(|_| std::env::var("DB_SLOW_QUERY_MS"))
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(100);
@@ -242,29 +246,63 @@ impl Database {
         }
     }
 
-    /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log
-    /// if the duration exceeds `slow_query_threshold_ms`.
+    /// Executes `f`, records its duration via `observe_db_query`, and captures it as a
+    /// slow query if the duration exceeds `slow_query_threshold_ms`.
     async fn execute_with_timing<T, F>(&self, operation: &str, f: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,
     {
+        self.timed(operation, None, f).await
+    }
+
+    /// Like `execute_with_timing`, but slow executions also capture the
+    /// `EXPLAIN QUERY PLAN` output for `sql`.
+    async fn execute_with_plan<T, F>(&self, operation: &str, sql: &'static str, f: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        self.timed(operation, Some(sql), f).await
+    }
+
+    async fn timed<T, F>(&self, operation: &str, sql: Option<&'static str>, f: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        use crate::observability::db_performance;
+
         let start = Instant::now();
         let result = f.await;
         let elapsed = start.elapsed();
         let status = if result.is_ok() { "success" } else { "error" };
-
-        if elapsed.as_millis() as u64 > self.slow_query_threshold_ms {
-            log::warn!(
-                "Slow query detected: '{}' took {}ms (threshold: {}ms)",
-                operation,
-                elapsed.as_millis(),
-                self.slow_query_threshold_ms,
-            );
-        }
+        let elapsed_ms = elapsed.as_millis() as u64;
 
         crate::observability::metrics::observe_db_query(operation, status, elapsed.as_secs_f64());
+        db_performance::observe(operation, status, elapsed.as_secs_f64());
+
+        if elapsed_ms > self.slow_query_threshold_ms {
+            // EXPLAIN runs off the request path
+            let pool = self.pool.clone();
+            let operation = operation.to_string();
+            let threshold_ms = self.slow_query_threshold_ms;
+            tokio::spawn(async move {
+                db_performance::record_slow_query(
+                    &pool,
+                    &operation,
+                    sql,
+                    elapsed_ms,
+                    threshold_ms,
+                    status,
+                )
+                .await;
+            });
+        }
 
         result
+    }
+
+    #[must_use]
+    pub const fn slow_query_threshold_ms(&self) -> u64 {
+        self.slow_query_threshold_ms
     }
 
     #[must_use]
@@ -446,14 +484,13 @@ impl Database {
     /// Query is indexed and metrics are recorded. Typical response time <10ms for limit ≤ 100.
     #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("list_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>(
-                r"
+        const SQL: &str = r"
             SELECT * FROM anchors
             ORDER BY reliability_score DESC, updated_at DESC
             LIMIT $1 OFFSET $2
-            ",
-            )
+            ";
+        self.execute_with_plan("list_anchors", SQL, async {
+            let anchors = sqlx::query_as::<_, Anchor>(SQL)
             .bind(limit)
             .bind(offset)
             .fetch_all(&self.pool)
@@ -469,8 +506,9 @@ impl Database {
 
     /// Retrieves all anchors from the database, sorted by name.
     pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("get_all_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
+        const SQL: &str = "SELECT * FROM anchors ORDER BY name ASC";
+        self.execute_with_plan("get_all_anchors", SQL, async {
+            let anchors = sqlx::query_as::<_, Anchor>(SQL)
                 .fetch_all(&self.pool)
                 .await
                 .context("Failed to get all anchors")?;
@@ -700,13 +738,12 @@ impl Database {
     /// }
     /// ```
     pub async fn get_assets_by_anchor(&self, anchor_id: Uuid) -> Result<Vec<Asset>> {
-        self.execute_with_timing("get_assets_by_anchor", async {
-            let assets = sqlx::query_as::<_, Asset>(
-                r"
+        const SQL: &str = r"
             SELECT * FROM assets WHERE anchor_id = $1
             ORDER BY asset_code ASC
-            ",
-            )
+            ";
+        self.execute_with_plan("get_assets_by_anchor", SQL, async {
+            let assets = sqlx::query_as::<_, Asset>(SQL)
             .bind(anchor_id.to_string())
             .fetch_all(&self.pool)
             .await

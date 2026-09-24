@@ -28,6 +28,7 @@ import {
   Area,
 } from "recharts";
 import { getMockMonitoringStats, MonitoringStats } from "@/lib/mock-monitoring";
+import { LivePerformancePanel } from "@/components/LivePerformancePanel";
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
 
@@ -71,6 +72,8 @@ export default function MonitoringDashboard() {
             errors.
           </p>
         </header>
+
+        <LivePerformancePanel />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

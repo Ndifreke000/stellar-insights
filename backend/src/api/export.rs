@@ -12,14 +12,28 @@ use crate::error::{ApiError, ApiResult};
 use crate::models::PaymentRecord;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ExportQuery {
+    /// Output format: `csv`, `json` or `excel`
     pub format: String, // "csv", "json", "excel"
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub corridor_id: Option<String>,
 }
 
+/// Export corridors as CSV, JSON or Excel
+#[utoipa::path(
+    get,
+    path = "/api/v1/export/corridors",
+    params(ExportQuery),
+    responses(
+        (status = 200, description = "Exported corridors file (content type depends on `format`)"),
+        (status = 400, description = "Unsupported export format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Export"
+)]
 pub async fn export_corridors(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
@@ -195,6 +209,18 @@ pub async fn export_corridors(
     }
 }
 
+/// Export anchors as CSV, JSON or Excel
+#[utoipa::path(
+    get,
+    path = "/api/v1/export/anchors",
+    params(ExportQuery),
+    responses(
+        (status = 200, description = "Exported anchors file (content type depends on `format`)"),
+        (status = 400, description = "Unsupported export format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Export"
+)]
 pub async fn export_anchors(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
@@ -359,6 +385,18 @@ pub async fn export_anchors(
     }
 }
 
+/// Export payments as CSV, JSON or Excel
+#[utoipa::path(
+    get,
+    path = "/api/v1/export/payments",
+    params(ExportQuery),
+    responses(
+        (status = 200, description = "Exported payments file (content type depends on `format`)"),
+        (status = 400, description = "Unsupported export format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Export"
+)]
 pub async fn export_payments(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,

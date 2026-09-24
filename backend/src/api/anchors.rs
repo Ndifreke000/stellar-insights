@@ -160,6 +160,19 @@ pub async fn get_muxed_analytics(
 }
 
 /// POST /api/anchors - Create a new anchor
+#[utoipa::path(
+    post,
+    path = "/api/anchors",
+    request_body = CreateAnchorRequest,
+    responses(
+        (status = 200, description = "Anchor created", body = crate::models::Anchor),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Anchors"
+)]
 #[tracing::instrument(skip(app_state, req), fields(anchor_name = %req.name))]
 pub async fn create_anchor(
     State(app_state): State<AppState>,
@@ -179,7 +192,14 @@ pub async fn create_anchor(
 }
 
 /// PUT /api/anchors/:id/metrics - Update anchor metrics
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "total_transactions": 1000,
+    "successful_transactions": 980,
+    "failed_transactions": 20,
+    "avg_settlement_time_ms": 4200,
+    "volume_usd": 125000.5
+}))]
 pub struct UpdateMetricsRequest {
     pub total_transactions: i64,
     pub successful_transactions: i64,
@@ -188,6 +208,20 @@ pub struct UpdateMetricsRequest {
     pub volume_usd: Option<f64>,
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/anchors/{id}/metrics",
+    params(("id" = String, Path, description = "Anchor UUID")),
+    request_body = UpdateMetricsRequest,
+    responses(
+        (status = 200, description = "Anchor metrics updated", body = crate::models::Anchor),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Anchors"
+)]
 #[tracing::instrument(skip(app_state, req), fields(anchor_id = %id))]
 pub async fn update_anchor_metrics(
     State(app_state): State<AppState>,
@@ -224,6 +258,17 @@ pub async fn update_anchor_metrics(
 }
 
 /// GET /api/anchors/:id/assets - Get assets for an anchor
+#[utoipa::path(
+    get,
+    path = "/api/anchors/{id}/assets",
+    params(("id" = String, Path, description = "Anchor UUID")),
+    responses(
+        (status = 200, description = "Assets issued by the anchor", body = Vec<crate::models::Asset>),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
 #[tracing::instrument(skip(app_state), fields(anchor_id = %id))]
 pub async fn get_anchor_assets(
     State(app_state): State<AppState>,
@@ -246,7 +291,11 @@ pub async fn get_anchor_assets(
 }
 
 /// POST /api/anchors/:id/assets - Add asset to anchor
-#[derive(Debug, Deserialize, validator::Validate)]
+#[derive(Debug, Deserialize, validator::Validate, ToSchema)]
+#[schema(example = json!({
+    "asset_code": "USDC",
+    "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+}))]
 pub struct CreateAssetRequest {
     #[validate(length(
         min = 1,
@@ -263,6 +312,21 @@ pub struct CreateAssetRequest {
     pub asset_issuer: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/anchors/{id}/assets",
+    params(("id" = String, Path, description = "Anchor UUID")),
+    request_body = CreateAssetRequest,
+    responses(
+        (status = 200, description = "Asset added to anchor", body = crate::models::Asset),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Anchors"
+)]
 #[tracing::instrument(skip(app_state, req), fields(anchor_id = %id, asset_code = %req.asset_code))]
 pub async fn create_anchor_asset(
     State(app_state): State<AppState>,

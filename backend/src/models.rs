@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use validator::Validate;
 
 pub mod alerts;
@@ -22,7 +23,7 @@ impl Default for SortBy {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Anchor {
     pub id: String,
     pub name: String,
@@ -39,7 +40,7 @@ pub struct Anchor {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Asset {
     pub id: String,
     pub anchor_id: String,
@@ -108,7 +109,12 @@ impl AnchorStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "name": "Example Anchor",
+    "stellar_account": "GAEXAMPLEACCOUNTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "home_domain": "anchor.example.com"
+}))]
 pub struct CreateAnchorRequest {
     #[validate(length(
         min = 1,
@@ -128,7 +134,13 @@ pub struct CreateAnchorRequest {
     pub home_domain: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "source_asset_code": "USDC",
+    "source_asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "dest_asset_code": "EURC",
+    "dest_asset_issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
+}))]
 pub struct CreateCorridorRequest {
     #[validate(length(
         min = 1,

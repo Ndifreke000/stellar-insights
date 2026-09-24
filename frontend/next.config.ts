@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
       "recharts",
       "framer-motion",
       "@stellar/stellar-sdk",
+    ],
+  },
   turbopack: {
     root: '../',
   },

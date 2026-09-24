@@ -89,6 +89,11 @@ pub fn routes(
         )
         .route("/anchors/:id/assets", get(anchors::get_anchor_assets))
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
+        .route("/export/corridors", get(crate::api::export::export_corridors))
+        .route("/export/anchors", get(crate::api::export::export_anchors))
+        .route("/export/payments", get(crate::api::export::export_payments))
+        .route("/db/slow-queries", get(crate::handlers::slow_queries))
+        .route("/db/index-report", get(crate::handlers::index_report))
         .with_state(app_state.clone());
 
     // 3. Protected anchor routes
@@ -158,6 +163,11 @@ pub fn routes(
         .nest("/api/v1", v1_router.clone())
         .nest("/api/v2", v2_routes())
         .route("/api/version", get(get_api_version))
+        .route(
+            "/api/metrics/frontend",
+            get(crate::observability::frontend_metrics::frontend_metrics_summary)
+                .post(crate::observability::frontend_metrics::ingest_frontend_metrics),
+        )
         // Preserve existing unversioned endpoints for backward compatibility.
         .merge(v1_router)
         .layer(cors)

@@ -250,7 +250,11 @@ async fn main() -> anyhow::Result<()> {
         pool,
         cache,
     )
-    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
+    .route(
+        "/swagger-ui",
+        axum::routing::get(|| async { axum::response::Redirect::permanent("/api/docs/") }),
+    )
     .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)));
 
         .layer(middleware::from_fn_with_state(
