@@ -109,10 +109,62 @@ backend, copy the snapshot over the live file, restart.
 cp ./backups/payraider_20260901_020000.db /data/payraider.db
 ```
 
+## Backup Verification
+
+Backups are only useful if they restore, so every layer is checked:
+
+| What | How | When |
+|---|---|---|
+| New local snapshot | `backup.rs` `verify_backup`: SHA-256 sidecar + `PRAGMA integrity_check` | After each daily snapshot |
+| Stored local snapshots | `backup.rs` `verify_existing_checksums`: re-hashes every snapshot against its sidecar | Each daily run |
+| Litestream replica (latest) | `scripts/verify-backup.sh latest` in [`backup-database.yml`](../.github/workflows/backup-database.yml) | Daily, 03:30 UTC |
+| Point-in-time recovery | `scripts/verify-backup.sh <24h ago>` in the same workflow | Weekly, Sundays |
+| Restore into a running environment | `scripts/restore-to-staging.sh` | Manually / before risky migrations |
+
+`scripts/verify-backup.sh` restores the replica with `litestream restore` and fails if:
+the replica's newest WAL is older than `BACKUP_MAX_AGE_MINUTES` (default 60),
+`PRAGMA integrity_check` or `PRAGMA foreign_key_check` report problems, no migrations
+(or any failed migration) are recorded in `_sqlx_migrations`, or any table in
+`BACKUP_VERIFY_TABLES` (default `anchors corridors`) is missing or empty. It writes a JSON
+report (including the restored file's SHA-256) and can alert a Slack-compatible webhook.
+
+```bash
+# Latest replica state
+LITESTREAM_REPLICA_URL=s3://payraider-db-backups-<account>/production/payraider.db \
+  ./scripts/verify-backup.sh latest
+
+# Point in time
+LITESTREAM_REPLICA_URL=... ./scripts/verify-backup.sh 2026-09-01T12:00:00Z
+
+# A local backup.rs snapshot
+./scripts/verify-backup.sh ./backups/payraider_20260901_020000.db
+```
+
+The workflow assumes the read-only `backup-verifier` role (`terraform/global/backups.tf`)
+and, when a scheduled run fails, opens or comments on a `[Backup]` issue.
+
+### Restoring production into staging
+
+```bash
+LITESTREAM_REPLICA_URL=s3://payraider-db-backups-<account>/production/payraider.db \
+  ./scripts/restore-to-staging.sh latest --yes
+```
+
+Restores and verifies the replica, scales the staging backend to 0, copies the database
+onto the staging PVC (keeping the old file as `payraider.db.pre-restore` and clearing
+Litestream's local state so staging's sidecar starts a fresh generation), scales back up
+and checks `/health`. It refuses to run against a namespace without `staging` in its name.
+
 ## Monitoring
 
 - Backup size is exported as a Prometheus gauge
   (`crate::observability::metrics::set_backup_size_bytes`).
+- `backup_verifications_total{result}` counts snapshot verifications by outcome and
+  `backup_last_success_timestamp_seconds` records the last verified snapshot.
+  `k8s/monitoring/prometheus-rules.yaml` alerts on failures (`BackupVerificationFailed`)
+  and on no verified snapshot for 26 hours (`BackupStale`).
+- Replica restore failures surface as failed `Database Backup Verification` workflow runs
+  and a tracking issue.
 - Litestream sidecar logs go to the same CloudWatch log group as the backend
   (ECS: `awslogs-stream-prefix = "litestream"`) / the same pod's logs (k8s) —
   watch for replication errors there.

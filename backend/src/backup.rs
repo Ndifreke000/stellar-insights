@@ -264,9 +264,56 @@ impl BackupManager {
         Ok(ok)
     }
 
+    /// Re-hashes every earlier snapshot that has a `.sha256` sidecar and compares the
+    /// result, so corruption of stored snapshots is detected rather than discovered at
+    /// restore time. Returns the number of snapshots whose checksum no longer matches.
+    pub async fn verify_existing_checksums(&self) -> Result<u32> {
+        let mut entries = match tokio::fs::read_dir(&self.config.backup_dir).await {
+            Ok(entries) => entries,
+            Err(_) => return Ok(0),
+        };
+
+        let mut mismatches = 0u32;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("db") {
+                continue;
+            }
+            let sidecar = path.with_extension("db.sha256");
+            let Ok(stored) = tokio::fs::read_to_string(&sidecar).await else {
+                continue;
+            };
+
+            let bytes = tokio::fs::read(&path)
+                .await
+                .with_context(|| format!("Failed to read backup '{}'", path.display()))?;
+            let computed = hex::encode(Sha256::digest(&bytes));
+            if stored.trim() != computed {
+                mismatches += 1;
+                tracing::error!(
+                    path = %path.display(),
+                    "Stored backup checksum mismatch — snapshot is corrupted"
+                );
+                crate::observability::metrics::record_backup_verification_failure(
+                    "stored_checksum_mismatch",
+                );
+            }
+        }
+
+        Ok(mismatches)
+    }
+
     pub async fn run_once(&self) -> Result<()> {
         let backup_path = self.create_backup().await?;
         let cleaned = self.cleanup_old_backups().await?;
+
+        match self.verify_existing_checksums().await {
+            Ok(0) => {}
+            Ok(mismatches) => {
+                tracing::error!(mismatches, "Existing backup snapshots failed checksum re-verification");
+            }
+            Err(e) => tracing::error!(error = %e, "Backup checksum re-verification error"),
+        }
 
         // Verify the backup we just created
         match self.verify_backup(&backup_path).await {

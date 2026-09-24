@@ -61,6 +61,56 @@ resource "aws_s3_bucket_lifecycle_configuration" "db_backups" {
   }
 }
 
+# Read-only role for the scheduled restore verification workflow
+# (.github/workflows/backup-database.yml, scripts/verify-backup.sh). It can list and
+# read replicas but never write or delete them, and only the main branch can assume it.
+resource "aws_iam_role" "backup_verifier" {
+  name = "backup-verifier"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Effect = "Allow"
+        Principal = {
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+        }
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:sub" = "repo:Ndifreke000/payraider:ref:refs/heads/main"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name    = "Backup Verifier Role"
+    Purpose = "Read-only access for automated Litestream restore verification"
+  }
+}
+
+resource "aws_iam_role_policy" "backup_verifier_read" {
+  name = "db-backups-read-only"
+  role = aws_iam_role.backup_verifier.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.db_backups.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.db_backups.arn}/*"
+      }
+    ]
+  })
+}
+
 output "db_backups_bucket_name" {
   description = "S3 bucket name for Litestream SQLite replication"
   value       = aws_s3_bucket.db_backups.id
@@ -69,4 +119,9 @@ output "db_backups_bucket_name" {
 output "db_backups_bucket_arn" {
   description = "S3 bucket ARN for Litestream SQLite replication"
   value       = aws_s3_bucket.db_backups.arn
+}
+
+output "backup_verifier_role_arn" {
+  description = "IAM role assumed by the backup verification workflow"
+  value       = aws_iam_role.backup_verifier.arn
 }

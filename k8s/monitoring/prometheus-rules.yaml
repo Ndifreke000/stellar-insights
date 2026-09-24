@@ -107,3 +107,46 @@ spec:
           annotations:
             summary: "Ledger ingestion lag detected (>5 minutes)"
             description: "Last ledger ingestion was {{ $value | humanizeDuration }} ago"
+
+    - name: payraider.auth-security
+      interval: 30s
+      rules:
+        - alert: AuthBruteForceDetected
+          expr: |
+            sum by (endpoint) (increase(auth_security_events_total{event=~"brute_force|credential_stuffing"}[10m])) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "Brute-force / credential-stuffing pattern on {{ $labels.endpoint }}"
+            description: "Check backend logs with target=security_alert for the source IPs"
+
+        - alert: AuthAccountLockoutSpike
+          expr: |
+            sum(increase(auth_security_events_total{event="account_locked"}[15m])) > 5
+          labels:
+            severity: warning
+          annotations:
+            summary: "Unusual number of account lockouts"
+            description: "{{ $value | humanize }} accounts locked in the last 15 minutes"
+
+    - name: payraider.backups
+      interval: 1m
+      rules:
+        - alert: BackupVerificationFailed
+          expr: |
+            sum(increase(backup_verifications_total{result!="success"}[1d])) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "A local database snapshot failed verification"
+            description: "backup.rs reported checksum or integrity failures in the last 24h"
+
+        - alert: BackupStale
+          expr: |
+            (time() - backup_last_success_timestamp_seconds) > 26 * 3600
+            and backup_last_success_timestamp_seconds > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "No verified database snapshot in over 26 hours"
+            description: "Last verified snapshot was {{ $value | humanizeDuration }} ago"
