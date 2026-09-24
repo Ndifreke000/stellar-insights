@@ -71,7 +71,7 @@
     "prisma": "7.10.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.57.2",
+    "typescript-eslint": "8.69.0",
     "vite": "8.2.2",
     "vitest": "4.1.11",
     "vitest-axe": "1.0.0-pre.5"
