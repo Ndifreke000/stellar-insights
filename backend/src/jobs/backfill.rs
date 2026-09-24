@@ -16,6 +16,7 @@
 //! - **Idempotency**: events are inserted with `INSERT OR REPLACE` so re-running
 //!   a range is safe.
 
+use crate::observability::job_metrics::JobMetricsCollector;
 use crate::rpc::StellarRpcClient;
 use crate::services::event_indexer::{EventIndexer, IndexedEvent};
 use anyhow::{Context, Result};
@@ -213,6 +214,7 @@ impl BackfillJob {
         let delay_ms = req.delay_ms.unwrap_or(DEFAULT_BACKFILL_DELAY_MS);
 
         tokio::spawn(async move {
+            let metrics = JobMetricsCollector::new("event-backfill");
             let result = run_backfill(indexer, rpc, state_ref.clone(), req, gaps, delay_ms).await;
 
             let mut state = state_ref.write().await;
@@ -225,11 +227,13 @@ impl BackfillJob {
                         ledgers = state.ledgers_processed,
                         "Backfill completed"
                     );
+                    metrics.complete_success();
                 }
                 Err(e) => {
                     state.status = BackfillStatus::Failed;
                     state.error = Some(e.to_string());
                     error!(error = %e, "Backfill failed");
+                    metrics.complete_failure(&e.to_string());
                 }
             }
         });

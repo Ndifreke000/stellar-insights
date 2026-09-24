@@ -682,6 +682,46 @@ impl AnalyticsContract {
         get_config(&env)
     }
 
+    /// Admin-only storage cleanup: removes a single epoch's entry from the
+    /// `SnapshotHashes` duplicate-detection map. The map grows by one entry per
+    /// `submit_snapshot` call and is never pruned automatically, so long-lived
+    /// deployments should periodically retire epochs old enough that a
+    /// duplicate-hash resubmission is no longer a realistic concern. This only
+    /// removes the hash-lookup entry; the underlying `Snapshot`/`CompactSnapshot`
+    /// data for that epoch is left untouched.
+    pub fn prune_snapshot_hash(env: Env, admin: Address, epoch: u64) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = require_admin(&env)?;
+        if admin != stored_admin {
+            return Err(Error::Unauthorized.log_context(&env, "prune_snapshot_hash: caller is not the admin"));
+        }
+
+        let mut hash_map: Map<BytesN<32>, u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SnapshotHashes)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let target_hash = hash_map
+            .iter()
+            .find(|(_, e)| *e == epoch)
+            .map(|(h, _)| h);
+
+        if let Some(hash) = target_hash {
+            hash_map.remove(hash);
+            env.storage()
+                .persistent()
+                .set(&DataKey::SnapshotHashes, &hash_map);
+            env.storage().persistent().extend_ttl(
+                &DataKey::SnapshotHashes,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+
+        Ok(())
+    }
+
     /// Submit a single snapshot. Returns the ledger timestamp on success.
     pub fn submit_snapshot(
         env: Env,
