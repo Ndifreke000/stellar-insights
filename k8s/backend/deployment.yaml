@@ -167,13 +167,13 @@ spec:
         - name: API_LOG_SAMPLE_RATE
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: api-log-sample-rate
               optional: true
         - name: API_LOG_SLOW_MS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: api-log-slow-ms
               optional: true
         

@@ -79,15 +79,15 @@ its own WebSocket clients, flushes the cache and closes the DB, within `terminat
 
 ```bash
 # Manual scale (the HPA reconciles back into its 3–10 range)
-kubectl -n stellar-insights scale deployment stellar-insights-backend --replicas=5
+kubectl -n payraider scale deployment payraider-backend --replicas=5
 
 # Adjust autoscaling bounds
-kubectl -n stellar-insights patch hpa stellar-insights-backend \
+kubectl -n payraider patch hpa payraider-backend \
   -p '{"spec":{"minReplicas":3,"maxReplicas":15}}'
 
 # Watch the rollout / autoscaler
-kubectl -n stellar-insights rollout status deployment/stellar-insights-backend
-kubectl -n stellar-insights get hpa stellar-insights-backend -w
+kubectl -n payraider rollout status deployment/payraider-backend
+kubectl -n payraider get hpa payraider-backend -w
 ```
 
 Before raising `maxReplicas`, check that the database connection limit covers
@@ -96,23 +96,23 @@ Before raising `maxReplicas`, check that the database connection limit covers
 ## Verifying a multi-replica deployment
 
 ```bash
-kubectl -n stellar-insights scale deployment stellar-insights-backend --replicas=3
+kubectl -n payraider scale deployment payraider-backend --replicas=3
 
 # 1. Leader election: exactly one replica should log "Acquired leadership" for webhook-dispatcher
-kubectl -n stellar-insights logs -l component=backend --prefix | grep -E 'leadership|Leader-only'
+kubectl -n payraider logs -l component=backend --prefix | grep -E 'leadership|Leader-only'
 
 # 2. Scheduled jobs/backups run once per interval: the other replicas log that they skipped
-kubectl -n stellar-insights logs -l component=backend --prefix | grep -E "skipped — another instance"
+kubectl -n payraider logs -l component=backend --prefix | grep -E "skipped — another instance"
 
 # 3. Locks and leases in Redis
-kubectl -n stellar-insights exec statefulset/redis -- redis-cli --scan --pattern 'leader:*'
-kubectl -n stellar-insights exec statefulset/redis -- redis-cli GET leader:webhook-dispatcher
+kubectl -n payraider exec statefulset/redis -- redis-cli --scan --pattern 'leader:*'
+kubectl -n payraider exec statefulset/redis -- redis-cli GET leader:webhook-dispatcher
 
 # 4. WebSocket fan-out: every replica is subscribed
-kubectl -n stellar-insights exec statefulset/redis -- redis-cli PUBSUB NUMSUB ws:broadcast   # → replica count
+kubectl -n payraider exec statefulset/redis -- redis-cli PUBSUB NUMSUB ws:broadcast   # → replica count
 
 # 5. Failover: delete the leader and watch another replica take over within ~30 s
-kubectl -n stellar-insights delete pod <leader-pod>
+kubectl -n payraider delete pod <leader-pod>
 ```
 
 To test WebSocket delivery across replicas, open two clients without the affinity cookie so they land on
