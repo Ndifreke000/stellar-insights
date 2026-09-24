@@ -279,8 +279,9 @@ pub async fn shutdown_websockets(
     );
 
     let close_future = async {
-        // Send shutdown notification to all connected clients
-        ws_state.broadcast(crate::websocket::WsMessage::ServerShutdown {
+        // Notify only this instance's clients — broadcasting through Redis would
+        // tell clients connected to healthy replicas that *their* server is going away.
+        ws_state.broadcast_local(crate::websocket::WsMessage::ServerShutdown {
             message: "Server is shutting down gracefully".to_string(),
         });
 

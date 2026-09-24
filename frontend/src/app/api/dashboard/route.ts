@@ -31,7 +31,7 @@ export async function GET() {
     for (const backendUrl of candidates) {
       try {
         const responses = await Promise.all([
-          fetch(`${backendUrl}/api/corridors`, { cache: "no-store" }),
+          fetch(`${backendUrl}/api/corridors?limit=200`, { cache: "no-store" }),
           fetch(`${backendUrl}/api/rpc/ledger/latest`, { cache: "no-store" }),
           fetch(`${backendUrl}/api/rpc/payments?limit=50`, {
             cache: "no-store",
@@ -73,7 +73,12 @@ export async function GET() {
       avg_settlement_time_ms?: number;
     }
 
-    const corridors: BackendCorridor[] = await corridorsRes.json();
+    // `/api/corridors` returns the standard pagination envelope.
+    const corridorsBody: { data?: BackendCorridor[] } | BackendCorridor[] =
+      await corridorsRes.json();
+    const corridors: BackendCorridor[] = Array.isArray(corridorsBody)
+      ? corridorsBody
+      : (corridorsBody.data ?? []);
     const _paymentsData = paymentsRes.ok
       ? await paymentsRes.json()
       : { _embedded: { records: [] } };

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::HeaderMap,
     response::Response,
     Json,
@@ -19,7 +19,7 @@ use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
-use crate::pagination::PaginatedResponse;
+use crate::pagination::{Page, PaginatedResponse, PaginationParams};
 use crate::rpc::circuit_breaker::rpc_circuit_breaker;
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
@@ -297,18 +297,25 @@ pub async fn create_anchor_asset(
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListAnchorsQuery {
-    /// Maximum number of results to return (default: 50)
-    #[serde(default = "default_limit")]
+    /// Maximum number of results to return (default: 50, max: 200)
     #[param(example = 50)]
-    pub limit: i64,
-    /// Pagination offset (default: 0)
-    #[serde(default)]
+    pub limit: Option<i64>,
+    /// Opaque cursor from `pagination.next_cursor` / `prev_cursor`
+    pub cursor: Option<String>,
+    /// Deprecated: pagination offset. Prefer `cursor`.
     #[param(example = 0)]
-    pub offset: i64,
+    pub offset: Option<i64>,
 }
 
-const fn default_limit() -> i64 {
-    50
+impl ListAnchorsQuery {
+    fn page(&self) -> ApiResult<Page> {
+        PaginationParams {
+            limit: self.limit,
+            cursor: self.cursor.clone(),
+            offset: self.offset,
+        }
+        .resolve(50, 200)
+    }
 }
 
 pub async fn get_anchor_metrics_with_rpc(
@@ -411,12 +418,13 @@ pub struct AnchorsResponse {
     path = "/api/anchors",
     params(ListAnchorsQuery),
     responses(
-        (status = 200, description = "List of anchors retrieved successfully", body = AnchorsResponse),
+        (status = 200, description = "Paginated list of anchors (`PaginatedResponse<AnchorMetricsResponse>`)", body = crate::pagination::PaginatedResponse<AnchorMetricsResponse>),
+        (status = 400, description = "Invalid pagination cursor"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Anchors"
 )]
-#[tracing::instrument(skip(db, cache, rpc_client, _price_feed, params, headers), fields(limit = params.limit, offset = params.offset))]
+#[tracing::instrument(skip(db, cache, rpc_client, _price_feed, params, headers, uri), fields(limit = ?params.limit, cursor = ?params.cursor))]
 pub async fn get_anchors(
     State((db, cache, rpc_client, _price_feed)): State<(
         Arc<Database>,
@@ -424,10 +432,12 @@ pub async fn get_anchors(
         Arc<StellarRpcClient>,
         Arc<PriceFeedClient>,
     )>,
+    OriginalUri(uri): OriginalUri,
     Query(params): Query<ListAnchorsQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
-    let cache_key = keys::anchor_list(params.limit, params.offset);
+    let page = params.page()?;
+    let cache_key = keys::anchor_list(page.limit, page.offset);
 
     let response = cached_query(
         &cache,
@@ -436,17 +446,16 @@ pub async fn get_anchors(
         || async {
             // Get anchor metadata from database (names, accounts, etc.)
             let anchors: Vec<crate::models::Anchor> =
-                db.list_anchors(params.limit, params.offset).await?;
+                db.list_anchors(page.limit, page.offset).await?;
 
             // Total count for pagination metadata (runs in parallel with list query)
             let total = db.count_anchors().await.unwrap_or(0);
 
             if anchors.is_empty() {
-                return Ok(PaginatedResponse::new(
+                return Ok(PaginatedResponse::from_page(
                     Vec::<AnchorMetricsResponse>::new(),
                     total,
-                    params.limit,
-                    params.offset,
+                    page,
                 ));
             }
 
@@ -545,15 +554,11 @@ pub async fn get_anchors(
                 anchor_responses.push(anchor_response);
             }
 
-            Ok(PaginatedResponse::new(
-                anchor_responses,
-                total,
-                params.limit,
-                params.offset,
-            ))
+            Ok(PaginatedResponse::from_page(anchor_responses, total, page))
         },
     )
     .await?;
+    let response = response.with_links(&uri);
 
     let ttl = cache.config.get_ttl("anchor");
     let response = crate::http_cache::cached_json_response(&headers, &cache_key, &response, ttl)?;

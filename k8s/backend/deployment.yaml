@@ -86,6 +86,20 @@ spec:
           protocol: TCP
         
         env:
+        # Instance identity (Downward API) — used in distributed-lock tokens,
+        # leader election and logs to tell replicas apart.
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        # Traffic arrives via the ingress controller: trust exactly one proxy hop
+        # of X-Forwarded-For so per-IP limits and logs see the real client.
+        - name: TRUST_PROXY_HEADERS
+          value: "true"
+        - name: TRUSTED_PROXY_HOPS
+          value: "1"
+
         # Database Configuration
         - name: DATABASE_URL
           valueFrom:
@@ -148,6 +162,20 @@ spec:
         
         - name: LOG_FORMAT
           value: "json"
+
+        # API access logging (see docs/API_REQUEST_LOGGING.md)
+        - name: API_LOG_SAMPLE_RATE
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: api-log-sample-rate
+              optional: true
+        - name: API_LOG_SLOW_MS
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: api-log-slow-ms
+              optional: true
         
         # CORS Configuration
         - name: CORS_ALLOWED_ORIGINS
@@ -189,6 +217,13 @@ spec:
               key: otel-endpoint
               optional: true
         
+        # Give the ingress/endpoints time to stop routing new requests (and
+        # WebSocket upgrades) here before the app starts its graceful shutdown.
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "10"]
+
         # Health check endpoints
         # Threshold increased to tolerate GC pauses under mainnet load (was failureThreshold: 2, periodSeconds: 10)
         livenessProbe:
@@ -360,4 +395,5 @@ spec:
       # DNS configuration
       dnsPolicy: ClusterFirst
       restartPolicy: Always
-      terminationGracePeriodSeconds: 30
+      # preStop (10s) + graceful shutdown (WebSocket close, cache flush, DB close)
+      terminationGracePeriodSeconds: 45

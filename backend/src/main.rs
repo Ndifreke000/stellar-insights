@@ -27,9 +27,11 @@ use payraider_backend::{
     backup::{BackupConfig, BackupManager},
     cache::{CacheConfig, CacheManager},
     database::{Database, PoolConfig},
+    distributed_lock::{instance_id, DistributedLock},
     env_config,
     ingestion::DataIngestionService,
     jobs::backfill::{BackfillJob, BackfillState},
+    leader_election::{spawn_leader_task, DEFAULT_LEASE_TTL},
     middleware::{
         concurrency_limit_middleware, panic_recovery_middleware, ApiVersioning, BatchEndpoints,
         ConcurrencyLimitState, DatabaseSchemaSeparation, ETagCachingSupport,
@@ -43,7 +45,7 @@ use payraider_backend::{
     observability::metrics as obs_metrics,
     observability::tracing::trace_propagation_middleware,
     rate_limit::RateLimiter,
-    request_id::request_id_middleware,
+    request_id::{request_id_middleware, CORRELATION_ID_HEADER, REQUEST_ID_HEADER},
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
@@ -86,7 +88,10 @@ async fn main() -> anyhow::Result<()> {
     let _tracing_guard =
         payraider_backend::observability::tracing::init_tracing("payraider-backend")?;
     payraider_backend::observability::metrics::init_metrics();
-    tracing::info!("PayRaider Backend - Initializing Server");
+    tracing::info!(
+        instance_id = instance_id(),
+        "PayRaider Backend - Initializing Server"
+    );
 
     // Initialize SecretsService (Vault with fallback to environment)
     if let Ok(secrets_service) = payraider_backend::vault::SecretsService::new().await {
@@ -368,43 +373,61 @@ async fn main() -> anyhow::Result<()> {
         )
         .await;
 
+    // Cross-replica coordination (Redis). Without REDIS_URL this runs in
+    // single-instance mode and every singleton task runs locally.
+    let cluster_lock = DistributedLock::shared().await;
+    tracing::info!(
+        distributed = cluster_lock.is_distributed(),
+        "Cluster coordination initialized"
+    );
+
+    // The webhook dispatcher must run on exactly one replica, otherwise every
+    // replica would pick up the same pending events and deliver them N times.
     let webhook_dispatcher_handle: JoinHandle<()> = {
         let webhook_pool = pool.clone();
         let max_restarts: u32 = std::env::var("WEBHOOK_DISPATCHER_MAX_RESTARTS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
-        tokio::spawn(async move {
-            let mut restarts: u32 = 0;
-            loop {
-                let dispatcher = WebhookDispatcher::new(webhook_pool.clone());
-                match dispatcher.run().await {
-                    Ok(()) => {
-                        tracing::warn!("Webhook dispatcher exited cleanly; restarting");
-                    }
-                    Err(e) => {
-                        restarts += 1;
-                        tracing::error!(
-                            restarts,
-                            max_restarts,
-                            error = %e,
-                            "Webhook dispatcher failed"
-                        );
-                        if restarts >= max_restarts {
-                            tracing::error!(
-                                "Webhook dispatcher exceeded max restarts ({}); giving up",
-                                max_restarts
-                            );
-                            break;
+        spawn_leader_task(
+            Arc::clone(&cluster_lock),
+            "webhook-dispatcher",
+            DEFAULT_LEASE_TTL,
+            move || {
+                let webhook_pool = webhook_pool.clone();
+                async move {
+                    let mut restarts: u32 = 0;
+                    loop {
+                        let dispatcher = WebhookDispatcher::new(webhook_pool.clone());
+                        match dispatcher.run().await {
+                            Ok(()) => {
+                                tracing::warn!("Webhook dispatcher exited cleanly; restarting");
+                            }
+                            Err(e) => {
+                                restarts += 1;
+                                tracing::error!(
+                                    restarts,
+                                    max_restarts,
+                                    error = %e,
+                                    "Webhook dispatcher failed"
+                                );
+                                if restarts >= max_restarts {
+                                    tracing::error!(
+                                        "Webhook dispatcher exceeded max restarts ({}); giving up",
+                                        max_restarts
+                                    );
+                                    break;
+                                }
+                            }
                         }
+                        // Exponential back-off capped at 60 s before restarting.
+                        let backoff_secs = std::cmp::min(2u64.saturating_pow(restarts), 60);
+                        tracing::info!("Restarting webhook dispatcher in {}s", backoff_secs);
+                        tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
                     }
                 }
-                // Exponential back-off capped at 60 s before restarting.
-                let backoff_secs = std::cmp::min(2u64.saturating_pow(restarts), 60);
-                tracing::info!("Restarting webhook dispatcher in {}s", backoff_secs);
-                tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-            }
-        })
+            },
+        )
     };
 
     // #2126 — the alert manager is built with the webhook event service so an
@@ -530,7 +553,14 @@ async fn main() -> anyhow::Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(allow_origin)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+        .allow_headers([
+            CONTENT_TYPE,
+            AUTHORIZATION,
+            REQUEST_ID_HEADER.clone(),
+            CORRELATION_ID_HEADER.clone(),
+        ])
+        // Let browser clients read the IDs so they can be quoted in bug reports.
+        .expose_headers([REQUEST_ID_HEADER.clone(), CORRELATION_ID_HEADER.clone()])
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
@@ -723,7 +753,10 @@ async fn main() -> anyhow::Result<()> {
     let shutdown_cache = cache.clone();
     let shutdown_ws_state = ws_state.clone();
 
-    axum::serve(listener, app)
+    // Connect info is required by the WebSocket handler and rate limiter
+    // (client IP); without it `/ws` fails with a missing-extension error.
+    let make_service = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
+    axum::serve(listener, make_service)
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             let coordinator = shutdown_coordinator.clone();

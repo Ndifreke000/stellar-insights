@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Extension, OriginalUri, Path, Query, State},
     http::HeaderMap,
     response::Response,
     Json,
@@ -19,7 +19,7 @@ use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::Corridor;
 use crate::models::{CreateCorridorRequest, SortBy};
-use crate::pagination::PaginatedResponse;
+use crate::pagination::{Page, PaginatedResponse, PaginationParams};
 use crate::request_id::RequestId;
 use crate::rpc::{
     circuit_breaker::rpc_circuit_breaker,
@@ -211,15 +211,15 @@ pub struct CorridorDetailResponse {
 #[serde(default)]
 #[into_params(parameter_in = Query)]
 pub struct ListCorridorsQuery {
-    /// Maximum number of results to return (default: 50)
-    #[serde(default = "default_limit")]
+    /// Maximum number of results to return (default: 50, max: 200)
     #[param(example = 50)]
-    pub limit: i64,
-    /// Pagination offset (default: 0)
-    #[serde(default)]
+    pub limit: Option<i64>,
+    /// Opaque cursor from `pagination.next_cursor` / `prev_cursor`
+    pub cursor: Option<String>,
+    /// Deprecated: pagination offset. Prefer `cursor`.
     #[param(example = 0)]
-    pub offset: i64,
-    /// Sort by field (`success_rate` or volume)
+    pub offset: Option<i64>,
+    /// Sort by field (`success_rate`, `volume`/`liquidity`, or `health_score`)
     #[serde(default)]
     pub sort_by: SortBy,
     /// Minimum success rate filter
@@ -242,8 +242,18 @@ pub struct ListCorridorsQuery {
     pub time_period: Option<String>,
 }
 
-const fn default_limit() -> i64 {
-    50
+const DEFAULT_LIMIT: i64 = 50;
+const MAX_LIMIT: i64 = 200;
+
+impl ListCorridorsQuery {
+    fn page(&self) -> ApiResult<Page> {
+        PaginationParams {
+            limit: self.limit,
+            cursor: self.cursor.clone(),
+            offset: self.offset,
+        }
+        .resolve(DEFAULT_LIMIT, MAX_LIMIT)
+    }
 }
 
 fn calculate_health_score(success_rate: f64, total_transactions: i64, volume_usd: f64) -> f64 {
@@ -278,17 +288,18 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
 }
 
 /// Generate cache key for corridor list with filters
-fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
+fn generate_corridor_list_cache_key(params: &ListCorridorsQuery, page: Page) -> String {
     let filter_str = format!(
-        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_period:{:?}",
+        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_period:{:?}_sort:{:?}",
         params.success_rate_min,
         params.success_rate_max,
         params.volume_min,
         params.volume_max,
         params.asset_code,
-        params.time_period
+        params.time_period,
+        params.sort_by
     );
-    keys::corridor_list(params.limit, params.offset, &filter_str)
+    keys::corridor_list(page.limit, page.offset, &filter_str)
 }
 
 /// List all payment corridors
@@ -306,13 +317,14 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     path = "/api/corridors",
     params(ListCorridorsQuery),
     responses(
-        (status = 200, description = "List of corridors retrieved successfully", body = Vec<CorridorResponse>),
+        (status = 200, description = "Paginated list of corridors (`PaginatedResponse<CorridorResponse>`)", body = crate::pagination::PaginatedResponse<CorridorResponse>),
+        (status = 400, description = "Invalid filter or pagination cursor"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Corridors"
 )]
 #[tracing::instrument(
-    skip(_db, cache, rpc_client, price_feed, params),
+    skip(_db, cache, rpc_client, price_feed, params, headers, uri),
     fields(request_id = %request_id.0, query = ?params)
 )]
 pub async fn list_corridors(
@@ -323,10 +335,13 @@ pub async fn list_corridors(
         Arc<StellarRpcClient>,
         Arc<PriceFeedClient>,
     )>,
+    OriginalUri(uri): OriginalUri,
     Query(params): Query<ListCorridorsQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     info!("Listing corridors");
+
+    let page = params.page()?;
 
     validation::validate_corridor_filters(
         params.success_rate_min,
@@ -335,7 +350,7 @@ pub async fn list_corridors(
         params.volume_max,
     )?;
 
-    let cache_key = generate_corridor_list_cache_key(&params);
+    let cache_key = generate_corridor_list_cache_key(&params, page);
 
     let corridors = cached_query(
         &cache,
@@ -512,25 +527,34 @@ pub async fn list_corridors(
                 })
                 .collect();
 
-            // Apply limit/offset pagination to the filtered results
+            // Corridors come out of a HashMap, so impose a stable order before
+            // paging or cursors would skip/repeat items between requests.
+            let mut filtered = filtered;
+            filtered.sort_by(|a, b| {
+                let (x, y) = match params.sort_by {
+                    SortBy::SuccessRate => (a.success_rate, b.success_rate),
+                    SortBy::Volume => (a.liquidity_depth_usd, b.liquidity_depth_usd),
+                    SortBy::HealthScore => (a.health_score, b.health_score),
+                };
+                y.total_cmp(&x).then_with(|| a.id.cmp(&b.id))
+            });
+
             let total = filtered.len() as i64;
-            let page: Vec<_> = filtered
+            let items: Vec<_> = filtered
                 .into_iter()
-                .skip(params.offset as usize)
-                .take(params.limit as usize)
+                .skip(page.offset as usize)
+                .take(page.limit as usize)
                 .collect();
 
-            Ok(PaginatedResponse::new(
-                page,
-                total,
-                params.limit,
-                params.offset,
-            ))
+            Ok(PaginatedResponse::from_page(items, total, page))
         },
     )
     .await?;
 
-    crate::observability::metrics::set_corridors_tracked(corridors.pagination.total);
+    crate::observability::metrics::set_corridors_tracked(
+        corridors.pagination.total.unwrap_or_default(),
+    );
+    let corridors = corridors.with_links(&uri);
 
     let ttl = cache.config.get_ttl("corridor");
     let response = crate::http_cache::cached_json_response(&headers, &cache_key, &corridors, ttl)?;

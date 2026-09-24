@@ -705,7 +705,7 @@ impl Database {
             let anchors = sqlx::query_as::<_, Anchor>(
                 r"
             SELECT * FROM anchors
-            ORDER BY reliability_score DESC
+            ORDER BY reliability_score DESC, id ASC
             LIMIT $1 OFFSET $2
             ",
             )

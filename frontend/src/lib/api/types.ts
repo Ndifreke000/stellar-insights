@@ -1,3 +1,4 @@
+import type { PaginatedResponse } from "./pagination";
 
 
 /**
@@ -130,11 +131,8 @@ export interface AnchorMetrics {
   status: string;
 }
 
-// AnchorsResponse used to be declared here as { data, pagination }, which
-// never matched what GET /anchors actually returns ({ anchors, total } --
-// see backend/src/api/anchors.rs and lib/api/anchor.ts's AnchorsResponse,
-// the correct shape). Removed rather than fixed in place since api.ts now
-// imports the correct one from ./anchor directly.
+/** Paginated anchor list, as returned by `GET /api/anchors`. */
+export type AnchorsResponse = PaginatedResponse<AnchorMetrics>;
 
 export interface ReliabilityDataPoint {
   timestamp: string;

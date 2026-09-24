@@ -1,4 +1,6 @@
-import { api} from "./api";
+import { api } from "./api";
+import type { PaginatedResponse } from "./pagination";
+export type { PaginatedResponse };
 import {LatencyDataPoint, LiquidityDataPoint, SlippageDataPoint, SuccessRateDataPoint, VolumeDataPoint } from "./types";
 
 
@@ -22,19 +24,6 @@ export interface CorridorMetrics {
   last_updated: string;
 }
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    limit: number;
-    offset: number;
-    total: number;
-    has_next: boolean;
-    has_prev: boolean;
-    next_offset: number | null;
-    prev_offset: number | null;
-  };
-}
-
 export interface CorridorDetailData {
   corridor: CorridorMetrics;
   historical_success_rate: SuccessRateDataPoint[];
@@ -54,9 +43,6 @@ export async function getCorridorDetail(
   return api.get<CorridorDetailData>(`/corridors/${corridorId}`);
 }
 
-/**
- * Fetch all corridors (for listing and navigation)
- */
 export interface CorridorFilters {
   success_rate_min?: number;
   success_rate_max?: number;
@@ -65,35 +51,25 @@ export interface CorridorFilters {
   asset_code?: string;
   time_period?: "7d" | "30d" | "90d" | "";
   limit?: number;
-  offset?: number;
+  /** Opaque cursor from `pagination.next_cursor`. */
+  cursor?: string;
   sort_by?: "success_rate" | "health_score" | "liquidity";
 }
 
+/**
+ * Fetch one page of corridors (for listing and navigation).
+ */
 export async function getCorridors(
-  filters?: CorridorFilters,
-): Promise<CorridorMetrics[]> {
+  filters: CorridorFilters = {},
+): Promise<PaginatedResponse<CorridorMetrics>> {
   const params = new URLSearchParams();
-  if (filters) {
-    if (filters.success_rate_min !== undefined)
-      params.append("success_rate_min", filters.success_rate_min.toString());
-    if (filters.success_rate_max !== undefined)
-      params.append("success_rate_max", filters.success_rate_max.toString());
-    if (filters.volume_min !== undefined)
-      params.append("volume_min", filters.volume_min.toString());
-    if (filters.volume_max !== undefined)
-      params.append("volume_max", filters.volume_max.toString());
-    if (filters.asset_code) params.append("asset_code", filters.asset_code);
-    if (filters.time_period) params.append("time_period", filters.time_period);
-    if (filters.limit !== undefined)
-      params.append("limit", filters.limit.toString());
-    if (filters.offset !== undefined)
-      params.append("offset", filters.offset.toString());
-    if (filters.sort_by) params.append("sort_by", filters.sort_by);
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.append(key, String(value));
   }
   const query = params.toString();
-  const url = query ? `/corridors?${query}` : "/corridors";
-  const response = await api.get<PaginatedResponse<CorridorMetrics>>(url);
-  return response.data;
+  return api.get<PaginatedResponse<CorridorMetrics>>(
+    query ? `/corridors?${query}` : "/corridors",
+  );
 }
 
 /**

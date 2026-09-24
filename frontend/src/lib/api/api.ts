@@ -4,13 +4,8 @@
  */
 import { monitoring } from "../monitoring";
 import { logger } from "@/lib/logger";
-import { MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
-// AnchorsResponse comes from ./anchor, not ./types -- lib/api/types.ts had its
-// own conflicting AnchorsResponse ({ data, pagination }) that didn't match
-// what GET /anchors actually returns ({ anchors, total }, see the backend's
-// AnchorsResponse in backend/src/api/anchors.rs). Using it here silently typed
-// getAnchors() wrong; see also useAnchorPage.ts's response.data bug, same root cause.
-import { AnchorsResponse } from "./anchor";
+import { appendPageParams, type PaginatedResponse } from "./pagination";
+import { AnchorMetrics, MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
 
 import { config } from '@/config';
 export const API_BASE_URL = config.apiUrl;
@@ -21,11 +16,14 @@ export const API_BASE_URL = config.apiUrl;
 export class ApiError extends Error {
   status: number;
   data: unknown;
+  /** Backend `X-Request-ID` — search the API logs for this to find the request. */
+  requestId?: string;
 
-  constructor(status: number, message: string, data?: unknown) {
+  constructor(status: number, message: string, data?: unknown, requestId?: string) {
     super(message);
     this.status = status;
     this.data = data;
+    this.requestId = requestId;
     this.name = "ApiError";
   }
 }
@@ -73,6 +71,7 @@ async function fetchApi<T>(
         response.status,
         errorData.message || `API error: ${response.status}`,
         errorData,
+        response.headers.get("x-request-id") ?? errorData.request_id ?? undefined,
       );
     }
 
@@ -136,16 +135,10 @@ export const api = {
  */
 export async function getAnchors(
   limit?: number,
-  offset?: number,
-): Promise<AnchorsResponse> {
-  const params = new URLSearchParams();
-  if (limit !== undefined) params.append("limit", limit.toString());
-  if (offset !== undefined) params.append("offset", offset.toString());
-
-  const queryString = params.toString();
-  const endpoint = `/anchors${queryString ? `?${queryString}` : ""}`;
-
-  return api.get<AnchorsResponse>(endpoint);
+  cursor?: string,
+): Promise<PaginatedResponse<AnchorMetrics>> {
+  const query = appendPageParams(new URLSearchParams(), { limit, cursor }).toString();
+  return api.get<PaginatedResponse<AnchorMetrics>>(`/anchors${query ? `?${query}` : ""}`);
 }
 /**
  * Fetch muxed account usage analytics from the backend

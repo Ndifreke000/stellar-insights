@@ -12,7 +12,7 @@ use futures::{sink::SinkExt, stream::SplitSink, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -98,12 +98,28 @@ pub struct WsState {
     pub tx: broadcast::Sender<WsMessage>,
     rate_limits: DashMap<String, RateLimitInfo>,
     ip_rate_limits: DashMap<IpAddr, IpRateLimit>,
-    /// Redis client for cross-instance pub/sub. `None` when Redis is unavailable.
+    /// Redis client for cross-instance pub/sub. `None` when `REDIS_URL` is unset.
     redis_client: Option<redis::Client>,
+    /// Shared, auto-reconnecting connection used to publish (created lazily).
+    redis_publisher: tokio::sync::OnceCell<redis::aio::ConnectionManager>,
+    /// True while this instance is subscribed to the fan-out channel. We only
+    /// publish through Redis when we'll receive our own message back;
+    /// otherwise messages are delivered locally so they are never lost.
+    redis_subscribed: AtomicBool,
 }
 
 /// Redis channel used for cross-instance WebSocket message fan-out.
 const REDIS_WS_CHANNEL: &str = "ws:broadcast";
+
+/// Envelope published on [`REDIS_WS_CHANNEL`].
+#[derive(Debug, Serialize, Deserialize)]
+struct FanoutEnvelope {
+    /// Instance that published the message (for debugging).
+    origin: String,
+    /// `Some` for channel-targeted messages, `None` for broadcasts to everyone.
+    channel: Option<String>,
+    message: WsMessage,
+}
 
 impl Default for WsState {
     fn default() -> Self {
@@ -115,16 +131,18 @@ impl WsState {
     #[must_use]
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
-        let redis_url =
-            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-        let redis_client = redis::Client::open(redis_url.as_str())
-            .map_err(|e| {
-                warn!(
-                    "WsState: Redis unavailable, cross-instance broadcast disabled: {}",
-                    e
-                )
-            })
-            .ok();
+        // Only fan out through Redis when explicitly configured; defaulting to
+        // localhost made every broadcast vanish when no local Redis was running.
+        let redis_client = std::env::var("REDIS_URL").ok().and_then(|url| {
+            redis::Client::open(url.as_str())
+                .map_err(|e| {
+                    warn!(
+                        "WsState: invalid REDIS_URL, cross-instance broadcast disabled: {}",
+                        e
+                    );
+                })
+                .ok()
+        });
         Self {
             connections: DashMap::new(),
             subscriptions: DashMap::new(),
@@ -134,6 +152,8 @@ impl WsState {
             rate_limits: DashMap::new(),
             ip_rate_limits: DashMap::new(),
             redis_client,
+            redis_publisher: tokio::sync::OnceCell::new(),
+            redis_subscribed: AtomicBool::new(false),
         }
     }
 
@@ -144,7 +164,7 @@ impl WsState {
             info!("WsState: Redis not configured, cross-instance broadcast disabled");
             return;
         };
-        let local_tx = self.tx.clone();
+        let state = Arc::clone(self);
         tokio::spawn(async move {
             loop {
                 match client.get_async_pubsub().await {
@@ -158,6 +178,7 @@ impl WsState {
                             "WsState: subscribed to Redis channel '{}'",
                             REDIS_WS_CHANNEL
                         );
+                        state.redis_subscribed.store(true, Ordering::Release);
                         let mut stream = pubsub.on_message();
                         loop {
                             match stream.next().await {
@@ -169,12 +190,7 @@ impl WsState {
                                             continue;
                                         }
                                     };
-                                    match serde_json::from_str::<WsMessage>(&payload) {
-                                        Ok(ws_msg) => {
-                                            let _ = local_tx.send(ws_msg);
-                                        }
-                                        Err(e) => warn!("WsState Redis deserialize error: {}", e),
-                                    }
+                                    state.deliver_fanout_payload(&payload);
                                 }
                                 None => {
                                     warn!("WsState Redis pub/sub stream ended, reconnecting");
@@ -182,6 +198,7 @@ impl WsState {
                                 }
                             }
                         }
+                        state.redis_subscribed.store(false, Ordering::Release);
                     }
                     Err(e) => {
                         warn!("WsState Redis connection error: {}, retrying in 5s", e);
@@ -252,34 +269,98 @@ impl WsState {
         }
     }
 
-    pub fn broadcast(&self, message: WsMessage) {
-        // Publish to Redis so all instances relay the message to their local connections.
-        if let Some(client) = &self.redis_client {
-            if let Ok(payload) = serde_json::to_string(&message) {
-                let client = client.clone();
-                let payload_clone = payload.clone();
-                tokio::spawn(async move {
-                    match client.get_multiplexed_async_connection().await {
-                        Ok(mut conn) => {
-                            let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
-                                .arg(REDIS_WS_CHANNEL)
-                                .arg(payload_clone)
-                                .query_async(&mut conn)
-                                .await;
-                        }
-                        Err(e) => warn!("WsState broadcast: Redis publish failed: {}", e),
-                    }
-                });
-                return; // Redis subscriber will feed local tx
-            }
-        }
-        // Fallback: no Redis, broadcast locally only.
+    /// Broadcast to every client on every instance.
+    pub fn broadcast(self: &Arc<Self>, message: WsMessage) {
+        self.fanout(None, message);
+    }
+
+    /// Send to clients subscribed to `channel`, on every instance.
+    pub fn broadcast_to_channel(self: &Arc<Self>, channel: &str, message: WsMessage) {
+        self.fanout(Some(channel.to_string()), message);
+    }
+
+    /// Broadcast only to clients connected to *this* instance (e.g. to announce
+    /// that this instance is shutting down).
+    pub fn broadcast_local(&self, message: WsMessage) {
         if let Err(e) = self.tx.send(message) {
             warn!("Failed to broadcast message: {}", e);
         }
     }
 
-    pub fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
+    /// Publish through Redis so every instance (including this one, via its
+    /// subscriber) delivers to its local connections. Falls back to local
+    /// delivery whenever Redis isn't available.
+    fn fanout(self: &Arc<Self>, channel: Option<String>, message: WsMessage) {
+        if self.redis_client.is_none() || !self.redis_subscribed.load(Ordering::Acquire) {
+            self.deliver_local(channel.as_deref(), message);
+            return;
+        }
+
+        let envelope = FanoutEnvelope {
+            origin: crate::distributed_lock::instance_id().to_string(),
+            channel,
+            message,
+        };
+        let payload = match serde_json::to_string(&envelope) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("WsState: failed to serialise broadcast: {}", e);
+                self.deliver_local(envelope.channel.as_deref(), envelope.message);
+                return;
+            }
+        };
+
+        let state = Arc::clone(self);
+        tokio::spawn(async move {
+            let published = match state.publisher().await {
+                Some(mut conn) => redis::cmd("PUBLISH")
+                    .arg(REDIS_WS_CHANNEL)
+                    .arg(&payload)
+                    .query_async::<i64>(&mut conn)
+                    .await
+                    .map_err(|e| warn!("WsState broadcast: Redis publish failed: {}", e))
+                    .is_ok(),
+                None => false,
+            };
+            if !published {
+                // Don't lose the message for this instance's clients.
+                state.deliver_local(envelope.channel.as_deref(), envelope.message);
+            }
+        });
+    }
+
+    async fn publisher(&self) -> Option<redis::aio::ConnectionManager> {
+        let client = self.redis_client.clone()?;
+        self.redis_publisher
+            .get_or_try_init(|| redis::aio::ConnectionManager::new(client))
+            .await
+            .map_err(|e| warn!("WsState: Redis publisher connect failed: {}", e))
+            .ok()
+            .cloned()
+    }
+
+    fn deliver_local(&self, channel: Option<&str>, message: WsMessage) {
+        match channel {
+            Some(channel) => self.deliver_to_channel_local(channel, message),
+            None => self.broadcast_local(message),
+        }
+    }
+
+    /// Handle a payload received from the Redis fan-out channel.
+    fn deliver_fanout_payload(&self, payload: &str) {
+        if let Ok(envelope) = serde_json::from_str::<FanoutEnvelope>(payload) {
+            self.deliver_local(envelope.channel.as_deref(), envelope.message);
+            return;
+        }
+        // Instances from before the envelope format publish bare messages;
+        // keep accepting them so rolling deploys don't drop updates.
+        match serde_json::from_str::<WsMessage>(payload) {
+            Ok(message) => self.broadcast_local(message),
+            Err(e) => warn!("WsState Redis deserialize error: {}", e),
+        }
+    }
+
+    fn deliver_to_channel_local(&self, channel: &str, message: WsMessage) {
         let mut target_connections = Vec::new();
         for entry in self.subscriptions.iter() {
             let (connection_id, channels) = entry.pair();
@@ -406,7 +487,7 @@ impl WsState {
     /// Broadcast a `NetworkChanged` message to every connected client and drain
     /// all stale subscriptions. Clients that receive `NetworkChanged` should
     /// re-subscribe to channels relevant to the new network.
-    pub fn broadcast_network_change(&self, network: &str) {
+    pub fn broadcast_network_change(self: &Arc<Self>, network: &str) {
         info!("Broadcasting network change to: {}", network);
         self.broadcast(WsMessage::NetworkChanged {
             network: network.to_string(),
@@ -535,9 +616,12 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQueryParams>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<WsState>>,
 ) -> Response {
-    let client_ip = addr.ip();
+    // Behind the ingress the TCP peer is the proxy; use the forwarded client IP
+    // so per-IP limits apply per client rather than per ingress pod.
+    let client_ip = crate::client_ip::client_ip(&headers, Some(addr)).unwrap_or_else(|| addr.ip());
 
     // Per-IP rate limit check — connection attempts and concurrent connections per IP.
     if let Err(reason) = state.check_ip_limits(client_ip) {
