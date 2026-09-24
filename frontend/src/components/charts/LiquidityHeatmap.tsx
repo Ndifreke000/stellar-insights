@@ -2,9 +2,6 @@ import React, { useMemo, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { CorridorAnalytics } from "@/lib/analytics-api";
 import {
-  TrendingUp,
-  Droplets,
-  Clock,
   ArrowRight,
   Maximize2,
   Info,

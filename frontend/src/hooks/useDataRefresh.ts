@@ -45,6 +45,11 @@ export function useDataRefresh({
     null,
   );
 
+  // Holds the latest `startCountdown` so the auto-refresh timeout below can
+  // call it recursively without referencing `startCountdown` before it's
+  // declared (same pattern as useWebSocket.ts's connectRef).
+  const startCountdownRef = useRef<() => void>(() => {});
+
   const clearTimers = useCallback(() => {
     if (countdownIntervalRef.current !== null) {
       clearInterval(countdownIntervalRef.current);
@@ -82,9 +87,13 @@ export function useDataRefresh({
         }
       }
       // Restart the countdown after the refresh completes
-      startCountdown();
+      startCountdownRef.current();
     }, refreshIntervalMs);
   }, [clearTimers, onRefresh, refreshIntervalMs, refreshIntervalSec]);
+
+  useEffect(() => {
+    startCountdownRef.current = startCountdown;
+  });
 
   // Bootstrap: kick off the countdown on mount (and whenever the interval changes)
   useEffect(() => {

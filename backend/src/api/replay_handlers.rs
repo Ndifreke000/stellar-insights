@@ -64,7 +64,7 @@ pub struct ListReplaysQuery {
 }
 
 /// Start a new replay
-pub async fn start_replay(
+pub fn start_replay(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StartReplayRequest>,
 ) -> Result<impl IntoResponse, ApiError> {

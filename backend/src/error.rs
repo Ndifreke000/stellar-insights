@@ -74,12 +74,19 @@ pub enum ApiError {
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
+    Forbidden {
+        code: String,
+        message: String,
+        details: Option<HashMap<String, serde_json::Value>>,
+    },
     ServiceUnavailable {
         code: String,
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
 }
+
+pub type AppError = ApiError;
 
 impl ApiError {
     /// Create a `NotFound` error with a specific code
@@ -145,6 +152,15 @@ impl ApiError {
         }
     }
 
+    /// Create a forbidden error.
+    pub fn forbidden(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Forbidden {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
     /// Create a ServiceUnavailable error
     pub fn service_unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::ServiceUnavailable {
@@ -162,6 +178,7 @@ impl ApiError {
             | Self::BadRequest { details: d, .. }
             | Self::InternalError { details: d, .. }
             | Self::Unauthorized { details: d, .. }
+            | Self::Forbidden { details: d, .. }
             | Self::ServiceUnavailable { details: d, .. } => {
                 *d = Some(details);
             }
@@ -176,6 +193,7 @@ impl ApiError {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
             Self::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            Self::Forbidden { .. } => StatusCode::FORBIDDEN,
             Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
@@ -212,6 +230,11 @@ impl ApiError {
                 message,
                 details,
             } => (code.clone(), message.clone(), details.clone(), None),
+            Self::Forbidden {
+                code,
+                message,
+                details,
+            } => (code.clone(), message.clone(), details.clone(), None),
             Self::ServiceUnavailable {
                 code,
                 message,
@@ -227,6 +250,19 @@ impl ApiError {
                 request_id,
                 stack_trace: if include_stack_trace { source } else { None },
             },
+        }
+    }
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound { message, .. } => write!(f, "{}", message),
+            Self::BadRequest { message, .. } => write!(f, "{}", message),
+            Self::InternalError { message, .. } => write!(f, "{}", message),
+            Self::Unauthorized { message, .. } => write!(f, "{}", message),
+            Self::Forbidden { message, .. } => write!(f, "{}", message),
+            Self::ServiceUnavailable { message, .. } => write!(f, "{}", message),
         }
     }
 }
@@ -290,6 +326,7 @@ impl From<sqlx::Error> for ApiError {
 
         if let Some(StatusCode::SERVICE_UNAVAILABLE) = status {
             tracing::error!("Database pool exhausted");
+            crate::observability::metrics::record_pool_error("exhausted");
             return Self::ServiceUnavailable {
                 code,
                 message,
@@ -350,6 +387,32 @@ impl From<crate::rpc::error::RpcError> for ApiError {
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
+
+/// Typed database error for pool exhaustion and other DB-level failures.
+#[derive(Debug, thiserror::Error)]
+pub enum DatabaseError {
+    #[error("Database pool exhausted. Please try again later.")]
+    PoolExhausted,
+
+    #[error("Database error: {0}")]
+    Other(#[from] sqlx::Error),
+}
+
+impl From<DatabaseError> for ApiError {
+    fn from(err: DatabaseError) -> Self {
+        match err {
+            DatabaseError::PoolExhausted => {
+                tracing::error!("Database pool exhausted");
+                Self::ServiceUnavailable {
+                    code: "DB_POOL_EXHAUSTED".to_string(),
+                    message: "Database pool exhausted. Please try again later.".to_string(),
+                    details: None,
+                }
+            }
+            DatabaseError::Other(e) => ApiError::from(e),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -33,12 +33,12 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Stellar Insights API",
+        title = "PayRaider API",
         version = "1.0.0",
         description = "API for Stellar network analytics, anchor monitoring, and payment corridor insights",
         contact(
-            name = "Stellar Insights Team",
-            email = "support@stellarinsights.io"
+            name = "PayRaider Team",
+            email = "support@payraider.io"
         ),
         license(
             name = "MIT",
@@ -48,7 +48,7 @@ impl Modify for SecurityAddon {
     modifiers(&SecurityAddon),
     servers(
         (url = "http://localhost:8080", description = "Local development server"),
-        (url = "https://api.stellarinsights.io", description = "Production server")
+        (url = "https://api.payraider.io", description = "Production server")
     ),
     paths(
         // Anchors
@@ -171,8 +171,24 @@ impl Modify for SecurityAddon {
         crate::api::asset_verification::report_suspicious_asset,
         // Auth
         crate::api::auth::login,
+        crate::api::auth::verify_2fa,
         crate::api::auth::refresh,
         crate::api::auth::logout,
+        crate::api::auth::list_sessions,
+        crate::api::auth::revoke_session,
+        crate::api::auth::revoke_other_sessions,
+        // 2FA
+        crate::api::twofa::initiate_enrollment,
+        crate::api::twofa::confirm_enrollment,
+        crate::api::twofa::disable_2fa,
+        crate::api::twofa::regenerate_backup_codes,
+        // Admin
+        crate::api::admin_ip_whitelist::list_whitelist,
+        crate::api::admin_ip_whitelist::add_to_whitelist,
+        crate::api::admin_ip_whitelist::remove_from_whitelist,
+        crate::api::admin_ip_whitelist::check_whitelist,
+        crate::api::audit_log::query_audit_log,
+        crate::api::audit_log::verify_audit_log_integrity,
         // Cache
         crate::api::cache_stats::get_cache_stats,
         crate::api::cache_stats::reset_cache_stats,
@@ -186,6 +202,7 @@ impl Modify for SecurityAddon {
         crate::api::governance::has_voted,
         crate::api::governance::add_comment,
         crate::api::governance::get_comments,
+        crate::api::governance::refresh_tally,
         // OAuth
         crate::api::oauth::authorize,
         crate::api::oauth::token,
@@ -209,6 +226,9 @@ impl Modify for SecurityAddon {
         crate::api::verification_rewards::get_leaderboard,
         crate::api::verification_rewards::get_user_verifications,
         crate::api::verification_rewards::get_public_user_stats,
+        // Snapshots
+        crate::api::snapshots::generate_snapshot,
+        crate::api::snapshots::contract_health_check,
     ),
     components(
         schemas(
@@ -229,6 +249,10 @@ impl Modify for SecurityAddon {
             crate::api::cost_calculator::RouteEstimate,
             crate::api::cost_calculator::CostCalculationResponse,
             crate::api::cost_calculator::ErrorResponse,
+            crate::api::snapshots::SnapshotResponse,
+            crate::api::snapshots::SubmissionInfo,
+            crate::api::snapshots::GenerateSnapshotRequest,
+            crate::api::snapshots::ContractHealthResponse,
             crate::api::anchors::UpdateMetricsRequest,
             crate::api::anchors::CreateAssetRequest,
             crate::api::corridors::UpdateCorridorMetricsFromTxns,
@@ -271,13 +295,39 @@ impl Modify for SecurityAddon {
         (name = "Account Merges", description = "Account merge tracking endpoints"),
         (name = "Achievements", description = "Quest and achievement definitions"),
         (name = "Asset Verification", description = "Asset verification and reporting"),
-        (name = "Auth", description = "Authentication endpoints"),
+        (name = "Auth", description = "Authentication, session, and 2FA endpoints"),
+        (name = "Admin", description = "Admin-only endpoints (IP whitelist, audit log) -- require an admin account (is_admin)"),
         (name = "Cache", description = "Cache management endpoints"),
         (name = "Governance", description = "Governance proposal and voting endpoints"),
         (name = "OAuth", description = "OAuth integration endpoints"),
         (name = "SEP-10", description = "SEP-10 authentication endpoints"),
         (name = "SEP-24", description = "SEP-24 hosted deposit/withdrawal endpoints"),
         (name = "Verification Rewards", description = "Snapshot verification reward endpoints"),
+        (name = "Snapshots", description = "Snapshot generation and submission endpoints"),
     )
 )]
 pub struct ApiDoc;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
+
+    #[test]
+    fn generate_openapi_json() {
+        let json = ApiDoc::openapi()
+            .to_pretty_json()
+            .expect("Failed to serialize OpenAPI spec");
+        
+        let path = if Path::new("../docs").exists() {
+            "../docs/openapi.json"
+        } else {
+            "docs/openapi.json"
+        };
+        
+        let mut file = File::create(path).expect("Failed to create docs/openapi.json");
+        file.write_all(json.as_bytes()).expect("Failed to write to docs/openapi.json");
+    }
+}

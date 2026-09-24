@@ -1,6 +1,10 @@
+use argon2::{
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier},
+    Argon2,
+};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
+use validator::Validate;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ApiKey {
@@ -48,8 +52,14 @@ impl From<ApiKey> for ApiKeyInfo {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateApiKeyRequest {
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "name must be between 1 and 100 characters"
+    ))]
     pub name: String,
     pub scopes: Option<String>,
     pub expires_at: Option<String>,
@@ -65,14 +75,41 @@ pub struct CreateApiKeyResponse {
 pub fn generate_api_key() -> (String, String, String) {
     let raw = Uuid::new_v4().to_string().replace('-', "");
     let plain_key = format!("si_live_{raw}");
-    let prefix = format!("si_live_{}...", &raw[..8.min(raw.len())]);
+    let prefix = extract_key_prefix(&plain_key);
     let hash = hash_api_key(&plain_key);
     (plain_key, prefix, hash)
 }
 
+/// Returns the stored prefix used for efficient DB lookup before Argon2 verify.
+#[must_use]
+pub fn extract_key_prefix(plain_key: &str) -> String {
+    // plain_key format: "si_live_<32-char uuid without hyphens>"
+    // We store the first 16 chars + "..." as the prefix.
+    let end = plain_key.len().min(16);
+    format!("{}...", &plain_key[..end])
+}
+
+/// Hash an API key with Argon2id. The PHC-format hash embeds the salt so
+/// it can be verified later with `verify_api_key`.
 #[must_use]
 pub fn hash_api_key(plain_key: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(plain_key.as_bytes());
-    hex::encode(hasher.finalize())
+    // argon2 0.6's hash_password generates its own random salt internally
+    // (via the getrandom feature, on by default) -- password-hash 0.6
+    // dropped the separate SaltString type this used to take explicitly.
+    Argon2::default()
+        .hash_password(plain_key.as_bytes())
+        .expect("argon2 hash failed")
+        .to_string()
+}
+
+/// Verify a plaintext key against a stored Argon2id PHC hash.
+#[must_use]
+pub fn verify_api_key(plain_key: &str, stored_hash: &str) -> bool {
+    let parsed = match PasswordHash::new(stored_hash) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    Argon2::default()
+        .verify_password(plain_key.as_bytes(), &parsed)
+        .is_ok()
 }

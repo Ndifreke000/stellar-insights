@@ -26,6 +26,7 @@ const MAX_VERIFICATIONS_PER_DAY: i32 = 50;
 
 /// Request to verify a snapshot hash
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerifySnapshotRequest {
     pub snapshot_id: String,
     pub submitted_hash: String,
@@ -100,7 +101,7 @@ impl VerificationRewardsService {
             let mut points = BASE_REWARD_POINTS;
 
             // Add early verification bonus
-            if self.is_early_verification(&snapshot.created_at).await? {
+            if self.is_early_verification(&snapshot.created_at)? {
                 points += EARLY_VERIFICATION_BONUS;
                 debug!(
                     "Early verification bonus applied: +{}",
@@ -195,16 +196,34 @@ impl VerificationRewardsService {
 
     /// Get leaderboard of top verifiers
     pub async fn get_leaderboard(&self, limit: i32) -> Result<Vec<LeaderboardEntry>> {
+        // Single query with `ROW_NUMBER()` so rank respects ties and matches DB ordering
+        // (no per-row round-trips).
         let rows = sqlx::query(
             r"
             SELECT
+                rank,
                 username,
                 total_points,
                 successful_verifications,
-                CAST(successful_verifications AS REAL) /
-                    NULLIF(successful_verifications + failed_verifications, 0) * 100 AS success_rate
-            FROM verification_leaderboard
-            LIMIT ?
+                success_rate
+            FROM (
+                SELECT
+                    ROW_NUMBER() OVER (
+                        ORDER BY ur.total_points DESC,
+                                 ur.successful_verifications DESC,
+                                 u.username ASC
+                    ) AS rank,
+                    u.username AS username,
+                    ur.total_points AS total_points,
+                    ur.successful_verifications AS successful_verifications,
+                    CAST(ur.successful_verifications AS REAL) /
+                        NULLIF(ur.successful_verifications + ur.failed_verifications, 0) * 100
+                        AS success_rate
+                FROM users u
+                INNER JOIN user_rewards ur ON u.id = ur.user_id
+            ) ranked
+            WHERE rank <= ?
+            ORDER BY rank
             ",
         )
         .bind(limit)
@@ -212,16 +231,18 @@ impl VerificationRewardsService {
         .await
         .context("Failed to fetch leaderboard")?;
 
-        let mut leaderboard = Vec::new();
-        for (rank, row) in rows.iter().enumerate() {
-            leaderboard.push(LeaderboardEntry {
-                rank: (rank + 1) as i32,
-                username: row.try_get::<String, _>("username")?,
-                total_points: row.try_get::<i32, _>("total_points")?,
-                successful_verifications: row.try_get::<i32, _>("successful_verifications")?,
-                success_rate: row.try_get("success_rate").unwrap_or(0.0),
-            });
-        }
+        let leaderboard = rows
+            .iter()
+            .map(|row| -> Result<LeaderboardEntry> {
+                Ok(LeaderboardEntry {
+                    rank: row.try_get::<i64, _>("rank")? as i32,
+                    username: row.try_get::<String, _>("username")?,
+                    total_points: row.try_get::<i32, _>("total_points")?,
+                    successful_verifications: row.try_get::<i32, _>("successful_verifications")?,
+                    success_rate: row.try_get("success_rate").unwrap_or(0.0),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(leaderboard)
     }
@@ -255,19 +276,21 @@ impl VerificationRewardsService {
         .await
         .context("Failed to fetch user verifications")?;
 
-        let mut verifications = Vec::new();
-        for row in rows {
-            verifications.push(VerificationRecord {
-                id: row.try_get::<String, _>("id")?,
-                snapshot_id: row.try_get::<String, _>("snapshot_id")?,
-                epoch: row.try_get::<i64, _>("epoch")?,
-                submitted_hash: row.try_get::<String, _>("submitted_hash")?,
-                expected_hash: row.try_get::<String, _>("expected_hash")?,
-                is_match: row.try_get::<bool, _>("is_match")?,
-                reward_points: row.try_get::<i32, _>("reward_points")?,
-                verified_at: row.try_get::<String, _>("verified_at")?,
-            });
-        }
+        let verifications = rows
+            .into_iter()
+            .map(|row| {
+                Ok(VerificationRecord {
+                    id: row.try_get::<String, _>("id")?,
+                    snapshot_id: row.try_get::<String, _>("snapshot_id")?,
+                    epoch: row.try_get::<i64, _>("epoch")?,
+                    submitted_hash: row.try_get::<String, _>("submitted_hash")?,
+                    expected_hash: row.try_get::<String, _>("expected_hash")?,
+                    is_match: row.try_get::<bool, _>("is_match")?,
+                    reward_points: row.try_get::<i32, _>("reward_points")?,
+                    verified_at: row.try_get::<String, _>("verified_at")?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(verifications)
     }
@@ -318,7 +341,7 @@ impl VerificationRewardsService {
         })
     }
 
-    async fn is_early_verification(&self, snapshot_created_at: &str) -> Result<bool> {
+    fn is_early_verification(&self, snapshot_created_at: &str) -> Result<bool> {
         // Parse the timestamp and check if verification is within 1 hour
         let created = chrono::DateTime::parse_from_rfc3339(snapshot_created_at)
             .or_else(|_| {
@@ -420,6 +443,7 @@ impl VerificationRewardsService {
 
 #[derive(Debug)]
 struct SnapshotRecord {
+    #[allow(dead_code)]
     id: String,
     hash: String,
     epoch: i64,

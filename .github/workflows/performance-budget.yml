@@ -1,0 +1,50 @@
+name: Performance Budget
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+
+jobs:
+  bundle-budget:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Check bundle size budgets
+        run: node scripts/analyze-bundle.mjs
+
+      - name: Upload build stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats-${{ github.sha }}
+          path: frontend/.next/static/
+          retention-days: 14

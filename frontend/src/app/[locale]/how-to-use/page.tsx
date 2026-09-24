@@ -13,9 +13,9 @@ import { Link } from "@/i18n/navigation";
 
 
 export const metadata: Metadata = {
- title: "How to Use — Stellar Insights",
+ title: "How to Use — PayRaider",
  description:
-   "A step-by-step guide to getting started with Stellar Insights — connect your wallet, explore corridors, and monitor network health.",
+   "A step-by-step guide to getting started with PayRaider — connect your wallet, explore corridors, and monitor network health.",
 };
 
 
@@ -78,7 +78,7 @@ export default function HowToUsePage() {
 
        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground">
          How to Use{" "}
-         <span className="text-accent">Stellar Insights</span>
+         <span className="text-accent">PayRaider</span>
        </h1>
 
 

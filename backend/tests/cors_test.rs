@@ -4,7 +4,7 @@
 /// - Allowed origin receives correct CORS response headers
 /// - Preflight (OPTIONS) requests return the expected headers and 200/204 status
 /// - Non-matching origin does NOT receive Access-Control-Allow-Origin
-/// - Wildcard "*" origin configuration reflects properly
+/// - Wildcard "*" origin configuration mirrors the request origin
 /// - max-age header is present on preflight responses
 /// - Only specific headers (Authorization, Content-Type) are advertised
 /// - Credentials flag is respected
@@ -16,7 +16,7 @@ use axum::{
 };
 use std::time::Duration;
 use tower::util::ServiceExt;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,7 +53,7 @@ fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
         .max_age(Duration::from_secs(3600));
 
     if cors_allowed_origins.trim() == "*" {
-        base.allow_origin(Any)
+        base.allow_origin(AllowOrigin::mirror_request())
     } else {
         let origins: Vec<axum::http::HeaderValue> = cors_allowed_origins
             .split(',')
@@ -326,6 +326,9 @@ async fn test_cors_preflight_allows_credentials() {
 // Tests – Wildcard configuration
 // ---------------------------------------------------------------------------
 
+/// NOTE: Wildcard ("*") CORS in production is blocked by startup validation in main.rs.
+/// This test verifies the CorsLayer behavior IF wildcard were allowed (dev/mock mode only).
+/// Production deployments will fail at startup if CORS_ALLOWED_ORIGINS="*" and RPC_MOCK_MODE=false.
 #[tokio::test]
 async fn test_cors_wildcard_allows_any_origin() {
     let cors = cors_layer_from_origins("*");
@@ -350,7 +353,10 @@ async fn test_cors_wildcard_allows_any_origin() {
         .get("access-control-allow-origin")
         .expect("Wildcard CORS should set Access-Control-Allow-Origin");
 
-    assert_eq!(acao, "*", "Wildcard config should respond with ACAO: *");
+    assert_eq!(
+        acao, "https://some-random-domain.io",
+        "Wildcard config should mirror the request origin when credentials are enabled"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +393,7 @@ async fn test_cors_request_without_origin_still_succeeds() {
 #[tokio::test]
 async fn test_cors_production_origin_receives_acao_header() {
     let cors =
-        cors_layer_from_origins("https://stellar-insights.com,https://www.stellar-insights.com");
+        cors_layer_from_origins("https://payraider.com,https://www.payraider.com");
     let app = build_router_with_cors(cors);
 
     let response = app
@@ -395,7 +401,7 @@ async fn test_cors_production_origin_receives_acao_header() {
             Request::builder()
                 .method(Method::GET)
                 .uri("/health")
-                .header(header::ORIGIN, "https://stellar-insights.com")
+                .header(header::ORIGIN, "https://payraider.com")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -409,7 +415,7 @@ async fn test_cors_production_origin_receives_acao_header() {
         .get("access-control-allow-origin")
         .expect("Production origin should receive ACAO header");
 
-    assert_eq!(acao, "https://stellar-insights.com");
+    assert_eq!(acao, "https://payraider.com");
 }
 
 // ---------------------------------------------------------------------------

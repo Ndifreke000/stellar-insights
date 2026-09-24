@@ -1,0 +1,156 @@
+import React from 'react';
+import { StatusBar } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { NavigationContainer, LinkingOptions, getStateFromPath } from '@react-navigation/native';
+import NetInfo from '@react-native-community/netinfo';
+import { RootNavigator } from './navigation/RootNavigator';
+import type { RootStackParamList } from './navigation/RootNavigator';
+import { useAppStore } from './store/appStore';
+import { useAuthStore } from './store/authStore';
+import { initializeApp } from './services/initialization';
+import { hasValidToken } from './services/auth';
+import { processOfflineQueue } from './hooks/useOfflineQueue';
+import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
+import { OfflineCachingIndicator } from './components/OfflineCaching';
+import { OfflineBanner } from './components/OfflineBanner';
+import { SyncStatusBanner } from './components/SyncStatusBanner';
+
+import { NetworkProvider, getCurrentNetwork } from '@config/network';
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['payraider://'],
+  config: {
+    screens: {
+      Main: {
+        screens: {
+          Dashboard: 'dashboard',
+          Anchors: {
+            screens: {
+              AnchorsList: 'anchors',
+              AnchorDetail: 'anchors/:anchorId',
+            },
+          },
+          Corridors: {
+            screens: {
+              CorridorsList: 'corridors',
+              CorridorDetail: 'corridors/:corridorId',
+            },
+          },
+          NetworkSwitchDialog: 'network-switch',
+          SearchFunctionality: 'search',
+          Settings: 'settings',
+        },
+      },
+      Auth: {
+        screens: {
+          Login: 'login',
+        },
+      },
+      Error: 'error',
+    },
+  },
+  getStateFromPath(path, options) {
+    const matchAnchor = path.match(/anchors\/([^\/]+)/);
+    if (matchAnchor) {
+      const anchorId = matchAnchor[1];
+      if (!/^[A-F0-9]{64}$/i.test(anchorId)) {
+        return {
+          routes: [
+            {
+              name: 'Error',
+              params: {
+                message: 'Invalid Anchor ID. Deep links must contain a 64-character hexadecimal ID.',
+              },
+            },
+          ],
+        };
+      }
+    }
+
+    const matchCorridor = path.match(/corridors\/([^\/]+)/);
+    if (matchCorridor) {
+      const corridorId = matchCorridor[1];
+      if (!/^[A-F0-9]{64}$/i.test(corridorId)) {
+        return {
+          routes: [
+            {
+              name: 'Error',
+              params: {
+                message: 'Invalid Corridor ID. Deep links must contain a 64-character hexadecimal ID.',
+              },
+            },
+          ],
+        };
+      }
+    }
+
+    return getStateFromPath(path, options);
+  },
+};
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
+    },
+  },
+});
+
+function App(): React.JSX.Element {
+  const { theme, isOnline } = useAppStore();
+  const isDark = theme === 'dark';
+
+  React.useEffect(() => {
+    void (async () => {
+      // Resolve initial network state before any API calls to prevent crashes on offline startup.
+      const netState = await NetInfo.fetch();
+      const initiallyOnline = (netState.isConnected && netState.isInternetReachable) ?? false;
+      useAppStore.getState().setOnlineStatus(initiallyOnline);
+
+      // Load network settings before initializing App
+      const initialNetConfig = await getCurrentNetwork();
+      useAppStore.getState().setNetwork(initialNetConfig.id);
+
+      await initializeApp();
+      // Decide the initial route from securely stored token presence/expiry.
+      try {
+        if (await hasValidToken()) {
+          useAuthStore.setState({ isAuthenticated: true });
+        }
+      } finally {
+        useAuthStore.setState({ isLoading: false });
+      }
+    })();
+  }, []);
+
+  React.useEffect(() => {
+    if (isOnline) {
+      processOfflineQueue();
+    }
+  }, [isOnline]);
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <NetworkProvider>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <NavigationContainer linking={linking}>
+              <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+              <OfflineBanner />
+              <SyncStatusBanner />
+              <NetworkStatusIndicator />
+              <OfflineCachingIndicator showCacheSize={true} />
+              <RootNavigator />
+            </NavigationContainer>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </NetworkProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+export default App;

@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS corridors (
     destination_asset_issuer TEXT NOT NULL,
     reliability_score REAL DEFAULT 0,
     status TEXT DEFAULT 'active',
+    source_code TEXT,
+    destination_code TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)
@@ -25,12 +27,17 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 -- Create snapshots table for historical state snapshots
 CREATE TABLE IF NOT EXISTS snapshots (
-    id TEXT PRIMARY KEY,
-    entity_id TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    data TEXT NOT NULL, -- JSON blob of the state
-    hash TEXT, -- SHA-256 hash of the snapshot
-    epoch INTEGER, -- Epoch identifier for historical tracking
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id TEXT,
+    entity_type TEXT,
+    data TEXT,
+    hash TEXT,
+    epoch INTEGER UNIQUE,
+    ledger_sequence INTEGER,
+    transaction_hash TEXT,
+    snapshot_time TIMESTAMP,
+    verification_status TEXT DEFAULT 'pending',
+    verified_at TEXT,
     timestamp TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -41,4 +48,8 @@ CREATE INDEX idx_metrics_entity ON metrics(entity_id, entity_type);
 CREATE INDEX idx_metrics_timestamp ON metrics(timestamp DESC);
 CREATE INDEX idx_snapshots_entity ON snapshots(entity_id, entity_type);
 CREATE INDEX idx_snapshots_timestamp ON snapshots(timestamp DESC);
-CREATE INDEX idx_snapshots_epoch ON snapshots(epoch DESC);
+CREATE INDEX idx_snapshots_snapshot_time ON snapshots(snapshot_time DESC);
+CREATE INDEX idx_snapshots_epoch_desc ON snapshots(epoch DESC);
+CREATE INDEX idx_snapshots_ledger ON snapshots(ledger_sequence);
+CREATE INDEX idx_snapshots_verification_status ON snapshots(verification_status);
+CREATE INDEX idx_snapshots_verified_at ON snapshots(verified_at);

@@ -2,12 +2,13 @@
 
 import React, { useState, useMemo } from "react";
 import { MainLayout } from "@/components/layout";
-import { ArrowLeft, Download, FileText, Mail } from "lucide-react";
+import { ArrowLeft, Download, FileText, Mail, Table } from "lucide-react";
+import { PrintButton } from "@/components/PrintButton";
 import { Link } from "@/i18n/navigation";
 import { DateRangeSelector } from "./components/DateRangeSelector";
 import { MetricSelector, MetricOption } from "./components/MetricSelector";
 import { ExportPreview } from "./components/ExportPreview";
-import { generateCSV, generateJSON, generatePDF } from "@/lib/export-utils";
+import { generateCSV, generateJSON, generatePDF, generateExcel } from "@/lib/export-utils";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 
 // MOCK DATA GENERATOR
@@ -62,7 +63,7 @@ export default function ExportPage() {
   const getActiveColumns = () =>
     metrics.filter((m) => m.checked).map((m) => ({ id: m.id, label: m.label }));
 
-  const handleExport = async (format: "csv" | "json" | "pdf") => {
+  const handleExport = async (format: "csv" | "json" | "pdf" | "excel") => {
     const columns = getActiveColumns();
     if (columns.length === 0) {
       alert("Please select at least one metric to export.");
@@ -75,6 +76,9 @@ export default function ExportPage() {
         break;
       case "json":
         generateJSON(previewData, columns);
+        break;
+      case "excel":
+        generateExcel(previewData, columns, "Analytics Export");
         break;
       case "pdf":
         await generatePDF(previewData, columns, { start: startDate, end: endDate });
@@ -142,6 +146,13 @@ export default function ExportPage() {
                   Download JSON
                 </button>
                 <button
+                  onClick={() => handleExport("excel")}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition font-medium text-sm text-gray-700 dark:text-gray-200"
+                >
+                  <Table className="w-4 h-4 text-emerald-600" />
+                  Download Excel (.xlsx)
+                </button>
+                <button
                   onClick={() => handleExport("pdf")}
                   className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm shadow-sm"
                 >
@@ -150,7 +161,11 @@ export default function ExportPage() {
                 </button>
               </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700 flex flex-col gap-2">
+                <PrintButton
+                  label="Print Report"
+                  className="w-full justify-center"
+                />
                 <button className="flex items-center justify-center gap-2 w-full py-2 text-sm text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200 transition">
                   <Mail className="w-4 h-4" />
                   Email Report

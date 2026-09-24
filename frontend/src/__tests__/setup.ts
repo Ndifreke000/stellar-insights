@@ -29,3 +29,28 @@ const localStorageMock = (() => {
 Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
+
+// PWA mocks for tests
+Object.defineProperty(navigator, 'serviceWorker', {
+  value: {
+    register: vi.fn().mockResolvedValue({}),
+    ready: Promise.resolve({ active: { state: 'activated' } })
+  },
+  writable: true
+});
+
+Object.defineProperty(window, 'caches', {
+  value: {
+    open: vi.fn().mockResolvedValue({
+      addAll: vi.fn(),
+      match: vi.fn().mockResolvedValue(null),
+      keys: vi.fn().mockResolvedValue([])
+    })
+  },
+  writable: true
+});
+
+Object.defineProperty(navigator, 'onLine', {
+  value: true,
+  writable: true
+});

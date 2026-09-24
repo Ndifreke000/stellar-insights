@@ -3,8 +3,12 @@ import { Line, LineChart, ResponsiveContainer } from "recharts";
 import { Home as AnchorIcon, BarChart3, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { AnchorMetrics } from "@/lib/api/types";
+
 const AnchorCards = ({
   paginatedAnchors
+}: {
+  paginatedAnchors: AnchorMetrics[];
 }) => {
   const router = useRouter()
   return (
@@ -18,17 +22,24 @@ const AnchorCards = ({
         );
 
         return (
-          <div
+          <article
             key={anchor.id}
             className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-            onClick={() =>
-              router.push(`/anchors/${anchor.stellar_account}`)
-            }
+            role="button"
+            tabIndex={0}
+            aria-label={`Open anchor details for ${anchor.name}`}
+            onClick={() => router.push(`/anchors/${anchor.stellar_account}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                router.push(`/anchors/${anchor.stellar_account}`);
+              }
+            }}
           >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center">
                 <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mr-3">
-                  <AnchorIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                  <AnchorIcon aria-hidden="true" className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                 </div>
                 <div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -99,7 +110,7 @@ const AnchorCards = ({
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-gray-400" />
+                <BarChart3 aria-hidden="true" className="w-4 h-4 text-gray-400" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   30-day trend
                 </span>
@@ -132,7 +143,7 @@ const AnchorCards = ({
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
-          </div>
+          </article>
         );
       })}
     </div>

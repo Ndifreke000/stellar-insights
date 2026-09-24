@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { SettlementLatencyDataPoint } from '@/lib/analytics-api';
 import { ChartExportButton } from './ChartExportButton';
+import { getTooltipContentStyle } from '@/lib/chart-utils';
 
 interface SettlementLatencyChartProps {
   data: SettlementLatencyDataPoint[];
@@ -101,15 +102,13 @@ export function SettlementLatencyChart({ data }: SettlementLatencyChartProps) {
               dx={-10}
             />
             <Tooltip
-              contentStyle={{
+              contentStyle={getTooltipContentStyle({
                 backgroundColor: 'rgba(15, 23, 42, 0.9)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '12px',
-                backdropFilter: 'blur(12px)',
                 fontSize: '10px',
                 fontFamily: 'monospace',
-                textTransform: 'uppercase'
-              }}
+              })}
               labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
             />
             <Legend

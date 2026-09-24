@@ -9,8 +9,10 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  TooltipValueType,
 } from "recharts";
 import { Badge } from "../ui/badge";
+import { getTooltipContentStyle } from "@/lib/chart-utils";
 
 interface LiquidityData {
   date: string;
@@ -73,7 +75,7 @@ export const LiquidityChart: React.FC<LiquidityChartProps> = ({ data }) => {
             <YAxis
               axisLine={false}
               tickLine={false}
-              tickFormatter={(value: any) => {
+              tickFormatter={(value: number | string) => {
                 const n = Number(value || 0);
                 return `$${(n / 1000000).toFixed(0)}M`;
               }}
@@ -85,17 +87,16 @@ export const LiquidityChart: React.FC<LiquidityChartProps> = ({ data }) => {
               }}
             />
             <Tooltip
-              contentStyle={{
+              contentStyle={getTooltipContentStyle({
                 backgroundColor: "rgba(15, 23, 42, 0.9)",
                 borderRadius: "12px",
                 border: "1px solid rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(8px)",
                 color: "#f8fafc",
                 fontSize: "12px",
                 fontFamily: "monospace",
-              }}
+              })}
               cursor={{ stroke: "rgba(99, 102, 241, 0.2)", strokeWidth: 1 }}
-              formatter={(value?: number) => {
+              formatter={(value?: TooltipValueType) => {
                 if (typeof value !== "number") return ["-", "Total Liquidity"];
                 return [`$${(value / 1000000).toFixed(2)}M`, "Total Liquidity"];
               }}

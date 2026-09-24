@@ -1,4 +1,10 @@
 pub mod aggregates;
 pub mod aggregation;
 pub mod alerts;
+pub mod anchors;
+pub mod corridor_alerts;
+pub mod api_keys;
+pub mod assets;
+pub mod corridors;
+pub mod metrics;
 pub mod schema;

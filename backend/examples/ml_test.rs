@@ -1,13 +1,20 @@
 use anyhow::Result;
 use reqwest::Client;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Client::new();
 
+    // Get API base URL from environment or use default for development
+    let api_base = env::var("API_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+
     // Test prediction endpoint
     let response = client
-        .get("http://localhost:8080/api/ml/predict?corridor=USDC-USD&amount_usd=100.0")
+        .get(&format!(
+            "{}/api/ml/predict?corridor=USDC-USD&amount_usd=100.0",
+            api_base
+        ))
         .send()
         .await?;
 
@@ -23,7 +30,7 @@ async fn main() -> Result<()> {
 
     // Test model status
     let status_response = client
-        .get("http://localhost:8080/api/ml/status")
+        .get(&format!("{}/api/ml/status", api_base))
         .send()
         .await?;
 

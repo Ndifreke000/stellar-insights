@@ -1,13 +1,13 @@
 {
-  "index_patterns": ["stellar-insights-*"],
+  "index_patterns": ["payraider-*"],
   "template": {
     "settings": {
       "number_of_shards": 1,
       "number_of_replicas": 0,
       "index.refresh_interval": "5s",
       "index.codec": "best_compression",
-      "index.lifecycle.name": "stellar-insights-policy",
-      "index.lifecycle.rollover_alias": "stellar-insights"
+      "index.lifecycle.name": "payraider-policy",
+      "index.lifecycle.rollover_alias": "payraider"
     },
     "mappings": {
       "properties": {
@@ -96,6 +96,6 @@
   "priority": 100,
   "version": 1,
   "_meta": {
-    "description": "Index template for Stellar Insights logs"
+    "description": "Index template for PayRaider logs"
   }
 }

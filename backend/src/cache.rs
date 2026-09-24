@@ -1,11 +1,9 @@
 use redis::aio::MultiplexedConnection;
 use serde::{de::DeserializeOwned, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-#[cfg(test)]
-use std::collections::HashMap;
 
 #[path = "cache/helpers.rs"]
 pub mod helpers;
@@ -48,6 +46,32 @@ impl CacheConfig {
             _ => 300,
         }
     }
+
+    /// Load TTL settings from environment variables, falling back to defaults.
+    ///
+    /// | Variable                        | Field                   | Default |
+    /// |---------------------------------|-------------------------|---------|
+    /// | `CACHE_CORRIDOR_METRICS_TTL`    | `corridor_metrics_ttl`  | 300 s   |
+    /// | `CACHE_ANCHOR_DATA_TTL`         | `anchor_data_ttl`       | 600 s   |
+    /// | `CACHE_DASHBOARD_STATS_TTL`     | `dashboard_stats_ttl`   | 60 s    |
+    #[must_use]
+    pub fn from_env() -> Self {
+        let default = Self::default();
+        Self {
+            corridor_metrics_ttl: std::env::var("CACHE_CORRIDOR_METRICS_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.corridor_metrics_ttl),
+            anchor_data_ttl: std::env::var("CACHE_ANCHOR_DATA_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.anchor_data_ttl),
+            dashboard_stats_ttl: std::env::var("CACHE_DASHBOARD_STATS_TTL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default.dashboard_stats_ttl),
+        }
+    }
 }
 
 impl Default for CacheConfig {
@@ -67,8 +91,6 @@ pub struct CacheManager {
     hits: Arc<AtomicU64>,
     misses: Arc<AtomicU64>,
     invalidations: Arc<AtomicU64>,
-
-    #[cfg(test)]
     in_memory_store: Arc<RwLock<HashMap<String, String>>>,
 }
 
@@ -78,7 +100,7 @@ impl CacheManager {
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-            match client.get_multiplexed_tokio_connection().await {
+            match client.get_multiplexed_async_connection().await {
                 Ok(conn) => {
                     tracing::info!("Connected to Redis for caching");
                     Some(conn)
@@ -99,13 +121,10 @@ impl CacheManager {
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
             invalidations: Arc::new(AtomicU64::new(0)),
-
-            #[cfg(test)]
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
-    #[cfg(test)]
     pub fn new_in_memory_for_tests(config: CacheConfig) -> Self {
         Self {
             redis_connection: Arc::new(RwLock::new(None)),
@@ -117,12 +136,22 @@ impl CacheManager {
         }
     }
 
+    /// Returns a clone of the underlying Redis connection handle.
+    pub async fn connection(&self) -> Arc<RwLock<Option<MultiplexedConnection>>> {
+        self.redis_connection.clone()
+    }
+
+    /// Health check for the cache dependency
+    pub async fn health_check(&self) -> anyhow::Result<()> {
+        self.ping().await
+    }
+
     /// Check if Redis connection is healthy
     pub async fn ping(&self) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             redis::cmd("PING")
-                .query_async::<_, String>(&mut conn)
+                .query_async::<String>(&mut conn)
                 .await?;
             Ok(())
         } else {
@@ -132,8 +161,7 @@ impl CacheManager {
 
     /// Get value from cache, returns None if not found or Redis unavailable
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> anyhow::Result<Option<T>> {
-        #[cfg(test)]
-        {
+        if self.redis_connection.read().await.is_none() {
             if let Some(payload) = self.in_memory_store.read().await.get(key).cloned() {
                 self.hits.fetch_add(1, Ordering::Relaxed);
                 crate::observability::metrics::record_cache_lookup(true);
@@ -156,7 +184,7 @@ impl CacheManager {
             let mut conn = conn.clone();
             match redis::cmd("GET")
                 .arg(key)
-                .query_async::<_, Option<String>>(&mut conn)
+                .query_async::<Option<String>>(&mut conn)
                 .await
             {
                 Ok(Some(value)) => {
@@ -198,46 +226,47 @@ impl CacheManager {
         value: &T,
         ttl_seconds: usize,
     ) -> anyhow::Result<()> {
-        #[cfg(test)]
-        {
-            if self.redis_connection.read().await.is_none() {
-                match serde_json::to_string(value) {
-                    Ok(serialized) => {
-                        self.in_memory_store
-                            .write()
-                            .await
-                            .insert(key.to_string(), serialized);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to serialize value for in-memory cache key {}: {}",
-                            key,
-                            e
-                        );
-                    }
+        if self.redis_connection.read().await.is_none() {
+            match serde_json::to_string(value) {
+                Ok(serialized) => {
+                    self.in_memory_store
+                        .write()
+                        .await
+                        .insert(key.to_string(), serialized);
                 }
-                let _ = ttl_seconds;
-                return Ok(());
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to serialize value for in-memory cache key {}: {}",
+                        key,
+                        e
+                    );
+                }
             }
+            let _ = ttl_seconds;
+            return Ok(());
         }
 
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             match serde_json::to_string(value) {
                 Ok(serialized) => {
-                    match redis::cmd("SETEX")
+                    // SET NX prevents concurrent miss-then-write races: the first writer wins
+                    // and subsequent concurrent writers silently skip rather than overwriting.
+                    match redis::cmd("SET")
                         .arg(key)
-                        .arg(ttl_seconds)
                         .arg(&serialized)
-                        .query_async::<_, ()>(&mut conn)
+                        .arg("NX")
+                        .arg("PX")
+                        .arg(ttl_seconds * 1000)
+                        .query_async::<Option<String>>(&mut conn)
                         .await
                     {
-                        Ok(()) => {
+                        Ok(_) => {
                             tracing::debug!("Cache set for key: {} (TTL: {}s)", key, ttl_seconds);
                             Ok(())
                         }
                         Err(e) => {
-                            tracing::warn!("Redis SETEX error for {}: {}", key, e);
+                            tracing::warn!("Redis SET NX error for {}: {}", key, e);
                             Ok(())
                         }
                     }
@@ -252,22 +281,24 @@ impl CacheManager {
         }
     }
 
-    /// Delete a cache key
+    /// Delete a cache key using an atomic Lua script to avoid TOCTOU races.
     pub async fn delete(&self, key: &str) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match redis::cmd("DEL")
-                .arg(key)
-                .query_async::<_, ()>(&mut conn)
+            // Lua guarantees the check-and-delete is atomic on the Redis server.
+            const LUA_DEL: &str = "return redis.call('DEL', KEYS[1])";
+            match redis::Script::new(LUA_DEL)
+                .key(key)
+                .invoke_async::<i64>(&mut conn)
                 .await
             {
-                Ok(()) => {
+                Ok(_) => {
                     self.invalidations.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!("Cache invalidated for key: {}", key);
                     Ok(())
                 }
                 Err(e) => {
-                    tracing::warn!("Redis DEL error for {}: {}", key, e);
+                    tracing::warn!("Redis Lua DEL error for {}: {}", key, e);
                     Ok(())
                 }
             }
@@ -303,7 +334,7 @@ impl CacheManager {
                         pipe.cmd("UNLINK").arg(key);
                     }
 
-                    pipe.query_async::<_, ()>(&mut conn).await?;
+                    pipe.query_async::<()>(&mut conn).await?;
 
                     self.invalidations
                         .fetch_add(keys.len() as u64, Ordering::Relaxed);
@@ -366,7 +397,7 @@ impl CacheManager {
     }
 
     /// Clean up expired entries (Redis handles this automatically, but useful for monitoring)
-    pub async fn cleanup_expired(&self) -> anyhow::Result<()> {
+    pub fn cleanup_expired(&self) -> anyhow::Result<()> {
         tracing::debug!("Cache cleanup triggered (Redis auto-expires keys)");
         Ok(())
     }
@@ -393,7 +424,7 @@ impl CacheManager {
         let mut conn_guard = self.redis_connection.write().await;
         if let Some(mut conn) = conn_guard.take() {
             // Ensure all pending operations are flushed
-            match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
+            match redis::cmd("PING").query_async::<String>(&mut conn).await {
                 Ok(_) => tracing::debug!("Redis connection verified before close"),
                 Err(e) => tracing::warn!("Redis PING failed before close: {}", e),
             }
@@ -443,6 +474,11 @@ pub mod keys {
     #[must_use]
     pub fn metrics_overview() -> String {
         "metrics:overview".to_string()
+    }
+
+    #[must_use]
+    pub fn analytics_dashboard() -> String {
+        "analytics:dashboard".to_string()
     }
 
     /// Pattern for invalidating all anchor-related caches

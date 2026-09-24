@@ -36,6 +36,7 @@ const LABELS: Record<string, string> = {
   "web-vitals-ttfb": "TTFB",
   "page-load-time": "Page load",
   "api-response-time": "API latency",
+  "api-latency": "API latency (proxy)",
 };
 
 const fmt = (name: string, v: number) =>

@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 
 export interface WebSocketStatusProps {
@@ -19,6 +19,35 @@ export function WebSocketStatus({
   className = '',
 }: WebSocketStatusProps) {
   const t = useTranslations("dashboard");
+  const prevOnlineRef = useRef(navigator.onLine);
+  const reconnectCalledRef = useRef(false);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (!prevOnlineRef.current) {
+        reconnectCalledRef.current = true;
+        onReconnect?.();
+      }
+      prevOnlineRef.current = true;
+    };
+    const handleOffline = () => {
+      prevOnlineRef.current = false;
+      reconnectCalledRef.current = false;
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [onReconnect]);
+
+  useEffect(() => {
+    if (isConnected && reconnectCalledRef.current) {
+      reconnectCalledRef.current = false;
+    }
+  }, [isConnected]);
+
   const getStatusColor = () => {
     if (isConnected) return 'text-green-600 bg-green-100';
     if (isConnecting) return 'text-yellow-600 bg-yellow-100';
@@ -34,7 +63,7 @@ export function WebSocketStatus({
   const getStatusIcon = () => {
     if (isConnected) {
       return (
-        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="6" />
         </svg>
       );
@@ -42,7 +71,7 @@ export function WebSocketStatus({
     
     if (isConnecting) {
       return (
-        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
           <circle
             className="opacity-25"
             cx="12"
@@ -61,7 +90,7 @@ export function WebSocketStatus({
     }
 
     return (
-      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="10" cy="10" r="6" />
       </svg>
     );
@@ -78,6 +107,7 @@ export function WebSocketStatus({
         <button
           onClick={onReconnect}
           className="text-xs text-blue-600 hover:text-blue-800 underline"
+          aria-label={t("reconnect")}
         >
           {t("reconnect")}
         </button>

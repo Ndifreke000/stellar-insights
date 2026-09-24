@@ -1,113 +1,158 @@
+use anyhow::Context;
+use axum::{
+    http::{
+        header::{AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
+    middleware,
+    routing::{get, post},
+    Router,
+};
 use std::sync::Arc;
 use std::time::Duration;
-
-use anyhow::Context;
-use axum::http::{
-    header::{AUTHORIZATION, CONTENT_TYPE},
-    HeaderValue, Method,
-};
+use tokio::task::JoinHandle;
 use tower_http::{
+    compression::{
+        predicate::{NotForContentType, Predicate, SizeAbove},
+        CompressionLayer, CompressionLevel,
+    },
     cors::{AllowOrigin, CorsLayer},
     timeout::TimeoutLayer,
+    trace::TraceLayer,
 };
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 
-use stellar_insights_backend::api::account_merges;
-use stellar_insights_backend::api::anchors_cached::get_anchors;
-use stellar_insights_backend::api::api_analytics;
-use stellar_insights_backend::api::api_keys;
-use stellar_insights_backend::api::cache_stats;
-use stellar_insights_backend::api::corridors_cached::{get_corridor_detail, list_corridors};
-use stellar_insights_backend::api::cost_calculator;
-use stellar_insights_backend::api::fee_bump;
-use stellar_insights_backend::api::liquidity_pools;
-use stellar_insights_backend::api::metrics_cached;
-use stellar_insights_backend::api::oauth;
-use stellar_insights_backend::api::verification_rewards;
-use stellar_insights_backend::api::webhooks;
-use stellar_insights_backend::auth::AuthService;
-use stellar_insights_backend::auth_middleware::auth_middleware;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::gdpr::{GdprService, handlers as gdpr_handlers};
-use stellar_insights_backend::handlers::*;
-use stellar_insights_backend::ingestion::ledger::LedgerIngestionService;
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::ip_whitelist_middleware::{ip_whitelist_middleware, IpWhitelistConfig};
-use stellar_insights_backend::jobs::JobScheduler;
-use stellar_insights_backend::network::NetworkConfig;
-use stellar_insights_backend::openapi::ApiDoc;
-use stellar_insights_backend::observability::{metrics as obs_metrics, tracing as obs_tracing};
-use stellar_insights_backend::observability::tracing::trace_propagation_middleware;
-use stellar_insights_backend::rate_limit::{rate_limit_middleware, RateLimitConfig, RateLimiter};
-use stellar_insights_backend::request_id::request_id_middleware;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::rpc_handlers;
-use stellar_insights_backend::services::account_merge_detector::AccountMergeDetector;
-use stellar_insights_backend::services::fee_bump_tracker::FeeBumpTrackerService;
-use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
-use stellar_insights_backend::services::price_feed::{
-    default_asset_mapping, PriceFeedClient, PriceFeedConfig,
-};
-use stellar_insights_backend::services::realtime_broadcaster::RealtimeBroadcaster;
-use stellar_insights_backend::services::trustline_analyzer::TrustlineAnalyzer;
-use stellar_insights_backend::services::webhook_dispatcher::WebhookDispatcher;
-use stellar_insights_backend::alerts::AlertManager;
-use stellar_insights_backend::monitor::CorridorMonitor;
-use stellar_insights_backend::telegram;
-use stellar_insights_backend::shutdown::{
-    flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
-    shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
-use stellar_insights_backend::{
+use payraider_backend::{
+    alerts::AlertManager,
     api::v1::routes,
     backup::{BackupConfig, BackupManager},
     cache::{CacheConfig, CacheManager},
     database::{Database, PoolConfig},
     env_config,
     ingestion::DataIngestionService,
-    openapi::ApiDoc,
+    jobs::backfill::{BackfillJob, BackfillState},
+    middleware::{
+        concurrency_limit_middleware, panic_recovery_middleware, ApiVersioning, BatchEndpoints,
+        ConcurrencyLimitState, DatabaseSchemaSeparation, ETagCachingSupport,
+        FieldSelectionParameter, MobilePaginationEndpoints, MobileRequestLogging,
+        NetworkAwareRpcClient, NetworkContextMiddleware, PushNotificationService,
+        ResponseCompression, WebSocketRealTimeUpdates, PushNotificationRegistration,
+        Sep10ForMobile,
+    },
+    network::StellarNetwork,
+    observability::logging::request_response_logging_middleware,
+    observability::metrics as obs_metrics,
+    observability::tracing::trace_propagation_middleware,
     rate_limit::RateLimiter,
+    request_id::request_id_middleware,
     rpc::StellarRpcClient,
     services::{
-        account_merge_detector::AccountMergeDetector,
-        fee_bump_tracker::FeeBumpTrackerService,
-        liquidity_pool_analyzer::LiquidityPoolAnalyzer,
-        price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
-        webhook_dispatcher::WebhookDispatcher,
+        event_indexer::EventIndexer, service_container::ServiceContainer,
+        slack_bot::SlackBotService, webhook_dispatcher::WebhookDispatcher,
+        webhook_event_service::WebhookEventService,
+    },
+    shutdown::{
+        flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
+        shutdown_signal, shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
     },
     state::AppState,
+    telegram::{SubscriptionService, TelegramBot},
     websocket::WsState,
 };
 
+const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
+const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
+
+/// Default request timeout in seconds
+const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
+/// Minimum allowed request timeout (prevents misconfiguration)
+const MIN_REQUEST_TIMEOUT_SECONDS: u64 = 5;
+/// Maximum allowed request timeout (prevents resource exhaustion)
+const MAX_REQUEST_TIMEOUT_SECONDS: u64 = 300;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = dotenvy::dotenv();
+    match dotenvy::dotenv() {
+        Ok(path) => tracing::info!("Loaded environment from {}", path.display()),
+        Err(dotenvy::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!(".env file not found, using environment variables only");
+        }
+        Err(e) => tracing::warn!("Failed to load .env file: {}", e),
+    }
     env_config::log_env_config();
+
+    env_config::validate_env()
+        .context("Environment validation failed - please check your configuration")?;
+
     let _tracing_guard =
-        stellar_insights_backend::observability::tracing::init_tracing("stellar-insights-backend")?;
-    stellar_insights_backend::observability::metrics::init_metrics();
-    tracing::info!("Stellar Insights Backend - Initializing Server");
+        payraider_backend::observability::tracing::init_tracing("payraider-backend")?;
+    payraider_backend::observability::metrics::init_metrics();
+    tracing::info!("PayRaider Backend - Initializing Server");
+
+    // Initialize SecretsService (Vault with fallback to environment)
+    if let Ok(secrets_service) = payraider_backend::vault::SecretsService::new().await {
+        if let Ok(secrets) = secrets_service.get_secrets().await {
+            tracing::info!("SecretsService initialized successfully (Vault/env)");
+            let _ = secrets;
+        }
+    }
 
     let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite://stellar_insights.db".to_string());
-    let pool = PoolConfig::from_env()
+        .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
+    let pool_config = PoolConfig::from_env();
+    let pool = pool_config
         .create_pool(&db_url)
         .await
         .context("Failed to create database pool")?;
+    let write_pool = pool_config
+        .create_write_pool(&db_url)
+        .await
+        .context("Failed to create database write pool")?;
 
-    // Run migrations on startup
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .context("Failed to run database migrations")?;
     tracing::info!("Database migrations completed successfully");
 
-    let db = Arc::new(Database::new(pool.clone()));
+    let db = Arc::new(Database::with_write_pool(pool.clone(), write_pool));
+
+    // Database pool metrics logger
+    let pool_metrics_handle: JoinHandle<()> = {
+        let pool_metrics_db = Arc::clone(&db);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(DB_POOL_LOG_INTERVAL);
+            loop {
+                interval.tick().await;
+                let metrics = pool_metrics_db.pool_metrics();
+                tracing::info!(
+                    pool_size = metrics.size,
+                    pool_idle = metrics.idle,
+                    pool_active = metrics.active,
+                    "Database pool metrics"
+                );
+                if metrics.idle <= DB_POOL_IDLE_LOW_WATERMARK {
+                    tracing::warn!(
+                        pool_size = metrics.size,
+                        pool_idle = metrics.idle,
+                        pool_active = metrics.active,
+                        low_watermark = DB_POOL_IDLE_LOW_WATERMARK,
+                        "Database pool idle connections are low"
+                    );
+                }
+
+                let write_metrics = pool_metrics_db.write_pool_metrics();
+                tracing::info!(
+                    write_pool_size = write_metrics.size,
+                    write_pool_idle = write_metrics.idle,
+                    write_pool_active = write_metrics.active,
+                    "Database write pool metrics"
+                );
+            }
+        })
+    };
 
     // Pool exhaustion monitoring: warn at >90% utilization, update Prometheus gauges
-    {
+    let pool_exhaustion_handle: JoinHandle<()> = {
         let monitor_pool = pool.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
@@ -122,38 +167,105 @@ async fn main() -> anyhow::Result<()> {
                         active,
                         size
                     );
+                    payraider_backend::observability::metrics::record_pool_error(
+                        "near_exhaustion",
+                    );
                 }
-                stellar_insights_backend::observability::metrics::set_pool_size(size as i64);
-                stellar_insights_backend::observability::metrics::set_pool_idle(idle as i64);
-                stellar_insights_backend::observability::metrics::set_pool_active(active as i64);
+                payraider_backend::observability::metrics::set_pool_connections(
+                    active,
+                    idle as usize,
+                    size,
+                );
             }
-        });
-    }
+        })
+    };
 
+    // Initialize cache manager
     let cache = Arc::new(
-        CacheManager::new(CacheConfig::default())
+        CacheManager::new(CacheConfig::from_env())
             .await
-            .context("Failed to initialize cache manager - check Redis connection")?,
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "Failed to initialize cache manager, using in-memory fallback: {}",
+                    e
+                );
+                CacheManager::new_in_memory_for_tests(CacheConfig::from_env())
+            }),
     );
 
-    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
+    // Initialize Stellar RPC Client
+    let mock_mode = std::env::var("RPC_MOCK_MODE")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse::<bool>()
+        .unwrap_or(false);
 
-    let price_feed_config = PriceFeedConfig::default();
-    let price_feed = Arc::new(PriceFeedClient::new(
-        price_feed_config,
-        default_asset_mapping(),
+    // Respect STELLAR_NETWORK rather than hardcoding mainnet — a testnet
+    // deployment must not silently issue RPC calls against mainnet.
+    let stellar_network = std::env::var("STELLAR_NETWORK")
+        .ok()
+        .and_then(|s| s.parse::<StellarNetwork>().ok())
+        .unwrap_or(StellarNetwork::Mainnet);
+
+    let rpc_client = Arc::new(StellarRpcClient::new_with_network(
+        stellar_network,
+        mock_mode,
     ));
 
+    // Build all services via the container (dependency injection — issue #1123)
+    let services = ServiceContainer::build(pool.clone(), rpc_client.clone());
+
     let ws_state = Arc::new(WsState::new());
+    ws_state.spawn_redis_subscriber();
     let ingestion = Arc::new(DataIngestionService::new(rpc_client.clone(), db.clone()));
 
     let app_state = AppState::new(
         db.clone(),
         cache.clone(),
-        ws_state,
+        ws_state.clone(),
         ingestion,
         rpc_client.clone(),
     );
+
+    // Initialize new middleware components (lightweight registration)
+    let _network_context_middleware = NetworkContextMiddleware::new();
+    let _network_aware_rpc_client = NetworkAwareRpcClient::new(Default::default());
+    let _mobile_pagination_endpoints = MobilePaginationEndpoints::new(Default::default());
+    let _database_schema_separation = DatabaseSchemaSeparation::new(Default::default());
+    let _websocket_real_time_updates = WebSocketRealTimeUpdates::new(Default::default());
+    let _api_versioning = ApiVersioning::new(Default::default());
+    let _mobile_request_logging = MobileRequestLogging::new(Default::default());
+    let _field_selection_parameter = FieldSelectionParameter::new(Default::default());
+    let _etag_caching_support = ETagCachingSupport::new(Default::default());
+    let _batch_endpoints = BatchEndpoints::new(Default::default());
+    let _response_compression = ResponseCompression::new(
+        payraider_backend::models::response_compression::CompressionConfig::from_env(),
+    );
+    if let Err(e) = _response_compression.validate() {
+        tracing::warn!("Response compression config invalid: {}", e);
+    }
+
+    let _push_notification_service = PushNotificationService::new(
+        payraider_backend::models::push_notification_service::Config::default(),
+    );
+    tracing::info!("Push notification service initialized");
+
+    // Initialize SEP-10 for mobile (issue #1376)
+    let _sep10_for_mobile = Sep10ForMobile::new(
+        payraider_backend::models::sep10_for_mobile::Config::default(),
+    );
+    tracing::info!("SEP-10 for mobile initialized");
+
+    // Initialize push notification registration (issue #1377)
+    let _push_notification_registration = PushNotificationRegistration::new(
+        payraider_backend::models::push_notification_registration::Config::default(),
+    );
+    tracing::info!("Push notification registration initialized");
+
+    let fee_bump_tracker = services.fee_bump_tracker;
+    let account_merge_detector = services.account_merge_detector;
+    let lp_analyzer = services.lp_analyzer;
+    let price_feed = services.price_feed.clone();
+
     let cached_state = (
         db.clone(),
         cache.clone(),
@@ -161,39 +273,229 @@ async fn main() -> anyhow::Result<()> {
         price_feed.clone(),
     );
 
-    let fee_bump_tracker = Arc::new(FeeBumpTrackerService::new(pool.clone()));
-    let account_merge_detector =
-        Arc::new(AccountMergeDetector::new(pool.clone(), rpc_client.clone()));
-    let lp_analyzer = Arc::new(LiquidityPoolAnalyzer::new(pool.clone(), rpc_client.clone()));
-
     let backup_config = BackupConfig::from_env();
     if backup_config.enabled {
         let backup_manager = Arc::new(BackupManager::new(backup_config));
-        backup_manager.spawn_scheduler();
+        std::mem::drop(backup_manager.spawn_scheduler());
         tracing::info!("Backup scheduler enabled");
     }
 
+    // Build the backfill job (shared state allows the status endpoint to read progress)
+    let backfill_state = Arc::new(tokio::sync::RwLock::new(BackfillState::default()));
+    let event_indexer_for_backfill = Arc::new(EventIndexer::new(db.clone()));
+    let backfill_job = Arc::new(BackfillJob::new(
+        event_indexer_for_backfill,
+        rpc_client.clone(),
+        backfill_state,
+    ));
+
     let rate_limiter = Arc::new(
-        RateLimiter::new()
+        RateLimiter::new_with_db(Some(pool.clone()))
             .await
             .context("Failed to initialize rate limiter")?,
     );
 
-    // Start webhook dispatcher as a background task
-    let webhook_pool = pool.clone();
-    tokio::spawn(async move {
-        let dispatcher = WebhookDispatcher::new(webhook_pool);
-        if let Err(e) = dispatcher.run().await {
-            tracing::error!("Webhook dispatcher stopped: {}", e);
+    // Concurrency limiter — caps in-flight requests to prevent 500s under spike load
+    let concurrency_state = ConcurrencyLimitState::from_env();
+    tracing::info!(
+        max_in_flight = concurrency_state.current(),
+        "Concurrency limit initialized (MAX_IN_FLIGHT_REQUESTS env var, default 500)"
+    );
+
+    // Configure rate limits for expensive operations
+    use payraider_backend::rate_limit::{ClientRateLimits, RateLimitConfig};
+
+    // Export endpoints (CSV/Excel generation)
+    rate_limiter
+        .register_endpoint(
+            "/api/export/csv".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 5,
+                whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 10,
+                    premium: 20,
+                    anonymous: 5,
+                }),
+            },
+        )
+        .await;
+
+    rate_limiter
+        .register_endpoint(
+            "/api/export/excel".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 5,
+                whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 10,
+                    premium: 20,
+                    anonymous: 5,
+                }),
+            },
+        )
+        .await;
+
+    // Analytics aggregation queries
+    rate_limiter
+        .register_endpoint(
+            "/api/analytics".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 20,
+                whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 40,
+                    premium: 100,
+                    anonymous: 20,
+                }),
+            },
+        )
+        .await;
+
+    // RPC proxy endpoints
+    rate_limiter
+        .register_endpoint(
+            "/api/rpc".to_string(),
+            RateLimitConfig {
+                requests_per_minute: 100,
+                whitelist_ips: vec![],
+                client_limits: Some(ClientRateLimits {
+                    authenticated: 200,
+                    premium: 500,
+                    anonymous: 100,
+                }),
+            },
+        )
+        .await;
+
+    let webhook_dispatcher_handle: JoinHandle<()> = {
+        let webhook_pool = pool.clone();
+        let max_restarts: u32 = std::env::var("WEBHOOK_DISPATCHER_MAX_RESTARTS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+        tokio::spawn(async move {
+            let mut restarts: u32 = 0;
+            loop {
+                let dispatcher = WebhookDispatcher::new(webhook_pool.clone());
+                match dispatcher.run().await {
+                    Ok(()) => {
+                        tracing::warn!("Webhook dispatcher exited cleanly; restarting");
+                    }
+                    Err(e) => {
+                        restarts += 1;
+                        tracing::error!(
+                            restarts,
+                            max_restarts,
+                            error = %e,
+                            "Webhook dispatcher failed"
+                        );
+                        if restarts >= max_restarts {
+                            tracing::error!(
+                                "Webhook dispatcher exceeded max restarts ({}); giving up",
+                                max_restarts
+                            );
+                            break;
+                        }
+                    }
+                }
+                // Exponential back-off capped at 60 s before restarting.
+                let backoff_secs = std::cmp::min(2u64.saturating_pow(restarts), 60);
+                tracing::info!("Restarting webhook dispatcher in {}s", backoff_secs);
+                tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+            }
+        })
+    };
+
+    // #2126 — the alert manager is built with the webhook event service so an
+    // alert fans out to every registered webhook. `AlertManager::new` leaves
+    // that service unset, which left every webhook-emitting branch in alerts.rs
+    // unreachable; nothing in the codebase called `new_with_webhooks`.
+    //
+    // Constructed unconditionally: webhook delivery for alerts must not depend
+    // on whether the optional Telegram bot below happens to be enabled.
+    let (alert_manager, _alert_rx) =
+        AlertManager::new_with_webhooks(Arc::new(WebhookEventService::new(pool.clone())));
+    let alert_manager = Arc::new(alert_manager);
+
+    // Corridor Performance Monitor — evaluates corridor metrics against user
+    // alert configs every 60 seconds and triggers alerts when thresholds are breached.
+    let (corridor_monitor, _corridor_alert_rx) =
+        payraider_backend::services::corridor_performance_monitor::CorridorPerformanceMonitor::new(
+            db.clone(),
+            alert_manager.clone(),
+        );
+    let corridor_monitor = Arc::new(corridor_monitor);
+    let corridor_monitor_handle = corridor_monitor.spawn(60);
+    tracing::info!("Corridor performance monitor started (60s interval)");
+
+    // #2129 — Telegram notification bot.
+    //
+    // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
+    // deployment that does not want it pays nothing and needs no extra config.
+    let telegram_handle: Option<JoinHandle<()>> = match std::env::var("TELEGRAM_BOT_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => {
+            let subscriptions = Arc::new(SubscriptionService::new(pool.clone()));
+            let bot = TelegramBot::new(
+                &token,
+                Arc::clone(&db),
+                Arc::clone(&cache),
+                Arc::clone(&rpc_client),
+                subscriptions,
+                &alert_manager,
+            );
+
+            // The bot owns its own shutdown receiver; the sender is dropped
+            // with the process, which ends the polling and alert loops.
+            let (bot_shutdown_tx, bot_shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+            std::mem::forget(bot_shutdown_tx);
+
+            tracing::info!("Telegram bot enabled");
+            Some(tokio::spawn(async move {
+                bot.run(bot_shutdown_rx).await;
+            }))
         }
-    });
+        _ => {
+            tracing::info!("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled");
+            None
+        }
+    };
+
+    // Opt-in Slack notifications for corridor and anchor alerts.
+    let slack_handle: Option<JoinHandle<()>> = match std::env::var("SLACK_WEBHOOK_URL") {
+        Ok(webhook_url) if !webhook_url.trim().is_empty() => {
+            tracing::info!("Slack notifications enabled");
+            Some(tokio::spawn(
+                SlackBotService::new(webhook_url, alert_manager.subscribe()).start(),
+            ))
+        }
+        _ => {
+            tracing::info!("SLACK_WEBHOOK_URL not set; Slack notifications disabled");
+            None
+        }
+    };
+
+    // CORS configuration
     let allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3000,https://stellar-insights.com".to_string());
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let wildcard_origins = allowed_origins.trim() == "*";
+
+    // Security: reject wildcard origins in production (non-mock mode)
+    if wildcard_origins && !mock_mode {
+        anyhow::bail!(
+            "CORS: wildcard origin ('*') is not permitted in production. \
+            Set CORS_ALLOWED_ORIGINS to comma-separated list of actual frontend domains. \
+            Example: https://payraider.com,https://app.payraider.com"
+        );
+    }
 
     let origins: Vec<HeaderValue> = allowed_origins
         .split(',')
         .filter_map(|origin| {
             let trimmed = origin.trim();
+            if trimmed == "*" {
+                return None;
+            }
             match trimmed.parse::<HeaderValue>() {
                 Ok(value) => {
                     tracing::info!("CORS: allowing origin '{}'", trimmed);
@@ -210,7 +512,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    if origins.is_empty() {
+    if origins.is_empty() && !wildcard_origins {
         tracing::warn!(
             "CORS: no valid origins parsed from CORS_ALLOWED_ORIGINS='{}'. \
              All cross-origin requests will be rejected.",
@@ -218,89 +520,238 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let allow_origin = if wildcard_origins {
+        tracing::info!("CORS: wildcard origin configured (dev/mock mode only); mirroring request origin");
+        AllowOrigin::mirror_request()
+    } else {
+        AllowOrigin::list(origins)
+    };
+
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::list(origins))
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-            Method::PATCH,
-        ])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .allow_origin(allow_origin)
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
         .allow_credentials(true)
         .max_age(Duration::from_secs(3600));
 
-    let timeout_seconds: u64 = std::env::var("REQUEST_TIMEOUT_SECONDS")
+    // Compression configuration
+    let compression_min_size: u16 = std::env::var("COMPRESSION_MIN_SIZE")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(30);
+        .unwrap_or(1024);
 
-    let app = routes(
-        app_state,
+    // COMPRESSION_LEVEL: "fastest", "best", or a numeric quality (0-9). Default: "default".
+    let compression_level = match std::env::var("COMPRESSION_LEVEL")
+        .unwrap_or_default()
+        .to_lowercase()
+        .as_str()
+    {
+        "fastest" => CompressionLevel::Fastest,
+        "best" => CompressionLevel::Best,
+        s => s
+            .parse::<i32>()
+            .map(CompressionLevel::Precise)
+            .unwrap_or(CompressionLevel::Default),
+    };
+
+    tracing::info!(
+        "Compression enabled (gzip, brotli) for responses > {} bytes, level={:?}",
+        compression_min_size,
+        compression_level
+    );
+
+    // Request timeout configuration — reads REQUEST_TIMEOUT_SECONDS from env,
+    // defaults to 30s, clamped to [5, 300] to prevent misconfiguration.
+    let request_timeout_seconds = std::env::var("REQUEST_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        .clamp(MIN_REQUEST_TIMEOUT_SECONDS, MAX_REQUEST_TIMEOUT_SECONDS);
+
+    tracing::info!(
+        "Request timeout configured: {}s (env REQUEST_TIMEOUT_SECONDS, range {}-{})",
+        request_timeout_seconds,
+        MIN_REQUEST_TIMEOUT_SECONDS,
+        MAX_REQUEST_TIMEOUT_SECONDS,
+    );
+
+    // Request timeout: 408 on exceeded time. WebSocket routes are excluded (see `ws_routes`).
+    let timeout_layer = TimeoutLayer::with_status_code(
+        axum::http::StatusCode::REQUEST_TIMEOUT,
+        Duration::from_secs(request_timeout_seconds),
+    );
+
+    // WebSocket routes are excluded from the timeout layer — WS connections
+    // are long-lived and must not be killed by the HTTP request timeout.
+    let ws_routes = Router::new()
+        .route("/ws", payraider_backend::websocket::ws_route())
+        .with_state(Arc::clone(&ws_state))
+        .layer(cors.clone());
+
+    let base_routes = routes(
+        app_state.clone(),
         cached_state,
-        rpc_client,
+        rpc_client.clone(),
         fee_bump_tracker,
         account_merge_detector,
         lp_analyzer,
         price_feed,
         rate_limiter,
         cors,
-        pool,
-        cache,
+        pool.clone(),
+        cache.clone(),
     )
-    .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
-    .route(
-        "/swagger-ui",
-        axum::routing::get(|| async { axum::response::Redirect::permanent("/api/docs/") }),
-    )
-    .layer(TimeoutLayer::new(Duration::from_secs(timeout_seconds)));
+    .merge(payraider_backend::api::api_analytics::routes(db.clone()));
 
+    // Admin routes (backfill, etc.) — mounted at /admin
+    let admin_routes = payraider_backend::api::backfill::routes(backfill_job);
+
+    // ── Consolidated GraphQL API (Issues #2121-#2125) ────────────────────────────
+    //
+    // The consolidated schema replaces the feature-level `GraphQLAPI` with the
+    // full database-backed schema from `graphql/schema.rs`. It includes:
+    //   - Query resolvers for all entities (anchors, corridors, payments, etc.)
+    //   - Mutation resolvers for create/update/delete operations
+    //   - Subscription resolvers for real-time updates via WebSocket
+    //   - Query complexity/depth limiting via async-graphql
+    let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
+    let graphql_schema = payraider_backend::graphql::build_schema(
+        Arc::new(pool.clone()),
+        broadcast_tx,
+    );
+    let graphql_routes = Router::new()
+        .route(
+            "/graphql",
+            post(payraider_backend::graphql::handlers::graphql_handler)
+                .get(payraider_backend::graphql::handlers::graphql_playground),
+        )
+        .route(
+            "/graphql/ws",
+            get(payraider_backend::graphql::handlers::graphql_ws_handler),
+        )
+        .route(
+            "/graphql/health",
+            get(payraider_backend::graphql::handlers::graphql_health_handler),
+        )
+        .with_state(graphql_schema);
+
+    let app = base_routes
+        .nest("/admin", admin_routes)
+        .merge(graphql_routes)
+        .merge(ws_routes)
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/api/docs").url(
+                "/api/docs/openapi.json",
+                <payraider_backend::openapi::ApiDoc as utoipa::OpenApi>::openapi(),
+            ),
+        )
+        .route(
+            "/swagger-ui",
+            get(|| async { axum::response::Redirect::permanent("/api/docs/") }),
+        )
+        .layer(middleware::from_fn(
+            payraider_backend::payload_limit::payload_limit_middleware,
+        ))
+        .layer(middleware::from_fn(
+            payraider_backend::api_deprecation_middleware::deprecation_middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             db.clone(),
-            stellar_insights_backend::api_analytics_middleware::api_analytics_middleware,
+            payraider_backend::api_analytics_middleware::api_analytics_middleware,
         ))
-        .layer(TraceLayer::new_for_http())
+        // Concurrency limiter — rejects excess requests with 503 instead of letting them pile up
+        .layer(middleware::from_fn_with_state(
+            concurrency_state,
+            concurrency_limit_middleware,
+        ))
+        // Panic recovery — converts handler panics to 500 JSON responses
+        .layer(middleware::from_fn(panic_recovery_middleware))
+        // trace_propagation_middleware must be inside TraceLayer so a span already
+        // exists when it calls set_parent(). In Axum's layer stack the last
+        // .layer() is outermost (runs first), so placing trace_propagation_middleware
+        // before TraceLayer here means it executes after TraceLayer at runtime.
         .layer(middleware::from_fn(trace_propagation_middleware))
+        .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(obs_metrics::http_metrics_middleware))
+        .layer(middleware::from_fn(request_response_logging_middleware))
         .layer(middleware::from_fn(request_id_middleware))
-        .layer(compression); // Apply compression to all routes
-    tracing::info!("Request timeout set to {} seconds", timeout_seconds);
+        .layer(timeout_layer)
+        .layer(
+            CompressionLayer::new()
+                .gzip(true)
+                .br(true)
+                .quality(compression_level)
+                .compress_when(
+                    SizeAbove::new(compression_min_size.into())
+                        .and(NotForContentType::IMAGES)
+                        .and(NotForContentType::SSE),
+                ),
+        );
 
     let port = std::env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
-    tracing::info!(address = %addr, "Server listening");
+    tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let start_shutdown = std::time::Instant::now();
+
+    // Shutdown coordinator
+    let shutdown_coordinator = Arc::new(ShutdownCoordinator::new(ShutdownConfig::from_env()));
+
+    let mut background_tasks: Vec<JoinHandle<()>> = vec![
+        pool_metrics_handle,
+        pool_exhaustion_handle,
+        webhook_dispatcher_handle,
+        corridor_monitor_handle,
+    ];
+    if let Some(handle) = telegram_handle {
+        background_tasks.push(handle);
+    }
+    if let Some(handle) = slack_handle {
+        background_tasks.push(handle);
+    }
+
+    // Graceful shutdown handler
+    let shutdown_handler: JoinHandle<()> = {
+        let shutdown_pool = pool.clone();
+        let shutdown_cache = cache.clone();
+        let shutdown_ws_state = ws_state.clone();
+        let coordinator = shutdown_coordinator.clone();
+        tokio::spawn(async move {
+            wait_for_signal().await;
+            coordinator.trigger_shutdown();
+            shutdown_websockets(shutdown_ws_state, coordinator.background_task_timeout()).await;
+            flush_cache(shutdown_cache, coordinator.background_task_timeout()).await;
+            shutdown_database(shutdown_pool, coordinator.db_close_timeout()).await;
+        })
+    };
+
+    background_tasks.push(shutdown_handler);
+    // Clone references needed inside the graceful shutdown future
+    let shutdown_pool = pool.clone();
+    let shutdown_cache = cache.clone();
+    let shutdown_ws_state = ws_state.clone();
+
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            let coordinator = shutdown_coordinator.clone();
+            coordinator.trigger_shutdown();
+            shutdown_websockets(shutdown_ws_state, coordinator.background_task_timeout()).await;
+            flush_cache(shutdown_cache, coordinator.background_task_timeout()).await;
+            shutdown_database(shutdown_pool, coordinator.db_close_timeout()).await;
+        })
         .await?;
-    stellar_insights_backend::observability::tracing::shutdown_tracing();
+
+    shutdown_background_tasks(
+        background_tasks,
+        ShutdownConfig::from_env().background_task_timeout,
+    )
+    .await;
+
+    log_shutdown_summary(start_shutdown);
+    tracing::info!("Server shutdown complete");
+    payraider_backend::observability::tracing::shutdown_tracing();
 
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => { tracing::info!("Received Ctrl+C, shutting down"); },
-        _ = terminate => { tracing::info!("Received SIGTERM, shutting down"); },
-    }
 }

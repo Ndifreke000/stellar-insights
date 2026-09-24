@@ -55,7 +55,8 @@ export interface PoolDetailResponse {
   snapshots: PoolSnapshot[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import { config } from '@/config';
+const API_BASE = config.apiUrl;
 
 async function safeFetch<T>(url: string, fallback: T): Promise<T> {
   try {

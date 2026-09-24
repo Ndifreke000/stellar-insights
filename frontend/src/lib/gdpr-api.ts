@@ -1,6 +1,7 @@
 // GDPR API Client - Frontend API calls for GDPR compliance features
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import { config } from '@/config';
+const API_BASE_URL = config.apiUrl;
 
 // Types matching the backend models
 

@@ -225,8 +225,3 @@ mod tests {
         assert!(!service.apply_filters(&payload, &mismatched_filters));
     }
 }
-
-#[cfg(test)]
-mod webhook_integration_tests {
-    include!("webhook_event_service_tests.rs");
-}

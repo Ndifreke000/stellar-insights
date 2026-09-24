@@ -12,7 +12,7 @@
 # ============================================================================
 
 resource "aws_iam_role" "vault_oidc" {
-  name = "stellar-insights-vault-oidc-${var.environment}"
+  name = "payraider-vault-oidc-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -21,7 +21,7 @@ resource "aws_iam_role" "vault_oidc" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::aws:repo/github:Ndifreke000/stellar-insights:*"
+          Federated = "arn:aws:iam::aws:repo/github:Ndifreke000/payraider:*"
         }
         Condition = {
           StringEquals = {
@@ -33,7 +33,7 @@ resource "aws_iam_role" "vault_oidc" {
   })
 
   tags = {
-    Name = "stellar-insights-vault-oidc-${var.environment}"
+    Name = "payraider-vault-oidc-${var.environment}"
   }
 }
 
@@ -68,38 +68,16 @@ resource "aws_iam_role_policy" "vault_oidc_policy" {
 #
 # 2. Enable Secret Engines:
 #    Path: secret/ (KV v2)
-#    Path: database/
 #
 # 3. Create Secrets (KV v2):
 #    secret/stellar/jwt-secret - JWT signing key
 #    secret/stellar/oauth-clients - OAuth client credentials
 #    secret/stellar/webhooks - Zapier webhook config
 #
-# 4. Database Secret Engine:
-#    Enable at path: database/
-#    Create connection to RDS PostgreSQL
-#    Create role: stellar-insights-${environment}
-#    Dynamic credentials: 1 hour TTL
+# Note: no Database Secret Engine -- the backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md), so there's no RDS connection
+# for Vault to issue dynamic credentials against.
 #
-# 5. Policies:
-#    stellar-app-policy: read secrets, get DB creds
+# 4. Policies:
+#    stellar-app-policy: read secrets
 #    stellar-ci-policy: rotate secrets, auth setup
-
-# ============================================================================
-# Outputs
-# ============================================================================
-
-output "vault_oidc_role_arn" {
-  description = "ARN of Vault OIDC role for GitHub Actions"
-  value       = aws_iam_role.vault_oidc.arn
-}
-
-output "vault_secret_paths" {
-  description = "Secret paths in Vault KV v2"
-  value = {
-    jwt_secret      = "secret/stellar/jwt-secret"
-    oauth_clients   = "secret/stellar/oauth-clients"
-    webhooks        = "secret/stellar/webhooks"
-    db_role         = "database/creds/stellar-insights-${var.environment}"
-  }
-}

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import React, { useCallback } from 'react';
+import {  BellOff, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
+import { BaseNotification } from '@/types/notifications';
+import { sanitizeText, sanitizeUrl } from '@/lib/sanitize';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,25 +34,12 @@ const TYPE_COLORS: {
   info: 'text-blue-500',
 };
 
-const PRIORITY_COLORS: {
-  low: string;
-  medium: string;
-  high: string;
-  critical: string;
-} = {
-  low: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900',
-  medium: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20',
-  high: 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20',
-  critical: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20',
-};
-
 export const NotificationItem: React.FC<NotificationItemProps> = ({
   notification,
   onSelect,
   showActions = true,
 }) => {
   const { markAsRead, clearNotification } = useNotifications();
-  const [isExpanded, setIsExpanded] = useState(false);
 
   const handleMarkAsRead = useCallback(() => {
     markAsRead(notification.id);
@@ -76,11 +64,10 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   }, [onSelect, notification, handleMarkAsRead]);
 
   const IconComponent = NOTIFICATION_ICONS[notification.type];
-  const priorityColor = PRIORITY_COLORS[notification.priority];
   const typeColor = TYPE_COLORS[notification.type];
 
   return (
-    <div
+    <article
       className={`
         relative p-4 rounded-lg border transition-all cursor-pointer
         ${notification.read 
@@ -89,7 +76,16 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         }
         hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600
       `}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open notification: ${notification.title}`}
       onClick={handleSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleSelect();
+        }
+      }}
     >
       {/* Priority Indicator */}
       {notification.priority === 'critical' && (
@@ -100,6 +96,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         {/* Icon */}
         <div className="shrink-0 mt-0.5">
           {React.createElement(IconComponent, { 
+            'aria-hidden': true,
             className: `h-5 w-5 ${typeColor}` 
           })}
         </div>
@@ -123,16 +120,16 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           </div>
           
           <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-            {notification.message}
+            {sanitizeText(notification.message)}
           </p>
           
           <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
             <span>
               {new Date(notification.timestamp).toLocaleString()}
             </span>
-            {notification.metadata?.source && (
+            {Boolean(notification.metadata?.source) && (
               <span>
-                Source: {notification.metadata.source as string}
+                Source: {sanitizeText(notification.metadata?.source as string)}
               </span>
             )}
           </div>
@@ -156,22 +153,25 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   e.stopPropagation();
                   handleMarkAsRead();
                 }}>
-                  <Eye className="h-4 w-4 mr-2" />
+                  <Eye aria-hidden="true" className="h-4 w-4 mr-2" />
                   Mark as Read
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={(e) => {
                   e.stopPropagation();
                   handleCopy();
                 }}>
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy aria-hidden="true" className="h-4 w-4 mr-2" />
                   Copy
                 </DropdownMenuItem>
-                {notification.metadata?.url && (
+                {Boolean(notification.metadata?.url && sanitizeUrl(notification.metadata.url as string)) && (
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
-                    window.open(notification.metadata.url as string, '_blank');
+                    const safeUrl = sanitizeUrl(notification.metadata?.url as string);
+                    if (safeUrl) {
+                      window.open(safeUrl, '_blank', 'noopener,noreferrer');
+                    }
                   }}>
-                    <ExternalLink className="h-4 w-4 mr-2" />
+                    <ExternalLink aria-hidden="true" className="h-4 w-4 mr-2" />
                     Open Link
                   </DropdownMenuItem>
                 )}
@@ -195,7 +195,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                   }}
                   className="text-red-600"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <Trash2 aria-hidden="true" className="h-4 w-4 mr-2" />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -203,7 +203,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </article>
   );
 };
 

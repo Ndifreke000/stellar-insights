@@ -1,0 +1,17 @@
+# Mailpit SMTP stub for CI / local integration testing of email delivery.
+#
+# Usage:
+#   docker compose -f docker-compose.mailpit.yml up -d
+#   # Then run the backend with SMTP_HOST=localhost SMTP_PORT=1025
+#   # View received mail at http://localhost:8025
+#
+# See docs/smtp-integration-testing.md for full walkthrough.
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"   # SMTP (unauthenticated plaintext — CI only)
+      - "8025:8025"   # HTTP REST API + Web UI
+    environment:
+      MP_MAX_MESSAGES: 500
+    restart: unless-stopped

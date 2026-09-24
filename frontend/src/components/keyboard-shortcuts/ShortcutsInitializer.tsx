@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useKeyboardShortcuts } from '@/contexts/KeyboardShortcutsContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useCommandPalette } from '@/contexts/CommandPaletteContext';
 import { createDefaultShortcuts } from '@/lib/keyboard-shortcuts/default-shortcuts';
 
 /**
@@ -17,6 +18,7 @@ export function ShortcutsInitializer() {
   const { registerShortcut, showHelp } = useKeyboardShortcuts();
   const { prefs, setPrefs } = useUserPreferences();
   const { theme, setThemePreference } = useTheme();
+  const { open: openCommandPalette } = useCommandPalette();
 
   useEffect(() => {
     // Extract locale from pathname (e.g., /en/dashboard -> en)
@@ -39,13 +41,7 @@ export function ShortcutsInitializer() {
         router.push(`/${locale}/analytics`);
       },
       openSearch: () => {
-        // Trigger search - you can implement a search modal/dialog
-        const searchInput = document.querySelector<HTMLInputElement>('[data-search-input]');
-        if (searchInput) {
-          searchInput.focus();
-        } else {
-          // Search functionality not yet implemented
-        }
+        openCommandPalette();
       },
       toggleSidebar: () => {
         setPrefs({ sidebarCollapsed: !prefs.sidebarCollapsed });
@@ -70,7 +66,7 @@ export function ShortcutsInitializer() {
 
     // Register all shortcuts
     shortcuts.forEach(shortcut => registerShortcut(shortcut));
-  }, [registerShortcut, showHelp, router, pathname, prefs, setPrefs, theme, setThemePreference]);
+  }, [registerShortcut, showHelp, router, pathname, prefs, setPrefs, theme, setThemePreference, openCommandPalette]);
 
   return null;
 }

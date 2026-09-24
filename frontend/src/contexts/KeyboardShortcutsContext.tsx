@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ShortcutAction, ShortcutConfig, KeyBinding, Platform } from '@/types/keyboard-shortcuts';
+import { logger } from '@/lib/logger';
 import { ShortcutRegistry } from '@/lib/keyboard-shortcuts/registry';
 import { detectPlatform, matchesBinding, isInputFocused } from '@/lib/keyboard-shortcuts/utils';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -141,7 +142,7 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
           try {
             action.handler(event);
           } catch (error) {
-            console.error(`Error executing shortcut "${action.id}":`, error);
+            logger.error(`Error executing shortcut "${action.id}":`, error instanceof Error ? error : new Error(String(error)));
           }
 
           // Only trigger first matching shortcut

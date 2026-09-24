@@ -1,5 +1,5 @@
 use axum::{extract::Query, Json};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -11,6 +11,7 @@ pub struct PredictionQuery {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f64,
     pub confidence_interval: (f64, f64),
@@ -33,10 +34,10 @@ pub struct PredictionResponse {
     ),
     tag = "Prediction"
 )]
-pub async fn predict_success(Query(_params): Query<PredictionQuery>) -> Json<PredictionResponse> {
+pub fn predict_success(Query(_params): Query<PredictionQuery>) -> Json<PredictionResponse> {
     // Mock implementation
-    let mut rng = rand::thread_rng();
-    let probability = rng.gen_range(0.8..0.98);
+    let mut rng = rand::rng();
+    let probability = rng.random_range(0.8..0.98);
 
     let response = PredictionResponse {
         success_probability: probability,

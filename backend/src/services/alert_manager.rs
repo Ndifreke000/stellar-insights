@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 pub struct AlertManager {
     db: Arc<Database>,
+    #[allow(dead_code)]
     http_client: Client,
 }
 
@@ -70,11 +71,11 @@ impl AlertManager {
 
                     // 2. Transmit via requested channels
                     if rule.notify_email {
-                        self.send_email_alert(&rule.user_id, &message).await;
+                        self.send_email_alert(&rule.user_id, &message);
                     }
 
                     if rule.notify_webhook {
-                        self.send_webhook_alert(&rule.user_id, &history).await;
+                        self.send_webhook_alert(&rule.user_id, &history);
                     }
 
                     if rule.notify_in_app {
@@ -86,7 +87,7 @@ impl AlertManager {
         Ok(())
     }
 
-    async fn send_email_alert(&self, user_id: &str, message: &str) {
+    fn send_email_alert(&self, user_id: &str, message: &str) {
         // Mocking email dispatcher for brevity
         tracing::info!(
             user_id = crate::logging::redaction::redact_user_id(user_id),
@@ -95,7 +96,7 @@ impl AlertManager {
         );
     }
 
-    async fn send_webhook_alert(&self, user_id: &str, history: &AlertHistory) {
+    fn send_webhook_alert(&self, user_id: &str, history: &AlertHistory) {
         // Mocking webhook dispatcher for brevity
         tracing::info!(
             user_id = crate::logging::redaction::redact_user_id(user_id),

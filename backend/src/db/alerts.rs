@@ -71,8 +71,10 @@ impl crate::database::Database {
         user_id: &str,
         req: UpdateAlertRuleRequest,
     ) -> Result<AlertRule> {
-        // Build dynamic update query
-        let mut query = String::from("UPDATE alert_rules SET updated_at = CURRENT_TIMESTAMP");
+        // Build dynamic update query with a pre-allocated String to avoid
+        // repeated small reallocations as optional fields are appended.
+        let mut query = String::with_capacity(256);
+        query.push_str("UPDATE alert_rules SET updated_at = CURRENT_TIMESTAMP");
 
         if req.corridor_id.is_some() {
             query.push_str(", corridor_id = $3");

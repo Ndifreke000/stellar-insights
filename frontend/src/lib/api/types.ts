@@ -37,6 +37,8 @@ export interface PredictionResponse {
   recommendation: string;
   alternative_routes: AlternativeRoute[];
   model_version: string;
+  /** True when the backend was unreachable and the result is locally generated. */
+  is_mock?: boolean;
 }
 
 // =========================
@@ -128,10 +130,11 @@ export interface AnchorMetrics {
   status: string;
 }
 
-export interface AnchorsResponse {
-  anchors: AnchorMetrics[];
-  total: number;
-}
+// AnchorsResponse used to be declared here as { data, pagination }, which
+// never matched what GET /anchors actually returns ({ anchors, total } --
+// see backend/src/api/anchors.rs and lib/api/anchor.ts's AnchorsResponse,
+// the correct shape). Removed rather than fixed in place since api.ts now
+// imports the correct one from ./anchor directly.
 
 export interface ReliabilityDataPoint {
   timestamp: string;

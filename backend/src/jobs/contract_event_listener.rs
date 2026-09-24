@@ -3,6 +3,8 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
 use tracing::{debug, error, info};
 
+use crate::observability::job_metrics::JobMetricsCollector;
+
 use crate::database::Database;
 use crate::services::contract_listener::ListenerConfig;
 use crate::services::event_indexer::EventIndexer;
@@ -81,7 +83,8 @@ impl ContractEventListenerJob {
         loop {
             interval.tick().await;
 
-            match self
+            let _metrics = JobMetricsCollector::new("contract-event-listener");
+            let result = match self
                 .check_for_missed_events(&event_indexer, &listener_config)
                 .await
             {
@@ -89,10 +92,21 @@ impl ContractEventListenerJob {
                     if events_processed > 0 {
                         info!("Processed {} missed contract events", events_processed);
                     }
+                    Ok(())
                 }
                 Err(e) => {
                     error!("Error checking for missed events: {}", e);
                     // Continue running despite errors
+                    Err(e)
+                }
+            };
+
+            match result {
+                Ok(_) => {
+                    _metrics.complete_success();
+                }
+                Err(e) => {
+                    _metrics.complete_failure(&e.to_string());
                 }
             }
         }
@@ -186,6 +200,21 @@ pub async fn start_contract_event_listener_job(
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::db::schema::Schema;
+
+    async fn setup_contract_event_db() -> Arc<Database> {
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        Arc::new(Database::new(pool))
+    }
 
     #[tokio::test]
     async fn test_contract_event_listener_job_config() {
@@ -199,8 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contract_event_listener_job_creation() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let config = ContractEventListenerConfig::default();
 
         let job = ContractEventListenerJob::new(db, config);
@@ -211,8 +239,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_stats() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        let db = Arc::new(Database::new(pool));
+        let db = setup_contract_event_db().await;
         let config = ContractEventListenerConfig::default();
         let job = ContractEventListenerJob::new(db, config);
 

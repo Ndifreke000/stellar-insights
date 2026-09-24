@@ -63,7 +63,7 @@ pub fn budget_for(metric: &str) -> Option<f64> {
         "web-vitals-fcp" => Some(1800.0),
         "web-vitals-ttfb" => Some(800.0),
         "page-load-time" => Some(3000.0),
-        "api-response-time" => Some(1000.0),
+        "api-response-time" | "api-latency" => Some(1000.0),
         _ => None,
     }
 }

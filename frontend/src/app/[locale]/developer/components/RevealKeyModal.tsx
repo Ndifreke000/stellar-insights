@@ -40,6 +40,7 @@ export default function RevealKeyModal({
             onClick={onClose}
             className="p-1 hover:bg-muted rounded-lg"
             title="Close"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5 text-muted-foreground" />
           </button>
@@ -68,12 +69,13 @@ export default function RevealKeyModal({
                 {visible
                   ? response.plain_key
                   : response.plain_key.substring(0, 12) +
-                    "••••••••••••••••••••••"}
+                  "••••••••••••••••••••••"}
               </code>
               <button
                 onClick={() => setVisible(!visible)}
                 className="p-2 hover:bg-muted rounded-lg transition-colors"
                 title={visible ? "Hide key" : "Show key"}
+                aria-label={visible ? "Hide API key" : "Show API key"}
               >
                 {visible ? (
                   <EyeOff className="w-4 h-4 text-muted-foreground" />
@@ -85,6 +87,7 @@ export default function RevealKeyModal({
                 onClick={handleCopy}
                 className="p-2 hover:bg-muted rounded-lg transition-colors"
                 title="Copy to clipboard"
+                aria-label="Copy API key to clipboard"
               >
                 {copied ? (
                   <Check className="w-4 h-4 text-green-500" />

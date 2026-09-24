@@ -14,6 +14,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { formatAddressShort } from "@/lib/address";
+import { sanitizeText } from "@/lib/sanitize";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { AnchorMetrics } from "@/lib/api/types";
 
@@ -166,6 +167,11 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
     );
   };
 
+  const getSortDirection = (field: SortField): "none" | "ascending" | "descending" => {
+    if (sortField !== field) return "none";
+    return sortOrder === "asc" ? "ascending" : "descending";
+  };
+
   if (loading) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
@@ -197,6 +203,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("name")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                aria-label="Sort by anchor name"
+                aria-sort={getSortDirection("name")}
               >
                 <div className="flex items-center gap-2">
                   Anchor / Address
@@ -209,6 +217,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("reliability_score")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                aria-label="Sort by reliability score"
+                aria-sort={getSortDirection("reliability_score")}
               >
                 <div className="flex items-center gap-2">
                   Reliability Score
@@ -218,6 +228,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
               <th
                 onClick={() => handleSort("failure_rate")}
                 className="px-6 py-3 text-left text-xs font-medium text-muted-foreground dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                aria-label="Sort by failure rate"
+                aria-sort={getSortDirection("failure_rate")}
               >
                 <div className="flex items-center gap-2">
                   Failure Rate
@@ -262,7 +274,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {anchor.name}
+                          {sanitizeText(anchor.name)}
                         </div>
                         <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                           {truncateAddress(anchor.stellar_account)}
@@ -285,13 +297,12 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                       </div>
                       <div className="w-20 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                         <div
-                          className={`h-2 rounded-full transition-all ${
-                            anchor.reliability_score >= 95
-                              ? "bg-green-500"
-                              : anchor.reliability_score >= 85
+                          className={`h-2 rounded-full transition-all ${anchor.reliability_score >= 95
+                            ? "bg-green-500"
+                            : anchor.reliability_score >= 85
                               ? "bg-yellow-500"
                               : "bg-red-500"
-                          }`}
+                            }`}
                           style={{ width: `${Math.min(anchor.reliability_score, 100)}%` }}
                         />
                       </div>
@@ -330,8 +341,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                               anchor.reliability_score >= 95
                                 ? "#10b981"
                                 : anchor.reliability_score >= 85
-                                ? "#f59e0b"
-                                : "#ef4444"
+                                  ? "#f59e0b"
+                                  : "#ef4444"
                             }
                             strokeWidth={2}
                             dot={false}
@@ -370,7 +381,7 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {anchor.name}
+                      {sanitizeText(anchor.name)}
                     </div>
                     <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono truncate">
                       {truncateAddress(anchor.stellar_account)}
@@ -397,13 +408,12 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                     </span>
                     <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-2">
                       <div
-                        className={`h-2 rounded-full ${
-                          anchor.reliability_score >= 95
-                            ? "bg-green-500"
-                            : anchor.reliability_score >= 85
+                        className={`h-2 rounded-full ${anchor.reliability_score >= 95
+                          ? "bg-green-500"
+                          : anchor.reliability_score >= 85
                             ? "bg-yellow-500"
                             : "bg-red-500"
-                        }`}
+                          }`}
                         style={{ width: `${Math.min(anchor.reliability_score, 100)}%` }}
                       />
                     </div>
@@ -450,8 +460,8 @@ const AnchorTable: React.FC<AnchorTableProps> = ({ anchors, loading = false }) =
                             anchor.reliability_score >= 95
                               ? "#10b981"
                               : anchor.reliability_score >= 85
-                              ? "#f59e0b"
-                              : "#ef4444"
+                                ? "#f59e0b"
+                                : "#ef4444"
                           }
                           strokeWidth={2}
                           dot={false}

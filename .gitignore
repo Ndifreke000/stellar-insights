@@ -7,6 +7,7 @@
 target/
 **/*.rs.bk
 *.pdb
+*.backup
 
 # Node dependencies - NEVER commit!
 **/node_modules/
@@ -20,6 +21,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Python cache - NEVER commit!
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
 # Database files - NEVER commit!
 *.db
 *.db-shm
@@ -27,7 +36,7 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 dev.db
-stellar_insights.db
+payraider.db
 
 # Environment files - NEVER commit!
 .env
@@ -35,6 +44,10 @@ stellar_insights.db
 .env.*.local
 .env.production
 .env.development
+
+# Test snapshots - NEVER commit!
+**/test_snapshots/
+test_snapshots/
 
 # ============================================
 # IDE and Editor files
@@ -74,7 +87,29 @@ temp/
 *.tmp
 
 # ============================================
+# Mobile specific
+# ============================================
+mobile/ios/Pods/
+mobile/ios/*.xcworkspace
+mobile/android/.gradle/
+mobile/android/app/build/
+
+# ============================================
 # Project specific
 # ============================================
 requirements.md
 AGENTS.md
+somzilla.md
+
+# ============================================
+# Local AI / editor tooling — NEVER commit!
+# These directories hold local-machine state
+# (conversation plans, session settings, etc.)
+# that is meaningless to other contributors.
+# ============================================
+.claude/
+.kiro/
+.cursor/
+.aider/
+.cline/
+.continue/

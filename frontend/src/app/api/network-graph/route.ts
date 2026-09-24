@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import {
   NetworkGraphData,
   GraphNode,
@@ -12,7 +13,8 @@ import {
  */
 export async function GET(): Promise<NextResponse<NetworkGraphData>> {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
 
     // Fetch anchors and corridors from backend
     const [anchorsRes, corridorsRes] = await Promise.all([
@@ -34,9 +36,26 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
     const nodesMap = new Map<string, GraphNode>();
     const links: GraphLink[] = [];
 
+    interface AnchorRecord {
+      id?: string;
+      name?: string;
+      reliability_score?: number;
+      address?: string;
+      status?: string;
+    }
+    interface CorridorRecord {
+      source_anchor_id?: string;
+      destination_anchor_id?: string;
+      source_asset_code?: string;
+      source_asset_issuer?: string;
+      volume_usd?: number;
+      success_rate?: number;
+      liquidity_score?: number;
+    }
+
     // Process anchors into nodes
     if (Array.isArray(anchors)) {
-      anchors.forEach((anchor: any) => {
+      anchors.forEach((anchor: AnchorRecord) => {
         if (anchor.id && anchor.name) {
           nodesMap.set(anchor.id, {
             id: anchor.id,
@@ -52,7 +71,7 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
 
     // Process corridors into links and asset nodes
     if (Array.isArray(corridors)) {
-      corridors.forEach((corridor: any) => {
+      corridors.forEach((corridor: CorridorRecord) => {
         if (corridor.source_anchor_id && corridor.destination_anchor_id) {
           // Create asset node if it doesn't exist
           const assetId = `${corridor.source_asset_code}_${corridor.source_asset_issuer}`;
@@ -97,7 +116,7 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
 
     // Validate data before returning
     if (!validateNetworkGraphData(graphData)) {
-      console.error('Generated invalid network graph data');
+      logger.error('Generated invalid network graph data');
       return NextResponse.json(
         { nodes: [], links: [] },
         { status: 500 }
@@ -106,7 +125,7 @@ export async function GET(): Promise<NextResponse<NetworkGraphData>> {
 
     return NextResponse.json(graphData);
   } catch (error) {
-    console.error('Error fetching network graph data:', error);
+    logger.error('Error fetching network graph data', error);
     return NextResponse.json(
       { nodes: [], links: [] },
       { status: 500 }

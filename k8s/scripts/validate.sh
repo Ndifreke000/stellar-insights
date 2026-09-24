@@ -45,7 +45,7 @@ if command -v kustomize &> /dev/null; then
     echo ""
     echo "=== Validating with Kustomize ==="
     
-    for env in dev staging production; do
+    for env in dev staging production testnet mainnet; do
         if [ -d "overlays/$env" ]; then
             echo "Validating $env environment..."
             kustomize build overlays/$env > /tmp/k8s-$env.yaml

@@ -58,7 +58,7 @@ function ComparisonContent() {
             try {
               const data = await getCorridorDetail(id);
               return data;
-            } catch (e) {
+            } catch (_e) {
               logger.debug(`Failed to fetch ${id}, using mock`);
               return generateMockCorridorData(id);
             }

@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState } from 'react';
+import { logger } from '@/lib/logger';
 import { exportChart, ExportFormat } from '@/lib/chart-export';
 
 interface UseChartExportOptions {
@@ -17,9 +18,9 @@ export function useChartExport({ chartName }: UseChartExportOptions) {
 
       try {
         const filename = `${chartName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}`;
-        await exportChart(chartRef.current, { filename, format });
+        await exportChart(chartRef.current, filename, format);
       } catch (error) {
-        console.error('Chart export failed:', error);
+        logger.error('Chart export failed', error);
         throw error;
       } finally {
         setIsExporting(false);

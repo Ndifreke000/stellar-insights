@@ -5,13 +5,14 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info};
+use utoipa::ToSchema;
 
 use crate::database::Database;
 use crate::services::contract::ContractService;
 use crate::services::snapshot::SnapshotService;
 
 /// Response for snapshot generation
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SnapshotResponse {
     pub epoch: u64,
     pub timestamp: String,
@@ -24,7 +25,7 @@ pub struct SnapshotResponse {
 }
 
 /// Submission information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SubmissionInfo {
     pub transaction_hash: String,
     pub ledger: u64,
@@ -32,7 +33,7 @@ pub struct SubmissionInfo {
 }
 
 /// Request for snapshot generation
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GenerateSnapshotRequest {
     pub epoch: u64,
     #[serde(default)]
@@ -50,6 +51,16 @@ pub struct SnapshotAppState {
 /// Generate a snapshot (optionally submit to contract)
 ///
 /// POST /api/snapshots/generate
+#[utoipa::path(
+    post,
+    path = "/api/snapshots/generate",
+    request_body = GenerateSnapshotRequest,
+    responses(
+        (status = 200, description = "Snapshot generated successfully", body = SnapshotResponse),
+        (status = 500, description = "Snapshot generation failed")
+    ),
+    tag = "Snapshots"
+)]
 pub async fn generate_snapshot(
     State(state): State<SnapshotAppState>,
     Json(request): Json<GenerateSnapshotRequest>,
@@ -105,6 +116,16 @@ pub async fn generate_snapshot(
 /// Health check for contract service
 ///
 /// GET /api/snapshots/contract/health
+#[utoipa::path(
+    get,
+    path = "/api/snapshots/contract/health",
+    responses(
+        (status = 200, description = "Contract service health status", body = ContractHealthResponse),
+        (status = 500, description = "Config error"),
+        (status = 503, description = "Connection error")
+    ),
+    tag = "Snapshots"
+)]
 pub async fn contract_health_check(
     State(state): State<SnapshotAppState>,
 ) -> Result<Json<ContractHealthResponse>, SnapshotError> {
@@ -124,7 +145,7 @@ pub async fn contract_health_check(
     }))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ContractHealthResponse {
     pub status: &'static str,
     pub timestamp: String,

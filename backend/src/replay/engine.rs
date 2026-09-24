@@ -16,7 +16,7 @@ use super::{
     event_processor::{CompositeEventProcessor, ProcessingContext},
     state_builder::StateBuilder,
     storage::{EventStorage, ReplayStorage},
-    ContractEvent, ReplayError, ReplayMetadata, ReplayResult, ReplayStatus,
+    ContractEvent, LedgerProtocolVersion, ReplayError, ReplayMetadata, ReplayResult, ReplayStatus,
 };
 
 /// Main replay engine
@@ -121,7 +121,7 @@ impl ReplayEngine {
                 error!("Replay failed: {}", e);
                 metadata.status = ReplayStatus::Failed {
                     error: e.to_string(),
-                    last_ledger: self.get_current_ledger(&metadata).await,
+                    last_ledger: self.get_current_ledger(&metadata),
                 };
                 metadata.ended_at = Some(Utc::now());
             }
@@ -147,8 +147,11 @@ impl ReplayEngine {
         let mut total_processed = 0u64;
         let mut total_failed = 0u64;
 
-        // Create processing context
-        let context = ProcessingContext::for_replay(self.session_id.clone(), self.config.dry_run);
+        // Create base processing context.  The protocol version will be
+        // resolved per batch and applied via `with_protocol_version` before
+        // each event is processed.
+        let base_context =
+            ProcessingContext::for_replay(self.session_id.clone(), self.config.dry_run);
 
         while current_ledger <= end_ledger {
             // Fetch batch of events
@@ -172,6 +175,37 @@ impl ReplayEngine {
 
             info!("Fetched {} events in batch", events.len());
 
+            // Resolve the protocol version for this batch.
+            //
+            // Priority:
+            //   1. Explicit override in config (set by caller / tests)
+            //   2. Per-event ledger data (if the event carries it)
+            //   3. Config default (0 → treat as protocol 20 floor)
+            //
+            // We resolve once per batch rather than per-event because all
+            // events in a batch come from the same ledger range and Stellar
+            // protocol upgrades happen at ledger boundaries, not mid-batch.
+            let resolved_protocol = self.resolve_protocol_version(current_ledger, &events);
+
+            let proto = LedgerProtocolVersion(resolved_protocol);
+
+            // Skip the entire batch if Soroban is not active for this range.
+            // This preserves existing behaviour for pre-protocol-20 ledgers.
+            if !proto.supports_soroban() {
+                info!(
+                    ledger_range = %format!("{current_ledger}..{batch_end}"),
+                    protocol = resolved_protocol,
+                    "Skipping batch — Soroban not active for this protocol version"
+                );
+                current_ledger = batch_end + 1;
+                continue;
+            }
+
+            // Build a context for this batch that carries the resolved version.
+            let context = base_context
+                .clone()
+                .with_protocol_version(resolved_protocol);
+
             // Process events
             for event in &events {
                 match self.process_event(event, &context).await {
@@ -184,7 +218,9 @@ impl ReplayEngine {
                                 || self.config.mode == ReplayMode::Verification
                             {
                                 let mut state_builder = self.state_builder.write().await;
-                                state_builder.apply_event(event).await?;
+                                state_builder
+                                    .apply_event(event, resolved_protocol)
+                                    .await?;
                             }
                         } else {
                             total_failed += 1;
@@ -231,6 +267,43 @@ impl ReplayEngine {
         Ok((total_processed, total_failed))
     }
 
+    /// Resolve the Stellar protocol version for a ledger batch.
+    ///
+    /// Resolution order:
+    /// 1. Explicit override in `self.config.protocol_version` (non-zero wins).
+    /// 2. The `protocol_version` field stored on the first event in the batch
+    ///    that carries one (events ingested after the field was added).
+    /// 3. Fall back to the config value as-is (0 means "use floor / legacy").
+    fn resolve_protocol_version(
+        &self,
+        _current_ledger: u64,
+        events: &[ContractEvent],
+    ) -> u32 {
+        // Explicit caller override always wins.
+        if self.config.protocol_version != 0 {
+            return self.config.protocol_version;
+        }
+
+        // Try to infer from event metadata stored during ingestion.
+        // `ContractEvent` does not currently carry a `protocol_version` field
+        // on its own — that information lives in the ledger header.  When the
+        // ingestion pipeline is extended to store it, the lookup below will
+        // pick it up automatically.  Until then we fall back gracefully.
+        for event in events {
+            if let Some(v) = event
+                .data
+                .get("__protocol_version")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32)
+            {
+                return v;
+            }
+        }
+
+        // No version resolved — return 0 so callers apply the default floor.
+        0
+    }
+
     /// Process a single event
     async fn process_event(
         &self,
@@ -256,11 +329,16 @@ impl ReplayEngine {
         let state_builder = self.state_builder.read().await;
         let state_json = state_builder.state().to_json()?;
 
-        // Create checkpoint
+        // Create checkpoint, tagging it with the active protocol version so
+        // that a resumed session can restore the correct processing context.
         let checkpoint = Checkpoint::new(self.session_id.clone(), ledger)
             .with_stats(processed, failed)
             .with_state(state_json)
-            .with_metadata("mode".to_string(), self.config.mode.to_string());
+            .with_metadata("mode".to_string(), self.config.mode.to_string())
+            .with_metadata(
+                "protocol_version".to_string(),
+                self.config.protocol_version.to_string(),
+            );
 
         // Save checkpoint
         self.checkpoint_manager.save(&checkpoint).await?;
@@ -309,7 +387,7 @@ impl ReplayEngine {
     }
 
     /// Get current ledger from metadata
-    async fn get_current_ledger(&self, metadata: &ReplayMetadata) -> Option<u64> {
+    fn get_current_ledger(&self, metadata: &ReplayMetadata) -> Option<u64> {
         match &metadata.status {
             ReplayStatus::InProgress { current_ledger, .. } => Some(*current_ledger),
             ReplayStatus::Paused { last_ledger, .. } => Some(*last_ledger),
@@ -318,14 +396,14 @@ impl ReplayEngine {
     }
 
     /// Pause the replay
-    pub async fn pause(&self) -> Result<()> {
+    pub fn pause(&self) -> Result<()> {
         info!("Pausing replay session {}", self.session_id);
         // Implementation would set a flag that the execute loop checks
         Ok(())
     }
 
     /// Resume a paused replay
-    pub async fn resume(&self) -> Result<()> {
+    pub fn resume(&self) -> Result<()> {
         info!("Resuming replay session {}", self.session_id);
         // Implementation would clear the pause flag
         Ok(())
@@ -342,8 +420,6 @@ impl ReplayEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_replay_engine_creation() {
         // Placeholder for actual tests

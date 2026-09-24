@@ -122,6 +122,16 @@ variable "subnets" {
   }
 }
 
+variable "vpc_id" {
+  description = "VPC ID, used for the EFS mount targets' security group"
+  type        = string
+}
+
+variable "litestream_bucket_name" {
+  description = "S3 bucket name Litestream replicates the SQLite database to (see terraform/global/backups.tf)"
+  type        = string
+}
+
 variable "security_groups" {
   description = "Security group IDs for ECS tasks"
   type        = list(string)
@@ -153,7 +163,7 @@ variable "vault_addr" {
 }
 
 variable "db_url" {
-  description = "Database connection URL (postgresql://user:pass@host:5432/db)"
+  description = "SQLite database URL (sqlite:///data/payraider.db) -- see docs/adr/0001-sqlite-vs-postgres.md"
   type        = string
   sensitive   = true
 }
@@ -177,7 +187,7 @@ variable "environment" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "log_retention_days" {

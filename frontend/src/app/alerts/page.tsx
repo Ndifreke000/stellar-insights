@@ -10,6 +10,7 @@ import {
 } from "../../lib/alerts-api";
 import { AlertRuleForm } from "../../components/AlertRuleForm";
 import { Trash2, Edit2, Play, Square, Bell, BellOff, XCircle, Clock } from "lucide-react";
+import { logger } from "../../lib/logger";
 
 export default function AlertsPage() {
     const [rules, setRules] = useState<AlertRule[]>([]);
@@ -29,7 +30,7 @@ export default function AlertsPage() {
             setRules(fetchedRules);
             setHistory(fetchedHistory);
         } catch (err) {
-            console.error("Failed to fetch alerts data", err);
+            logger.error("Failed to fetch alerts data", err);
         } finally {
             setLoading(false);
         }
@@ -45,7 +46,7 @@ export default function AlertsPage() {
             setIsFormOpen(false);
             loadData();
         } catch (err) {
-            console.error("Failed to create rule", err);
+            logger.error("Failed to create rule", err);
         }
     };
 
@@ -57,7 +58,7 @@ export default function AlertsPage() {
             setIsFormOpen(false);
             loadData();
         } catch (err) {
-            console.error("Failed to update rule", err);
+            logger.error("Failed to update rule", err);
         }
     };
 
@@ -67,7 +68,7 @@ export default function AlertsPage() {
             await alertsApi.deleteRule(id);
             loadData();
         } catch (err) {
-            console.error("Failed to delete rule", err);
+            logger.error("Failed to delete rule", err);
         }
     };
 
@@ -76,7 +77,7 @@ export default function AlertsPage() {
             await alertsApi.updateRule(rule.id, { is_active: !rule.is_active });
             loadData();
         } catch (err) {
-            console.error("Failed to toggle rule", err);
+            logger.error("Failed to toggle rule", err);
         }
     };
 
@@ -85,7 +86,7 @@ export default function AlertsPage() {
             await alertsApi.dismissHistory(id);
             loadData();
         } catch (err) {
-            console.error("Failed to dismiss alert", err);
+            logger.error("Failed to dismiss alert", err);
         }
     };
 
@@ -96,7 +97,7 @@ export default function AlertsPage() {
             await alertsApi.snoozeRuleFromHistory(ruleId, { snoozed_until: snoozedUntil });
             loadData();
         } catch (err) {
-            console.error("Failed to snooze rule", err);
+            logger.error("Failed to snooze rule", err);
         }
     };
 

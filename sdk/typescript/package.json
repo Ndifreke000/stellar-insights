@@ -1,0 +1,52 @@
+{
+  "name": "@payraider/sdk",
+  "version": "1.0.0",
+  "description": "Official TypeScript SDK for the PayRaider API",
+  "homepage": "https://github.com/Ndifreke000/payraider/tree/main/sdk/typescript#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ndifreke000/payraider.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/Ndifreke000/payraider/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "generate": "bash scripts/generate-bindings.sh",
+    "test": "vitest run",
+    "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "stellar",
+    "sdk",
+    "payments",
+    "analytics",
+    "request-deduplication",
+    "network-context",
+    "authentication",
+    "retry-backoff"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "tsup": "8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
+  }
+}

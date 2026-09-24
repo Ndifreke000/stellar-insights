@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { useNetwork } from '@/contexts/NetworkContext';
+import type { NetworkInfo } from '@/lib/api/types';
 
-export interface NetworkInfo {
-  network: 'mainnet' | 'testnet';
-  display_name: string;
-  rpc_url: string;
-  horizon_url: string;
-  network_passphrase: string;
-  color: string;
-  is_mainnet: boolean;
-  is_testnet: boolean;
-}
+export type { NetworkInfo };
 
 export interface NetworkSwitcherProps {
   className?: string;
@@ -19,13 +13,22 @@ export interface NetworkSwitcherProps {
 }
 
 export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwitcherProps) {
-  const [currentNetwork, setCurrentNetwork] = useState<NetworkInfo | null>(null);
+  const queryClient = useQueryClient();
+  const { network: contextNetwork, setNetwork: setContextNetwork } = useNetwork();
+  const [currentNetwork, setCurrentNetwork] = useState<NetworkInfo | null>(contextNetwork);
   const [availableNetworks, setAvailableNetworks] = useState<NetworkInfo[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   const [pendingNetwork, setPendingNetwork] = useState<NetworkInfo | null>(null);
+
+  // Keep local display state aligned with shared network context
+  useEffect(() => {
+    if (contextNetwork) {
+      setCurrentNetwork(contextNetwork);
+    }
+  }, [contextNetwork]);
 
   // Fetch current network info and available networks
   useEffect(() => {
@@ -38,6 +41,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         if (currentResponse.ok) {
           const current = await currentResponse.json();
           setCurrentNetwork(current);
+          setContextNetwork(current);
         }
 
         // Fetch available networks
@@ -55,7 +59,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
     };
 
     fetchNetworkInfo();
-  }, []);
+  }, [setContextNetwork]);
 
   const handleNetworkSelect = (network: NetworkInfo) => {
     if (network.network === currentNetwork?.network) {
@@ -84,13 +88,16 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
 
       if (response.ok) {
         const result = await response.json();
-        
+
         // Show message about server restart requirement
         alert(result.message);
-        
-        // For now, we'll update the local state to show the intended network
-        // In a real implementation, this would trigger a server restart
+
+        // Clear stale React Query cache so data refetches for the new network
+        queryClient.clear();
+
+        // Update local + shared context so explorer links / badges stay consistent
         setCurrentNetwork(pendingNetwork);
+        setContextNetwork(pendingNetwork);
         onNetworkChange?.(pendingNetwork);
       } else {
         throw new Error('Failed to switch network');
@@ -133,6 +140,9 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center space-x-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          aria-label={`Network: ${currentNetwork.display_name}. Click to switch.`}
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
         >
           <div
             className="w-3 h-3 rounded-full"
@@ -145,7 +155,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50" role="listbox" aria-label="Available networks">
             <div className="p-2">
               <div className="text-xs font-medium text-muted-foreground dark:text-muted-foreground uppercase tracking-wider mb-2 px-2">
                 Available Networks
@@ -154,6 +164,8 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
                 <button
                   key={network.network}
                   onClick={() => handleNetworkSelect(network)}
+                  role="option"
+                  aria-selected={network.network === currentNetwork.network}
                   className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                     network.network === currentNetwork.network
                       ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700'
@@ -198,17 +210,23 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
           <div
             className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
+            aria-hidden="true"
           />
         )}
       </div>
 
       {/* Network Switch Warning Modal */}
       {showWarning && pendingNetwork && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" aria-hidden="true">
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="network-switch-title"
+          >
             <div className="flex items-center space-x-3 mb-4">
-              <AlertTriangle className="w-6 h-6 text-amber-500" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <AlertTriangle className="w-6 h-6 text-amber-500" aria-hidden="true" />
+              <h3 id="network-switch-title" className="text-lg font-semibold text-gray-900 dark:text-white">
                 Switch Network
               </h3>
             </div>
@@ -233,12 +251,14 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
               <button
                 onClick={cancelNetworkSwitch}
                 className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                aria-label="Cancel network switch"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmNetworkSwitch}
                 className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                aria-label={`Confirm switch to ${pendingNetwork.display_name}`}
               >
                 Switch Network
               </button>

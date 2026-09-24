@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import {
   MoreVertical,
@@ -113,7 +113,7 @@ export const NotificationItem: React.FC<ItemProps> = ({
                 <Clock className="h-3 w-3" />
                 {format(notification.timestamp, 'PPp')}
               </span>
-              {notification.metadata?.source && (
+              {Boolean(notification.metadata?.source) && (
                 <span className="flex items-center gap-1">
                   <Globe className="h-3 w-3" />
                   {/* {notification.metadata.source} */}

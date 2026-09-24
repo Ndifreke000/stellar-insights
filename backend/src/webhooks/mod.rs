@@ -3,7 +3,7 @@
 pub mod channel;
 pub mod events;
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use sqlx::SqlitePool;
@@ -22,8 +22,8 @@ impl WebhookSignature {
     pub fn sign(payload: &str, secret: &str) -> String {
         let mut mac =
             HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
-        mac.update(payload.as_bytes());
-        format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
+        Mac::update(&mut mac, payload.as_bytes());
+        format!("sha256={}", hex::encode(Mac::finalize(mac).into_bytes()))
     }
 
     /// Verify webhook signature
@@ -50,6 +50,7 @@ pub struct Webhook {
 
 /// Webhook creation request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateWebhookRequest {
     pub url: String,
     pub event_types: Vec<String>,
@@ -58,6 +59,7 @@ pub struct CreateWebhookRequest {
 
 /// Webhook creation response
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct WebhookResponse {
     pub id: String,
     pub url: String,

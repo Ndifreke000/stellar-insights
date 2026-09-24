@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Calculator, Loader2, Route, TrendingUp } from "lucide-react";
+import { useForm, SubmitHandler } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {  Calculator, Loader2, Route, TrendingUp } from "lucide-react";
+import { FormField, FormSelect, FormCheckboxGroup } from "@/components/ui/FormField";
+import { costCalculatorSchema, type CostCalculatorForm } from "@/lib/schemas";
 
 type RouteKey = "stellar_dex" | "anchor_direct" | "liquidity_pool";
 
@@ -72,41 +76,57 @@ function formatAmount(value: number, digits = 2): string {
 }
 
 export function CostCalculator() {
-  const [sourceCurrency, setSourceCurrency] = useState("USDC");
-  const [destinationCurrency, setDestinationCurrency] = useState("NGN");
-  const [sourceAmount, setSourceAmount] = useState("1000");
-  const [destinationAmount, setDestinationAmount] = useState("");
-  const [selectedRoutes, setSelectedRoutes] = useState<RouteKey[]>([
-    "stellar_dex",
-    "anchor_direct",
-    "liquidity_pool",
-  ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CostCalculationResponse | null>(null);
 
+  const {
+    handleSubmit,
+    formState: { isValid, isDirty },
+    watch,
+  } = useForm<CostCalculatorForm>({
+    resolver: zodResolver(costCalculatorSchema),
+    mode: "onChange",
+    defaultValues: {
+      sourceCurrency: "USDC",
+      destinationCurrency: "NGN",
+      sourceAmount: "1000",
+      destinationAmount: "",
+      routes: ["stellar_dex", "anchor_direct", "liquidity_pool"],
+    },
+  });
+
+  // Watch form values for real-time updates
+  const sourceCurrency = watch("sourceCurrency");
+  const destinationCurrency = watch("destinationCurrency");
+  const sourceAmount = watch("sourceAmount");
+  const destinationAmount = watch("destinationAmount");
+  const selectedRoutes = watch("routes");
+
   const canSubmit = useMemo(() => {
     const parsed = Number(sourceAmount);
-    return Number.isFinite(parsed) && parsed > 0 && selectedRoutes.length > 0;
-  }, [sourceAmount, selectedRoutes]);
+    const destParsed = destinationAmount ? Number(destinationAmount) : null;
+    return (
+      isValid &&
+      isDirty &&
+      Number.isFinite(parsed) &&
+      parsed > 0 &&
+      selectedRoutes.length > 0 &&
+      sourceCurrency !== destinationCurrency &&
+      (destParsed === null || (Number.isFinite(destParsed) && destParsed > 0))
+    );
+  }, [isValid, isDirty, sourceAmount, destinationAmount, selectedRoutes, sourceCurrency, destinationCurrency]);
 
-  async function handleCalculate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!canSubmit) {
-      setError("Enter a valid amount and select at least one route.");
-      return;
-    }
-
+  const handleCalculate: SubmitHandler<CostCalculatorForm> = async (data) => {
     setLoading(true);
     setError(null);
 
     const body = {
-      source_currency: sourceCurrency,
-      destination_currency: destinationCurrency,
-      source_amount: Number(sourceAmount),
-      destination_amount: destinationAmount ? Number(destinationAmount) : undefined,
-      routes: selectedRoutes,
+      source_currency: data.sourceCurrency,
+      destination_currency: data.destinationCurrency,
+      source_amount: Number(data.sourceAmount),
+      destination_amount: data.destinationAmount ? Number(data.destinationAmount) : undefined,
+      routes: data.routes as RouteKey[],
     };
 
     try {
@@ -136,109 +156,52 @@ export function CostCalculator() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function toggleRoute(route: RouteKey) {
-    setSelectedRoutes((previous) => {
-      if (previous.includes(route)) {
-        return previous.filter((value) => value !== route);
-      }
-      return [...previous, route];
-    });
-  }
+  };
 
   return (
     <div className="space-y-6">
       <form
-        onSubmit={handleCalculate}
+        onSubmit={handleSubmit(handleCalculate)}
         className="glass rounded-2xl border border-border/60 p-6 space-y-6"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="space-y-2">
-            <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
-              Source Currency
-            </span>
-            <select
-              className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm"
-              value={sourceCurrency}
-              onChange={(event) => setSourceCurrency(event.target.value)}
-            >
-              {CURRENCIES.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
+          <FormSelect
+            name="sourceCurrency"
+            label="Source Currency"
+            options={CURRENCIES.map((currency) => ({ value: currency, label: currency }))}
+            required
+          />
 
-          <label className="space-y-2">
-            <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
-              Destination Currency
-            </span>
-            <select
-              className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm"
-              value={destinationCurrency}
-              onChange={(event) => setDestinationCurrency(event.target.value)}
-            >
-              {CURRENCIES.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
+          <FormSelect
+            name="destinationCurrency"
+            label="Destination Currency"
+            options={CURRENCIES.map((currency) => ({ value: currency, label: currency }))}
+            required
+          />
 
-          <label className="space-y-2">
-            <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
-              Source Amount
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={sourceAmount}
-              onChange={(event) => setSourceAmount(event.target.value)}
-              className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm"
-              placeholder="1000"
-            />
-          </label>
+          <FormField
+            name="sourceAmount"
+            label="Source Amount"
+            type="number"
+            placeholder="1000"
+            required
+          />
 
-          <label className="space-y-2">
-            <span className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
-              Target Destination Amount (Optional)
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={destinationAmount}
-              onChange={(event) => setDestinationAmount(event.target.value)}
-              className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm"
-              placeholder="Leave empty for estimate only"
-            />
-          </label>
+          <FormField
+            name="destinationAmount"
+            label="Target Destination Amount (Optional)"
+            type="number"
+            placeholder="Leave empty for estimate only"
+            description="If specified, calculator will determine required source amount"
+          />
         </div>
 
-        <div className="space-y-3">
-          <p className="text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
-            Compare Routes
-          </p>
-          <div className="flex flex-wrap gap-3">
-            {ROUTE_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedRoutes.includes(option.value)}
-                  onChange={() => toggleRoute(option.value)}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+        <FormCheckboxGroup
+          name="routes"
+          label="Compare Routes"
+          options={ROUTE_OPTIONS}
+          required
+        />
 
         <button
           type="submit"

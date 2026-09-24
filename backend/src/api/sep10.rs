@@ -1,14 +1,101 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
+use crate::api::auth::{
+    check_rate_limit_for_account, clear_failed_login_state, preflight_login_guards,
+    record_failed_login, AuthApiError,
+};
 use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
+use crate::observability::metrics::record_auth_security_event;
+
+const SEP10_CHALLENGE_LIMIT_PER_MINUTE: usize = 10;
+static SEP10_CHALLENGE_WINDOWS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn extract_client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|ip| !ip.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|ip| !ip.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+async fn check_challenge_rate_limit(ip: &str) -> Option<u64> {
+    let now = Instant::now();
+    let window = Duration::from_secs(60);
+    let mut buckets = SEP10_CHALLENGE_WINDOWS.lock().await;
+    let entries = buckets.entry(ip.to_string()).or_insert_with(VecDeque::new);
+
+    while let Some(oldest) = entries.front().copied() {
+        if now.duration_since(oldest) >= window {
+            entries.pop_front();
+        } else {
+            break;
+        }
+    }
+
+    if entries.len() >= SEP10_CHALLENGE_LIMIT_PER_MINUTE {
+        let retry_after_seconds = entries
+            .front()
+            .copied()
+            .map(|first| {
+                window
+                    .saturating_sub(now.duration_since(first))
+                    .as_secs()
+                    .max(1)
+            })
+            .unwrap_or(60);
+        return Some(retry_after_seconds);
+    }
+
+    entries.push_back(now);
+    None
+}
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// Decode the base64 challenge transaction and return the `max_time`
+/// (stored as `expires_at` during challenge generation).
+fn extract_max_time(transaction: &str) -> Option<i64> {
+    let bytes = BASE64.decode(transaction).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json["expires_at"].as_i64()
+}
+
+/// Decode the base64 challenge transaction and return the client account it was issued to.
+fn extract_client_account(transaction: &str) -> Option<String> {
+    let bytes = BASE64.decode(transaction).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json["client"].as_str().map(str::to_string)
+}
 
 /// GET /api/sep10/info - Get SEP-10 server information
 #[utoipa::path(
@@ -45,8 +132,22 @@ pub async fn get_info(
 )]
 pub async fn request_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
+    headers: HeaderMap,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Response, Sep10ApiError> {
+    let client_ip = extract_client_ip(&headers);
+    if let Some(retry_after_seconds) = check_challenge_rate_limit(&client_ip).await {
+        tracing::warn!(
+            client_ip = %client_ip,
+            retry_after_seconds,
+            "SEP-10 challenge rate limit exceeded"
+        );
+        record_auth_security_event("sep10_challenge", "rate_limited");
+        return Err(Sep10ApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+
     let response = sep10_service
         .generate_challenge(request)
         .await
@@ -68,14 +169,52 @@ pub async fn request_challenge(
 )]
 pub async fn verify_challenge(
     State(sep10_service): State<Arc<Sep10Service>>,
+    headers: HeaderMap,
     Json(request): Json<VerificationRequest>,
 ) -> Result<Response, Sep10ApiError> {
-    let response = sep10_service
-        .verify_challenge(request)
+    // Same per-account rate limit, backoff, lockout and CAPTCHA escalation as the
+    // login endpoint. Unreadable challenges carry no account, so they are keyed by IP.
+    let client_ip = extract_client_ip(&headers);
+    let account_key = format!(
+        "sep10:{}",
+        extract_client_account(&request.transaction).unwrap_or_else(|| format!("ip:{client_ip}"))
+    );
+    if let Some(retry_after_seconds) = check_rate_limit_for_account(&account_key).await {
+        tracing::warn!(
+            client_ip = %client_ip,
+            retry_after_seconds,
+            "SEP-10 token endpoint rate limit exceeded for account"
+        );
+        record_auth_security_event("sep10_verify", "rate_limited");
+        return Err(Sep10ApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+    preflight_login_guards(&account_key, &headers, &client_ip)
         .await
-        .map_err(|e| Sep10ApiError::VerificationFailed(e.to_string()))?;
+        .map_err(Sep10ApiError::Auth)?;
 
-    Ok((StatusCode::OK, Json(response)).into_response())
+    // Enforce time bounds before any signature work: reject expired challenges
+    // immediately with HTTP 401 rather than letting them reach service logic.
+    let max_time = extract_max_time(&request.transaction).ok_or_else(|| {
+        Sep10ApiError::VerificationFailed("Missing or unreadable time bounds".to_string())
+    })?;
+
+    if now_unix() >= max_time {
+        tracing::warn!(max_time, "SEP-10 challenge submitted after expiry");
+        return Err(Sep10ApiError::ChallengeExpired);
+    }
+
+    match sep10_service.verify_challenge(request).await {
+        Ok(response) => {
+            clear_failed_login_state(&account_key).await;
+            Ok((StatusCode::OK, Json(response)).into_response())
+        }
+        Err(e) => {
+            record_failed_login("sep10_verify", &account_key, &client_ip).await;
+            Err(Sep10ApiError::VerificationFailed(e.to_string()))
+        }
+    }
 }
 
 /// POST /api/sep10/logout - Invalidate SEP-10 session
@@ -109,31 +248,60 @@ pub async fn logout(
 pub enum Sep10ApiError {
     ChallengeGenerationFailed(String),
     VerificationFailed(String),
+    ChallengeExpired,
     LogoutFailed(String),
+    RateLimited { retry_after_seconds: u64 },
+    /// Lockout / backoff / CAPTCHA rejection from the shared auth guards.
+    Auth(AuthApiError),
 }
 
 impl IntoResponse for Sep10ApiError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
+        let (status, message, retry_after) = match self {
+            Self::Auth(err) => return err.into_response(),
             Self::ChallengeGenerationFailed(msg) => (
                 StatusCode::BAD_REQUEST,
                 format!("Challenge generation failed: {msg}"),
+                None,
             ),
             Self::VerificationFailed(msg) => (
                 StatusCode::UNAUTHORIZED,
                 format!("Verification failed: {msg}"),
+                None,
+            ),
+            Self::ChallengeExpired => (
+                StatusCode::UNAUTHORIZED,
+                "Challenge transaction has expired".to_string(),
+                None,
             ),
             Self::LogoutFailed(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Logout failed: {msg}"),
+                None,
+            ),
+            Self::RateLimited {
+                retry_after_seconds,
+            } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                format!(
+                    "Too many SEP-10 authentication requests. Retry after {retry_after_seconds} seconds"
+                ),
+                Some(retry_after_seconds),
             ),
         };
 
         let body = json!({
             "error": message,
         });
-
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if let Some(retry_after_seconds) = retry_after {
+            if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after_seconds.to_string()) {
+                response
+                    .headers_mut()
+                    .insert(axum::http::header::RETRY_AFTER, value);
+            }
+        }
+        response
     }
 }
 

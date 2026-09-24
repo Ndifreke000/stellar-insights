@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { ScrollText, Plus } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ProposalCard } from "@/components/governance/ProposalCard";
@@ -28,7 +27,7 @@ const STATUS_TABS: { label: string; value: ProposalStatus | "all" }[] = [
 export default function GovernancePage() {
   const { isAuthenticated, authToken } = useWallet();
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [total, setTotal] = useState(0);
+  const [_total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProposalStatus | "all">("all");
@@ -97,6 +96,7 @@ export default function GovernancePage() {
           </div>
           {isAuthenticated && authToken && (
             <button
+              type="button"
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 border border-accent/30 text-accent text-xs font-bold uppercase tracking-widest hover:bg-accent/20 transition-colors"
             >
@@ -133,6 +133,8 @@ export default function GovernancePage() {
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
+              type="button"
+              aria-current={activeTab === tab.value ? "true" : undefined}
               onClick={() => setActiveTab(tab.value)}
               className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${
                 activeTab === tab.value

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "payraider"
+version = "1.0.0"
+description = "Official Python SDK for the PayRaider API"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "respx==0.23.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "testnet: marks tests as testnet integration tests (deselect with '-m \"not testnet\"')",
+]

@@ -6,7 +6,7 @@ output "sns_topic_arn" {
 output "dashboard_url" {
   description = "CloudWatch dashboard URL"
   value = try(
-    "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=stellar-insights-${var.environment}",
+    "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=payraider-${var.environment}",
     null
   )
 }

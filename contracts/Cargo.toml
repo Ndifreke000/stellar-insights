@@ -1,12 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-  "snapshot-contract",
-  "stellar_insights",
-  "analytics",
+  "payraider",
   "benches",
-  "access-control",
-  "governance",
+  "tests",
+]
+# Only payraider is integrated with the backend (SNAPSHOT_CONTRACT_ID).
+# Other contract crates remain in contracts/ for reference but are excluded
+# from the workspace so CI does not build or test dead code. See archive/README.md.
+default-members = [
+  "payraider",
 ]
 
 # Clippy linting configuration for all contracts
@@ -16,7 +19,8 @@ expect_used = "deny"
 panic = "deny"
 
 [workspace.dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "27.0.2"
+soroban-token-sdk = "27.0.2"
 
 [profile.release]
 opt-level = "z"
@@ -32,7 +36,6 @@ lto = true
 opt-level = 3
 debug = false
 
-# For more information about this profile see https://soroban.stellar.org/docs/basic-tutorials/logging#cargotoml-profile
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true

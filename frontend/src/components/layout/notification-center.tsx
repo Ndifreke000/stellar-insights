@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Check, Trash2, X, AlertCircle, Info, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
 import { useNotifications, NotificationType, AppNotification } from "../lib/notification-context";
 
@@ -14,8 +15,10 @@ export function NotificationCenter() {
         clearAll
     } = useNotifications();
 
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
+    const [now, setNow] = useState(() => Date.now());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown when clicking outside
@@ -29,12 +32,19 @@ export function NotificationCenter() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Track "now" via an effect so relative timestamps refresh without
+    // reading the impure Date.now() clock during render.
+    useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
     const filteredNotifications = notifications.filter(
         (n) => activeTab === "all" || !n.read
     );
 
     const formatDistanceToNow = (timestamp: number) => {
-        const diff = Date.now() - timestamp;
+        const diff = now - timestamp;
         const minutes = Math.floor(diff / 60000);
         const hours = Math.floor(minutes / 60);
         const days = Math.floor(hours / 24);
@@ -79,7 +89,7 @@ export function NotificationCenter() {
             markAsRead(notification.id);
         }
         if (notification.actionLink) {
-            window.location.href = notification.actionLink;
+            router.push(notification.actionLink);
         }
     };
 
@@ -89,7 +99,9 @@ export function NotificationCenter() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-                aria-label="Notifications"
+                aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+                aria-expanded={isOpen}
+                aria-haspopup="true"
             >
                 <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 {unreadCount > 0 && (
@@ -118,9 +130,11 @@ export function NotificationCenter() {
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex border-b border-gray-100 dark:border-slate-800">
+                    <div className="flex border-b border-gray-100 dark:border-slate-800" role="tablist">
                         <button
                             onClick={() => setActiveTab("all")}
+                            role="tab"
+                            aria-selected={activeTab === "all"}
                             className={`flex-1 py-2.5 text-sm font-medium transition-colors relative ${activeTab === "all"
                                 ? "text-blue-600 dark:text-link-primary"
                                 : "text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
@@ -133,6 +147,8 @@ export function NotificationCenter() {
                         </button>
                         <button
                             onClick={() => setActiveTab("unread")}
+                            role="tab"
+                            aria-selected={activeTab === "unread"}
                             className={`flex-1 py-2.5 text-sm font-medium transition-colors relative flex items-center justify-center gap-2 ${activeTab === "unread"
                                 ? "text-blue-600 dark:text-link-primary"
                                 : "text-muted-foreground hover:text-gray-700 dark:text-muted-foreground dark:hover:text-gray-200"
@@ -163,6 +179,10 @@ export function NotificationCenter() {
                                         <div
                                             key={notification.id}
                                             onClick={() => handleNotificationClick(notification)}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleNotificationClick(notification)}
+                                            aria-label={`${notification.title}: ${notification.message}${!notification.read ? ' (unread)' : ''}`}
                                             className={`group relative p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer flex gap-4 ${!notification.read ? "bg-blue-50/30 dark:bg-blue-900/10" : ""
                                                 }`}
                                         >
@@ -203,9 +223,9 @@ export function NotificationCenter() {
                                                 <button
                                                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeNotification(notification.id); }}
                                                     className="p-1 text-muted-foreground hover:text-red-500 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors bg-white dark:bg-slate-800 shadow-sm"
-                                                    title="Remove notification"
+                                                    aria-label={`Remove notification: ${notification.title}`}
                                                 >
-                                                    <X className="w-4 h-4" />
+                                                    <X className="w-4 h-4" aria-hidden="true" />
                                                 </button>
                                             </div>
                                         </div>

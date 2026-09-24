@@ -1,0 +1,75 @@
+name: Gas Regression
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contracts/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'contracts/**'
+
+jobs:
+  gas-benchmarks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: contracts-bench-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: contracts-bench-
+
+      - name: Run benchmarks and save output
+        working-directory: ./contracts
+        run: |
+          cargo bench --package contract-benches 2>&1 | tee bench_output.txt
+
+      # Extract ns/iter values and fail if any benchmark regressed by >20%
+      # compared to the baseline stored in docs/GAS_COSTS.md.
+      - name: Check for gas regressions
+        working-directory: ./contracts
+        run: |
+          python3 ../scripts/check_gas_regression.py \
+            bench_output.txt \
+            ../docs/GAS_COSTS.md \
+            --threshold 0.20
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ github.sha }}
+          path: |
+            contracts/bench_output.txt
+            contracts/target/criterion/
+          retention-days: 30
+
+      # On pushes to main, update the baseline in docs/GAS_COSTS.md
+      - name: Update gas cost baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ./contracts
+        run: |
+          python3 ../scripts/check_gas_regression.py \
+            bench_output.txt \
+            ../docs/GAS_COSTS.md \
+            --update-baseline
+
+      - name: Commit updated baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/GAS_COSTS.md
+          git diff --cached --quiet || git commit -m "chore: update gas cost baseline [skip ci]"
+          git push

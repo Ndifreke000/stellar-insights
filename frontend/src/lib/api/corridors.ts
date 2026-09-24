@@ -22,6 +22,19 @@ export interface CorridorMetrics {
   last_updated: string;
 }
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    has_next: boolean;
+    has_prev: boolean;
+    next_offset: number | null;
+    prev_offset: number | null;
+  };
+}
+
 export interface CorridorDetailData {
   corridor: CorridorMetrics;
   historical_success_rate: SuccessRateDataPoint[];
@@ -79,7 +92,8 @@ export async function getCorridors(
   }
   const query = params.toString();
   const url = query ? `/corridors?${query}` : "/corridors";
-  return api.get<CorridorMetrics[]>(url);
+  const response = await api.get<PaginatedResponse<CorridorMetrics>>(url);
+  return response.data;
 }
 
 /**

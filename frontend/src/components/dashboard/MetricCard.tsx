@@ -31,7 +31,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-accent transition-colors">
           {label}
         </h3>
-        <Activity className={`h-4 w-4 text-muted-foreground/30 group-hover:text-accent transition-colors ${GlowClass}`} />
+        <Activity className={`h-4 w-4 text-muted-foreground/30 group-hover:text-accent transition-colors ${GlowClass}`} aria-hidden="true" />
       </div>
       <div className="flex flex-col">
         <div className="text-3xl font-mono font-bold tracking-tighter text-foreground">
@@ -40,7 +40,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 
         {trend !== undefined && (
           <div className={`text-[10px] font-mono flex items-center mt-2 ${trendColor}`}>
-            {trendDirection === 'up' ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownRight className="h-3 w-3 mr-1" />}
+            {trendDirection === 'up'
+              ? <ArrowUpRight className="h-3 w-3 mr-1" aria-hidden="true" />
+              : <ArrowDownRight className="h-3 w-3 mr-1" aria-hidden="true" />}
             <span className="font-bold">{Math.abs(trend)}%</span>
             <span className="text-muted-foreground/50 ml-2 uppercase tracking-tighter">vs prev window</span>
           </div>

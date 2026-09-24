@@ -3,7 +3,7 @@ import { Metadata } from 'next';
 import { NotificationCenterDemo } from '@/components/notifications';
 
 export const metadata: Metadata = {
-  title: 'Notification Center Demo - Stellar Insights',
+  title: 'Notification Center Demo - PayRaider',
   description: 'Interactive demo of the real-time notification system',
 };
 

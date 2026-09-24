@@ -30,7 +30,7 @@ impl PaymentRoute {
         vec![Self::StellarDex, Self::AnchorDirect, Self::LiquidityPool]
     }
 
-    const fn as_key(&self) -> &'static str {
+    const fn as_key(self) -> &'static str {
         match self {
             Self::StellarDex => "stellar_dex",
             Self::AnchorDirect => "anchor_direct",
@@ -38,7 +38,7 @@ impl PaymentRoute {
         }
     }
 
-    const fn label(&self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Self::StellarDex => "Stellar DEX",
             Self::AnchorDirect => "Anchor Direct",
@@ -152,6 +152,7 @@ impl RouteFees {
     ),
     tag = "Cost Calculator"
 )]
+#[allow(clippy::too_many_lines)]
 pub async fn estimate_costs(
     State(price_feed): State<Arc<PriceFeedClient>>,
     request_headers: HeaderMap,
@@ -184,7 +185,9 @@ pub async fn estimate_costs(
     }
 
     let requested_routes = request.routes.unwrap_or_else(PaymentRoute::default_routes);
-    let unique_routes: Vec<PaymentRoute> = BTreeSet::from_iter(requested_routes.into_iter())
+    let unique_routes: Vec<PaymentRoute> = requested_routes
+        .into_iter()
+        .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
 

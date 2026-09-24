@@ -4,7 +4,7 @@
  * Features:
  * - Environment-aware logging (development vs production)
  * - Structured logging with metadata
- * - Error tracking integration ready
+ * - Error tracking integration with Sentry
  * - Sensitive data redaction
  * - Type-safe logging methods
  * 
@@ -31,21 +31,23 @@ interface LogMetadata {
 /**
  * Redact sensitive data from logs
  */
-function redactSensitiveData(data: unknown): unknown {
+function redactSensitiveData<T>(data: T): T {
   if (typeof data === 'string') {
     // Redact Stellar addresses (56 chars starting with G)
-    data = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
-    
+    let redactedString = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
+
     // Redact potential API keys
-    data = data.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
-    
+    redactedString = redactedString.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
+
     // Redact email addresses
-    data = data.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+    redactedString = redactedString.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+
+    return redactedString as T;
   }
-  
+
   if (typeof data === 'object' && data !== null) {
     const redacted: Record<string, unknown> = {};
-    
+
     for (const [key, value] of Object.entries(data)) {
       // Redact sensitive field names
       if (/password|secret|token|key|auth|credential/i.test(key)) {
@@ -54,10 +56,10 @@ function redactSensitiveData(data: unknown): unknown {
         redacted[key] = redactSensitiveData(value);
       }
     }
-    
-    return redacted;
+
+    return redacted as T;
   }
-  
+
   return data;
 }
 
@@ -70,37 +72,97 @@ function formatMessage(level: string, message: string): string {
 }
 
 /**
- * Send error to tracking service (Sentry, LogRocket, etc.)
+ * Convert an arbitrary error payload to an Error for tracking.
  */
-function sendToErrorTracking(error: Error, metadata?: LogMetadata): void {
+function normalizeTrackingError(error: unknown, defaultMessage: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (typeof error === 'string') {
+    return new Error(error);
+  }
+
+  try {
+    return new Error(JSON.stringify(error));
+  } catch {
+    return new Error(defaultMessage);
+  }
+}
+
+/**
+ * Send error to tracking service (Sentry) and backend fallback.
+ */
+function sendToErrorTracking(error: unknown, metadata?: LogMetadata): void {
   if (isDevelopment || !isLoggingEnabled) {
     return;
   }
-  
-  // Integration point for error tracking services
-  // Example: Sentry.captureException(error, { extra: metadata });
-  
-  // For now, we'll just prepare the data structure
-  const errorData = {
-    message: error.message,
-    stack: error.stack,
-    metadata: redactSensitiveData(metadata),
-    timestamp: new Date().toISOString(),
-    userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
-  };
-  
-  // TODO: Send to actual error tracking service
-  // This prevents errors from being lost in production
-  if (typeof window !== 'undefined') {
-    // Store in sessionStorage as fallback
-    try {
-      const errors = JSON.parse(sessionStorage.getItem('app_errors') || '[]');
-      errors.push(errorData);
-      // Keep only last 10 errors
-      sessionStorage.setItem('app_errors', JSON.stringify(errors.slice(-10)));
-    } catch {
-      // Ignore storage errors
-    }
+
+  const normalizedError = normalizeTrackingError(error, 'Unknown frontend error');
+  const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
+
+  import("@sentry/nextjs")
+    .then((Sentry) => {
+      // Attach user context if available
+      const userId = typeof window !== 'undefined' ? 
+        sessionStorage.getItem('user_id') : null;
+      
+      if (userId) {
+        Sentry.setUser({ id: userId });
+      }
+      
+      // Add breadcrumb for error context
+      Sentry.addBreadcrumb({
+        category: 'error',
+        message: normalizedError.message,
+        level: 'error',
+        data: redactedMetadata,
+      });
+      
+      Sentry.captureException(normalizedError, {
+        tags: {
+          logger: "frontend",
+          environment: process.env.NODE_ENV,
+        },
+        extra: redactedMetadata,
+        level: 'error',
+      });
+    })
+    .catch(() => {
+      sendErrorToBackend(normalizedError, redactedMetadata).catch(() => {
+        if (typeof window !== 'undefined') {
+          const errors = JSON.parse(sessionStorage.getItem('error_logs') || '[]');
+          errors.push({
+            message: normalizedError.message,
+            stack: normalizedError.stack,
+            metadata: redactedMetadata,
+            timestamp: new Date().toISOString(),
+          });
+          sessionStorage.setItem('error_logs', JSON.stringify(errors));
+        }
+      });
+    });
+}
+
+async function sendErrorToBackend(error: Error, metadata?: LogMetadata): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    await fetch('/api/error-log', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        metadata,
+      }),
+    });
+  } catch {
+    // Swallow network failures here; sessionStorage fallback is handled by sendToErrorTracking.
   }
 }
 
@@ -172,7 +234,8 @@ export const logger = {
     }
     
     const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
-    
+    const payload = error ?? message;
+
     if (isDevelopment) {
       if (error instanceof Error) {
         console.error(formatMessage('ERROR', message), error, redactedMetadata);
@@ -182,10 +245,9 @@ export const logger = {
         console.error(formatMessage('ERROR', message), redactedMetadata);
       }
     }
-    
-    // Send to error tracking in production
-    if (!isDevelopment && error instanceof Error) {
-      sendToErrorTracking(error, { message, ...redactedMetadata });
+
+    if (!isDevelopment) {
+      sendToErrorTracking(payload, { message, ...redactedMetadata });
     }
   },
 

@@ -1,5 +1,6 @@
 use crate::models::{AnchorMetrics, AnchorStatus};
 
+pub mod anomaly;
 pub mod corridor;
 
 /// Performance metrics for an anchor's individual asset

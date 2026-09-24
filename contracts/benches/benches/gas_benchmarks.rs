@@ -22,11 +22,12 @@ struct Cost {
 }
 
 fn measure(env: &Env, f: impl FnOnce()) -> Cost {
-    env.budget().reset_unlimited();
+    let mut budget = env.cost_estimate().budget();
+    budget.reset_unlimited();
     f();
     Cost {
-        cpu: env.budget().cpu_instruction_cost(),
-        mem: env.budget().memory_bytes_cost(),
+        cpu: budget.cpu_instruction_cost(),
+        mem: budget.memory_bytes_cost(),
     }
 }
 
@@ -38,15 +39,15 @@ fn hash(env: &Env, seed: u64) -> BytesN<32> {
 }
 
 fn analytics(env: &Env) -> (AnalyticsContractClient, Address) {
-    let id = env.register_contract(None, AnalyticsContract);
+    let id = env.register(AnalyticsContract, ());
     let client = AnalyticsContractClient::new(env, &id);
     let admin = Address::generate(env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
 fn governance(env: &Env) -> (GovernanceContractClient, Address) {
-    let id = env.register_contract(None, GovernanceContract);
+    let id = env.register(GovernanceContract, ());
     let client = GovernanceContractClient::new(env, &id);
     let admin = Address::generate(env);
     client.initialize(&admin, &1, &3600);
@@ -120,7 +121,7 @@ fn main() {
         });
         env.ledger().with_mut(|l| l.timestamp += 3601);
         let finalize = measure(&env, || {
-            client.finalize(&id);
+            client.finalize(&id, &1_000);
         });
         (vote, finalize)
     };

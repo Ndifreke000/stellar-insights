@@ -151,7 +151,7 @@ export default function DeveloperKeysPage() {
           </h2>
         </div>
         <p className="text-muted-foreground text-sm max-w-xl">
-          Manage API keys for programmatic access to the Stellar Insights API.
+          Manage API keys for programmatic access to the PayRaider API.
         </p>
         <button
           onClick={() => setModal({ type: "create" })}
@@ -170,6 +170,7 @@ export default function DeveloperKeysPage() {
             onClick={() => setError(null)}
             className="ml-auto text-destructive hover:opacity-80"
             title="Dismiss error"
+            aria-label="Dismiss error message"
           >
             <X className="w-4 h-4" />
           </button>
@@ -194,7 +195,7 @@ export default function DeveloperKeysPage() {
             No API Keys
           </h3>
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-            Create your first API key to start accessing the Stellar Insights
+            Create your first API key to start accessing the PayRaider
             API programmatically.
           </p>
           <button

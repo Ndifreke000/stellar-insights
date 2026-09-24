@@ -1,4 +1,8 @@
 //! API handlers for snapshot verification rewards
+//!
+//! #1868 N+1 audit: verify/stats/history/leaderboard handlers each call a
+//! single service method backed by one (or a fixed small number of) queries.
+//! No per-row await loops in these handlers.
 
 use axum::{
     extract::{Path, Query, State},
@@ -30,7 +34,7 @@ pub fn routes(
             sep10_auth_middleware,
         ))
         .route("/leaderboard", get(get_leaderboard))
-        .route("/stats/:user_id", get(get_public_user_stats))
+        .route("/stats/{user_id}", get(get_public_user_stats))
         .with_state(service)
 }
 
@@ -130,7 +134,7 @@ pub async fn get_leaderboard(
     State(service): State<Arc<VerificationRewardsService>>,
     Query(query): Query<LeaderboardQuery>,
 ) -> Result<Response, VerificationError> {
-    let limit = query.limit.min(100).max(1); // Cap between 1 and 100
+    let limit = query.limit.clamp(1, 100); // Cap between 1 and 100
 
     let leaderboard = service
         .get_leaderboard(limit)
@@ -158,7 +162,7 @@ pub async fn get_user_verifications(
     sep10_user: axum::Extension<Sep10User>,
     Query(query): Query<VerificationsQuery>,
 ) -> Result<Response, VerificationError> {
-    let limit = query.limit.min(100).max(1); // Cap between 1 and 100
+    let limit = query.limit.clamp(1, 100); // Cap between 1 and 100
 
     let verifications = service
         .get_user_verifications(&sep10_user.account, limit)

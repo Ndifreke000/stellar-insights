@@ -18,7 +18,7 @@
 //! ```
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::runtime::Runtime;
 
 /// Setup an in-memory SQLite database for benchmarking

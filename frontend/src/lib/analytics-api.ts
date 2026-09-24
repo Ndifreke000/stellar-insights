@@ -64,7 +64,8 @@ export interface ApiUsageOverview {
   }[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import { config } from '@/config';
+const API_BASE = config.apiUrl;
 
 export async function fetchAnalyticsMetrics(): Promise<AnalyticsMetrics> {
   try {
@@ -120,7 +121,7 @@ export async function fetchApiUsageOverview(): Promise<ApiUsageOverview> {
         error.message.includes('Network request failed'));
 
     if (!isNetworkError) {
-      console.error("Failed to fetch API usage overview:", error);
+      logger.error("Failed to fetch API usage overview:", error instanceof Error ? error : new Error(String(error)));
     }
 
     return getMockApiUsageOverview();
@@ -146,6 +147,138 @@ export function getMockApiUsageOverview(): ApiUsageOverview {
       { status_code: 500, count: 50 },
       { status_code: 401, count: 30 },
     ],
+  };
+}
+
+// ── #2107 Failed Payment Root Cause Analysis ─────────────────────────────────
+
+export interface FailureCategoryBreakdown {
+  category: string;
+  label: string;
+  count: number;
+  percentage: number;
+  recommendation: string;
+}
+
+export interface CorridorFailureSummary {
+  corridor_key: string;
+  total_failures: number;
+  failure_rate: number;
+  top_category: string;
+}
+
+export interface FailedPaymentsAnalysis {
+  total_failed: number;
+  total_processed: number;
+  overall_failure_rate: number;
+  breakdown: FailureCategoryBreakdown[];
+  top_failing_corridors: CorridorFailureSummary[];
+  insights: string[];
+}
+
+export async function fetchFailedPaymentsAnalysis(): Promise<FailedPaymentsAnalysis> {
+  try {
+    const response = await fetch(`${API_BASE}/api/analytics/failed-payments`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+  } catch {
+    return getMockFailedPaymentsData();
+  }
+}
+
+export function getMockFailedPaymentsData(): FailedPaymentsAnalysis {
+  return {
+    total_failed: 412,
+    total_processed: 12100,
+    overall_failure_rate: 3.4,
+    breakdown: [
+      { category: "path_not_found", label: "Path Not Found", count: 132, percentage: 32.0, recommendation: "Increase path-payment slippage tolerance or retry during higher liquidity." },
+      { category: "insufficient_balance", label: "Insufficient Balance", count: 103, percentage: 25.0, recommendation: "Ensure the sending account holds sufficient funds plus fees." },
+      { category: "no_trustline", label: "No Trustline", count: 74, percentage: 18.0, recommendation: "Add a trustline for the destination asset before sending." },
+      { category: "transaction_failed", label: "Transaction Failed", count: 58, percentage: 14.0, recommendation: "Review the transaction XDR and operation result codes for details." },
+      { category: "offer_crossing", label: "Offer Crossing", count: 29, percentage: 7.0, recommendation: "Split large payments or use a smaller amount to avoid crossing orders." },
+      { category: "timed_out", label: "Timed Out", count: 16, percentage: 4.0, recommendation: "Increase the transaction time bounds or retry with a fresh sequence number." },
+    ],
+    top_failing_corridors: [
+      { corridor_key: "USDC->PHP", total_failures: 89, failure_rate: 3.6, top_category: "path_not_found" },
+      { corridor_key: "USD->EUR", total_failures: 54, failure_rate: 2.7, top_category: "insufficient_balance" },
+      { corridor_key: "USDC->SGD", total_failures: 47, failure_rate: 3.8, top_category: "no_trustline" },
+    ],
+    insights: [
+      "Path Not Found accounts for 32% of failures. Increase path-payment slippage tolerance or retry during higher liquidity.",
+      "Insufficient Balance accounts for 25% of failures. Ensure the sending account holds sufficient funds plus fees.",
+    ],
+  };
+}
+
+// ── #2106 Settlement Time Distribution Analysis ──────────────────────────────
+
+export interface CorridorSettlementPercentiles {
+  corridor_key: string;
+  sample_count: number;
+  p50_ms: number;
+  p95_ms: number;
+  p99_ms: number;
+  avg_ms: number;
+  min_ms: number;
+  max_ms: number;
+  outlier_count: number;
+}
+
+export interface SettlementTrendPoint {
+  bucket: string;
+  p50_ms: number;
+  p95_ms: number;
+  p99_ms: number;
+  sample_count: number;
+}
+
+export interface SettlementDistributionData {
+  corridors: CorridorSettlementPercentiles[];
+  trend: SettlementTrendPoint[];
+  network_p50_ms: number;
+  network_p95_ms: number;
+  network_p99_ms: number;
+}
+
+export async function fetchSettlementDistribution(): Promise<SettlementDistributionData> {
+  try {
+    const response = await fetch(`${API_BASE}/api/analytics/settlement-distribution`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+  } catch {
+    return getMockSettlementDistribution();
+  }
+}
+
+export function getMockSettlementDistribution(): SettlementDistributionData {
+  const now = new Date();
+  const trend: SettlementTrendPoint[] = Array.from({ length: 168 }, (_, i) => {
+    const ts = new Date(now.getTime() - (167 - i) * 3600_000);
+    const base = 2400 + Math.sin(i * 0.5) * 300;
+    return {
+      bucket: ts.toISOString().slice(0, 13) + ":00:00",
+      p50_ms: base,
+      p95_ms: base * 2,
+      p99_ms: base * 3,
+      sample_count: 15 + (i % 10),
+    };
+  });
+
+  return {
+    corridors: [
+      { corridor_key: "USDC->PHP", sample_count: 2450, p50_ms: 2340, p95_ms: 4800, p99_ms: 7200, avg_ms: 2500, min_ms: 800, max_ms: 12000, outlier_count: 12 },
+      { corridor_key: "USD->EUR", sample_count: 1890, p50_ms: 1850, p95_ms: 3900, p99_ms: 5800, avg_ms: 2000, min_ms: 600, max_ms: 9500, outlier_count: 7 },
+      { corridor_key: "USDC->SGD", sample_count: 1240, p50_ms: 3100, p95_ms: 6200, p99_ms: 9000, avg_ms: 3300, min_ms: 1200, max_ms: 15000, outlier_count: 20 },
+    ],
+    trend,
+    network_p50_ms: 2430,
+    network_p95_ms: 4967,
+    network_p99_ms: 7333,
   };
 }
 

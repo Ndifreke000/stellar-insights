@@ -1,12 +1,15 @@
 import { AnchorMetrics } from '@/lib/api/types';
+import { sanitizeText } from '@/lib/sanitize';
 import { Shield, ShieldAlert, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
+import { stellarExpertAccountUrl, useNetwork } from '@/contexts/NetworkContext';
 
 interface AnchorHeaderProps {
     anchor: AnchorMetrics;
 }
 
 export function AnchorHeader({ anchor }: AnchorHeaderProps) {
-    const getStatusColor = (status: string) => {
+    const { network } = useNetwork();
+    const explorerUrl = stellarExpertAccountUrl(network, anchor.stellar_account);    const getStatusColor = (status: string) => {
         switch (status.toLowerCase()) {
             case 'healthy':
                 return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
@@ -38,7 +41,7 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                 <div>
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-white tracking-tight">
-                            {anchor.name || 'Unknown Anchor'}
+                            {sanitizeText(anchor.name) || 'Unknown Anchor'}
                         </h1>
                         <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${getStatusColor(anchor.status)}`}>
                             {getStatusIcon(anchor.status)}
@@ -47,16 +50,17 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                     </div>
 
                     <div className="mt-2 flex items-center gap-2 text-slate-400 text-sm font-mono">
-                        <span>{anchor.stellar_account}</span>
+                        <span>{sanitizeText(anchor.stellar_account)}</span>
                         <button
                             className="p-1 hover:text-white transition-colors"
                             title="Copy Address"
+                            aria-label="Copy Stellar address to clipboard"
                             onClick={() => navigator.clipboard.writeText(anchor.stellar_account)}
                         >
                             <Copy className="w-3.5 h-3.5" />
                         </button>
                         <a
-                            href={`https://stellar.expert/explorer/public/account/${anchor.stellar_account}`}
+                            href={explorerUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1 hover:text-white transition-colors"

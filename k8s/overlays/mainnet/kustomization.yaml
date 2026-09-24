@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: payraider-mainnet
+
+bases:
+- ../../
+
+commonLabels:
+  environment: mainnet
+
+resources:
+- namespace.yaml
+
+patches:
+- path: backend-patch.yaml
+- path: hpa-patch.yaml
+- path: network-policy-patch.yaml
+- path: redis-patch.yaml
+
+images:
+- name: payraider/backend
+  newTag: v1.0.0
+- name: payraider/frontend
+  newTag: v1.0.0
+
+configMapGenerator:
+- name: payraider-config
+  behavior: merge
+  literals:
+  - stellar-network=mainnet
+  - rust-log=warn
+  - cors-allowed-origins=https://payraider.com

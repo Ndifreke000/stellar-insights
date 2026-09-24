@@ -105,7 +105,10 @@ export const ApiUsageDashboard: React.FC<ApiUsageDashboardProps> = ({ data }) =>
                                     cy="50%"
                                     outerRadius={100}
                                     fill="#8884d8"
-                                    label={(entry) => `${entry.status_code}: ${entry.count}`}
+                                    label={(entry: unknown) => {
+                                        const e = entry as { status_code: number; count: number };
+                                        return `${e.status_code}: ${e.count}`;
+                                    }}
                                 >
                                     {data.status_distribution.map((entry, index) => (
                                         <Cell

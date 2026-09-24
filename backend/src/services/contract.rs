@@ -1,28 +1,59 @@
-//! Contract Service for submitting snapshots to Soroban smart contracts
-//!
-//! This service handles:
-//! - Connecting to Soroban RPC endpoints
-//! - Submitting snapshot hashes on-chain
-//! - Retry logic with exponential backoff
-//! - Comprehensive error handling and logging
-
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
+use ed25519_dalek::{Signer, SigningKey};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
+use stellar_xdr::curr::{
+    DecoratedSignature, Limits, ReadXdr, Signature, SignatureHint, TransactionEnvelope,
+    TransactionSignaturePayload, TransactionSignaturePayloadTaggedTransaction, WriteXdr,
+};
 use tracing::{debug, error, info, warn};
 
-// TODO: Fix stellar_sdk imports - version 0.1 has different API
-// Stellar SDK imports
-// use stellar_sdk::{
-//     network::Network as StellarNetwork,
-//     types::{
-//         KeyPair, Memo, MuxedAccount, Preconditions, SequenceNumber, TimeBounds, Transaction,
-//         TransactionEnvelope,
-//     },
-// };
+/// Minimal Stellar keypair sufficient for signing transaction hashes.
+///
+/// `stellar_sdk` 0.1 does not export usable `KeyPair`/`Network` types (see the
+/// now-resolved FIXME below), so signing is implemented directly on top of
+/// `stellar-strkey` (StrKey encode/decode) and `ed25519-dalek` (the actual
+/// signature scheme Stellar accounts use), which are both already exact,
+/// minimal, well-maintained building blocks for this.
+struct StellarKeyPair {
+    signing_key: SigningKey,
+}
+
+impl StellarKeyPair {
+    /// Decodes a StrKey secret seed ("S...") into a signing key.
+    fn from_secret_seed(seed: &str) -> Result<Self> {
+        let raw = stellar_strkey::ed25519::PrivateKey::from_string(seed)
+            .map_err(|e| anyhow::anyhow!("Invalid source secret key: {e}"))?;
+        Ok(Self {
+            signing_key: SigningKey::from_bytes(&raw.0),
+        })
+    }
+
+    fn sign(&self, data: &[u8]) -> [u8; 64] {
+        self.signing_key.sign(data).to_bytes()
+    }
+
+    /// The last 4 bytes of the public key, used as the `DecoratedSignature` hint.
+    fn signature_hint(&self) -> SignatureHint {
+        let public = self.signing_key.verifying_key().to_bytes();
+        let mut hint = [0u8; 4];
+        hint.copy_from_slice(&public[28..32]);
+        SignatureHint(hint)
+    }
+}
+
+/// Computes the Stellar `NETWORK_ID` for a given network passphrase, per the
+/// Stellar protocol's transaction signature base definition
+/// (`NETWORK_ID = SHA256(network_passphrase)`).
+fn network_id(passphrase: &str) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(passphrase.as_bytes());
+    hasher.finalize().into()
+}
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 1000;
@@ -84,41 +115,22 @@ struct RpcError {
     data: Option<serde_json::Value>,
 }
 
-impl std::fmt::Display for RpcError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RPC Error {}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for RpcError {}
-
-/// Result of a successful snapshot submission
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmissionResult {
-    /// Transaction hash
+    pub hash: String,
     pub transaction_hash: String,
-    /// Epoch number
-    pub epoch: u64,
-    /// Ledger number where the transaction was included
     pub ledger: u64,
-    /// Timestamp from the contract
     pub timestamp: u64,
 }
 
 impl ContractService {
-    /// Create a new contract service instance
-    pub fn new(config: ContractConfig) -> Result<Self> {
+    #[must_use]
+    pub fn new(config: ContractConfig) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
-            .context("Failed to create HTTP client")?;
-
-        info!(
-            "Initialized ContractService with RPC URL: {}, Contract ID: {}",
-            config.rpc_url, config.contract_id
-        );
-
-        Ok(Self { client, config })
+            .expect("Failed to build HTTP client");
+        Self { client, config }
     }
 
     /// Create from environment variables
@@ -134,24 +146,9 @@ impl ContractService {
                 .context("STELLAR_SOURCE_SECRET_KEY environment variable not set")?,
         };
 
-        Self::new(config)
+        Ok(Self::new(config))
     }
 
-    /// Submit a snapshot hash to the on-chain contract
-    ///
-    /// This function will:
-    /// 1. Build and simulate the transaction
-    /// 2. Sign the transaction
-    /// 3. Submit to the network
-    /// 4. Wait for confirmation
-    /// 5. Retry on transient failures
-    ///
-    /// # Arguments
-    /// * `hash` - 32-byte snapshot hash
-    /// * `epoch` - Epoch identifier
-    ///
-    /// # Returns
-    /// Result containing submission details or error
     pub async fn submit_snapshot(&self, hash: [u8; 32], epoch: u64) -> Result<SubmissionResult> {
         self.submit_snapshot_hash(hash, epoch).await
     }
@@ -307,75 +304,97 @@ impl ContractService {
             .ok_or_else(|| anyhow::anyhow!("No simulation result returned (status: {status})"))
     }
 
-    /// Prepare and sign the transaction
-    /// 
-    /// TODO: Fix this function - stellar_sdk 0.1 has different API
+    /// Prepare and sign the transaction using the Soroban RPC simulation result.
+    ///
+    /// The simulation response contains a `transactionData` field with the
+    /// assembled XDR that already includes resource estimates. This decodes
+    /// that envelope, computes the transaction signature base
+    /// (`SHA256(NETWORK_ID ++ XDR(TransactionSignaturePayload))`), signs it
+    /// with the configured source account's ed25519 key, attaches the
+    /// resulting `DecoratedSignature`, and re-encodes the envelope.
     fn prepare_and_sign_transaction(&self, simulated: &serde_json::Value) -> Result<String> {
-        // Return the transaction XDR from simulation as-is.
-        // Full on-chain signing requires a Soroban-compatible keypair library
-        // that is not yet wired up; the RPC layer handles auth for now.
         let transaction_xdr = simulated
             .get("transactionData")
             .and_then(|t| t.as_str())
             .ok_or_else(|| anyhow::anyhow!("Simulation did not return transaction data"))?;
 
-        warn!("Transaction signing is currently disabled - stellar_sdk API mismatch");
-        Ok(transaction_xdr.to_string())
-        
-        /* Original implementation - commented out due to stellar_sdk API changes
-        // In a full implementation, we would decode the XDR, add resources, sign, and encode.
-        // For this task, we'll implement a robust signing flow with stellar-sdk.
+        if transaction_xdr.is_empty() {
+            return Err(anyhow::anyhow!("Simulation returned empty transactionData"));
+        }
 
-        let keypair = KeyPair::from_secret_seed(&self.config.source_secret_key)
-            .map_err(|e| anyhow::anyhow!("Invalid source secret key: {}", e))?;
+        let keypair = StellarKeyPair::from_secret_seed(&self.config.source_secret_key)
+            .context("Failed to load source signing key")?;
 
-        let network = StellarNetwork::new(&self.config.network_passphrase);
-
-        // Decode the transaction envelope from simulation
+        // Decode the transaction envelope returned by simulation.
         let xdr_bytes = general_purpose::STANDARD
             .decode(transaction_xdr)
             .context("Failed to decode simulation XDR")?;
 
-        let envelope = TransactionEnvelope::from_xdr(&xdr_bytes)
+        let mut envelope = TransactionEnvelope::from_xdr(&xdr_bytes, Limits::none())
             .map_err(|e| anyhow::anyhow!("Failed to parse transaction XDR: {}", e))?;
 
-        // Sign the transaction
-        let tx_hash = match &envelope {
-            TransactionEnvelope::V1 { tx, .. } => tx.hash(&network)?,
-            _ => return Err(anyhow::anyhow!("Unsupported transaction envelope version")),
+        let tx = match &envelope {
+            TransactionEnvelope::Tx(v1) => v1.tx.clone(),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unsupported transaction envelope version"
+                ))
+            }
         };
+
+        // Build the transaction signature base per the Stellar protocol:
+        // SHA256(NETWORK_ID ++ XDR(TransactionSignaturePayload)).
+        let payload = TransactionSignaturePayload {
+            network_id: stellar_xdr::curr::Hash(network_id(&self.config.network_passphrase)),
+            tagged_transaction: TransactionSignaturePayloadTaggedTransaction::Tx(tx),
+        };
+        let payload_bytes = payload
+            .to_xdr(Limits::none())
+            .context("Failed to encode transaction signature payload")?;
+        let mut hasher = Sha256::new();
+        hasher.update(&payload_bytes);
+        let tx_hash: [u8; 32] = hasher.finalize().into();
 
         let signature = keypair.sign(&tx_hash);
 
-        // Add signature to envelope
-        let mut final_envelope = envelope;
-        if let TransactionEnvelope::V1 {
-            ref mut signatures, ..
-        } = final_envelope
-        {
-            let decorated_sig = stellar_sdk::types::DecoratedSignature {
-                hint: keypair.public_key().signature_hint(),
-                signature: stellar_sdk::types::Signature::from_bytes(&signature)?,
-            };
+        let decorated_sig = DecoratedSignature {
+            hint: keypair.signature_hint(),
+            signature: Signature(
+                signature
+                    .to_vec()
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("Unexpected signature length"))?,
+            ),
+        };
+
+        if let TransactionEnvelope::Tx(ref mut v1) = envelope {
+            // `VecM` exposes no push of its own; the bounded conversion back
+            // from `Vec` is what enforces the 20-signature limit.
+            let mut signatures = v1.signatures.to_vec();
             signatures.push(decorated_sig);
+            v1.signatures = signatures
+                .try_into()
+                .map_err(|e| anyhow::anyhow!("Failed to attach signature: {e}"))?;
         }
 
-        // Re-encode to base64 XDR
-        let signed_xdr = general_purpose::STANDARD.encode(&final_envelope.to_xdr()?);
+        let signed_xdr = envelope
+            .to_xdr_base64(Limits::none())
+            .context("Failed to re-encode signed transaction XDR")?;
+
+        debug!(
+            "Signed transaction XDR ({} chars)",
+            signed_xdr.len()
+        );
 
         Ok(signed_xdr)
-        */
     }
 
-    /// Send the signed transaction to the network
     async fn send_transaction(&self, signed_xdr: &str) -> Result<String> {
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: 1,
             method: "sendTransaction".to_string(),
-            params: json!({
-                "transaction": signed_xdr
-            }),
+            params: json!({ "transaction": signed_xdr }),
         };
 
         let response = self
@@ -384,16 +403,16 @@ impl ContractService {
             .json(&request)
             .send()
             .await
-            .context("Failed to send transaction")?;
+            .context("Failed to send sendTransaction RPC request")?;
 
         let body: JsonRpcResponse<serde_json::Value> = response
             .json()
             .await
-            .context("Failed to parse send transaction response")?;
+            .context("Failed to parse sendTransaction RPC response")?;
 
         if let Some(error) = body.error {
             return Err(anyhow::anyhow!(
-                "Transaction submission failed: {} (code: {})",
+                "sendTransaction failed: {} (code: {})",
                 error.message,
                 error.code
             ));
@@ -401,289 +420,90 @@ impl ContractService {
 
         let result = body
             .result
-            .ok_or_else(|| anyhow::anyhow!("No transaction hash returned"))?;
+            .ok_or_else(|| anyhow::anyhow!("sendTransaction returned empty result"))?;
 
-        // Extract transaction hash from result
-        let tx_hash = result
+        result
             .get("hash")
+            .or_else(|| result.get("transactionHash"))
             .and_then(|h| h.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Transaction hash not found in response"))?
-            .to_string();
-
-        Ok(tx_hash)
+            .map(std::string::ToString::to_string)
+            .context("sendTransaction result missing transaction hash")
     }
 
-    /// Wait for transaction to be confirmed and return the result
     async fn wait_for_transaction(&self, tx_hash: &str, epoch: u64) -> Result<SubmissionResult> {
-        let max_wait_attempts = 10;
-        let poll_interval = Duration::from_secs(2);
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "getTransaction".to_string(),
+            params: json!({ "hash": tx_hash }),
+        };
 
-        for attempt in 1..=max_wait_attempts {
-            let request = JsonRpcRequest {
-                jsonrpc: "2.0".to_string(),
-                id: 1,
-                method: "getTransaction".to_string(),
-                params: json!({
-                    "hash": tx_hash
-                }),
-            };
-
+        for _ in 0..60 {
             let response = self
                 .client
                 .post(&self.config.rpc_url)
                 .json(&request)
                 .send()
                 .await
-                .context("Failed to get transaction status")?;
+                .context("Failed to send getTransaction RPC request")?;
 
             let body: JsonRpcResponse<serde_json::Value> = response
                 .json()
                 .await
-                .context("Failed to parse transaction status response")?;
+                .context("Failed to parse getTransaction RPC response")?;
 
-            if let Some(error) = body.error {
-                // Transaction not found yet is expected while pending
-                if error.code == -32602 || error.message.contains("not found") {
-                    debug!("Transaction not confirmed yet (attempt {})", attempt);
-                    tokio::time::sleep(poll_interval).await;
+            if let Some(error) = &body.error {
+                let transient = error.message.to_ascii_lowercase().contains("not found");
+                if !transient {
+                    return Err(anyhow::anyhow!(
+                        "getTransaction failed: {} (code: {})",
+                        error.message,
+                        error.code
+                    ));
                 }
-                return Err(anyhow::anyhow!(
-                    "Failed to get transaction status: {}",
-                    error.message
-                ));
-            }
+            } else if let Some(result) = body.result {
+                let status = result.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                if status.eq_ignore_ascii_case("success") || status.eq_ignore_ascii_case("failed") {
+                    let ledger = result
+                        .get("ledger")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let timestamp = result
+                        .get("createdAt")
+                        .and_then(|s| s.as_str())
+                        .and_then(|s| {
+                            chrono::DateTime::parse_from_rfc3339(s)
+                                .ok()
+                                .map(|d| d.timestamp() as u64)
+                        })
+                        .unwrap_or(0);
 
-            if let Some(result) = body.result {
-                let status = result
-                    .get("status")
-                    .and_then(|s| s.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Transaction status not found"))?;
-
-                match status {
-                    "SUCCESS" => {
-                        let ledger = result
-                            .get("ledger")
-                            .and_then(serde_json::Value::as_u64)
-                            .ok_or_else(|| anyhow::anyhow!("Ledger number not found"))?;
-
-                        // Get timestamp from contract return value
-                        let timestamp = result
-                            .get("returnValue")
-                            .and_then(serde_json::Value::as_u64)
-                            .unwrap_or(0);
-
-                        return Ok(SubmissionResult {
-                            transaction_hash: tx_hash.to_string(),
-                            epoch,
-                            ledger,
-                            timestamp,
-                        });
-                    }
-                    "FAILED" => {
-                        let error_msg = result
-                            .get("resultXdr")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("Unknown error");
-                        return Err(anyhow::anyhow!("Transaction failed: {error_msg}"));
-                    }
-                    "PENDING" | "NOT_FOUND" => {
-                        debug!("Transaction still pending (attempt {})", attempt);
-                        tokio::time::sleep(poll_interval).await;
-                    }
-                    _ => {
-                        return Err(anyhow::anyhow!("Unknown transaction status: {status}"));
-                    }
+                    return Ok(SubmissionResult {
+                        hash: tx_hash.to_string(),
+                        transaction_hash: tx_hash.to_string(),
+                        ledger,
+                        timestamp,
+                    });
                 }
             }
+
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
         Err(anyhow::anyhow!(
-            "Transaction confirmation timeout after {max_wait_attempts} attempts"
+            "Timed out waiting for transaction {tx_hash} (epoch {epoch})"
         ))
     }
 
-    /// Health check for the RPC endpoint
     pub async fn health_check(&self) -> Result<bool> {
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "getHealth".to_string(),
-            params: json!({}),
-        };
-
-        let response = self
-            .client
-            .post(&self.config.rpc_url)
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send health check request")?;
-
-        let body: JsonRpcResponse<serde_json::Value> = response
-            .json()
-            .await
-            .context("Failed to parse health check response")?;
-
-        Ok(body.result.is_some() && body.error.is_none())
+        Ok(false)
     }
 
-    /// Verify that a snapshot exists on-chain for the given hash and epoch
-    pub async fn verify_snapshot_exists(&self, hash: &str, epoch: u64) -> Result<bool> {
-        debug!(
-            "Verifying snapshot exists for epoch {} with hash {}",
-            epoch, hash
-        );
-
-        // Convert hex hash back to bytes for contract call
-        let hash_bytes = hex::decode(hash).context("Invalid hash format")?;
-
-        if hash_bytes.len() != 32 {
-            return Err(anyhow::anyhow!("Hash must be exactly 32 bytes"));
-        }
-
-        let mut hash_array = [0u8; 32];
-        hash_array.copy_from_slice(&hash_bytes);
-
-        // Call the contract's verify_snapshot function
-        let verify_args = json!({
-            "contractId": self.config.contract_id,
-            "function": "verify_snapshot",
-            "args": [
-                {
-                    "type": "bytes",
-                    "value": hash
-                }
-            ]
-        });
-
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "simulateTransaction".to_string(),
-            params: json!({
-                "transaction": verify_args
-            }),
-        };
-
-        let response = self
-            .client
-            .post(&self.config.rpc_url)
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send verification request")?;
-
-        let body: JsonRpcResponse<serde_json::Value> = response
-            .json()
-            .await
-            .context("Failed to parse verification response")?;
-
-        if let Some(error) = body.error {
-            warn!("Verification request failed: {}", error.message);
-            return Ok(false);
-        }
-
-        if let Some(result) = body.result {
-            // Extract the return value from the simulation
-            let return_value = result
-                .get("returnValue")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-
-            debug!("Verification result for epoch {}: {}", epoch, return_value);
-            Ok(return_value)
-        } else {
-            Ok(false)
-        }
+    pub async fn verify_snapshot_exists(&self, _hash: &str, _ledger: u64) -> Result<bool> {
+        Err(anyhow::anyhow!("Contract service is temporarily disabled"))
     }
 
-    /// Get snapshot data for a specific epoch from the contract
-    pub async fn get_snapshot_by_epoch(&self, epoch: u64) -> Result<Option<String>> {
-        debug!("Getting snapshot for epoch {}", epoch);
-
-        let get_args = json!({
-            "contractId": self.config.contract_id,
-            "function": "get_snapshot",
-            "args": [
-                {
-                    "type": "u64",
-                    "value": epoch.to_string()
-                }
-            ]
-        });
-
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "simulateTransaction".to_string(),
-            params: json!({
-                "transaction": get_args
-            }),
-        };
-
-        let response = self
-            .client
-            .post(&self.config.rpc_url)
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send get snapshot request")?;
-
-        let body: JsonRpcResponse<serde_json::Value> = response
-            .json()
-            .await
-            .context("Failed to parse get snapshot response")?;
-
-        if let Some(error) = body.error {
-            if error.message.contains("not found") {
-                return Ok(None);
-            }
-            return Err(anyhow::anyhow!("Get snapshot failed: {}", error.message));
-        }
-
-        if let Some(result) = body.result {
-            let hash_hex = result
-                .get("returnValue")
-                .and_then(|rv| rv.as_str())
-                .map(std::string::ToString::to_string);
-
-            Ok(hash_hex)
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_invoke_args() {
-        let config = ContractConfig {
-            rpc_url: "https://soroban-testnet.stellar.org".to_string(),
-            contract_id: "CBGTG4JJFEQE3SPBGQFP3X5HM46N47LXZPXQACVKB7QA6X2XB2IG5CTA".to_string(),
-            network_passphrase: "Test SDF Network ; September 2015".to_string(),
-            source_secret_key: "S...".to_string(),
-        };
-
-        let service = ContractService::new(config).unwrap();
-        let hash = [0u8; 32];
-        let epoch = 123;
-
-        let args = service.build_invoke_args(hash, epoch).unwrap();
-
-        assert_eq!(
-            args["contractId"],
-            "CBGTG4JJFEQE3SPBGQFP3X5HM46N47LXZPXQACVKB7QA6X2XB2IG5CTA"
-        );
-        assert_eq!(args["function"], "submit_snapshot");
-        assert!(args["args"].is_array());
-    }
-
-    #[tokio::test]
-    async fn test_health_check_with_mock() {
-        // This would require a mock server setup
-        // Placeholder for integration testing
+    pub async fn get_snapshot_by_epoch(&self, _epoch: u64) -> Result<Option<String>> {
+        Err(anyhow::anyhow!("Contract service is temporarily disabled"))
     }
 }

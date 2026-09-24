@@ -5,10 +5,12 @@ import { getAddressValidationError } from "@/lib/address";
 import { AnchorHeader } from "@/components/anchors/AnchorHeader";
 import { AssetPortfolio } from "@/components/anchors/AssetPortfolio";
 import { ReliabilityTrend } from "@/components/charts/ReliabilityTrend";
-import { AlertCircle, Clock, ArrowLeft, XCircle } from "lucide-react";
+import { AlertCircle, Clock, XCircle } from "lucide-react";
 import { Link } from "@/i18n/navigation";
+import { BackButton } from "@/components/ui/BackButton";
 import { AnchorDetailData } from "@/lib/api/types";
 import { getAnchorDetail } from "@/lib/api/anchor";
+import { sanitizeText } from "@/lib/sanitize";
 
 function AnchorDetailPageContent({
   params,
@@ -90,16 +92,14 @@ function AnchorDetailPageContent({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Breadcrumb / Back */}
       <div className="flex items-center gap-2 text-sm text-slate-400">
-        <Link
-          href="/anchors"
-          className="hover:text-white transition-colors flex items-center gap-1"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Anchors
-        </Link>
+        <BackButton
+          fallbackHref="/anchors"
+          label="Anchors"
+          className="hover:text-white transition-colors flex items-center gap-1 group"
+        />
         <span className="text-slate-600">/</span>
         <span className="text-slate-200 truncate max-w-[200px]">
-          {data.anchor.name || address}
+          {sanitizeText(data.anchor.name) || sanitizeText(address)}
         </span>
       </div>
 

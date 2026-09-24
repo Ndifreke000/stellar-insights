@@ -9,8 +9,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  TooltipValueType,
 } from "recharts";
 import { PoolSnapshot } from "@/lib/liquidity-pool-api";
+import { getTooltipContentStyle } from "@/lib/chart-utils";
 
 interface PoolPerformanceChartProps {
   snapshots: PoolSnapshot[];
@@ -97,18 +99,16 @@ export function PoolPerformanceChart({
               dx={-10}
             />
             <Tooltip
-              contentStyle={{
+              contentStyle={getTooltipContentStyle({
                 backgroundColor: "rgba(15, 23, 42, 0.95)",
                 border: "1px solid rgba(255, 255, 255, 0.1)",
                 borderRadius: "12px",
-                backdropFilter: "blur(12px)",
                 fontSize: "10px",
                 fontFamily: "monospace",
-                textTransform: "uppercase" as const,
-              }}
+              })}
               itemStyle={{ color: config.color, fontWeight: "bold" }}
               labelStyle={{ color: "#94a3b8", marginBottom: "4px" }}
-              formatter={(value?: number) => {
+              formatter={(value?: TooltipValueType) => {
                 if (typeof value !== "number")
                   return ["-", config.label.toUpperCase()];
                 return [formatValue(value), config.label.toUpperCase()];

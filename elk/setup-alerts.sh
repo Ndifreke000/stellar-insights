@@ -14,8 +14,8 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "High Error Rate - Stellar Insights",
-    "tags": ["stellar-insights", "errors", "critical"],
+    "name": "High Error Rate - PayRaider",
+    "tags": ["payraider", "errors", "critical"],
     "rule_type_id": ".es-query",
     "consumer": "alerts",
     "schedule": {
@@ -23,7 +23,7 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
     },
     "actions": [],
     "params": {
-      "index": ["stellar-insights-*"],
+      "index": ["payraider-*"],
       "timeField": "@timestamp",
       "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"log_level\":\"error\"}}],\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}}]}}}",
       "threshold": [10],
@@ -41,8 +41,8 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "Slow API Responses - Stellar Insights",
-    "tags": ["stellar-insights", "performance", "warning"],
+    "name": "Slow API Responses - PayRaider",
+    "tags": ["payraider", "performance", "warning"],
     "rule_type_id": ".es-query",
     "consumer": "alerts",
     "schedule": {
@@ -50,7 +50,7 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
     },
     "actions": [],
     "params": {
-      "index": ["stellar-insights-*"],
+      "index": ["payraider-*"],
       "timeField": "@timestamp",
       "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"range\":{\"response_time_ms\":{\"gte\":2000}}}],\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}}]}}}",
       "threshold": [5],
@@ -68,8 +68,8 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "RPC Call Failures - Stellar Insights",
-    "tags": ["stellar-insights", "rpc", "critical"],
+    "name": "RPC Call Failures - PayRaider",
+    "tags": ["payraider", "rpc", "critical"],
     "rule_type_id": ".es-query",
     "consumer": "alerts",
     "schedule": {
@@ -77,7 +77,7 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
     },
     "actions": [],
     "params": {
-      "index": ["stellar-insights-*"],
+      "index": ["payraider-*"],
       "timeField": "@timestamp",
       "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"log_level\":\"error\"}},{\"exists\":{\"field\":\"rpc_method\"}}],\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}}]}}}",
       "threshold": [3],
@@ -95,8 +95,8 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "Database Errors - Stellar Insights",
-    "tags": ["stellar-insights", "database", "critical"],
+    "name": "Database Errors - PayRaider",
+    "tags": ["payraider", "database", "critical"],
     "rule_type_id": ".es-query",
     "consumer": "alerts",
     "schedule": {
@@ -104,7 +104,7 @@ curl -X POST "$KIBANA_URL/api/alerting/rule" \
     },
     "actions": [],
     "params": {
-      "index": ["stellar-insights-*"],
+      "index": ["payraider-*"],
       "timeField": "@timestamp",
       "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"log_level\":\"error\"}},{\"match\":{\"message\":\"database\"}}],\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}}]}}}",
       "threshold": [1],

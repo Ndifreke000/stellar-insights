@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde_json::json;
@@ -12,10 +12,10 @@ use sqlx::SqlitePool;
 use crate::auth_middleware::AuthUser;
 use crate::webhooks::{CreateWebhookRequest, WebhookResponse, WebhookService};
 
-/// POST /api/webhooks - Register a new webhook
+/// POST /webhooks - Register a new webhook
 #[utoipa::path(
     post,
-    path = "/api/webhooks",
+    path = "/api/v1/webhooks",
     request_body = CreateWebhookRequest,
     responses(
         (status = 201, description = "Webhook registered successfully"),
@@ -30,59 +30,9 @@ pub async fn register_webhook(
     auth_user: AuthUser,
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Response, WebhookApiError> {
-    // Validate URL scheme
-    if !request.url.starts_with("https://") && !request.url.starts_with("http://") {
-        return Err(WebhookApiError::BadRequest(
-            "Webhook URL must be valid HTTP(S)".to_string(),
-        ));
-    }
-
-    // SSRF protection: block private/internal URLs (SEC-008)
-    if let Ok(url) = url::Url::parse(&request.url) {
-        if let Some(host) = url.host_str() {
-            let host_lower = host.to_lowercase();
-            // Block localhost and loopback
-            if host_lower == "localhost"
-                || host_lower == "127.0.0.1"
-                || host_lower == "::1"
-                || host_lower == "0.0.0.0"
-                || host_lower.ends_with(".local")
-                || host_lower.ends_with(".internal")
-            {
-                return Err(WebhookApiError::BadRequest(
-                    "Webhook URL must not point to localhost or internal addresses".to_string(),
-                ));
-            }
-            // Block AWS metadata endpoint
-            if host_lower == "169.254.169.254" || host_lower == "metadata.google.internal" {
-                return Err(WebhookApiError::BadRequest(
-                    "Webhook URL must not point to cloud metadata endpoints".to_string(),
-                ));
-            }
-            // Block common private IP ranges
-            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-                let is_private = match ip {
-                    std::net::IpAddr::V4(v4) => {
-                        v4.is_loopback()
-                            || v4.is_private()
-                            || v4.is_link_local()
-                            || v4.octets()[0] == 169 && v4.octets()[1] == 254
-                    }
-                    std::net::IpAddr::V6(v6) => v6.is_loopback(),
-                };
-                if is_private {
-                    return Err(WebhookApiError::BadRequest(
-                        "Webhook URL must not point to private or reserved IP addresses"
-                            .to_string(),
-                    ));
-                }
-            }
-        }
-    } else {
-        return Err(WebhookApiError::BadRequest(
-            "Webhook URL is not a valid URL".to_string(),
-        ));
-    }
+    // Validate webhook URL using centralized validation
+    crate::validation::validate_webhook_url(&request.url)
+        .map_err(|e| WebhookApiError::BadRequest(e.to_string()))?;
 
     // Validate event types
     if request.event_types.is_empty() {
@@ -100,10 +50,10 @@ pub async fn register_webhook(
     Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
-/// GET /api/webhooks - List webhooks for authenticated user
+/// GET /webhooks - List webhooks for authenticated user
 #[utoipa::path(
     get,
-    path = "/api/webhooks",
+    path = "/api/v1/webhooks",
     responses(
         (status = 200, description = "List of webhooks"),
         (status = 401, description = "Unauthorized"),
@@ -143,10 +93,10 @@ pub async fn list_webhooks(
     Ok((StatusCode::OK, Json(json!({"webhooks": response}))).into_response())
 }
 
-/// DELETE /api/webhooks/:id - Delete/deactivate webhook
+/// DELETE /webhooks/:id - Delete/deactivate webhook
 #[utoipa::path(
     delete,
-    path = "/api/webhooks/{id}",
+    path = "/api/v1/webhooks/{id}",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -180,10 +130,10 @@ pub async fn delete_webhook(
         .into_response())
 }
 
-/// GET /api/webhooks/:id - Get a single webhook by ID
+/// GET /webhooks/:id - Get a single webhook by ID
 #[utoipa::path(
     get,
-    path = "/api/webhooks/{id}",
+    path = "/api/v1/webhooks/{id}",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -231,10 +181,10 @@ pub async fn get_webhook(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
-/// POST /api/webhooks/:id/test - Queue a test event for delivery
+/// POST /webhooks/:id/test - Queue a test event for delivery
 #[utoipa::path(
     post,
-    path = "/api/webhooks/{id}/test",
+    path = "/api/v1/webhooks/{id}/test",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -314,8 +264,8 @@ impl IntoResponse for WebhookApiError {
 /// Create webhook routes
 pub fn routes(db: SqlitePool) -> Router {
     Router::new()
-        .route("/api/webhooks", post(register_webhook).get(list_webhooks))
-        .route("/api/webhooks/:id", get(get_webhook).delete(delete_webhook))
-        .route("/api/webhooks/:id/test", post(test_webhook))
+        .route("/", post(register_webhook).get(list_webhooks))
+        .route("/{id}", get(get_webhook).delete(delete_webhook))
+        .route("/{id}/test", post(test_webhook))
         .with_state(db)
 }

@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useRouter } from "@/i18n/navigation";
 import {
-  ArrowLeft,
   TrendingUp,
   TrendingDown,
   Zap,
@@ -35,10 +33,10 @@ import { WebSocketStatus } from "@/components/WebSocketStatus";
 import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
 import { Link } from "@/i18n/navigation";
 import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/Skeleton";
+import { BackButton } from "@/components/ui/BackButton";
 
 export default function CorridorDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const corridorPair = params.pair as string;
 
   const [data, setData] = useState<CorridorDetailData | null>(null);
@@ -143,13 +141,7 @@ export default function CorridorDetailPage() {
     return (
       <MainLayout>
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-          <button
-            onClick={() => router.push("/corridors")}
-            className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Corridors
-          </button>
+          <BackButton fallbackHref="/corridors" label="Back to Corridors" className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6 group" />
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-lg p-6 text-red-800 dark:text-red-300">
             <AlertCircle className="w-6 h-6 inline mr-2" />
             {error || "Failed to load corridor data"}
@@ -201,13 +193,7 @@ export default function CorridorDetailPage() {
         </nav>
 
         <div className="mb-8">
-          <button
-            onClick={() => router.push("/corridors")}
-            className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-4 group"
-          >
-            <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-            Back to Corridors
-          </button>
+          <BackButton fallbackHref="/corridors" label="Back to Corridors" className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-4 group" />
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">

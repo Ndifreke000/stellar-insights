@@ -12,6 +12,7 @@ import {
   addComment,
 } from "@/lib/governance-api";
 import type { Proposal, Comment, VoteChoice } from "@/types/governance";
+import { logger } from '@/lib/logger';
 
 const statusConfig: Record<
   string,
@@ -87,7 +88,7 @@ export function ProposalDetail({ proposal, onVoted }: ProposalDetailProps) {
       setUserVote(choice);
       onVoted();
     } catch (err) {
-      console.error("Vote failed:", err);
+      logger.error("Vote failed:", err instanceof Error ? err : new Error(String(err)));
     } finally {
       setVoting(false);
     }
@@ -102,7 +103,7 @@ export function ProposalDetail({ proposal, onVoted }: ProposalDetailProps) {
       setNewComment("");
       fetchComments();
     } catch (err) {
-      console.error("Comment failed:", err);
+      logger.error("Comment failed:", err instanceof Error ? err : new Error(String(err)));
     } finally {
       setSubmittingComment(false);
     }

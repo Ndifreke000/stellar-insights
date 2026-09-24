@@ -1,10 +1,10 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -37,8 +37,9 @@ spec:
     ports:
     - protocol: TCP
       port: 9090
+  # Explicit egress rules — all other outbound connections denied by default. Mainnet: replace HTTPS CIDR with confirmed Stellar Foundation ranges.
   egress:
-  # Allow DNS
+  # DNS: required for service discovery
   - to:
     - namespaceSelector:
         matchLabels:
@@ -46,15 +47,9 @@ spec:
     ports:
     - protocol: UDP
       port: 53
-  # Allow database access
-  - to:
-    - podSelector:
-        matchLabels:
-          component: database
-    ports:
     - protocol: TCP
-      port: 5432
-  # Allow Redis access
+      port: 53
+  # Redis: cache access
   - to:
     - podSelector:
         matchLabels:
@@ -62,7 +57,7 @@ spec:
     ports:
     - protocol: TCP
       port: 6379
-  # Allow external HTTPS (Stellar RPC, Horizon)
+  # HTTPS to Stellar Horizon/RPC: TODO: restrict to Stellar Foundation IP ranges once confirmed for mainnet
   - to:
     - namespaceSelector: {}
     ports:
@@ -72,10 +67,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-frontend
-  namespace: stellar-insights
+  name: payraider-frontend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -113,43 +108,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-database
-  namespace: stellar-insights
+  name: payraider-redis
+  namespace: payraider
   labels:
-    app: stellar-insights
-spec:
-  podSelector:
-    matchLabels:
-      component: database
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  # Only allow traffic from backend
-  - from:
-    - podSelector:
-        matchLabels:
-          component: backend
-    ports:
-    - protocol: TCP
-      port: 5432
-  egress:
-  # Allow DNS
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: UDP
-      port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: stellar-insights-redis
-  namespace: stellar-insights
-  labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:

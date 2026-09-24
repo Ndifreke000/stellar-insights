@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
+import {  buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 interface VerificationSummary {
@@ -29,24 +30,25 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
     auditTrail: []
   });
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    fetchVerificationData();
-    const interval = setInterval(fetchVerificationData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+  const fetchVerificationData = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-  const fetchVerificationData = async () => {
     try {
       setError(null);
-      const response = await fetch('/api/analytics/verification-summary');
-      
+      const response = await fetch('/api/analytics/verification-summary', {
+        signal: controller.signal,
+      });
+
       if (!response.ok) {
         throw new Error('Failed to fetch verification data');
       }
 
       const data = await response.json();
-      
+
       setVerificationData({
         latestEpoch: data.latestEpoch,
         status: data.latestStatus || 'pending',
@@ -56,11 +58,21 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
         auditTrail: data.auditTrail || []
       });
     } catch (err) {
-      console.error('Error fetching verification data:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      logger.error('Error fetching verification data:', err instanceof Error ? err : new Error(String(err)));
       setError('Failed to load verification data');
-      setVerificationData((prev: any) => ({ ...prev, status: 'failed' }));
+      setVerificationData((prev) => ({ ...prev, status: 'failed' }));
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchVerificationData();
+    const interval = setInterval(fetchVerificationData, 30000);
+    return () => {
+      clearInterval(interval);
+      abortControllerRef.current?.abort();
+    };
+  }, [fetchVerificationData]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -169,7 +181,7 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
           <p className="text-sm text-slate-500 dark:text-slate-400 italic">No verification history available</p>
         ) : (
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {verificationData.auditTrail.map((entry: any) => (
+            {verificationData.auditTrail.map((entry: VerificationSummary) => (
               <div 
                 key={`${entry.epoch}-${entry.transaction_hash}`}
                 className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md"

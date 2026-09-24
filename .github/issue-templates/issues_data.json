@@ -1,0 +1,62 @@
+[
+  {
+    "number": 1,
+    "title": "🔴 CRITICAL: Missing Module metrics_cached Blocks Compilation",
+    "labels": ["critical", "bug", "backend", "compilation-error"],
+    "priority": "P0",
+    "area": "Backend",
+    "file": "backend/src/api/mod.rs:20",
+    "estimate": "5-10 minutes",
+    "description": "The backend fails to compile due to missing module declaration. File backend/src/api/mod.rs:20 references pub mod metrics_cached but the file doesn't exist.",
+    "impact": "Blocks all backend compilation, prevents development and deployment, CI/CD pipeline fails",
+    "solution": "Either create backend/src/api/metrics_cached.rs with basic implementation OR remove the module declaration from mod.rs"
+  },
+  {
+    "number": 2,
+    "title": "🔴 CRITICAL: Mismatched Closing Delimiter in database.rs",
+    "labels": ["critical", "bug", "backend", "compilation-error"],
+    "priority": "P0",
+    "area": "Backend",
+    "file": "backend/src/database.rs:1515",
+    "estimate": "10-15 minutes",
+    "description": "Syntax error with unclosed async block in execute_with_timing call around line 1504",
+    "impact": "Blocks backend compilation and all development",
+    "solution": "Locate execute_with_timing call and ensure all braces/brackets/parentheses are properly matched"
+  },
+  {
+    "number": 3,
+    "title": "🔴 CRITICAL: Unclosed Delimiter in Analytics Contract",
+    "labels": ["critical", "bug", "contracts", "compilation-error"],
+    "priority": "P0",
+    "area": "Contracts",
+    "file": "contracts/analytics/src/lib.rs",
+    "estimate": "15-20 minutes",
+    "description": "Contract contains unclosed delimiter preventing compilation",
+    "impact": "Blocks analytics contract deployment and testing",
+    "solution": "Review contract for unclosed braces, brackets, or parentheses using IDE bracket matching"
+  },
+  {
+    "number": 4,
+    "title": "🔴 CRITICAL: Multiple Compilation Errors in payraider Contract",
+    "labels": ["critical", "bug", "contracts", "compilation-error"],
+    "priority": "P0",
+    "area": "Contracts",
+    "file": "contracts/payraider/src/lib.rs",
+    "estimate": "1-2 hours",
+    "description": "18 compilation errors preventing contract build",
+    "impact": "Blocks main contract deployment",
+    "solution": "Run cargo clippy --package payraider --all-targets to see detailed errors and fix systematically"
+  },
+  {
+    "number": 5,
+    "title": "🔴 CRITICAL: Access Control Contract Compilation Errors",
+    "labels": ["critical", "bug", "contracts", "compilation-error"],
+    "priority": "P0",
+    "area": "Contracts",
+    "file": "contracts/access-control/src/lib.rs",
+    "estimate": "1 hour",
+    "description": "9 compilation errors in access control contract",
+    "impact": "Blocks access control functionality",
+    "solution": "Run cargo clippy --package access-control --all-targets and fix errors"
+  }
+]

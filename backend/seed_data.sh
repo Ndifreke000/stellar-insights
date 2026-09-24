@@ -1,119 +1,140 @@
 #!/bin/bash
 
-# Seed sample anchor data for testing
-# Usage: ./seed_data.sh [base_url]
+# Comprehensive database seeding script for development
+# Seeds realistic test data for all major entities
+# Usage: ./seed_data.sh [database_path] [--reset]
 
-BASE_URL="${1:-http://localhost:8080}"
+set -e
 
-echo "🌱 Seeding sample anchor data to $BASE_URL"
-echo ""
+DB_PATH="${1:-.payraider.db}"
+RESET_FLAG="${2:-}"
 
-# Function to create anchor and get ID
-create_anchor() {
-    local name=$1
-    local account=$2
-    local domain=$3
-    
-    echo "Creating anchor: $name"
-    response=$(curl -s -X POST "$BASE_URL/api/anchors" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"name\": \"$name\",
-            \"stellar_account\": \"$account\",
-            \"home_domain\": \"$domain\"
-        }")
-    
-    anchor_id=$(echo "$response" | jq -r '.id')
-    echo "✓ Created anchor: $name (ID: $anchor_id)"
-    echo "$anchor_id"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
 }
 
-# Function to add asset
-add_asset() {
-    local anchor_id=$1
-    local code=$2
-    local issuer=$3
-    
-    echo "  Adding asset: $code"
-    curl -s -X POST "$BASE_URL/api/anchors/$anchor_id/assets" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"asset_code\": \"$code\",
-            \"asset_issuer\": \"$issuer\"
-        }" > /dev/null
-    echo "  ✓ Added asset: $code"
+log_success() {
+    echo -e "${GREEN}✓${NC} $1"
 }
 
-# Function to update metrics
-update_metrics() {
-    local anchor_id=$1
-    local total=$2
-    local success=$3
-    local failed=$4
-    local settlement=$5
-    local volume=$6
-    
-    echo "  Updating metrics..."
-    curl -s -X PUT "$BASE_URL/api/anchors/$anchor_id/metrics" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"total_transactions\": $total,
-            \"successful_transactions\": $success,
-            \"failed_transactions\": $failed,
-            \"avg_settlement_time_ms\": $settlement,
-            \"volume_usd\": $volume
-        }" > /dev/null
-    echo "  ✓ Updated metrics"
+log_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
 }
 
-# Create Circle (Green status - highly reliable)
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-circle_id=$(create_anchor "Circle" "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" "circle.com")
-add_asset "$circle_id" "USDC" "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-add_asset "$circle_id" "EURC" "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-update_metrics "$circle_id" 10000 9900 100 2000 1500000.00
+log_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+# Check if sqlite3 is installed
+if ! command -v sqlite3 &> /dev/null; then
+    log_error "sqlite3 is not installed. Please install it first."
+    exit 1
+fi
+
+# Check if database exists
+if [ ! -f "$DB_PATH" ]; then
+    log_error "Database file not found: $DB_PATH"
+    log_info "Run migrations first: sqlx migrate run"
+    exit 1
+fi
+
+log_info "Starting database seeding..."
 echo ""
 
-# Create AnchorUSD (Yellow status - caution)
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-anchorusd_id=$(create_anchor "AnchorUSD" "GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX" "anchorusd.com")
-add_asset "$anchorusd_id" "USD" "GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX"
-update_metrics "$anchorusd_id" 5000 4800 200 4500 750000.00
+# Optional: Reset database (delete existing seed data)
+if [ "$RESET_FLAG" = "--reset" ]; then
+    log_warning "Resetting seed data..."
+    sqlite3 "$DB_PATH" << EOF
+DELETE FROM governance_comments WHERE proposal_id IN (SELECT id FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%');
+DELETE FROM governance_votes WHERE proposal_id IN (SELECT id FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%');
+DELETE FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%';
+DELETE FROM api_keys WHERE wallet_address LIKE 'G%' AND (name LIKE '%Key%' OR name LIKE '%Test%');
+DELETE FROM users WHERE username IN ('admin', 'analyst', 'developer', 'viewer');
+DELETE FROM metrics WHERE entity_id LIKE 'metric-%' OR entity_id LIKE 'corridor-%' OR entity_id LIKE 'anchor-%';
+DELETE FROM anchor_metrics_history WHERE anchor_id LIKE 'anchor-%';
+DELETE FROM corridors WHERE id LIKE 'corridor-%';
+DELETE FROM assets WHERE id LIKE 'asset-%';
+DELETE FROM anchors WHERE id LIKE 'anchor-%';
+EOF
+    log_success "Seed data reset"
+    echo ""
+fi
+
+# Load comprehensive seed data
+log_info "Loading comprehensive seed data..."
+sqlite3 "$DB_PATH" < "$(dirname "$0")/migrations/030_comprehensive_seed_data.sql"
+log_success "Seed data loaded"
 echo ""
 
-# Create MoneyGram (Green status)
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-moneygram_id=$(create_anchor "MoneyGram Access" "GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ" "moneygram.com")
-add_asset "$moneygram_id" "MGI" "GA7FCCMTTSUIC37PODEL6EOOSPDRILP6OQI5FWCWDDVDBLJV72W6RINZ"
-update_metrics "$moneygram_id" 8500 8415 85 1800 980000.00
+# Verify data was inserted
+log_info "Verifying seeded data..."
 echo ""
 
-# Create Vibrant (Yellow status)
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-vibrant_id=$(create_anchor "Vibrant" "GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR" "vibrantapp.com")
-add_asset "$vibrant_id" "VELO" "GBHFGY3ZNEJWLNO4LBUKLYOCEK4V7ENEBJGPRHHX7JU47GWHBREH37UR"
-update_metrics "$vibrant_id" 3200 3040 160 5200 420000.00
+ANCHOR_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM anchors WHERE id LIKE 'anchor-%';")
+log_success "Anchors: $ANCHOR_COUNT"
+
+ASSET_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM assets WHERE id LIKE 'asset-%';")
+log_success "Assets: $ASSET_COUNT"
+
+CORRIDOR_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM corridors WHERE id LIKE 'corridor-%';")
+log_success "Corridors: $CORRIDOR_COUNT"
+
+METRIC_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM metrics WHERE entity_id LIKE 'metric-%';")
+log_success "Metrics: $METRIC_COUNT"
+
+HISTORY_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM anchor_metrics_history WHERE anchor_id LIKE 'anchor-%';")
+log_success "Metrics History: $HISTORY_COUNT"
+
+USER_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM users WHERE username IN ('admin', 'analyst', 'developer', 'viewer');")
+log_success "Test Users: $USER_COUNT"
+
+API_KEY_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM api_keys WHERE name LIKE '%Key%';")
+log_success "API Keys: $API_KEY_COUNT"
+
+PROPOSAL_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%';")
+log_success "Governance Proposals: $PROPOSAL_COUNT"
+
+VOTE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM governance_votes WHERE id LIKE 'vote-%';")
+log_success "Governance Votes: $VOTE_COUNT"
+
+echo ""
+log_success "Database seeding completed successfully!"
 echo ""
 
-# Create Stellar (Green status - native)
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-stellar_id=$(create_anchor "Stellar Development Foundation" "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7" "stellar.org")
-add_asset "$stellar_id" "XLM" "native"
-update_metrics "$stellar_id" 50000 49500 500 1500 5000000.00
+# Display sample queries
+log_info "Sample queries to explore the data:"
+echo ""
+echo "  # View all anchors"
+echo "  sqlite3 $DB_PATH \"SELECT id, name, status, reliability_score FROM anchors WHERE id LIKE 'anchor-%' ORDER BY reliability_score DESC;\""
+echo ""
+echo "  # View corridors by reliability"
+echo "  sqlite3 $DB_PATH \"SELECT source_asset_code, destination_asset_code, reliability_score, status FROM corridors WHERE id LIKE 'corridor-%' ORDER BY reliability_score DESC;\""
+echo ""
+echo "  # View recent metrics"
+echo "  sqlite3 $DB_PATH \"SELECT anchor_id, timestamp, success_rate, reliability_score FROM anchor_metrics_history WHERE anchor_id LIKE 'anchor-%' ORDER BY timestamp DESC LIMIT 10;\""
+echo ""
+echo "  # View governance proposals"
+echo "  sqlite3 $DB_PATH \"SELECT id, title, status, created_at FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%';\""
+echo ""
+echo "  # View test users"
+echo "  sqlite3 $DB_PATH \"SELECT username FROM users WHERE username IN ('admin', 'analyst', 'developer', 'viewer');\""
 echo ""
 
-# Create a Red status anchor
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-test_id=$(create_anchor "TestNet Anchor" "GCTESTANCHOR12345678901234567890123456789012345" "testanchor.io")
-add_asset "$test_id" "TEST" "GCTESTANCHOR12345678901234567890123456789012345"
-update_metrics "$test_id" 2000 1800 200 8500 100000.00
+log_info "Test user credentials (password: password):"
+echo "  - admin"
+echo "  - analyst"
+echo "  - developer"
+echo "  - viewer"
 echo ""
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Sample data seeded successfully!"
+log_info "To reset seed data later, run:"
+echo "  ./seed_data.sh $DB_PATH --reset"
 echo ""
-echo "View all anchors:"
-echo "  curl $BASE_URL/api/anchors | jq"
-echo ""
-echo "View specific anchor:"
-echo "  curl $BASE_URL/api/anchors/$circle_id | jq"

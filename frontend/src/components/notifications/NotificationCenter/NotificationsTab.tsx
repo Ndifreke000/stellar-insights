@@ -1,4 +1,5 @@
 import { NotificationPriority, NotificationType } from "@/types/notifications";
+import { NotificationFilter } from "@/services/notificationService";
 import { motion, AnimatePresence } from "framer-motion";
 import { BellOff, Calendar, ChevronDown, ChevronUp, Download, Filter, Search, Trash2 } from "lucide-react";
 import { formatTime, ICON_COLORS, NOTIFICATION_ICONS, NotificationCenterProps, PRIORITY_BADGES } from "./helpers";
@@ -23,7 +24,7 @@ const NotificationsTab = ({
   handleSelectNotification,
   filteredNotifications,
   clearNotification,
-}:NotificationCenterProps) => {
+}: NotificationCenterProps) => {
   return (
     <div className="h-full flex">
       {/* Main Content */}
@@ -48,8 +49,8 @@ const NotificationsTab = ({
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${showFilters
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
                 }`}
             >
               <Filter className="h-4 w-4" />
@@ -62,6 +63,7 @@ const NotificationsTab = ({
                 onClick={() => handleExport('json')}
                 className="p-2 text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                 title="Export as JSON"
+                aria-label="Export notifications as JSON"
               >
                 <Download className="h-4 w-4" />
               </button>
@@ -69,6 +71,7 @@ const NotificationsTab = ({
                 onClick={() => handleExport('csv')}
                 className="p-2 text-muted-foreground dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                 title="Export as CSV"
+                aria-label="Export notifications as CSV"
               >
                 <Download className="h-4 w-4" />
               </button>
@@ -91,7 +94,7 @@ const NotificationsTab = ({
                     </label>
                     <select
                       value={filter.readStatus}
-                      onChange={(e) => updateFilter({ readStatus: e.target.value as any })}
+                      onChange={(e) => updateFilter({ readStatus: e.target.value as NotificationFilter['readStatus'] })}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     >
                       <option value="all">All</option>
@@ -249,7 +252,7 @@ const NotificationsTab = ({
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={(e: any) => handleSelectNotification(notification.id, e)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSelectNotification(notification.id, e)}
                               onClick={(e) => e.stopPropagation()}
                               className="mt-1 rounded"
                             />
@@ -257,8 +260,8 @@ const NotificationsTab = ({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between">
                                 <h4 className={`text-sm font-medium ${notification.read
-                                    ? 'text-gray-700 dark:text-gray-300'
-                                    : 'text-gray-900 dark:text-white'
+                                  ? 'text-gray-700 dark:text-gray-300'
+                                  : 'text-gray-900 dark:text-white'
                                   }`}>
                                   {notification.title}
                                 </h4>
@@ -278,8 +281,8 @@ const NotificationsTab = ({
                                 </div>
                               </div>
                               <p className={`text-sm mt-1 ${notification.read
-                                  ? 'text-muted-foreground dark:text-muted-foreground'
-                                  : 'text-gray-700 dark:text-gray-300'
+                                ? 'text-muted-foreground dark:text-muted-foreground'
+                                : 'text-gray-700 dark:text-gray-300'
                                 }`}>
                                 {notification.message}
                               </p>

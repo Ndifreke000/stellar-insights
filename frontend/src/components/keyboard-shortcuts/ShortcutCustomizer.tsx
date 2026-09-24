@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Keyboard, RotateCcw, AlertCircle, Check } from 'lucide-react';
 import { useKeyboardShortcuts } from '@/contexts/KeyboardShortcutsContext';
 import { formatBinding, conflictsWithBrowser, bindingsConflict } from '@/lib/keyboard-shortcuts/utils';
-import type { KeyBinding, ModifierKey, ShortcutAction } from '@/types/keyboard-shortcuts';
+import type { KeyBinding, ModifierKey } from '@/types/keyboard-shortcuts';
 
 interface ShortcutCustomizerProps {
   /** Optional: Only show shortcuts from specific categories */

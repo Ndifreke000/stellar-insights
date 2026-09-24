@@ -1,0 +1,134 @@
+{
+  "title": "PayRaider — Testnet Health",
+  "uid": "stellar-testnet-health",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "tags": ["payraider", "testnet", "health"],
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "constant",
+        "current": { "value": "payraider-testnet" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Transaction Ingestion TPS",
+      "type": "timeseries",
+      "description": "Rate of transactions ingested per second on testnet.",
+      "targets": [
+        {
+          "expr": "sum(rate(background_jobs_total{job=\"$job\"}[1m]))",
+          "legendFormat": "TPS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "title": "API Latency Percentiles (p50 / p95 / p99)",
+      "type": "timeseries",
+      "description": "HTTP request duration percentiles across all endpoints.",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "title": "DB Pool Utilization",
+      "type": "timeseries",
+      "description": "Ratio of active connections to total pool size.",
+      "targets": [
+        {
+          "expr": "db_pool_active{job=\"$job\"} / clamp_min(db_pool_size{job=\"$job\"}, 1)",
+          "legendFormat": "utilization"
+        },
+        {
+          "expr": "db_pool_active{job=\"$job\"}",
+          "legendFormat": "active"
+        },
+        {
+          "expr": "db_pool_idle{job=\"$job\"}",
+          "legendFormat": "idle"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "max": 1 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "active" }, "properties": [{ "id": "unit", "value": "short" }] },
+          { "matcher": { "id": "byName", "options": "idle"   }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "title": "WebSocket Active Connections",
+      "type": "timeseries",
+      "description": "Number of currently open WebSocket connections.",
+      "targets": [
+        {
+          "expr": "active_connections{job=\"$job\"}",
+          "legendFormat": "connections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    },
+    {
+      "title": "Stellar RPC Error Rate",
+      "type": "timeseries",
+      "description": "Rate of RPC errors per second broken down by method.",
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(rpc_errors_total{job=\"$job\"}[5m]))",
+          "legendFormat": "{{method}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
+    },
+    {
+      "title": "Cache Hit / Miss Ratio",
+      "type": "timeseries",
+      "description": "Cache hit rate (hits / total operations) over time.",
+      "targets": [
+        {
+          "expr": "rate(cache_hits_total{job=\"$job\"}[5m]) / clamp_min(rate(cache_operations_total{job=\"$job\"}[5m]), 0.0001)",
+          "legendFormat": "hit ratio"
+        },
+        {
+          "expr": "rate(cache_misses_total{job=\"$job\"}[5m]) / clamp_min(rate(cache_operations_total{job=\"$job\"}[5m]), 0.0001)",
+          "legendFormat": "miss ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
+    }
+  ]
+}

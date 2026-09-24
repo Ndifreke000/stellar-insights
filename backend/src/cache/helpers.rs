@@ -123,11 +123,31 @@ fn set_common_headers(
     }
 }
 
-/// Generate HTTP cache response with ETag and Last-Modified headers
+/// Builds an HTTP JSON response with ETag and Last-Modified caching headers,
+/// and handles conditional requests (`If-None-Match`, `If-Modified-Since`).
 ///
-/// This layer adds HTTP-level caching on top of Redis caching.
-/// It handles conditional requests (If-None-Match, If-Modified-Since)
-/// and returns 304 Not Modified when appropriate.
+/// This sits on top of Redis caching and adds HTTP-level cache negotiation so
+/// clients and CDNs can avoid re-downloading unchanged payloads.
+///
+/// # Behaviour
+///
+/// 1. Serialises `payload` to JSON and computes a SHA-256 ETag from the bytes.
+/// 2. Looks up (or creates) a `Last-Modified` timestamp for `resource_key` in
+///    an in-process metadata store. The timestamp only advances when the ETag
+///    changes, so repeated calls with the same data return a stable timestamp.
+/// 3. If the request carries a matching `If-None-Match` or an
+///    `If-Modified-Since` header that is not older than `Last-Modified`, a
+///    `304 Not Modified` response is returned with no body.
+/// 4. Otherwise a `200 OK` response is returned with the JSON body and the
+///    headers `Cache-Control: public, max-age={ttl_seconds}`, `ETag`, and
+///    `Last-Modified`.
+///
+/// # Arguments
+///
+/// * `request_headers` - Incoming request headers used for conditional checks.
+/// * `resource_key` - Stable identifier for the resource (e.g. `"corridors:list"`).
+/// * `payload` - The value to serialise and return.
+/// * `ttl_seconds` - Value written into the `Cache-Control: max-age` directive.
 pub fn cached_json_response<T: Serialize>(
     request_headers: &HeaderMap,
     resource_key: &str,
@@ -135,7 +155,8 @@ pub fn cached_json_response<T: Serialize>(
     ttl_seconds: usize,
 ) -> anyhow::Result<Response> {
     let body = serde_json::to_vec(payload)?;
-    let etag = format!("\"{:x}\"", Sha256::digest(&body));
+    let digest = Sha256::digest(&body);
+    let etag = format!("\"{}\"", hex::encode(digest));
     let last_modified = resolve_last_modified(resource_key, &etag);
     let cache_control = format!("public, max-age={ttl_seconds}");
 
@@ -158,6 +179,20 @@ pub fn cached_json_response<T: Serialize>(
 }
 
 /// Executes a query using a cache-aside strategy.
+///
+/// Checks the cache for `key` first. On a hit the cached value is returned
+/// immediately. On a miss `query_fn` is called, the result is stored in the
+/// cache with the given `ttl`, and then returned.
+///
+/// Cache writes are best-effort: a failure to write does **not** propagate as
+/// an error so callers are never blocked by cache backend issues.
+///
+/// # Arguments
+///
+/// * `cache` - Shared [`CacheManager`] instance backed by Redis.
+/// * `key` - Fully-qualified cache key (e.g. `"corridor:list:abc123"`).
+/// * `ttl` - Cache entry lifetime in seconds.
+/// * `query_fn` - Async closure that fetches the data when the cache misses.
 pub async fn cached_query<T, F, Fut>(
     cache: &Arc<CacheManager>,
     key: &str,
@@ -186,7 +221,19 @@ where
     Ok(result)
 }
 
-/// Executes a query with a cache key generated from serialized params.
+/// Executes a query with a cache key derived from a prefix and serialized params.
+///
+/// Combines [`build_param_cache_key`] with [`cached_query`]: the cache key is
+/// built by hashing `params` and appending it to `key_prefix`, so different
+/// param values automatically map to different cache entries.
+///
+/// # Arguments
+///
+/// * `cache` - Shared [`CacheManager`] instance.
+/// * `key_prefix` - Stable string prefix that identifies the query type (e.g. `"corridor:list"`).
+/// * `params` - Serializable query parameters whose hash forms the key suffix.
+/// * `ttl` - Cache entry lifetime in seconds.
+/// * `query_fn` - Async closure that fetches the data when the cache misses.
 pub async fn cached_query_with_params<T, P, F, Fut>(
     cache: &Arc<CacheManager>,
     key_prefix: &str,
@@ -205,6 +252,20 @@ where
 }
 
 /// Builds a deterministic cache key from a prefix and serializable params.
+///
+/// The key has the form `"{key_prefix}:{hash}"` where `hash` is a hex-encoded
+/// [`DefaultHasher`](std::collections::hash_map::DefaultHasher) digest of the
+/// JSON-serialized `params`. The same prefix and params always produce the
+/// same key within a single process run.
+///
+/// # Example
+///
+/// ```rust
+/// use payraider_backend::cache::helpers::build_param_cache_key;
+///
+/// let key = build_param_cache_key("corridor:list", &("USD", "EUR"));
+/// // e.g. "corridor:list:3f8a2c1d"
+/// ```
 pub fn build_param_cache_key<P: Serialize>(key_prefix: &str, params: &P) -> String {
     let params_hash = calculate_hash(params);
     format!("{key_prefix}:{params_hash}")
@@ -259,59 +320,65 @@ mod http_tests {
     #[tokio::test]
     async fn returns_cache_headers_for_fresh_response() {
         let headers = HeaderMap::new();
-        let response =
-            cached_json_response(&headers, "resource:a", &Payload { value: "a" }, 60).unwrap();
+        let response = cached_json_response(&headers, "resource:a", &Payload { value: "a" }, 60)
+            .expect("cached_json_response should succeed for a fresh request");
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.headers().get(CACHE_CONTROL).is_some());
         assert!(response.headers().get(ETAG).is_some());
         assert!(response.headers().get(LAST_MODIFIED).is_some());
 
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
         assert_eq!(body, r#"{"value":"a"}"#);
     }
 
     #[tokio::test]
     async fn returns_304_when_if_none_match_matches() {
         let headers = HeaderMap::new();
-        let first =
-            cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60).unwrap();
+        let first = cached_json_response(&headers, "resource:b", &Payload { value: "b" }, 60)
+            .expect("cached_json_response should succeed for the initial request");
         let etag = first
             .headers()
             .get(ETAG)
-            .unwrap()
+            .expect("response should carry an ETag header")
             .to_str()
-            .unwrap()
+            .expect("ETag header should be valid ASCII")
             .to_string();
 
         let mut conditional_headers = HeaderMap::new();
-        conditional_headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
+        conditional_headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_str(&etag).expect("etag should be a valid header value"),
+        );
         let second = cached_json_response(
             &conditional_headers,
             "resource:b",
             &Payload { value: "b" },
             60,
         )
-        .unwrap();
+        .expect("cached_json_response should succeed for the conditional request");
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 
     #[tokio::test]
     async fn returns_304_when_if_modified_since_matches() {
         let headers = HeaderMap::new();
-        let first =
-            cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60).unwrap();
+        let first = cached_json_response(&headers, "resource:c", &Payload { value: "c" }, 60)
+            .expect("cached_json_response should succeed for the initial request");
         let last_modified = first
             .headers()
             .get(LAST_MODIFIED)
-            .unwrap()
+            .expect("response should carry a Last-Modified header")
             .to_str()
-            .unwrap()
+            .expect("Last-Modified header should be valid ASCII")
             .to_string();
 
         let mut conditional_headers = HeaderMap::new();
         conditional_headers.insert(
             IF_MODIFIED_SINCE,
-            HeaderValue::from_str(&last_modified).unwrap(),
+            HeaderValue::from_str(&last_modified)
+                .expect("last_modified should be a valid header value"),
         );
 
         let second = cached_json_response(
@@ -320,7 +387,7 @@ mod http_tests {
             &Payload { value: "c" },
             60,
         )
-        .unwrap();
+        .expect("cached_json_response should succeed for the conditional request");
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     }
 }

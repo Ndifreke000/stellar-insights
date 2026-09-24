@@ -11,21 +11,18 @@ interface Alert {
 
 export default function AlertNotifications() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     const websocket = new WebSocket('ws://localhost:8080/ws/alerts');
-    
+
     websocket.onmessage = (event) => {
       const alert = JSON.parse(event.data);
       setAlerts((prev) => [alert, ...prev].slice(0, 10));
     };
 
     websocket.onerror = () => {
-      setTimeout(() => setWs(null), 5000);
+      websocket.close();
     };
-
-    setWs(websocket);
 
     return () => websocket.close();
   }, []);
@@ -49,14 +46,15 @@ export default function AlertNotifications() {
   if (alerts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
+    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md" role="region" aria-label="Alert notifications" aria-live="polite">
       {alerts.map((alert, idx) => (
         <div
           key={`${alert.timestamp}-${idx}`}
+          role="alert"
           className={`p-4 border-l-4 rounded shadow-lg ${getAlertColor(alert.alert_type)}`}
         >
           <div className="flex items-start">
-            <span className="text-2xl mr-3">{getAlertIcon(alert.alert_type)}</span>
+            <span className="text-2xl mr-3" aria-hidden="true">{getAlertIcon(alert.alert_type)}</span>
             <div className="flex-1">
               <p className="font-semibold text-sm">{alert.corridor_id}</p>
               <p className="text-sm mt-1">{alert.message}</p>
@@ -67,6 +65,7 @@ export default function AlertNotifications() {
             <button
               onClick={() => setAlerts((prev) => prev.filter((_, i) => i !== idx))}
               className="ml-2 text-lg opacity-50 hover:opacity-100"
+              aria-label="Dismiss alert"
             >
               ×
             </button>

@@ -9,10 +9,24 @@ import { TopAssetsTable } from "@/components/dashboard/TopAssetsTable";
 import { SettlementSpeedChart } from "@/components/dashboard/SettlementSpeedChart";
 import { WebSocketStatus } from "@/components/WebSocketStatus";
 import { DataRefreshIndicator } from "@/components/DataRefreshIndicator";
-import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
-import { useRealtimeAnchors } from "@/hooks/useRealtimeAnchors";
+import { useRealtimeCorridors, type CorridorUpdate, type HealthAlert } from "@/hooks/useRealtimeCorridors";
+import { useRealtimeAnchors, type AnchorUpdate } from "@/hooks/useRealtimeAnchors";
 import { useDataRefresh } from "@/hooks/useDataRefresh";
 import { logger } from "@/lib/logger";
+import { BookmarksDashboardWidget } from "@/components/BookmarksDashboardWidget";
+import {
+  Skeleton,
+  SkeletonChart,
+  SkeletonCorridorCard,
+  SkeletonTable
+} from "@/components/ui/Skeleton";
+import {
+  WidgetProvider,
+  WidgetGrid,
+  WidgetCustomizer,
+  CustomiseButton,
+  type WidgetDefinition,
+} from "@/components/DashboardWidgets";
 
 interface CorridorData {
   id: string;
@@ -96,6 +110,23 @@ export default function DashboardPage() {
   });
 
   // ── WebSocket connections for real-time updates ─────────────────────────
+  const onCorridorUpdate = useCallback((update: CorridorUpdate) => {
+    logger.debug("Received corridor update:", { update: JSON.stringify(update) });
+    markUpdated();
+    setData((prevData) => {
+      if (!prevData) return prevData;
+      const updatedData = { ...prevData };
+      if (update.success_rate !== undefined) {
+        updatedData.kpi.successRate.value = update.success_rate;
+      }
+      return updatedData;
+    });
+  }, [markUpdated]);
+
+  const onHealthAlert = useCallback((alert: HealthAlert) => {
+    logger.debug("Health alert:", { alert: JSON.stringify(alert) });
+  }, []);
+
   const {
     isConnected: corridorsConnected,
     isConnecting: corridorsConnecting,
@@ -103,29 +134,18 @@ export default function DashboardPage() {
     reconnect: reconnectCorridors,
   } = useRealtimeCorridors({
     enablePaymentStream: true,
-    onCorridorUpdate: (update) => {
-      logger.debug("Received corridor update:", { update: JSON.stringify(update) });
-      markUpdated();
-      setData((prevData) => {
-        if (!prevData) return prevData;
-        const updatedData = { ...prevData };
-        if (update.success_rate !== undefined) {
-          updatedData.kpi.successRate.value = update.success_rate;
-        }
-        return updatedData;
-      });
-    },
-    onHealthAlert: (alert) => {
-      logger.debug("Health alert:", { alert: JSON.stringify(alert) });
-    },
+    onCorridorUpdate,
+    onHealthAlert,
   });
+
+  const onAnchorUpdate = useCallback((update: AnchorUpdate) => {
+    logger.debug("Received anchor update:", { update: JSON.stringify(update) });
+    markUpdated();
+  }, [markUpdated]);
 
   const { isConnected: anchorsConnected, reconnect: reconnectAnchors } =
     useRealtimeAnchors({
-      onAnchorUpdate: (update) => {
-        logger.debug("Received anchor update:", { update: JSON.stringify(update) });
-        markUpdated();
-      },
+      onAnchorUpdate,
     });
 
   // Initial load on mount
@@ -149,11 +169,37 @@ export default function DashboardPage() {
     })();
   }, [fetchDashboard]);
 
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+
   if (loading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <div className="text-sm font-mono text-accent animate-pulse uppercase tracking-widest">
-          {t("loading")}
+      <div className="space-y-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-10 w-64" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-40" />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton className="h-32 w-full rounded-2xl" key={i} />
+          ))}
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-12">
+          <div className="lg:col-span-8 space-y-6">
+            <SkeletonChart height={300} />
+            <SkeletonTable rows={5} />
+          </div>
+          <div className="lg:col-span-4 space-y-6">
+            <SkeletonCorridorCard />
+            <SkeletonChart height={300} />
+          </div>
         </div>
       </div>
     );
@@ -180,69 +226,19 @@ export default function DashboardPage() {
     }).format(val);
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
-        <div>
-          <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
-            {t("intelligenceTerminal")}
-          </div>
-          <h2 className="text-4xl font-black tracking-tighter uppercase italic">
-            {t("networkOverview")}
-          </h2>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <WebSocketStatus
-            isConnected={corridorsConnected && anchorsConnected}
-            isConnecting={corridorsConnecting}
-            connectionAttempts={corridorAttempts}
-            onReconnect={() => {
-              reconnectCorridors();
-              reconnectAnchors();
-            }}
-          />
-          <DataRefreshIndicator
-            lastUpdated={lastUpdated}
-            secondsUntilRefresh={secondsUntilRefresh}
-            refreshIntervalSec={30}
-            isRefreshing={isRefreshing}
-            onRefresh={triggerRefresh}
-          />
-        </div>
-      </div>
+  // ── Widget definitions (#2109) ───────────────────────────────────────────
+  const WIDGET_DEFS: WidgetDefinition[] = [
+    { id: "liquidity-chart", title: "Liquidity Chart", description: "24-hour liquidity flow across corridors.", colSpan: "lg:col-span-8", minH: "min-h-[300px]", defaultVisible: true },
+    { id: "assets-table", title: "Top Assets", description: "Top performing assets by volume.", colSpan: "lg:col-span-8", minH: "min-h-[300px]", defaultVisible: true },
+    { id: "corridor-health", title: "Corridor Health", description: "Real-time status for active corridors.", colSpan: "lg:col-span-4", minH: "min-h-[300px]", defaultVisible: true },
+    { id: "settlement-speed", title: "Settlement Speed", description: "Average payment settlement times.", colSpan: "lg:col-span-4", minH: "min-h-[300px]", defaultVisible: true },
+  ];
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          label={t("paymentSuccessRate")}
-          value={`${data.kpi.successRate.value}%`}
-          trend={data.kpi.successRate.trend}
-          trendDirection={data.kpi.successRate.trendDirection}
-        />
-        <MetricCard
-          label={t("activeCorridors")}
-          value={data.kpi.activeCorridors.value}
-          trend={data.kpi.activeCorridors.trend}
-          trendDirection={data.kpi.activeCorridors.trendDirection}
-        />
-        <MetricCard
-          label={t("liquidityDepth")}
-          value={formatVolume(data.kpi.liquidityDepth.value)}
-          trend={data.kpi.liquidityDepth.trend}
-          trendDirection={data.kpi.liquidityDepth.trendDirection}
-        />
-        <MetricCard
-          label={t("avgSettlementSpeed")}
-          value={`${data.kpi.settlementSpeed.value}s`}
-          trend={Math.abs(data.kpi.settlementSpeed.trend)}
-          trendDirection={data.kpi.settlementSpeed.trendDirection}
-          inverse={true} // Lower is better
-        />
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-12">
-        <div className="lg:col-span-8 space-y-6">
-          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+  const renderWidget = (id: string) => {
+    switch (id) {
+      case "liquidity-chart":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
             {data.liquidity.length > 0 ? (
               <LiquidityChart data={data.liquidity} />
             ) : (
@@ -251,7 +247,10 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+        );
+      case "assets-table":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
             {data.assets.length > 0 ? (
               <TopAssetsTable assets={data.assets} />
             ) : (
@@ -260,9 +259,10 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-        </div>
-        <div className="lg:col-span-4 space-y-6">
-          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+        );
+      case "corridor-health":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
             {data.corridors.length > 0 ? (
               <CorridorHealth corridors={data.corridors} />
             ) : (
@@ -271,7 +271,10 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-          <div className="glass-card rounded-2xl p-1 transition-all duration-300 min-h-[300px] flex flex-col">
+        );
+      case "settlement-speed":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
             {data.settlement.length > 0 ? (
               <SettlementSpeedChart data={data.settlement} />
             ) : (
@@ -280,8 +283,89 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <WidgetProvider definitions={WIDGET_DEFS} storageKey="dashboard_widget_layout">
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+          <div>
+            <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+              {t("intelligenceTerminal")}
+            </div>
+            <h2 className="text-4xl font-black tracking-tighter uppercase italic">
+              {t("networkOverview")}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <CustomiseButton
+              onClick={() => setCustomizerOpen(true)}
+              activeCount={WIDGET_DEFS.length}
+              totalCount={WIDGET_DEFS.length}
+            />
+            <WebSocketStatus
+              isConnected={corridorsConnected && anchorsConnected}
+              isConnecting={corridorsConnecting}
+              connectionAttempts={corridorAttempts}
+              onReconnect={() => {
+                reconnectCorridors();
+                reconnectAnchors();
+              }}
+            />
+            <DataRefreshIndicator
+              lastUpdated={lastUpdated}
+              secondsUntilRefresh={secondsUntilRefresh}
+              refreshIntervalSec={30}
+              isRefreshing={isRefreshing}
+              onRefresh={triggerRefresh}
+            />
+          </div>
         </div>
+
+        {/* KPI Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            label={t("paymentSuccessRate")}
+            value={`${data.kpi.successRate.value}%`}
+            trend={data.kpi.successRate.trend}
+            trendDirection={data.kpi.successRate.trendDirection}
+          />
+          <MetricCard
+            label={t("activeCorridors")}
+            value={data.kpi.activeCorridors.value}
+            trend={data.kpi.activeCorridors.trend}
+            trendDirection={data.kpi.activeCorridors.trendDirection}
+          />
+          <MetricCard
+            label={t("liquidityDepth")}
+            value={formatVolume(data.kpi.liquidityDepth.value)}
+            trend={data.kpi.liquidityDepth.trend}
+            trendDirection={data.kpi.liquidityDepth.trendDirection}
+          />
+          <MetricCard
+            label={t("avgSettlementSpeed")}
+            value={`${data.kpi.settlementSpeed.value}s`}
+            trend={Math.abs(data.kpi.settlementSpeed.trend)}
+            trendDirection={data.kpi.settlementSpeed.trendDirection}
+            inverse={true}
+          />
+          <BookmarksDashboardWidget />
+        </div>
+
+        {/* Customizable widget grid (#2109) */}
+        <WidgetGrid definitions={WIDGET_DEFS} renderWidget={renderWidget} />
+
+        {/* Widget customizer modal */}
+        <WidgetCustomizer
+          definitions={WIDGET_DEFS}
+          isOpen={customizerOpen}
+          onClose={() => setCustomizerOpen(false)}
+        />
       </div>
-    </div>
+    </WidgetProvider>
   );
 }

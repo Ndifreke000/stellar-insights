@@ -1,3 +1,9 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines
+)]
+
 use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, HeaderValue},
@@ -9,8 +15,18 @@ use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::models::PaymentRecord;
+use crate::models::PaymentRow;
 use crate::state::AppState;
+
+/// Prefix any cell that begins with a formula-trigger character so spreadsheet
+/// applications treat it as literal text instead of executing it as a formula.
+fn sanitize_csv_field(value: String) -> String {
+    if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{value}")
+    } else {
+        value
+    }
+}
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -44,7 +60,7 @@ pub async fn export_corridors(
         .map_or(today - Duration::days(30), |d| d.date_naive());
     let end_date = params.end_date.map_or(today, |d| d.date_naive());
 
-    let corridors = app_state
+    let mut corridors = app_state
         .db
         .corridor_aggregates()
         .get_aggregated_corridor_metrics(start_date, end_date)
@@ -55,6 +71,10 @@ pub async fn export_corridors(
                 format!("Failed to fetch corridors for export: {e}"),
             )
         })?;
+
+    if let Some(corridor_id) = &params.corridor_id {
+        corridors.retain(|c| &c.corridor_key == corridor_id);
+    }
 
     match params.format.to_lowercase().as_str() {
         "csv" => {
@@ -76,11 +96,11 @@ pub async fn export_corridors(
 
             for m in corridors {
                 wtr.write_record(&[
-                    m.corridor_key,
-                    m.source_asset_code,
-                    m.source_asset_issuer,
-                    m.destination_asset_code,
-                    m.destination_asset_issuer,
+                    sanitize_csv_field(m.corridor_key),
+                    sanitize_csv_field(m.source_asset_code),
+                    sanitize_csv_field(m.source_asset_issuer),
+                    sanitize_csv_field(m.destination_asset_code),
+                    sanitize_csv_field(m.destination_asset_issuer),
                     format!("{:.2}", m.avg_success_rate),
                     m.total_transactions.to_string(),
                     m.successful_transactions.to_string(),
@@ -141,9 +161,9 @@ pub async fn export_corridors(
                 "Latest Date",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
+            for (i, h) in headers.iter().enumerate() {
                 worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
+                    .write_with_format(0, i as u16, *h, &header_format)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
             }
 
@@ -252,16 +272,16 @@ pub async fn export_anchors(
 
             for a in anchors {
                 wtr.write_record(&[
-                    a.id,
-                    a.name,
-                    a.stellar_account,
-                    a.home_domain.unwrap_or_default(),
+                    sanitize_csv_field(a.id),
+                    sanitize_csv_field(a.name),
+                    sanitize_csv_field(a.stellar_account),
+                    sanitize_csv_field(a.home_domain.unwrap_or_default()),
                     format!("{:.2}", a.reliability_score),
                     a.total_transactions.to_string(),
                     a.successful_transactions.to_string(),
                     a.failed_transactions.to_string(),
                     format!("{:.2}", a.total_volume_usd),
-                    a.status,
+                    sanitize_csv_field(a.status),
                     a.updated_at.to_rfc3339(),
                 ])
                 .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
@@ -317,9 +337,9 @@ pub async fn export_anchors(
                 "Last Updated",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
+            for (i, h) in headers.iter().enumerate() {
                 worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
+                    .write_with_format(0, i as u16, *h, &header_format)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
             }
 
@@ -401,15 +421,12 @@ pub async fn export_payments(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    // We need a way to fetch payments. Looking at models.rs, PaymentRecord exists.
-    // Let's assume there's a list_payments method or we can query it directly.
-    // Based on database.rs, it doesn't seem to have list_payments yet.
-    // I will implement a quick query here.
+    let start_date = params
+        .start_date
+        .unwrap_or_else(|| Utc::now() - Duration::days(30));
+    let end_date = params.end_date.unwrap_or_else(Utc::now);
 
-    let start_date = params.start_date.unwrap_or(Utc::now() - Duration::days(30));
-    let end_date = params.end_date.unwrap_or(Utc::now());
-
-    let payments = sqlx::query_as::<_, PaymentRecord>(
+    let payments = sqlx::query_as::<_, PaymentRow>(
         r"
         SELECT * FROM payments
         WHERE created_at BETWEEN $1 AND $2
@@ -445,14 +462,17 @@ pub async fn export_payments(
 
             for p in payments {
                 wtr.write_record(&[
-                    p.transaction_hash,
-                    p.source_account,
-                    p.destination_account,
-                    format!("{}:{}", p.source_asset_code, p.source_asset_issuer),
-                    format!(
+                    sanitize_csv_field(p.transaction_hash),
+                    sanitize_csv_field(p.source_account),
+                    sanitize_csv_field(p.destination_account),
+                    sanitize_csv_field(format!(
+                        "{}:{}",
+                        p.source_asset_code, p.source_asset_issuer
+                    )),
+                    sanitize_csv_field(format!(
                         "{}:{}",
                         p.destination_asset_code, p.destination_asset_issuer
-                    ),
+                    )),
                     p.amount.to_string(),
                     p.successful.to_string(),
                     p.created_at.to_rfc3339(),
@@ -507,9 +527,9 @@ pub async fn export_payments(
                 "Timestamp",
             ];
 
-            for (i, header_text) in headers.iter().enumerate() {
+            for (i, h) in headers.iter().enumerate() {
                 worksheet
-                    .write_with_format(0, i as u16, *header_text, &header_format)
+                    .write_with_format(0, i as u16, *h, &header_format)
                     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
             }
 

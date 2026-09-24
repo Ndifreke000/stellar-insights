@@ -1,6 +1,7 @@
 'use client';
 
 import { Anchor } from '@/types/anchor';
+import { sanitizeEmail, sanitizeText, sanitizeUrl } from '@/lib/sanitize';
 import { Building2, Globe, Mail, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import Image from 'next/image';
 
@@ -35,8 +36,12 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
     }
   };
 
-  const displayName = anchor.metadata?.organization_name || anchor.name;
-  const displayDba = anchor.metadata?.organization_dba;
+  const displayName = sanitizeText(anchor.metadata?.organization_name || anchor.name);
+  const displayDba = sanitizeText(anchor.metadata?.organization_dba);
+  const organizationDescription = sanitizeText(anchor.metadata?.organization_description);
+  const organizationUrl = sanitizeUrl(anchor.metadata?.organization_url);
+  const supportEmail = sanitizeEmail(anchor.metadata?.organization_support_email);
+  const stellarAccount = sanitizeText(anchor.stellar_account);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
@@ -83,9 +88,9 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
       </div>
 
       {/* Description */}
-      {anchor.metadata?.organization_description && (
+      {organizationDescription && (
         <p className="text-sm text-muted-foreground dark:text-gray-300 mb-4 line-clamp-2">
-          {anchor.metadata.organization_description}
+          {organizationDescription}
         </p>
       )}
 
@@ -127,7 +132,7 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
                 key={currency}
                 className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs rounded"
               >
-                {currency}
+                {sanitizeText(currency)}
               </span>
             ))}
             {anchor.metadata.supported_currencies.length > 5 && (
@@ -141,9 +146,9 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
 
       {/* Links */}
       <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-        {anchor.metadata?.organization_url && (
+        {organizationUrl && (
           <a
-            href={anchor.metadata.organization_url}
+            href={organizationUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-link-primary hover:underline"
@@ -152,9 +157,9 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
             Website
           </a>
         )}
-        {anchor.metadata?.organization_support_email && (
+        {supportEmail && (
           <a
-            href={`mailto:${anchor.metadata.organization_support_email}`}
+            href={`mailto:${supportEmail}`}
             className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-link-primary hover:underline"
           >
             <Mail className="w-4 h-4" />
@@ -167,7 +172,7 @@ export function AnchorCard({ anchor }: AnchorCardProps) {
       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <p className="text-xs text-muted-foreground dark:text-muted-foreground mb-1">Stellar Account</p>
         <p className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-          {anchor.stellar_account}
+          {stellarAccount}
         </p>
       </div>
     </div>

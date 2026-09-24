@@ -48,3 +48,108 @@ impl VaultConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn new_builds_config_with_correct_fields() {
+        let config = VaultConfig::new(
+            "https://vault.example.com".to_string(),
+            "s.token123".to_string(),
+            "stellar-app".to_string(),
+        );
+        assert_eq!(config.vault_addr, "https://vault.example.com");
+        assert_eq!(config.vault_token, "s.token123");
+        assert_eq!(config.db_role, "stellar-app");
+        assert!(config.vault_namespace.is_none());
+    }
+
+    #[test]
+    fn from_env_returns_error_when_vault_addr_missing() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::env::remove_var("VAULT_ADDR");
+        std::env::remove_var("VAULT_TOKEN");
+        std::env::remove_var("VAULT_NAMESPACE");
+        std::env::remove_var("DB_ROLE");
+
+        let result = VaultConfig::from_env();
+        assert!(result.is_err());
+        let err = match result {
+            Ok(_) => panic!("expected VAULT_ADDR error"),
+            Err(err) => err.to_string(),
+        };
+        assert!(err.contains("VAULT_ADDR"));
+    }
+
+    #[test]
+    fn from_env_returns_error_when_vault_token_missing() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::env::set_var("VAULT_ADDR", "https://vault.example.com");
+        std::env::remove_var("VAULT_TOKEN");
+        std::env::remove_var("VAULT_NAMESPACE");
+        std::env::remove_var("DB_ROLE");
+
+        let result = VaultConfig::from_env();
+        assert!(result.is_err());
+        let err = match result {
+            Ok(_) => panic!("expected VAULT_TOKEN error"),
+            Err(err) => err.to_string(),
+        };
+        assert!(err.contains("VAULT_TOKEN"));
+
+        std::env::remove_var("VAULT_ADDR");
+    }
+
+    #[test]
+    fn from_env_uses_default_db_role() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::env::set_var("VAULT_ADDR", "https://vault.example.com");
+        std::env::set_var("VAULT_TOKEN", "s.testtoken");
+        std::env::remove_var("VAULT_NAMESPACE");
+        std::env::remove_var("DB_ROLE");
+
+        let config = match VaultConfig::from_env() {
+            Ok(config) => config,
+            Err(err) => panic!("expected config from env, got {err}"),
+        };
+        assert_eq!(config.db_role, "stellar-app");
+        assert!(config.vault_namespace.is_none());
+
+        std::env::remove_var("VAULT_ADDR");
+        std::env::remove_var("VAULT_TOKEN");
+    }
+
+    #[test]
+    fn from_env_reads_optional_namespace_and_role() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::env::set_var("VAULT_ADDR", "https://vault.example.com");
+        std::env::set_var("VAULT_TOKEN", "s.testtoken");
+        std::env::set_var("VAULT_NAMESPACE", "admin");
+        std::env::set_var("DB_ROLE", "custom-role");
+
+        let config = match VaultConfig::from_env() {
+            Ok(config) => config,
+            Err(err) => panic!("expected config from env, got {err}"),
+        };
+        assert_eq!(config.vault_namespace, Some("admin".to_string()));
+        assert_eq!(config.db_role, "custom-role");
+
+        std::env::remove_var("VAULT_ADDR");
+        std::env::remove_var("VAULT_TOKEN");
+        std::env::remove_var("VAULT_NAMESPACE");
+        std::env::remove_var("DB_ROLE");
+    }
+}

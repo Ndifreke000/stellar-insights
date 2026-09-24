@@ -1,5 +1,9 @@
+import type { Dispatch, SetStateAction } from "react";
 import { formatAddressShort } from "@/lib/address";
-import { Activity, AlertCircle, CheckCircle } from "lucide-react";
+import { CheckCircle, AlertCircle, Activity } from "lucide-react";
+
+export type AnchorSortBy = "reliability" | "transactions" | "failure_rate";
+export type AnchorSortOrder = "asc" | "desc";
 import {
   Search,
   TrendingUp,
@@ -49,7 +53,7 @@ const SortIndicator = ({
   direction: "asc" | "desc";
 }) => {
   if (currentSort !== column) {
-    return <span className="text-muted-foreground w-4 h-4 inline-block text-center">↕</span>;
+    return <span className="text-muted-foreground w-4 h-4 inline-block text-center">⇕</span>;
   }
   return direction === "asc" ? (
     <span className="text-blue-500 w-4 h-4 inline-block text-center">↑</span>
@@ -62,6 +66,20 @@ const formatNumber = (num: number) => {
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
   return num.toString();
+};
+
+const getHealthStatusColor = (status: string) => {
+  const s = status.toLowerCase();
+  if (s === "green" || s === "healthy") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+  if (s === "yellow" || s === "degraded") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
+  return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+};
+
+const getHealthStatusIcon = (status: string) => {
+  const s = status.toLowerCase();
+  if (s === "green" || s === "healthy") return <CheckCircle className="w-3 h-3" />;
+  if (s === "yellow" || s === "degraded") return <Activity className="w-3 h-3" />;
+  return <AlertCircle className="w-3 h-3" />;
 };
 
 const Error = ({ error }: { error?: string }) => {
@@ -87,6 +105,14 @@ const SearchAndControls = ({
   setSortOrder,
   sortOrder,
   setIsExportOpen,
+}: {
+  searchTerm: string;
+  setSearchTerm: Dispatch<SetStateAction<string>>;
+  sortBy: AnchorSortBy;
+  setSortBy: Dispatch<SetStateAction<AnchorSortBy>>;
+  setSortOrder: Dispatch<SetStateAction<AnchorSortOrder>>;
+  sortOrder: AnchorSortOrder;
+  setIsExportOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
   return (
     <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -145,6 +171,8 @@ export {
   handleSort,
   SortIndicator,
   formatNumber,
+  getHealthStatusColor,
+  getHealthStatusIcon,
   Error,
   SearchAndControls,
 };

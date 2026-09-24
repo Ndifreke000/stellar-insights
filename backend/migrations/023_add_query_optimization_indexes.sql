@@ -32,9 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_anchors_status
 CREATE INDEX IF NOT EXISTS idx_assets_chain 
   ON assets(blockchain_chain);
 
--- Add index for dashboard queries
-CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp 
-  ON snapshots(snapshot_time DESC);
+-- Snapshots index is managed in migration 002
 
 -- Add index for pagination optimization
 CREATE INDEX IF NOT EXISTS idx_anchors_id_score 

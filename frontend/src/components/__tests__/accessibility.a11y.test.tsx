@@ -7,6 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
+import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -135,7 +137,7 @@ describe('Navigation Accessibility', () => {
       <div>
         <header>
           <nav aria-label="Main navigation">
-            <a href="/">Home</a>
+            <Link href="/">Home</Link>
           </nav>
         </header>
         <main id="main-content">
@@ -166,7 +168,7 @@ describe('Navigation Accessibility', () => {
 describe('Image Accessibility', () => {
   it('should have alt text for meaningful images', async () => {
     const { container } = render(
-      <img src="/test.jpg" alt="Description of image" />
+      <Image src="/test.jpg" alt="Description of image" width={100} height={100} />
     );
     
     const results = await axe(container);
@@ -175,7 +177,7 @@ describe('Image Accessibility', () => {
 
   it('should mark decorative images', async () => {
     const { container } = render(
-      <img src="/decorative.jpg" alt="" role="presentation" />
+      <Image src="/decorative.jpg" alt="" role="presentation" width={100} height={100} />
     );
     
     const results = await axe(container);

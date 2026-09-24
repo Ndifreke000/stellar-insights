@@ -35,11 +35,13 @@ export const PERFORMANCE_BUDGETS: Record<string, number> = {
   "web-vitals-ttfb": 800,
   "page-load-time": 3000,
   "api-response-time": 1000,
+  "api-latency": 1000,
 };
 
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 ).replace(/\/api\/?$/, "");
+/** Backend RUM summary endpoint (GET), read by the internal monitoring dashboard. */
 export const FRONTEND_METRICS_ENDPOINT = `${API_BASE_URL}/api/metrics/frontend`;
 
 class Monitoring {
@@ -142,6 +144,13 @@ class Monitoring {
   }
 
   /**
+   * Track API call latency
+   */
+  public trackApiLatency(endpoint: string, latencyMs: number) {
+    this.trackMetric("api-latency", latencyMs, { endpoint });
+  }
+
+  /**
    * Warn when a metric exceeds its performance budget
    */
   private checkBudget(metric: Metric) {
@@ -184,7 +193,8 @@ class Monitoring {
     this.persistLocally(metricsToFlush, errorsToFlush);
 
     try {
-      await fetch(FRONTEND_METRICS_ENDPOINT, {
+      // Same-origin Next.js route proxies to the backend (avoids CORS)
+      await fetch("/api/metrics/frontend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,

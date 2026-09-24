@@ -18,6 +18,7 @@ fn default_timestamp() -> DateTime<Utc> {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f32,
     pub confidence: f32,
@@ -81,6 +82,7 @@ pub async fn predict_payment_success(
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ModelStatusResponse {
     pub version: String,
     pub last_trained: String,
@@ -98,7 +100,7 @@ pub struct ModelStatusResponse {
     ),
     tag = "ML"
 )]
-pub async fn get_model_status(
+pub fn get_model_status(
     Extension(_ml_service): Extension<Arc<RwLock<MLService>>>,
 ) -> Json<ModelStatusResponse> {
     Json(ModelStatusResponse {

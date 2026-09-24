@@ -1,18 +1,46 @@
 #![no_std]
-extern crate std;
 
 mod errors;
 mod events;
 
-use analytics::AnalyticsContractClient;
 use errors::Error;
 use events::{
-    emit_governance_initialized, emit_proposal_created, emit_proposal_executed,
-    emit_proposal_finalized, emit_vote_cast,
+    emit_governance_initialized, emit_governance_param_changed, emit_governance_admin_changed,
+    emit_parameter_proposal_created, emit_proposal_created,
+    emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
 };
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String};
+use soroban_sdk::{contract, contractclient, contractimpl, contracttype, Address, BytesN, Env, String};
+
+/// Interface shared by any contract that governance can administer (e.g.
+/// analytics). Declared locally via `#[contractclient]` — rather than
+/// depending on e.g. the `analytics` crate directly and using its generated
+/// client — because `analytics` is also a `#[contract]`/cdylib in its own
+/// right; linking its crate into governance's wasm binary would duplicate
+/// every `#[contractimpl]`-exported symbol (get_contract_info, set_admin,
+/// etc.) between the two contracts. `#[contractclient]` generates a client
+/// purely from this trait's signature, with no dependency on analytics'
+/// implementation.
+#[contractclient(name = "GovernedContractClient")]
+pub trait GovernedContract {
+    fn set_admin_by_governance(env: Env, caller: Address, new_admin: Address);
+    fn set_paused_by_governance(env: Env, caller: Address, paused: bool);
+    fn upgrade(env: Env, new_wasm_hash: BytesN<32>);
+}
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// ~30 days at 5 s/ledger
+const LEDGERS_TO_EXTEND: u32 = 518_400;
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
+const INSTANCE_TTL_EXTEND: u32 = 518_400;
+/// ~7 days — TTL for vote records after a proposal is finalized.
+const VOTE_CLEANUP_TTL: u32 = 120_960;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
 
 // ============================================================================
 // Data Types
@@ -80,58 +108,13 @@ pub enum DataKey {
     Quorum,
     VotingPeriod,
     Version,
-    /// Legacy: all proposals in one map. Read-only fallback; new writes use `Proposal(id)`.
-    Proposals,
-    /// Legacy: all votes for a proposal in one map. Read-only fallback; new writes use `Vote`.
-    Votes(u64),
+    /// Per-proposal storage — replaces the unbounded Proposals map.
+    Proposal(u64),
+    /// Per-voter storage — replaces the unbounded Votes(id) map.
+    Vote(u64, Address),
     VoteTally(u64),
     /// Parameter-update action for a proposal (when present, proposal is parameter type).
     ParameterAction(u64),
-    /// One entry per proposal so reads/writes cost O(1) instead of O(proposals).
-    Proposal(u64),
-    /// One entry per (proposal, voter) so voting costs O(1) instead of O(voters).
-    Vote(u64, Address),
-}
-
-const EMPTY_TALLY: VoteTally = VoteTally {
-    votes_for: 0,
-    votes_against: 0,
-    votes_abstain: 0,
-    total_voters: 0,
-};
-
-fn load_proposal(env: &Env, proposal_id: u64) -> Result<Proposal, Error> {
-    let persistent = env.storage().persistent();
-    if let Some(p) = persistent.get(&DataKey::Proposal(proposal_id)) {
-        return Ok(p);
-    }
-    persistent
-        .get::<_, Map<u64, Proposal>>(&DataKey::Proposals)
-        .and_then(|m| m.get(proposal_id))
-        .ok_or(Error::ProposalNotFound)
-}
-
-fn save_proposal(env: &Env, proposal: &Proposal) {
-    env.storage()
-        .persistent()
-        .set(&DataKey::Proposal(proposal.id), proposal);
-}
-
-fn voted(env: &Env, proposal_id: u64, voter: &Address) -> bool {
-    let persistent = env.storage().persistent();
-    persistent.has(&DataKey::Vote(proposal_id, voter.clone()))
-        || persistent
-            .get::<_, Map<Address, VoteChoice>>(&DataKey::Votes(proposal_id))
-            .is_some_and(|m| m.contains_key(voter.clone()))
-}
-
-/// Allocate the next proposal id and read the voting period (instance storage, single access each).
-fn next_proposal(env: &Env) -> (u64, u64) {
-    let instance = env.storage().instance();
-    let count: u64 = instance.get(&DataKey::ProposalCount).unwrap_or(0) + 1;
-    let voting_period: u64 = instance.get(&DataKey::VotingPeriod).unwrap_or(0);
-    instance.set(&DataKey::ProposalCount, &count);
-    (count, voting_period)
 }
 
 // ============================================================================
@@ -176,12 +159,22 @@ impl GovernanceContract {
             return Err(errors::Error::AlreadyInitialized);
         }
 
-        let instance = env.storage().instance();
-        instance.set(&DataKey::Admin, &admin);
-        instance.set(&DataKey::ProposalCount, &0u64);
-        instance.set(&DataKey::Quorum, &quorum);
-        instance.set(&DataKey::VotingPeriod, &voting_period);
-        instance.set(&DataKey::Version, &String::from_str(&env, VERSION));
+        if quorum > 10_000 {
+            return Err(errors::Error::InvalidQuorum);
+        }
+
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::ProposalCount, &0u64);
+        env.storage().instance().set(&DataKey::Quorum, &quorum);
+        env.storage()
+            .instance()
+            .set(&DataKey::VotingPeriod, &voting_period);
+        env.storage()
+            .instance()
+            .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         emit_governance_initialized(&env, admin, quorum, voting_period);
 
@@ -219,9 +212,21 @@ impl GovernanceContract {
             return Err(Error::InvalidTitle);
         }
 
-        let (count, voting_period) = next_proposal(&env);
+        let voting_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+
         let now = env.ledger().timestamp();
         let voting_ends_at = now + voting_period;
+
+        let mut count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalCount)
+            .unwrap_or(0);
+        count += 1;
 
         let proposal = Proposal {
             id: count,
@@ -233,11 +238,38 @@ impl GovernanceContract {
             created_at: now,
             voting_ends_at,
         };
-        save_proposal(&env, &proposal);
 
+        // Store proposal under its own key — avoids re-serializing the entire map on every write.
         env.storage()
             .persistent()
-            .set(&DataKey::VoteTally(count), &EMPTY_TALLY);
+            .set(&DataKey::Proposal(count), &proposal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(count),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        // Initialize vote tally
+        let tally = VoteTally {
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            total_voters: 0,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::VoteTally(count), &tally);
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(count),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        // Update proposal count
+        env.storage()
+            .instance()
+            .set(&DataKey::ProposalCount, &count);
+        bump_instance(&env);
 
         emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
 
@@ -268,9 +300,21 @@ impl GovernanceContract {
             return Err(Error::InvalidTitle);
         }
 
-        let (count, voting_period) = next_proposal(&env);
+        let voting_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+
         let now = env.ledger().timestamp();
         let voting_ends_at = now + voting_period;
+
+        let mut count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalCount)
+            .unwrap_or(0);
+        count += 1;
 
         let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
         let proposal = Proposal {
@@ -284,13 +328,49 @@ impl GovernanceContract {
             voting_ends_at,
         };
 
-        save_proposal(&env, &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(count), &proposal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(count),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
-        let persistent = env.storage().persistent();
-        persistent.set(&DataKey::ParameterAction(count), &action);
-        persistent.set(&DataKey::VoteTally(count), &EMPTY_TALLY);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ParameterAction(count), &action);
+        env.storage().persistent().extend_ttl(
+            &DataKey::ParameterAction(count),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
-        emit_proposal_created(&env, count, caller, target_contract, voting_ends_at);
+        let tally = VoteTally {
+            votes_for: 0,
+            votes_against: 0,
+            votes_abstain: 0,
+            total_voters: 0,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::VoteTally(count), &tally);
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(count),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ProposalCount, &count);
+        bump_instance(&env);
+
+        let action_label = match &action {
+            ParameterAction::SetAdmin(_) => String::from_str(&env, "set_admin"),
+            ParameterAction::SetPaused(_) => String::from_str(&env, "set_paused"),
+        };
+        emit_parameter_proposal_created(&env, count, caller, target_contract, voting_ends_at, action_label);
 
         Ok(count)
     }
@@ -304,7 +384,12 @@ impl GovernanceContract {
     ) -> Result<(), Error> {
         voter.require_auth();
 
-        let proposal = load_proposal(&env, proposal_id)?;
+        // Get the proposal
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
 
         // Check proposal is still active
         if proposal.status != ProposalStatus::Active {
@@ -317,19 +402,31 @@ impl GovernanceContract {
             return Err(Error::VotingNotActive);
         }
 
-        // Check voter has not already voted
-        if voted(&env, proposal_id, &voter) {
+        // Check voter has not already voted — O(1) key lookup, no map load.
+        let vote_key = DataKey::Vote(proposal_id, voter.clone());
+        if env.storage().persistent().has(&vote_key) {
             return Err(Error::AlreadyVoted);
         }
 
-        // Record the vote (per-voter key: O(1) regardless of voter count)
-        let persistent = env.storage().persistent();
-        persistent.set(&DataKey::Vote(proposal_id, voter.clone()), &choice);
+        // Record the vote as a single persistent entry.
+        env.storage().persistent().set(&vote_key, &choice);
+        env.storage().persistent().extend_ttl(
+            &vote_key,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         // Update tally
-        let mut tally: VoteTally = persistent
+        let mut tally: VoteTally = env
+            .storage()
+            .persistent()
             .get(&DataKey::VoteTally(proposal_id))
-            .unwrap_or(EMPTY_TALLY);
+            .unwrap_or(VoteTally {
+                votes_for: 0,
+                votes_against: 0,
+                votes_abstain: 0,
+                total_voters: 0,
+            });
 
         match choice {
             VoteChoice::For => tally.votes_for += 1,
@@ -338,7 +435,14 @@ impl GovernanceContract {
         }
         tally.total_voters += 1;
 
-        persistent.set(&DataKey::VoteTally(proposal_id), &tally);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VoteTally(proposal_id), &tally);
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
 
         let choice_val = choice as u32;
         emit_vote_cast(&env, proposal_id, voter, choice_val);
@@ -348,8 +452,14 @@ impl GovernanceContract {
 
     /// Finalize a proposal after the voting period has ended.
     /// Anyone can call this function once the deadline passes.
-    pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
-        let mut proposal = load_proposal(&env, proposal_id)?;
+    /// `total_supply` is the circulating token supply used for basis-points quorum check:
+    /// quorum passes when `(votes_cast * 10_000) / total_supply >= quorum_bps`.
+    pub fn finalize(env: Env, proposal_id: u64, total_supply: u64) -> Result<ProposalStatus, Error> {
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
 
         // Must still be active
         if proposal.status != ProposalStatus::Active {
@@ -366,19 +476,46 @@ impl GovernanceContract {
             .storage()
             .persistent()
             .get(&DataKey::VoteTally(proposal_id))
-            .unwrap_or(EMPTY_TALLY);
+            .unwrap_or(VoteTally {
+                votes_for: 0,
+                votes_against: 0,
+                votes_abstain: 0,
+                total_voters: 0,
+            });
 
-        let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+        let quorum_bps: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
 
-        // Determine outcome: passes if quorum met AND more for than against
-        let new_status = if tally.total_voters >= quorum && tally.votes_for > tally.votes_against {
+        if total_supply == 0 {
+            return Err(Error::InvalidTotalSupply);
+        }
+
+        // Quorum check: (votes_cast * 10_000) / total_supply >= quorum_bps
+        // Using u128 for the intermediate product to avoid overflow.
+        let votes_bps =
+            (tally.total_voters as u128 * 10_000) / total_supply as u128;
+
+        let new_status = if votes_bps >= quorum_bps as u128 && tally.votes_for > tally.votes_against {
             ProposalStatus::Passed
         } else {
             ProposalStatus::Failed
         };
 
-        proposal.status = new_status;
-        save_proposal(&env, &proposal);
+        proposal.status = new_status.clone();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        // Tally is no longer needed for voting; shorten its TTL to 7 days.
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(proposal_id),
+            VOTE_CLEANUP_TTL,
+            VOTE_CLEANUP_TTL,
+        );
 
         let status_val = new_status.clone() as u32;
         emit_proposal_finalized(
@@ -408,7 +545,11 @@ impl GovernanceContract {
             return Err(Error::UnauthorizedCaller);
         }
 
-        let mut proposal = load_proposal(&env, proposal_id)?;
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
 
         if proposal.status != ProposalStatus::Passed {
             return Err(Error::ProposalNotPassed);
@@ -420,7 +561,7 @@ impl GovernanceContract {
             .get(&DataKey::ParameterAction(proposal_id))
         {
             let governance = env.current_contract_address();
-            let client = AnalyticsContractClient::new(&env, &proposal.target_contract);
+            let client = GovernedContractClient::new(&env, &proposal.target_contract);
             match action {
                 ParameterAction::SetAdmin(addr) => {
                     let _ = client.set_admin_by_governance(&governance, &addr);
@@ -429,15 +570,107 @@ impl GovernanceContract {
                     let _ = client.set_paused_by_governance(&governance, &p);
                 }
             }
+        } else {
+            // Upgrade proposal: invoke upgrade on the target contract with the approved wasm hash.
+            let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+            if proposal.new_wasm_hash != zero_hash {
+                let client = GovernedContractClient::new(&env, &proposal.target_contract);
+                let _ = client.upgrade(&proposal.new_wasm_hash);
+            }
         }
-        // Upgrade proposals: execution is off-chain (deploy new WASM); we only mark executed here.
 
         proposal.status = ProposalStatus::Executed;
-        save_proposal(&env, &proposal);
-        let target_contract = proposal.target_contract;
+        let target_contract = proposal.target_contract.clone();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
 
         emit_proposal_executed(&env, proposal_id, caller, target_contract);
 
+        Ok(())
+    }
+
+    // ========================================================================
+    // Admin Parameter Update Functions
+    // ========================================================================
+
+    /// Update the quorum threshold. Admin-only.
+    pub fn update_quorum(env: Env, caller: Address, new_quorum: u64) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        if new_quorum > 10_000 {
+            return Err(Error::InvalidQuorum);
+        }
+        let old_quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+        env.storage().instance().set(&DataKey::Quorum, &new_quorum);
+        bump_instance(&env);
+        emit_governance_param_changed(
+            &env,
+            String::from_str(&env, "quorum"),
+            old_quorum,
+            new_quorum,
+            caller,
+        );
+        Ok(())
+    }
+
+    /// Update the voting period. Admin-only.
+    pub fn update_voting_period(env: Env, caller: Address, new_period: u64) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        let old_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::VotingPeriod, &new_period);
+        bump_instance(&env);
+        emit_governance_param_changed(
+            &env,
+            String::from_str(&env, "voting_period"),
+            old_period,
+            new_period,
+            caller,
+        );
+        Ok(())
+    }
+
+    /// Transfer governance admin to a new address. Admin-only.
+    pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != old_admin {
+            return Err(Error::UnauthorizedCaller);
+        }
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        emit_governance_admin_changed(&env, old_admin, new_admin, caller);
         Ok(())
     }
 
@@ -447,20 +680,79 @@ impl GovernanceContract {
 
     /// Get a proposal by ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<Proposal, Error> {
-        load_proposal(&env, proposal_id)
+        let proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &DataKey::Proposal(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        Ok(proposal)
     }
 
     /// Get the vote tally for a proposal.
     pub fn get_tally(env: Env, proposal_id: u64) -> Result<VoteTally, Error> {
-        env.storage()
+        let tally = env
+            .storage()
             .persistent()
             .get(&DataKey::VoteTally(proposal_id))
-            .ok_or(Error::ProposalNotFound)
+            .ok_or(Error::ProposalNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &DataKey::VoteTally(proposal_id),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        Ok(tally)
     }
 
-    /// Check if an address has voted on a proposal.
+    /// Check if an address has voted on a proposal — O(1) key lookup.
     pub fn has_voted(env: Env, proposal_id: u64, voter: Address) -> bool {
-        voted(&env, proposal_id, &voter)
+        env.storage()
+            .persistent()
+            .has(&DataKey::Vote(proposal_id, voter))
+    }
+
+    /// Remove vote records and tally for a finalized/executed proposal to reclaim storage rent.
+    /// Caller provides the list of voters whose records should be removed.
+    /// Only callable after the proposal is no longer Active.
+    pub fn cleanup_proposal(
+        env: Env,
+        proposal_id: u64,
+        voters: soroban_sdk::Vec<Address>,
+    ) -> Result<u32, Error> {
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        if proposal.status == ProposalStatus::Active {
+            return Err(Error::VotingNotActive);
+        }
+
+        let mut removed: u32 = 0;
+        for voter in voters.iter() {
+            let key = DataKey::Vote(proposal_id, voter);
+            if env.storage().persistent().get::<DataKey, VoteChoice>(&key).is_some() {
+                env.storage().persistent().remove(&key);
+                removed += 1;
+            }
+        }
+
+        // Remove tally once votes are cleaned up
+        if env
+            .storage()
+            .persistent()
+            .get::<DataKey, VoteTally>(&DataKey::VoteTally(proposal_id))
+            .is_some()
+        {
+            env.storage().persistent().remove(&DataKey::VoteTally(proposal_id));
+        }
+
+        Ok(removed)
     }
 
     /// Get the parameter action for a proposal (if it is a parameter-update proposal).
@@ -472,11 +764,25 @@ impl GovernanceContract {
 
     /// Get contract configuration (admin, quorum, voting_period, proposal_count).
     pub fn get_config(env: Env) -> Result<(Address, u64, u64, u64), Error> {
-        let instance = env.storage().instance();
-        let admin: Address = instance.get(&DataKey::Admin).ok_or(Error::AdminNotSet)?;
-        let quorum: u64 = instance.get(&DataKey::Quorum).unwrap_or(0);
-        let voting_period: u64 = instance.get(&DataKey::VotingPeriod).unwrap_or(0);
-        let proposal_count: u64 = instance.get(&DataKey::ProposalCount).unwrap_or(0);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        let quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
+
+        let voting_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
+
+        let proposal_count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalCount)
+            .unwrap_or(0);
 
         Ok((admin, quorum, voting_period, proposal_count))
     }
@@ -492,14 +798,14 @@ impl GovernanceContract {
     /// Get public contract metadata
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
-            name: String::from_str(&env, "Stellar Insights Governance"),
+            name: String::from_str(&env, "PayRaider Governance"),
             version: String::from_str(&env, VERSION),
-            author: String::from_str(&env, "Stellar Insights Team"),
+            author: String::from_str(&env, "PayRaider Team"),
             description: String::from_str(
                 &env,
-                "Decentralized governance and voting contract for Stellar Insights",
+                "Decentralized governance and voting contract for PayRaider",
             ),
-            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            repository: String::from_str(&env, "https://github.com/payraider/contracts"),
             license: String::from_str(&env, "MIT"),
         }
     }
@@ -520,3 +826,6 @@ impl GovernanceContract {
 }
 
 mod test;
+
+#[cfg(test)]
+mod fuzz_tests;

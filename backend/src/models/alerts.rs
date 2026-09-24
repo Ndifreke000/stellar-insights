@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertRule {
     pub id: String,
     pub user_id: String,
@@ -19,6 +21,7 @@ pub struct AlertRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(utoipa::ToSchema)]
 pub struct AlertHistory {
     pub id: String,
     pub rule_id: String,
@@ -34,11 +37,24 @@ pub struct AlertHistory {
     pub triggered_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateAlertRuleRequest {
+    #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "metric_type must be between 1 and 64 characters"
+    ))]
     pub metric_type: String,
+    #[validate(length(
+        min = 1,
+        max = 32,
+        message = "condition must be between 1 and 32 characters"
+    ))]
     pub condition: String,
+    #[validate(range(min = 0.0, message = "threshold must be non-negative"))]
     pub threshold: f64,
     #[serde(default)]
     pub notify_email: bool,
@@ -48,11 +64,24 @@ pub struct CreateAlertRuleRequest {
     pub notify_in_app: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(utoipa::ToSchema)]
 pub struct UpdateAlertRuleRequest {
+    #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "metric_type must be between 1 and 64 characters"
+    ))]
     pub metric_type: Option<String>,
+    #[validate(length(
+        min = 1,
+        max = 32,
+        message = "condition must be between 1 and 32 characters"
+    ))]
     pub condition: Option<String>,
+    #[validate(range(min = 0.0, message = "threshold must be non-negative"))]
     pub threshold: Option<f64>,
     pub notify_email: Option<bool>,
     pub notify_webhook: Option<bool>,
@@ -61,6 +90,7 @@ pub struct UpdateAlertRuleRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct SnoozeAlertRequest {
     pub snoozed_until: DateTime<Utc>,
 }

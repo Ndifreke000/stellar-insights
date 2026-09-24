@@ -6,7 +6,7 @@
 use super::*;
 use analytics::AnalyticsContractClient;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Events as _, Ledger},
     Address, BytesN, Env, String,
 };
 
@@ -25,8 +25,8 @@ fn setup() -> (Env, GovernanceContractClient<'static>, Address) {
     let client = GovernanceContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    // quorum=2, voting_period=1000 seconds
-    client.initialize(&admin, &2, &1000);
+    // quorum_bps=2000 (20 %), voting_period=1000 seconds
+    client.initialize(&admin, &2000, &1000);
 
     (env, client, admin)
 }
@@ -38,11 +38,11 @@ fn test_initialization() {
     let client = GovernanceContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    client.initialize(&admin, &3, &500);
+    client.initialize(&admin, &3000, &500);
 
     let (config_admin, quorum, voting_period, proposal_count) = client.get_config();
     assert_eq!(config_admin, admin);
-    assert_eq!(quorum, 3);
+    assert_eq!(quorum, 3000);
     assert_eq!(voting_period, 500);
     assert_eq!(proposal_count, 0);
 }
@@ -156,7 +156,8 @@ fn test_finalize_passed() {
         li.timestamp = 2000;
     });
 
-    let status = client.finalize(&1);
+    // total_supply=10: (2 * 10_000) / 10 = 2000 >= quorum_bps(2000) → Passed
+    let status = client.finalize(&1, &10u64);
     assert_eq!(status, ProposalStatus::Passed);
 
     let proposal = client.get_proposal(&1);
@@ -181,7 +182,8 @@ fn test_finalize_failed_no_quorum() {
         li.timestamp = 2000;
     });
 
-    let status = client.finalize(&1);
+    // total_supply=10: (1 * 10_000) / 10 = 1000 < quorum_bps(2000) → Failed
+    let status = client.finalize(&1, &10u64);
     assert_eq!(status, ProposalStatus::Failed);
 }
 
@@ -205,7 +207,8 @@ fn test_finalize_failed_majority_against() {
         li.timestamp = 2000;
     });
 
-    let status = client.finalize(&1);
+    // total_supply=10: quorum met (2000 >= 2000) but votes_for == votes_against → Failed
+    let status = client.finalize(&1, &10u64);
     assert_eq!(status, ProposalStatus::Failed);
 }
 
@@ -215,7 +218,8 @@ fn test_mark_executed() {
 
     let title = String::from_str(&env, "Test proposal");
     let target = Address::generate(&env);
-    let wasm_hash = create_test_hash(&env, 11111);
+    // Zero wasm hash: `mark_executed` skips `upgrade` (no uploaded Wasm required).
+    let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
     client.create_proposal(&admin, &title, &target, &wasm_hash);
 
     // Get enough votes to pass
@@ -228,7 +232,7 @@ fn test_mark_executed() {
     env.ledger().with_mut(|li| {
         li.timestamp = 2000;
     });
-    client.finalize(&1);
+    client.finalize(&1, &10u64);
 
     // Admin marks as executed
     client.mark_executed(&admin, &1);
@@ -249,8 +253,8 @@ fn test_parameter_proposal_set_paused_execution() {
     let analytics_client = AnalyticsContractClient::new(&env, &analytics_id);
 
     let admin = Address::generate(&env);
-    analytics_client.initialize(&admin);
-    gov_client.initialize(&admin, &2, &1000);
+    analytics_client.initialize(&admin, &None);
+    gov_client.initialize(&admin, &2000, &1000);
 
     analytics_client.set_governance(&admin, &governance_id);
 
@@ -273,7 +277,7 @@ fn test_parameter_proposal_set_paused_execution() {
     env.ledger().with_mut(|li| {
         li.timestamp = 2000;
     });
-    let status = gov_client.finalize(&1);
+    let status = gov_client.finalize(&1, &10u64);
     assert_eq!(status, ProposalStatus::Passed);
 
     gov_client.mark_executed(&admin, &1);
@@ -309,4 +313,185 @@ fn test_create_parameter_proposal() {
         ParameterAction::SetAdmin(addr) => assert_eq!(addr, new_admin),
         _ => panic!("expected SetAdmin"),
     }
+}
+
+// ============================================================================
+// Quorum basis-points precision tests (issue #1611)
+// ============================================================================
+
+#[test]
+fn test_quorum_bps_precision_low_turnout_fails() {
+    // With integer-division quorum (old: votes/supply*100) a single vote out of
+    // 1 000 supply would compute 0 % and always pass a 0-% quorum threshold.
+    // The bps fix: (1 * 10_000) / 1_000 = 10 bps, which correctly fails a
+    // 100-bps (1 %) quorum.
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, GovernanceContract);
+    let client = GovernanceContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &100, &1000); // quorum_bps = 100 (1 %)
+
+    let title = String::from_str(&env, "Low-turnout proposal");
+    let target = Address::generate(&env);
+    let wasm_hash = create_test_hash(&env, 42);
+    client.create_proposal(&admin, &title, &target, &wasm_hash);
+
+    // 1 vote out of total_supply=1000 → (1 * 10_000) / 1_000 = 10 bps < 100 bps → Failed
+    let voter = Address::generate(&env);
+    client.vote(&voter, &1, &VoteChoice::For);
+
+    env.ledger().with_mut(|li| li.timestamp = 2000);
+    let status = client.finalize(&1, &1000u64);
+    assert_eq!(status, ProposalStatus::Failed, "1 vote out of 1000 supply must not meet 1% quorum");
+}
+
+#[test]
+fn test_quorum_bps_precision_exact_boundary() {
+    // 10 votes out of total_supply=100 → (10 * 10_000) / 100 = 1000 bps = quorum_bps → Passed
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, GovernanceContract);
+    let client = GovernanceContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &1000, &1000); // quorum_bps = 1000 (10 %)
+
+    let title = String::from_str(&env, "Exact-quorum proposal");
+    let target = Address::generate(&env);
+    let wasm_hash = create_test_hash(&env, 43);
+    client.create_proposal(&admin, &title, &target, &wasm_hash);
+
+    for _ in 0..10 {
+        let voter = Address::generate(&env);
+        client.vote(&voter, &1, &VoteChoice::For);
+    }
+
+    env.ledger().with_mut(|li| li.timestamp = 2000);
+    let status = client.finalize(&1, &100u64);
+    assert_eq!(status, ProposalStatus::Passed, "exactly 10% turnout must meet 10% quorum");
+}
+
+#[test]
+fn test_update_quorum_rejects_over_10000() {
+    let (_, client, admin) = setup();
+    let result = client.try_update_quorum(&admin, &10_001u64);
+    assert_eq!(result, Err(Ok(Error::InvalidQuorum)));
+}
+
+#[test]
+fn test_initialize_rejects_quorum_over_10000() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, GovernanceContract);
+    let client = GovernanceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let result = client.try_initialize(&admin, &10_001u64, &1000u64);
+    assert_eq!(result, Err(Ok(Error::InvalidQuorum)));
+}
+
+#[test]
+fn test_finalize_rejects_zero_total_supply() {
+    let (env, client, admin) = setup();
+    let title = String::from_str(&env, "Zero supply proposal");
+    let target = Address::generate(&env);
+    let wasm_hash = create_test_hash(&env, 99);
+    client.create_proposal(&admin, &title, &target, &wasm_hash);
+
+    env.ledger().with_mut(|li| li.timestamp = 2000);
+    let result = client.try_finalize(&1, &0u64);
+    assert_eq!(result, Err(Ok(Error::InvalidTotalSupply)));
+}
+
+// ============================================================================
+// Parameter Proposal Event Tests (Requirements 4.1, 4.2, 4.3)
+// ============================================================================
+
+#[test]
+fn test_create_parameter_proposal_emits_prm_prop_topic() {
+    let (env, client, admin) = setup();
+
+    let title = String::from_str(&env, "Set new admin");
+    let target = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.create_parameter_proposal(
+        &admin,
+        &title,
+        &target,
+        &ParameterAction::SetAdmin(new_admin.clone()),
+    );
+
+    use crate::events::{ParameterProposalCreatedEvent, PARAM_PROPOSAL};
+    use soroban_sdk::Symbol;
+
+    let events = env.events().all();
+    let raw = events.events();
+    let param_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == PARAM_PROPOSAL)
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(param_event.is_some(), "PRM_PROP event should be emitted for parameter proposals");
+
+    if let Some(e) = param_event {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            let val =
+                <soroban_sdk::Val as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                    &env, &v0.data,
+                )
+                .unwrap();
+            let data: ParameterProposalCreatedEvent = soroban_sdk::FromVal::from_val(&env, &val);
+            assert_eq!(data.proposal_id, 1);
+            assert_eq!(data.proposer, admin);
+            assert_eq!(data.target_contract, target);
+            assert_eq!(data.action_label, String::from_str(&env, "set_admin"));
+        }
+    }
+}
+
+#[test]
+fn test_create_proposal_upgrade_still_emits_prop_crt_topic() {
+    let (env, client, admin) = setup();
+
+    let title = String::from_str(&env, "Upgrade contract");
+    let target = Address::generate(&env);
+    let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.create_proposal(&admin, &title, &target, &wasm_hash);
+
+    use crate::events::PROPOSAL_CREATED;
+    use soroban_sdk::Symbol;
+
+    let events = env.events().all();
+    let raw = events.events();
+    let upgrade_event = raw.iter().find(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
+            if v0.topics.is_empty() {
+                return false;
+            }
+            <Symbol as soroban_sdk::TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+                &env,
+                &v0.topics[0],
+            )
+            .map(|t| t == PROPOSAL_CREATED)
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    });
+
+    assert!(upgrade_event.is_some(), "PROP_CRT event should still be emitted for upgrade proposals");
 }

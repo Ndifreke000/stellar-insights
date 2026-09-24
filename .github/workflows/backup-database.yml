@@ -1,0 +1,143 @@
+name: Database Backup Verification
+
+# Restores the Litestream replica of each environment's SQLite database from S3 and
+# verifies it (scripts/verify-backup.sh): replica freshness, PRAGMA integrity_check,
+# foreign keys, applied migrations and required tables. A weekly point-in-time
+# recovery test restores the state from 24 hours ago.
+#
+# Replaces the earlier RDS snapshot workflow; the backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md, docs/backup-system.md).
+#
+# Requires the `backup-verifier` role (terraform/global/backups.tf) and the
+# AWS_ACCOUNT_ID secret.
+
+on:
+  schedule:
+    - cron: '30 3 * * *'  # Daily restore test at 03:30 UTC
+    - cron: '0 4 * * 0'   # Weekly point-in-time recovery test, Sundays 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment replica to verify'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+          - mainnet
+      target:
+        description: '"latest" or an RFC 3339 timestamp for point-in-time recovery'
+        required: true
+        default: 'latest'
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  AWS_REGION: us-east-1
+  LITESTREAM_VERSION: v0.3.13
+
+jobs:
+  verify:
+    name: Verify ${{ github.event.inputs.environment || 'production' }} backup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve target
+        id: target
+        run: |
+          ENVIRONMENT="${{ github.event.inputs.environment || 'production' }}"
+          TARGET="${{ github.event.inputs.target || 'latest' }}"
+          if [ "${{ github.event.schedule }}" = "0 4 * * 0" ]; then
+            TARGET="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Install Litestream and sqlite3
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 jq
+          curl -fsSL -o litestream.deb \
+            "https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-amd64.deb"
+          sudo dpkg -i litestream.deb
+          litestream version
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-verifier
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Restore and verify
+        env:
+          LITESTREAM_REPLICA_URL: s3://payraider-db-backups-${{ secrets.AWS_ACCOUNT_ID }}/${{ steps.target.outputs.environment }}/payraider.db
+          BACKUP_REPORT_DIR: backup-verification
+          BACKUP_ALERT_WEBHOOK_URL: ${{ secrets.BACKUP_ALERT_WEBHOOK_URL }}
+        run: ./scripts/verify-backup.sh "${{ steps.target.outputs.target }}"
+
+      - name: Summarize
+        if: always()
+        run: |
+          if [ -f backup-verification/latest.json ]; then
+            {
+              echo "### Backup verification: ${{ steps.target.outputs.environment }} (${{ steps.target.outputs.target }})"
+              echo '```json'
+              cat backup-verification/latest.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-verification-${{ steps.target.outputs.environment }}
+          path: backup-verification/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Open or update tracking issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Backup] Database backup verification failing';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Restore verification of the **${{ steps.target.outputs.environment }}** Litestream replica failed (target: \`${{ steps.target.outputs.target }}\`).`,
+              '',
+              `- Workflow run: ${runUrl}`,
+              '- The report is attached to the run as an artifact and in the job summary.',
+              '- Restore procedures: docs/backup-system.md',
+            ].join('\n');
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'backup',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['backup', 'infrastructure'],
+              });
+            }

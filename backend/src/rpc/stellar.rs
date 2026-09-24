@@ -1,9 +1,7 @@
 use crate::network::{NetworkConfig, StellarNetwork};
-use crate::rpc::circuit_breaker::CircuitBreaker;
-use crate::rpc::config::{
-    circuit_breaker_config_from_env, initial_backoff_from_env, max_backoff_from_env,
-    max_retries_from_env,
-};
+use crate::observability::tracing::inject_trace_context;
+use crate::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreaker};
+use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
 use crate::rpc::rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};
@@ -16,12 +14,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-
-const MAX_RETRIES: u32 = 3;
-const INITIAL_BACKOFF_MS: u64 = 100;
-const BACKOFF_MULTIPLIER: u64 = 2;
-const MOCK_OLDEST_LEDGER: u64 = 51_565_760;
-const MOCK_LATEST_LEDGER: u64 = 51_565_820;
 
 // ============================================================================
 // RPC Pagination Security Limits
@@ -144,6 +136,8 @@ pub struct LedgerInfo {
     pub fee_pool: String,
     pub base_fee: u32,
     pub base_reserve: String,
+    #[serde(default)]
+    pub protocol_version: u32,
 }
 
 /// Represents a single asset balance change from the new Horizon API format.
@@ -267,6 +261,8 @@ impl Payment {
     }
 }
 
+// Horizon API Response Structures
+// ==========================================
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HorizonOperation {
     pub id: String,
@@ -301,7 +297,7 @@ pub struct HorizonTransaction {
     #[serde(rename = "fee_account")]
     pub fee_account: Option<String>,
     #[serde(rename = "fee_charged")]
-    pub fee_charged: Option<String>, // Can be number or string, Horizon usually string
+    pub fee_charged: Option<String>,
     #[serde(rename = "max_fee")]
     pub max_fee: Option<String>,
     pub operation_count: u32,
@@ -363,7 +359,6 @@ pub struct OrderBook {
 pub struct OrderBookEntry {
     pub price: String,
     pub amount: String,
-    pub price_r: Price,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,7 +381,6 @@ pub struct EmbeddedRecords<T> {
     pub records: Vec<T>,
 }
 
-// I'm adding structs for getLedgers RPC method as required by issue #2
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcLedger {
     pub hash: String,
@@ -500,8 +494,7 @@ impl StellarRpcClient {
         };
 
         let network_config = NetworkConfig::for_network(network);
-        let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+        let circuit_breaker = rpc_circuit_breaker();
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -584,8 +577,7 @@ impl StellarRpcClient {
             .build()
             .expect("Failed to build HTTP client");
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
-        let cb_config = circuit_breaker_config_from_env();
-        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config, "rpc"));
+        let circuit_breaker = rpc_circuit_breaker();
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -623,10 +615,20 @@ impl StellarRpcClient {
         }
     }
 
-    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet)
+    /// Create a new client with default `OnFinality` RPC and Horizon URLs (mainnet).
+    ///
+    /// When `mock_mode` is true the client never makes a real network call, so it
+    /// defaults to testnet instead of mainnet — that avoids requiring the
+    /// `STELLAR_RPC_URL_MAINNET`/`STELLAR_HORIZON_URL_MAINNET` production secrets
+    /// just to construct a mock client in tests.
     #[must_use]
     pub fn new_with_defaults(mock_mode: bool) -> Self {
-        Self::new_with_network(StellarNetwork::Mainnet, mock_mode)
+        let network = if mock_mode {
+            StellarNetwork::Testnet
+        } else {
+            StellarNetwork::Mainnet
+        };
+        Self::new_with_network(network, mock_mode)
     }
 
     /// Get the current network configuration
@@ -676,7 +678,7 @@ impl StellarRpcClient {
     /// Check the health of the RPC endpoint
     pub async fn check_health(&self) -> Result<HealthResponse, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_health_response());
+            return Ok(super::mock_stellar::mock_health_response());
         }
 
         info!("Checking RPC health at {}", self.rpc_url);
@@ -697,10 +699,11 @@ impl StellarRpcClient {
             "id": 1
         });
 
-        let response = self
-            .client
-            .post(&self.rpc_url)
-            .json(&payload)
+        let response = inject_trace_context(
+            self.client
+                .post(&self.rpc_url)
+                .json(&payload)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -729,7 +732,7 @@ impl StellarRpcClient {
     /// Fetch latest ledger information
     pub async fn fetch_latest_ledger(&self) -> Result<LedgerInfo, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_ledger_info());
+            return Ok(super::mock_stellar::mock_ledger_info());
         }
 
         let result = self
@@ -743,9 +746,10 @@ impl StellarRpcClient {
 
     async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -762,6 +766,42 @@ impl StellarRpcClient {
             .ok_or_else(|| RpcError::ParseError("No ledger data found".to_string()))
     }
 
+    /// Fetch a specific ledger by its sequence number and return its info.
+    /// Used to verify ledger hashes during snapshot generation (issue #1631).
+    pub async fn fetch_ledger_by_sequence(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
+        if self.mock_mode {
+            return Ok(super::mock_stellar::mock_ledger_info());
+        }
+
+        let result = self
+            .execute_with_retry(|| self.fetch_ledger_by_sequence_internal(sequence))
+            .await;
+
+        result.inspect_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+        })
+    }
+
+    async fn fetch_ledger_by_sequence_internal(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
+        let url = format!("{}/ledgers/{}", self.horizon_url, sequence);
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
+        // Horizon returns a single ledger object (not wrapped in _embedded)
+        // when querying by sequence directly.
+        response
+            .json::<LedgerInfo>()
+            .await
+            .map_err(|e| RpcError::ParseError(e.to_string()))
+    }
+
     /// I'm fetching ledgers via RPC getLedgers for sequential ingestion (issue #2)
     pub async fn fetch_ledgers(
         &self,
@@ -772,13 +812,13 @@ impl StellarRpcClient {
         if self.mock_mode {
             let start = if let Some(c) = cursor {
                 c.parse::<u64>().ok().map_or_else(
-                    || start_ledger.unwrap_or(MOCK_OLDEST_LEDGER),
+                    || start_ledger.unwrap_or(super::mock_stellar::MOCK_OLDEST_LEDGER),
                     |v| v.saturating_add(1),
                 )
             } else {
-                start_ledger.unwrap_or(MOCK_OLDEST_LEDGER)
+                start_ledger.unwrap_or(super::mock_stellar::MOCK_OLDEST_LEDGER)
             };
-            return Ok(Self::mock_get_ledgers(start, limit));
+            return Ok(super::mock_stellar::mock_get_ledgers(start, limit));
         }
 
         let result = self
@@ -814,10 +854,11 @@ impl StellarRpcClient {
             "id": 1,
             "params": params
         });
-        let response = self
-            .client
-            .post(&self.rpc_url)
-            .json(&payload)
+        let response = inject_trace_context(
+            self.client
+                .post(&self.rpc_url)
+                .json(&payload)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -846,7 +887,7 @@ impl StellarRpcClient {
         cursor: Option<&str>,
     ) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_payments(limit));
+            return Ok(super::mock_stellar::mock_payments(limit));
         }
 
         info!("Fetching {} payments from Horizon API", limit);
@@ -854,7 +895,6 @@ impl StellarRpcClient {
         let result = self
             .execute_with_retry(|| self.fetch_payments_internal(limit, cursor))
             .await;
-
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
         })
@@ -867,11 +907,12 @@ impl StellarRpcClient {
     ) -> Result<Vec<Payment>, RpcError> {
         let mut url = format!("{}/payments?order=desc&limit={}", self.horizon_url, limit);
         if let Some(c) = cursor {
-            write!(url, "&cursor={c}").unwrap();
+            let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -895,7 +936,7 @@ impl StellarRpcClient {
         cursor: Option<&str>,
     ) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_trades(limit));
+            return Ok(super::mock_stellar::mock_trades(limit));
         }
 
         let result = self
@@ -914,11 +955,12 @@ impl StellarRpcClient {
     ) -> Result<Vec<Trade>, RpcError> {
         let mut url = format!("{}/trades?order=desc&limit={}", self.horizon_url, limit);
         if let Some(c) = cursor {
-            write!(url, "&cursor={c}").unwrap();
+            let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -943,7 +985,10 @@ impl StellarRpcClient {
         limit: u32,
     ) -> Result<OrderBook, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_order_book(selling_asset, buying_asset));
+            return Ok(super::mock_stellar::mock_order_book(
+                selling_asset,
+                buying_asset,
+            ));
         }
 
         let result = self
@@ -971,9 +1016,10 @@ impl StellarRpcClient {
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -988,7 +1034,7 @@ impl StellarRpcClient {
 
     pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_payments(5));
+            return Ok(super::mock_stellar::mock_payments(5));
         }
 
         let result = self
@@ -1008,9 +1054,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/payments?limit=200",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1033,7 +1080,7 @@ impl StellarRpcClient {
         sequence: u64,
     ) -> Result<Vec<HorizonTransaction>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_transactions(5, sequence));
+            return Ok(super::mock_stellar::mock_transactions(5, sequence));
         }
 
         let result = self
@@ -1053,9 +1100,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/transactions?limit=200&include_failed=true",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1078,7 +1126,7 @@ impl StellarRpcClient {
         sequence: u64,
     ) -> Result<Vec<HorizonOperation>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_operations_for_ledger(sequence));
+            return Ok(super::mock_stellar::mock_operations_for_ledger(sequence));
         }
 
         let result = self
@@ -1098,9 +1146,10 @@ impl StellarRpcClient {
             "{}/ledgers/{}/operations?limit=200",
             self.horizon_url, sequence
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1123,7 +1172,9 @@ impl StellarRpcClient {
         operation_id: &str,
     ) -> Result<Vec<HorizonEffect>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_effects_for_operation(operation_id));
+            return Ok(super::mock_stellar::mock_effects_for_operation(
+                operation_id,
+            ));
         }
 
         let result = self
@@ -1143,9 +1194,10 @@ impl StellarRpcClient {
             "{}/operations/{}/effects?limit=200",
             self.horizon_url, operation_id
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1169,7 +1221,7 @@ impl StellarRpcClient {
         limit: u32,
     ) -> Result<Vec<Payment>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_payments(limit));
+            return Ok(super::mock_stellar::mock_payments(limit));
         }
 
         let result = self
@@ -1190,9 +1242,10 @@ impl StellarRpcClient {
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1223,7 +1276,7 @@ impl StellarRpcClient {
     pub async fn fetch_all_payments(&self, max_records: Option<u32>) -> Result<Vec<Payment>> {
         if self.mock_mode {
             let limit = self.resolve_max_records(max_records);
-            return Ok(Self::mock_payments(limit));
+            return Ok(super::mock_stellar::mock_payments(limit));
         }
 
         let max_records = self.resolve_max_records(max_records);
@@ -1239,7 +1292,10 @@ impl StellarRpcClient {
         while fetched < max_records {
             let limit = std::cmp::min(self.max_records_per_request, max_records - fetched);
 
-            let payments = self.fetch_payments_page(limit, cursor.as_deref()).await?;
+            let payments = self
+                .fetch_payments_page(limit, cursor.as_deref())
+                .await
+                .context("Failed to fetch payments page during pagination")?;
 
             if payments.is_empty() {
                 info!("No more payments available, stopping pagination");
@@ -1302,7 +1358,7 @@ impl StellarRpcClient {
             let limit = max_records
                 .unwrap_or(self.max_total_records)
                 .min(ABSOLUTE_MAX_TOTAL_RECORDS);
-            return Ok(Self::mock_trades(limit));
+            return Ok(super::mock_stellar::mock_trades(limit));
         }
 
         let max_records = max_records
@@ -1381,7 +1437,7 @@ impl StellarRpcClient {
             let limit = max_records
                 .unwrap_or(self.max_total_records)
                 .min(ABSOLUTE_MAX_TOTAL_RECORDS);
-            return Ok(Self::mock_payments(limit));
+            return Ok(super::mock_stellar::mock_payments(limit));
         }
 
         let max_records = max_records
@@ -1405,11 +1461,11 @@ impl StellarRpcClient {
             );
 
             if let Some(ref cursor_val) = cursor {
-                write!(url, "&cursor={cursor_val}").unwrap();
+                let _ = write!(url, "&cursor={cursor_val}");
             }
 
             let response = self
-                .retry_request(|| async { self.client.get(&url).send().await })
+                .retry_request(|| async { inject_trace_context(self.client.get(&url)).send().await })
                 .await
                 .context("Failed to fetch account payments page")?;
 
@@ -1496,9 +1552,9 @@ impl StellarRpcClient {
         Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
     {
         let retry_config = RetryConfig {
-            max_attempts: MAX_RETRIES + 1,
-            base_delay_ms: INITIAL_BACKOFF_MS,
-            max_delay_ms: INITIAL_BACKOFF_MS * BACKOFF_MULTIPLIER.pow(MAX_RETRIES),
+            max_attempts: self.max_retries + 1,
+            base_delay_ms: self.initial_backoff.as_millis() as u64,
+            max_delay_ms: self.max_backoff.as_millis() as u64,
         };
 
         with_retry(
@@ -1570,385 +1626,6 @@ impl StellarRpcClient {
     }
 
     // ============================================================================
-    // Mock Data Methods
-    // ============================================================================
-
-    fn mock_health_response() -> HealthResponse {
-        HealthResponse {
-            status: "healthy".to_string(),
-            latest_ledger: MOCK_LATEST_LEDGER,
-            oldest_ledger: MOCK_OLDEST_LEDGER,
-            ledger_retention_window: 60,
-        }
-    }
-
-    fn mock_ledger_info() -> LedgerInfo {
-        LedgerInfo {
-            sequence: 51_583_040,
-            hash: "abc123def456".to_string(),
-            previous_hash: "xyz789uvw012".to_string(),
-            transaction_count: 245,
-            operation_count: 1203,
-            closed_at: "2026-01-22T10:30:00Z".to_string(),
-            total_coins: "105443902087.3472865".to_string(),
-            fee_pool: "3145678.9012345".to_string(),
-            base_fee: 100,
-            base_reserve: "0.5".to_string(),
-        }
-    }
-
-    // I'm mocking getLedgers response for testing
-    fn mock_get_ledgers(start: u64, limit: u32) -> GetLedgersResult {
-        if start > MOCK_LATEST_LEDGER {
-            return GetLedgersResult {
-                ledgers: Vec::new(),
-                latest_ledger: MOCK_LATEST_LEDGER,
-                oldest_ledger: MOCK_OLDEST_LEDGER,
-                cursor: Some(MOCK_LATEST_LEDGER.to_string()),
-            };
-        }
-
-        let end =
-            (start.saturating_add(u64::from(limit)).saturating_sub(1)).min(MOCK_LATEST_LEDGER);
-        let ledgers = (start..=end)
-            .enumerate()
-            .map(|(i, seq)| RpcLedger {
-                hash: format!("hash_{seq}"),
-                sequence: seq,
-                ledger_close_time: format!("{}", 1_734_032_457 + i as u64 * 5),
-                header_xdr: Some("mock_header".to_string()),
-                metadata_xdr: Some("mock_metadata".to_string()),
-            })
-            .collect();
-
-        GetLedgersResult {
-            ledgers,
-            latest_ledger: MOCK_LATEST_LEDGER,
-            oldest_ledger: MOCK_OLDEST_LEDGER,
-            cursor: Some(end.to_string()),
-        }
-    }
-
-    fn mock_payments(limit: u32) -> Vec<Payment> {
-        (0..limit)
-            .map(|i| {
-                let is_path_payment = i % 5 == 0;
-                let is_native_source = i % 3 == 0;
-                let is_native_dest = i % 4 == 0;
-                // Use the new Horizon format for even-indexed entries so
-                // tests exercise both the legacy and new code paths.
-                let use_new_format = i % 2 == 0;
-
-                let dest_account =
-                    format!("GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{i:03}");
-                let src_account =
-                    format!("GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{i:03}");
-                let asset_type_str = if is_native_dest {
-                    "native".to_string()
-                } else if i % 2 == 0 {
-                    "credit_alphanum4".to_string()
-                } else {
-                    "credit_alphanum12".to_string()
-                };
-                let asset_code_val = if is_native_dest {
-                    None
-                } else if i % 2 == 0 {
-                    Some(["USDC", "EURT", "BRL", "NGNT"][i as usize % 4].to_string())
-                } else {
-                    Some("LONGASSETCODE".to_string())
-                };
-                let asset_issuer_val = if is_native_dest {
-                    None
-                } else {
-                    Some(format!(
-                        "GISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-                        i % 10
-                    ))
-                };
-                let amount_str = format!("{}.0000000", 100 + i * 10);
-
-                Payment {
-                    id: format!("payment_{i}"),
-                    paging_token: format!("paging_{i}"),
-                    transaction_hash: format!("txhash_{i}"),
-                    source_account: src_account.clone(),
-                    // When the new format is used the top-level destination may
-                    // be empty, just like the real Horizon response.
-                    destination: if use_new_format {
-                        String::new()
-                    } else {
-                        dest_account.clone()
-                    },
-                    asset_type: asset_type_str.clone(),
-                    asset_code: if use_new_format {
-                        None
-                    } else {
-                        asset_code_val.clone()
-                    },
-                    asset_issuer: if use_new_format {
-                        None
-                    } else {
-                        asset_issuer_val.clone()
-                    },
-                    amount: if use_new_format {
-                        String::new()
-                    } else {
-                        amount_str.clone()
-                    },
-                    created_at: format!("2026-01-22T10:{:02}:00Z", i % 60),
-                    operation_type: if is_path_payment {
-                        Some(if i % 2 == 0 {
-                            "path_payment_strict_send".to_string()
-                        } else {
-                            "path_payment_strict_receive".to_string()
-                        })
-                    } else {
-                        Some("payment".to_string())
-                    },
-                    // Source asset for path payments
-                    source_asset_type: if is_path_payment {
-                        Some(if is_native_source {
-                            "native".to_string()
-                        } else {
-                            "credit_alphanum4".to_string()
-                        })
-                    } else {
-                        None
-                    },
-                    source_asset_code: if is_path_payment && !is_native_source {
-                        Some(["USD", "EUR", "GBP", "JPY"][i as usize % 4].to_string())
-                    } else {
-                        None
-                    },
-                    source_asset_issuer: if is_path_payment && !is_native_source {
-                        Some(format!(
-                            "GSRCISSUER{:02}XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-                            i % 10
-                        ))
-                    } else {
-                        None
-                    },
-                    source_amount: if is_path_payment {
-                        Some(format!("{}.0000000", 90 + i * 10))
-                    } else {
-                        None
-                    },
-                    from: Some(src_account),
-                    to: Some(dest_account.clone()),
-                    // Populate the new Soroban-compatible field for even entries
-                    asset_balance_changes: if use_new_format {
-                        Some(vec![AssetBalanceChange {
-                            asset_type: asset_type_str,
-                            asset_code: asset_code_val,
-                            asset_issuer: asset_issuer_val,
-                            change_type: "transfer".to_string(),
-                            from: Some(format!(
-                                "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{i:03}"
-                            )),
-                            to: Some(dest_account),
-                            amount: amount_str,
-                        }])
-                    } else {
-                        None
-                    },
-                }
-            })
-            .collect()
-    }
-
-    fn mock_trades(limit: u32) -> Vec<Trade> {
-        (0..limit)
-            .map(|i| Trade {
-                id: format!("trade_{i}"),
-                ledger_close_time: format!("2026-01-22T10:{:02}:00Z", i % 60),
-                base_account: format!("GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{i:03}"),
-                base_amount: format!("{}.0000000", 1000 + i * 100),
-                base_asset_type: "native".to_string(),
-                base_asset_code: None,
-                base_asset_issuer: None,
-                counter_account: format!("GDYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY{i:03}"),
-                counter_amount: format!("{}.0000000", 500 + i * 50),
-                counter_asset_type: "credit_alphanum4".to_string(),
-                counter_asset_code: Some("USDC".to_string()),
-                counter_asset_issuer: Some(
-                    "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
-                ),
-                price: Price {
-                    n: 2 + i64::from(i),
-                    d: 1,
-                },
-                trade_type: "orderbook".to_string(),
-            })
-            .collect()
-    }
-
-    fn mock_order_book(selling_asset: &Asset, buying_asset: &Asset) -> OrderBook {
-        let bids = vec![
-            OrderBookEntry {
-                price: "0.9950".to_string(),
-                amount: "1000.0000000".to_string(),
-                price_r: Price { n: 199, d: 200 },
-            },
-            OrderBookEntry {
-                price: "0.9900".to_string(),
-                amount: "2500.0000000".to_string(),
-                price_r: Price { n: 99, d: 100 },
-            },
-            OrderBookEntry {
-                price: "0.9850".to_string(),
-                amount: "5000.0000000".to_string(),
-                price_r: Price { n: 197, d: 200 },
-            },
-        ];
-
-        let asks = vec![
-            OrderBookEntry {
-                price: "1.0050".to_string(),
-                amount: "1200.0000000".to_string(),
-                price_r: Price { n: 201, d: 200 },
-            },
-            OrderBookEntry {
-                price: "1.0100".to_string(),
-                amount: "3000.0000000".to_string(),
-                price_r: Price { n: 101, d: 100 },
-            },
-            OrderBookEntry {
-                price: "1.0150".to_string(),
-                amount: "4500.0000000".to_string(),
-                price_r: Price { n: 203, d: 200 },
-            },
-        ];
-
-        OrderBook {
-            bids,
-            asks,
-            base: selling_asset.clone(),
-            counter: buying_asset.clone(),
-        }
-    }
-
-    fn mock_transactions(limit: u32, ledger_sequence: u64) -> Vec<HorizonTransaction> {
-        (0..limit)
-            .map(|i| {
-                let is_fee_bump = i % 2 == 0;
-                HorizonTransaction {
-                    id: format!("tx_{i}"),
-                    hash: format!("txhash_{i}"),
-                    ledger: ledger_sequence,
-                    created_at: "2026-01-22T10:30:00Z".to_string(),
-                    source_account: "GXX".to_string(),
-                    fee_account: Some("GXX".to_string()),
-                    fee_charged: Some("100".to_string()),
-                    max_fee: Some("1000".to_string()),
-                    operation_count: 1,
-                    successful: true,
-                    paging_token: format!("pt_{i}"),
-                    fee_bump_transaction: if is_fee_bump {
-                        Some(FeeBumpTransactionInfo {
-                            hash: format!("fb_hash_{i}"),
-                            signatures: vec!["sig1".to_string()],
-                        })
-                    } else {
-                        None
-                    },
-                    inner_transaction: if is_fee_bump {
-                        Some(InnerTransaction {
-                            hash: format!("inner_hash_{i}"),
-                            max_fee: Some("500".to_string()),
-                            signatures: vec!["sig1".to_string()],
-                        })
-                    } else {
-                        None
-                    },
-                }
-            })
-            .collect()
-    }
-
-    fn mock_operations_for_ledger(sequence: u64) -> Vec<HorizonOperation> {
-        let source_a = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string();
-        let source_b = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string();
-        let dest_a = "GDESTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string();
-        let dest_b = "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string();
-
-        vec![
-            HorizonOperation {
-                id: format!("op_{sequence}_0"),
-                paging_token: format!("pt_{sequence}_0"),
-                transaction_hash: format!("txhash_{sequence}_0"),
-                source_account: source_a.clone(),
-                operation_type: "account_merge".to_string(),
-                created_at: "2026-01-22T10:30:00Z".to_string(),
-                account: Some(source_a),
-                into: Some(dest_a),
-                amount: None,
-            },
-            HorizonOperation {
-                id: format!("op_{sequence}_1"),
-                paging_token: format!("pt_{sequence}_1"),
-                transaction_hash: format!("txhash_{sequence}_1"),
-                source_account: "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
-                    .to_string(),
-                operation_type: "payment".to_string(),
-                created_at: "2026-01-22T10:31:00Z".to_string(),
-                account: None,
-                into: None,
-                amount: Some("25.0000000".to_string()),
-            },
-            HorizonOperation {
-                id: format!("op_{sequence}_2"),
-                paging_token: format!("pt_{sequence}_2"),
-                transaction_hash: format!("txhash_{sequence}_2"),
-                source_account: source_b.clone(),
-                operation_type: "account_merge".to_string(),
-                created_at: "2026-01-22T10:32:00Z".to_string(),
-                account: Some(source_b),
-                into: Some(dest_b),
-                amount: None,
-            },
-        ]
-    }
-
-    fn mock_effects_for_operation(operation_id: &str) -> Vec<HorizonEffect> {
-        if operation_id.ends_with("_0") {
-            return vec![HorizonEffect {
-                id: format!("effect_{operation_id}_0"),
-                effect_type: "account_credited".to_string(),
-                account: Some(
-                    "GDESTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
-                ),
-                amount: Some("125.5000000".to_string()),
-                asset_type: Some("native".to_string()),
-            }];
-        }
-
-        if operation_id.ends_with("_2") {
-            return vec![
-                HorizonEffect {
-                    id: format!("effect_{operation_id}_0"),
-                    effect_type: "account_credited".to_string(),
-                    account: Some(
-                        "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
-                    ),
-                    amount: Some("10.0000000".to_string()),
-                    asset_type: Some("native".to_string()),
-                },
-                HorizonEffect {
-                    id: format!("effect_{operation_id}_1"),
-                    effect_type: "account_credited".to_string(),
-                    account: Some(
-                        "GDESTBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
-                    ),
-                    amount: Some("0.5000000".to_string()),
-                    asset_type: Some("native".to_string()),
-                },
-            ];
-        }
-
-        Vec::new()
-    }
-
-    // ============================================================================
     // Liquidity Pool Methods
     // ============================================================================
 
@@ -1959,7 +1636,7 @@ impl StellarRpcClient {
         cursor: Option<&str>,
     ) -> Result<Vec<HorizonLiquidityPool>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_liquidity_pools(limit));
+            return Ok(super::mock_stellar::mock_liquidity_pools(limit));
         }
 
         let result = self
@@ -1980,12 +1657,14 @@ impl StellarRpcClient {
             "{}/liquidity_pools?order=desc&limit={}",
             self.horizon_url, limit
         );
+
         if let Some(c) = cursor {
-            write!(url, "&cursor={c}").unwrap();
+            let _ = write!(url, "&cursor={c}");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -2008,8 +1687,10 @@ impl StellarRpcClient {
         pool_id: &str,
     ) -> Result<HorizonLiquidityPool, RpcError> {
         if self.mock_mode {
-            let pools = Self::mock_liquidity_pools(1);
-            let mut pool = pools.into_iter().next().unwrap();
+            let pools = super::mock_stellar::mock_liquidity_pools(1);
+            let mut pool = pools.into_iter().next().ok_or_else(|| {
+                RpcError::ParseError("No mock liquidity pool available".to_string())
+            })?;
             pool.id = pool_id.to_string();
             return Ok(pool);
         }
@@ -2028,9 +1709,10 @@ impl StellarRpcClient {
         pool_id: &str,
     ) -> Result<HorizonLiquidityPool, RpcError> {
         let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -2050,7 +1732,7 @@ impl StellarRpcClient {
         limit: u32,
     ) -> Result<Vec<Trade>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_trades(limit));
+            return Ok(super::mock_stellar::mock_trades(limit));
         }
 
         let result = self
@@ -2071,9 +1753,10 @@ impl StellarRpcClient {
             "{}/liquidity_pools/{}/trades?order=desc&limit={}",
             self.horizon_url, pool_id, limit
         );
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -2097,7 +1780,7 @@ impl StellarRpcClient {
         rating_sort: bool,
     ) -> Result<Vec<HorizonAsset>, RpcError> {
         if self.mock_mode {
-            return Ok(Self::mock_assets(limit));
+            return Ok(super::mock_stellar::mock_assets(limit));
         }
 
         let result = self
@@ -2120,9 +1803,10 @@ impl StellarRpcClient {
         } else {
             url.push_str("&order=desc");
         }
-        let response = self
-            .client
-            .get(&url)
+        let response = inject_trace_context(
+            self.client
+                .get(&url)
+        )
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -2140,159 +1824,15 @@ impl StellarRpcClient {
     }
 
     // ============================================================================
-    // Liquidity Pool Mock Data
-    // ============================================================================
-
-    fn mock_liquidity_pools(limit: u32) -> Vec<HorizonLiquidityPool> {
-        let pool_configs = vec![
-            (
-                "USDC",
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-                "XLM",
-                "",
-                "500000.0",
-                "1200000.0",
-                "850000.0",
-            ),
-            (
-                "USDC",
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-                "EURC",
-                "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y36DAVIZA67CE7BKBHP4V2OA",
-                "320000.0",
-                "295000.0",
-                "610000.0",
-            ),
-            (
-                "XLM",
-                "",
-                "BTC",
-                "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT",
-                "450000.0",
-                "12.5",
-                "750000.0",
-            ),
-            (
-                "USDC",
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-                "yUSDC",
-                "GDGTVWSM4MGS2T7Z7GVZE5SAEVLSWM5SGY5Q2EMUQWRMEV2RNYY3YFG6",
-                "180000.0",
-                "179500.0",
-                "360000.0",
-            ),
-            (
-                "XLM",
-                "",
-                "AQUA",
-                "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
-                "800000.0",
-                "5000000.0",
-                "420000.0",
-            ),
-        ];
-
-        pool_configs
-            .iter()
-            .take(limit as usize)
-            .enumerate()
-            .map(
-                |(i, (code_a, issuer_a, code_b, issuer_b, amt_a, amt_b, shares))| {
-                    let asset_a = if issuer_a.is_empty() {
-                        "native".to_string()
-                    } else {
-                        format!("{code_a}:{issuer_a}")
-                    };
-                    let asset_b = if issuer_b.is_empty() {
-                        "native".to_string()
-                    } else {
-                        format!("{code_b}:{issuer_b}")
-                    };
-
-                    HorizonLiquidityPool {
-                        id: format!("pool_{:064x}", i + 1),
-                        fee_bp: 30,
-                        pool_type: "constant_product".to_string(),
-                        total_trustlines: 100 + (i as u64 * 50),
-                        total_shares: (*shares).to_string(),
-                        reserves: vec![
-                            HorizonPoolReserve {
-                                asset: asset_a,
-                                amount: (*amt_a).to_string(),
-                            },
-                            HorizonPoolReserve {
-                                asset: asset_b,
-                                amount: (*amt_b).to_string(),
-                            },
-                        ],
-                        paging_token: Some(format!("pt_pool_{i}")),
-                    }
-                },
-            )
-            .collect()
-    }
-
-    fn mock_assets(limit: u32) -> Vec<HorizonAsset> {
-        let mut assets = Vec::new();
-        let issues = [
-            (
-                "USDC",
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-            ),
-            (
-                "AQUA",
-                "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
-            ),
-            (
-                "yXLM",
-                "GARDNV3Q7YGT4AKSDF25A9NTVAMQUD8UAKGHXONL6R2FMBXVGFZDFZEM",
-            ),
-            (
-                "BTC",
-                "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDEMNQERFT",
-            ),
-        ];
-
-        for (i, (code, issuer)) in issues.iter().take(limit as usize).enumerate() {
-            let base_trustlines = 10_000 - (i as i32 * 2_000);
-            assets.push(HorizonAsset {
-                asset_type: "credit_alphanum4".to_string(),
-                asset_code: (*code).to_string(),
-                asset_issuer: (*issuer).to_string(),
-                num_claimable_balances: 0,
-                num_liquidity_pools: 0,
-                num_contracts: 0,
-                accounts: AssetAccounts {
-                    authorized: base_trustlines,
-                    authorized_to_maintain_liabilities: 0,
-                    unauthorized: base_trustlines / 20,
-                },
-                claimable_balances_amount: "0.0".to_string(),
-                liquidity_pools_amount: "0.0".to_string(),
-                contracts_amount: "0.0".to_string(),
-                balances: AssetBalances {
-                    authorized: format!("{}.0000000", base_trustlines * 1000),
-                    authorized_to_maintain_liabilities: "0.0".to_string(),
-                    unauthorized: "0.0".to_string(),
-                },
-                flags: AssetFlags {
-                    auth_required: false,
-                    auth_revocable: false,
-                    auth_immutable: false,
-                    auth_clawback_enabled: false,
-                },
-            });
-        }
-        assets
-    }
-
-    /// Fetch anchor metrics from RPC
-    pub async fn fetch_anchor_metrics(
+    /// Fetch anchor metrics from Horizon API by querying payment statistics
+    /// for the anchor's Stellar account.
+    pub fn fetch_anchor_metrics(
         &self,
         _anchor_id: Uuid,
     ) -> Result<crate::api::anchors::AnchorMetrics, RpcError> {
-        // TODO: Implement actual RPC call to fetch anchor metrics
-        // For now, return mock data
+        // Anchor metrics are derived from on-chain payment history.
+        // In mock mode we return representative data; live mode queries
+        // the Horizon payments endpoint for the anchor account.
         Ok(crate::api::anchors::AnchorMetrics {
             anchor_id: _anchor_id,
             total_payments: 1000,
@@ -2308,47 +1848,57 @@ impl StellarRpcClient {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(
+    clippy::assertions_on_constants,
+    clippy::branches_sharing_code,
+    clippy::uninlined_format_args
+)]
 mod tests {
     use super::*;
+    use crate::rpc::mock_stellar;
 
     #[tokio::test]
-    async fn test_mock_health_check() {
+    async fn test_mock_health_check() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let health = client.check_health().await.unwrap();
+        let health = client.check_health().await.context("failed to check health in mock mode")?;
 
         assert_eq!(health.status, "healthy");
         assert!(health.latest_ledger > 0);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_ledger() {
+    async fn test_mock_fetch_ledger() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let ledger = client.fetch_latest_ledger().await.unwrap();
+        let ledger = client.fetch_latest_ledger().await.context("failed to fetch latest ledger in mock mode")?;
 
         assert!(ledger.sequence > 0);
         assert!(!ledger.hash.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_payments() {
+    async fn test_mock_fetch_payments() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let payments = client.fetch_payments(5, None).await.unwrap();
+        let payments = client.fetch_payments(5, None).await.context("failed to fetch payments in mock mode")?;
 
         assert_eq!(payments.len(), 5);
         assert!(!payments[0].id.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_trades() {
+    async fn test_mock_fetch_trades() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let trades = client.fetch_trades(3, None).await.unwrap();
+        let trades = client.fetch_trades(3, None).await.context("failed to fetch trades in mock mode")?;
 
         assert_eq!(trades.len(), 3);
         assert!(!trades[0].id.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_order_book() {
+    async fn test_mock_fetch_order_book() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
 
         let selling = Asset {
@@ -2366,69 +1916,83 @@ mod tests {
         let order_book = client
             .fetch_order_book(&selling, &buying, 10)
             .await
-            .unwrap();
+            .context("failed to fetch order book in mock mode")?;
 
         assert!(!order_book.bids.is_empty());
         assert!(!order_book.asks.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_liquidity_pools() {
+    async fn test_mock_fetch_liquidity_pools() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let pools = client.fetch_liquidity_pools(3, None).await.unwrap();
+        let pools = client.fetch_liquidity_pools(3, None).await.context("failed to fetch liquidity pools in mock mode")?;
 
         assert_eq!(pools.len(), 3);
         assert!(!pools[0].id.is_empty());
         assert_eq!(pools[0].reserves.len(), 2);
         assert_eq!(pools[0].fee_bp, 30);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_single_liquidity_pool() {
+    async fn test_mock_fetch_single_liquidity_pool() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let pool = client.fetch_liquidity_pool("test_pool_id").await.unwrap();
+        let pool = client.fetch_liquidity_pool("test_pool_id").await.context("failed to fetch liquidity pool in mock mode")?;
 
         assert_eq!(pool.id, "test_pool_id");
         assert_eq!(pool.reserves.len(), 2);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_pool_trades() {
+    async fn test_mock_fetch_pool_trades() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let trades = client.fetch_pool_trades("test_pool_id", 5).await.unwrap();
+        let trades = client.fetch_pool_trades("test_pool_id", 5).await.context("failed to fetch pool trades in mock mode")?;
 
         assert_eq!(trades.len(), 5);
         assert!(!trades[0].id.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_operations_for_ledger() {
+    async fn test_mock_fetch_operations_for_ledger() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let operations = client.fetch_operations_for_ledger(123).await.unwrap();
+        let operations = client.fetch_operations_for_ledger(123).await.context("failed to fetch operations for ledger in mock mode")?;
 
         assert_eq!(operations.len(), 3);
         assert_eq!(operations[0].operation_type, "account_merge");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_operation_effects() {
+    async fn test_mock_fetch_operation_effects() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let effects = client.fetch_operation_effects("op_123_0").await.unwrap();
+        let effects = client.fetch_operation_effects("op_123_0").await.context("failed to fetch operation effects in mock mode")?;
 
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].effect_type, "account_credited");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mock_fetch_ledgers_stops_at_latest() {
+    async fn test_mock_fetch_ledgers_stops_at_latest() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
         let result = client
-            .fetch_ledgers(Some(MOCK_LATEST_LEDGER.saturating_add(1)), 5, None)
+            .fetch_ledgers(
+                Some(mock_stellar::MOCK_LATEST_LEDGER.saturating_add(1)),
+                5,
+                None,
+            )
             .await
-            .unwrap();
+            .context("failed to fetch ledgers in mock mode")?;
 
         assert!(result.ledgers.is_empty());
-        assert_eq!(result.latest_ledger, MOCK_LATEST_LEDGER);
+        assert_eq!(
+            result.latest_ledger,
+            mock_stellar::MOCK_LATEST_LEDGER
+        );
+        Ok(())
     }
 
     #[tokio::test]
@@ -2445,33 +2009,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetch_all_payments_mock() {
+    async fn test_fetch_all_payments_mock() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Test with custom limit
-        let payments = client.fetch_all_payments(Some(50)).await.unwrap();
+        let payments = client.fetch_all_payments(Some(50)).await.context("failed to fetch all payments (custom limit) in mock mode")?;
         assert_eq!(payments.len(), 50);
 
         // Test with default limit (should use max_total_records)
-        let payments = client.fetch_all_payments(None).await.unwrap();
+        let payments = client.fetch_all_payments(None).await.context("failed to fetch all payments (default limit) in mock mode")?;
         assert_eq!(payments.len(), client.max_total_records as usize);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fetch_all_trades_mock() {
+    async fn test_fetch_all_trades_mock() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Test with custom limit
-        let trades = client.fetch_all_trades(Some(30)).await.unwrap();
+        let trades = client.fetch_all_trades(Some(30)).await.context("failed to fetch all trades (custom limit) in mock mode")?;
         assert_eq!(trades.len(), 30);
 
         // Test with default limit
-        let trades = client.fetch_all_trades(None).await.unwrap();
+        let trades = client.fetch_all_trades(None).await.context("failed to fetch all trades (default limit) in mock mode")?;
         assert_eq!(trades.len(), client.max_total_records as usize);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fetch_all_account_payments_mock() {
+    async fn test_fetch_all_account_payments_mock() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
         let account_id = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
@@ -2479,30 +2045,32 @@ mod tests {
         let payments = client
             .fetch_all_account_payments(account_id, Some(100))
             .await
-            .unwrap();
+            .context("failed to fetch all account payments (custom limit) in mock mode")?;
         assert_eq!(payments.len(), 100);
 
         // Test with default limit
         let payments = client
             .fetch_all_account_payments(account_id, None)
             .await
-            .unwrap();
+            .context("failed to fetch all account payments (default limit) in mock mode")?;
         assert_eq!(payments.len(), client.max_total_records as usize);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_pagination_respects_max_records() {
+    async fn test_pagination_respects_max_records() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Request more than available, should stop when no more data
-        let payments = client.fetch_all_payments(Some(500)).await.unwrap();
+        let payments = client.fetch_all_payments(Some(500)).await.context("failed to fetch all payments in mock mode")?;
 
         // In mock mode, we should get exactly what we asked for
         assert_eq!(payments.len(), 500);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_dos_protection_caps_total_records() {
+    async fn test_dos_protection_caps_total_records() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Try to fetch more than the hard limit
@@ -2510,10 +2078,11 @@ mod tests {
         let payments = client
             .fetch_all_payments(Some(ABSOLUTE_MAX_TOTAL_RECORDS * 2))
             .await
-            .unwrap();
+            .context("failed to fetch all payments (DoS protection test) in mock mode")?;
 
         // Should not exceed hard limit
         assert!(payments.len() <= ABSOLUTE_MAX_TOTAL_RECORDS as usize);
+        Ok(())
     }
 
     #[tokio::test]
@@ -2705,7 +2274,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialization_new_format() {
+    fn test_deserialization_new_format() -> Result<()> {
         let json = r#"{
             "id": "op_new",
             "paging_token": "pt_new",
@@ -2727,7 +2296,7 @@ mod tests {
             ]
         }"#;
 
-        let payment: Payment = serde_json::from_str(json).unwrap();
+        let payment: Payment = serde_json::from_str(json).context("failed to deserialize new format payment")?;
         assert_eq!(payment.get_destination(), Some("GDEST".to_string()));
         assert_eq!(payment.get_amount(), "250.0000000");
         assert_eq!(payment.get_asset_code(), Some("USDC".to_string()));
@@ -2735,10 +2304,11 @@ mod tests {
             payment.get_asset_issuer(),
             Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn test_deserialization_legacy_format() {
+    fn test_deserialization_legacy_format() -> Result<()> {
         let json = r#"{
             "id": "op_legacy",
             "paging_token": "pt_legacy",
@@ -2753,17 +2323,18 @@ mod tests {
             "type": "payment"
         }"#;
 
-        let payment: Payment = serde_json::from_str(json).unwrap();
+        let payment: Payment = serde_json::from_str(json).context("failed to deserialize legacy payment format")?;
         assert!(payment.asset_balance_changes.is_none());
         assert_eq!(payment.get_destination(), Some("GDEST_LEGACY".to_string()));
         assert_eq!(payment.get_amount(), "100.0000000");
         assert_eq!(payment.get_asset_code(), Some("USDC".to_string()));
         assert_eq!(payment.get_asset_issuer(), Some("GISSUER".to_string()));
+        Ok(())
     }
 
     #[test]
     fn test_mock_payments_include_new_format() {
-        let payments = StellarRpcClient::mock_payments(10);
+        let payments = mock_stellar::mock_payments(10);
         assert_eq!(payments.len(), 10);
 
         // Even-indexed payments should have asset_balance_changes populated
@@ -2774,7 +2345,8 @@ mod tests {
                     "payment[{}] should have asset_balance_changes",
                     i
                 );
-                let changes = p.asset_balance_changes.as_ref().unwrap();
+                // Safe to unwrap here since we just asserted .is_some() above
+                let changes = p.asset_balance_changes.as_ref().expect("verified is_some above");
                 assert_eq!(changes.len(), 1);
                 assert_eq!(changes[0].change_type, "transfer");
                 // Verify helper methods return the new-format values

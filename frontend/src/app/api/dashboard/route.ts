@@ -74,7 +74,7 @@ export async function GET() {
     }
 
     const corridors: BackendCorridor[] = await corridorsRes.json();
-    const paymentsData = paymentsRes.ok
+    const _paymentsData = paymentsRes.ok
       ? await paymentsRes.json()
       : { _embedded: { records: [] } };
 

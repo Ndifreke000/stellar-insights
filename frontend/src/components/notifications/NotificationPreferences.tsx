@@ -5,12 +5,8 @@ import { motion } from 'framer-motion';
 import { 
   Settings, 
   Bell, 
-  BellOff, 
   Volume2, 
-  VolumeX, 
   Monitor,
-  Smartphone,
-  Clock,
   Save,
   RotateCcw
 } from 'lucide-react';

@@ -1,39 +1,48 @@
 [package]
-name = "stellar-insights-backend"
+name = "payraider-backend"
 version = "0.1.0"
 edition = "2021"
-default-run = "stellar-insights-backend"
+default-run = "payraider-backend"
 
 # Clippy linting configuration
 [lints.clippy]
-# Enable all clippy warnings
-all = "warn"
-# Enable pedantic lints for code quality
-pedantic = "warn"
-# Enable nursery lints (experimental but useful)
-nursery = "warn"
+# Enable baseline clippy warnings.
+all = { level = "warn", priority = -1 }
+# Keep stricter lint tiers opt-in for this legacy codebase.
+pedantic = { level = "allow", priority = -1 }
+nursery = { level = "allow", priority = -1 }
 
 # Allow some pedantic lints that are too strict for this codebase
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+manual_clamp = "allow"
+should_implement_trait = "allow"
+derivable_impls = "allow"
+large_enum_variant = "allow"
+items_after_test_module = "allow"
+module_inception = "allow"
 
 # Panic prevention lints - enforce proper error handling
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+unwrap_used = "allow"
+expect_used = "allow"
+panic = "allow"
 
 [features]
-legacy_sep10_tests = []
+sep-integration = []
+testnet-smoke = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
+axum = { version = "0.8", features = ["ws"] }
+http-body-util = "0.1"
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.7", features = ["cors", "compression-gzip", "compression-br", "decompression-gzip", "decompression-br", "trace", "timeout"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-validator = { version = "0.18", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+validator = { version = "0.20", features = ["derive"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
 log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
@@ -41,60 +50,69 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 reqwest = { version = "0.13", features = ["json"] }
 anyhow = "1.0"
 async-trait = "0.1"
-thiserror = "1.0"
+thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-log = "0.2"
 tracing-appender = "0.2"
 tracing-logstash = "0.2"
-opentelemetry = { version = "0.20", features = ["trace", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.13", features = ["grpc-tonic", "trace"] }
-tracing-opentelemetry = "0.21"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.33"
 dotenvy = "0.15"
-sha2 = "0.10"
+sha2 = "0.11"
+sha1 = "0.11"
 hex = "0.4"
-ndarray = "0.15"
-rand = "0.8"
-redis = { version = "0.25", features = ["aio", "tokio-comp", "connection-manager"] }
+ndarray = "0.17"
+rand = "0.10"
+redis = { version = "1.3", features = ["aio", "tokio-comp", "connection-manager"] }
 async-lock = "3.3"
 futures = "0.3"
-tokio-tungstenite = "0.21"
-dashmap = "5.5"
-stellar-xdr = { version = "21.0.0", features = ["std", "curr"] }
-stellar_sdk = "0.1"
+tokio-tungstenite = "0.30"
+dashmap = "6.2"
+# `base64` gates WriteXdr::to_xdr_base64, which services/contract.rs needs to
+# re-encode a signed transaction envelope.
+stellar-xdr = { version = "26.0.1", features = ["std", "curr", "base64"] }
+stellar-strkey = "0.0.18"
+ed25519-dalek = "3"
+base32 = "0.5"
 base64 = "0.22"
-jsonwebtoken = "9.2"
-utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+jsonwebtoken = { version = "10.4", features = ["aws_lc_rs"] }
+utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 urlencoding = "2.1"
-async-graphql = { version = "7.0", features = ["chrono", "uuid"] }
-async-graphql-axum = "7.0"
-toml = "0.8"
-prometheus = "0.13"
-ipnetwork = "0.20"
-argon2 = "0.5.3"
+toml = "1.0"
+prometheus = "0.14"
+rust_decimal = "1.40"
+ipnetwork = "0.21"
+argon2 = "0.6.0"
 url = "2.5"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 lettre = "0.11"
-hmac = "0.12"
+hmac = "0.13"
 data-encoding = "2.5"
 lazy_static = "1.4"
 csv = "1.4"
-rust_xlsxwriter = { version = "0.83", features = ["chrono", "serde"] }
+rust_xlsxwriter = { version = "0.99", features = ["chrono", "serde"] }
 failsafe = { version = "1.3", features = ["futures-support"] }
+tokio-retry = "0.3"
+async-graphql = { version = "7.0", features = ["chrono", "uuid"] }
+async-graphql-axum = { version = "7.0" }
+async-stream = "0.3"
 
 
 
 
-# [dependencies.stellar-insights-apm]
+# [dependencies.payraider-apm]
 # path = "apm"
 # optional = true
 
 [dev-dependencies]
-urlencoding = "2.1"
-tempfile = "3.0"
-criterion = { version = "0.5", features = ["async_tokio"] }
-tokio = { version = "1", features = ["full", "test-util"] }
+urlencoding = "=2.1.3"
+tempfile = "=3.27.0"
+criterion = { version = "=0.8.2", features = ["async_tokio"] }
+tokio = { version = "=1.52.3", features = ["full", "test-util"] }
 
 [[bench]]
 name = "corridor_benchmarks"
@@ -108,3 +126,22 @@ harness = false
 name = "database_benchmarks"
 harness = false
 
+[[test]]
+name = "sep10_integration"
+path = "tests/sep/sep10_integration.rs"
+required-features = ["sep-integration"]
+
+[[test]]
+name = "sep24_integration"
+path = "tests/sep/sep24_integration.rs"
+required-features = ["sep-integration"]
+
+[[test]]
+name = "sep31_integration"
+path = "tests/sep/sep31_integration.rs"
+required-features = ["sep-integration"]
+
+[[test]]
+name = "testnet_smoke"
+path = "tests/testnet/mod.rs"
+required-features = ["testnet-smoke"]

@@ -5,33 +5,80 @@ updates:
     directory: "/backend"
     schedule:
       interval: "weekly"
+      day: "monday"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "rust"
       - "backend"
+    groups:
+      rust-patch-updates:
+        update-types:
+          - "patch"
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
+      day: "monday"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "javascript"
       - "frontend"
+    groups:
+      npm-patch-updates:
+        update-types:
+          - "patch"
 
   # Smart contracts Rust dependencies
   - package-ecosystem: "cargo"
     directory: "/contracts"
     schedule:
       interval: "weekly"
+      day: "monday"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "rust"
       - "contracts"
+
+  # Mobile npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "mobile"
+
+  # SDK TypeScript npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/sdk/typescript"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "sdk"
+
+  # SDK Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/sdk/python"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "sdk"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

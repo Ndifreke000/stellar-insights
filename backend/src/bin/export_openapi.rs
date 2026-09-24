@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use serde_json::{json, Value};
-use stellar_insights_backend::openapi::ApiDoc;
+use payraider_backend::openapi::ApiDoc;
 use utoipa::OpenApi;
 
 fn main() -> anyhow::Result<()> {

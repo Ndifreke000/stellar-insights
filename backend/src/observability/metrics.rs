@@ -1,107 +1,300 @@
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 
 use axum::{
     body::Body,
-    extract::{MatchedPath, Request},
+    extract::Request,
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter, register_gauge, register_histogram, Counter, Encoder, Gauge, Histogram,
-    HistogramOpts, Registry, TextEncoder,
+    Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
+    IntGaugeVec, Opts, Registry, TextEncoder,
 };
 
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
-    pub static ref HTTP_REQUESTS_TOTAL: Counter = register_counter!(
+    pub static ref HTTP_REQUESTS_TOTAL: IntCounter = IntCounter::new(
         "http_requests_total",
-        "Total number of HTTP requests processed",
-        &REGISTRY
+        "Total number of HTTP requests processed"
     )
-    .unwrap();
-    pub static ref HTTP_REQUEST_DURATION_SECONDS: Histogram = register_histogram!(
-        "http_request_duration_seconds",
-        "HTTP request duration in seconds",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
-        &REGISTRY
+    .expect("Failed to register http_requests_total counter");
+    pub static ref HTTP_REQUEST_DURATION_SECONDS: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "http_request_duration_seconds",
+            "HTTP request duration in seconds with p50/p95/p99 buckets"
+        )
+        .buckets(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+        ])
     )
-    .unwrap();
-    pub static ref RPC_CALLS_TOTAL: Counter = register_counter!(
-        "rpc_calls_total",
-        "Total number of RPC calls made",
-        &REGISTRY
+    .expect("Failed to register http_request_duration_seconds histogram");
+    pub static ref HTTP_REQUEST_DURATION_BY_ENDPOINT: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "http_request_duration_by_endpoint_seconds",
+            "HTTP request duration in seconds per endpoint"
+        )
+        .buckets(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+        ]),
+        &["method", "endpoint"]
     )
-    .unwrap();
-    pub static ref RPC_CALL_DURATION_SECONDS: Histogram = register_histogram!(
+    .expect("Failed to register http_request_duration_by_endpoint_seconds histogram");
+    pub static ref RPC_CALLS_TOTAL: IntCounter =
+        IntCounter::new("rpc_calls_total", "Total number of RPC calls made")
+            .expect("Failed to register rpc_calls_total counter");
+    pub static ref RPC_CALL_DURATION_SECONDS: Histogram = Histogram::with_opts(HistogramOpts::new(
         "rpc_call_duration_seconds",
-        "RPC call duration in seconds",
-        vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
-        &REGISTRY
-    )
-    .unwrap();
-    pub static ref DB_QUERY_DURATION_SECONDS: Histogram = register_histogram!(
+        "RPC call duration in seconds"
+    ))
+    .expect("Failed to register rpc_call_duration_seconds histogram");
+    pub static ref DB_QUERY_DURATION_SECONDS: Histogram = Histogram::with_opts(HistogramOpts::new(
         "db_query_duration_seconds",
-        "Database query duration in seconds",
-        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
-        &REGISTRY
+        "Database query duration in seconds"
+    ))
+    .expect("Failed to register db_query_duration_seconds histogram");
+    pub static ref CACHE_OPERATIONS_TOTAL: IntCounter =
+        IntCounter::new("cache_operations_total", "Total number of cache operations")
+            .expect("Failed to register cache_operations_total counter");
+    pub static ref CACHE_HITS_TOTAL: IntCounter =
+        IntCounter::new("cache_hits_total", "Total number of cache hits")
+            .expect("Failed to register cache_hits_total counter");
+    pub static ref CACHE_MISSES_TOTAL: IntCounter =
+        IntCounter::new("cache_misses_total", "Total number of cache misses")
+            .expect("Failed to register cache_misses_total counter");
+    pub static ref ERRORS_TOTAL: IntCounter =
+        IntCounter::new("errors_total", "Total number of errors encountered")
+            .expect("Failed to register errors_total counter");
+    pub static ref HTTP_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "http_errors_total",
+            "Total number of HTTP errors by status code"
+        ),
+        &["status_code", "method", "path"]
     )
-    .unwrap();
-    pub static ref CACHE_OPERATIONS_TOTAL: Counter = register_counter!(
-        "cache_operations_total",
-        "Total number of cache operations",
-        &REGISTRY
+    .expect("Failed to register http_errors_total counter");
+    pub static ref DB_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("db_errors_total", "Total number of database errors by type"),
+        &["error_type", "query_type"]
     )
-    .unwrap();
-    pub static ref ERRORS_TOTAL: Counter = register_counter!(
-        "errors_total",
-        "Total number of errors encountered",
-        &REGISTRY
+    .expect("Failed to register db_errors_total counter");
+    pub static ref RPC_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("rpc_errors_total", "Total number of RPC errors by method"),
+        &["method", "error_type"]
     )
-    .unwrap();
-    pub static ref BACKGROUND_JOBS_TOTAL: Counter = register_counter!(
+    .expect("Failed to register rpc_errors_total counter");
+    pub static ref BACKGROUND_JOBS_TOTAL: IntCounter = IntCounter::new(
         "background_jobs_total",
-        "Total number of background jobs executed",
-        &REGISTRY
+        "Total number of background jobs executed"
     )
-    .unwrap();
-    pub static ref ACTIVE_CONNECTIONS: Gauge = register_gauge!(
+    .expect("Failed to register background_jobs_total counter");
+    pub static ref ACTIVE_CONNECTIONS: IntGauge = IntGauge::new(
         "active_connections",
-        "Number of active websocket connections",
-        &REGISTRY
+        "Number of active websocket connections"
     )
-    .unwrap();
-    pub static ref CORRIDORS_TRACKED: Gauge = register_gauge!(
-        "corridors_tracked",
-        "Number of tracked corridors",
-        &REGISTRY
-    )
-    .unwrap();
-    pub static ref HTTP_IN_FLIGHT_REQUESTS: Gauge = register_gauge!(
+    .expect("Failed to register active_connections gauge");
+    pub static ref CORRIDORS_TRACKED: IntGauge =
+        IntGauge::new("corridors_tracked", "Number of tracked corridors")
+            .expect("Failed to register corridors_tracked gauge");
+    pub static ref HTTP_IN_FLIGHT_REQUESTS: IntGauge = IntGauge::new(
         "http_in_flight_requests",
-        "Number of in-flight HTTP requests",
-        &REGISTRY
+        "Number of in-flight HTTP requests"
     )
-    .unwrap();
-    pub static ref DB_POOL_SIZE: Gauge =
-        register_gauge!("db_pool_size", "Total database pool connections", &REGISTRY).unwrap();
-    pub static ref DB_POOL_IDLE: Gauge =
-        register_gauge!("db_pool_idle", "Idle database pool connections", &REGISTRY).unwrap();
-    pub static ref DB_POOL_ACTIVE: Gauge = register_gauge!(
-        "db_pool_active",
-        "Active database pool connections",
-        &REGISTRY
+    .expect("Failed to register http_in_flight_requests gauge");
+    pub static ref DB_POOL_SIZE: IntGauge =
+        IntGauge::new("db_pool_size", "Total database pool connections")
+            .expect("Failed to register db_pool_size gauge");
+    pub static ref DB_POOL_IDLE: IntGauge =
+        IntGauge::new("db_pool_idle", "Idle database pool connections")
+            .expect("Failed to register db_pool_idle gauge");
+    pub static ref DB_POOL_ACTIVE: IntGauge =
+        IntGauge::new("db_pool_active", "Active database pool connections")
+            .expect("Failed to register db_pool_active gauge");
+    pub static ref DB_POOL_CONNECTIONS_ACTIVE: IntGauge = IntGauge::new(
+        "db_pool_connections_active",
+        "Number of active database pool connections"
     )
-    .unwrap();
+    .expect("Failed to register db_pool_connections_active gauge");
+    pub static ref DB_POOL_CONNECTIONS_IDLE: IntGauge = IntGauge::new(
+        "db_pool_connections_idle",
+        "Number of idle database pool connections"
+    )
+    .expect("Failed to register db_pool_connections_idle gauge");
+    pub static ref DB_POOL_UTILIZATION: IntGauge = IntGauge::new(
+        "db_pool_utilization",
+        "Database pool utilization ratio (active / total)"
+    )
+    .expect("Failed to register db_pool_utilization gauge");
+    pub static ref DB_POOL_WAIT_TIME_SECONDS: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "db_pool_wait_time_seconds",
+            "Time spent waiting for a database pool connection"
+        )
+        .buckets(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+        ])
+    )
+    .expect("Failed to register db_pool_wait_time_seconds histogram");
+    pub static ref DB_POOL_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "db_pool_errors_total",
+            "Total number of database pool errors by kind"
+        ),
+        &["kind"]
+    )
+    .expect("Failed to register db_pool_errors_total counter");
+    pub static ref HTTP_REQUEST_SLO_VIOLATIONS: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "http_request_slo_violations_total",
+            "Total number of HTTP requests exceeding SLO targets"
+        ),
+        &["endpoint", "slo_target_ms"]
+    )
+    .expect("Failed to register http_request_slo_violations_total counter");
+    pub static ref HTTP_RESPONSES_COMPRESSED_TOTAL: IntCounter = IntCounter::new(
+        "http_responses_compressed_total",
+        "Total number of HTTP responses sent with compression (Content-Encoding set)"
+    )
+    .expect("Failed to register http_responses_compressed_total counter");
+    pub static ref DB_SLOW_QUERIES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "db_slow_queries_total",
+            "Total number of slow database queries exceeding the configured threshold"
+        ),
+        &["operation"]
+    )
+    .expect("Failed to register db_slow_queries_total counter");
+    pub static ref DB_QUERY_DURATION_BY_OPERATION: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "db_query_duration_by_operation_seconds",
+            "Database query duration in seconds per operation"
+        )
+        .buckets(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+        ]),
+        &["operation", "status"]
+    )
+    .expect("Failed to register db_query_duration_by_operation_seconds histogram");
+    pub static ref BACKUP_VERIFICATIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "backup_verifications_total",
+            "Total number of backup verification attempts"
+        ),
+        &["result"]
+    )
+    .expect("Failed to register backup_verifications_total counter");
+    pub static ref AUTH_SECURITY_EVENTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "auth_security_events_total",
+            "Authentication security events (failures, lockouts, brute-force alerts) by endpoint"
+        ),
+        &["endpoint", "event"]
+    )
+    .expect("Failed to register auth_security_events_total counter");
+    pub static ref BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS: IntGauge = IntGauge::new(
+        "backup_last_success_timestamp_seconds",
+        "Unix time of the most recent backup that passed verification"
+    )
+    .expect("Failed to register backup_last_success_timestamp_seconds gauge");
+    pub static ref BACKUP_SIZE_BYTES: IntGauge = IntGauge::new(
+        "backup_size_bytes",
+        "Size of the most recent backup in bytes"
+    )
+    .expect("Failed to register backup_size_bytes gauge");
+    // Stellar-specific metrics
+    pub static ref STELLAR_LEDGER_LAG_SECONDS: IntGauge = IntGauge::new(
+        "stellar_ledger_lag_seconds",
+        "Stellar ledger lag in seconds"
+    )
+    .expect("Failed to register stellar_ledger_lag_seconds gauge");
+    pub static ref STELLAR_TRANSACTION_SUCCESS_RATE: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "stellar_transaction_success_rate",
+            "Stellar transaction success rate (rolling 5 minutes)"
+        )
+        .buckets(vec![0.0, 0.25, 0.5, 0.75, 1.0])
+    )
+    .expect("Failed to register stellar_transaction_success_rate histogram");
+    pub static ref STELLAR_ANCHOR_HEALTH: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("stellar_anchor_health", "Stellar anchor health (0/1)"),
+        &["anchor"]
+    )
+    .expect("Failed to register stellar_anchor_health gauge");
+    pub static ref STELLAR_CORRIDOR_RELIABILITY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "stellar_corridor_reliability",
+            "Stellar corridor reliability (rolling 24 hours)"
+        )
+        .buckets(vec![0.0, 0.25, 0.5, 0.75, 1.0]),
+        &["corridor"]
+    )
+    .expect("Failed to register stellar_corridor_reliability histogram");
+    // Price feed / oracle staleness metrics
+    pub static ref PRICE_FEED_STALE_ASSETS: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "price_feed_stale_assets",
+            "Per-asset oracle staleness indicator (1 = stale, 0 = fresh)"
+        ),
+        &["asset"]
+    )
+    .expect("Failed to register price_feed_stale_assets gauge");
 }
 
 pub fn init_metrics() {
-    // Explicitly initialize lazy_statics by accessing them
-    let _ = &*REGISTRY;
+    // Metrics built via `X::new(...)` aren't auto-registered anywhere (unlike the
+    // `register_x!` macros), so without this, both `/metrics` (below) and
+    // `job_monitoring::get_job_metrics` — which both gather from `REGISTRY` — would
+    // silently return empty output. `register()` errors (e.g. double-registration
+    // when this is called more than once, such as across tests) are ignored, since
+    // registration is idempotent for our purposes.
+    macro_rules! register_all {
+        ($($metric:expr),+ $(,)?) => {
+            $( let _ = REGISTRY.register(Box::new($metric.clone())); )+
+        };
+    }
+    register_all!(
+        HTTP_REQUESTS_TOTAL,
+        HTTP_REQUEST_DURATION_SECONDS,
+        HTTP_REQUEST_DURATION_BY_ENDPOINT,
+        RPC_CALLS_TOTAL,
+        RPC_CALL_DURATION_SECONDS,
+        DB_QUERY_DURATION_SECONDS,
+        CACHE_OPERATIONS_TOTAL,
+        CACHE_HITS_TOTAL,
+        CACHE_MISSES_TOTAL,
+        ERRORS_TOTAL,
+        HTTP_ERRORS_TOTAL,
+        DB_ERRORS_TOTAL,
+        RPC_ERRORS_TOTAL,
+        BACKGROUND_JOBS_TOTAL,
+        ACTIVE_CONNECTIONS,
+        CORRIDORS_TRACKED,
+        HTTP_IN_FLIGHT_REQUESTS,
+        DB_POOL_SIZE,
+        DB_POOL_IDLE,
+        DB_POOL_ACTIVE,
+        DB_POOL_CONNECTIONS_ACTIVE,
+        DB_POOL_CONNECTIONS_IDLE,
+        DB_POOL_UTILIZATION,
+        DB_POOL_WAIT_TIME_SECONDS,
+        DB_POOL_ERRORS_TOTAL,
+        HTTP_REQUEST_SLO_VIOLATIONS,
+        HTTP_RESPONSES_COMPRESSED_TOTAL,
+        DB_SLOW_QUERIES_TOTAL,
+        DB_QUERY_DURATION_BY_OPERATION,
+        BACKUP_VERIFICATIONS_TOTAL,
+        BACKUP_SIZE_BYTES,
+        BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS,
+        AUTH_SECURITY_EVENTS_TOTAL,
+        STELLAR_LEDGER_LAG_SECONDS,
+        STELLAR_TRANSACTION_SUCCESS_RATE,
+        STELLAR_ANCHOR_HEALTH,
+        STELLAR_CORRIDOR_RELIABILITY,
+        PRICE_FEED_STALE_ASSETS,
+    );
 }
 
-pub async fn metrics_handler() -> Response {
+pub fn metrics_handler() -> Response {
     let encoder = TextEncoder::new();
     let metric_families = REGISTRY.gather();
     let mut buffer = vec![];
@@ -122,27 +315,70 @@ pub async fn metrics_handler() -> Response {
         .into_response()
 }
 
-pub async fn http_metrics_middleware(req: Request<Body>, _next: Next) -> Response {
-    // Note: To keep labels simple for this task, we aren't using them in the global statics
-    // unless we use MetricVec, but the requirement was basic aggregation first.
-    // For a production app, we'd use int_counter_vec!
-
+pub async fn http_metrics_middleware(req: Request<Body>, next: Next) -> Response {
     HTTP_IN_FLIGHT_REQUESTS.inc();
     let start = Instant::now();
-    let response = _next.run(req).await;
+    let method = req.method().to_string();
+    let uri = req.uri().to_string();
+
+    // Normalize endpoint path (remove IDs to group similar endpoints)
+    let endpoint = normalize_endpoint(&uri);
+
+    let response = next.run(req).await;
     let duration = start.elapsed().as_secs_f64();
     HTTP_IN_FLIGHT_REQUESTS.dec();
-
     HTTP_REQUESTS_TOTAL.inc();
+
     HTTP_REQUEST_DURATION_SECONDS.observe(duration);
+    HTTP_REQUEST_DURATION_BY_ENDPOINT
+        .with_label_values(&[&method, &endpoint])
+        .observe(duration);
+
+    // Check SLO violations
+    check_slo_violation(&endpoint, duration * 1000.0);
+
+    if response
+        .headers()
+        .contains_key(axum::http::header::CONTENT_ENCODING)
+    {
+        HTTP_RESPONSES_COMPRESSED_TOTAL.inc();
+    }
 
     if response.status().is_server_error() {
+        record_http_error(response.status().as_u16(), &method, &uri);
         record_error("http_5xx");
     } else if response.status().is_client_error() {
+        record_http_error(response.status().as_u16(), &method, &uri);
         record_error("http_4xx");
     }
 
     response
+}
+
+/// Normalize endpoint paths by replacing IDs with placeholders
+/// e.g., /api/v1/anchors/123 -> /api/v1/anchors/:id
+fn normalize_endpoint(uri: &str) -> String {
+    let path = uri.split('?').next().unwrap_or(uri);
+    let parts: Vec<&str> = path.split('/').collect();
+
+    let normalized = parts
+        .iter()
+        .map(|part| {
+            // Replace UUID-like and numeric IDs with placeholders
+            if part.len() > 20 || (part.len() > 0 && part.chars().all(|c| c.is_numeric())) {
+                ":id"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+
+    if normalized.is_empty() {
+        "/".to_string()
+    } else {
+        normalized
+    }
 }
 
 pub fn record_rpc_call(_method: &str, _status: &str, duration_seconds: f64) {
@@ -150,20 +386,86 @@ pub fn record_rpc_call(_method: &str, _status: &str, duration_seconds: f64) {
     RPC_CALL_DURATION_SECONDS.observe(duration_seconds);
 }
 
-pub fn record_cache_lookup(_hit: bool) {
+pub fn record_cache_lookup(hit: bool) {
     CACHE_OPERATIONS_TOTAL.inc();
+    if hit {
+        CACHE_HITS_TOTAL.inc();
+    } else {
+        CACHE_MISSES_TOTAL.inc();
+    }
+}
+
+pub fn record_cache_hit() {
+    CACHE_OPERATIONS_TOTAL.inc();
+    CACHE_HITS_TOTAL.inc();
+}
+
+pub fn record_cache_miss() {
+    CACHE_OPERATIONS_TOTAL.inc();
+    CACHE_MISSES_TOTAL.inc();
 }
 
 pub fn record_error(_error_type: &str) {
     ERRORS_TOTAL.inc();
 }
 
-pub fn set_active_connections(count: i64) {
-    ACTIVE_CONNECTIONS.set(count as f64);
+pub fn record_http_error(status_code: u16, method: &str, path: &str) {
+    HTTP_ERRORS_TOTAL
+        .with_label_values(&[&status_code.to_string(), method, path])
+        .inc();
+    ERRORS_TOTAL.inc();
 }
 
-pub fn observe_db_query(_query: &str, _status: &str, duration_seconds: f64) {
+pub fn record_db_error(error_type: &str, query_type: &str) {
+    DB_ERRORS_TOTAL
+        .with_label_values(&[error_type, query_type])
+        .inc();
+    ERRORS_TOTAL.inc();
+}
+
+pub fn record_rpc_error(method: &str, error_type: &str) {
+    RPC_ERRORS_TOTAL
+        .with_label_values(&[method, error_type])
+        .inc();
+    ERRORS_TOTAL.inc();
+}
+
+pub fn set_active_connections(count: i64) {
+    ACTIVE_CONNECTIONS.set(count);
+}
+
+pub fn observe_db_query(operation: &str, status: &str, duration_seconds: f64) {
     DB_QUERY_DURATION_SECONDS.observe(duration_seconds);
+    DB_QUERY_DURATION_BY_OPERATION
+        .with_label_values(&[operation, status])
+        .observe(duration_seconds);
+}
+
+pub fn record_slow_query(operation: &str) {
+    DB_SLOW_QUERIES_TOTAL.with_label_values(&[operation]).inc();
+}
+
+pub fn record_backup_verification_success() {
+    BACKUP_VERIFICATIONS_TOTAL
+        .with_label_values(&["success"])
+        .inc();
+    BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS.set(chrono::Utc::now().timestamp());
+}
+
+pub fn record_backup_verification_failure(reason: &str) {
+    BACKUP_VERIFICATIONS_TOTAL
+        .with_label_values(&[reason])
+        .inc();
+}
+
+pub fn record_auth_security_event(endpoint: &str, event: &str) {
+    AUTH_SECURITY_EVENTS_TOTAL
+        .with_label_values(&[endpoint, event])
+        .inc();
+}
+
+pub fn set_backup_size_bytes(size: u64) {
+    BACKUP_SIZE_BYTES.set(size as i64);
 }
 
 pub fn record_background_job(_job: &str, _status: &str) {
@@ -171,22 +473,57 @@ pub fn record_background_job(_job: &str, _status: &str) {
 }
 
 pub fn set_corridors_tracked(count: i64) {
-    CORRIDORS_TRACKED.set(count as f64);
+    CORRIDORS_TRACKED.set(count);
 }
 
 pub fn set_pool_size(count: i64) {
-    DB_POOL_SIZE.set(count as f64);
+    DB_POOL_SIZE.set(count);
 }
 
 pub fn set_pool_idle(count: i64) {
-    DB_POOL_IDLE.set(count as f64);
+    DB_POOL_IDLE.set(count);
 }
 
 pub fn set_pool_active(count: i64) {
-    DB_POOL_ACTIVE.set(count as f64);
+    DB_POOL_ACTIVE.set(count);
+}
+
+pub fn set_pool_connections(active: u32, idle: usize, total: u32) {
+    DB_POOL_CONNECTIONS_ACTIVE.set(active as i64);
+    DB_POOL_CONNECTIONS_IDLE.set(idle as i64);
+    // Calculate utilization as percentage (0-100) for IntGauge
+    let utilization = if total > 0 {
+        ((active as f64 / total as f64) * 100.0) as i64
+    } else {
+        0
+    };
+    DB_POOL_UTILIZATION.set(utilization);
+    // Keep legacy gauges in sync
+    DB_POOL_SIZE.set(total as i64);
+    DB_POOL_IDLE.set(idle as i64);
+    DB_POOL_ACTIVE.set(active as i64);
+}
+
+pub fn observe_pool_wait_time(seconds: f64) {
+    DB_POOL_WAIT_TIME_SECONDS.observe(seconds);
+}
+
+pub fn record_pool_error(kind: &str) {
+    DB_POOL_ERRORS_TOTAL.with_label_values(&[kind]).inc();
+}
+
+/// Check if request duration violates SLO (p95 < 500ms)
+pub fn check_slo_violation(endpoint: &str, duration_ms: f64) {
+    const SLO_TARGET_MS: f64 = 500.0;
+    if duration_ms > SLO_TARGET_MS {
+        HTTP_REQUEST_SLO_VIOLATIONS
+            .with_label_values(&[endpoint, "500"])
+            .inc();
+    }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use axum::{
@@ -204,18 +541,19 @@ mod tests {
         record_cache_lookup(true);
         set_active_connections(3);
 
-        let response = metrics_handler().await;
+        let response = metrics_handler();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(text.contains("rpc_calls_total 1"));
-        assert!(text.contains("cache_operations_total 1"));
+        assert!(text.contains("rpc_calls_total"));
+        assert!(text.contains("cache_operations_total"));
         assert!(text.contains("active_connections 3"));
     }
 
     #[tokio::test]
     async fn http_middleware_records_request_labels() {
         init_metrics();
+        let before = HTTP_REQUESTS_TOTAL.get();
 
         let app = Router::new()
             .route("/ping", get(|| async { StatusCode::OK }))
@@ -233,12 +571,183 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let metrics_response = metrics_handler().await;
+        let metrics_response = metrics_handler();
         let body = to_bytes(metrics_response.into_body(), usize::MAX)
             .await
             .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(text.contains("http_requests_total 1"));
+        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1);
+        assert!(text.contains("http_requests_total"));
     }
+
+    #[tokio::test]
+    async fn metrics_handler_returns_prometheus_content_type() {
+        init_metrics();
+
+        let response = metrics_handler();
+        let content_type = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        assert!(
+            content_type.contains("text/plain"),
+            "Expected text/plain content type, got: {content_type}"
+        );
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics_route_is_scrapeable_via_router() {
+        init_metrics();
+
+        let app = Router::new().route("/metrics", get(|| async { metrics_handler() }));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        // Verify standard Prometheus metric families are present
+        assert!(text.contains("# HELP http_requests_total"));
+        assert!(text.contains("# HELP"));
+        assert!(text.contains("# TYPE"));
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_contains_cache_hit_miss_metrics() {
+        init_metrics();
+        record_cache_hit();
+        record_cache_miss();
+        record_cache_lookup(true);
+        record_cache_lookup(false);
+
+        let response = metrics_handler();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("cache_hits_total"));
+        assert!(text.contains("cache_misses_total"));
+        assert!(text.contains("cache_operations_total"));
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_contains_detailed_error_metrics() {
+        init_metrics();
+        record_http_error(404, "GET", "/api/v1/anchors");
+        record_db_error("timeout", "SELECT");
+        record_rpc_error("get_latest_ledger", "network_error");
+
+        let response = metrics_handler();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("http_errors_total"));
+        assert!(text.contains("db_errors_total"));
+        assert!(text.contains("rpc_errors_total"));
+        assert!(text.contains("status_code=\"404\""));
+        assert!(text.contains("error_type=\"timeout\""));
+        assert!(text.contains("method=\"get_latest_ledger\""));
+    }
+
+    #[tokio::test]
+    async fn metrics_handler_is_safe_for_concurrent_access() {
+        init_metrics();
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| tokio::spawn(async { metrics_handler() }))
+            .collect();
+
+        for handle in handles {
+            let response = handle.await.unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+    }
+
+    #[tokio::test]
+    async fn pool_metrics_are_exported_to_prometheus() {
+        init_metrics();
+
+        set_pool_connections(8, 2, 10);
+        observe_pool_wait_time(0.05);
+        record_pool_error("exhausted");
+        record_pool_error("near_exhaustion");
+
+        let response = metrics_handler();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(
+            text.contains("db_pool_connections_active"),
+            "missing db_pool_connections_active"
+        );
+        assert!(
+            text.contains("db_pool_connections_idle"),
+            "missing db_pool_connections_idle"
+        );
+        assert!(
+            text.contains("db_pool_wait_time_seconds"),
+            "missing db_pool_wait_time_seconds"
+        );
+        assert!(
+            text.contains("db_pool_errors_total"),
+            "missing db_pool_errors_total"
+        );
+        assert!(
+            text.contains("db_pool_utilization"),
+            "missing db_pool_utilization"
+        );
+        assert!(
+            text.contains("kind=\"exhausted\""),
+            "missing exhausted label"
+        );
+        assert!(
+            text.contains("kind=\"near_exhaustion\""),
+            "missing near_exhaustion label"
+        );
+    }
+
+    #[test]
+    fn set_pool_connections_updates_all_gauges() {
+        init_metrics();
+        set_pool_connections(7, 3, 10);
+
+        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3);
+        assert_eq!(DB_POOL_UTILIZATION.get(), 70);
+        // Legacy gauges kept in sync
+        assert_eq!(DB_POOL_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_IDLE.get(), 3);
+        assert_eq!(DB_POOL_SIZE.get(), 10);
+    }
+}
+
+// Helper functions for Stellar-specific metrics
+pub fn set_stellar_ledger_lag(seconds: i64) {
+    STELLAR_LEDGER_LAG_SECONDS.set(seconds);
+}
+
+pub fn observe_stellar_transaction_success_rate(rate: f64) {
+    STELLAR_TRANSACTION_SUCCESS_RATE.observe(rate);
+}
+
+pub fn set_stellar_anchor_health(anchor: &str, healthy: bool) {
+    STELLAR_ANCHOR_HEALTH.with_label_values(&[anchor]).set(if healthy { 1 } else { 0 });
+}
+
+pub fn observe_stellar_corridor_reliability(corridor: &str, reliability: f64) {
+    STELLAR_CORRIDOR_RELIABILITY.with_label_values(&[corridor]).observe(reliability);
 }

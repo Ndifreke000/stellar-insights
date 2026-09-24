@@ -4,6 +4,24 @@ use sqlx::SqlitePool;
 
 use crate::models::corridor::HourlyCorridorMetrics;
 
+// SQL injection guard: only these time field names are permitted in dynamic queries.
+// Adding a new field requires an explicit enum variant.
+enum TimeField {
+    StartTime,
+    EndTime,
+    UpdatedAt,
+}
+
+impl TimeField {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::StartTime => "start_time",
+            Self::EndTime => "end_time",
+            Self::UpdatedAt => "updated_at",
+        }
+    }
+}
+
 pub struct AggregationDb {
     pool: SqlitePool,
 }
@@ -150,10 +168,10 @@ impl AggregationDb {
         )
         .bind(&metric.id)
         .bind(&metric.corridor_key)
-        .bind(&metric.source_asset_code)
-        .bind(&metric.source_asset_issuer)
-        .bind(&metric.destination_asset_code)
-        .bind(&metric.destination_asset_issuer)
+        .bind(&metric.asset_a_code)
+        .bind(&metric.asset_a_issuer)
+        .bind(&metric.asset_b_code)
+        .bind(&metric.asset_b_issuer)
         .bind(metric.hour_bucket.to_rfc3339())
         .bind(metric.total_transactions)
         .bind(metric.successful_transactions)
@@ -208,20 +226,20 @@ impl AggregationDb {
         .await
         .context("Failed to fetch hourly metrics by timerange")?;
 
-        let metrics: Vec<HourlyCorridorMetrics> = rows
+        let metrics: Vec<crate::models::corridor::HourlyCorridorMetrics> = rows
             .into_iter()
             .filter_map(|row| {
                 let hour_bucket = DateTime::parse_from_rfc3339(&row.hour_bucket)
                     .ok()?
                     .with_timezone(&Utc);
 
-                Some(HourlyCorridorMetrics {
+                Some(crate::models::corridor::HourlyCorridorMetrics {
                     id: row.id,
                     corridor_key: row.corridor_key,
-                    source_asset_code: row.source_asset_code,
-                    source_asset_issuer: row.source_asset_issuer,
-                    destination_asset_code: row.destination_asset_code,
-                    destination_asset_issuer: row.destination_asset_issuer,
+                    asset_a_code: row.source_asset_code,
+                    asset_a_issuer: row.source_asset_issuer,
+                    asset_b_code: row.destination_asset_code,
+                    asset_b_issuer: row.destination_asset_issuer,
                     hour_bucket,
                     total_transactions: row.total_transactions,
                     successful_transactions: row.successful_transactions,
@@ -278,17 +296,18 @@ impl AggregationDb {
         let now = Utc::now().to_rfc3339();
 
         let time_field = match status {
-            "running" => "start_time",
-            "completed" | "failed" => "end_time",
-            _ => "updated_at",
+            "running" => TimeField::StartTime,
+            "completed" | "failed" => TimeField::EndTime,
+            _ => TimeField::UpdatedAt,
         };
 
         let query_str = format!(
             r"
             UPDATE aggregation_jobs
-            SET status = ?, error_message = ?, {time_field} = ?, updated_at = ?
+            SET status = ?, error_message = ?, {} = ?, updated_at = ?
             WHERE id = ?
-            "
+            ",
+            time_field.as_str()
         );
 
         sqlx::query(&query_str)

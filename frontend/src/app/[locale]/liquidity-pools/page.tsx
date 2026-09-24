@@ -3,14 +3,11 @@
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
-  Waves,
   Droplets,
   TrendingUp,
   BarChart3,
-  ArrowUpRight,
   ArrowDownRight,
   Percent,
-  DollarSign,
   Activity,
   ChevronDown,
 } from "lucide-react";

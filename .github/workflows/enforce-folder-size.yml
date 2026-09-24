@@ -1,0 +1,15 @@
+name: Enforce folder size policy
+
+on:
+  push: {}
+  pull_request: {}
+
+jobs:
+  policy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run folder size check
+        run: |
+          chmod +x scripts/check_folder_size.sh
+          scripts/check_folder_size.sh

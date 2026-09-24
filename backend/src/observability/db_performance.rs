@@ -1,6 +1,6 @@
 //! Database query performance monitoring.
 //!
-//! - Per-operation Prometheus metrics (duration histogram, slow query and full-scan counters)
+//! - Full-table-scan counter (per-operation duration and slow query counters live in `metrics`)
 //! - Slow query capture with `EXPLAIN QUERY PLAN` output
 //! - Slow query log file (JSON lines, `SLOW_QUERY_LOG_PATH`, default `logs/slow_queries.log`)
 //! - Index usage report that flags full table scans as missing-index candidates
@@ -11,10 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
-use prometheus::{
-    register_histogram_vec_with_registry, register_int_counter_vec_with_registry, HistogramVec,
-    IntCounterVec,
-};
+use prometheus::{register_int_counter_vec_with_registry, IntCounterVec};
 use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 
@@ -23,22 +20,6 @@ use super::metrics::REGISTRY;
 const MAX_RECORDED_SLOW_QUERIES: usize = 200;
 
 lazy_static! {
-    pub static ref DB_QUERY_DURATION_BY_OPERATION: HistogramVec =
-        register_histogram_vec_with_registry!(
-            "db_query_operation_duration_seconds",
-            "Database query duration in seconds by operation and status",
-            &["operation", "status"],
-            vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
-            REGISTRY
-        )
-        .unwrap();
-    pub static ref DB_SLOW_QUERIES_TOTAL: IntCounterVec = register_int_counter_vec_with_registry!(
-        "db_slow_queries_total",
-        "Number of queries exceeding the slow query threshold, by operation",
-        &["operation"],
-        REGISTRY
-    )
-    .unwrap();
     pub static ref DB_FULL_TABLE_SCANS_TOTAL: IntCounterVec =
         register_int_counter_vec_with_registry!(
             "db_full_table_scans_total",
@@ -100,13 +81,6 @@ fn log_path() -> String {
     std::env::var("SLOW_QUERY_LOG_PATH").unwrap_or_else(|_| "logs/slow_queries.log".to_string())
 }
 
-/// Record the duration of a query in the per-operation histogram.
-pub fn observe(operation: &str, status: &str, duration_seconds: f64) {
-    DB_QUERY_DURATION_BY_OPERATION
-        .with_label_values(&[operation, status])
-        .observe(duration_seconds);
-}
-
 /// Replace positional parameters (`$1`, `?1`, `?`) with NULL so the statement
 /// can be passed to `EXPLAIN QUERY PLAN` without bindings.
 fn strip_bind_params(sql: &str) -> String {
@@ -146,7 +120,7 @@ pub fn full_scan_tables(plan: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Capture a slow query: run EXPLAIN (if SQL is known), update metrics, append to
+/// Capture a slow query: run EXPLAIN (if SQL is known), count full scans, append to
 /// the in-memory buffer and the slow query log file.
 pub async fn record_slow_query(
     pool: &SqlitePool,
@@ -165,7 +139,6 @@ pub async fn record_slow_query(
     };
     let full_scans = full_scan_tables(&plan);
 
-    DB_SLOW_QUERIES_TOTAL.with_label_values(&[operation]).inc();
     for table in &full_scans {
         DB_FULL_TABLE_SCANS_TOTAL.with_label_values(&[table.as_str()]).inc();
     }
@@ -181,15 +154,15 @@ pub async fn record_slow_query(
         full_scan_tables: full_scans,
     };
 
-    tracing::warn!(
-        operation = %record.operation,
-        duration_ms,
-        threshold_ms,
-        sql = record.sql.as_deref().unwrap_or("<unknown>"),
-        plan = ?record.plan,
-        full_scans = ?record.full_scan_tables,
-        "Slow query detected"
-    );
+    if !record.plan.is_empty() {
+        tracing::warn!(
+            operation = %record.operation,
+            duration_ms,
+            plan = ?record.plan,
+            full_scans = ?record.full_scan_tables,
+            "Slow query plan"
+        );
+    }
 
     append_to_log_file(&record);
 

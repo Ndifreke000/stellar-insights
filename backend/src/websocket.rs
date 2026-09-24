@@ -1,15 +1,17 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Query, State,
+        ConnectInfo, Query, State,
     },
     response::{IntoResponse, Response},
+    routing::MethodRouter,
     Json,
 };
 use dashmap::DashMap;
 use futures::{sink::SinkExt, stream::SplitSink, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -18,6 +20,9 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
+const MAX_CONNECTIONS_PER_IP: usize = 10;
+const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
+const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
 const MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
 const MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
@@ -35,11 +40,34 @@ struct MessageRateLimit {
 
 struct ConnectionPermit {
     state: Arc<WsState>,
+    ip: IpAddr,
 }
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
         self.state.active_connections.fetch_sub(1, Ordering::AcqRel);
+        self.state.release_ip_connection(self.ip);
+    }
+}
+
+// ── Per-IP rate limiting ─────────────────────────────────────────────────────
+
+struct IpRateLimit {
+    /// Number of active connections from this IP.
+    active_connections: usize,
+    /// Number of connection attempts in the current window.
+    connect_attempts: u32,
+    /// Start of the current rate-limit window.
+    window_start: Instant,
+}
+
+impl IpRateLimit {
+    fn new() -> Self {
+        Self {
+            active_connections: 0,
+            connect_attempts: 0,
+            window_start: Instant::now(),
+        }
     }
 }
 
@@ -69,7 +97,13 @@ pub struct WsState {
     active_connections: AtomicUsize,
     pub tx: broadcast::Sender<WsMessage>,
     rate_limits: DashMap<String, RateLimitInfo>,
+    ip_rate_limits: DashMap<IpAddr, IpRateLimit>,
+    /// Redis client for cross-instance pub/sub. `None` when Redis is unavailable.
+    redis_client: Option<redis::Client>,
 }
+
+/// Redis channel used for cross-instance WebSocket message fan-out.
+const REDIS_WS_CHANNEL: &str = "ws:broadcast";
 
 impl Default for WsState {
     fn default() -> Self {
@@ -81,6 +115,16 @@ impl WsState {
     #[must_use]
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
+        let redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+        let redis_client = redis::Client::open(redis_url.as_str())
+            .map_err(|e| {
+                warn!(
+                    "WsState: Redis unavailable, cross-instance broadcast disabled: {}",
+                    e
+                )
+            })
+            .ok();
         Self {
             connections: DashMap::new(),
             subscriptions: DashMap::new(),
@@ -88,7 +132,64 @@ impl WsState {
             active_connections: AtomicUsize::new(0),
             tx,
             rate_limits: DashMap::new(),
+            ip_rate_limits: DashMap::new(),
+            redis_client,
         }
+    }
+
+    /// Spawn the Redis subscriber task that relays cross-instance broadcasts to
+    /// local connections. Call once after creating `Arc<WsState>`.
+    pub fn spawn_redis_subscriber(self: &Arc<Self>) {
+        let Some(client) = self.redis_client.clone() else {
+            info!("WsState: Redis not configured, cross-instance broadcast disabled");
+            return;
+        };
+        let local_tx = self.tx.clone();
+        tokio::spawn(async move {
+            loop {
+                match client.get_async_pubsub().await {
+                    Ok(mut pubsub) => {
+                        if let Err(e) = pubsub.subscribe(REDIS_WS_CHANNEL).await {
+                            warn!("WsState Redis subscribe error: {}", e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                        info!(
+                            "WsState: subscribed to Redis channel '{}'",
+                            REDIS_WS_CHANNEL
+                        );
+                        let mut stream = pubsub.on_message();
+                        loop {
+                            match stream.next().await {
+                                Some(msg) => {
+                                    let payload: String = match msg.get_payload() {
+                                        Ok(p) => p,
+                                        Err(e) => {
+                                            warn!("WsState Redis payload error: {}", e);
+                                            continue;
+                                        }
+                                    };
+                                    match serde_json::from_str::<WsMessage>(&payload) {
+                                        Ok(ws_msg) => {
+                                            let _ = local_tx.send(ws_msg);
+                                        }
+                                        Err(e) => warn!("WsState Redis deserialize error: {}", e),
+                                    }
+                                }
+                                None => {
+                                    warn!("WsState Redis pub/sub stream ended, reconnecting");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("WsState Redis connection error: {}, retrying in 5s", e);
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
     }
 
     /// Check whether `client_id` is within its rate limit.
@@ -117,13 +218,68 @@ impl WsState {
         self.rate_limits.remove(client_id);
     }
 
+    /// Check per-IP connection limit and connection-attempt rate limit.
+    /// Returns `Ok(())` if the connection should be allowed, `Err` with a message otherwise.
+    pub fn check_ip_limits(&self, ip: IpAddr) -> Result<(), &'static str> {
+        let mut entry = self
+            .ip_rate_limits
+            .entry(ip)
+            .or_insert_with(IpRateLimit::new);
+
+        // Reset attempt window if expired.
+        let now = Instant::now();
+        if now.duration_since(entry.window_start) > IP_RATE_LIMIT_WINDOW {
+            entry.connect_attempts = 0;
+            entry.window_start = now;
+        }
+
+        if entry.connect_attempts >= MAX_CONNECT_ATTEMPTS_PER_IP {
+            return Err("Too many connection attempts from this IP");
+        }
+        entry.connect_attempts += 1;
+
+        if entry.active_connections >= MAX_CONNECTIONS_PER_IP {
+            return Err("Too many connections from this IP");
+        }
+        entry.active_connections += 1;
+
+        Ok(())
+    }
+
+    fn release_ip_connection(&self, ip: IpAddr) {
+        if let Some(mut entry) = self.ip_rate_limits.get_mut(&ip) {
+            entry.active_connections = entry.active_connections.saturating_sub(1);
+        }
+    }
+
     pub fn broadcast(&self, message: WsMessage) {
+        // Publish to Redis so all instances relay the message to their local connections.
+        if let Some(client) = &self.redis_client {
+            if let Ok(payload) = serde_json::to_string(&message) {
+                let client = client.clone();
+                let payload_clone = payload.clone();
+                tokio::spawn(async move {
+                    match client.get_multiplexed_async_connection().await {
+                        Ok(mut conn) => {
+                            let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
+                                .arg(REDIS_WS_CHANNEL)
+                                .arg(payload_clone)
+                                .query_async(&mut conn)
+                                .await;
+                        }
+                        Err(e) => warn!("WsState broadcast: Redis publish failed: {}", e),
+                    }
+                });
+                return; // Redis subscriber will feed local tx
+            }
+        }
+        // Fallback: no Redis, broadcast locally only.
         if let Err(e) = self.tx.send(message) {
             warn!("Failed to broadcast message: {}", e);
         }
     }
 
-    pub async fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
+    pub fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
         let mut target_connections = Vec::new();
         for entry in self.subscriptions.iter() {
             let (connection_id, channels) = entry.pair();
@@ -187,7 +343,7 @@ impl WsState {
         self.cleanup_rate_limit(&connection_id.to_string());
     }
 
-    fn try_acquire_connection_permit(self: &Arc<Self>) -> Option<ConnectionPermit> {
+    fn try_acquire_connection_permit(self: &Arc<Self>, ip: IpAddr) -> Option<ConnectionPermit> {
         let mut current = self.active_connections.load(Ordering::Acquire);
         loop {
             if current >= MAX_CONCURRENT_CONNECTIONS {
@@ -202,6 +358,7 @@ impl WsState {
                 Ok(_) => {
                     return Some(ConnectionPermit {
                         state: Arc::clone(self),
+                        ip,
                     })
                 }
                 Err(actual) => current = actual,
@@ -235,7 +392,29 @@ impl WsState {
         true
     }
 
-    pub async fn close_all_connections(&self) {
+    /// Remove all subscriptions for every connected client.
+    /// Useful when the network configuration changes — stale subscriptions from the
+    /// previous network must be drained so no incorrect data is pushed.
+    pub fn drain_all_subscriptions(&self) {
+        let connection_ids: Vec<Uuid> = self.subscriptions.iter().map(|e| *e.key()).collect();
+        for connection_id in connection_ids {
+            self.subscriptions.remove(&connection_id);
+        }
+        info!("All WebSocket subscriptions have been drained");
+    }
+
+    /// Broadcast a `NetworkChanged` message to every connected client and drain
+    /// all stale subscriptions. Clients that receive `NetworkChanged` should
+    /// re-subscribe to channels relevant to the new network.
+    pub fn broadcast_network_change(&self, network: &str) {
+        info!("Broadcasting network change to: {}", network);
+        self.broadcast(WsMessage::NetworkChanged {
+            network: network.to_string(),
+        });
+        self.drain_all_subscriptions();
+    }
+
+    pub fn close_all_connections(&self) {
         let connection_ids: Vec<Uuid> = self.connections.iter().map(|e| *e.key()).collect();
         for connection_id in connection_ids {
             self.cleanup_connection(connection_id);
@@ -326,6 +505,11 @@ pub enum WsMessage {
     ServerShutdown {
         message: String,
     },
+    /// Broadcast when the server switches to a different Stellar network.
+    /// Receiving clients should discard stale subscriptions and re-subscribe.
+    NetworkChanged {
+        network: String,
+    },
 }
 
 // ── Query params ──────────────────────────────────────────────────────────────
@@ -333,6 +517,12 @@ pub enum WsMessage {
 #[derive(Debug, Deserialize)]
 pub struct WsQueryParams {
     pub token: Option<String>,
+}
+
+/// `MethodRouter` for `GET /ws` (built in the library crate so Axum types stay consistent).
+#[must_use]
+pub fn ws_route() -> MethodRouter<Arc<WsState>> {
+    axum::routing::get(ws_handler)
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -344,10 +534,25 @@ pub struct WsQueryParams {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQueryParams>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<WsState>>,
 ) -> Response {
-    // Connection limit check — must happen before upgrade so we can return HTTP error.
-    let Some(connection_permit) = state.try_acquire_connection_permit() else {
+    let client_ip = addr.ip();
+
+    // Per-IP rate limit check — connection attempts and concurrent connections per IP.
+    if let Err(reason) = state.check_ip_limits(client_ip) {
+        warn!("Per-IP limit exceeded for {}: {}", client_ip, reason);
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": reason })),
+        )
+            .into_response();
+    }
+
+    // Global connection limit check — must happen before upgrade so we can return HTTP error.
+    let Some(connection_permit) = state.try_acquire_connection_permit(client_ip) else {
+        // Release the IP slot we just incremented since we won't proceed.
+        state.release_ip_connection(client_ip);
         warn!(
             "Connection limit reached ({}/{}), rejecting new WebSocket connection",
             state.connection_count(),
@@ -485,7 +690,7 @@ async fn handle_socket(
                                 message: "Rate limit exceeded. Please slow down.".to_string(),
                             }) {
                                 let mut guard = recv_sender.lock().await;
-                                let _ = guard.send(Message::Text(json)).await;
+                                let _ = guard.send(Message::Text(json.into())).await;
                             }
                             continue;
                         }
@@ -564,7 +769,7 @@ async fn handle_socket(
                         let ping = WsMessage::Ping { timestamp: chrono::Utc::now().timestamp() };
                         if let Ok(json) = serde_json::to_string(&ping) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send ping to {}", connection_id);
                                 break;
                             }
@@ -573,7 +778,7 @@ async fn handle_socket(
                     Ok(msg) = broadcast_rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send broadcast to {}", connection_id);
                                 break;
                             }
@@ -582,7 +787,7 @@ async fn handle_socket(
                     Some(msg) = rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send message to {}", connection_id);
                                 break;
                             }
@@ -617,7 +822,7 @@ async fn send_ws_message(sender: &SharedWebSocketSender, message: &WsMessage) ->
         warn!("Failed to serialize WebSocket message: {}", e);
     })?;
     let mut guard = sender.lock().await;
-    guard.send(Message::Text(json)).await.map_err(|e| {
+    guard.send(Message::Text(json.into())).await.map_err(|e| {
         warn!("Failed to send WebSocket message: {}", e);
     })
 }
@@ -625,6 +830,11 @@ async fn send_ws_message(sender: &SharedWebSocketSender, message: &WsMessage) ->
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::collection_is_never_read,
+    clippy::expect_used,
+    clippy::unwrap_used
+)]
 mod tests {
     use super::*;
     use std::sync::Arc;
@@ -654,20 +864,96 @@ mod tests {
     }
 
     #[test]
+    fn test_ip_connection_limit_enforced() {
+        let state = Arc::new(WsState::new());
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+
+        for _ in 0..MAX_CONNECTIONS_PER_IP {
+            assert!(state.check_ip_limits(ip).is_ok());
+        }
+        // Next attempt should be blocked by active connection limit.
+        assert!(state.check_ip_limits(ip).is_err());
+    }
+
+    #[test]
+    fn test_ip_connection_limit_releases_on_drop() {
+        let state = Arc::new(WsState::new());
+        let ip: IpAddr = "10.0.0.1".parse().unwrap();
+
+        for _ in 0..MAX_CONNECTIONS_PER_IP {
+            state.check_ip_limits(ip).unwrap();
+        }
+        assert!(state.check_ip_limits(ip).is_err());
+
+        state.release_ip_connection(ip);
+        assert!(state.check_ip_limits(ip).is_ok());
+    }
+
+    #[test]
+    fn test_ip_attempt_rate_limit_enforced() {
+        let state = Arc::new(WsState::new());
+        // Use a different IP so active_connections limit doesn't interfere.
+        let ip: IpAddr = "192.168.1.1".parse().unwrap();
+
+        // Exhaust attempt budget (active connections will also cap at MAX_CONNECTIONS_PER_IP,
+        // so release after each to keep active count low).
+        for i in 0..MAX_CONNECT_ATTEMPTS_PER_IP {
+            if i < MAX_CONNECTIONS_PER_IP as u32 {
+                assert!(
+                    state.check_ip_limits(ip).is_ok(),
+                    "attempt {} should pass",
+                    i
+                );
+            } else {
+                // Release one active slot so active_connections isn't the blocker.
+                state.release_ip_connection(ip);
+                assert!(
+                    state.check_ip_limits(ip).is_ok(),
+                    "attempt {} should pass",
+                    i
+                );
+            }
+        }
+        // Now attempt budget is exhausted.
+        state.release_ip_connection(ip);
+        assert!(
+            state.check_ip_limits(ip).is_err(),
+            "should be blocked by attempt rate limit"
+        );
+    }
+
+    #[test]
+    fn test_ip_limits_independent_per_ip() {
+        let state = Arc::new(WsState::new());
+        let ip_a: IpAddr = "1.2.3.4".parse().unwrap();
+        let ip_b: IpAddr = "5.6.7.8".parse().unwrap();
+
+        for _ in 0..MAX_CONNECTIONS_PER_IP {
+            state.check_ip_limits(ip_a).unwrap();
+        }
+        assert!(state.check_ip_limits(ip_a).is_err());
+        assert!(
+            state.check_ip_limits(ip_b).is_ok(),
+            "ip_b should be unaffected"
+        );
+    }
+
+    #[test]
     fn test_connection_limit_enforced() {
         let state = Arc::new(WsState::new());
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::with_capacity(MAX_CONCURRENT_CONNECTIONS);
 
         for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
 
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert!(state.try_acquire_connection_permit(ip).is_none());
 
         drop(permits.pop());
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS - 1);
-        assert!(state.try_acquire_connection_permit().is_some());
+        assert!(state.try_acquire_connection_permit(ip).is_some());
     }
 
     #[test]
@@ -690,7 +976,8 @@ mod tests {
     fn test_cleanup_connection_removes_rate_limit_state() {
         let state = Arc::new(WsState::new());
         let connection_id = Uuid::new_v4();
-        let permit = state.try_acquire_connection_permit().unwrap();
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let permit = state.try_acquire_connection_permit(ip).unwrap();
 
         state.check_message_rate_limit(connection_id);
         state.subscribe_connection(connection_id, vec!["corridor:test".to_string()]);
@@ -763,12 +1050,13 @@ mod tests {
     #[test]
     fn test_websocket_connection_limit() {
         let state = Arc::new(WsState::new());
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::new();
         for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
         assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert!(state.try_acquire_connection_permit(ip).is_none());
     }
 
     #[test]

@@ -3,7 +3,9 @@ use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
+
+use crate::observability::job_metrics::JobMetricsCollector;
 
 use crate::models::asset_verification::VerifiedAsset;
 use crate::services::asset_verifier::AssetVerifier;
@@ -62,8 +64,14 @@ impl AssetRevalidationJob {
         loop {
             ticker.tick().await;
 
-            if let Err(e) = self.run_revalidation().await {
-                error!("Asset revalidation job failed: {}", e);
+            let _metrics = JobMetricsCollector::new("asset-revalidation");
+            match self.run_revalidation().await {
+                Ok(_) => {
+                    _metrics.complete_success();
+                }
+                Err(e) => {
+                    _metrics.complete_failure(&e.to_string());
+                }
             }
         }
     }

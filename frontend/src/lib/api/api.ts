@@ -1,13 +1,19 @@
 /**
- * API Client for Stellar Insights
+ * API Client for PayRaider
  * Handles all API calls to the backend
  */
 import { monitoring } from "../monitoring";
 import { logger } from "@/lib/logger";
-import { AnchorsResponse, MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
-import { form } from "framer-motion/client";
+import { MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
+// AnchorsResponse comes from ./anchor, not ./types -- lib/api/types.ts had its
+// own conflicting AnchorsResponse ({ data, pagination }) that didn't match
+// what GET /anchors actually returns ({ anchors, total }, see the backend's
+// AnchorsResponse in backend/src/api/anchors.rs). Using it here silently typed
+// getAnchors() wrong; see also useAnchorPage.ts's response.data bug, same root cause.
+import { AnchorsResponse } from "./anchor";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080";
+import { config } from '@/config';
+export const API_BASE_URL = config.apiUrl;
 
 /**
  * Custom error class for API responses
@@ -223,6 +229,7 @@ function generateMockPrediction(
     recommendation: recommendations[riskLevel],
     alternative_routes: alternativeRoutes,
     model_version: "1.0.0",
+    is_mock: true,
   };
 }
 
