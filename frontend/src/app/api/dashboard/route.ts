@@ -79,7 +79,7 @@ export async function GET() {
     const corridors: BackendCorridor[] = Array.isArray(corridorsBody)
       ? corridorsBody
       : (corridorsBody.data ?? []);
-    const paymentsData = paymentsRes.ok
+    const _paymentsData = paymentsRes.ok
       ? await paymentsRes.json()
       : { _embedded: { records: [] } };
 

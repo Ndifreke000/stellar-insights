@@ -4,9 +4,10 @@ import React, { useState, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DataPoint {
+  id?: string | number;
   name: string;
   value: number;
-  [key: string]: string | number;
+  [key: string]: string | number | undefined;
 }
 
 interface AdvancedDataVisualizationProps {
@@ -29,11 +30,11 @@ export const AdvancedDataVisualization: React.FC<AdvancedDataVisualizationProps>
   xAxisKey = 'name',
   yAxisKey = 'value',
   colors = COLORS,
-  responsive = true,
+  responsive: _responsive = true,
   height = 400,
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<string>(yAxisKey);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, _setIsLoading] = useState(false);
 
   const metrics = useMemo(() => {
     if (data.length === 0) return [];

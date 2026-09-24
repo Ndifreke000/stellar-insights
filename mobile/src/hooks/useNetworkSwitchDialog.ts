@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform } from 'react-native';
 import { useAppStore } from '@store/appStore';
-import { StellarNetwork } from '@types/index';
+import { StellarNetwork } from '@app-types/index';
 
 export interface DialogState {
   isVisible: boolean;

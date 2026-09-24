@@ -147,12 +147,12 @@ export default function Sep6Page() {
 
   useEffect(() => {
     loadAnchors();
-  }, []);
+  }, [loadAnchors]);
 
   useEffect(() => {
     if (transferServer) loadInfo();
     else setInfo(null);
-  }, [transferServer]);
+  }, [transferServer, loadInfo]);
 
   const depositAssets = info?.deposit ? Object.keys(info.deposit) : [];
   const withdrawAssets = info?.withdraw ? Object.keys(info.withdraw) : [];

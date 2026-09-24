@@ -19,7 +19,7 @@ $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 New-Item -ItemType Directory -Force -Path $ResultsDir | Out-Null
 
 Write-Host "==============================================================================" -ForegroundColor Blue
-Write-Host "STELLAR INSIGHTS - LOAD TEST SUITE" -ForegroundColor Blue
+Write-Host "PAYRAIDER - LOAD TEST SUITE" -ForegroundColor Blue
 Write-Host "==============================================================================" -ForegroundColor Blue
 Write-Host ""
 Write-Host "Base URL: $BaseUrl" -ForegroundColor Green
@@ -142,7 +142,7 @@ Write-Host ""
 # Generate summary file
 $summaryFile = "$ResultsDir/summary_${Timestamp}.txt"
 @"
-STELLAR INSIGHTS - LOAD TEST SUMMARY
+PAYRAIDER - LOAD TEST SUMMARY
 ====================================
 
 Date: $(Get-Date)

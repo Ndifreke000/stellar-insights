@@ -18,6 +18,7 @@ use tracing::{error, info};
 
 /// Response for verification summary endpoint
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerificationSummaryResponse {
     #[serde(rename = "latestEpoch")]
     pub latest_epoch: Option<u64>,
@@ -42,6 +43,8 @@ pub struct EventListQuery {
     pub offset: Option<i64>,
     pub event_type: Option<String>,
     pub verification_status: Option<String>,
+    /// Filter by one or more contract IDs (repeated query param, e.g. contract_ids=a&contract_ids=b)
+    pub contract_ids: Option<Vec<String>>,
 }
 
 /// Handler for GET /api/analytics/verification-summary
@@ -93,7 +96,8 @@ pub async fn get_verification_summary(
         ("cursor" = Option<String>, Query, description = "Opaque cursor from `pagination.next_cursor` / `prev_cursor`"),
         ("offset" = Option<i64>, Query, description = "Deprecated: number of events to skip. Prefer `cursor`"),
         ("event_type" = Option<String>, Query, description = "Filter by event type"),
-        ("verification_status" = Option<String>, Query, description = "Filter by verification status")
+        ("verification_status" = Option<String>, Query, description = "Filter by verification status"),
+        ("contract_ids" = Option<Vec<String>>, Query, description = "Filter by one or more contract IDs (repeated query param)")
     ),
     responses(
         (status = 200, description = "Paginated list of contract events (`PaginatedResponse<IndexedEvent>`; `total` is null)"),
@@ -123,6 +127,7 @@ pub async fn list_contract_events(
     let query = EventQuery {
         event_type: params.event_type,
         verification_status: params.verification_status,
+        contract_ids: params.contract_ids.unwrap_or_default(),
         // Fetch one extra row to learn whether a next page exists without a COUNT(*).
         limit: Some(page.limit + 1),
         offset: Some(page.offset),
@@ -244,11 +249,11 @@ pub fn routes(event_indexer: Arc<EventIndexer>) -> Router {
         )
         .route("/api/analytics/contract-events", get(list_contract_events))
         .route(
-            "/api/analytics/contract-events/:id",
+            "/api/analytics/contract-events/{id}",
             get(get_contract_event),
         )
         .route(
-            "/api/analytics/contract-events/epoch/:epoch",
+            "/api/analytics/contract-events/epoch/{epoch}",
             get(get_events_for_epoch),
         )
         .route("/api/analytics/event-stats", get(get_event_stats))

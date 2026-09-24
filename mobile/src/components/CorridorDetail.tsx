@@ -18,7 +18,7 @@ import {
   CorridorDataSource,
   CorridorDetailProps,
   CorridorMetrics,
-} from '@types/corridor';
+} from '@app-types/corridor';
 import { CorridorsStackParamList } from '@navigation/MainNavigator';
 
 type CorridorDetailRouteProp = RouteProp<CorridorsStackParamList, 'CorridorDetail'>;
@@ -202,6 +202,7 @@ export const CorridorDetail: React.FC<CorridorDetailProps> = ({
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
+        testID="corridor-detail-scroll"
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl

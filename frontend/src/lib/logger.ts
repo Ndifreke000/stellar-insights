@@ -31,21 +31,23 @@ interface LogMetadata {
 /**
  * Redact sensitive data from logs
  */
-function redactSensitiveData(data: unknown): unknown {
+function redactSensitiveData<T>(data: T): T {
   if (typeof data === 'string') {
     // Redact Stellar addresses (56 chars starting with G)
-    data = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
-    
+    let redactedString = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
+
     // Redact potential API keys
-    data = data.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
-    
+    redactedString = redactedString.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
+
     // Redact email addresses
-    data = data.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+    redactedString = redactedString.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+
+    return redactedString as T;
   }
-  
+
   if (typeof data === 'object' && data !== null) {
     const redacted: Record<string, unknown> = {};
-    
+
     for (const [key, value] of Object.entries(data)) {
       // Redact sensitive field names
       if (/password|secret|token|key|auth|credential/i.test(key)) {
@@ -54,10 +56,10 @@ function redactSensitiveData(data: unknown): unknown {
         redacted[key] = redactSensitiveData(value);
       }
     }
-    
-    return redacted;
+
+    return redacted as T;
   }
-  
+
   return data;
 }
 

@@ -31,7 +31,7 @@ describe('useAnchorsList', () => {
     const mockData = generateMockAnchorsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -49,7 +49,7 @@ describe('useAnchorsList', () => {
       pagination: { total: mockData.total },
     });
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -65,7 +65,7 @@ describe('useAnchorsList', () => {
     await AsyncStorage.setItem(ANCHORS_LIST_CACHE_KEY, JSON.stringify(mockData));
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -81,7 +81,7 @@ describe('useAnchorsList', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -96,7 +96,7 @@ describe('useAnchorsList', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -110,7 +110,7 @@ describe('useAnchorsList', () => {
     const mockData = generateMockAnchorsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -131,7 +131,7 @@ describe('useAnchorsList', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -151,7 +151,7 @@ describe('useAnchorsList', () => {
       new Error('Storage read failed'),
     );
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -163,7 +163,7 @@ describe('useAnchorsList', () => {
   it('handles NetInfo fetch failures as offline', async () => {
     (NetInfo.fetch as jest.Mock).mockRejectedValue(new Error('NetInfo unavailable'));
 
-    const { result } = renderHook(() => useAnchorsList());
+    const { result } = await renderHook(() => useAnchorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

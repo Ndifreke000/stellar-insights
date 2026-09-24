@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { Bell, X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
@@ -38,8 +38,8 @@ export const EnhancedNotificationBell: React.FC<NotificationBellProps> = ({ clas
   const [isOpen, setIsOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const { unreadCount, notifications, markAsRead, markAllAsRead, isWebSocketConnected } = useNotifications();
-  const bellRef = useRef<HTMLButtonElement>(null);
-  const previewTimeoutRef = useRef<NodeJS.Timeout>();
+  const bellRef = useRef<HTMLDivElement>(null);
+  const previewTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Get recent unread notifications for preview
   const recentUnread = notifications

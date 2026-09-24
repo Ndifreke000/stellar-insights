@@ -1,6 +1,7 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridors, cost_calculator, fee_bump, liquidity_pools,
-    metrics, oauth, price_feed as price_feed_api, rpc, webhooks,
+    account_merges, anchors, cache_stats, corridor_alerts, corridors, cost_calculator, digest,
+    fee_bump, liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy,
+    webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -43,7 +44,10 @@ struct ApiVersion {
 
 async fn get_api_version() -> Json<ApiVersion> {
     let mut sunset_dates = HashMap::new();
-    sunset_dates.insert("v1".to_string(), "2025-01-01T00:00:00Z".to_string());
+    // Sunset date is intentionally far-future until v2 is fully implemented.
+    // Update this once v2 reaches feature parity with v1.
+    // See docs/API_V2_COVERAGE_1864.md for the current gap analysis.
+    sunset_dates.insert("v1".to_string(), "2026-12-31T00:00:00Z".to_string());
 
     Json(ApiVersion {
         current: "v1".to_string(),
@@ -61,7 +65,13 @@ async fn v2_not_implemented() -> Json<serde_json::Value> {
 }
 
 fn v2_routes() -> Router {
-    Router::new().route("/status", get(v2_not_implemented))
+    Router::new()
+        .route("/status", get(v2_not_implemented))
+        // Catch-all: return a structured JSON "not implemented" response for any
+        // /api/v2/* path that doesn't exist yet, rather than a bare 404. This
+        // prevents clients from getting a confusing empty response while v2 is
+        // still a stub. See docs/API_V2_COVERAGE_1864.md for full gap analysis.
+        .fallback(v2_not_implemented)
 }
 
 pub fn routes(
@@ -87,7 +97,7 @@ pub fn routes(
         .route("/anchors", get(anchors::get_anchors))
         .route("/corridors", get(corridors::list_corridors))
         .route(
-            "/corridors/:corridor_key",
+            "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
         .with_state(cached_state);
@@ -96,21 +106,29 @@ pub fn routes(
     let public_anchor_routes = Router::new()
         .route("/health", get(crate::handlers::health_check))
         .route("/db/pool-metrics", get(crate::handlers::pool_metrics))
-        .route("/anchors/:id", get(anchors::get_anchor))
+        .route("/anchors/{id}", get(anchors::get_anchor))
         .route(
-            "/anchors/account/:stellar_account",
+            "/anchors/account/{stellar_account}",
             get(anchors::get_anchor_by_account),
         )
-        .route("/anchors/:id/assets", get(anchors::get_anchor_assets))
+        .route("/anchors/{id}/assets", get(anchors::get_anchor_assets))
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
+        .with_state(app_state.clone());
+
+    // 2b. Export routes (#1784) — handlers already existed but were never
+    // mounted, so CSV/Excel export was unreachable from the API.
+    let export_routes = Router::new()
+        .route("/export/corridors", get(crate::api::export::export_corridors))
+        .route("/export/anchors", get(crate::api::export::export_anchors))
+        .route("/export/payments", get(crate::api::export::export_payments))
         .with_state(app_state.clone());
 
     // Protected routes require JWT; per-API-key limits apply after auth resolves.
     let protected_routes = Router::new()
         .route("/anchors", axum::routing::post(anchors::create_anchor))
-        .route("/anchors/:id/metrics", put(anchors::update_anchor_metrics))
+        .route("/anchors/{id}/metrics", put(anchors::update_anchor_metrics))
         .route(
-            "/anchors/:id/assets",
+            "/anchors/{id}/assets",
             axum::routing::post(anchors::create_anchor_asset),
         )
         .route(
@@ -118,10 +136,10 @@ pub fn routes(
             axum::routing::post(corridors::create_corridor),
         )
         .route(
-            "/corridors/:id/metrics-from-transactions",
+            "/corridors/{id}/metrics-from-transactions",
             put(corridors::update_corridor_metrics_from_transactions),
         )
-        .with_state(app_state)
+        .with_state(app_state.clone())
         .layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
             api_key_rate_limit_middleware,
@@ -132,18 +150,23 @@ pub fn routes(
         .nest("/webhooks", webhooks::routes(pool.clone()))
         .layer(middleware::from_fn(auth_middleware));
 
+    // GDPR endpoints — require auth; mounted at /api/gdpr
+    let gdpr_routes = Router::new()
+        .nest("/gdpr", crate::api::gdpr::routes(pool.clone()))
+        .layer(middleware::from_fn(auth_middleware));
+
     // 4. RPC routes
     let rpc_routes = Router::new()
         .route("/rpc/health", get(rpc::rpc_health_check))
         .route("/rpc/ledger/latest", get(rpc::get_latest_ledger))
         .route("/rpc/payments", get(rpc::get_payments))
         .route(
-            "/rpc/payments/account/:account_id",
+            "/rpc/payments/account/{account_id}",
             get(rpc::get_account_payments),
         )
         .route("/rpc/trades", get(rpc::get_trades))
         .route("/rpc/orderbook", get(rpc::get_order_book))
-        .with_state(rpc_client);
+        .with_state(Arc::clone(&rpc_client));
 
     // 5. Special service routes
     let service_routes = Router::new()
@@ -157,21 +180,103 @@ pub fn routes(
         .nest("/cost-calculator", cost_calculator::routes(price_feed))
         .nest("/cache/stats", cache_stats::routes(cache.clone()))
         .nest("/metrics", metrics::routes(cache.clone()))
-        .nest("/analytics", crate::api::analytics_dashboard::routes(cache))
+        .nest("/analytics", crate::api::analytics_dashboard::routes(app_state.clone()))
+        .nest("/analytics", crate::api::failed_payments::routes(app_state.clone()))
+        .nest("/analytics", crate::api::settlement_distribution::routes(app_state.clone()))
+        .nest("/corridor-alerts", crate::api::corridor_alerts::routes(app_state.clone()))
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // 6. OAuth routes
-    let oauth_routes = oauth::routes(pool);
+    let oauth_routes = oauth::routes(pool.clone());
+
+    // 7. Email digest routes (#2130) — auth-gated: triggering a send is an
+    // operator action, not something an anonymous caller should be able to do.
+    let digest_routes = Router::new()
+        .nest(
+            "/digest",
+            digest::routes(digest::scheduler_from_env(
+                cache.clone(),
+                Arc::clone(&rpc_client),
+            )),
+        )
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 8. Admin IP whitelist routes (#2219). This previously had no
+    // auth_middleware layer at all -- the comment referenced #2219 as
+    // though it required auth, but nothing enforced it; each handler had a
+    // "TODO: Verify admin auth" that was never followed up. Added the same
+    // layer every other protected group here uses.
+    let ip_whitelist_service = Arc::new(crate::admin_ip_whitelist::IpWhitelistService::new(pool.clone()));
+    let admin_ip_whitelist_routes = Router::new()
+        .nest("/admin/ip-whitelist", crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()))
+        .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 9. Admin audit log routes (#2219). Like admin_ip_whitelist_routes
+    // above, this had no auth_middleware layer -- query_audit_log and
+    // verify_audit_log_integrity took no auth extractor at all, so anyone
+    // could read the audit log or trigger integrity checks unauthenticated.
+    let audit_logger = Arc::new(crate::admin_audit_log::AdminAuditLogger::new(pool.clone()));
+    let audit_log_routes = Router::new()
+        .nest("/admin/audit-log", crate::api::audit_log::routes(audit_logger.clone()))
+        .merge(crate::api::audit_log::routes(audit_logger))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 10. 2FA routes (#2219). Previously built with
+    // CryptoService::new_for_tests() -- a hardcoded key baked into source,
+    // used to encrypt every user's TOTP secret in every deployment
+    // regardless of environment config. Now sourced from the real
+    // ENCRYPTION_KEY (Vault or env), same as jwt_secret is resolved below.
+    let crypto = crate::crypto::CryptoService::from_env();
+    let twofa_service = Arc::new(crate::twofa::TwoFAService::new(pool.clone(), crypto));
+    let twofa_routes = Router::new()
+        .nest("/auth/2fa", crate::api::twofa::routes(twofa_service.clone()))
+        .merge(crate::api::twofa::routes(twofa_service));
+
+    // 11. Login/refresh/logout/session-management routes. AuthService was
+    // never constructed anywhere in this codebase before, so this whole
+    // group (crate::api::auth) was unreachable dead code -- not merged into
+    // any router. redis_connection is optional at the type level
+    // (Option<MultiplexedConnection>, see auth.rs's own `if let Some`
+    // usage) and only affects a fast-path cache in login/refresh/logout, so
+    // None here doesn't reduce correctness of session management.
+    let auth_service = Arc::new(crate::auth::AuthService::new(
+        Arc::new(tokio::sync::RwLock::new(None)),
+        pool.clone(),
+    ));
+    let auth_routes = crate::api::auth::routes(auth_service.clone());
 
     // V1 router (mounted at /api/v1 and also preserved at root for compatibility)
     let v1_router = Router::new()
         .merge(cached_routes)
         .merge(public_anchor_routes)
+        .merge(export_routes)
         .merge(protected_routes)
         .merge(protected_webhook_routes)
+        .merge(gdpr_routes)
         .merge(rpc_routes)
         .merge(service_routes)
-        .merge(oauth_routes);
+        .merge(oauth_routes)
+        .merge(digest_routes)
+        .merge(admin_ip_whitelist_routes)
+        .merge(auth_routes)
+        .merge(audit_log_routes)
+        .merge(twofa_routes)
+        // auth_middleware (layered on protected_routes, protected_webhook_routes,
+        // gdpr_routes, digest_routes, admin_ip_whitelist_routes,
+        // audit_log_routes, and the protected half of auth_routes, above)
+        // requires these two
+        // extensions to be present on the request or it fails every
+        // request. Nothing constructed them anywhere in this codebase
+        // before this -- every one of those "protected" groups would 500
+        // (Extension rejection), not 401, on every call. Applied here so
+        // one Extension layer covers all of them via the merged router.
+        .layer(axum::Extension(crate::auth_middleware::JwtSecret(
+            Arc::from(auth_service.jwt_secret()),
+        )))
+        .layer(axum::Extension(crate::auth_middleware::TokenRevocationStore(
+            Arc::new(auth_service.db_pool().clone()),
+        )));
 
     // Combine all routes
     Router::new()
@@ -179,7 +284,19 @@ pub fn routes(
         .nest("/api/v2", v2_routes())
         .route("/api/version", get(get_api_version))
         // Preserve existing unversioned endpoints for backward compatibility.
+        // This must be nested under "/api", not merged at the bare root -
+        // v1_router's own routes have no prefix (e.g. "/anchors"), so a
+        // plain `.merge()` here only ever served bare paths like `/anchors`
+        // while the documented contract (openapi.json, the Postman
+        // collection, and both the TypeScript and Python SDKs) all call
+        // `/api/anchors`. Every unversioned SDK request was 404ing until
+        // this was nested under "/api" instead.
+        .nest("/api", v1_router.clone())
         .merge(v1_router)
+        // SEP-24 proxy routes are mounted separately because the callback
+        // endpoint manages its own per-origin CORS headers dynamically
+        // (the anchor home_domain is not known at startup).
+        .merge(sep24_proxy::routes())
         .layer(cors)
         .layer(middleware::from_fn(
             crate::request_id::request_id_middleware,

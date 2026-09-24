@@ -16,25 +16,16 @@ const TAB_ROUTE_NAMES = [
   'Dashboard',
   'Corridors',
   'Anchors',
-  'OfflineQueue',
-  'InfiniteScroll',
-  'PullToRefresh',
-  'OfflineCaching',
   'NetworkSwitchDialog',
   'SearchFunctionality',
-  'IOSProjectSetup',
-  'HapticPatterns',
-  'PictureInPicture',
-  'VRSupport',
-  'BeaconSupport',
   'Settings',
 ] as const;
 
 function mockScreen(label: string) {
-  const React = require('react') as typeof import('react');
+  const ReactModule = require('react') as typeof import('react');
   const { Text } = require('react-native');
   return function MockScreen() {
-    return React.createElement(Text, null, label);
+    return ReactModule.createElement(Text, null, label);
   };
 }
 
@@ -62,44 +53,12 @@ jest.mock('@components/AnchorDetail', () => ({
   AnchorDetail: mockScreen('Anchor Detail'),
 }));
 
-jest.mock('@components/OfflineQueue', () => ({
-  OfflineQueue: mockScreen('Offline Queue'),
-}));
-
-jest.mock('@components/InfiniteScroll', () => ({
-  InfiniteScroll: mockScreen('Infinite Scroll'),
-}));
-
-jest.mock('@components/PullToRefresh', () => ({
-  PullToRefresh: mockScreen('Pull to Refresh'),
-}));
-
-jest.mock('@components/OfflineCaching', () => ({
-  OfflineCaching: mockScreen('Offline Caching'),
-}));
-
 jest.mock('@components/NetworkSwitchDialog', () => ({
   NetworkSwitchButton: mockScreen('Network Switch'),
 }));
 
 jest.mock('@components/SearchFunctionality', () => ({
   SearchFunctionality: mockScreen('Search'),
-}));
-
-jest.mock('@components/IOSProjectSetup', () => ({
-  IOSProjectSetup: mockScreen('iOS Setup'),
-}));
-jest.mock('@components/HapticPatternsComponent', () => ({
-  HapticPatternsComponent: mockScreen('Haptics'),
-}));
-jest.mock('@components/PictureinPictureComponent', () => ({
-  PictureinPictureComponent: mockScreen('PiP'),
-}));
-jest.mock('@components/VRSupportComponent', () => ({
-  VRSupportComponent: mockScreen('VR Support'),
-}));
-jest.mock('@components/BeaconSupportComponent', () => ({
-  BeaconSupportComponent: mockScreen('Beacon Support'),
 }));
 
 function createTabInitialState(activeTab: (typeof TAB_ROUTE_NAMES)[number]) {
@@ -167,8 +126,8 @@ describe('MainNavigator', () => {
     }).not.toThrow();
   });
 
-  it('mounts the anchors stack when the Anchors tab is active', () => {
-    const { getByText } = render(
+  it('mounts the anchors stack when the Anchors tab is active', async () => {
+    const { getByText } = await render(
       <NavigationContainer initialState={createTabInitialState('Anchors')}>
         <MainNavigator />
       </NavigationContainer>,
@@ -177,8 +136,8 @@ describe('MainNavigator', () => {
     expect(getByText('Anchors List')).toBeTruthy();
   });
 
-  it('mounts the corridors stack when the Corridors tab is active', () => {
-    const { getByText } = render(
+  it('mounts the corridors stack when the Corridors tab is active', async () => {
+    const { getByText } = await render(
       <NavigationContainer initialState={createTabInitialState('Corridors')}>
         <MainNavigator />
       </NavigationContainer>,

@@ -98,6 +98,7 @@ impl WebSocketStreaming {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_websocket_streaming_creation() {

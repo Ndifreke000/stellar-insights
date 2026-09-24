@@ -26,4 +26,8 @@ pub enum Error {
     SameToken = 10,
     /// Contract is paused
     ContractPaused = 11,
+    /// Reentrant call detected
+    Reentrancy = 12,
+    /// Actual output less than minimum required (slippage exceeded)
+    SlippageExceeded = 13,
 }

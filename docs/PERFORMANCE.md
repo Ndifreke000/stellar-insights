@@ -1,6 +1,6 @@
 # Performance Standards
 
-Performance budgets and targets for the Stellar Insights frontend.
+Performance budgets and targets for the PayRaider frontend.
 
 ## Budgets
 

@@ -232,13 +232,9 @@ pub struct PageLinks {
 
 /// Standard paginated response envelope used by all list endpoints.
 ///
-/// Concrete instantiations are registered as named OpenAPI schemas via
-/// `aliases` so the generated spec documents the real item type.
+/// Concrete instantiations (e.g. `PaginatedResponse<CorridorResponse>`) are
+/// registered as OpenAPI schemas so the generated spec documents the real item type.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[aliases(
-    PaginatedCorridors = PaginatedResponse<crate::api::corridors::CorridorResponse>,
-    PaginatedAnchors = PaginatedResponse<crate::api::anchors::AnchorMetricsResponse>
-)]
 pub struct PaginatedResponse<T: Serialize> {
     /// The page of items.
     pub data: Vec<T>,

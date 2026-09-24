@@ -1,20 +1,23 @@
 use anyhow::Result;
 use chrono::Utc;
+use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 use sqlx::{Pool, Sqlite};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::info;
 
 use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
-use crate::rpc::StellarRpcClient;
+use crate::rpc::StellarRpcClientTrait;
 
 pub struct LiquidityPoolAnalyzer {
     pool: Pool<Sqlite>,
-    rpc_client: Arc<StellarRpcClient>,
+    rpc_client: Arc<dyn StellarRpcClientTrait>,
 }
 
 impl LiquidityPoolAnalyzer {
     #[must_use]
-    pub const fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
+    pub fn new(pool: Pool<Sqlite>, rpc_client: Arc<dyn StellarRpcClientTrait>) -> Self {
         Self { pool, rpc_client }
     }
 
@@ -24,6 +27,10 @@ impl LiquidityPoolAnalyzer {
 
     /// Fetch liquidity pools from Horizon and upsert into the database.
     /// Returns the number of pools synced.
+    ///
+    /// Earliest snapshot reserves for IL are loaded once up front (#1868)
+    /// instead of one DB query per pool inside the sync loop. Horizon still
+    /// requires per-pool trade fetches (no bulk trades endpoint).
     pub async fn sync_pools(&self) -> Result<u64> {
         let horizon_pools = self
             .rpc_client
@@ -31,6 +38,8 @@ impl LiquidityPoolAnalyzer {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut count = 0u64;
+
+        let initial_reserves = self.load_earliest_snapshot_reserves().await?;
 
         for hp in &horizon_pools {
             // Defensive guard: Horizon has been observed returning pools with fewer
@@ -49,11 +58,17 @@ impl LiquidityPoolAnalyzer {
                 Self::parse_asset(&hp.reserves[0].asset);
             let (secondary_reserve_code, secondary_reserve_issuer) =
                 Self::parse_asset(&hp.reserves[1].asset);
-            let primary_reserve: f64 = hp.reserves[0].amount.parse().unwrap_or(0.0);
-            let secondary_reserve: f64 = hp.reserves[1].amount.parse().unwrap_or(0.0);
+            let primary_reserve =
+                Decimal::from_str(&hp.reserves[0].amount).unwrap_or(Decimal::ZERO);
+            let secondary_reserve =
+                Decimal::from_str(&hp.reserves[1].amount).unwrap_or(Decimal::ZERO);
+            // Convert to f64 for storage/compatibility (still used in DB columns)
+            let primary_reserve_f64 = primary_reserve.to_f64().unwrap_or(0.0);
+            let secondary_reserve_f64 = secondary_reserve.to_f64().unwrap_or(0.0);
 
             // Estimate total value (simplified: assume both sides equivalent for AMM)
-            let total_value_usd = primary_reserve + secondary_reserve; // Simplified valuation
+            // Use Decimal for precision, then convert to f64 for DB storage
+            let total_value_usd_f64 = (primary_reserve + secondary_reserve).to_f64().unwrap_or(0.0);
 
             // Compute volume from recent trades
             let trades = self
@@ -76,16 +91,21 @@ impl LiquidityPoolAnalyzer {
             let fees_earned_24h = volume_24h_usd * fee_rate;
 
             // Compute APY: annualize daily fees relative to TVL
-            let apy = if total_value_usd > 0.0 {
-                (fees_earned_24h / total_value_usd) * 365.0 * 100.0
+            let apy = if total_value_usd_f64 > 0.0 {
+                (fees_earned_24h / total_value_usd_f64) * 365.0 * 100.0
             } else {
                 0.0
             };
 
-            // Compute impermanent loss (requires initial reserves, use snapshot if available)
-            let il = self
-                .compute_impermanent_loss_for_pool(&hp.id, primary_reserve, secondary_reserve)
-                .await;
+            let il = match initial_reserves.get(&hp.id) {
+                Some((initial_base, initial_quote)) => Self::compute_impermanent_loss(
+                    *initial_base,
+                    *initial_quote,
+                    primary_reserve_f64,
+                    secondary_reserve_f64,
+                ),
+                None => 0.0,
+            };
 
             let now = Utc::now();
 
@@ -121,11 +141,11 @@ impl LiquidityPoolAnalyzer {
             .bind(&hp.total_shares)
             .bind(&primary_reserve_code)
             .bind(&primary_reserve_issuer)
-            .bind(primary_reserve)
+            .bind(primary_reserve_f64)
             .bind(&secondary_reserve_code)
             .bind(&secondary_reserve_issuer)
-            .bind(secondary_reserve)
-            .bind(total_value_usd)
+            .bind(secondary_reserve_f64)
+            .bind(total_value_usd_f64)
             .bind(volume_24h_usd)
             .bind(fees_earned_24h)
             .bind(apy)
@@ -147,36 +167,41 @@ impl LiquidityPoolAnalyzer {
         Ok(count)
     }
 
-    /// Take a snapshot of all current pools for historical tracking
+    /// Take a snapshot of all current pools for historical tracking.
+    ///
+    /// Uses a single multi-row `INSERT` so query count does not scale with
+    /// the number of pools (#1868).
     pub async fn take_snapshots(&self) -> Result<u64> {
         let pools = self.get_all_pools().await?;
-        let mut count = 0u64;
-        let now = Utc::now();
-
-        for pool in &pools {
-            sqlx::query(
-                r"
-                INSERT INTO liquidity_pool_snapshots (
-                    pool_id, reserve_a_amount, reserve_b_amount, total_value_usd,
-                    volume_usd, fees_usd, apy, impermanent_loss_pct, trade_count, snapshot_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ",
-            )
-            .bind(&pool.pool_id)
-            .bind(pool.reserve_a_amount)
-            .bind(pool.reserve_b_amount)
-            .bind(pool.total_value_usd)
-            .bind(pool.volume_24h_usd)
-            .bind(pool.fees_earned_24h_usd)
-            .bind(pool.apy)
-            .bind(pool.impermanent_loss_pct)
-            .bind(pool.trade_count_24h)
-            .bind(now)
-            .execute(&self.pool)
-            .await?;
-            count += 1;
+        if pools.is_empty() {
+            return Ok(0);
         }
+
+        let now = Utc::now();
+        let mut query_builder = sqlx::QueryBuilder::new(
+            r"
+            INSERT INTO liquidity_pool_snapshots (
+                pool_id, reserve_a_amount, reserve_b_amount, total_value_usd,
+                volume_usd, fees_usd, apy, impermanent_loss_pct, trade_count, snapshot_at
+            )
+            ",
+        );
+
+        query_builder.push_values(&pools, |mut b, pool| {
+            b.push_bind(&pool.pool_id)
+                .push_bind(pool.reserve_a_amount)
+                .push_bind(pool.reserve_b_amount)
+                .push_bind(pool.total_value_usd)
+                .push_bind(pool.volume_24h_usd)
+                .push_bind(pool.fees_earned_24h_usd)
+                .push_bind(pool.apy)
+                .push_bind(pool.impermanent_loss_pct)
+                .push_bind(pool.trade_count_24h)
+                .push_bind(now);
+        });
+
+        let result = query_builder.build().execute(&self.pool).await?;
+        let count = result.rows_affected();
 
         if count > 0 {
             info!("Created {} liquidity pool snapshots", count);
@@ -292,6 +317,8 @@ impl LiquidityPoolAnalyzer {
     /// Compute impermanent loss given initial and current reserves.
     /// IL = 2 * `sqrt(price_ratio)` / (1 + `price_ratio`) - 1
     /// where `price_ratio` = (`current_base_reserve/current_quote_reserve`) / (`initial_base_reserve/initial_quote_reserve`)
+    ///
+    /// Uses `Decimal` for precision to avoid off-by-one flooring on low-liquidity pools.
     #[must_use]
     pub fn compute_impermanent_loss(
         initial_base_reserve: f64,
@@ -299,26 +326,40 @@ impl LiquidityPoolAnalyzer {
         current_base_reserve: f64,
         current_quote_reserve: f64,
     ) -> f64 {
-        if initial_base_reserve <= 0.0
-            || initial_quote_reserve <= 0.0
-            || current_base_reserve <= 0.0
-            || current_quote_reserve <= 0.0
+        // Use Decimal for precision arithmetic
+        let init_base = Decimal::from_f64(initial_base_reserve).unwrap_or(Decimal::ZERO);
+        let init_quote = Decimal::from_f64(initial_quote_reserve).unwrap_or(Decimal::ZERO);
+        let curr_base = Decimal::from_f64(current_base_reserve).unwrap_or(Decimal::ZERO);
+        let curr_quote = Decimal::from_f64(current_quote_reserve).unwrap_or(Decimal::ZERO);
+
+        if init_base.is_zero()
+            || init_quote.is_zero()
+            || curr_base.is_zero()
+            || curr_quote.is_zero()
         {
             return 0.0;
         }
 
-        let initial_ratio = initial_base_reserve / initial_quote_reserve;
-        let current_ratio = current_base_reserve / current_quote_reserve;
+        // Compute ratios using Decimal
+        let initial_ratio = init_base / init_quote;
+        let current_ratio = curr_base / curr_quote;
         let price_ratio = current_ratio / initial_ratio;
 
-        let sqrt_ratio = price_ratio.sqrt();
-        let il = 2.0 * sqrt_ratio / (1.0 + price_ratio) - 1.0;
+        // Convert back to f64 for sqrt (rust_decimal math ops require "maths" feature)
+        let price_ratio_f64 = price_ratio.to_f64().unwrap_or(0.0);
+        if price_ratio_f64 <= 0.0 {
+            return 0.0;
+        }
+
+        let sqrt_ratio = price_ratio_f64.sqrt();
+        let il = 2.0 * sqrt_ratio / (1.0 + price_ratio_f64) - 1.0;
 
         // IL is typically negative (representing loss), return as positive percentage
         (il.abs()) * 100.0
     }
 
-    /// Look up the earliest snapshot for a pool to use as "initial" reserves
+    /// Look up the earliest snapshot for a pool to use as "initial" reserves.
+    #[allow(dead_code)] // retained for single-pool callers; sync uses batch load
     async fn compute_impermanent_loss_for_pool(
         &self,
         pool_id: &str,
@@ -349,6 +390,32 @@ impl LiquidityPoolAnalyzer {
             ),
             None => 0.0, // No historical data yet
         }
+    }
+
+    /// Batch-load earliest snapshot reserves for all pools (avoids N+1 in sync).
+    async fn load_earliest_snapshot_reserves(
+        &self,
+    ) -> Result<std::collections::HashMap<String, (f64, f64)>> {
+        let rows = sqlx::query_as::<_, (String, f64, f64)>(
+            r"
+            SELECT s.pool_id, s.reserve_a_amount, s.reserve_b_amount
+            FROM liquidity_pool_snapshots s
+            INNER JOIN (
+                SELECT pool_id, MIN(snapshot_at) AS min_at
+                FROM liquidity_pool_snapshots
+                GROUP BY pool_id
+            ) earliest
+              ON s.pool_id = earliest.pool_id
+             AND s.snapshot_at = earliest.min_at
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(pool_id, a, b)| (pool_id, (a, b)))
+            .collect())
     }
 
     /// Parse a Horizon asset string ("native" or "CODE:ISSUER")

@@ -53,11 +53,9 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
                     : undefined;
                   setSelectedFilters((prev) => ({
                     ...prev,
-                    dateRange: prev.dateRange
-                      ? { ...prev.dateRange, start }
-                      : start
-                        ? { start, end: new Date() }
-                        : undefined,
+                    dateRange: start
+                      ? { end: prev.dateRange?.end ?? new Date(), ...prev.dateRange, start }
+                      : undefined,
                   }));
                 }}
               />
@@ -74,11 +72,9 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
                     : undefined;
                   setSelectedFilters((prev) => ({
                     ...prev,
-                    dateRange: prev.dateRange
-                      ? { ...prev.dateRange, end }
-                      : end
-                        ? { start: new Date(), end }
-                        : undefined,
+                    dateRange: end
+                      ? { start: prev.dateRange?.start ?? new Date(), ...prev.dateRange, end }
+                      : undefined,
                   }));
                 }}
               />
@@ -207,7 +203,7 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
           <div>
             <Label className="text-sm font-medium">Read Status</Label>
             <div className="flex gap-4 mt-2">
-              {['all', 'read', 'unread'].map((status) => (
+              {(['all', 'read', 'unread'] as const).map((status) => (
                 <div key={status} className="flex items-center space-x-2">
                   <input
                     type="radio"
@@ -220,7 +216,7 @@ const FiltersTabView = ({ selectedFilters, setSelectedFilters, setShowFilters }:
                     onChange={() => {
                       setSelectedFilters((prev) => ({
                         ...prev,
-                        readStatus: status as any,
+                        readStatus: status,
                       }));
                     }}
                   />

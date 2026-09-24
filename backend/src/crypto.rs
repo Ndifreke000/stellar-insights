@@ -1,9 +1,10 @@
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
 };
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
+use rand::Rng;
 
 /// Encrypts plaintext using AES-256-GCM.
 /// Returns a base64 encoded string containing the nonce and ciphertext separated by a colon `nonce:ciphertext`.
@@ -23,7 +24,11 @@ pub fn encrypt_data(plain_text: &str, key_hex: &str) -> Result<String> {
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
 
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
+    // 96-bit nonce; unique per message. `AeadCore::generate_nonce` was removed
+    // upstream, so the nonce is filled manually instead.
+    let mut nonce_bytes = [0u8; 12];
+    rand::rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
     let cipher_text = cipher
         .encrypt(&nonce, plain_text.as_bytes())
@@ -85,14 +90,81 @@ pub fn is_encrypted(data: &str) -> bool {
     data.contains(':') && data.split(':').count() == 2
 }
 
+#[path = "crypto/encryption.rs"]
+pub mod encryption;
+
+pub use encryption::{EncryptedData, EncryptionService};
+
+/// High-level crypto service used by twofa and sensitive field storage
+#[derive(Clone)]
+pub struct CryptoService {
+    service: std::sync::Arc<EncryptionService>,
+}
+
+impl CryptoService {
+    pub fn new(key_hex: &str) -> Result<Self> {
+        EncryptionService::new(key_hex)
+            .map(|s| Self {
+                service: std::sync::Arc::new(s),
+            })
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn new_for_tests() -> Self {
+        let key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        Self::new(key).expect("valid test key")
+    }
+
+    /// Build the field-encryption service from the real `ENCRYPTION_KEY`
+    /// (Vault or env var), refusing the well-known placeholder value the
+    /// same way `AuthService::new` refuses a placeholder `JWT_SECRET`.
+    ///
+    /// This is the constructor production call sites must use.
+    /// `api/v1/mod.rs` previously called `new_for_tests()` directly to
+    /// build the `TwoFAService` that encrypts every user's TOTP secret --
+    /// every deployment of this open-source repo was encrypting 2FA
+    /// secrets with the same hardcoded key visible in source, regardless
+    /// of any `ENCRYPTION_KEY` set in its environment.
+    #[must_use]
+    pub fn from_env() -> Self {
+        let key = crate::vault::SecretsService::from_env()
+            .map(|s| s.encryption_key)
+            .unwrap_or_else(|_| {
+                std::env::var("ENCRYPTION_KEY").expect(
+                    "ENCRYPTION_KEY environment variable is required. Generate a random \
+                     64-character hex string (32 bytes), e.g. `openssl rand -hex 32`.",
+                )
+            });
+
+        assert!(
+            key != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "ENCRYPTION_KEY must not use the well-known placeholder/test value — \
+             generate a real random key"
+        );
+
+        Self::new(&key).unwrap_or_else(|e| panic!("Invalid ENCRYPTION_KEY: {e}"))
+    }
+
+    pub fn encrypt(&self, plaintext: &str) -> Result<String> {
+        self.service
+            .encrypt(plaintext)
+            .map(|d| d.to_string())
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn decrypt(&self, encrypted_str: &str) -> Result<String> {
+        let data: EncryptedData = encrypted_str.parse().map_err(|e| anyhow!("{e}"))?;
+        self.service.decrypt(&data).map_err(|e| anyhow!("{e}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::RngCore;
 
     fn generate_test_key() -> String {
         let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         hex::encode(key)
     }
 

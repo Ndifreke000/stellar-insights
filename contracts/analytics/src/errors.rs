@@ -28,6 +28,7 @@ pub enum Error {
     InvalidThreshold = 22,
     SignerNotAdmin = 23,
     UnknownActionType = 24,
+    DuplicateHash = 25,
 }
 
 impl Error {
@@ -62,6 +63,7 @@ impl Error {
             Error::InvalidThreshold => "Invalid multisig threshold value",
             Error::SignerNotAdmin => "Signer is not a registered multisig admin",
             Error::UnknownActionType => "Unknown action type",
+            Error::DuplicateHash => "A snapshot with this hash already exists across a different epoch",
         }
     }
 

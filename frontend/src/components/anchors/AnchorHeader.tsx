@@ -1,13 +1,15 @@
 import { AnchorMetrics } from '@/lib/api/types';
 import { sanitizeText } from '@/lib/sanitize';
 import { Shield, ShieldAlert, ShieldCheck, Copy, ExternalLink } from 'lucide-react';
+import { stellarExpertAccountUrl, useNetwork } from '@/contexts/NetworkContext';
 
 interface AnchorHeaderProps {
     anchor: AnchorMetrics;
 }
 
 export function AnchorHeader({ anchor }: AnchorHeaderProps) {
-    const getStatusColor = (status: string) => {
+    const { network } = useNetwork();
+    const explorerUrl = stellarExpertAccountUrl(network, anchor.stellar_account);    const getStatusColor = (status: string) => {
         switch (status.toLowerCase()) {
             case 'healthy':
                 return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
@@ -58,7 +60,7 @@ export function AnchorHeader({ anchor }: AnchorHeaderProps) {
                             <Copy className="w-3.5 h-3.5" />
                         </button>
                         <a
-                            href={`https://stellar.expert/explorer/public/account/${anchor.stellar_account}`}
+                            href={explorerUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1 hover:text-white transition-colors"

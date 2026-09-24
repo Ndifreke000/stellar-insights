@@ -137,7 +137,7 @@ mod tests {
         let instance = Sep10ForMobile::new(Config::default());
         let result = instance.process(&NetworkContext::testnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process should succeed in this test fixture");
         assert!(resp.success);
     }
 
@@ -146,7 +146,7 @@ mod tests {
         let instance = Sep10ForMobile::new(Config::default());
         let result = instance.process(&NetworkContext::mainnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process should succeed in this test fixture");
         assert!(resp.success);
         assert!(resp.network.to_lowercase().contains("mainnet"));
     }
@@ -160,7 +160,7 @@ mod tests {
         let instance = Sep10ForMobile::new(config);
         let result = instance.process(&NetworkContext::testnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process should succeed in this test fixture");
         assert!(!resp.success);
         assert!(resp.message.contains("disabled"));
     }
@@ -168,8 +168,14 @@ mod tests {
     #[tokio::test]
     async fn test_challenge_count_increments() {
         let instance = Sep10ForMobile::new(Config::default());
-        instance.process(&NetworkContext::testnet()).await.unwrap();
-        instance.process(&NetworkContext::mainnet()).await.unwrap();
+        instance
+            .process(&NetworkContext::testnet())
+            .await
+            .expect("process(testnet) should succeed");
+        instance
+            .process(&NetworkContext::mainnet())
+            .await
+            .expect("process(mainnet) should succeed");
         let state = instance.state.read().await;
         assert_eq!(state.challenges_issued, 2);
     }
@@ -178,7 +184,10 @@ mod tests {
     async fn test_verification_success_tracking() {
         let instance = Sep10ForMobile::new(Config::default());
         // Issue challenge first
-        instance.process(&NetworkContext::testnet()).await.unwrap();
+        instance
+            .process(&NetworkContext::testnet())
+            .await
+            .expect("process(testnet) should succeed");
         // Record successful verification
         let result = instance
             .record_verification_success(&NetworkContext::testnet())
@@ -199,11 +208,11 @@ mod tests {
         instance
             .record_verification_failure(&NetworkContext::testnet())
             .await
-            .unwrap();
+            .expect("first record_verification_failure should succeed");
         instance
             .record_verification_failure(&NetworkContext::testnet())
             .await
-            .unwrap();
+            .expect("second record_verification_failure should succeed");
         // Next process call should fail
         let result = instance.process(&NetworkContext::testnet()).await;
         assert!(result.is_err());
@@ -219,7 +228,7 @@ mod tests {
         let resp = instance
             .process(&NetworkContext::testnet())
             .await
-            .unwrap();
+            .expect("process should succeed with a configured challenge expiry");
         assert!(resp.message.contains("120s"));
     }
 }

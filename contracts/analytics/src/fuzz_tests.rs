@@ -78,10 +78,22 @@ fn fuzz_sequential_submits() {
             env.mock_all_auths();
             client.initialize(&admin, &None);
 
-            // Submit three snapshots with guaranteed-increasing epochs
+            // Submit three snapshots with guaranteed-increasing epochs. Each
+            // needs a *distinct* hash — write_snapshot rejects a hash that's
+            // already registered against a different epoch (anti-replay), so
+            // reusing one fuzzed hash across all three epochs would always
+            // fail on the second submission regardless of its value. Derive
+            // a per-epoch hash from the fuzzed bytes by folding the epoch
+            // into the last byte, and skip the (extremely rare) case where
+            // that derivation lands on the separately-rejected all-zero hash.
             let epochs = [1u64, 2u64, 3u64];
             for epoch in &epochs {
-                let hash = BytesN::from_array(&env, hash_bytes);
+                let mut bytes = *hash_bytes;
+                bytes[31] ^= *epoch as u8;
+                if bytes == [0u8; 32] {
+                    return;
+                }
+                let hash = BytesN::from_array(&env, &bytes);
                 // Every call with a strictly greater epoch MUST succeed
                 let result = client.try_submit_snapshot(epoch, &hash, &admin);
                 assert!(result.is_ok(), "Expected Ok for epoch {epoch} but got Err");

@@ -4,7 +4,7 @@
 //! These extend the inline `#[cfg(test)]` suite inside `services/analytics.rs`
 //! with additional edge cases and boundary conditions.
 
-use stellar_insights_backend::services::analytics::{
+use payraider_backend::services::analytics::{
     compute_corridor_metrics, compute_liquidity_depth, CorridorPayment, OrderBookEntry,
     OrderBookSnapshot,
 };

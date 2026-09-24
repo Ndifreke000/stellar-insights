@@ -60,7 +60,7 @@ export async function createApiKey(
   scopes?: string,
   expiresAt?: string,
 ): Promise<CreateApiKeyResponse> {
-  return fetchWithWallet<CreateApiKeyResponse>("/keys", walletAddress, {
+  return fetchWithWallet<CreateApiKeyResponse>("/api/api-keys", walletAddress, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -73,7 +73,7 @@ export async function createApiKey(
 export async function listApiKeys(
   walletAddress: string,
 ): Promise<ListApiKeysResponse> {
-  return fetchWithWallet<ListApiKeysResponse>("/keys", walletAddress, {
+  return fetchWithWallet<ListApiKeysResponse>("/api/api-keys", walletAddress, {
     method: "GET",
   });
 }
@@ -82,7 +82,7 @@ export async function getApiKey(
   walletAddress: string,
   id: string,
 ): Promise<ApiKeyInfo> {
-  return fetchWithWallet<ApiKeyInfo>(`/keys/${id}`, walletAddress, {
+  return fetchWithWallet<ApiKeyInfo>(`/api/api-keys/${id}`, walletAddress, {
     method: "GET",
   });
 }
@@ -92,7 +92,7 @@ export async function rotateApiKey(
   id: string,
 ): Promise<CreateApiKeyResponse> {
   return fetchWithWallet<CreateApiKeyResponse>(
-    `/keys/${id}/rotate`,
+    `/api/api-keys/${id}/rotate`,
     walletAddress,
     { method: "POST" },
   );
@@ -102,7 +102,7 @@ export async function revokeApiKey(
   walletAddress: string,
   id: string,
 ): Promise<{ message: string }> {
-  return fetchWithWallet<{ message: string }>(`/keys/${id}`, walletAddress, {
+  return fetchWithWallet<{ message: string }>(`/api/api-keys/${id}`, walletAddress, {
     method: "DELETE",
   });
 }

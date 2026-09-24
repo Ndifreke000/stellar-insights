@@ -1,10 +1,10 @@
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: stellar-insights
-  namespace: stellar-insights
+  name: payraider
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     managed-by: kustomize
 spec:
   # Global Prometheus configuration
@@ -20,7 +20,7 @@ spec:
   # Alerting configuration
   alerting:
     alertmanagers:
-    - namespace: stellar-insights
+    - namespace: payraider
       name: alertmanager-config
 
   # Rule files

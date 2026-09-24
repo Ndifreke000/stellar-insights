@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Check, Trash2, X, AlertCircle, Info, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
 import { useNotifications, NotificationType, AppNotification } from "../lib/notification-context";
 
@@ -14,8 +15,10 @@ export function NotificationCenter() {
         clearAll
     } = useNotifications();
 
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
+    const [now, setNow] = useState(() => Date.now());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown when clicking outside
@@ -29,12 +32,19 @@ export function NotificationCenter() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Track "now" via an effect so relative timestamps refresh without
+    // reading the impure Date.now() clock during render.
+    useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
     const filteredNotifications = notifications.filter(
         (n) => activeTab === "all" || !n.read
     );
 
     const formatDistanceToNow = (timestamp: number) => {
-        const diff = Date.now() - timestamp;
+        const diff = now - timestamp;
         const minutes = Math.floor(diff / 60000);
         const hours = Math.floor(minutes / 60);
         const days = Math.floor(hours / 24);
@@ -79,7 +89,7 @@ export function NotificationCenter() {
             markAsRead(notification.id);
         }
         if (notification.actionLink) {
-            window.location.href = notification.actionLink;
+            router.push(notification.actionLink);
         }
     };
 

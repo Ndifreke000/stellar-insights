@@ -17,9 +17,9 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: stellar-insights-backend
+  ECR_REPOSITORY: payraider-backend
   K8S_OVERLAY: k8s/overlays/mainnet
-  K8S_NAMESPACE: stellar-insights-mainnet
+  K8S_NAMESPACE: payraider-mainnet
 
 jobs:
   validate-input:
@@ -104,12 +104,12 @@ jobs:
       - name: Apply mainnet overlay
         run: |
           kubectl kustomize "${{ env.K8S_OVERLAY }}" \
-            | sed "s|stellar-insights/backend:mainnet|${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image.outputs.tag }}|g" \
+            | sed "s|payraider/backend:mainnet|${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image.outputs.tag }}|g" \
             | kubectl apply -f -
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/mainnet-stellar-insights-backend \
+          kubectl rollout status deployment/mainnet-payraider-backend \
             -n "${{ env.K8S_NAMESPACE }}" --timeout=15m
 
       - name: Run mainnet health check

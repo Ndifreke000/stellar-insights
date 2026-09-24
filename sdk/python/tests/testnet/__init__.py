@@ -1,1 +1,1 @@
-"""Testnet integration tests for Stellar Insights Python SDK."""
+"""Testnet integration tests for PayRaider Python SDK."""

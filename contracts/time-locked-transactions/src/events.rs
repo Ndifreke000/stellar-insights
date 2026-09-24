@@ -10,11 +10,11 @@ pub fn emit_scheduled(
     sender: Address,
     recipient: Address,
     amount: i128,
-    unlock_time: u64,
+    unlock_ledger: u32,
 ) {
     env.events().publish(
         (symbol_short!("TLT_SCH"),),
-        (tx_id, sender, recipient, amount, unlock_time),
+        (tx_id, sender, recipient, amount, unlock_ledger),
     );
 }
 
@@ -26,4 +26,12 @@ pub fn emit_executed(env: &Env, tx_id: u64, recipient: Address, amount: i128) {
 pub fn emit_cancelled(env: &Env, tx_id: u64, cancelled_by: Address) {
     env.events()
         .publish((symbol_short!("TLT_CAN"),), (tx_id, cancelled_by));
+}
+
+pub fn emit_paused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TLT_PAU"),), admin);
+}
+
+pub fn emit_unpaused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("TLT_UNP"),), admin);
 }

@@ -41,7 +41,7 @@ Target `api_access`, one event per request, emitted when the response is ready:
   "response_bytes": 5120,
   "client_ip": "203.0.*.*",
   "user_agent": "Mozilla/5.0 …",
-  "instance_id": "stellar-insights-backend-7d9f-abcde"
+  "instance_id": "payraider-backend-7d9f-abcde"
 }
 ```
 
@@ -68,9 +68,9 @@ Target `api_access`, one event per request, emitted when the response is ready:
 | `API_LOG_SKIP_PATHS` | `/health,/metrics,/ready,/live` | Exact paths never logged (probes, Prometheus scrapes). |
 | `API_LOG_BODIES` | `false` | Also log redacted request and response bodies (target `api_access_body`). Turn on temporarily when reproducing an issue. |
 | `API_LOG_MAX_BODY_BYTES` | `2048` | Truncation length for logged bodies. |
-| `RUST_LOG` | `stellar_insights_backend=info,tower_http=info` | Standard filter. Keep `api_access=info` in production for the audit trail (mainnet: `warn,api_access=info`). |
+| `RUST_LOG` | `payraider_backend=info,tower_http=info` | Standard filter. Keep `api_access=info` in production for the audit trail (mainnet: `warn,api_access=info`). |
 | `LOG_FORMAT` | `json` | `json` for ELK, anything else for human-readable output. |
-| `LOG_DIR` | unset | Also write daily-rotated `stellar-insights.*.log` files to this directory. |
+| `LOG_DIR` | unset | Also write daily-rotated `payraider.*.log` files to this directory. |
 
 Body capture only happens for JSON, text or form content with a known length of at most 64 KiB. Streaming
 responses (SSE, downloads) and WebSocket upgrades are never buffered.
@@ -83,10 +83,10 @@ Mainnet samples 20% of fast successful requests (`api-log-sample-rate` in
 ```bash
 # Locally (LOG_DIR=logs)
 curl -si http://localhost:8080/api/corridors | grep -i x-request-id
-grep '"request_id":"<id>"' logs/stellar-insights.*.log
+grep '"request_id":"<id>"' logs/payraider.*.log
 
 # Kubernetes
-kubectl -n stellar-insights logs -l component=backend --prefix | grep '<id>'
+kubectl -n payraider logs -l component=backend --prefix | grep '<id>'
 ```
 
 In Kibana, filter `request_id:"<id>"` for one request, or `correlation_id:"<id>"` for a whole flow.

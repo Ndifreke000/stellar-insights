@@ -15,7 +15,7 @@ import {
   TransactionsResource,
   WebhooksResource,
 } from "./resources.js";
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import {
   SDKInitializer,
   initializeForMobile,
@@ -25,8 +25,49 @@ import {
   EnvironmentDetector,
 } from "./sdk-init.js";
 import { ApiClient, BatchApiClient, ApiClientError } from "./api-client.js";
+import {
+  acquireConnection,
+  releaseConnection,
+  closeAllConnections,
+  type EventHandler,
+} from "./websocket-manager.js";
 
-export class StellarInsights {
+export interface NetworkConfig {
+  rpcUrl: string;
+  horizonUrl: string;
+  networkPassphrase: string;
+  apiBaseUrl: string;
+}
+
+export const NETWORKS: Record<"mainnet" | "testnet", NetworkConfig> = {
+  mainnet: {
+    rpcUrl: "https://stellar.api.onfinality.io/public",
+    horizonUrl: "https://horizon.stellar.org",
+    networkPassphrase: "Public Global Stellar Network ; September 2015",
+    apiBaseUrl: "https://api.payraider.io",
+  },
+  testnet: {
+    rpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
+    networkPassphrase: "Test SDF Network ; September 2015",
+    apiBaseUrl: "https://testnet-api.payraider.io",
+  },
+};
+
+export function createClient(
+  network: "mainnet" | "testnet",
+  config: Omit<PayRaiderConfig, "baseUrl"> = {},
+): PayRaider {
+  const networkConfig = NETWORKS[network];
+  const client = new PayRaider({
+    ...config,
+    baseUrl: networkConfig.apiBaseUrl,
+  });
+  client.wsNetwork = network;
+  return client;
+}
+
+export class PayRaider {
   readonly anchors: AnchorsResource;
   readonly corridors: CorridorsResource;
   readonly prices: PricesResource;
@@ -44,8 +85,11 @@ export class StellarInsights {
   readonly apiClient: ApiClient;
 
   private readonly http: HttpClient;
+  private readonly eventHandlers = new Set<EventHandler>();
+  /** @internal */
+  wsNetwork: "mainnet" | "testnet" = "testnet";
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.http = new HttpClient(config);
     this.apiClient = new ApiClient(config);
     this.anchors = new AnchorsResource(this.http);
@@ -63,9 +107,29 @@ export class StellarInsights {
     this.governance = new GovernanceResource(this.http);
     this.assetVerification = new AssetVerificationResource(this.http);
   }
+
+  subscribe(handler: EventHandler): void {
+    this.eventHandlers.add(handler);
+    const net = NETWORKS[this.wsNetwork];
+    acquireConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+  }
+
+  unsubscribe(handler: EventHandler): void {
+    this.eventHandlers.delete(handler);
+    const net = NETWORKS[this.wsNetwork];
+    releaseConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+  }
+
+  disconnect(): void {
+    const net = NETWORKS[this.wsNetwork];
+    for (const handler of this.eventHandlers) {
+      releaseConnection({ rpcUrl: net.rpcUrl, network: this.wsNetwork }, handler);
+    }
+    this.eventHandlers.clear();
+  }
 }
 
-export { StellarInsightsError } from "./http.js";
+export { PayRaiderError } from "./http.js";
 export { SDKError } from "./sdk_error.js";
 export { SDKUnitTests } from "./sdk_unit_tests.js";
 export { ReactNativeCompatibility } from "./react_native_compatibility.js";
@@ -84,6 +148,10 @@ export { SDKInitializer, initializeForMobile, initializeForWeb, initializeForBac
 
 // API Client Core exports
 export { ApiClient, BatchApiClient, ApiClientError };
+
+// WebSocket exports
+export { closeAllConnections };
+export type { EventHandler } from "./websocket-manager.js";
 
 export type * from "./types.js";
 export type * from "./api-client.js";

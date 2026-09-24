@@ -14,14 +14,14 @@ export interface NotificationCenterProps {
   handleSelectAll: () => void,
   handleBatchMarkAsRead: () => void,
   handleBatchDelete: () => void,
-  handleExport,
+  handleExport: (format: 'json' | 'csv') => void,
   markAllAsRead:() => void,
   clearAllNotifications:() => void,
     selectedNotifications: Set<string>;
   groupedNotifications:Record<string, BaseNotification[]>;
   unreadCount: number,
   handleNotificationClick: (notification: BaseNotification) => void,
-  handleSelectNotification: (id: string, event: React.MouseEvent) => void,
+  handleSelectNotification: (id: string, event: React.SyntheticEvent) => void,
   filteredNotifications: BaseNotification[],
   clearNotification:(id: string) => void,
 }

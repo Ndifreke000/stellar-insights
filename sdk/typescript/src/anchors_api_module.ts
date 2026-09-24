@@ -1,13 +1,13 @@
 import { HttpClient } from "./http.js";
 import { AnchorsResource } from "./resources.js";
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type { AnchorsAPIModuleParams, AnchorsAPIModuleResult } from "./types/anchors_api_module.js";
 import { SDKError } from "./sdk_error.js";
 
 export class AnchorsAPIModule {
   private readonly anchors: AnchorsResource;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.anchors = new AnchorsResource(new HttpClient(config));
   }
 

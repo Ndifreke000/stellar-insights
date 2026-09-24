@@ -198,7 +198,7 @@ impl DistributedLock {
         if let Some(ttl) = ttl {
             invocation.arg(ttl_millis(ttl));
         }
-        match invocation.invoke_async::<_, i64>(&mut conn).await {
+        match invocation.invoke_async::<i64>(&mut conn).await {
             Ok(n) => n == 1,
             Err(e) => {
                 warn!(key, "DistributedLock: script failed ({})", e);

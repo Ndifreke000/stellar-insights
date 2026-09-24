@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 1.5"
 
   backend "s3" {
-    bucket         = "stellar-insights-terraform-state-ACCOUNT_ID"
+    bucket         = "payraider-terraform-state-ACCOUNT_ID"
     key            = "staging/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
@@ -23,7 +23,7 @@ provider "aws" {
   default_tags {
     tags = {
       Environment = var.environment
-      Project     = "stellar-insights"
+      Project     = "payraider"
       ManagedBy   = "terraform"
       CreatedAt   = timestamp()
     }
@@ -33,7 +33,11 @@ provider "aws" {
 # Get account ID and ECR repositories
 data "aws_caller_identity" "current" {}
 data "aws_ecr_repository" "backend" {
-  name = "stellar-insights-backend"
+  name = "payraider-backend"
+}
+
+data "aws_s3_bucket" "db_backups" {
+  bucket = "payraider-db-backups-${data.aws_caller_identity.current.account_id}"
 }
 
 # ============================================================================
@@ -51,31 +55,11 @@ module "networking" {
 }
 
 # ============================================================================
-# DATABASE (RDS PostgreSQL - staging only)
+# DATABASE: none provisioned here. The backend is SQLite-only
+# (docs/adr/0001-sqlite-vs-postgres.md) -- there is no RDS instance to
+# manage. The SQLite file lives on the EFS volume mounted into the ECS
+# task (see module.compute / EFS wiring below).
 # ============================================================================
-
-module "database" {
-  source = "../../modules/database"
-
-  db_subnet_group_name = "stellar-insights-db-${var.environment}"
-  vpc_security_group_ids = [module.networking.security_group_database_id]
-  db_subnet_ids        = module.networking.private_db_subnet_ids
-
-  identifier         = "stellar-insights-${var.environment}"
-  instance_class     = "db.t3.micro"
-  allocated_storage  = 100
-  storage_type       = "gp3"
-  engine_version     = "14.8"
-
-  multi_az                 = false  # Single-AZ for staging cost efficiency
-  backup_retention_period  = 7
-  enable_cloudwatch_logs_exports = ["postgresql"]
-  enable_enhanced_monitoring = false
-
-  environment = var.environment
-
-  depends_on = [module.networking]
-}
 
 # ============================================================================
 # CACHING (Redis - single node for staging)
@@ -84,11 +68,11 @@ module "database" {
 module "caching" {
   source = "../../modules/caching"
 
-  cache_subnet_group_name = "stellar-insights-cache-${var.environment}"
+  cache_subnet_group_name = "payraider-cache-${var.environment}"
   cache_subnet_ids        = module.networking.private_db_subnet_ids
   security_group_ids      = [module.networking.security_group_redis_id]
 
-  cluster_id               = "stellar-insights-${var.environment}"
+  cluster_id               = "payraider-${var.environment}"
   node_type               = "cache.t3.small"
   num_cache_nodes         = 1
   engine_version          = "7.0"
@@ -107,18 +91,18 @@ module "caching" {
 module "load_balancing" {
   source = "../../modules/load_balancing"
 
-  name               = "stellar-insights-alb-${var.environment}"
+  name               = "payraider-alb-${var.environment}"
   internal           = false
   load_balancer_type = "application"
   subnets            = module.networking.public_subnet_ids
   security_groups    = [module.networking.security_group_alb_id]
 
-  target_group_name = "stellar-insights-targets-${var.environment}"
+  target_group_name = "payraider-targets-${var.environment}"
   target_port       = 8080
 
   # ACM certificate (create manually first)
   certificate_arn = "arn:aws:acm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:certificate/REPLACE_WITH_CERT_ID"
-  domain_name     = "staging-api.stellar-insights.com"
+  domain_name     = "staging-api.payraider.com"
 
   # Logging disabled for cost
   enable_logs = false
@@ -138,7 +122,7 @@ module "load_balancing" {
 module "compute" {
   source = "../../modules/compute/ecs"
 
-  cluster_name    = "stellar-insights-${var.environment}"
+  cluster_name    = "payraider-${var.environment}"
   container_image = "${data.aws_ecr_repository.backend.repository_url}:latest"
   container_port  = 8080
   container_cpu   = 512
@@ -148,11 +132,19 @@ module "compute" {
   launch_type     = "FARGATE"
   enable_fargate  = true
 
-  desired_count = 2
-  min_size      = 2
-  max_size      = 4
+  # Pinned to 1: SQLite permits exactly one writer, and there is no
+  # shared storage that would let two task replicas safely share one
+  # database file. Do not raise this above 1 without first adding a
+  # real multi-writer story (Postgres migration) -- see ADR 0001,
+  # "Revisit this decision when... horizontal scaling of the backend
+  # becomes a requirement."
+  desired_count = 1
+  min_size      = 1
+  max_size      = 1
 
   subnets         = module.networking.private_app_subnet_ids
+  vpc_id          = module.networking.vpc_id
+  litestream_bucket_name = data.aws_s3_bucket.db_backups.id
   security_groups = [module.networking.security_group_backend_id]
   target_group_arn = module.load_balancing.target_group_arn
 
@@ -161,15 +153,15 @@ module "compute" {
 
   # Configuration
   vault_addr = var.vault_addr
-  db_url     = "postgresql://postgres@${module.database.rds_address}:5432/stellar_insights"
+  db_url     = "sqlite:///data/payraider.db"
   redis_url  = module.caching.redis_connection_string
 
   environment         = var.environment
   log_retention_days = 14
-  enable_auto_scaling = true
+  enable_auto_scaling = false
   cpu_target_percentage = 70
 
-  depends_on = [module.load_balancing, module.database, module.caching]
+  depends_on = [module.load_balancing, module.caching]
 }
 
 # ============================================================================
@@ -234,12 +226,6 @@ output "alb_dns_name" {
   value       = module.load_balancing.alb_dns_name
 }
 
-output "database_endpoint" {
-  description = "RDS PostgreSQL endpoint"
-  value       = module.database.rds_endpoint
-  sensitive   = false
-}
-
 output "redis_endpoint" {
   description = "Redis endpoint"
   value       = module.caching.primary_endpoint
@@ -267,11 +253,11 @@ output "cost_estimate" {
     nat_gateway          = "$30/month"
     fargate_vcpu_hours   = "$12/month"  # ~300 vCPU-hours @ $0.04/vCPU-hour
     fargate_memory_hours = "$8/month"   # ~400 GB-hours @ $0.008/GB-hour
-    rds_t3_micro        = "$30/month"
+    efs_storage          = "~$1/month"  # SQLite file is tiny relative to RDS
     redis_cache          = "$20/month"
     data_transfer        = "$10/month"
     cloudwatch_logs      = "$5/month"
-    total_monthly        = "~$125/month"
+    total_monthly        = "~$96/month"
     savings_vs_ec2       = "~$80/month (39% savings from Fargate migration)"
   }
 }

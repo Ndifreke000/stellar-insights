@@ -168,16 +168,6 @@ describe('Comparison URL Handling', () => {
 
 describe('CSV Export', () => {
   it('generates correct CSV format', () => {
-    const headers = [
-      'Corridor',
-      'Success Rate (%)',
-      'Health Score',
-      'Avg Latency (ms)',
-      'Liquidity Depth (USD)',
-      '24h Volume (USD)',
-      'Avg Slippage (bps)',
-    ];
-
     const row = [
       'USDC-XLM',
       '94.50',

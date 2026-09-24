@@ -1,10 +1,10 @@
-# Stellar Insights API Documentation
+# PayRaider API Documentation
 
 ## Overview
 
-The Stellar Insights API provides real-time payment analytics, anchor monitoring, and cross-border payment corridor insights for the Stellar network.
+The PayRaider API provides real-time payment analytics, anchor monitoring, and cross-border payment corridor insights for the Stellar network.
 
-**Base URL:** `https://api.stellarinsights.io`  
+**Base URL:** `https://api.payraider.io`  
 **API Version:** 1.0.0  
 **OpenAPI Spec:** `/api-docs/openapi.json`
 
@@ -12,7 +12,7 @@ The Stellar Insights API provides real-time payment analytics, anchor monitoring
 
 Access the interactive Swagger UI at:
 - **Development:** `http://localhost:8080/swagger-ui`
-- **Production:** `https://api.stellarinsights.io/swagger-ui`
+- **Production:** `https://api.payraider.io/swagger-ui`
 
 ## Authentication
 
@@ -22,7 +22,7 @@ Include your API key in the `Authorization` header:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.stellarinsights.io/api/anchors
+  https://api.payraider.io/api/anchors
 ```
 
 ### OAuth 2.0
@@ -106,7 +106,7 @@ Content-Type: application/json
 
 **Request:**
 ```bash
-curl -X GET "https://api.stellarinsights.io/api/anchors/anchor-123" \
+curl -X GET "https://api.payraider.io/api/anchors/anchor-123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -131,7 +131,7 @@ curl -X GET "https://api.stellarinsights.io/api/anchors/anchor-123" \
 
 **Request:**
 ```bash
-curl -X POST "https://api.stellarinsights.io/api/cost-calculator/estimate" \
+curl -X POST "https://api.payraider.io/api/cost-calculator/estimate" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -186,18 +186,133 @@ All errors follow a consistent format:
 
 ## Rate Limiting
 
-Rate limits are applied per API key:
+The API implements a three-tier rate limiting system based on client authentication status and subscription level.
 
-- **Anonymous:** 100 requests/minute
-- **Authenticated:** 1,000 requests/minute
-- **Premium:** 10,000 requests/minute
+### Rate Limit Tiers
 
-Rate limit headers:
+| Tier | Limit | Default Requests/Minute |
+|------|-------|-------------------------|
+| Anonymous | Per IP address (IPv6 masked to /48) | 60 |
+| Authenticated | Per API key or user account | 200 |
+| Premium | Paid subscription tier | 1,000 |
+
+**How to upgrade your tier:**
+
+1. **Authenticated tier:** Create an account and generate an API key
+   - Include key in `Authorization: Bearer YOUR_API_KEY` header
+   - Keys follow format `si_live_*` (production) or `si_test_*` (testing)
+
+2. **Premium tier:** Contact support@payraider.io with your use case
+   - Specify your expected request volume
+   - Include your API key ID
+   - Include organization name and contact information
+
+### Per-Endpoint Rate Limits
+
+Some endpoints have stricter limits due to computational cost:
+
+| Endpoint | Authenticated | Premium |
+|----------|---------------|---------|
+| `/api/export/csv` | 10/min | 20/min |
+| `/api/export/excel` | 10/min | 20/min |
+| `/api/analytics` | 40/min | 100/min |
+| `/api/rpc` | 200/min | 500/min |
+
+### Response Headers
+
+Every API response includes rate limit information in headers:
+
 ```
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1234567890
+RateLimit-Limit: 200                          # Your current limit
+RateLimit-Remaining: 195                      # Requests remaining in current window
+RateLimit-Reset: 1234567890                   # Unix timestamp when limit resets
+X-RateLimit-Policy: 200 requests per 60 seconds
+X-RateLimit-Client: api-key-abc123            # Your client ID (authenticated requests)
 ```
+
+When you exceed your rate limit, the response includes:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 45                                # Seconds to wait before retrying
+RateLimit-Limit: 200
+RateLimit-Remaining: 0
+RateLimit-Reset: 1234567890
+X-RateLimit-Policy: 200 requests per 60 seconds
+
+{
+  "error": "Rate limit exceeded",
+  "limit": 200,
+  "reset_after": 45
+}
+```
+
+### Handling Rate Limits
+
+**Recommended client implementation:**
+
+```javascript
+// Example: JavaScript client with retry logic
+async function fetchWithRateLimit(url, options = {}) {
+  const response = await fetch(url, options);
+  
+  // Check rate limit headers
+  const limit = response.headers.get('RateLimit-Limit');
+  const remaining = response.headers.get('RateLimit-Remaining');
+  const reset = response.headers.get('RateLimit-Reset');
+  
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('Retry-After');
+    const delaySeconds = parseInt(retryAfter || '60');
+    
+    console.warn(`Rate limited. Waiting ${delaySeconds}s before retry`);
+    await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+    
+    // Retry the request
+    return fetchWithRateLimit(url, options);
+  }
+  
+  // Log remaining requests
+  if (remaining) {
+    console.log(`Requests remaining: ${remaining}/${limit}`);
+  }
+  
+  return response.json();
+}
+```
+
+```python
+# Example: Python client with backoff
+import requests
+import time
+
+def fetch_with_rate_limit(url, headers=None):
+    response = requests.get(url, headers=headers)
+    
+    # Check rate limit headers
+    limit = response.headers.get('RateLimit-Limit')
+    remaining = response.headers.get('RateLimit-Remaining')
+    
+    if response.status_code == 429:
+        retry_after = int(response.headers.get('Retry-After', 60))
+        print(f"Rate limited. Waiting {retry_after}s before retry...")
+        time.sleep(retry_after)
+        return fetch_with_rate_limit(url, headers)
+    
+    # Log remaining requests
+    if remaining:
+        print(f"Requests remaining: {remaining}/{limit}")
+    
+    return response.json()
+```
+
+### Best Practices
+
+1. **Monitor your usage:** Check `RateLimit-Remaining` header to avoid hitting the limit
+2. **Implement backoff:** Use `Retry-After` header value when implementing retries
+3. **Batch requests:** Group multiple queries into single requests when possible
+4. **Cache results:** Store responses with appropriate TTLs to reduce API calls
+5. **Contact support:** If you consistently hit rate limits, request a higher tier
 
 ## Pagination
 
@@ -225,7 +340,7 @@ GET /api/anchors?page=1&limit=50&sort=name&order=asc
 Real-time updates via WebSocket:
 
 ```javascript
-const ws = new WebSocket('wss://api.stellarinsights.io/ws');
+const ws = new WebSocket('wss://api.payraider.io/ws');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -242,16 +357,16 @@ ws.onmessage = (event) => {
 
 ## SDKs and Libraries
 
-- **JavaScript/TypeScript:** `npm install @stellar-insights/sdk`
-- **Python:** `pip install stellar-insights`
-- **Go:** `go get github.com/stellar-insights/go-sdk`
+- **JavaScript/TypeScript:** `npm install @payraider/sdk`
+- **Python:** `pip install payraider`
+- **Go:** `go get github.com/payraider/go-sdk`
 
 ## Support
 
-- **Documentation:** https://docs.stellarinsights.io
-- **API Status:** https://status.stellarinsights.io
-- **Support Email:** support@stellarinsights.io
-- **GitHub Issues:** https://github.com/Ndifreke000/stellar-insights/issues
+- **Documentation:** https://docs.payraider.io
+- **API Status:** https://status.payraider.io
+- **Support Email:** support@payraider.io
+- **GitHub Issues:** https://github.com/Ndifreke000/payraider/issues
 
 ## Changelog
 

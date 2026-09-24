@@ -28,7 +28,7 @@ describe("pagination", () => {
       });
 
     const results: Array<{ id: number }> = [];
-    for await (const page of paginate(mockHttpClient, "/api/test", 2)) {
+    for await (const page of paginate<{ id: number }>(mockHttpClient, "/api/test", 2)) {
       results.push(...page.data);
     }
 
@@ -53,7 +53,7 @@ describe("pagination", () => {
       });
 
     const results: Array<{ id: number }> = [];
-    for await (const page of paginate(mockHttpClient, "/api/test", 2)) {
+    for await (const page of paginate<{ id: number }>(mockHttpClient, "/api/test", 2)) {
       results.push(...page.data);
     }
 
@@ -71,7 +71,7 @@ describe("pagination", () => {
     });
 
     const results: Array<{ id: number }> = [];
-    for await (const page of paginate(mockHttpClient, "/api/test", 10)) {
+    for await (const page of paginate<{ id: number }>(mockHttpClient, "/api/test", 10)) {
       results.push(...page.data);
     }
 
@@ -92,7 +92,7 @@ describe("pagination", () => {
       });
 
     const results: Array<{ id: number }> = [];
-    for await (const page of paginate(mockHttpClient, "/api/test", 2)) {
+    for await (const page of paginate<{ id: number }>(mockHttpClient, "/api/test", 2)) {
       results.push(...page.data);
     }
 
@@ -112,7 +112,7 @@ describe("pagination", () => {
         // No cursor, terminates
       });
 
-    const results = await paginateAll(mockHttpClient, "/api/test", 2);
+    const results = await paginateAll<{ id: number }>(mockHttpClient, "/api/test", 2);
 
     expect(results).toHaveLength(4);
     expect(results.map((r) => r.id)).toEqual([1, 2, 3, 4]);
@@ -125,7 +125,7 @@ describe("pagination", () => {
       // No cursor, terminates after first page
     });
 
-    for await (const _page of paginate(mockHttpClient, "/api/test", 50, {
+    for await (const _page of paginate<{ id: number }>(mockHttpClient, "/api/test", 50, {
       params: { sort: "id", order: "asc" },
     })) {
       // consume

@@ -282,7 +282,6 @@ fn parse_retry_after_seconds(headers: &HeaderMap) -> Option<u64> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
@@ -296,9 +295,15 @@ mod tests {
             queue_size: 10,
         });
 
-        limiter.acquire().await.unwrap();
+        limiter
+            .acquire()
+            .await
+            .expect("first acquire should succeed");
         let start = Instant::now();
-        limiter.acquire().await.unwrap();
+        limiter
+            .acquire()
+            .await
+            .expect("second acquire should succeed after refill wait");
         assert!(start.elapsed() >= Duration::from_millis(850));
     }
 
@@ -312,7 +317,10 @@ mod tests {
 
         let limiter_clone = limiter.clone();
         let holder = tokio::spawn(async move {
-            let _permit = limiter_clone.acquire().await.unwrap();
+            let _permit = limiter_clone
+                .acquire()
+                .await
+                .expect("acquire should succeed for the holder task");
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
@@ -320,7 +328,7 @@ mod tests {
         let err = limiter.acquire().await.err();
         assert!(matches!(err, Some(RpcRateLimitError::QueueFull)));
 
-        holder.await.unwrap();
+        holder.await.expect("holder task should not panic");
     }
 
     #[tokio::test]
@@ -332,11 +340,17 @@ mod tests {
         headers.insert("x-ratelimit-remaining", HeaderValue::from_static("3"));
         limiter.observe_headers(&headers).await;
 
-        let _a = limiter.acquire().await.unwrap();
-        let _b = limiter.acquire().await.unwrap();
-        let _c = limiter.acquire().await.unwrap();
+        let _a = limiter.acquire().await.expect("acquire a should succeed");
+        let _b = limiter.acquire().await.expect("acquire b should succeed");
+        let _c = limiter
+            .acquire()
+            .await
+            .expect("acquire c should succeed");
         let start = Instant::now();
-        limiter.acquire().await.unwrap();
+        limiter
+            .acquire()
+            .await
+            .expect("second acquire should succeed after refill wait");
 
         assert!(start.elapsed() >= Duration::from_millis(450));
     }
@@ -363,7 +377,10 @@ mod tests {
 
         let limiter_clone = limiter.clone();
         let holder = tokio::spawn(async move {
-            let _permit = limiter_clone.acquire().await.unwrap();
+            let _permit = limiter_clone
+                .acquire()
+                .await
+                .expect("acquire should succeed for the holder task");
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
@@ -373,7 +390,7 @@ mod tests {
         let metrics = limiter.metrics();
         assert_eq!(metrics.rejected_requests, 1);
 
-        holder.await.unwrap();
+        holder.await.expect("holder task should not panic");
     }
 
     #[test]
@@ -383,10 +400,12 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "retry-after",
-            HeaderValue::from_str(&retry_at.to_rfc2822()).unwrap(),
+            HeaderValue::from_str(&retry_at.to_rfc2822())
+                .expect("rfc2822 date should be a valid header value"),
         );
 
-        let parsed = parse_retry_after_seconds(&headers).unwrap();
+        let parsed = parse_retry_after_seconds(&headers)
+            .expect("retry-after header should parse");
         assert!(parsed <= 2);
     }
 }

@@ -10,6 +10,7 @@ import {
 } from "../../lib/alerts-api";
 import { AlertRuleForm } from "../../components/AlertRuleForm";
 import { Trash2, Edit2, Play, Square, Bell, BellOff, XCircle, Clock } from "lucide-react";
+import { logger } from "../../lib/logger";
 
 export default function AlertsPage() {
     const [rules, setRules] = useState<AlertRule[]>([]);

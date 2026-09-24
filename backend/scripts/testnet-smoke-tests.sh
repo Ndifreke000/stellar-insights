@@ -5,7 +5,7 @@ set -euo pipefail
 # Uses BACKEND_URL when set; otherwise validates the in-cluster health endpoint via kubectl.
 
 BACKEND_URL="${BACKEND_URL:-}"
-NAMESPACE="${NAMESPACE:-stellar-insights-testnet}"
+NAMESPACE="${NAMESPACE:-payraider-testnet}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-120}"
 
 echo "=== Backend testnet smoke tests ==="

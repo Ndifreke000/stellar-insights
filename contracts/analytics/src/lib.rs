@@ -1,5 +1,4 @@
 #![no_std]
-extern crate std;
 
 mod errors;
 
@@ -29,6 +28,7 @@ pub enum ContractError {
     EpochAlreadyExists = 4,
     EpochMonotonicityViolated = 5,
     SnapshotImmutabilityViolated = 6,
+    DuplicateHash = 7,
 }
 
 fn emit_error_event(
@@ -45,6 +45,7 @@ fn emit_error_event(
         ContractError::EpochAlreadyExists => "Epoch already exists",
         ContractError::EpochMonotonicityViolated => "Epoch monotonicity violated",
         ContractError::SnapshotImmutabilityViolated => "Snapshot immutability violated",
+        ContractError::DuplicateHash => "A snapshot with this hash already exists",
     };
     env.events().publish(
         (symbol_short!("error"), caller.clone()),
@@ -344,6 +345,8 @@ pub enum DataKey {
     AddressRegistry,
     /// Reverse-lookup: Address → its registry ID (O(1) alternative to linear scan)
     AddressId(Address),
+    /// Map snapshot hash -> epoch for duplicate detection
+    SnapshotHashes,
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -522,7 +525,29 @@ fn write_snapshot(
     env: &Env,
     epoch: u64,
     metadata: &SnapshotMetadata,
-) {
+) -> Result<(), Error> {
+    // Check for duplicate hash across all epochs
+    let mut hash_map: Map<BytesN<32>, u64> = env
+        .storage()
+        .persistent()
+        .get(&DataKey::SnapshotHashes)
+        .unwrap_or_else(|| Map::new(env));
+    if hash_map.contains_key(metadata.hash.clone()) {
+        return Err(Error::DuplicateHash.log_context(
+            env,
+            "write_snapshot: snapshot hash already exists for a different epoch",
+        ));
+    }
+    hash_map.set(metadata.hash.clone(), epoch);
+    env.storage()
+        .persistent()
+        .set(&DataKey::SnapshotHashes, &hash_map);
+    env.storage().persistent().extend_ttl(
+        &DataKey::SnapshotHashes,
+        LEDGERS_TO_EXTEND,
+        LEDGERS_TO_EXTEND,
+    );
+
     env.storage()
         .persistent()
         .set(&DataKey::Snapshot(epoch), metadata);
@@ -533,6 +558,7 @@ fn write_snapshot(
     );
     env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
     bump_instance(env);
+    Ok(())
 }
 
 fn get_next_action_id(env: &Env) -> u64 {
@@ -656,6 +682,46 @@ impl AnalyticsContract {
         get_config(&env)
     }
 
+    /// Admin-only storage cleanup: removes a single epoch's entry from the
+    /// `SnapshotHashes` duplicate-detection map. The map grows by one entry per
+    /// `submit_snapshot` call and is never pruned automatically, so long-lived
+    /// deployments should periodically retire epochs old enough that a
+    /// duplicate-hash resubmission is no longer a realistic concern. This only
+    /// removes the hash-lookup entry; the underlying `Snapshot`/`CompactSnapshot`
+    /// data for that epoch is left untouched.
+    pub fn prune_snapshot_hash(env: Env, admin: Address, epoch: u64) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = require_admin(&env)?;
+        if admin != stored_admin {
+            return Err(Error::Unauthorized.log_context(&env, "prune_snapshot_hash: caller is not the admin"));
+        }
+
+        let mut hash_map: Map<BytesN<32>, u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SnapshotHashes)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let target_hash = hash_map
+            .iter()
+            .find(|(_, e)| *e == epoch)
+            .map(|(h, _)| h);
+
+        if let Some(hash) = target_hash {
+            hash_map.remove(hash);
+            env.storage()
+                .persistent()
+                .set(&DataKey::SnapshotHashes, &hash_map);
+            env.storage().persistent().extend_ttl(
+                &DataKey::SnapshotHashes,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+
+        Ok(())
+    }
+
     /// Submit a single snapshot. Returns the ledger timestamp on success.
     pub fn submit_snapshot(
         env: Env,
@@ -709,7 +775,7 @@ impl AnalyticsContract {
             expires_at: None,
         };
 
-        write_snapshot(&env, epoch, &metadata);
+        write_snapshot(&env, epoch, &metadata)?;
 
         env.events().publish(
             (symbol_short!("snapshot"), caller),
@@ -875,7 +941,7 @@ impl AnalyticsContract {
             expires_at: Some(timestamp + ttl),
         };
 
-        write_snapshot(&env, epoch, &metadata);
+        write_snapshot(&env, epoch, &metadata)?;
 
         let ledgers_to_live = (ttl / LEDGER_SECONDS) as u32;
         env.storage().persistent().extend_ttl(
@@ -1915,14 +1981,14 @@ impl AnalyticsContract {
 
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
-            name: String::from_str(&env, "Stellar Insights Analytics"),
+            name: String::from_str(&env, "PayRaider Analytics"),
             version: String::from_str(&env, VERSION),
-            author: String::from_str(&env, "Stellar Insights Team"),
+            author: String::from_str(&env, "PayRaider Team"),
             description: String::from_str(
                 &env,
                 "Advanced analytics and data aggregation contract for Stellar network",
             ),
-            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            repository: String::from_str(&env, "https://github.com/payraider/contracts"),
             license: String::from_str(&env, "MIT"),
         }
     }

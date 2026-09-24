@@ -6,11 +6,18 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip
+  Tooltip,
+  TooltipContentProps
 } from "recharts";
 
 interface AssetDistributionChartProps {
   assets: IssuedAsset[];
+}
+
+interface AssetChartDatum extends IssuedAsset {
+  value: number;
+  percent: number;
+  fill: string;
 }
 
 const COLORS = [
@@ -24,10 +31,11 @@ const COLORS = [
   "#14b8a6", // Teal 500
 ];
 
-const CustomTooltip = (props: any) => {
-  const { active, payload } = props;
+const CustomTooltip = ({ active, payload }: TooltipContentProps) => {
   if (active && payload && payload.length) {
-    const data = payload[0].payload;
+    // recharts types the original datum generically; this chart only ever
+    // feeds it AssetChartDatum rows (see the data prop below).
+    const data = payload[0].payload as AssetChartDatum;
     return (
       <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl">
         <div className="flex items-center gap-2 mb-1">
@@ -129,7 +137,7 @@ export function AssetDistributionChart({
 
       {/* Legend */}
       <div className="mt-6 flex flex-wrap gap-3 justify-center">
-        {data.map((entry, index) => (
+        {data.map((entry) => (
           <div
             key={entry.asset_code}
             className="flex items-center gap-1.5 text-xs"

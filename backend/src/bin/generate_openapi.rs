@@ -1,4 +1,4 @@
-use stellar_insights_backend::openapi::ApiDoc;
+use payraider_backend::openapi::ApiDoc;
 use utoipa::OpenApi;
 use std::fs::File;
 use std::io::Write;

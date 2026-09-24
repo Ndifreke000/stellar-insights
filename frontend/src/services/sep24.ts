@@ -3,9 +3,7 @@
  * All requests go through the backend proxy to avoid CORS and centralize auth.
  */
 
-import { config } from '@/config';
-
-const API_BASE = config.apiUrl;
+import { fetchWithRetry } from './fetchWithRetry';
 
 export class Sep24Error extends Error {
   constructor(
@@ -22,23 +20,7 @@ async function fetchSep24<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg =
-      (data as { message?: string })?.message ||
-      (data as { error?: string })?.error ||
-      res.statusText;
-    throw new Sep24Error(msg, res.status, data);
-  }
-  return data as T;
+  return fetchWithRetry<T>(endpoint, options, Sep24Error);
 }
 
 // --- Types (align with SEP-24 and backend proxy) ---

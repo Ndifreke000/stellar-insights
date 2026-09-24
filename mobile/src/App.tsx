@@ -10,16 +10,17 @@ import type { RootStackParamList } from './navigation/RootNavigator';
 import { useAppStore } from './store/appStore';
 import { useAuthStore } from './store/authStore';
 import { initializeApp } from './services/initialization';
-import { hasValidToken } from './services/tokenStorage';
+import { hasValidToken } from './services/auth';
 import { processOfflineQueue } from './hooks/useOfflineQueue';
 import { NetworkStatusIndicator } from './components/NetworkStatusIndicator';
 import { OfflineCachingIndicator } from './components/OfflineCaching';
 import { OfflineBanner } from './components/OfflineBanner';
+import { SyncStatusBanner } from './components/SyncStatusBanner';
 
 import { NetworkProvider, getCurrentNetwork } from '@config/network';
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['stellar-insights://'],
+  prefixes: ['payraider://'],
   config: {
     screens: {
       Main: {
@@ -37,31 +38,9 @@ const linking: LinkingOptions<RootStackParamList> = {
               CorridorDetail: 'corridors/:corridorId',
             },
           },
-          NFCSupport: 'nfc-support',
-          BluetoothSupport: 'bluetooth-support',
-          BeaconSupport: 'beacon-support',
-          AirDropIntegration: 'airdrop',
-          ShortcutsSupport: 'shortcuts',
-          AppIntents: 'app-intents',
-          QuickActions: 'quick-actions',
-          ShareExtension: 'share-extension',
-          ActionExtension: 'action-extension',
-          ForceTouch: 'force-touch',
-          HandoffSupport: 'handoff-support',
-          Geofencing: 'geofencing',
-          BackgroundSync: 'background-sync',
-          GestureControls: 'gesture-controls',
-          ContactsIntegration: 'contacts',
-          MapsIntegration: 'maps',
-          WidgetSupport: 'widget-support',
-          ThreeDTouchSupport: '3d-touch',
-          ShakeToRefresh: 'shake-to-refresh',
-          AppClips: 'app-clips',
-          LiveActivities: 'live-activities',
-          WatchApp: 'watch-app',
-          WearOSApp: 'wear-os-app',
-          VideoPlayer: 'video-player',
-          AudioRecording: 'audio-recording',
+          NetworkSwitchDialog: 'network-switch',
+          SearchFunctionality: 'search',
+          Settings: 'settings',
         },
       },
       Auth: {
@@ -162,11 +141,11 @@ function App(): React.JSX.Element {
             <NavigationContainer linking={linking}>
               <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
               <OfflineBanner />
+              <SyncStatusBanner />
               <NetworkStatusIndicator />
               <OfflineCachingIndicator showCacheSize={true} />
               <RootNavigator />
             </NavigationContainer>
-            {/* Widget, 3D Touch, and Shake-to-Refresh are registered via MainNavigator */}
           </QueryClientProvider>
         </SafeAreaProvider>
       </NetworkProvider>

@@ -7,7 +7,7 @@ set -e
 KIBANA_URL="${KIBANA_URL:-http://localhost:5601}"
 ELASTICSEARCH_URL="${ELASTICSEARCH_URL:-http://localhost:9200}"
 
-echo "=== Stellar Insights ELK Stack Setup ==="
+echo "=== PayRaider ELK Stack Setup ==="
 echo "Kibana URL: $KIBANA_URL"
 echo "Elasticsearch URL: $ELASTICSEARCH_URL"
 
@@ -29,24 +29,24 @@ echo "✓ Elasticsearch is ready"
 
 # Create index pattern for application logs
 echo "Creating index pattern for application logs..."
-curl -X POST "$KIBANA_URL/api/saved_objects/index-pattern/stellar-insights-logs" \
+curl -X POST "$KIBANA_URL/api/saved_objects/index-pattern/payraider-logs" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
     "attributes": {
-      "title": "stellar-insights-*",
+      "title": "payraider-*",
       "timeFieldName": "@timestamp"
     }
   }' || echo "Index pattern may already exist"
 
 # Create index pattern for error logs
 echo "Creating index pattern for error logs..."
-curl -X POST "$KIBANA_URL/api/saved_objects/index-pattern/stellar-insights-errors" \
+curl -X POST "$KIBANA_URL/api/saved_objects/index-pattern/payraider-errors" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
     "attributes": {
-      "title": "stellar-insights-errors-*",
+      "title": "payraider-errors-*",
       "timeFieldName": "@timestamp"
     }
   }' || echo "Error index pattern may already exist"
@@ -57,12 +57,12 @@ curl -X POST "$KIBANA_URL/api/kibana/settings/defaultIndex" \
   -H 'kbn-xsrf: true' \
   -H 'Content-Type: application/json' \
   -d '{
-    "value": "stellar-insights-logs"
+    "value": "payraider-logs"
   }' || echo "Default index pattern may already be set"
 
 # Create Index Lifecycle Management (ILM) policy
 echo "Creating ILM policy for log retention..."
-curl -X PUT "$ELASTICSEARCH_URL/_ilm/policy/stellar-insights-ilm-policy" \
+curl -X PUT "$ELASTICSEARCH_URL/_ilm/policy/payraider-ilm-policy" \
   -H 'Content-Type: application/json' \
   -d '{
     "policy": {
@@ -105,16 +105,16 @@ curl -X PUT "$ELASTICSEARCH_URL/_ilm/policy/stellar-insights-ilm-policy" \
 
 # Create index template with ILM policy
 echo "Creating index template..."
-curl -X PUT "$ELASTICSEARCH_URL/_index_template/stellar-insights-template" \
+curl -X PUT "$ELASTICSEARCH_URL/_index_template/payraider-template" \
   -H 'Content-Type: application/json' \
   -d '{
-    "index_patterns": ["stellar-insights-*"],
+    "index_patterns": ["payraider-*"],
     "template": {
       "settings": {
         "number_of_shards": 1,
         "number_of_replicas": 0,
-        "index.lifecycle.name": "stellar-insights-ilm-policy",
-        "index.lifecycle.rollover_alias": "stellar-insights",
+        "index.lifecycle.name": "payraider-ilm-policy",
+        "index.lifecycle.rollover_alias": "payraider",
         "refresh_interval": "5s"
       },
       "mappings": {
@@ -155,4 +155,4 @@ echo ""
 echo "Common queries:"
 echo "  - Error logs: log_level:\"error\""
 echo "  - Slow requests: response_time_ms:>1000"
-echo "  - Specific service: service:\"stellar-insights\""
+echo "  - Specific service: service:\"payraider\""

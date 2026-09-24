@@ -14,6 +14,10 @@ import { createJSONStorage, devtools, persist, subscribeWithSelector } from 'zus
 import { immer } from 'zustand/middleware/immer';
 import { useShallow } from 'zustand/react/shallow';
 
+// Arbitrary key/value bag for a single form or filter set; the concrete shape
+// varies per form/filter key, so callers narrow via the key they pass in.
+export type FieldValues = Record<string, unknown>;
+
 // Types for our global state
 export interface AppState {
   // UI State
@@ -26,12 +30,12 @@ export interface AppState {
   breadcrumbs: Array<{ label: string; href: string }>;
   
   // Form State
-  formData: Record<string, any>;
-  formErrors: Record<string, string>;
+  formData: Record<string, FieldValues>;
+  formErrors: Record<string, Record<string, string>>;
   formDirty: Record<string, boolean>;
-  
+
   // Filter State
-  filters: Record<string, any>;
+  filters: FieldValues;
   
   // Notification State
   notifications: Array<{
@@ -53,7 +57,7 @@ export interface AppState {
   websocket: {
     connected: boolean;
     reconnecting: boolean;
-    lastMessage: any;
+    lastMessage: unknown;
   };
 }
 
@@ -71,17 +75,17 @@ export interface AppActions {
   addBreadcrumb: (breadcrumb: { label: string; href: string }) => void;
   
   // Form Actions
-  setFormData: (key: string, data: any) => void;
-  updateFormData: (key: string, updates: Partial<any>) => void;
+  setFormData: (key: string, data: FieldValues) => void;
+  updateFormData: (key: string, updates: Partial<FieldValues>) => void;
   clearFormData: (key?: string) => void;
   setFormErrors: (key: string, errors: Record<string, string>) => void;
   clearFormErrors: (key?: string) => void;
   setFormDirty: (key: string, dirty: boolean) => void;
   clearFormDirty: (key?: string) => void;
-  
+
   // Filter Actions
-  setFilters: (filters: Record<string, any>) => void;
-  updateFilter: (key: string, value: any) => void;
+  setFilters: (filters: FieldValues) => void;
+  updateFilter: (key: string, value: unknown) => void;
   clearFilters: (key?: string) => void;
   
   // Notification Actions
@@ -98,7 +102,7 @@ export interface AppActions {
   // WebSocket Actions
   setWebSocketConnected: (connected: boolean) => void;
   setWebSocketReconnecting: (reconnecting: boolean) => void;
-  setWebSocketLastMessage: (message: any) => void;
+  setWebSocketLastMessage: (message: unknown) => void;
   
   // Reset Actions
   resetState: () => void;
@@ -109,7 +113,7 @@ export const useAppStore = create<AppState & AppActions>()(
   devtools(
     persist(
       subscribeWithSelector(
-        immer((set, get) => ({
+        immer((set, _get) => ({
           // Initial State
           sidebarCollapsed: false,
           activeModal: null,
@@ -364,7 +368,7 @@ export const useAppStore = create<AppState & AppActions>()(
         }))
       ),
       {
-        name: 'stellar-insights-app-store',
+        name: 'payraider-app-store',
         storage: createJSONStorage(() => localStorage),
         // Only persist UI preferences. Auth/session state is derived from the
         // wallet/token at runtime; persisting it let the UI claim the user was
@@ -382,7 +386,7 @@ export const useAppStore = create<AppState & AppActions>()(
       }
     ),
     {
-      name: 'Stellar Insights App Store',
+      name: 'PayRaider App Store',
       enabled: process.env.NODE_ENV === 'development',
     }
   )

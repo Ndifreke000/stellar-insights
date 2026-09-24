@@ -35,7 +35,7 @@ interface ThemeCardProps {
   preview: { bg: string; card: string; text: string };
 }
 
-function ThemeCard({ preference, label, icon: Icon, active, onClick, preview }: ThemeCardProps) {
+function ThemeCard({ preference: _preference, label, icon: Icon, active, onClick, preview }: ThemeCardProps) {
   return (
     <button
       onClick={onClick}

@@ -1,7 +1,6 @@
 //! Request parameter validation to prevent invalid inputs (NaN, infinity, negative values, invalid ranges).
 
 use crate::error::{ApiError, ApiResult};
-use async_trait::async_trait;
 use axum::{
     extract::{FromRequest, Request},
     response::IntoResponse,
@@ -15,7 +14,6 @@ use validator::Validate;
 /// Handlers use `ValidatedJson<T>` instead of `Json<T>` to get automatic validation.
 pub struct ValidatedJson<T>(pub T);
 
-#[async_trait]
 impl<T, S> FromRequest<S> for ValidatedJson<T>
 where
     T: serde::de::DeserializeOwned + Validate,

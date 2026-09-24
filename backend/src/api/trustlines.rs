@@ -1,3 +1,9 @@
+//! Trustline analytics API handlers.
+//!
+//! #1868 N+1 audit: handlers delegate to single analyzer queries
+//! (`get_metrics`, `get_trustline_rankings`, `get_asset_history`) with no
+//! per-item `.await` loops. Sync-time upserts run inside one transaction.
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -58,7 +64,7 @@ pub fn routes(analyzer: Arc<TrustlineAnalyzer>) -> Router {
         .route("/stats", get(get_trustline_metrics))
         .route("/rankings", get(get_trustline_rankings))
         .route(
-            "/:asset_code/:asset_issuer/history",
+            "/{asset_code}/{asset_issuer}/history",
             get(get_trustline_history),
         )
         .with_state(analyzer)

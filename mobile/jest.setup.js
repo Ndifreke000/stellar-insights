@@ -15,7 +15,8 @@ jest.mock('react-native-reanimated', () => {
   return Reanimated;
 });
 
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+// react-native 0.87 moved this from Libraries/Animated/ into src/private/animated/.
+jest.mock('react-native/src/private/animated/NativeAnimatedHelper');
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -62,3 +63,18 @@ jest.mock('react-native-biometrics', () => ({
     simplePrompt: jest.fn(() => Promise.resolve({ success: false })),
   })),
 }));
+
+jest.mock('react-native-mmkv', () => {
+  const store = new Map();
+  const MockMMKV = jest.fn().mockImplementation(() => ({
+    set: jest.fn((key, value) => store.set(key, value)),
+    getString: jest.fn(key => store.get(key)),
+    getBoolean: jest.fn(key => store.get(key)),
+    getNumber: jest.fn(key => store.get(key)),
+    delete: jest.fn(key => store.delete(key)),
+    clearAll: jest.fn(() => store.clear()),
+    contains: jest.fn(key => store.has(key)),
+    getAllKeys: jest.fn(() => Array.from(store.keys())),
+  }));
+  return { MMKV: MockMMKV };
+});

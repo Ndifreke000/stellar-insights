@@ -191,7 +191,7 @@ pub fn format_anchor_detail(
 
 #[must_use]
 pub fn format_help() -> String {
-    let title = escape_markdown("Stellar Insights Bot");
+    let title = escape_markdown("PayRaider Bot");
     let cmds = [
         ("/status", "System health summary"),
         ("/corridors", "Top corridors with metrics"),

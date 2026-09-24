@@ -6,7 +6,6 @@ use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::resource::Resource;
-use opentelemetry_sdk::runtime;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -14,25 +13,33 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 const MAX_LOG_FILES: usize = 30;
 
+// opentelemetry 0.32 removed `global::shutdown_tracer_provider()`; shutdown is now an
+// instance method on the provider, so we stash it here for `shutdown_tracing()` to use.
+static OTEL_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> =
+    std::sync::OnceLock::new();
+
 fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Tracer> {
     // HTTP/protobuf OTLP on 4318; avoids pulling `tonic` into the crate graph.
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4318/v1/traces".to_string());
 
-    let resource = Resource::new([KeyValue::new("service.name", service_name.to_string())]);
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new("service.name", service_name.to_string()))
+        .build();
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
         .build()?;
 
-    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .build();
 
     global::set_tracer_provider(provider.clone());
-    Ok(provider.tracer("stellar-insights-backend"))
+    let _ = OTEL_PROVIDER.set(provider.clone());
+    Ok(provider.tracer("payraider-backend"))
 }
 
 /// Initialize tracing. When `LOG_DIR` is set, logs are also written to a rotating file
@@ -43,12 +50,15 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     // `traceparent` / `tracestate` headers are used for context propagation.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let _ = tracing_log::LogTracer::init();
+    // Note: no separate `tracing_log::LogTracer::init()` call here -
+    // `tracing_subscriber`'s `.init()` below already installs the log/tracing
+    // bridge itself (via its "tracing-log" feature), so calling both panics
+    // with a `SetLoggerError` on the second, redundant registration.
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         // Log targets are module paths under the crate name, so the crate name
         // (not "backend") must be used or every application log is filtered out.
-        .unwrap_or_else(|_| "stellar_insights_backend=info,tower_http=info".into());
+        .unwrap_or_else(|_| "payraider_backend=info,tower_http=info".into());
 
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
     let use_json = log_format.eq_ignore_ascii_case("json");
@@ -63,7 +73,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
         std::fs::create_dir_all(dir)?;
         let appender = RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
-            .filename_prefix("stellar-insights")
+            .filename_prefix("payraider")
             .filename_suffix("log")
             .max_log_files(MAX_LOG_FILES)
             .build(dir)?;
@@ -199,7 +209,9 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
 }
 
 pub fn shutdown_tracing() {
-    global::shutdown_tracer_provider();
+    if let Some(provider) = OTEL_PROVIDER.get() {
+        let _ = provider.shutdown();
+    }
 }
 
 /// A [`tracing_subscriber::Layer`] that stamps `trace_id` and `span_id` onto
@@ -303,7 +315,7 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
     let parent_cx = global::get_text_map_propagator(|propagator| propagator.extract(&carrier));
 
     let span = tracing::Span::current();
-    span.set_parent(parent_cx.clone());
+    let _ = span.set_parent(parent_cx.clone());
 
     // Stamp trace_id / span_id onto the span so structured logs carry them.
     use opentelemetry::trace::TraceContextExt as _;
@@ -323,7 +335,7 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
 /// services, preserving the distributed trace across service boundaries.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// let response = inject_trace_context(client.get(&url)).send().await?;
 /// ```
 pub fn inject_trace_context(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -401,6 +413,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 }
+
 
 /// Re-export redaction utilities for use throughout the application
 pub use crate::logging::redaction::{

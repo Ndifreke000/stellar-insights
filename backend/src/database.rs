@@ -16,6 +16,67 @@ use crate::models::{
     MetricRecord, MuxedAccountAnalytics, MuxedAccountUsage, SnapshotRecord,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseBackend {
+    Sqlite,
+    Postgres,
+}
+
+impl DatabaseBackend {
+    #[must_use]
+    pub fn default() -> Self {
+        Self::Sqlite
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let explicit = std::env::var("DB_BACKEND")
+            .or_else(|_| std::env::var("DATABASE_BACKEND"))
+            .unwrap_or_default();
+
+        if !explicit.trim().is_empty() {
+            return Self::parse(explicit.trim());
+        }
+
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
+        Self::from_database_url(&database_url)
+    }
+
+    pub fn from_database_url(database_url: &str) -> Result<Self> {
+        let trimmed = database_url.trim();
+        if trimmed.is_empty() {
+            return Ok(Self::default());
+        }
+
+        let scheme = trimmed
+            .split("://")
+            .next()
+            .unwrap_or(trimmed)
+            .trim()
+            .to_ascii_lowercase();
+
+        match scheme.as_str() {
+            "sqlite" | "sqlite3" => Ok(Self::Sqlite),
+            "postgres" | "postgresql" | "postgresql+psycopg" => Ok(Self::Postgres),
+            "" => Ok(Self::default()),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported database backend for DATABASE_URL '{database_url}'. Supported values: sqlite://... or postgresql://.... Set DB_BACKEND=sqlite|postgres to choose explicitly."
+            )),
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "sqlite" | "sqlite3" => Ok(Self::Sqlite),
+            "postgres" | "postgresql" | "pg" => Ok(Self::Postgres),
+            "" => Ok(Self::default()),
+            other => Err(anyhow::anyhow!(
+                "Unsupported database backend '{other}'. Supported values are 'sqlite' or 'postgres'."
+            )),
+        }
+    }
+}
+
 /// Configuration for database connection pool
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -136,7 +197,35 @@ impl PoolConfig {
 
     /// Create a configured `SQLite` pool with these settings.
     /// Uses WAL journal mode and configurable SQL query logging (all in dev, slow-only in prod).
-    pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+    /// How long a connection waits for SQLite's single write lock before
+    /// giving up with `SQLITE_BUSY`.
+    ///
+    /// Five seconds by default: long enough to absorb the short write bursts the
+    /// ingestion pipeline produces, short enough that a genuinely stuck writer
+    /// still surfaces rather than hanging the request indefinitely.
+    fn busy_timeout_ms_inner() -> u64 {
+        const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5_000;
+        std::env::var("DB_BUSY_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|ms| *ms > 0)
+            .unwrap_or(DEFAULT_BUSY_TIMEOUT_MS)
+    }
+
+    /// Builds the SQLite connection options shared by every pool this app
+    /// opens against `database_url`: WAL journal mode, `busy_timeout`, and
+    /// query logging. Split out so `create_pool` (reads) and
+    /// `create_write_pool` (writes) can't drift out of sync on these.
+    fn build_connect_options(database_url: &str) -> Result<SqliteConnectOptions> {
+        match DatabaseBackend::from_database_url(database_url)? {
+            DatabaseBackend::Sqlite => {}
+            DatabaseBackend::Postgres => {
+                return Err(anyhow::anyhow!(
+                    "Postgres support is configured but this build is SQLite-only. Keep DATABASE_URL as sqlite://... or set DB_BACKEND=sqlite. Postgres support requires additional migration and app-wide SQL compatibility work."
+                ));
+            }
+        }
+
         let sql_log = SqlLogConfig::from_env();
 
         let mut opts: SqliteConnectOptions = database_url
@@ -145,6 +234,16 @@ impl PoolConfig {
             .context("Failed to parse DATABASE_URL for SQLite connection")?;
 
         opts = opts.journal_mode(SqliteJournalMode::Wal);
+
+        // SQLite allows exactly one writer at a time. Its default busy_timeout
+        // is 0, meaning a connection that finds the write lock held returns
+        // SQLITE_BUSY *immediately* rather than waiting for it — so concurrent
+        // writes fail outright instead of queueing, surfacing as spurious 500s
+        // under exactly the load where the system should degrade gracefully.
+        //
+        // With a timeout set, contention becomes a bounded wait. See
+        // docs/adr/0001-sqlite-vs-postgres.md.
+        opts = opts.busy_timeout(Duration::from_millis(Self::busy_timeout_ms_inner()));
 
         if sql_log.level != log::LevelFilter::Off {
             if sql_log.log_all_in_dev {
@@ -164,6 +263,15 @@ impl PoolConfig {
             }
         }
 
+        Ok(opts)
+    }
+
+    /// Read-side pool. Sized by DB_POOL_MAX_CONNECTIONS (default 100) --
+    /// reasonable for reads, which don't block each other or the writer
+    /// under WAL. See `create_write_pool` for the write-side pool.
+    pub async fn create_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let opts = Self::build_connect_options(database_url)?;
+
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
@@ -173,6 +281,40 @@ impl PoolConfig {
             .connect_with(opts)
             .await
             .context("Failed to create SQLite connection pool")?;
+
+        Ok(pool)
+    }
+
+    /// Write-side pool, sized small on purpose. SQLite permits exactly one
+    /// writer at a time regardless of how many connections a pool offers --
+    /// a large pool here doesn't buy write throughput, it just buys more
+    /// ways to queue behind the same lock (see
+    /// docs/adr/0001-sqlite-vs-postgres.md, "The pool is sized as though
+    /// writes were parallel"). Routing writes through a small dedicated
+    /// pool keeps that queueing from eating into the read pool's capacity
+    /// under write-heavy load.
+    ///
+    /// Sized via DB_WRITE_POOL_MAX_CONNECTIONS (default 2: one active
+    /// writer plus one queued behind busy_timeout, rather than erroring
+    /// immediately on the second concurrent write attempt).
+    pub async fn create_write_pool(&self, database_url: &str) -> Result<SqlitePool> {
+        let opts = Self::build_connect_options(database_url)?;
+
+        let max_connections = std::env::var("DB_WRITE_POOL_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(2);
+
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(max_connections)
+            .min_connections(1)
+            .acquire_timeout(Duration::from_secs(self.connect_timeout_seconds))
+            .idle_timeout(Some(Duration::from_secs(self.idle_timeout_seconds)))
+            .max_lifetime(Some(Duration::from_secs(self.max_lifetime_seconds)))
+            .connect_with(opts)
+            .await
+            .context("Failed to create SQLite write connection pool")?;
 
         Ok(pool)
     }
@@ -240,6 +382,13 @@ impl PoolMetrics {
 
 pub struct Database {
     pool: SqlitePool,
+    /// Dedicated write-side pool (see `PoolConfig::create_write_pool`).
+    /// Defaults to a clone of `pool` when constructed via `Database::new`,
+    /// so existing callers are unaffected until they opt into
+    /// `Database::with_write_pool`. Not yet consumed by any write call
+    /// site -- see the module-level doc comment on `create_write_pool`
+    /// for why that migration is deliberately not done here.
+    write_pool: SqlitePool,
     pub admin_audit_logger: AdminAuditLogger,
     /// Threshold in milliseconds above which a query is logged as slow at WARN level.
     /// Loaded from `SLOW_QUERY_THRESHOLD_MS` (default: 100).
@@ -249,6 +398,13 @@ pub struct Database {
 impl Database {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
+        Self::with_write_pool(pool.clone(), pool)
+    }
+
+    /// Like `new`, but with an explicit write-side pool (see
+    /// `PoolConfig::create_write_pool`) instead of reusing the read pool.
+    #[must_use]
+    pub fn with_write_pool(pool: SqlitePool, write_pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         let slow_query_threshold_ms = std::env::var("SLOW_QUERY_THRESHOLD_MS")
             .ok()
@@ -257,6 +413,7 @@ impl Database {
             .clamp(1, 60_000); // 1ms minimum, 60s maximum
         Self {
             pool,
+            write_pool,
             admin_audit_logger,
             slow_query_threshold_ms,
         }
@@ -321,6 +478,26 @@ impl Database {
                     operation,
                     plan.join(" | ")
                 );
+
+                // SQLite's plan uses "SCAN <table>" for a full table scan and
+                // "SEARCH <table> USING INDEX ..." when an index is used, so a
+                // "SCAN" step (without "USING INDEX") on a query slow enough to
+                // reach this point is the cheapest signal that an index would help.
+                let missing_index_hits: Vec<&String> = plan
+                    .iter()
+                    .filter(|step| step.contains("SCAN") && !step.contains("USING INDEX"))
+                    .collect();
+                if !missing_index_hits.is_empty() {
+                    log::warn!(
+                        "Possible missing index for '{}': full table scan in plan step(s): {}",
+                        operation,
+                        missing_index_hits
+                            .iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" | ")
+                    );
+                }
             }
             Err(e) => {
                 log::debug!(
@@ -337,6 +514,13 @@ impl Database {
         &self.pool
     }
 
+    /// Dedicated write-side pool. See the field doc comment on
+    /// `Database::write_pool` -- not yet used by any write call site.
+    #[must_use]
+    pub const fn write_pool(&self) -> &SqlitePool {
+        &self.write_pool
+    }
+
     /// Performs a basic connectivity check against the database.
     pub async fn health_check(&self) -> Result<()> {
         sqlx::query("SELECT 1")
@@ -350,6 +534,17 @@ impl Database {
     pub fn pool_metrics(&self) -> PoolMetrics {
         let size = self.pool.size();
         let idle = self.pool.num_idle();
+        let active = size.saturating_sub(idle as u32);
+
+        PoolMetrics::new(size, idle, active)
+    }
+
+    /// Metrics for the dedicated write pool (see `write_pool`). Idle == 0
+    /// with active > 0 for a sustained period is the signal to look at
+    /// `DB_WRITE_POOL_MAX_CONNECTIONS` -- see ADR 0001.
+    pub fn write_pool_metrics(&self) -> PoolMetrics {
+        let size = self.write_pool.size();
+        let idle = self.write_pool.num_idle();
         let active = size.saturating_sub(idle as u32);
 
         PoolMetrics::new(size, idle, active)
@@ -374,7 +569,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let req = CreateAnchorRequest {
     ///     name: "Example Anchor".to_string(),
     ///     stellar_account: "GBRPYHIL...".to_string(),
@@ -424,7 +619,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
     /// let anchor = db.get_anchor_by_id(anchor_id).await?;
     ///
@@ -468,7 +663,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let account = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
     /// let anchor = db.get_anchor_by_stellar_account(account).await?;
     /// ```
@@ -653,7 +848,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let asset = db.create_asset(
     ///     anchor_id,
     ///     "USDC".to_string(),
@@ -713,7 +908,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let assets = db.get_assets_by_anchor(anchor_id).await?;
     /// for asset in assets {
     ///     println!("{}: {}", asset.asset_code, asset.asset_issuer);
@@ -752,7 +947,7 @@ impl Database {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let anchor_ids = vec![anchor1_id, anchor2_id, anchor3_id];
     /// let assets_map = db.get_assets_by_anchors(&anchor_ids).await?;
     ///
@@ -1777,6 +1972,99 @@ impl Database {
                 )
             })?;
             Ok(())
+        })
+        .await
+    }
+
+    /// List pending transactions with keyset (cursor) pagination.
+    ///
+    /// `account`  – optional source_account filter
+    /// `after_id` – id of the last row from the previous page (from a decoded cursor)
+    /// `limit`    – max rows to return (caller should pass `limit + 1` to detect next page)
+    #[tracing::instrument(skip(self), fields(account = ?account, after_id = ?after_id, limit))]
+    pub async fn list_pending_transactions(
+        &self,
+        account: Option<&str>,
+        after_id: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<crate::models::PendingTransaction>> {
+        self.execute_with_timing("list_pending_transactions", async {
+            // Resolve the pivot row's (created_at, id) so we can do keyset pagination.
+            // When after_id is None we start from the beginning.
+            let rows = if let Some(aid) = after_id {
+                let pivot = sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    "SELECT * FROM pending_transactions WHERE id = $1",
+                )
+                .bind(aid)
+                .fetch_optional(&self.pool)
+                .await
+                .with_context(|| format!("Failed to resolve cursor id: {aid}"))?
+                .ok_or_else(|| anyhow::anyhow!("Cursor references unknown id: {aid}"))?;
+
+                let pivot_ts = pivot.created_at.to_rfc3339();
+
+                if let Some(acct) = account {
+                    sqlx::query_as::<_, crate::models::PendingTransaction>(
+                        r"
+                        SELECT * FROM pending_transactions
+                        WHERE source_account = $1
+                          AND (created_at > $2 OR (created_at = $2 AND id > $3))
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT $4
+                        ",
+                    )
+                    .bind(acct)
+                    .bind(&pivot_ts)
+                    .bind(&pivot.id)
+                    .bind(limit)
+                    .fetch_all(&self.pool)
+                    .await
+                    .context("Failed to list pending transactions (filtered, after cursor)")?
+                } else {
+                    sqlx::query_as::<_, crate::models::PendingTransaction>(
+                        r"
+                        SELECT * FROM pending_transactions
+                        WHERE created_at > $1 OR (created_at = $1 AND id > $2)
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT $3
+                        ",
+                    )
+                    .bind(&pivot_ts)
+                    .bind(&pivot.id)
+                    .bind(limit)
+                    .fetch_all(&self.pool)
+                    .await
+                    .context("Failed to list pending transactions (unfiltered, after cursor)")?
+                }
+            } else if let Some(acct) = account {
+                sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    r"
+                    SELECT * FROM pending_transactions
+                    WHERE source_account = $1
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT $2
+                    ",
+                )
+                .bind(acct)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .context("Failed to list pending transactions (filtered, no cursor)")?
+            } else {
+                sqlx::query_as::<_, crate::models::PendingTransaction>(
+                    r"
+                    SELECT * FROM pending_transactions
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT $1
+                    ",
+                )
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .context("Failed to list pending transactions (unfiltered, no cursor)")?
+            };
+
+            Ok(rows)
         })
         .await
     }

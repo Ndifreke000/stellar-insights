@@ -3,7 +3,7 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -37,6 +37,11 @@ pub async fn mock_anchor_url() -> String {
                 Json(json!({ "id": "tx-1", "status": "pending" }))
             }),
         )
+        .route("/transactions/{id}", get(|| async {
+            Json(json!({ "id": "tx-1", "status": "pending" }))
+        }))
+        // sep24's "get one transaction" uses ?id= as a query param on this
+        // singular path, unlike sep31's /transactions/{id}.
         .route("/transaction", get(|| async {
             Json(json!({ "id": "tx-1", "status": "pending" }))
         }))
@@ -76,21 +81,21 @@ pub async fn response_json(app: Router, request: Request<Body>) -> (StatusCode, 
 }
 
 pub fn sep24_router() -> Router {
-    stellar_insights_backend::api::sep24_proxy::routes()
+    payraider_backend::api::sep24_proxy::routes()
 }
 
 pub fn sep31_router() -> Router {
-    stellar_insights_backend::api::sep31_proxy::routes()
+    payraider_backend::api::sep31_proxy::routes()
 }
 
 pub fn sep10_router() -> Router {
     use std::sync::Arc;
-    use stellar_insights_backend::api::sep10;
-    use stellar_insights_backend::auth::sep10_simple::Sep10Service;
+    use payraider_backend::api::sep10;
+    use payraider_backend::auth::sep10_simple::Sep10Service;
 
     let service = Arc::new(
         Sep10Service::new(
-            "SBZVMB74YYQS3VQJMXZ7OZGD5GXZMHQHX3YYQS3VQJMXZ7OZGD5GXZMHQH",
+            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "testanchor.stellar.org".to_string(),
             Arc::new(tokio::sync::RwLock::new(None)),

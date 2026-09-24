@@ -37,6 +37,7 @@ pub struct OrderBookQuery {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ErrorResponse {
     pub error: String,
 }

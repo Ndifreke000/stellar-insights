@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-use super::{ContractEvent, ProcessingResult};
+use super::{ContractEvent, LedgerProtocolVersion, ProcessingResult};
 
 /// Represents the application state at a specific point in time
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +80,10 @@ pub struct SnapshotState {
     pub hash: String,
     pub ledger: u64,
     pub transaction_hash: String,
+    /// Protocol version that was active when this snapshot was submitted.
+    /// Defaults to 0 when loaded from a checkpoint that pre-dates this field.
+    #[serde(default)]
+    pub protocol_version: u32,
 }
 
 /// Verification state
@@ -119,12 +123,34 @@ impl StateBuilder {
     }
 
     /// Apply an event to the state
-    pub async fn apply_event(&mut self, event: &ContractEvent) -> Result<ProcessingResult> {
+    ///
+    /// `protocol_version` is the Stellar protocol version that was active when
+    /// `event.ledger_sequence` was closed.  Pass `0` if unknown; the builder
+    /// will use the most-conservative (legacy) processing path in that case.
+    pub async fn apply_event(
+        &mut self,
+        event: &ContractEvent,
+        protocol_version: u32,
+    ) -> Result<ProcessingResult> {
+        let proto = LedgerProtocolVersion(protocol_version);
+
         debug!(
-            "Applying event {} to state at ledger {}",
+            "Applying event {} to state at ledger {} ({})",
             event.unique_id(),
-            self.state.ledger
+            self.state.ledger,
+            proto,
         );
+
+        // Events from pre-Soroban ledgers should never reach the state builder,
+        // but guard defensively so the state stays clean even if they do.
+        if !proto.supports_soroban() {
+            debug!(
+                ledger = event.ledger_sequence,
+                protocol = protocol_version,
+                "Skipping event — Soroban not active for this protocol version"
+            );
+            return Ok(ProcessingResult::skipped());
+        }
 
         // Update ledger
         if event.ledger_sequence > self.state.ledger {
@@ -133,7 +159,7 @@ impl StateBuilder {
 
         // Process based on event type
         match event.event_type.as_str() {
-            "snapshot_submitted" => self.apply_snapshot_submission(event),
+            "snapshot_submitted" => self.apply_snapshot_submission(event, proto),
             "snapshot_verified" => self.apply_snapshot_verification(event),
             _ => {
                 debug!("Unknown event type: {}", event.event_type);
@@ -143,7 +169,11 @@ impl StateBuilder {
     }
 
     /// Apply snapshot submission event
-    fn apply_snapshot_submission(&mut self, event: &ContractEvent) -> Result<ProcessingResult> {
+    fn apply_snapshot_submission(
+        &mut self,
+        event: &ContractEvent,
+        proto: LedgerProtocolVersion,
+    ) -> Result<ProcessingResult> {
         let epoch = event
             .data
             .get("epoch")
@@ -162,7 +192,9 @@ impl StateBuilder {
             return Ok(ProcessingResult::skipped());
         }
 
-        // Add to state
+        // Add to state, recording which protocol version was active.
+        // Protocol 21+ uses stricter fee semantics; downstream verification
+        // logic can inspect `protocol_version` to apply the correct rules.
         self.state.snapshots.insert(
             epoch,
             SnapshotState {
@@ -170,10 +202,14 @@ impl StateBuilder {
                 hash,
                 ledger: event.ledger_sequence,
                 transaction_hash: event.transaction_hash.clone(),
+                protocol_version: proto.as_u32(),
             },
         );
 
-        info!("Applied snapshot submission for epoch {}", epoch);
+        info!(
+            "Applied snapshot submission for epoch {} ({})",
+            epoch, proto
+        );
         Ok(ProcessingResult::success())
     }
 

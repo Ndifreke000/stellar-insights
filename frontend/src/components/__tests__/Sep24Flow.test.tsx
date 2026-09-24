@@ -1,13 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Sep24Flow } from '../Sep24Flow';
-import * as validation from '../../lib/validation';
 import * as sep24 from '../../../services/sep24';
 
 // Mock services
 jest.mock('../../../services/sep24');
 
 const mockLoadAnchors = sep24.getSep24Anchors as jest.MockedFunction<typeof sep24.getSep24Anchors>;
-const mockLoadInfo = sep24.getSep24Info as jest.MockedFunction<typeof sep24.getSep24Info>;
 
 describe('Sep24Flow', () => {
   beforeEach(() => {

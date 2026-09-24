@@ -161,6 +161,7 @@ mod tests {
 
     #[test]
     fn test_multi_network_config_creation() {
+        let _guard = crate::lock_env_test();
         let config = MultiNetworkConfig::default_networks();
         assert!(config.has_network(StellarNetwork::Mainnet));
         assert!(config.has_network(StellarNetwork::Testnet));
@@ -169,6 +170,7 @@ mod tests {
 
     #[test]
     fn test_network_context_creation() {
+        let _guard = crate::lock_env_test();
         let context = NetworkContext::new(StellarNetwork::Mainnet);
         assert_eq!(context.network, StellarNetwork::Mainnet);
         assert_eq!(context.network_id(), "mainnet");
@@ -176,6 +178,7 @@ mod tests {
 
     #[test]
     fn test_get_context() {
+        let _guard = crate::lock_env_test();
         let config = MultiNetworkConfig::default_networks();
         let context = config.get_context(StellarNetwork::Testnet);
         assert!(context.is_some());
@@ -184,6 +187,7 @@ mod tests {
 
     #[test]
     fn test_available_networks() {
+        let _guard = crate::lock_env_test();
         let config = MultiNetworkConfig::default_networks();
         let networks = config.available_networks();
         assert_eq!(networks.len(), 2);

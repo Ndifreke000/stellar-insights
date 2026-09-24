@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { PaginatedResponse } from "./pagination";
+export type { PaginatedResponse };
 import {LatencyDataPoint, LiquidityDataPoint, SlippageDataPoint, SuccessRateDataPoint, VolumeDataPoint } from "./types";
 
 

@@ -9,7 +9,6 @@ use serde_json::json;
 #[tokio::test]
 async fn sep24_info_proxies_mock_anchor() {
     let mock_url = common::mock_anchor_url().await;
-    std::env::set_var("MOCK_ANCHOR_URL", &mock_url);
 
     let app = common::sep24_router();
     let uri = format!("/api/sep24/info?transfer_server={}", urlencoding::encode(&mock_url));
@@ -119,5 +118,5 @@ async fn sep24_anchors_list_returns_array() {
     .await;
 
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_array());
+    assert!(body["anchors"].is_array());
 }

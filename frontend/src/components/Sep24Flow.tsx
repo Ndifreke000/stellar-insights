@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, {  useEffect, useMemo, useRef, useState } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -25,36 +24,38 @@ import {
   useStartWithdrawFlow,
   useSep24FlowState,
 } from "@/hooks/useSep24";
+import type { Sep24AnchorInfo, Sep24Transaction } from "@/services/sep24";
 
 type FlowKind = "deposit" | "withdraw";
 
 export function Sep24Flow() {
   // React Query hooks
-  const { data: anchors, isLoading: loadingAnchors, error: anchorsError } = useSep24Anchors();
-  const { data: info, isLoading: loadingInfo } = useSep24Info(transferServer);
-  const { data: transactions, isLoading: loadingTx } = useSep24Transactions(transferServer, jwt);
+  const { data: anchorsResponse, isLoading: loadingAnchors, error: anchorsError } = useSep24Anchors();
+  const anchors: Sep24AnchorInfo[] = useMemo(() => anchorsResponse?.anchors ?? [], [anchorsResponse]);
 
   // Mutation hooks
   const startDepositMutation = useStartDepositFlow();
   const startWithdrawMutation = useStartWithdrawFlow();
 
   // Zustand state
-  const { formData, setFormDataValue, clearFormDataValue, setFormErrors, clearFormErrors, setLoading, loading } = useSep24FlowState();
+  const { formData } = useSep24FlowState();
 
   // Local state
   const [flowKind, setFlowKind] = useState<FlowKind>("deposit");
   const [error, setError] = useState<string | null>(null);
   const [interactiveUrl, setInteractiveUrl] = useState<string | null>(null);
   const [selectedAnchor, setSelectedAnchor] = useState<Sep24AnchorInfo | null>(null);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const POLLING_TIMEOUT_MS = 10 * 60 * 1000;
 
   const {
-    register,
     handleSubmit,
-    formState: { errors, isValid, isDirty },
+    formState: { isValid, isDirty },
     setValue,
     watch,
     trigger,
-    resetField,
   } = useForm<Sep24FlowForm>({
     resolver: zodResolver(sep24FlowSchema),
     mode: "onChange",
@@ -62,21 +63,35 @@ export function Sep24Flow() {
   });
 
   // Watch form values for real-time updates
-  const transferServer = watch("transferServer");
+  // React Hook Form's watch() API cannot be analyzed by React Compiler; this is an unavoidable library limitation
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const watchedTransferServer = watch("transferServer");
   const assetCode = watch("assetCode");
-  const amount = watch("amount");
-  const account = watch("account");
+  const _amount = watch("amount");
+  const _account = watch("account");
   const jwt = watch("jwt");
 
   // Update selected anchor when transfer server changes
   useEffect(() => {
-    if (transferServer && anchors) {
-      const anchor = anchors.find((a) => a.transfer_server === transferServer);
+    if (watchedTransferServer && anchors) {
+      const anchor = anchors.find((a) => a.transfer_server === watchedTransferServer);
       setSelectedAnchor(anchor || null);
     } else {
       setSelectedAnchor(null);
     }
-  }, [transferServer, anchors]);
+  }, [watchedTransferServer, anchors]);
+
+  // Resolved transfer server: prefer the selected anchor's, falling back to
+  // whatever was typed manually into the form field.
+  const transferServer = selectedAnchor?.transfer_server || watchedTransferServer?.trim();
+
+  const { data: info, isLoading: loadingInfo } = useSep24Info(transferServer);
+  const {
+    data: transactionsResponse,
+    isLoading: loadingTx,
+    refetch: loadTransactions,
+  } = useSep24Transactions(transferServer, jwt);
+  const transactions: Sep24Transaction[] = transactionsResponse?.transactions ?? [];
 
   const isFormValid = isValid && isDirty;
 
@@ -96,7 +111,6 @@ export function Sep24Flow() {
     }
   }, [info, flowKind, assetCode, setValue]);
 
-  const transferServer = selectedAnchor?.transfer_server || transferServer?.trim();
   const assets = info
     ? flowKind === "deposit"
       ? info.deposit
@@ -104,7 +118,15 @@ export function Sep24Flow() {
     : null;
   const assetCodes = assets ? Object.keys(assets) : [];
 
-  const startFlow: SubmitHandler<Sep24Form> = async (data) => {
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const startFlow: SubmitHandler<Sep24FlowForm> = async (data) => {
     if (!isFormValid) {
       return;
     }
@@ -116,8 +138,15 @@ export function Sep24Flow() {
 
     setError(null);
     setInteractiveUrl(null);
+    setPollingTimedOut(false);
 
-    // Use the appropriate mutation
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+    }
+    pollingTimeoutRef.current = setTimeout(() => {
+      setPollingTimedOut(true);
+    }, POLLING_TIMEOUT_MS);
+
     const mutation = flowKind === "deposit" ? startDepositMutation : startWithdrawMutation;
 
     const params = {
@@ -280,6 +309,12 @@ export function Sep24Flow() {
                 </a>
               </div>
             )}
+            {pollingTimedOut && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-amber-400 text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Anchor did not respond — check your email or contact support.
+              </div>
+            )}
             <button
               type="button"
               onClick={handleSubmit(startFlow)}
@@ -320,7 +355,7 @@ export function Sep24Flow() {
         {transferServer && (
           <button
             type="button"
-            onClick={loadTransactions}
+            onClick={() => loadTransactions()}
             disabled={loadingTx}
             className="mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2"
           >
@@ -335,7 +370,7 @@ export function Sep24Flow() {
         {transactions.length === 0 && !loadingTx && (
           <p className="text-muted-foreground text-sm">
             {transferServer
-              ? "Click “Load history” to fetch transactions (JWT may be required)."
+              ? "Click 'Load history' to fetch transactions (JWT may be required)."
               : "Select an anchor above to load transaction history."}
           </p>
         )}

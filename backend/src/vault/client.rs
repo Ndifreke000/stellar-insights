@@ -16,7 +16,7 @@ use crate::vault::{VaultConfig, VaultError};
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+/// use payraider_backend::vault::{VaultClient, VaultConfig};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,13 +26,13 @@ use crate::vault::{VaultConfig, VaultError};
 ///         "stellar-app".to_string(),
 ///     );
 ///     let client = VaultClient::new(config).await?;
-///     
+///
 ///     // Read a static secret
-///     let api_key = client.read_secret("api/keys/stellar").await?;
-///     
+///     let api_key = client.read_secret("api/keys/stellar", None).await?;
+///
 ///     // Generate database credentials
-///     let db_creds = client.generate_db_credentials("read-write").await?;
-///     
+///     let db_creds = client.get_database_credentials("read-write").await?;
+///
 ///     Ok(())
 /// }
 /// ```
@@ -85,7 +85,7 @@ struct KvData {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::DatabaseCredentials;
+/// use payraider_backend::vault::client::DatabaseCredentials;
 ///
 /// // Credentials received from Vault
 /// let creds: DatabaseCredentials = DatabaseCredentials {
@@ -129,7 +129,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -191,18 +191,23 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::VaultClient;
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let config = VaultConfig::new(
+    ///         "https://vault.example.com".to_string(),
+    ///         "your-vault-token".to_string(),
+    ///         "stellar-app".to_string(),
+    ///     );
     ///     let client = VaultClient::new(config).await?;
-    ///     
+    ///
     ///     // Read specific field
     ///     let api_key = client.read_secret("api/keys/stellar", Some("private_key")).await?;
-    ///     
+    ///
     ///     // Read entire secret
-    ///     let config = client.read_secret("app/config", None).await?;
-    ///     
+    ///     let app_config = client.read_secret("app/config", None).await?;
+    ///
     ///     Ok(())
     /// }
     /// ```
@@ -256,6 +261,12 @@ impl VaultClient {
     /// These credentials are automatically managed by the lease system to ensure
     /// they don't expire during application runtime.
     ///
+    /// **Currently unused**: the backend is SQLite-only
+    /// (`docs/adr/0001-sqlite-vs-postgres.md`), so there is no Postgres
+    /// instance for Vault's database secrets engine to issue credentials
+    /// against, and no call site in this codebase invokes this method.
+    /// Kept for if that decision is revisited.
+    ///
     /// # Arguments
     ///
     /// * `role` - Database role for credential generation (e.g., "read-write", "read-only")
@@ -267,16 +278,21 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::VaultClient;
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let config = VaultConfig::new(
+    ///         "https://vault.example.com".to_string(),
+    ///         "your-vault-token".to_string(),
+    ///         "stellar-app".to_string(),
+    ///     );
     ///     let client = VaultClient::new(config).await?;
-    ///     
+    ///
     ///     // Generate read-write credentials
     ///     let creds = client.get_database_credentials("read-write").await?;
     ///     println!("Username: {}, TTL: {}s", creds.username, creds.ttl);
-    ///     
+    ///
     ///     Ok(())
     /// }
     /// ```
@@ -350,6 +366,23 @@ impl VaultClient {
             Ok(())
         } else {
             Err(VaultError::LeaseRenewalFailed(lease_id.to_string()))
+        }
+    }
+
+    /// Renew the service's own Vault token before its TTL expires.
+    pub async fn renew_self(&self) -> Result<(), VaultError> {
+        let url = format!("{}/v1/auth/token/renew-self", self.config.vault_addr);
+        let resp = self
+            .http_client
+            .post(&url)
+            .header("X-Vault-Token", &self.config.vault_token)
+            .send()
+            .await
+            .map_err(|e| VaultError::RequestError(e.to_string()))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(VaultError::LeaseRenewalFailed("self".to_string()))
         }
     }
 

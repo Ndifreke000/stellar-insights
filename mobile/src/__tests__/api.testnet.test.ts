@@ -6,11 +6,13 @@
  * and are intentionally excluded from the default CI suite.
  */
 
+// No imports in this file otherwise -- without this, TypeScript treats it as a
+// global script rather than a module, and its top-level declarations collide
+// with the identically-named ones in transactions.testnet.test.ts.
+export {};
+
 const TESTNET_HORIZON = 'https://horizon-testnet.stellar.org';
 const TIMEOUT_MS = 30_000;
-
-// Known funded testnet account for read-only checks
-const TESTNET_PUBLIC_KEY = 'GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNWHITE';
 
 async function horizonGet(path: string): Promise<unknown> {
   const res = await fetch(`${TESTNET_HORIZON}${path}`, {

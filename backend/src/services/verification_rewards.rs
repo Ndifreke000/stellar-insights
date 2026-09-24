@@ -26,6 +26,7 @@ const MAX_VERIFICATIONS_PER_DAY: i32 = 50;
 
 /// Request to verify a snapshot hash
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerifySnapshotRequest {
     pub snapshot_id: String,
     pub submitted_hash: String,

@@ -4,6 +4,28 @@ import React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ReactQueryProvider } from '@/lib/react-query/provider';
 import { useAppStore } from '@/lib/zustand/store';
+import { logger } from '@/lib/logger';
+
+interface StateDevtoolsObject {
+  getState: typeof useAppStore.getState;
+  logState: () => void;
+  resetState: () => void;
+  logQueries: () => void;
+  invalidateAll: () => Promise<void>;
+  getQueryData: (queryKey: readonly unknown[]) => unknown;
+  getPerformance: () => {
+    totalQueries: number;
+    activeQueries: number;
+    staleQueries: number;
+    fetchingQueries: number;
+  };
+}
+
+declare global {
+  interface Window {
+    __stateDevtools?: StateDevtoolsObject;
+  }
+}
 
 interface StateProviderProps {
   children: React.ReactNode;
@@ -33,15 +55,14 @@ function StateDevTools() {
   const queryClient = useQueryClient();
 
   React.useEffect(() => {
-    const w = window as unknown as { __stateDevtools?: unknown };
-    w.__stateDevtools = {
+    window.__stateDevtools = {
       // Client state (Zustand)
       getState: () => useAppStore.getState(),
-      logState: () => console.log('Store State:', useAppStore.getState()),
+      logState: () => logger.debug('Store State:', { state: useAppStore.getState() }),
       resetState: () => useAppStore.getState().resetState(),
 
       // Server state (React Query)
-      logQueries: () => console.log('Query Cache:', queryClient.getQueryCache().getAll()),
+      logQueries: () => logger.debug('Query Cache:', { queries: queryClient.getQueryCache().getAll() }),
       invalidateAll: () => queryClient.invalidateQueries(),
       getQueryData: (queryKey: readonly unknown[]) => queryClient.getQueryData(queryKey),
       getPerformance: () => {
@@ -56,7 +77,7 @@ function StateDevTools() {
     };
 
     return () => {
-      delete w.__stateDevtools;
+      delete window.__stateDevtools;
     };
   }, [queryClient]);
 

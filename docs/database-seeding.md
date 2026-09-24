@@ -20,10 +20,10 @@ The seeding system provides realistic development data for all major entities in
 sqlx migrate run
 
 # Seed the database
-./seed_data.sh .stellar_insights.db
+./seed_data.sh .payraider.db
 
 # Reset and re-seed
-./seed_data.sh .stellar_insights.db --reset
+./seed_data.sh .payraider.db --reset
 ```
 
 ---
@@ -112,7 +112,7 @@ All inserts use `INSERT OR IGNORE` so re-running the script is safe. Existing re
 To force a full reset:
 
 ```bash
-./seed_data.sh .stellar_insights.db --reset
+./seed_data.sh .payraider.db --reset
 ```
 
 This deletes all seed records (identified by their prefixed IDs) and re-inserts them.
@@ -123,19 +123,19 @@ This deletes all seed records (identified by their prefixed IDs) and re-inserts 
 
 ```bash
 # Count all seeded anchors
-sqlite3 .stellar_insights.db "SELECT COUNT(*) FROM anchors WHERE id LIKE 'anchor-%';"
+sqlite3 .payraider.db "SELECT COUNT(*) FROM anchors WHERE id LIKE 'anchor-%';"
 
 # View anchors by status
-sqlite3 .stellar_insights.db "SELECT name, status, reliability_score FROM anchors WHERE id LIKE 'anchor-%' ORDER BY reliability_score DESC;"
+sqlite3 .payraider.db "SELECT name, status, reliability_score FROM anchors WHERE id LIKE 'anchor-%' ORDER BY reliability_score DESC;"
 
 # View corridors
-sqlite3 .stellar_insights.db "SELECT source_asset_code, destination_asset_code, reliability_score, status FROM corridors WHERE id LIKE 'corridor-%';"
+sqlite3 .payraider.db "SELECT source_asset_code, destination_asset_code, reliability_score, status FROM corridors WHERE id LIKE 'corridor-%';"
 
 # View recent metrics history
-sqlite3 .stellar_insights.db "SELECT anchor_id, timestamp, success_rate FROM anchor_metrics_history WHERE anchor_id LIKE 'anchor-%' ORDER BY timestamp DESC LIMIT 10;"
+sqlite3 .payraider.db "SELECT anchor_id, timestamp, success_rate FROM anchor_metrics_history WHERE anchor_id LIKE 'anchor-%' ORDER BY timestamp DESC LIMIT 10;"
 
 # View governance proposals
-sqlite3 .stellar_insights.db "SELECT title, status FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%';"
+sqlite3 .payraider.db "SELECT title, status FROM governance_proposals WHERE created_by LIKE 'GPROPOSER%';"
 ```
 
 ---

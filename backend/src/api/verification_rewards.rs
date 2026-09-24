@@ -1,4 +1,8 @@
 //! API handlers for snapshot verification rewards
+//!
+//! #1868 N+1 audit: verify/stats/history/leaderboard handlers each call a
+//! single service method backed by one (or a fixed small number of) queries.
+//! No per-row await loops in these handlers.
 
 use axum::{
     extract::{Path, Query, State},
@@ -30,7 +34,7 @@ pub fn routes(
             sep10_auth_middleware,
         ))
         .route("/leaderboard", get(get_leaderboard))
-        .route("/stats/:user_id", get(get_public_user_stats))
+        .route("/stats/{user_id}", get(get_public_user_stats))
         .with_state(service)
 }
 

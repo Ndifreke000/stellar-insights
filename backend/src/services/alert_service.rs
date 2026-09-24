@@ -124,7 +124,7 @@ impl AlertService {
         match channel {
             AlertChannel::Email(to) => {
                 if let Some(ref service) = self.email_service {
-                    let subject = format!("Stellar Insights Alert: {:?}", alert.severity);
+                    let subject = format!("PayRaider Alert: {:?}", alert.severity);
                     let body = format!(
                         "<h2>Alert</h2><p>{}</p><p>Type: {:?}</p>",
                         alert.message, alert.alert_type

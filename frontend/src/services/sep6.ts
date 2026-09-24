@@ -3,9 +3,7 @@
  * Programmatic deposit/withdraw flows; requests go through backend proxy when configured.
  */
 
-import { config } from '@/config';
-
-const API_BASE = config.apiUrl;
+import { fetchWithRetry } from './fetchWithRetry';
 
 export class Sep6Error extends Error {
   constructor(
@@ -22,23 +20,7 @@ async function fetchSep6<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg =
-      (data as { message?: string })?.message ||
-      (data as { error?: string })?.error ||
-      res.statusText;
-    throw new Sep6Error(msg, res.status, data);
-  }
-  return data as T;
+  return fetchWithRetry<T>(endpoint, options, Sep6Error);
 }
 
 // --- Types (align with SEP-6) ---

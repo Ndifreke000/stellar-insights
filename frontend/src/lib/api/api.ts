@@ -1,5 +1,5 @@
 /**
- * API Client for Stellar Insights
+ * API Client for PayRaider
  * Handles all API calls to the backend
  */
 import { monitoring } from "../monitoring";
@@ -221,6 +221,7 @@ function generateMockPrediction(
     recommendation: recommendations[riskLevel],
     alternative_routes: alternativeRoutes,
     model_version: "1.0.0",
+    is_mock: true,
   };
 }
 

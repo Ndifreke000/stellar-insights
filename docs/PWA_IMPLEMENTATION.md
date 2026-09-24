@@ -2,7 +2,7 @@
 
 ## 📋 Overview
 
-This document provides a comprehensive guide to the Progressive Web App (PWA) implementation for Stellar Insights. The implementation includes installation prompts, offline support, service worker management, and cache handling.
+This document provides a comprehensive guide to the Progressive Web App (PWA) implementation for PayRaider. The implementation includes installation prompts, offline support, service worker management, and cache handling.
 
 ## 🎯 Features Implemented
 

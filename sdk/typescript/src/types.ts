@@ -1,11 +1,11 @@
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-export interface StellarInsightsConfig {
+export interface PayRaiderConfig {
   /** API key for Bearer token auth */
   apiKey?: string;
   /** OAuth2 access token */
   accessToken?: string;
-  /** Override base URL (default: https://api.stellarinsights.io) */
+  /** Override base URL (default: https://api.payraider.io) */
   baseUrl?: string;
   /** Max retry attempts on 429/5xx (default: 3) */
   maxRetries?: number;
@@ -17,7 +17,7 @@ export interface StellarInsightsConfig {
 
 // ─── SDK Initialization ────────────────────────────────────────────────────────
 
-export interface SDKInitConfig extends StellarInsightsConfig {
+export interface SDKInitConfig extends PayRaiderConfig {
   /** Enable debug logging */
   debug?: boolean;
   /** Target network: mainnet or testnet */

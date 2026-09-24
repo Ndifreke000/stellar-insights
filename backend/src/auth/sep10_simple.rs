@@ -33,6 +33,7 @@ fn session_expiry_days() -> i64 {
 
 /// SEP-10 Challenge Request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ChallengeRequest {
     pub account: String,
     #[serde(default)]
@@ -52,6 +53,7 @@ pub struct ChallengeResponse {
 
 /// SEP-10 Verification Request
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerificationRequest {
     pub transaction: String, // Base64-encoded signed XDR
 }
@@ -266,16 +268,16 @@ impl Sep10Service {
     // Private helper methods
 
     fn generate_nonce(&self) -> String {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let nonce: [u8; 32] = rng.gen();
+        use rand::RngExt;
+        let mut rng = rand::rng();
+        let nonce: [u8; 32] = rng.random();
         BASE64.encode(nonce)
     }
 
     fn generate_session_token(&self, account: &str) -> Result<String> {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let random_bytes: [u8; 32] = rng.gen();
+        use rand::RngExt;
+        let mut rng = rand::rng();
+        let random_bytes: [u8; 32] = rng.random();
         let token = format!("{}:{}", account, BASE64.encode(random_bytes));
         Ok(BASE64.encode(token.as_bytes()))
     }

@@ -41,7 +41,7 @@ impl AssetVerifier {
     pub fn new(pool: SqlitePool) -> Result<Self> {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("StellarInsights/1.0")
+            .user_agent("PayRaider/1.0")
             .build()
             .context("Failed to create HTTP client")?;
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GitHub Issues Creator for Stellar Insights
+GitHub Issues Creator for PayRaider
 Creates 70 well-structured issues from comprehensive analysis
 Usage: python create_github_issues.py [--dry-run]
 """
@@ -83,7 +83,7 @@ def main():
         print("Install it from: https://cli.github.com/")
         sys.exit(1)
     
-    print("🚀 Creating 70 GitHub Issues for Stellar Insights\n")
+    print("🚀 Creating 70 GitHub Issues for PayRaider\n")
     
     # Import issue definitions
     from issues_definitions import ISSUES

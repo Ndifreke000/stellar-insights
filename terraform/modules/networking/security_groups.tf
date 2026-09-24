@@ -1,4 +1,4 @@
-# Security Groups for ALB, Backend ECS, Database (RDS), and Redis (ElastiCache)
+# Security Groups for ALB, Backend ECS, and Redis (ElastiCache)
 
 # ALB Security Group (accepts HTTP/HTTPS from internet)
 resource "aws_security_group" "alb" {
@@ -65,15 +65,6 @@ resource "aws_security_group" "backend" {
     description     = "Allow from ALB"
   }
 
-  # Egress to database
-  egress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.database.id]
-    description     = "Allow to RDS"
-  }
-
   # Egress to Redis
   egress {
     from_port       = 6379
@@ -96,40 +87,6 @@ resource "aws_security_group" "backend" {
     local.common_tags,
     {
       Name = "${var.project_name}-${var.environment}-backend-sg"
-    }
-  )
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Database Security Group (RDS PostgreSQL)
-resource "aws_security_group" "database" {
-  name_prefix = "${var.project_name}-database-"
-  description = "Security group for RDS database"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.backend.id]
-    description     = "Allow from backend"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-database-sg"
     }
   )
 

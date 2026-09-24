@@ -16,7 +16,7 @@ import {
   CorridorPerformance,
   DashboardDataSource,
   DashboardStats,
-} from '@types/dashboard';
+} from '@app-types/dashboard';
 
 const ACCENT_COLOR = Platform.OS === 'ios' ? '#007AFF' : '#1976D2';
 

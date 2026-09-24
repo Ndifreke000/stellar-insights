@@ -252,6 +252,7 @@ impl StellarRpcClientTrait for MockStellarRpcClient {
             fee_pool: "0".to_string(),
             base_fee: 100,
             base_reserve: "0".to_string(),
+            protocol_version: 21,
         })
     }
 
@@ -267,6 +268,7 @@ impl StellarRpcClientTrait for MockStellarRpcClient {
             fee_pool: "0".to_string(),
             base_fee: 100,
             base_reserve: "0".to_string(),
+            protocol_version: 21,
         })
     }
 

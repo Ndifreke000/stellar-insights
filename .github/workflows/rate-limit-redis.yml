@@ -1,0 +1,60 @@
+name: Rate Limit Redis Integration
+
+# Explicitly exercises the Redis-backed rate-limit path (#1869).
+# Regular unit tests often fall back to in-memory when Redis is absent;
+# this job always provides Redis and runs the ignored integration suite.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/src/rate_limit.rs"
+      - "backend/tests/rate_limit_redis_integration.rs"
+      - "backend/tests/rate_limit_tests.rs"
+      - ".github/workflows/rate-limit-redis.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/src/rate_limit.rs"
+      - "backend/tests/rate_limit_redis_integration.rs"
+      - "backend/tests/rate_limit_tests.rs"
+      - ".github/workflows/rate-limit-redis.yml"
+  workflow_dispatch:
+
+jobs:
+  redis-rate-limit:
+    name: Redis rate-limit integration
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-rate-limit-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-rate-limit-
+
+      - name: Run Redis rate-limit integration tests
+        working-directory: backend
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          DATABASE_URL: sqlite::memory:
+        run: cargo test --test rate_limit_redis_integration -- --ignored --nocapture

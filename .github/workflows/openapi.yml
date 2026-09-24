@@ -1,23 +1,60 @@
 name: OpenAPI Check
 
+# Regenerate docs/openapi.json from utoipa annotations and fail if it differs
+# from the committed copy.  This ensures the spec never goes stale relative to
+# the actual route annotations.
+#
+# Decision (closes #1865): docs/openapi.json is committed to the repo so that
+# a fresh checkout always has a readable API spec and /api-docs can serve it
+# without a build step.  This workflow enforces that the committed file is kept
+# in sync with the utoipa-annotated handlers.
+
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'backend/src/**'
+      - 'backend/Cargo.toml'
+      - 'backend/Cargo.lock'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'backend/src/**'
+      - 'backend/Cargo.toml'
+      - 'backend/Cargo.lock'
 
 jobs:
   check-openapi:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Generate OpenAPI spec
-      working-directory: ./backend
-      run: cargo run --bin generate_openapi
-    
-    - name: Verify committed openapi.json matches generated
-      run: git diff --exit-code docs/openapi.json
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            backend/target/
+          key: ${{ runner.os }}-cargo-openapi-${{ hashFiles('backend/Cargo.lock') }}
+
+      - name: Generate OpenAPI spec
+        working-directory: ./backend
+        run: cargo run --bin generate_openapi
+
+      - name: Verify committed openapi.json matches generated
+        run: |
+          if ! git diff --exit-code docs/openapi.json; then
+            echo ""
+            echo "❌  docs/openapi.json is out of date."
+            echo "    Run: cd backend && cargo run --bin generate_openapi"
+            echo "    Then commit the updated docs/openapi.json."
+            exit 1
+          fi
+          echo "✅  docs/openapi.json is up to date."

@@ -1,4 +1,4 @@
-# Vault Configuration for Stellar Insights
+# Vault Configuration for PayRaider
 
 # Storage backend
 storage "file" {

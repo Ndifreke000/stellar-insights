@@ -1,8 +1,8 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::json;
@@ -11,7 +11,10 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest};
+use crate::auth::brute_force;
+use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest, VerifyTwoFaRequest};
+use crate::auth_middleware::AuthUser;
+use crate::observability::metrics::record_auth_security_event;
 
 const TOKEN_ENDPOINT_LIMIT_PER_MINUTE: usize = 5;
 const ACCOUNT_LOCKOUT_THRESHOLD: u32 = 5;
@@ -37,7 +40,14 @@ pub enum AuthApiError {
     InvalidToken,
     AccountLocked { retry_after_seconds: u64 },
     CaptchaRequired,
+    CaptchaInvalid,
     RateLimited { retry_after_seconds: u64 },
+    /// Session doesn't exist, is already revoked/expired, or belongs to a
+    /// different user. Deliberately the same response for "doesn't exist"
+    /// and "not yours" -- returning 403 for the latter would let a caller
+    /// enumerate other users' valid session IDs by the status code alone.
+    SessionNotFound,
+    InternalError,
 }
 
 impl IntoResponse for AuthApiError {
@@ -69,6 +79,12 @@ impl IntoResponse for AuthApiError {
                 "CAPTCHA verification required after repeated failed login attempts".to_string(),
                 None,
             ),
+            Self::CaptchaInvalid => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "CAPTCHA_INVALID",
+                "CAPTCHA verification failed".to_string(),
+                None,
+            ),
             Self::RateLimited {
                 retry_after_seconds,
             } => (
@@ -76,6 +92,18 @@ impl IntoResponse for AuthApiError {
                 "RATE_LIMITED",
                 "Too many authentication attempts. Please try again later.".to_string(),
                 Some(retry_after_seconds),
+            ),
+            Self::SessionNotFound => (
+                StatusCode::NOT_FOUND,
+                "SESSION_NOT_FOUND",
+                "Session not found".to_string(),
+                None,
+            ),
+            Self::InternalError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "An internal error occurred".to_string(),
+                None,
             ),
         };
 
@@ -98,7 +126,18 @@ impl IntoResponse for AuthApiError {
     }
 }
 
-async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
+/// Client IP as reported by the ingress (first X-Forwarded-For hop).
+pub(crate) fn client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+pub(crate) async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
     let now = Instant::now();
     let mut windows = TOKEN_RATE_LIMIT_WINDOWS.lock().await;
     let entries = windows
@@ -132,10 +171,15 @@ async fn check_rate_limit_for_account(account_key: &str) -> Option<u64> {
     None
 }
 
-async fn preflight_login_guards(username: &str, headers: &HeaderMap) -> Result<(), AuthApiError> {
+pub(crate) async fn preflight_login_guards(
+    username: &str,
+    headers: &HeaderMap,
+    client_ip: &str,
+) -> Result<(), AuthApiError> {
     let account = username.to_lowercase();
     let now = Instant::now();
     let mut states = FAILED_LOGIN_STATE.lock().await;
+    let mut captcha_token = None;
     if let Some(state) = states.get_mut(&account) {
         if let Some(lock_until) = state.lockout_until {
             if now < lock_until {
@@ -168,14 +212,29 @@ async fn preflight_login_guards(username: &str, headers: &HeaderMap) -> Result<(
                 );
                 return Err(AuthApiError::CaptchaRequired);
             }
+            captcha_token = Some(captcha.to_string());
+        }
+    }
+    // Don't hold the lock across the provider round-trip.
+    drop(states);
+
+    if let Some(token) = captcha_token {
+        if !brute_force::verify_captcha(&token, client_ip).await {
+            tracing::warn!(
+                username = %account,
+                client_ip,
+                "Suspicious auth attempt blocked: CAPTCHA verification failed"
+            );
+            return Err(AuthApiError::CaptchaInvalid);
         }
     }
 
     Ok(())
 }
 
-async fn record_failed_login(username: &str) {
+pub(crate) async fn record_failed_login(endpoint: &str, username: &str, client_ip: &str) {
     let account = username.to_lowercase();
+    brute_force::record_failure(endpoint, &account, client_ip);
     let now = Instant::now();
     let mut states = FAILED_LOGIN_STATE.lock().await;
     let state = states.entry(account.clone()).or_insert(FailedAuthState {
@@ -192,6 +251,7 @@ async fn record_failed_login(username: &str) {
 
     if state.failed_attempts >= ACCOUNT_LOCKOUT_THRESHOLD {
         state.lockout_until = Some(now + ACCOUNT_LOCKOUT_DURATION);
+        record_auth_security_event(endpoint, "account_locked");
         tracing::warn!(
             username = %account,
             failed_attempts = state.failed_attempts,
@@ -207,19 +267,25 @@ async fn record_failed_login(username: &str) {
     }
 }
 
-async fn clear_failed_login_state(username: &str) {
+pub(crate) async fn clear_failed_login_state(username: &str) {
     let account = username.to_lowercase();
     let mut states = FAILED_LOGIN_STATE.lock().await;
     states.remove(&account);
 }
 
 /// POST /api/auth/login - User login
+///
+/// Response is one of two shapes, distinguished by `status`:
+/// - `{"status":"success","access_token":...,"refresh_token":...,"expires_in":...}`
+/// - `{"status":"two_fa_required","pending_token":...,"expires_in":...}` --
+///   the account has 2FA enabled; call POST /api/auth/verify-2fa with this
+///   `pending_token` and a TOTP/backup code to get real tokens.
 #[utoipa::path(
     post,
     path = "/api/auth/login",
     request_body = LoginRequest,
     responses(
-        (status = 200, description = "Login successful"),
+        (status = 200, description = "Login successful, or 2FA required (see status field)"),
         (status = 401, description = "Invalid credentials")
     ),
     tag = "Auth"
@@ -236,15 +302,23 @@ pub async fn login(
             retry_after_seconds,
             "Token endpoint rate limit exceeded for account"
         );
+        record_auth_security_event("login", "rate_limited");
         return Err(AuthApiError::RateLimited {
             retry_after_seconds,
         });
     }
 
-    preflight_login_guards(&request.username, &headers).await?;
+    let ip_address = client_ip(&headers);
+    preflight_login_guards(&request.username, &headers, &ip_address).await?;
+
+    // Extract device user agent and IP for session tracking
+    let device_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
     let response = auth_service
-        .login(request)
+        .login(request, device_user_agent, &ip_address)
         .await
         .map_err(|_| AuthApiError::InvalidCredentials);
     match response {
@@ -253,7 +327,61 @@ pub async fn login(
             Ok((StatusCode::OK, Json(login_response)).into_response())
         }
         Err(e) => {
-            record_failed_login(&account_key).await;
+            record_failed_login("login", &account_key, &ip_address).await;
+            Err(e)
+        }
+    }
+}
+
+/// POST /api/auth/verify-2fa - Complete a 2FA-gated login
+#[utoipa::path(
+    post,
+    path = "/api/auth/verify-2fa",
+    request_body = VerifyTwoFaRequest,
+    responses(
+        (status = 200, description = "Login successful"),
+        (status = 401, description = "Invalid/expired pending token, or invalid code")
+    ),
+    tag = "Auth"
+)]
+pub async fn verify_2fa(
+    State(auth_service): State<Arc<AuthService>>,
+    headers: HeaderMap,
+    Json(request): Json<VerifyTwoFaRequest>,
+) -> Result<Response, AuthApiError> {
+    // Rate-limit/lockout keyed by the pending token itself, not username --
+    // the caller hasn't proven who they are yet (that's what this endpoint
+    // checks), and decoding the token first just to get a username would
+    // let an attacker probe token validity via response-timing differences
+    // before the real check below runs. Each pending token is also already
+    // single-use and 5 minutes old at most (see AuthService::login), which
+    // bounds how much this key can ever be reused for anyway.
+    let account_key = format!("2fa:{}", request.pending_token);
+    if let Some(retry_after_seconds) = check_rate_limit_for_account(&account_key).await {
+        return Err(AuthApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+    let ip_address = client_ip(&headers);
+    preflight_login_guards(&account_key, &headers, &ip_address).await?;
+
+    let device_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let response = auth_service
+        .complete_2fa_login(request, device_user_agent, &ip_address)
+        .await
+        .map_err(|_| AuthApiError::InvalidCredentials);
+
+    match response {
+        Ok(login_response) => {
+            clear_failed_login_state(&account_key).await;
+            Ok((StatusCode::OK, Json(login_response)).into_response())
+        }
+        Err(e) => {
+            record_failed_login("verify_2fa", &account_key, &ip_address).await;
             Err(e)
         }
     }
@@ -272,12 +400,24 @@ pub async fn login(
 )]
 pub async fn refresh(
     State(auth_service): State<Arc<AuthService>>,
+    headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Response, AuthApiError> {
-    let response = auth_service
-        .refresh(request)
-        .await
-        .map_err(|_| AuthApiError::InvalidToken)?;
+    // Refresh tokens are opaque, so the refresh endpoint is limited per client IP.
+    let ip_address = client_ip(&headers);
+    if let Some(retry_after_seconds) =
+        check_rate_limit_for_account(&format!("refresh:{ip_address}")).await
+    {
+        record_auth_security_event("refresh", "rate_limited");
+        return Err(AuthApiError::RateLimited {
+            retry_after_seconds,
+        });
+    }
+
+    let response = auth_service.refresh(request).await.map_err(|_| {
+        brute_force::record_failure("refresh", &format!("ip:{ip_address}"), &ip_address);
+        AuthApiError::InvalidToken
+    })?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }
@@ -309,11 +449,139 @@ pub async fn logout(
     Ok((StatusCode::OK, Json(body)).into_response())
 }
 
+/// GET /api/auth/sessions - List active sessions for authenticated user
+#[utoipa::path(
+    get,
+    path = "/api/auth/sessions",
+    responses(
+        (status = 200, description = "Active sessions listed"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "Auth"
+)]
+pub async fn list_sessions(
+    State(auth_service): State<Arc<AuthService>>,
+    auth_user: AuthUser,
+) -> Result<Response, AuthApiError> {
+    let sessions = auth_service
+        .session_service()
+        .list_active_sessions(&auth_user.user_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
+
+    let sessions_json: Vec<_> = sessions
+        .into_iter()
+        .map(|s| {
+            let is_current = auth_user.session_id.as_deref() == Some(s.id.as_str());
+            json!({
+                "id": s.id,
+                "device_user_agent": s.device_user_agent,
+                "ip_address": s.ip_address,
+                "created_at": s.created_at,
+                "last_activity_at": s.last_activity_at,
+                "expires_at": s.expires_at,
+                "is_current": is_current,
+            })
+        })
+        .collect();
+
+    let body = json!({
+        "sessions": sessions_json
+    });
+
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+/// DELETE /api/auth/sessions/{session_id} - Revoke specific session
+#[utoipa::path(
+    delete,
+    path = "/api/auth/sessions/{session_id}",
+    responses(
+        (status = 204, description = "Session revoked"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Session not found")
+    ),
+    tag = "Auth"
+)]
+pub async fn revoke_session(
+    State(auth_service): State<Arc<AuthService>>,
+    auth_user: AuthUser,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, AuthApiError> {
+    // get_active_session (not a raw lookup) also rejects already-expired/
+    // revoked sessions, so this doubles as "does it still exist to revoke".
+    let session = auth_service
+        .session_service()
+        .get_active_session(&session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?
+        .ok_or(AuthApiError::SessionNotFound)?;
+
+    if session.user_id != auth_user.user_id {
+        // Same response as "doesn't exist" -- see SessionNotFound's doc comment.
+        return Err(AuthApiError::SessionNotFound);
+    }
+
+    auth_service
+        .session_service()
+        .revoke_session(&session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/auth/sessions/revoke-others - Revoke all other sessions
+#[utoipa::path(
+    post,
+    path = "/api/auth/sessions/revoke-others",
+    responses(
+        (status = 200, description = "Other sessions revoked"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "Auth"
+)]
+pub async fn revoke_other_sessions(
+    State(auth_service): State<Arc<AuthService>>,
+    auth_user: AuthUser,
+) -> Result<Response, AuthApiError> {
+    // Requires the token to actually carry a session_id -- a token issued
+    // without one (see Claims::session_id) has no "current session" to
+    // exclude, so there's nothing safe to do here.
+    let current_session_id = auth_user.session_id.ok_or(AuthApiError::InvalidToken)?;
+
+    auth_service
+        .session_service()
+        .revoke_all_other_sessions(&auth_user.user_id, &current_session_id)
+        .await
+        .map_err(|_| AuthApiError::InternalError)?;
+
+    let body = json!({
+        "message": "Other sessions revoked"
+    });
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
 /// Create auth routes
 pub fn routes(auth_service: Arc<AuthService>) -> Router {
-    Router::new()
+    // Public: no token exists yet to check.
+    let public = Router::new()
         .route("/api/auth/login", post(login))
+        .route("/api/auth/verify-2fa", post(verify_2fa))
         .route("/api/auth/refresh", post(refresh))
-        .route("/api/auth/logout", post(logout))
-        .with_state(auth_service)
+        .route("/api/auth/logout", post(logout));
+
+    // Protected: these act on the caller's own session(s), so they need a
+    // verified identity. AuthUser (used inside the handlers) only resolves
+    // from request extensions that auth_middleware populates -- without
+    // this layer they'd 401 with AuthError::MissingToken on every call.
+    let protected = Router::new()
+        .route("/api/auth/sessions", get(list_sessions))
+        .route("/api/auth/sessions/{session_id}", delete(revoke_session))
+        .route("/api/auth/sessions/revoke-others", post(revoke_other_sessions))
+        .layer(axum::middleware::from_fn(
+            crate::auth_middleware::auth_middleware,
+        ));
+
+    public.merge(protected).with_state(auth_service)
 }

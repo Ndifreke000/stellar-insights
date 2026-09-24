@@ -51,7 +51,7 @@ const generateRecentFailures = (): FailureRecord[] => {
   ];
   const corridors = ["USDC-PHP", "EURC-NGN", "USDT-KES", "XLM-USD"];
 
-  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, i) => ({
+  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, _i) => ({
     timestamp: new Date(
       Date.now() - Math.random() * 24 * 60 * 60 * 1000,
     ).toISOString(),
@@ -67,7 +67,6 @@ const HealthDashboard = () => {
   const anchorsQuery = useAnchors();
   const anchors = useMemo(() => anchorsQuery.data?.data ?? [], [anchorsQuery.data]);
   const loading = anchorsQuery.isPending;
-  const error = anchorsQuery.isError ? "Failed to fetch anchor data." : null;
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold>({
     healthScore: 85,
     uptimePercentage: 95,

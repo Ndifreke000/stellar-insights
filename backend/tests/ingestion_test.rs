@@ -1,6 +1,6 @@
 // I'm testing the ledger ingestion functionality as specified in issue #2
 
-use stellar_insights_backend::rpc::StellarRpcClient;
+use payraider_backend::rpc::StellarRpcClient;
 
 #[tokio::test]
 async fn test_mock_rpc_fetch_ledgers() {
@@ -61,7 +61,7 @@ async fn test_ledger_sequence_is_sequential() {
 #[test]
 fn test_latest_and_oldest_ledger_bounds() {
     // I'm testing that bounds are returned correctly (sync test using mock data)
-    use stellar_insights_backend::rpc::GetLedgersResult;
+    use payraider_backend::rpc::GetLedgersResult;
 
     // Mock structure verification
     let mock_result = GetLedgersResult {

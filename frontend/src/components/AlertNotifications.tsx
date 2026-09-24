@@ -11,21 +11,18 @@ interface Alert {
 
 export default function AlertNotifications() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     const websocket = new WebSocket('ws://localhost:8080/ws/alerts');
-    
+
     websocket.onmessage = (event) => {
       const alert = JSON.parse(event.data);
       setAlerts((prev) => [alert, ...prev].slice(0, 10));
     };
 
     websocket.onerror = () => {
-      setTimeout(() => setWs(null), 5000);
+      websocket.close();
     };
-
-    setWs(websocket);
 
     return () => websocket.close();
   }, []);

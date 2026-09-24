@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::observability::metrics::PRICE_FEED_STALE_ASSETS;
 use crate::services::price_feed::PriceFeedClient;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -46,6 +47,9 @@ pub struct PriceResponse {
     /// Price in USD
     #[schema(example = 0.12)]
     pub price_usd: f64,
+    /// Whether the oracle data is stale (>15 min since last update)
+    #[schema(example = false)]
+    pub stale: bool,
     /// Timestamp of the response
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
@@ -55,6 +59,8 @@ pub struct PriceResponse {
 pub struct PricesResponse {
     /// Map of asset to price in USD
     pub prices: std::collections::HashMap<String, f64>,
+    /// Whether any of the oracle data is stale
+    pub stale: bool,
     /// Timestamp of the response
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
@@ -117,11 +123,21 @@ pub async fn get_price(
     State(price_feed): State<Arc<PriceFeedClient>>,
     Query(params): Query<GetPriceQuery>,
 ) -> impl IntoResponse {
-    match price_feed.get_price(&params.asset).await {
-        Ok(price) => {
+    match price_feed.get_price_with_staleness(&params.asset).await {
+        Ok((price, stale)) => {
+            if stale {
+                PRICE_FEED_STALE_ASSETS
+                    .with_label_values(&[&params.asset])
+                    .set(1);
+            } else {
+                PRICE_FEED_STALE_ASSETS
+                    .with_label_values(&[&params.asset])
+                    .set(0);
+            }
             let response = PriceResponse {
                 asset: params.asset,
                 price_usd: price,
+                stale,
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
             (StatusCode::OK, Json(response)).into_response()
@@ -169,10 +185,19 @@ pub async fn get_prices(
         return (StatusCode::BAD_REQUEST, Json(error)).into_response();
     }
 
-    let prices = price_feed.get_prices(&assets).await;
+    let (prices, stale) = price_feed.get_prices_with_staleness(&assets).await;
+
+    // Update metrics for each asset
+    for asset in &assets {
+        let is_stale = stale.contains(asset);
+        PRICE_FEED_STALE_ASSETS
+            .with_label_values(&[asset])
+            .set(if is_stale { 1 } else { 0 });
+    }
 
     let response = PricesResponse {
         prices,
+        stale: !stale.is_empty(),
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 

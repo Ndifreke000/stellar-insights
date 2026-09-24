@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: stellar-insights-mainnet
+namespace: payraider-mainnet
 
 bases:
 - ../../
@@ -19,13 +19,13 @@ patches:
 - path: redis-patch.yaml
 
 images:
-- name: stellar-insights/backend
+- name: payraider/backend
   newTag: v1.0.0
-- name: stellar-insights/frontend
+- name: payraider/frontend
   newTag: v1.0.0
 
 configMapGenerator:
-- name: stellar-insights-config
+- name: payraider-config
   behavior: merge
   literals:
   - stellar-network=mainnet
@@ -33,4 +33,4 @@ configMapGenerator:
   - rust-log=warn,api_access=info
   # High-traffic mainnet: log 20% of fast successful requests (errors/slow always logged).
   - api-log-sample-rate=0.2
-  - cors-allowed-origins=https://stellar-insights.com
+  - cors-allowed-origins=https://payraider.com

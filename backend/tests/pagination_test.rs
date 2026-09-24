@@ -1,4 +1,4 @@
-use stellar_insights_backend::rpc::StellarRpcClient;
+use payraider_backend::rpc::StellarRpcClient;
 
 #[tokio::test]
 async fn test_fetch_all_payments_mock() {
