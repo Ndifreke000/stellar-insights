@@ -25,7 +25,7 @@ lazy_static! {
             "HTTP request duration in seconds with p50/p95/p99 buckets"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ])
     )
     .expect("Failed to register http_request_duration_seconds histogram");
@@ -35,7 +35,7 @@ lazy_static! {
             "HTTP request duration in seconds per endpoint"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ]),
         &["method", "endpoint"]
     )
@@ -579,6 +579,39 @@ mod tests {
 
         assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1);
         assert!(text.contains("http_requests_total"));
+    }
+
+    #[tokio::test]
+    async fn http_middleware_records_latency_histogram_and_slo() {
+        init_metrics();
+
+        let app = Router::new()
+            .route("/api/v1/corridors", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(http_metrics_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/corridors")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        check_slo_violation("/api/v1/corridors", 650.0);
+
+        let metrics_response = metrics_handler();
+        let body = to_bytes(metrics_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("http_request_duration_seconds"));
+        assert!(text.contains("http_request_duration_by_endpoint_seconds"));
+        assert!(text.contains("http_request_slo_violations_total"));
     }
 
     #[tokio::test]

@@ -12,14 +12,14 @@ pub async fn deprecation_middleware(req: Request<Body>, next: Next) -> Response 
             .insert("Deprecation", HeaderValue::from_static("true"));
         response.headers_mut().insert(
             "Sunset",
-            HeaderValue::from_static("Wed, 01 Jan 2025 00:00:00 GMT"),
+            HeaderValue::from_static("Thu, 31 Dec 2026 00:00:00 GMT"),
         );
         response.headers_mut().insert(
             "Link",
             HeaderValue::from_static("</api/v2/>; rel=\"successor-version\""),
         );
 
-        if let Ok(value) = HeaderValue::from_str("API v1 is deprecated. Please migrate to v2. See https://docs.payraider.com/api-versioning") {
+        if let Ok(value) = HeaderValue::from_str("299 - \"API v1 is deprecated. Please migrate to v2. See docs/API_VERSIONING.md\"") {
             response.headers_mut().insert("Warning", value);
         }
     }
