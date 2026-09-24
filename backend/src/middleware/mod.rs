@@ -2,7 +2,6 @@ pub mod api_versioning;
 pub mod batch_endpoints;
 pub mod concurrency_limit;
 pub mod database_schema_separation;
-pub mod deprecation_warnings;
 pub mod etag_caching_support;
 pub mod field_selection_parameter;
 pub mod jwt_token_refresh;
@@ -24,7 +23,6 @@ pub use concurrency_limit::{
     concurrency_limit_middleware, panic_recovery_middleware, ConcurrencyLimitState,
 };
 pub use database_schema_separation::DatabaseSchemaSeparation;
-pub use deprecation_warnings::DeprecationWarnings;
 pub use etag_caching_support::ETagCachingSupport;
 pub use field_selection_parameter::FieldSelectionParameter;
 pub use jwt_token_refresh::JWTTokenRefresh;

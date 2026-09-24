@@ -11,7 +11,6 @@ pub mod asset_verification;
 pub mod batch_endpoints;
 pub mod corridor;
 pub mod database_schema_separation;
-pub mod deprecation_warnings;
 pub mod distributed_tracing;
 pub mod elasticsearch_integration;
 pub mod etag_caching_support;

@@ -32,7 +32,7 @@ use payraider_backend::{
     jobs::backfill::{BackfillJob, BackfillState},
     middleware::{
         concurrency_limit_middleware, panic_recovery_middleware, ApiVersioning, BatchEndpoints,
-        ConcurrencyLimitState, DatabaseSchemaSeparation, DeprecationWarnings, ETagCachingSupport,
+        ConcurrencyLimitState, DatabaseSchemaSeparation, ETagCachingSupport,
         FieldSelectionParameter, MobilePaginationEndpoints, MobileRequestLogging,
         NetworkAwareRpcClient, NetworkContextMiddleware, PushNotificationService,
         ResponseCompression, WebSocketRealTimeUpdates, PushNotificationRegistration,
@@ -233,7 +233,6 @@ async fn main() -> anyhow::Result<()> {
     let _database_schema_separation = DatabaseSchemaSeparation::new(Default::default());
     let _websocket_real_time_updates = WebSocketRealTimeUpdates::new(Default::default());
     let _api_versioning = ApiVersioning::new(Default::default());
-    let _deprecation_warnings = DeprecationWarnings::new(Default::default());
     let _mobile_request_logging = MobileRequestLogging::new(Default::default());
     let _field_selection_parameter = FieldSelectionParameter::new(Default::default());
     let _etag_caching_support = ETagCachingSupport::new(Default::default());
