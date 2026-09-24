@@ -681,7 +681,7 @@ impl Database {
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
         const SQL: &str = r"
             SELECT * FROM anchors
-            ORDER BY reliability_score DESC
+            ORDER BY reliability_score DESC, id ASC
             LIMIT $1 OFFSET $2
             ";
         self.execute_with_timing_sql("list_anchors", Some(SQL), async {

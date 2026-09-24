@@ -75,10 +75,8 @@ impl JobScheduler {
             config.name, config.interval_seconds
         );
 
-        let redis_url =
-            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-
         let handle = tokio::spawn(async move {
+            let lock = DistributedLock::shared().await;
             let mut interval = tokio::time::interval(Duration::from_secs(config.interval_seconds));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -87,20 +85,48 @@ impl JobScheduler {
                 let lock_key = format!("job-lock:{}", config.name);
                 // TTL is slightly shorter than the interval so the lock expires before
                 // the next tick, allowing any instance to acquire it next round.
-                let lock_ttl = config.interval_seconds.saturating_sub(5).max(1);
-                if !DistributedLock::try_acquire(&redis_url, &lock_key, lock_ttl).await {
+                let lock_ttl = Duration::from_secs(config.interval_seconds.saturating_sub(5).max(1));
+                let Some(guard) = lock.try_acquire(&lock_key, lock_ttl).await else {
                     info!(
-                        "Job '{}' skipped — another instance holds the lock",
+                        "Job '{}' skipped — another instance holds the lock (or Redis is unavailable)",
                         config.name
                     );
                     continue;
-                }
+                };
 
                 // Execute job with metrics tracking
                 let job_name = config.name.clone();
                 let _metrics = JobMetricsCollector::new(&job_name);
 
-                match job_fn().await {
+                // Keep extending the lock while the job runs so a slow run can't
+                // overlap with another instance's next run.
+                let started = std::time::Instant::now();
+                let job = job_fn();
+                tokio::pin!(job);
+                let mut renew = tokio::time::interval((lock_ttl / 3).max(Duration::from_secs(1)));
+                renew.tick().await;
+                let result = loop {
+                    tokio::select! {
+                        result = &mut job => break result,
+                        _ = renew.tick() => {
+                            if !guard.extend(lock_ttl).await {
+                                tracing::warn!("Job '{}' lost its lock while running", config.name);
+                            }
+                        }
+                    }
+                };
+                // Don't release: letting the lock expire at the end of the original
+                // window keeps the job to once per interval across all replicas.
+                // Renewals above may have pushed expiry past the next tick, so
+                // pull it back (or release if the window has already passed).
+                match lock_ttl.checked_sub(started.elapsed()) {
+                    Some(remaining) if !remaining.is_zero() => {
+                        guard.extend(remaining).await;
+                    }
+                    _ => guard.release().await,
+                }
+
+                match result {
                     Ok(_) => {
                         _metrics.complete_success();
                     }

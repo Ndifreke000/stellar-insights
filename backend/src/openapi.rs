@@ -268,6 +268,9 @@ impl Modify for SecurityAddon {
             crate::observability::frontend_metrics::FrontendMetricsSummary,
             crate::observability::frontend_metrics::FrontendMetricSummary,
             crate::observability::frontend_metrics::PageSummary,
+            // Pagination envelope (see crate::pagination)
+            crate::pagination::PageMeta,
+            crate::pagination::PageLinks,
         )
     ),
     tags(

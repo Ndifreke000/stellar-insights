@@ -29,5 +29,8 @@ configMapGenerator:
   behavior: merge
   literals:
   - stellar-network=mainnet
-  - rust-log=warn
+  # Keep the API access log (audit trail) at info while the rest stays at warn.
+  - rust-log=warn,api_access=info
+  # High-traffic mainnet: log 20% of fast successful requests (errors/slow always logged).
+  - api-log-sample-rate=0.2
   - cors-allowed-origins=https://payraider.com

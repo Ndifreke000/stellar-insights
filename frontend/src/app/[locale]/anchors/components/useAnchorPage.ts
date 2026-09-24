@@ -1,42 +1,23 @@
-import { logger } from '@/lib/logger';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePagination } from '@/hooks/usePagination';
-import { AnchorMetrics } from '@/lib/api/types';
-import { fetchAnchors } from '@/lib/api/anchor';
+import { useAnchors } from '@/lib/react-query/queries';
+
+// The page filters/sorts client-side, so request one large page.
+const ANCHOR_LIST_PARAMS = { limit: 200 };
 
 const useAnchorPage = () => {
   const router = useRouter();
-  const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const anchorsQuery = useAnchors(ANCHOR_LIST_PARAMS);
+  const anchors = useMemo(() => anchorsQuery.data?.data ?? [], [anchorsQuery.data]);
+  const loading = anchorsQuery.isPending;
+  const error = anchorsQuery.error?.message ?? null;
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<
     'reliability' | 'transactions' | 'failure_rate'
   >('reliability');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isExportOpen, setIsExportOpen] = useState(false);
-
-  // Fetch anchors from the backend
-  useEffect(() => {
-    const loadAnchors = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Fetch data from the backend API
-        const response = await fetchAnchors({ limit: 100, offset: 0 });
-        setAnchors(response.anchors);
-      } catch (err) {
-        logger.error('Failed to fetch anchors:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load anchors');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadAnchors();
-  }, []);
 
   // Filter anchors based on search
   const filteredAnchors = useMemo(() => {
