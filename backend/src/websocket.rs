@@ -19,14 +19,14 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
+const MAX_CONCURRENT_CONNECTIONS: usize = 10_000;
 const MAX_CONNECTIONS_PER_IP: usize = 10;
 const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
 const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
 const MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
 const MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
-const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_MESSAGES_PER_WINDOW: u32 = 100;
 const MESSAGE_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 
@@ -98,6 +98,9 @@ pub struct WsState {
     pub tx: broadcast::Sender<WsMessage>,
     rate_limits: DashMap<String, RateLimitInfo>,
     ip_rate_limits: DashMap<IpAddr, IpRateLimit>,
+    max_concurrent_connections: usize,
+    max_connections_per_ip: usize,
+    idle_timeout: Duration,
     /// Redis client for cross-instance pub/sub. `None` when `REDIS_URL` is unset.
     redis_client: Option<redis::Client>,
     /// Shared, auto-reconnecting connection used to publish (created lazily).
@@ -130,6 +133,20 @@ impl Default for WsState {
 impl WsState {
     #[must_use]
     pub fn new() -> Self {
+        let max_concurrent_connections = std::env::var("WS_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(MAX_CONCURRENT_CONNECTIONS);
+        let max_connections_per_ip = std::env::var("WS_MAX_CONNECTIONS_PER_IP")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(MAX_CONNECTIONS_PER_IP);
+        let idle_timeout = std::env::var("WS_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(WS_IDLE_TIMEOUT);
+
         let (tx, _rx) = broadcast::channel(100);
         // Only fan out through Redis when explicitly configured; defaulting to
         // localhost made every broadcast vanish when no local Redis was running.
@@ -151,10 +168,41 @@ impl WsState {
             tx,
             rate_limits: DashMap::new(),
             ip_rate_limits: DashMap::new(),
+            max_concurrent_connections,
+            max_connections_per_ip,
+            idle_timeout,
             redis_client,
             redis_publisher: tokio::sync::OnceCell::new(),
             redis_subscribed: AtomicBool::new(false),
         }
+    }
+
+    #[must_use]
+    pub fn with_limits(
+        max_concurrent_connections: usize,
+        max_connections_per_ip: usize,
+        idle_timeout: Duration,
+    ) -> Self {
+        let mut state = Self::new();
+        state.max_concurrent_connections = max_concurrent_connections;
+        state.max_connections_per_ip = max_connections_per_ip;
+        state.idle_timeout = idle_timeout;
+        state
+    }
+
+    #[must_use]
+    pub fn max_connections(&self) -> usize {
+        self.max_concurrent_connections
+    }
+
+    #[must_use]
+    pub fn max_connections_per_ip(&self) -> usize {
+        self.max_connections_per_ip
+    }
+
+    #[must_use]
+    pub fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
     }
 
     /// Spawn the Redis subscriber task that relays cross-instance broadcasts to
@@ -255,7 +303,7 @@ impl WsState {
         }
         entry.connect_attempts += 1;
 
-        if entry.active_connections >= MAX_CONNECTIONS_PER_IP {
+        if entry.active_connections >= self.max_connections_per_ip {
             return Err("Too many connections from this IP");
         }
         entry.active_connections += 1;
@@ -430,9 +478,10 @@ impl WsState {
     }
 
     fn try_acquire_connection_permit(self: &Arc<Self>, ip: IpAddr) -> Option<ConnectionPermit> {
+        let max = self.max_concurrent_connections;
         let mut current = self.active_connections.load(Ordering::Acquire);
         loop {
-            if current >= MAX_CONCURRENT_CONNECTIONS {
+            if current >= max {
                 return None;
             }
             match self.active_connections.compare_exchange(
@@ -647,14 +696,14 @@ pub async fn ws_handler(
         warn!(
             "Connection limit reached ({}/{}), rejecting new WebSocket connection",
             state.connection_count(),
-            MAX_CONCURRENT_CONNECTIONS
+            state.max_connections()
         );
         return (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "error": format!(
                     "Server at capacity. Maximum {} concurrent connections allowed.",
-                    MAX_CONCURRENT_CONNECTIONS
+                    state.max_connections()
                 )
             })),
         )
@@ -715,12 +764,13 @@ async fn handle_socket(
     let state_clone = Arc::clone(&state);
 
     // ── Receive task ───────────────────────────────────────────────────────────
+    let idle_timeout = state.idle_timeout();
     let recv_task = {
         let client_id = client_id.clone();
         tokio::spawn(async move {
             let mut receiver = receiver;
             loop {
-                let next_message = tokio::time::timeout(WS_IDLE_TIMEOUT, receiver.next()).await;
+                let next_message = tokio::time::timeout(idle_timeout, receiver.next()).await;
                 let msg = match next_message {
                     Ok(Some(Ok(msg))) => msg,
                     Ok(Some(Err(err))) => {
@@ -1030,20 +1080,28 @@ mod tests {
     }
 
     #[test]
-    fn test_connection_limit_enforced() {
-        let state = Arc::new(WsState::new());
-        let ip: IpAddr = "127.0.0.1".parse().unwrap();
-        let mut permits = Vec::with_capacity(MAX_CONCURRENT_CONNECTIONS);
+    fn test_default_limits_match_spec() {
+        let state = WsState::new();
+        assert_eq!(state.max_connections(), 10_000);
+        assert_eq!(state.max_connections_per_ip(), 10);
+        assert_eq!(state.idle_timeout(), Duration::from_secs(300));
+    }
 
-        for _ in 0..MAX_CONCURRENT_CONNECTIONS {
+    #[test]
+    fn test_connection_limit_enforced() {
+        let state = Arc::new(WsState::with_limits(10, 10, Duration::from_secs(300)));
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let mut permits = Vec::with_capacity(10);
+
+        for _ in 0..10 {
             permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
 
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
+        assert_eq!(state.connection_count(), 10);
         assert!(state.try_acquire_connection_permit(ip).is_none());
 
         drop(permits.pop());
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS - 1);
+        assert_eq!(state.connection_count(), 9);
         assert!(state.try_acquire_connection_permit(ip).is_some());
     }
 
@@ -1140,13 +1198,13 @@ mod tests {
 
     #[test]
     fn test_websocket_connection_limit() {
-        let state = Arc::new(WsState::new());
+        let state = Arc::new(WsState::with_limits(5, 5, Duration::from_secs(300)));
         let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::new();
-        for _ in 0..MAX_CONCURRENT_CONNECTIONS {
+        for _ in 0..5 {
             permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
+        assert_eq!(state.connection_count(), 5);
         assert!(state.try_acquire_connection_permit(ip).is_none());
     }
 
