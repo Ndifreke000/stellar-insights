@@ -39,14 +39,17 @@ http://localhost:8080
 https://your-domain.com
 ```
 
-### API Versioning
+### API Versioning & Strategy
 
-- **Current API version:** `v1`
+- **Current API version:** `v1` (with standard 6-month deprecation policy in effect)
 - **Supported versions:** `v1`, `v2`
+- **Version Negotiation:** Supports URL path (`/api/v1/`, `/api/v2/`) and content negotiation via `Accept: application/vnd.payraider.v2+json` (or `v1+json`).
 - **Status endpoint:** `GET /api/version`
 - **Versioned base paths:**
   - `v1`: `GET /api/v1/...`
-  - `v2`: `GET /api/v2/status` (reserved, not implemented yet)
+  - `v2`: `GET /api/v2/...`
+- **Deprecation Policy:** Deprecation notices provide a minimum 6-month migration period. `v1` returns RFC 8594 `Deprecation`, `Sunset`, and `Link` headers.
+- **Detailed Specification:** See [docs/API_VERSIONING.md](API_VERSIONING.md) for the full versioning strategy, deprecation schedule, and v1 → v2 migration guide.
 - Unversioned `GET /api/...` routes are preserved for backward compatibility with existing clients.
 
 ### Start the Backend

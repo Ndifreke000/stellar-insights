@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import withPWA from "@ducanh2912/next-pwa";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -148,7 +149,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default analyzer(withNextIntl(withPWA({
+const finalConfig = analyzer(withNextIntl(withPWA({
   dest: "public",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
@@ -161,3 +162,13 @@ export default analyzer(withNextIntl(withPWA({
     disableDevLogs: true,
   },
 })(nextConfig)));
+
+export default withSentryConfig(finalConfig, {
+  org: process.env.SENTRY_ORG || "payraider",
+  project: process.env.SENTRY_PROJECT || "payraider-frontend",
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+});
