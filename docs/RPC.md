@@ -5,6 +5,12 @@
 
 Complete API reference for accessing real-time Stellar blockchain data and analytics.
 
+> **Interactive docs:** the generated OpenAPI 3 reference is served by the backend at
+> [`/api/docs`](http://localhost:8080/api/docs) (raw spec: `/api/docs/openapi.json`).
+> To export the spec and a Postman collection to `docs/api/`, run
+> `cargo run --bin export_openapi` from `backend/`. The spec is generated from code and
+> takes precedence over this file where the two disagree.
+
 ---
 
 ## 📋 Table of Contents

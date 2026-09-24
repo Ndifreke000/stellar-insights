@@ -669,7 +669,16 @@ async fn main() -> anyhow::Result<()> {
         .nest("/admin", admin_routes)
         .merge(graphql_routes)
         .merge(ws_routes)
-        .route("/swagger-ui/{*path}", get(|| async { "Swagger UI documentation" }))
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/api/docs").url(
+                "/api/docs/openapi.json",
+                <payraider_backend::openapi::ApiDoc as utoipa::OpenApi>::openapi(),
+            ),
+        )
+        .route(
+            "/swagger-ui",
+            get(|| async { axum::response::Redirect::permanent("/api/docs/") }),
+        )
         .layer(middleware::from_fn(
             payraider_backend::payload_limit::payload_limit_middleware,
         ))

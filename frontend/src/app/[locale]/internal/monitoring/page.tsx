@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { Activity } from "lucide-react";
 import { JobMonitoringDashboard } from "@/components/JobMonitoringDashboard";
+import { LivePerformancePanel } from "@/components/LivePerformancePanel";
 
 /**
  * Internal monitoring dashboard — #1828
@@ -78,6 +79,11 @@ export default async function MonitoringDashboard() {
 
       {/* JobMonitoringDashboard fetches /api/v1/jobs/status from the real backend */}
       <JobMonitoringDashboard />
+
+      {/* Real user monitoring summary from GET /api/metrics/frontend */}
+      <div className="mt-8">
+        <LivePerformancePanel />
+      </div>
     </div>
   );
 }

@@ -978,6 +978,19 @@ pub async fn get_corridor_detail(
 }
 
 /// POST /api/corridors - Create a new corridor
+#[utoipa::path(
+    post,
+    path = "/api/corridors",
+    request_body = crate::models::CreateCorridorRequest,
+    responses(
+        (status = 200, description = "Corridor created", body = Corridor),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Corridors"
+)]
 pub async fn create_corridor(
     State(app_state): State<AppState>,
     crate::validation::ValidatedJson(req): crate::validation::ValidatedJson<CreateCorridorRequest>,
@@ -995,18 +1008,33 @@ pub async fn create_corridor(
 }
 
 /// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateCorridorMetricsFromTxns {
     pub transactions: Vec<CorridorPaymentDto>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"successful": true, "settlement_latency_ms": 3500, "amount_usd": 250.0}))]
 pub struct CorridorPaymentDto {
     pub successful: bool,
     pub settlement_latency_ms: Option<i32>,
     pub amount_usd: f64,
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/corridors/{id}/metrics-from-transactions",
+    params(("id" = String, Path, description = "Corridor UUID")),
+    request_body = UpdateCorridorMetricsFromTxns,
+    responses(
+        (status = 200, description = "Corridor metrics recomputed", body = Corridor),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 404, description = "Corridor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Corridors"
+)]
 pub async fn update_corridor_metrics_from_transactions(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,

@@ -113,6 +113,8 @@ pub fn routes(
         )
         .route("/anchors/{id}/assets", get(anchors::get_anchor_assets))
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
+        .route("/db/slow-queries", get(crate::handlers::slow_queries))
+        .route("/db/index-report", get(crate::handlers::index_report))
         .with_state(app_state.clone());
 
     // 2b. Export routes (#1784) — handlers already existed but were never
@@ -283,6 +285,11 @@ pub fn routes(
         .nest("/api/v1", v1_router.clone())
         .nest("/api/v2", v2_routes())
         .route("/api/version", get(get_api_version))
+        .route(
+            "/api/metrics/frontend",
+            get(crate::observability::frontend_metrics::frontend_metrics_summary)
+                .post(crate::observability::frontend_metrics::ingest_frontend_metrics),
+        )
         // Preserve existing unversioned endpoints for backward compatibility.
         // This must be nested under "/api", not merged at the bare root -
         // v1_router's own routes have no prefix (e.g. "/anchors"), so a

@@ -245,6 +245,11 @@ impl PoolConfig {
         // docs/adr/0001-sqlite-vs-postgres.md.
         opts = opts.busy_timeout(Duration::from_millis(Self::busy_timeout_ms_inner()));
 
+        // Always log statements above the slow query threshold at WARN, with elapsed time,
+        // independent of the general statement log level.
+        let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
+        opts = opts.log_slow_statements(log::LevelFilter::Warn, threshold);
+
         if sql_log.level != log::LevelFilter::Off {
             if sql_log.log_all_in_dev {
                 opts = opts.log_statements(sql_log.level);
@@ -253,8 +258,6 @@ impl PoolConfig {
                     sql_log.level
                 );
             } else {
-                let threshold = Duration::from_millis(sql_log.slow_query_threshold_ms);
-                opts = opts.log_slow_statements(sql_log.level, threshold);
                 tracing::info!(
                     "SQL query logging: slow queries only (> {} ms) at level {:?} (production)",
                     sql_log.slow_query_threshold_ms,
@@ -407,6 +410,7 @@ impl Database {
     pub fn with_write_pool(pool: SqlitePool, write_pool: SqlitePool) -> Self {
         let admin_audit_logger = AdminAuditLogger::new(pool.clone());
         let slow_query_threshold_ms = std::env::var("SLOW_QUERY_THRESHOLD_MS")
+            .or_else(|_| std::env::var("DB_SLOW_QUERY_MS"))
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(100)
@@ -420,8 +424,8 @@ impl Database {
     }
 
     /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log.
-    /// For slow queries, also runs `EXPLAIN QUERY PLAN` on `sql` (if provided) so the
-    /// query planner output is captured in logs for index analysis.
+    /// For slow queries, also captures `EXPLAIN QUERY PLAN` on `sql` (if provided) in the
+    /// slow query report and `logs/slow_queries.log` for index analysis.
     async fn execute_with_timing<T, F>(&self, operation: &str, f: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,
@@ -453,9 +457,23 @@ impl Database {
 
             crate::observability::metrics::record_slow_query(operation);
 
-            if let Some(sql) = sql {
-                self.log_explain_query_plan(operation, sql).await;
-            }
+            // EXPLAIN runs off the request path
+            let pool = self.pool.clone();
+            let operation = operation.to_string();
+            let sql = sql.map(str::to_owned);
+            let elapsed_ms = elapsed.as_millis() as u64;
+            let threshold_ms = self.slow_query_threshold_ms;
+            tokio::spawn(async move {
+                crate::observability::db_performance::record_slow_query(
+                    &pool,
+                    &operation,
+                    sql.as_deref(),
+                    elapsed_ms,
+                    threshold_ms,
+                    status,
+                )
+                .await;
+            });
         }
 
         crate::observability::metrics::observe_db_query(operation, status, elapsed.as_secs_f64());
@@ -463,50 +481,10 @@ impl Database {
         result
     }
 
-    /// Runs `EXPLAIN QUERY PLAN` on `sql` and logs the output at WARN level.
-    async fn log_explain_query_plan(&self, operation: &str, sql: &str) {
-        let explain_sql = format!("EXPLAIN QUERY PLAN {sql}");
-        match sqlx::query(&explain_sql).fetch_all(&self.pool).await {
-            Ok(rows) => {
-                use sqlx::Row;
-                let plan: Vec<String> = rows
-                    .iter()
-                    .filter_map(|r| r.try_get::<String, _>("detail").ok())
-                    .collect();
-                log::warn!(
-                    "EXPLAIN QUERY PLAN for '{}': {}",
-                    operation,
-                    plan.join(" | ")
-                );
 
-                // SQLite's plan uses "SCAN <table>" for a full table scan and
-                // "SEARCH <table> USING INDEX ..." when an index is used, so a
-                // "SCAN" step (without "USING INDEX") on a query slow enough to
-                // reach this point is the cheapest signal that an index would help.
-                let missing_index_hits: Vec<&String> = plan
-                    .iter()
-                    .filter(|step| step.contains("SCAN") && !step.contains("USING INDEX"))
-                    .collect();
-                if !missing_index_hits.is_empty() {
-                    log::warn!(
-                        "Possible missing index for '{}': full table scan in plan step(s): {}",
-                        operation,
-                        missing_index_hits
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<_>>()
-                            .join(" | ")
-                    );
-                }
-            }
-            Err(e) => {
-                log::debug!(
-                    "Could not run EXPLAIN QUERY PLAN for '{}': {}",
-                    operation,
-                    e
-                );
-            }
-        }
+    #[must_use]
+    pub const fn slow_query_threshold_ms(&self) -> u64 {
+        self.slow_query_threshold_ms
     }
 
     #[must_use]
@@ -701,14 +679,13 @@ impl Database {
     ///
     #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("list_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>(
-                r"
+        const SQL: &str = r"
             SELECT * FROM anchors
             ORDER BY reliability_score DESC, id ASC
             LIMIT $1 OFFSET $2
-            ",
-            )
+            ";
+        self.execute_with_timing_sql("list_anchors", Some(SQL), async {
+            let anchors = sqlx::query_as::<_, Anchor>(SQL)
             .bind(limit)
             .bind(offset)
             .fetch_all(&self.pool)
@@ -915,13 +892,12 @@ impl Database {
     /// }
     /// ```
     pub async fn get_assets_by_anchor(&self, anchor_id: Uuid) -> Result<Vec<Asset>> {
-        self.execute_with_timing("get_assets_by_anchor", async {
-            let assets = sqlx::query_as::<_, Asset>(
-                r"
+        const SQL: &str = r"
             SELECT * FROM assets WHERE anchor_id = $1
             ORDER BY asset_code ASC
-            ",
-            )
+            ";
+        self.execute_with_timing_sql("get_assets_by_anchor", Some(SQL), async {
+            let assets = sqlx::query_as::<_, Asset>(SQL)
             .bind(anchor_id.to_string())
             .fetch_all(&self.pool)
             .await
@@ -965,8 +941,9 @@ impl Database {
     /// Vector of all anchors sorted by name alphabetically.
     #[tracing::instrument(skip(self))]
     pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
-        self.execute_with_timing("get_all_anchors", async {
-            let anchors = sqlx::query_as::<_, Anchor>("SELECT * FROM anchors ORDER BY name ASC")
+        const SQL: &str = "SELECT * FROM anchors ORDER BY name ASC";
+        self.execute_with_timing_sql("get_all_anchors", Some(SQL), async {
+            let anchors = sqlx::query_as::<_, Anchor>(SQL)
                 .fetch_all(&self.pool)
                 .await
                 .context("Failed to fetch all anchors from database")?;
