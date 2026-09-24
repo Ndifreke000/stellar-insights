@@ -75,3 +75,6 @@ jobs:
         run: |
           echo "::warning::Build took ${{ env.BUILD_TIME }}, exceeding the 2-minute target."
           echo "Consider: dependency pruning, tree-shaking, code splitting, or enabling SWC minification"
+
+      - name: Check performance budgets with Lighthouse CI
+        run: npx --yes @lhci/cli@0.14.x autorun --config=./lighthouserc.json

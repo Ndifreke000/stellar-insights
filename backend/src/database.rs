@@ -478,6 +478,26 @@ impl Database {
                     operation,
                     plan.join(" | ")
                 );
+
+                // SQLite's plan uses "SCAN <table>" for a full table scan and
+                // "SEARCH <table> USING INDEX ..." when an index is used, so a
+                // "SCAN" step (without "USING INDEX") on a query slow enough to
+                // reach this point is the cheapest signal that an index would help.
+                let missing_index_hits: Vec<&String> = plan
+                    .iter()
+                    .filter(|step| step.contains("SCAN") && !step.contains("USING INDEX"))
+                    .collect();
+                if !missing_index_hits.is_empty() {
+                    log::warn!(
+                        "Possible missing index for '{}': full table scan in plan step(s): {}",
+                        operation,
+                        missing_index_hits
+                            .iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" | ")
+                    );
+                }
             }
             Err(e) => {
                 log::debug!(

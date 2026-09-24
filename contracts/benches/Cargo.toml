@@ -15,4 +15,5 @@ harness = false
 [dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 payraider = { path = "../payraider" }
+analytics = { path = "../analytics" }
 criterion = { version = "0.5", features = ["html_reports"], default-features = false }
