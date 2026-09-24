@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, sqlx::FromRow)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, sqlx::FromRow, utoipa::ToSchema,
+)]
 pub struct Corridor {
     #[serde(rename = "asset_a_code")]
     #[sqlx(rename = "asset_a_code")]

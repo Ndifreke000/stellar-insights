@@ -374,6 +374,40 @@ pub async fn update_corridor_metrics_from_transactions(
     Ok(Json(serde_json::json!({ "status": "not_implemented" })))
 }
 
+/// Recently captured slow queries with EXPLAIN plans and per-operation aggregates
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/slow-queries",
+    responses((status = 200, description = "Slow query report with EXPLAIN QUERY PLAN output")),
+    tag = "Database"
+)]
+pub async fn slow_queries(State(state): State<AppState>) -> impl IntoResponse {
+    Json(crate::observability::db_performance::slow_query_report(
+        state.db.slow_query_threshold_ms(),
+    ))
+}
+
+/// Index inventory plus missing-index candidates derived from slow query plans
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/index-report",
+    responses(
+        (status = 200, description = "Existing indexes, full table scans and index suggestions"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Database"
+)]
+pub async fn index_report(
+    State(state): State<AppState>,
+) -> crate::error::ApiResult<Json<crate::observability::db_performance::IndexReport>> {
+    let report = crate::observability::db_performance::index_report(state.db.pool())
+        .await
+        .map_err(|e| {
+            crate::error::ApiError::internal("DATABASE_ERROR", format!("Index report failed: {e}"))
+        })?;
+    Ok(Json(report))
+}
+
 pub async fn ingestion_status(
     State(app_state): State<AppState>,
 ) -> ApiResult<Json<crate::ingestion::IngestionStatus>> {

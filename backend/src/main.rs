@@ -11,6 +11,8 @@ use axum::{
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use tower_http::{
     compression::{
         predicate::{NotForContentType, Predicate, SizeAbove},
@@ -24,6 +26,7 @@ use tower_http::{
 use payraider_backend::{
     alerts::AlertManager,
     api::v1::routes,
+    openapi::ApiDoc,
     backup::{BackupConfig, BackupManager},
     cache::{CacheConfig, CacheManager},
     database::{Database, PoolConfig},
@@ -669,7 +672,11 @@ async fn main() -> anyhow::Result<()> {
         .nest("/admin", admin_routes)
         .merge(graphql_routes)
         .merge(ws_routes)
-        .route("/swagger-ui/{*path}", get(|| async { "Swagger UI documentation" }))
+        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
+        .route(
+            "/swagger-ui",
+            get(|| async { axum::response::Redirect::permanent("/api/docs/") }),
+        )
         .layer(middleware::from_fn(
             payraider_backend::payload_limit::payload_limit_middleware,
         ))
