@@ -345,9 +345,21 @@ impl BackupManager {
     #[must_use]
     pub fn spawn_scheduler(self: Arc<Self>) -> JoinHandle<()> {
         tokio::spawn(async move {
+            let lock = crate::distributed_lock::DistributedLock::shared().await;
             loop {
                 let wait = duration_until_next_hour(self.config.schedule_hour_utc);
                 tokio::time::sleep(wait).await;
+
+                // Every replica wakes at the same time; only the one that wins
+                // the lock backs up. The lock is left to expire (not released)
+                // so a replica whose clock is slightly behind can't run it again.
+                let Some(_guard) = lock
+                    .try_acquire("job-lock:backup", std::time::Duration::from_secs(55 * 60))
+                    .await
+                else {
+                    tracing::info!("Scheduled backup skipped — another instance is running it");
+                    continue;
+                };
 
                 if let Err(error) = self.run_once().await {
                     tracing::error!(error = %error, "Scheduled backup failed");

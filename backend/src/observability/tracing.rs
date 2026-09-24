@@ -56,7 +56,9 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     // with a `SetLoggerError` on the second, redundant registration.
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "backend=info,tower_http=info".into());
+        // Log targets are module paths under the crate name, so the crate name
+        // (not "backend") must be used or every application log is filtered out.
+        .unwrap_or_else(|_| "payraider_backend=info,tower_http=info".into());
 
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
     let use_json = log_format.eq_ignore_ascii_case("json");
@@ -96,12 +98,16 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(w)
                     .with_target(true)
                     .with_level(true)
@@ -111,6 +117,8 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
@@ -146,12 +154,16 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(w)
                     .with_target(true)
                     .with_level(true)
@@ -161,6 +173,8 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)

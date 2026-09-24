@@ -246,7 +246,7 @@ impl GovernanceService {
                 LEFT JOIN governance_votes v ON p.id = v.proposal_id
                 WHERE p.status = ?
                 GROUP BY p.id
-                ORDER BY p.created_at DESC
+                ORDER BY p.created_at DESC, p.id ASC
                 LIMIT ? OFFSET ?
                 ",
             )
@@ -275,7 +275,7 @@ impl GovernanceService {
                 FROM governance_proposals p
                 LEFT JOIN governance_votes v ON p.id = v.proposal_id
                 GROUP BY p.id
-                ORDER BY p.created_at DESC
+                ORDER BY p.created_at DESC, p.id ASC
                 LIMIT ? OFFSET ?
                 ",
             )

@@ -206,6 +206,9 @@ use utoipa::OpenApi;
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            // Pagination envelope (see crate::pagination)
+            crate::pagination::PageMeta,
+            crate::pagination::PageLinks,
         )
     ),
     tags(

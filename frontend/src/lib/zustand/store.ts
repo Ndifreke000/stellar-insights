@@ -1,6 +1,18 @@
+/**
+ * Global CLIENT state (UI, preferences, ephemeral app state).
+ *
+ * Server data (anything fetched from the API) must NOT live here — use the
+ * React Query hooks in `@/lib/react-query/queries` so it is cached, de-duplicated
+ * and invalidated in one place. See docs/FRONTEND_STATE_MANAGEMENT.md.
+ *
+ * Always read with a selector. Selectors that return objects must be wrapped in
+ * `useShallow` (the exported `use*State` hooks already are), otherwise Zustand v5
+ * sees a new object on every render and loops.
+ */
 import { create } from 'zustand';
-import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { createJSONStorage, devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { useShallow } from 'zustand/react/shallow';
 
 // Arbitrary key/value bag for a single form or filter set; the concrete shape
 // varies per form/filter key, so callers narrow via the key they pass in.
@@ -357,18 +369,25 @@ export const useAppStore = create<AppState & AppActions>()(
       ),
       {
         name: 'payraider-app-store',
-        // Only persist certain parts of the state
+        storage: createJSONStorage(() => localStorage),
+        // Only persist UI preferences. Auth/session state is derived from the
+        // wallet/token at runtime; persisting it let the UI claim the user was
+        // signed in after the token had expired.
         partialize: (state) => ({
           sidebarCollapsed: state.sidebarCollapsed,
           formData: state.formData,
           filters: state.filters,
-          userSession: state.userSession,
         }),
-        version: 1,
+        version: 2,
+        migrate: (persisted) => {
+          const { userSession: _dropped, ...rest } = (persisted ?? {}) as Record<string, unknown>;
+          return rest as Partial<AppState & AppActions>;
+        },
       }
     ),
     {
       name: 'PayRaider App Store',
+      enabled: process.env.NODE_ENV === 'development',
     }
   )
 );
@@ -376,34 +395,34 @@ export const useAppStore = create<AppState & AppActions>()(
 // Selectors for commonly used state combinations
 export const useAppState = () => useAppStore((state) => state);
 
-export const useUIState = () => useAppStore((state) => ({
+export const useUIState = () => useAppStore(useShallow((state) => ({
   sidebarCollapsed: state.sidebarCollapsed,
   activeModal: state.activeModal,
   loading: state.loading,
-}));
+})));
 
-export const useNavigationState = () => useAppStore((state) => ({
+export const useNavigationState = () => useAppStore(useShallow((state) => ({
   currentPage: state.currentPage,
   breadcrumbs: state.breadcrumbs,
-}));
+})));
 
-export const useFormState = (formKey?: string) => useAppStore((state) => ({
+export const useFormState = (formKey?: string) => useAppStore(useShallow((state) => ({
   data: formKey ? state.formData[formKey] : state.formData,
   errors: formKey ? state.formErrors[formKey] : state.formErrors,
   dirty: formKey ? state.formDirty[formKey] : state.formDirty,
-}));
+})));
 
-export const useNotificationState = () => useAppStore((state) => ({
+export const useNotificationState = () => useAppStore(useShallow((state) => ({
   notifications: state.notifications,
   unreadCount: state.notifications.filter(n => !n.read).length,
-}));
+})));
 
 export const useWebSocketState = () => useAppStore((state) => state.websocket);
 
 export const useUserSession = () => useAppStore((state) => state.userSession);
 
 // Convenience hooks for common actions
-export const useAppActions = () => useAppStore((state) => ({
+export const useAppActions = () => useAppStore(useShallow((state) => ({
   setSidebarCollapsed: state.setSidebarCollapsed,
   setActiveModal: state.setActiveModal,
   setLoading: state.setLoading,
@@ -432,4 +451,4 @@ export const useAppActions = () => useAppStore((state) => ({
   setWebSocketReconnecting: state.setWebSocketReconnecting,
   setWebSocketLastMessage: state.setWebSocketLastMessage,
   resetState: state.resetState,
-}));
+})));

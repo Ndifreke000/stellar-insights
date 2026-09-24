@@ -328,10 +328,13 @@ pub async fn list_corridors(
     State(app_state): State<AppState>,
     Query(params): Query<ListCorridorsQuery>,
 ) -> ApiResult<Json<ListCorridorsResponse>> {
-    let corridors = app_state
-        .db
-        .list_corridors(params.limit, params.offset)
-        .await?;
+    let page = crate::pagination::PaginationParams {
+        limit: params.limit,
+        cursor: params.cursor.clone(),
+        offset: params.offset,
+    }
+    .resolve(50, 200)?;
+    let corridors = app_state.db.list_corridors(page.limit, page.offset).await?;
     let total = corridors.len();
     Ok(Json(ListCorridorsResponse { corridors, total }))
 }

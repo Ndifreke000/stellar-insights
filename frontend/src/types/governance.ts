@@ -1,3 +1,5 @@
+import type { PaginatedResponse } from "@/lib/api/pagination";
+
 export type ProposalStatus = 'draft' | 'active' | 'passed' | 'failed' | 'executed';
 
 export type VoteChoice = 'for' | 'against' | 'abstain';
@@ -23,12 +25,8 @@ export interface Proposal {
   totalVoters: number;
 }
 
-export interface ProposalsListResponse {
-  proposals: Proposal[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+/** Paginated proposal list, as returned by `GET /api/governance/proposals`. */
+export type ProposalsListResponse = PaginatedResponse<Proposal>;
 
 export interface Vote {
   id: string;

@@ -7,7 +7,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::pagination::PaginatedResponse;
 use crate::rpc::{Asset, StellarRpcClient};
+
+/// Horizon's maximum page size.
+const MAX_HORIZON_LIMIT: u32 = 200;
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationQuery {
@@ -93,23 +97,45 @@ pub async fn get_latest_ledger(
     get,
     path = "/api/rpc/payments",
     params(
-        ("limit" = Option<u32>, Query, description = "Maximum number of payments to return (default 20)"),
-        ("cursor" = Option<String>, Query, description = "Pagination cursor for next page")
+        ("limit" = Option<u32>, Query, description = "Maximum number of payments to return (default 20, max 200)"),
+        ("cursor" = Option<String>, Query, description = "Opaque cursor from `pagination.next_cursor`")
     ),
     responses(
-        (status = 200, description = "List of recent payments"),
+        (status = 200, description = "Paginated list of recent payments, newest first (`PaginatedResponse<Payment>`; `total` is null)"),
+        (status = 400, description = "Invalid pagination cursor", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "RPC"
 )]
-#[tracing::instrument(skip(client))]
+#[tracing::instrument(skip(client, uri))]
 pub async fn get_payments(
     State(client): State<Arc<StellarRpcClient>>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     Query(params): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let cursor = params.cursor.as_deref();
-    match client.fetch_payments(params.limit, cursor).await {
-        Ok(payments) => Ok(Json(payments)),
+    let limit = params.limit.clamp(1, MAX_HORIZON_LIMIT);
+    // Horizon paging tokens are numeric; rejecting anything else also stops the
+    // cursor from smuggling extra query parameters into the upstream URL.
+    let cursor = params.cursor.as_deref().filter(|c| !c.is_empty());
+    if cursor.is_some_and(|c| !c.bytes().all(|b| b.is_ascii_digit())) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "The pagination cursor is invalid".to_string(),
+            }),
+        ));
+    }
+    match client.fetch_payments(limit, cursor).await {
+        Ok(payments) => {
+            // Results are newest-first; a full page means older records may remain.
+            let next_cursor = (payments.len() as u32 >= limit)
+                .then(|| payments.last().map(|p| p.paging_token.clone()))
+                .flatten();
+            Ok(Json(
+                PaginatedResponse::from_tokens(payments, i64::from(limit), next_cursor, None)
+                    .with_links(&uri),
+            ))
+        }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { ScrollText, Plus } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ProposalCard } from "@/components/governance/ProposalCard";
 import { useWallet } from "@/components/lib/wallet-context";
-import { getProposals } from "@/lib/governance-api";
-import type { Proposal, ProposalStatus } from "@/types/governance";
+import { useProposals } from "@/lib/react-query/queries";
+import { queryKeys } from "@/lib/react-query/keys";
+import type { ProposalStatus } from "@/types/governance";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Lazy-load the modal — it's only needed when the user clicks "Create Proposal".
@@ -26,32 +28,23 @@ const STATUS_TABS: { label: string; value: ProposalStatus | "all" }[] = [
 
 export default function GovernancePage() {
   const { isAuthenticated, authToken } = useWallet();
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [_total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProposalStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const statusFilter = activeTab === "all" ? undefined : activeTab;
-      const data = await getProposals(statusFilter);
-      setProposals(data.proposals);
-      setTotal(data.total);
-      setError(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load proposals";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchData();
-  }, [fetchData]);
+  const queryClient = useQueryClient();
+  const proposalsQuery = useProposals(activeTab === "all" ? undefined : activeTab);
+  const proposals = useMemo(
+    () => proposalsQuery.data?.data ?? [],
+    [proposalsQuery.data],
+  );
+  const total = proposalsQuery.data?.pagination.total ?? proposals.length;
+  const loading = proposalsQuery.isPending;
+  const error = proposalsQuery.isError
+    ? proposalsQuery.error.message || "Failed to load proposals"
+    : null;
+  // A new proposal can appear under several status tabs — refresh them all.
+  const refreshProposals = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.governance });
 
   const activeCount = proposals.filter((p) => p.status === "active").length;
   const passedCount = proposals.filter((p) => p.status === "passed").length;
@@ -165,7 +158,7 @@ export default function GovernancePage() {
           <CreateProposalModal
             authToken={authToken}
             onClose={() => setShowCreateModal(false)}
-            onCreated={fetchData}
+            onCreated={refreshProposals}
           />
         )}
       </div>

@@ -40,8 +40,11 @@ pub mod websocket_streaming_models;
 pub enum SortBy {
     #[serde(rename = "success_rate")]
     SuccessRate,
-    #[serde(rename = "volume")]
+    /// Liquidity/volume in USD. `liquidity` is accepted as an alias (frontend naming).
+    #[serde(rename = "volume", alias = "liquidity")]
     Volume,
+    #[serde(rename = "health_score")]
+    HealthScore,
 }
 
 impl Default for SortBy {

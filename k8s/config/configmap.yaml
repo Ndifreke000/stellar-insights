@@ -16,6 +16,10 @@ data:
   # Logging Configuration
   rust-log: "info"
   log-format: "json"
+  # API access logs: fraction of fast 2xx/3xx requests logged (errors and
+  # requests slower than api-log-slow-ms are always logged).
+  api-log-sample-rate: "1.0"
+  api-log-slow-ms: "1000"
   
   # CORS Configuration
   cors-allowed-origins: "https://payraider.com,https://www.payraider.com"
