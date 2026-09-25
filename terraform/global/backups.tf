@@ -78,7 +78,9 @@ resource "aws_iam_role" "backup_verifier" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-            "token.actions.githubusercontent.com:sub" = "repo:Ndifreke000/payraider:ref:refs/heads/main"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = "repo:Ndifreke000/stellar-insights:*"
           }
         }
       }
