@@ -114,3 +114,8 @@ somzilla.md
 .aider/
 .cline/
 .continue/
+
+# ============================================
+# Pull Request documentation (for reference)
+# ============================================
+.github/pr_*.md
