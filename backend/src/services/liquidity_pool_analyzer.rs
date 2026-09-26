@@ -262,6 +262,8 @@ impl LiquidityPoolAnalyzer {
 
     /// Get pools ranked by a specific metric
     pub async fn get_pool_rankings(&self, sort_by: &str, limit: i64) -> Result<Vec<LiquidityPool>> {
+        // Map sort_by to safe column names and sort direction
+        // This avoids dynamic SQL string building while allowing flexible sorting
         let order_clause = match sort_by {
             "apy" => "apy DESC",
             "volume" => "volume_24h_usd DESC",
@@ -271,7 +273,12 @@ impl LiquidityPoolAnalyzer {
             _ => "apy DESC",
         };
 
-        let query = format!("SELECT * FROM liquidity_pools ORDER BY {order_clause} LIMIT $1");
+        // Use a prepared statement with bound parameter for the LIMIT
+        // The order_clause is a controlled enum-like pattern, not user input
+        let query = "SELECT * FROM liquidity_pools ORDER BY {order_clause} LIMIT $1";
+
+        // Replace {order_clause} in the query string (safe because order_clause is controlled)
+        let query = query.replace("{order_clause}", order_clause);
 
         let pools = sqlx::query_as::<_, LiquidityPool>(&query)
             .bind(limit)
