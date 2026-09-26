@@ -113,4 +113,5 @@ somzilla.md
 .cursor/
 .aider/
 .cline/
-.continue/
+.continue/# PR templates - NEVER commit
+.github/PR_*.md
