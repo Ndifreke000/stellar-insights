@@ -216,9 +216,6 @@ async fn main() -> anyhow::Result<()> {
         mock_mode,
     ));
 
-    // Build all services via the container (dependency injection — issue #1123)
-    let services = ServiceContainer::build(pool.clone(), rpc_client.clone());
-
     let ws_state = Arc::new(WsState::new());
     ws_state.spawn_redis_subscriber();
     let ingestion = Arc::new(DataIngestionService::new(rpc_client.clone(), db.clone()));
@@ -230,6 +227,29 @@ async fn main() -> anyhow::Result<()> {
         ingestion,
         rpc_client.clone(),
     );
+
+    // Build all services via the container (dependency injection)
+    let services = ServiceContainer::build(
+        pool.clone(),
+        rpc_client.clone(),
+        ws_state.clone(),
+        db.clone(),
+    );
+
+    // Extract services from container for use
+    let fee_bump_tracker = services.fee_bump_tracker;
+    let account_merge_detector = services.account_merge_detector;
+    let lp_analyzer = services.lp_analyzer;
+    let price_feed = services.price_feed.clone();
+    let webhook_event_service = services.webhook_event_service.clone();
+    let realtime_broadcaster = services.realtime_broadcaster.clone();
+    
+    // Start the realtime broadcaster background task
+    let mut broadcaster = (**realtime_broadcaster).clone();
+    let broadcaster_handle = tokio::spawn(async move {
+        broadcaster.start().await;
+    });
+    tracing::info!("Realtime broadcaster service started");
 
     // Initialize new middleware components (lightweight registration)
     let _network_context_middleware = NetworkContextMiddleware::new();
@@ -738,6 +758,9 @@ async fn main() -> anyhow::Result<()> {
         background_tasks.push(handle);
     }
     if let Some(handle) = slack_handle {
+        background_tasks.push(handle);
+    }
+    if let Some(handle) = broadcaster_handle {
         background_tasks.push(handle);
     }
 
