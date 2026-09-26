@@ -1,12 +1,12 @@
-# Stellar Insights — Detailed Project Description
+# PayRaider — Detailed Project Description
 
 ---
 
-## What Is Stellar Insights?
+## What Is PayRaider?
 
-Stellar Insights is a full-stack, production-grade analytics and monitoring platform built specifically for the **Stellar blockchain network**. Its primary purpose is to give developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on the Stellar network.
+PayRaider is a full-stack, production-grade analytics and monitoring platform built specifically for the **Stellar blockchain network**. Its primary purpose is to give developers, anchor operators, financial institutions, and end users a real-time, data-rich view into the health, performance, and reliability of cross-border payment corridors on the Stellar network.
 
-The core problem it solves is visibility. The Stellar network processes thousands of cross-border payments between assets like USDC, EURC, XLM, BRL, NGN, and many more every day. While these payments are transparent on-chain, there has been no dedicated tool that aggregates that data, measures corridor-level success rates, tracks liquidity depth, monitors anchor health, and surfaces actionable insights to the people building on top of Stellar. Stellar Insights fills that gap.
+The core problem it solves is visibility. The Stellar network processes thousands of cross-border payments between assets like USDC, EURC, XLM, BRL, NGN, and many more every day. While these payments are transparent on-chain, there has been no dedicated tool that aggregates that data, measures corridor-level success rates, tracks liquidity depth, monitors anchor health, and surfaces actionable insights to the people building on top of Stellar. PayRaider fills that gap.
 
 The platform is not just a dashboard. It is a complete observability stack — from a high-performance Rust backend that ingests live RPC data from the Stellar Horizon API, to a Next.js frontend with real-time WebSocket updates, to Soroban smart contracts that anchor analytics snapshots on-chain for tamper-proof verification, to a React Native mobile app for monitoring on the go.
 
@@ -17,7 +17,7 @@ The platform is not just a dashboard. It is a complete observability stack — f
 The project is organized as a monorepo with six major components:
 
 ```
-stellar-insights/
+payraider/
 ├── backend/        Rust analytics engine + REST/GraphQL/WebSocket API
 ├── frontend/       Next.js 16 dashboard with real-time updates
 ├── mobile/         React Native mobile app (Expo)
@@ -163,7 +163,13 @@ Interactive deposit and withdrawal flow testers for SEP-6 (non-interactive) and 
 
 **Transaction Builder (`/transactions/builder`)**
 
-A visual Stellar transaction builder that lets users construct, sign, and submit transactions from the browser.
+A UI for assembling a multi-operation Stellar transaction (payment, createAccount,
+changeTrust) with per-operation destination/amount/asset input and address validation.
+**Not yet wired to real signing/submission**: XDR generation currently base64-encodes a
+JSON description of the operations rather than building a real Stellar transaction
+envelope via `stellar-sdk`, so the output is not valid, signable XDR yet
+([`TransactionBuilder.tsx`](../frontend/src/components/transactions/TransactionBuilder.tsx)).
+Tracked in issue #1838.
 
 **Quests (`/quests`)**
 
@@ -198,11 +204,11 @@ The frontend is configured as a PWA with a web manifest, service worker for offl
 
 ## Soroban Smart Contracts
 
-The contracts layer is built with Soroban (Stellar's smart contract platform) in Rust with `no_std`. They provide tamper-proof on-chain anchoring of analytics data and governance.
+The contracts layer is built with Soroban (Stellar's smart contract platform) in Rust with `no_std`. Only `payraider` is an active workspace member, built in CI, and integrated with the backend (via `SNAPSHOT_CONTRACT_ID`) and deployed to testnet. The other contracts described below (governance, escrow, token-swap, multi-sig-wallet, access-control, time-locked-transactions, plus `analytics`, `multi-admin`, `pausable`, `snapshot-verification-rewards`, `upgrade`) live under `contracts/archive/`: they are **not** workspace members, are **not** built or tested in CI, and are not wired into any product flow — see [`contracts/archive/README.md`](../contracts/archive/README.md). They were moved there in #2227 because nothing outside `contracts/` referenced, deployed, or called them. Treat the descriptions below as a design/roadmap reference for those, not as shipped functionality.
 
 ### Contracts Overview
 
-**1. `stellar_insights` — Core Analytics Contract**
+**1. `payraider` — Core Analytics Contract**
 
 The primary contract. It stores cryptographic SHA-256 hashes of analytics snapshots on-chain, creating an immutable audit trail that anyone can verify. Key functions:
 
@@ -271,14 +277,14 @@ The mobile app provides on-the-go monitoring for corridor health and payment act
 
 ## SDKs
 
-Two client SDKs allow developers to integrate Stellar Insights data into their own applications.
+Two client SDKs allow developers to integrate PayRaider data into their own applications.
 
 **TypeScript SDK (`sdk/typescript/`)**
 
 ```typescript
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { PayRaiderClient } from '@payraider/sdk';
 
-const client = new StellarInsightsClient({ apiKey: 'your-key' });
+const client = new PayRaiderClient({ apiKey: 'your-key' });
 
 const corridors = await client.corridors.list({ limit: 20 });
 const detail = await client.corridors.get('USDC:issuer->XLM:native');
@@ -288,9 +294,9 @@ const analytics = await client.analytics.network({ period: '7d' });
 **Python SDK (`sdk/python/`)**
 
 ```python
-from stellar_insights import StellarInsightsClient
+from payraider import PayRaiderClient
 
-client = StellarInsightsClient(api_key="your-key")
+client = PayRaiderClient(api_key="your-key")
 
 corridors = client.corridors.list(limit=20)
 detail = client.corridors.get("USDC:issuer->XLM:native")
@@ -312,9 +318,9 @@ The project ships with a complete infrastructure-as-code and container orchestra
 
 A full Kubernetes deployment under `k8s/` with:
 
-- Backend deployment with HPA (Horizontal Pod Autoscaler) and PDB (Pod Disruption Budget)
+- Backend deployment with HPA (neutered to 1/1 -- SQLite single-writer, see ADR 0001) and a persistent volume (PVC) for the SQLite database
 - Frontend deployment with HPA and PDB
-- PostgreSQL StatefulSet
+- Litestream sidecar replicating the SQLite database to S3
 - Redis deployment
 - Ingress with TLS termination
 - Network policies for pod-to-pod communication
@@ -329,7 +335,7 @@ AWS infrastructure under `terraform/` with modules for:
 
 - **Networking** — VPC, subnets, security groups
 - **Compute** — ECS Fargate tasks for backend and frontend
-- **Database** — RDS PostgreSQL with read replicas
+- **Database** — none; SQLite on an EFS volume (see docs/adr/0001-sqlite-vs-postgres.md), with a Litestream sidecar for continuous S3 backup
 - **Caching** — ElastiCache Redis
 - **Load balancing** — Application Load Balancer with WAF
 - **Monitoring** — CloudWatch dashboards and alarms
@@ -471,4 +477,4 @@ The repository has accumulated **1,779 commits** from **196+ contributors** acro
 
 ## Summary
 
-Stellar Insights is a comprehensive, production-ready analytics platform for the Stellar blockchain. It combines a high-performance Rust backend with real-time data ingestion, a polished Next.js dashboard with live WebSocket updates, Soroban smart contracts for on-chain data verification, a React Native mobile app, and a complete cloud infrastructure stack. The project is built to handle the demands of a real-time financial data platform — low latency, high availability, strong security, and full observability — while remaining accessible to open-source contributors through clear documentation, structured issue tracking, and automated quality gates.
+PayRaider is a comprehensive, production-ready analytics platform for the Stellar blockchain. It combines a high-performance Rust backend with real-time data ingestion, a polished Next.js dashboard with live WebSocket updates, Soroban smart contracts for on-chain data verification, a React Native mobile app, and a complete cloud infrastructure stack. The project is built to handle the demands of a real-time financial data platform — low latency, high availability, strong security, and full observability — while remaining accessible to open-source contributors through clear documentation, structured issue tracking, and automated quality gates.

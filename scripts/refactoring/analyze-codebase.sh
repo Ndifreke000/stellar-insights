@@ -3,7 +3,7 @@
 
 cd "$(dirname "$0")/../.."
 
-echo "📊 Stellar Insights - Codebase Analysis"
+echo "📊 PayRaider - Codebase Analysis"
 echo "========================================"
 echo ""
 

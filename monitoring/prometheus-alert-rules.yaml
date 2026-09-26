@@ -1,5 +1,5 @@
 groups:
-  - name: stellar_insights_testnet_slos
+  - name: payraider_testnet_slos
     interval: 30s
     rules:
       # ========================================================================
@@ -19,7 +19,7 @@ groups:
             Health check endpoint at {{ $labels.instance }} has error rate {{ $value | humanizePercentage }} over the last 5m.
             This indicates the backend may have connectivity issues with database, cache, or RPC.
           runbook_url: "https://docs.example.com/runbooks/health-endpoint-down"
-          dashboard_url: "https://grafana.example.com/d/stellar-insights"
+          dashboard_url: "https://grafana.example.com/d/payraider"
 
       - alert: HealthCheckHighLatency
         expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/health"}[5m])) > 1.0
@@ -33,6 +33,45 @@ groups:
           description: |
             Health endpoint p99 latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.
             System may be under stress. Check database pool utilization and cache performance.
+
+      - alert: ApiLatencyP95Exceeded
+        expr: histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_by_endpoint_seconds_bucket[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          slo_tier: tier1
+          service: api
+        annotations:
+          summary: "API endpoint p95 latency exceeded SLO target (> 500ms)"
+          description: |
+            Endpoint {{ $labels.endpoint }} p95 latency is {{ $value | humanizeDuration }} over 5m (target: < 500ms).
+            Investigate slow database queries, upstream RPC latency, or resource saturation.
+          dashboard_url: "https://grafana.example.com/d/payraider-api-latency"
+
+      - alert: ApiLatencyP99Exceeded
+        expr: histogram_quantile(0.99, sum by (le, endpoint) (rate(http_request_duration_by_endpoint_seconds_bucket[5m]))) > 1.0
+        for: 3m
+        labels:
+          severity: critical
+          slo_tier: tier1
+          service: api
+        annotations:
+          summary: "API endpoint p99 latency exceeded critical threshold (> 1s)"
+          description: |
+            Endpoint {{ $labels.endpoint }} p99 latency is {{ $value | humanizeDuration }} over 3m (critical threshold: 1s).
+            High tail latency observed. Immediate investigation required.
+
+      - alert: ApiSloViolationRateHigh
+        expr: sum by (endpoint) (rate(http_request_slo_violations_total[5m])) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          slo_tier: tier1
+          service: api
+        annotations:
+          summary: "High rate of API SLO violations (> 500ms)"
+          description: |
+            Endpoint {{ $labels.endpoint }} has sustained SLO violations rate of {{ $value }} req/s.
 
       # ========================================================================
       # TIER 2: User-Facing API Endpoints (99.5% SLO)
@@ -301,13 +340,13 @@ groups:
           runbook_url: "https://docs.example.com/runbooks/cascading-failure"
 
       - alert: NoMetricsScraped
-        expr: up{job="stellar-insights"} == 0
+        expr: up{job="payraider"} == 0
         for: 3m
         labels:
           severity: critical
           slo_tier: global
         annotations:
-          summary: "Prometheus cannot scrape metrics from stellar-insights"
+          summary: "Prometheus cannot scrape metrics from payraider"
           description: |
             Prometheus target {{ $labels.instance }} has been down for 3 minutes.
             Backend may be crashed or network connectivity is broken.

@@ -67,7 +67,9 @@ export function useWebSocket(
   const isConnectingRef = useRef(false);
   const connectionAttemptsRef = useRef(0);
   const optionsRef = useRef({ onOpen, onClose, onError, onMessage });
-  optionsRef.current = { onOpen, onClose, onError, onMessage };
+  useEffect(() => {
+    optionsRef.current = { onOpen, onClose, onError, onMessage };
+  });
 
   // Channels the caller has asked to be subscribed to. Persisted across
   // reconnects so we can restore subscriptions once the socket reopens.
@@ -174,7 +176,9 @@ export function useWebSocket(
     }
   }, [url, maxReconnectAttempts, reconnectInterval]);
 
-  connectRef.current = connect;
+  useEffect(() => {
+    connectRef.current = connect;
+  });
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;

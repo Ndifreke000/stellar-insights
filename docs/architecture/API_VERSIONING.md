@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stellar Insights follows semantic versioning for API endpoints to ensure backward compatibility while enabling evolution of the API. This document outlines the versioning strategy, deprecation policy, and migration guidelines.
+PayRaider follows semantic versioning for API endpoints to ensure backward compatibility while enabling evolution of the API. This document outlines the versioning strategy, deprecation policy, and migration guidelines.
 
 ## Current API Versions
 
@@ -27,7 +27,7 @@ All API endpoints are versioned via URL path:
 Clients can also specify API version via the `Accept` header:
 
 ```bash
-curl -H "Accept: application/vnd.stellar-insights.v2+json" \
+curl -H "Accept: application/vnd.payraider.v2+json" \
   http://localhost:8080/api/anchors
 ```
 
@@ -130,7 +130,7 @@ GET /anchors?page=1&page_size=10
    ```typescript
    const response = await fetch('/api/anchors', {
      headers: {
-       'Accept': 'application/vnd.stellar-insights.v2+json'
+       'Accept': 'application/vnd.payraider.v2+json'
      }
    });
    ```
@@ -158,7 +158,7 @@ GET /anchors?page=1&page_size=10
 
 2. **Accept Header**
    ```
-   Accept: application/vnd.stellar-insights.v2+json  → v2
+   Accept: application/vnd.payraider.v2+json  → v2
    ```
 
 3. **Default** (lowest priority)
@@ -229,7 +229,7 @@ curl -v http://localhost:8080/api/v2/anchors
 
 ### Test Accept Header
 ```bash
-curl -H "Accept: application/vnd.stellar-insights.v2+json" \
+curl -H "Accept: application/vnd.payraider.v2+json" \
   http://localhost:8080/api/anchors
 # Should return v2 response format
 ```
@@ -245,7 +245,7 @@ curl -v http://localhost:8080/api/v1/anchors
 For API versioning questions:
 - Check this documentation
 - Review CHANGELOG.md for breaking changes
-- Contact support@stellar-insights.com
+- Contact support@payraider.com
 - Open an issue on GitHub
 
 ## References

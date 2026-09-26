@@ -43,7 +43,7 @@ pub fn rpc_circuit_breaker() -> SharedCircuitBreaker {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::rpc::circuit_breaker::{CircuitBreakerConfig, rpc_circuit_breaker};
+/// use payraider_backend::rpc::circuit_breaker::{CircuitBreakerConfig, rpc_circuit_breaker};
 /// use std::time::Duration;
 ///
 /// let config = CircuitBreakerConfig {

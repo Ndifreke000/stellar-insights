@@ -115,7 +115,7 @@ else
 fi
 
 # Check 8: Docker image passes docker scout cves scan
-DOCKER_IMAGE=${DOCKER_IMAGE:-"stellar-insights-backend:latest"}
+DOCKER_IMAGE=${DOCKER_IMAGE:-"payraider-backend:latest"}
 echo -n "Check 8: Running dependency/vulnerability scan (Docker Scout)... "
 if command -v docker >/dev/null 2>&1; then
   if docker scout cves "$DOCKER_IMAGE" --exit-code --only-severity critical,high > /dev/null 2>&1; then

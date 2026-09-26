@@ -31,7 +31,7 @@ describe('useAnchorDetail', () => {
     const mockData = generateMockAnchorDetail('anchor-1');
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -50,7 +50,7 @@ describe('useAnchorDetail', () => {
     );
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -66,7 +66,7 @@ describe('useAnchorDetail', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-2' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-2' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -81,7 +81,7 @@ describe('useAnchorDetail', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -92,7 +92,7 @@ describe('useAnchorDetail', () => {
   });
 
   it('sets error when anchor id is missing', async () => {
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: '' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: '' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -105,7 +105,7 @@ describe('useAnchorDetail', () => {
     const mockData = generateMockAnchorDetail('anchor-1');
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -129,7 +129,7 @@ describe('useAnchorDetail', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-3' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-3' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -148,7 +148,7 @@ describe('useAnchorDetail', () => {
       new Error('Storage read failed'),
     );
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -160,7 +160,7 @@ describe('useAnchorDetail', () => {
   it('treats device as offline when NetInfo fetch fails', async () => {
     (NetInfo.fetch as jest.Mock).mockRejectedValue(new Error('NetInfo unavailable'));
 
-    const { result } = renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
+    const { result } = await renderHook(() => useAnchorDetail({ anchorId: 'anchor-1' }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -176,7 +176,7 @@ describe('useAnchorDetail', () => {
     const mockData = generateMockAnchorDetail(stellarAccount);
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() =>
+    const { result } = await renderHook(() =>
       useAnchorDetail({ anchorId: stellarAccount }),
     );
 

@@ -1,10 +1,10 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -49,14 +49,6 @@ spec:
       port: 53
     - protocol: TCP
       port: 53
-  # Postgres: database access
-  - to:
-    - podSelector:
-        matchLabels:
-          component: database
-    ports:
-    - protocol: TCP
-      port: 5432
   # Redis: cache access
   - to:
     - podSelector:
@@ -75,10 +67,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-frontend
-  namespace: stellar-insights
+  name: payraider-frontend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:
@@ -116,43 +108,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-database
-  namespace: stellar-insights
+  name: payraider-redis
+  namespace: payraider
   labels:
-    app: stellar-insights
-spec:
-  podSelector:
-    matchLabels:
-      component: database
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  # Only allow traffic from backend
-  - from:
-    - podSelector:
-        matchLabels:
-          component: backend
-    ports:
-    - protocol: TCP
-      port: 5432
-  egress:
-  # Allow DNS
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: UDP
-      port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: stellar-insights-redis
-  namespace: stellar-insights
-  labels:
-    app: stellar-insights
+    app: payraider
 spec:
   podSelector:
     matchLabels:

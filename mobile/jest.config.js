@@ -1,5 +1,8 @@
 module.exports = {
-  preset: 'react-native',
+  // react-native no longer ships jest-preset.js at its own package root
+  // (and its exports map wouldn't allow that subpath even if it did) --
+  // the preset moved to @react-native/jest-preset.
+  preset: '@react-native/jest-preset',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   transformIgnorePatterns: [

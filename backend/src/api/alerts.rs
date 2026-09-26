@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use crate::models::alerts::{AlertHistory, AlertRule};
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 

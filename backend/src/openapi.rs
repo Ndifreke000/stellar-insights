@@ -1,23 +1,54 @@
-use utoipa::OpenApi;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi};
+
+/// Registers the authentication schemes referenced by `security(...)` on endpoints.
+pub struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer_auth",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .description(Some(
+                        "JWT access token from `POST /api/auth/login`. \
+                         Example: `Authorization: Bearer eyJhbGciOi...`",
+                    ))
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "api_key",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                "X-API-Key",
+                "API key created via `POST /api/keys`. Example: `X-API-Key: si_live_...`",
+            ))),
+        );
+    }
+}
 
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Stellar Insights API",
+        title = "PayRaider API",
         version = "1.0.0",
         description = "API for Stellar network analytics, anchor monitoring, and payment corridor insights",
         contact(
-            name = "Stellar Insights Team",
-            email = "support@stellarinsights.io"
+            name = "PayRaider Team",
+            email = "support@payraider.io"
         ),
         license(
             name = "MIT",
             url = "https://opensource.org/licenses/MIT"
         )
     ),
+    modifiers(&SecurityAddon),
     servers(
         (url = "http://localhost:8080", description = "Local development server"),
-        (url = "https://api.stellarinsights.io", description = "Production server")
+        (url = "https://api.payraider.io", description = "Production server")
     ),
     paths(
         // Anchors
@@ -25,9 +56,25 @@ use utoipa::OpenApi;
         crate::api::anchors::get_anchor_by_account,
         crate::api::anchors::get_anchors,
         crate::api::anchors::get_muxed_analytics,
+        crate::api::anchors::create_anchor,
+        crate::api::anchors::update_anchor_metrics,
+        crate::api::anchors::get_anchor_assets,
+        crate::api::anchors::create_anchor_asset,
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
+        crate::api::corridors::create_corridor,
+        crate::api::corridors::update_corridor_metrics_from_transactions,
+        // Export
+        crate::api::export::export_corridors,
+        crate::api::export::export_anchors,
+        crate::api::export::export_payments,
+        // Database performance
+        crate::handlers::slow_queries,
+        crate::handlers::index_report,
+        // Frontend RUM
+        crate::observability::frontend_metrics::ingest_frontend_metrics,
+        crate::observability::frontend_metrics::frontend_metrics_summary,
         // Price Feed
         crate::api::price_feed::get_price,
         crate::api::price_feed::get_prices,
@@ -124,8 +171,24 @@ use utoipa::OpenApi;
         crate::api::asset_verification::report_suspicious_asset,
         // Auth
         crate::api::auth::login,
+        crate::api::auth::verify_2fa,
         crate::api::auth::refresh,
         crate::api::auth::logout,
+        crate::api::auth::list_sessions,
+        crate::api::auth::revoke_session,
+        crate::api::auth::revoke_other_sessions,
+        // 2FA
+        crate::api::twofa::initiate_enrollment,
+        crate::api::twofa::confirm_enrollment,
+        crate::api::twofa::disable_2fa,
+        crate::api::twofa::regenerate_backup_codes,
+        // Admin
+        crate::api::admin_ip_whitelist::list_whitelist,
+        crate::api::admin_ip_whitelist::add_to_whitelist,
+        crate::api::admin_ip_whitelist::remove_from_whitelist,
+        crate::api::admin_ip_whitelist::check_whitelist,
+        crate::api::audit_log::query_audit_log,
+        crate::api::audit_log::verify_audit_log_integrity,
         // Cache
         crate::api::cache_stats::get_cache_stats,
         crate::api::cache_stats::reset_cache_stats,
@@ -190,6 +253,24 @@ use utoipa::OpenApi;
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::api::anchors::UpdateMetricsRequest,
+            crate::api::anchors::CreateAssetRequest,
+            crate::api::corridors::UpdateCorridorMetricsFromTxns,
+            crate::api::corridors::CorridorPaymentDto,
+            crate::models::Anchor,
+            crate::models::Asset,
+            crate::models::CreateAnchorRequest,
+            crate::models::CreateCorridorRequest,
+            crate::models::corridor::Corridor,
+            crate::observability::frontend_metrics::FrontendMetric,
+            crate::observability::frontend_metrics::FrontendError,
+            crate::observability::frontend_metrics::FrontendMetricsBatch,
+            crate::observability::frontend_metrics::FrontendMetricsSummary,
+            crate::observability::frontend_metrics::FrontendMetricSummary,
+            crate::observability::frontend_metrics::PageSummary,
+            // Pagination envelope (see crate::pagination)
+            crate::pagination::PageMeta,
+            crate::pagination::PageLinks,
         )
     ),
     tags(
@@ -199,6 +280,8 @@ use utoipa::OpenApi;
         (name = "API Keys", description = "API key management endpoints"),
         (name = "Contract Events", description = "Smart contract event tracking"),
         (name = "Corridors", description = "Payment corridor analytics endpoints"),
+        (name = "Database", description = "Database query performance monitoring"),
+        (name = "Export", description = "Data export endpoints (CSV, JSON, Excel)"),
         (name = "Fee Bumps", description = "Fee bump transaction tracking"),
         (name = "Liquidity Pools", description = "Liquidity pool analytics"),
         (name = "Metrics", description = "System metrics and monitoring"),
@@ -215,7 +298,8 @@ use utoipa::OpenApi;
         (name = "Account Merges", description = "Account merge tracking endpoints"),
         (name = "Achievements", description = "Quest and achievement definitions"),
         (name = "Asset Verification", description = "Asset verification and reporting"),
-        (name = "Auth", description = "Authentication endpoints"),
+        (name = "Auth", description = "Authentication, session, and 2FA endpoints"),
+        (name = "Admin", description = "Admin-only endpoints (IP whitelist, audit log) -- require an admin account (is_admin)"),
         (name = "Cache", description = "Cache management endpoints"),
         (name = "Governance", description = "Governance proposal and voting endpoints"),
         (name = "OAuth", description = "OAuth integration endpoints"),

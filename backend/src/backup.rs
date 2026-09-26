@@ -27,7 +27,7 @@ impl BackupConfig {
         let db_path = std::env::var("BACKUP_DB_PATH")
             .ok()
             .or_else(|| sqlite_path_from_database_url(&database_url))
-            .unwrap_or_else(|| "stellar_insights.db".to_string());
+            .unwrap_or_else(|| "payraider.db".to_string());
 
         let backup_dir = std::env::var("BACKUP_DIR").unwrap_or_else(|_| "./backups".to_string());
         let keep_days = std::env::var("BACKUP_RETENTION_DAYS")
@@ -88,7 +88,7 @@ impl BackupManager {
             .context("Failed to create backup directory")?;
 
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("stellar_insights_{}.db", timestamp);
+        let filename = format!("payraider_{}.db", timestamp);
         let destination = Path::new(&self.config.backup_dir).join(filename);
 
         tokio::fs::copy(&self.config.db_path, &destination)
@@ -264,9 +264,56 @@ impl BackupManager {
         Ok(ok)
     }
 
+    /// Re-hashes every earlier snapshot that has a `.sha256` sidecar and compares the
+    /// result, so corruption of stored snapshots is detected rather than discovered at
+    /// restore time. Returns the number of snapshots whose checksum no longer matches.
+    pub async fn verify_existing_checksums(&self) -> Result<u32> {
+        let mut entries = match tokio::fs::read_dir(&self.config.backup_dir).await {
+            Ok(entries) => entries,
+            Err(_) => return Ok(0),
+        };
+
+        let mut mismatches = 0u32;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("db") {
+                continue;
+            }
+            let sidecar = path.with_extension("db.sha256");
+            let Ok(stored) = tokio::fs::read_to_string(&sidecar).await else {
+                continue;
+            };
+
+            let bytes = tokio::fs::read(&path)
+                .await
+                .with_context(|| format!("Failed to read backup '{}'", path.display()))?;
+            let computed = hex::encode(Sha256::digest(&bytes));
+            if stored.trim() != computed {
+                mismatches += 1;
+                tracing::error!(
+                    path = %path.display(),
+                    "Stored backup checksum mismatch — snapshot is corrupted"
+                );
+                crate::observability::metrics::record_backup_verification_failure(
+                    "stored_checksum_mismatch",
+                );
+            }
+        }
+
+        Ok(mismatches)
+    }
+
     pub async fn run_once(&self) -> Result<()> {
         let backup_path = self.create_backup().await?;
         let cleaned = self.cleanup_old_backups().await?;
+
+        match self.verify_existing_checksums().await {
+            Ok(0) => {}
+            Ok(mismatches) => {
+                tracing::error!(mismatches, "Existing backup snapshots failed checksum re-verification");
+            }
+            Err(e) => tracing::error!(error = %e, "Backup checksum re-verification error"),
+        }
 
         // Verify the backup we just created
         match self.verify_backup(&backup_path).await {
@@ -298,9 +345,21 @@ impl BackupManager {
     #[must_use]
     pub fn spawn_scheduler(self: Arc<Self>) -> JoinHandle<()> {
         tokio::spawn(async move {
+            let lock = crate::distributed_lock::DistributedLock::shared().await;
             loop {
                 let wait = duration_until_next_hour(self.config.schedule_hour_utc);
                 tokio::time::sleep(wait).await;
+
+                // Every replica wakes at the same time; only the one that wins
+                // the lock backs up. The lock is left to expire (not released)
+                // so a replica whose clock is slightly behind can't run it again.
+                let Some(_guard) = lock
+                    .try_acquire("job-lock:backup", std::time::Duration::from_secs(55 * 60))
+                    .await
+                else {
+                    tracing::info!("Scheduled backup skipped — another instance is running it");
+                    continue;
+                };
 
                 if let Err(error) = self.run_once().await {
                     tracing::error!(error = %error, "Scheduled backup failed");
@@ -340,18 +399,19 @@ fn duration_until_next_hour(hour_utc: u32) -> std::time::Duration {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
     fn parses_sqlite_path() {
         assert_eq!(
-            sqlite_path_from_database_url("sqlite://stellar_insights.db"),
-            Some("stellar_insights.db".to_string())
+            sqlite_path_from_database_url("sqlite://payraider.db"),
+            Some("payraider.db".to_string())
         );
         assert_eq!(
-            sqlite_path_from_database_url("sqlite:./stellar_insights.db"),
-            Some("./stellar_insights.db".to_string())
+            sqlite_path_from_database_url("sqlite:./payraider.db"),
+            Some("./payraider.db".to_string())
         );
         assert_eq!(sqlite_path_from_database_url("sqlite::memory:"), None);
     }

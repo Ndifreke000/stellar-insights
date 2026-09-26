@@ -2,22 +2,62 @@ name: Dependency Vulnerability Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+    branches: [main, develop]
   schedule:
     - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   cargo-audit:
+    name: Cargo Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: rustsec/audit-check@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit backend dependencies
+        working-directory: ./backend
+        run: cargo audit --deny warnings
+
+      - name: Audit contracts dependencies
+        working-directory: ./contracts
+        run: cargo audit --deny warnings
+
+  cargo-sbom:
+    name: Generate Rust SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx
+
+      - name: Generate SBOM for backend
+        working-directory: ./backend
+        run: cargo cyclonedx --format json > sbom.json
+
+      - name: Upload backend SBOM
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: backend-sbom
+          path: backend/sbom.json
+          retention-days: 90
 
   npm-audit:
+    name: NPM Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,9 +70,45 @@ jobs:
         run: npm audit --audit-level=high || true
         working-directory: ./
 
-      - name: Frontend npm audit
-        run: npm audit --audit-level=high || true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # The frontend installs with pnpm (see frontend-lint.yml), so audit the pnpm
+      # lockfile. High/critical advisories in production dependencies fail the job
+      # on main and on the weekly schedule (which also opens a tracking issue, see
+      # the `alert` job). On pull requests the existing backlog is reported but not
+      # blocking; newly introduced vulnerable dependencies are blocked by the
+      # dependency-review job instead.
+      - name: Frontend audit (production dependencies)
+        id: frontend_audit
         working-directory: ./frontend
+        run: |
+          pnpm audit --prod --json > pnpm-audit-report.json || true
+          if pnpm audit --prod --audit-level=high; then
+            echo "vulnerable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "vulnerable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload frontend audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-audit-report
+          path: frontend/pnpm-audit-report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Fail on high/critical frontend vulnerabilities
+        if: steps.frontend_audit.outputs.vulnerable == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "::warning::Frontend has high/critical advisories in production dependencies (see frontend-audit-report artifact). Not blocking PRs; tracked via the security issue."
+          else
+            echo "::error::Frontend has high/critical advisories in production dependencies (see frontend-audit-report artifact)."
+            exit 1
+          fi
 
       - name: Mobile npm audit
         run: npm audit --audit-level=high || true
@@ -41,6 +117,33 @@ jobs:
       - name: SDK TypeScript npm audit
         run: npm audit --audit-level=high || true
         working-directory: ./sdk/typescript
+
+  npm-sbom:
+    name: Generate Frontend SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Generate frontend SBOM
+        working-directory: ./frontend
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.json
+
+      - name: Upload frontend SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-sbom
+          path: frontend/sbom.json
+          retention-days: 90
 
   pip-audit:
     runs-on: ubuntu-latest
@@ -52,5 +155,67 @@ jobs:
           python-version: '3.11'
 
       - name: Install and run pip-audit
-        run: pip install pip-audit && pip-audit
+        run: pip install --upgrade pip setuptools pip-audit && pip-audit
         working-directory: ./sdk/python
+
+  dependency-review:
+    name: Dependency Review (PRs only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+
+  alert:
+    name: Alert on vulnerability findings
+    needs: [cargo-audit, npm-audit]
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Security] Dependency vulnerabilities detected';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              'The dependency vulnerability scan found high/critical advisories.',
+              '',
+              `- Workflow run: ${runUrl}`,
+              `- Commit: ${context.sha}`,
+              '',
+              'Download the audit report artifacts from the run for details.',
+              'See SECURITY.md for the patching SLA.',
+            ].join('\n');
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['security', 'dependencies'],
+              });
+            }

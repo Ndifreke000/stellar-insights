@@ -15,7 +15,7 @@ import {
   TransactionsResource,
   WebhooksResource,
 } from "./resources.js";
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import {
   SDKInitializer,
   initializeForMobile,
@@ -44,22 +44,22 @@ export const NETWORKS: Record<"mainnet" | "testnet", NetworkConfig> = {
     rpcUrl: "https://stellar.api.onfinality.io/public",
     horizonUrl: "https://horizon.stellar.org",
     networkPassphrase: "Public Global Stellar Network ; September 2015",
-    apiBaseUrl: "https://api.stellarinsights.io",
+    apiBaseUrl: "https://api.payraider.io",
   },
   testnet: {
     rpcUrl: "https://soroban-testnet.stellar.org",
     horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
-    apiBaseUrl: "https://testnet-api.stellarinsights.io",
+    apiBaseUrl: "https://testnet-api.payraider.io",
   },
 };
 
 export function createClient(
   network: "mainnet" | "testnet",
-  config: Omit<StellarInsightsConfig, "baseUrl"> = {},
-): StellarInsights {
+  config: Omit<PayRaiderConfig, "baseUrl"> = {},
+): PayRaider {
   const networkConfig = NETWORKS[network];
-  const client = new StellarInsights({
+  const client = new PayRaider({
     ...config,
     baseUrl: networkConfig.apiBaseUrl,
   });
@@ -67,7 +67,7 @@ export function createClient(
   return client;
 }
 
-export class StellarInsights {
+export class PayRaider {
   readonly anchors: AnchorsResource;
   readonly corridors: CorridorsResource;
   readonly prices: PricesResource;
@@ -89,7 +89,7 @@ export class StellarInsights {
   /** @internal */
   wsNetwork: "mainnet" | "testnet" = "testnet";
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.http = new HttpClient(config);
     this.apiClient = new ApiClient(config);
     this.anchors = new AnchorsResource(this.http);
@@ -129,7 +129,7 @@ export class StellarInsights {
   }
 }
 
-export { StellarInsightsError } from "./http.js";
+export { PayRaiderError } from "./http.js";
 export { SDKError } from "./sdk_error.js";
 export { SDKUnitTests } from "./sdk_unit_tests.js";
 export { ReactNativeCompatibility } from "./react_native_compatibility.js";

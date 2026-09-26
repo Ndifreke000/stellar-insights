@@ -100,7 +100,7 @@ impl CacheManager {
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-            match client.get_multiplexed_tokio_connection().await {
+            match client.get_multiplexed_async_connection().await {
                 Ok(conn) => {
                     tracing::info!("Connected to Redis for caching");
                     Some(conn)
@@ -151,7 +151,7 @@ impl CacheManager {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
             redis::cmd("PING")
-                .query_async::<_, String>(&mut conn)
+                .query_async::<String>(&mut conn)
                 .await?;
             Ok(())
         } else {
@@ -184,7 +184,7 @@ impl CacheManager {
             let mut conn = conn.clone();
             match redis::cmd("GET")
                 .arg(key)
-                .query_async::<_, Option<String>>(&mut conn)
+                .query_async::<Option<String>>(&mut conn)
                 .await
             {
                 Ok(Some(value)) => {
@@ -258,7 +258,7 @@ impl CacheManager {
                         .arg("NX")
                         .arg("PX")
                         .arg(ttl_seconds * 1000)
-                        .query_async::<_, Option<String>>(&mut conn)
+                        .query_async::<Option<String>>(&mut conn)
                         .await
                     {
                         Ok(_) => {
@@ -289,7 +289,7 @@ impl CacheManager {
             const LUA_DEL: &str = "return redis.call('DEL', KEYS[1])";
             match redis::Script::new(LUA_DEL)
                 .key(key)
-                .invoke_async::<_, i64>(&mut conn)
+                .invoke_async::<i64>(&mut conn)
                 .await
             {
                 Ok(_) => {
@@ -334,7 +334,7 @@ impl CacheManager {
                         pipe.cmd("UNLINK").arg(key);
                     }
 
-                    pipe.query_async::<_, ()>(&mut conn).await?;
+                    pipe.query_async::<()>(&mut conn).await?;
 
                     self.invalidations
                         .fetch_add(keys.len() as u64, Ordering::Relaxed);
@@ -424,7 +424,7 @@ impl CacheManager {
         let mut conn_guard = self.redis_connection.write().await;
         if let Some(mut conn) = conn_guard.take() {
             // Ensure all pending operations are flushed
-            match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
+            match redis::cmd("PING").query_async::<String>(&mut conn).await {
                 Ok(_) => tracing::debug!("Redis connection verified before close"),
                 Err(e) => tracing::warn!("Redis PING failed before close: {}", e),
             }

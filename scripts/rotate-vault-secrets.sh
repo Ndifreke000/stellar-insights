@@ -75,6 +75,23 @@ rotate_oauth_secrets() {
     log_warn "Update your OAuth app configuration with new secret"
 }
 
+# Rotate ENCRYPTION_KEY (AES-256-GCM 32-byte hex)
+rotate_encryption_key() {
+    log_info "Rotating ENCRYPTION_KEY (90-day rotation policy)..."
+    
+    # Generate new 32-byte hex key
+    NEW_KEY=$(openssl rand -hex 32)
+    
+    curl -s -X POST \
+        "$VAULT_ADDR/v1/data/secret/stellar/encryption_key" \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"data\": {\"value\": \"$NEW_KEY\"}}" > /dev/null
+    
+    log_info "ENCRYPTION_KEY rotated successfully"
+    log_warn "Re-encrypt existing ciphertext before retiring old key version"
+}
+
 # Rotate API keys
 rotate_api_keys() {
     log_info "Rotating API keys..."
@@ -83,26 +100,6 @@ rotate_api_keys() {
     log_warn "  - Price feed API key (see provider documentation)"
     log_warn "  - AWS credentials (use AWS console)"
     log_warn "  - Stellar network keys (coordinate with team)"
-}
-
-# Check DB credential TTL
-check_db_credentials() {
-    log_info "Checking PostgreSQL dynamic credential status..."
-    
-    RESPONSE=$(curl -s -X GET \
-        "$VAULT_ADDR/v1/database/creds/stellar-app" \
-        -H "X-Vault-Token: $VAULT_TOKEN")
-    
-    LEASE_ID=$(echo "$RESPONSE" | jq -r '.lease_id')
-    TTL=$(echo "$RESPONSE" | jq -r '.lease_duration')
-    
-    if [ "$LEASE_ID" != "null" ]; then
-        log_info "Dynamic DB credentials valid for $TTL seconds"
-        log_info "Lease ID: $LEASE_ID"
-    else
-        log_error "Failed to get dynamic credentials"
-        return 1
-    fi
 }
 
 # Audit log
@@ -118,13 +115,14 @@ audit_rotation() {
             \"data\": {
                 \"rotated_secret\": \"$secret_name\",
                 \"timestamp\": \"$timestamp\",
-                \"operator\": \"$USER\"
+                \"operator\": \"$USER\",
+                \"rotation_policy\": \"90-days\"
             }
         }" > /dev/null 2>&1 || true
 }
 
 main() {
-    log_info "Starting Vault secret rotation process"
+    log_info "Starting Vault secret rotation process (90-day policy enforcement)"
     
     # Backup first
     BACKUP_FILE=$(backup_secrets)
@@ -134,6 +132,10 @@ main() {
         jwt)
             rotate_jwt_secret
             audit_rotation "jwt_secret"
+            ;;
+        encryption|encryption_key)
+            rotate_encryption_key
+            audit_rotation "encryption_key"
             ;;
         oauth)
             rotate_oauth_secrets
@@ -145,14 +147,17 @@ main() {
             ;;
         all)
             rotate_jwt_secret
+            rotate_encryption_key
             rotate_oauth_secrets
             rotate_api_keys
-            check_db_credentials
+            # No dynamic DB credential check: the backend is SQLite-only
+            # (docs/adr/0001-sqlite-vs-postgres.md), database-url is a
+            # static KV secret, not a Vault database-engine lease.
             audit_rotation "all_secrets"
             ;;
         *)
             log_error "Unknown secret: $SECRET_TO_ROTATE"
-            echo "Usage: $0 [jwt|oauth|api_keys|all]"
+            echo "Usage: $0 [jwt|encryption|oauth|api_keys|all]"
             exit 1
             ;;
     esac

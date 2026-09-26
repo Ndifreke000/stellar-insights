@@ -1,5 +1,5 @@
 """
-55 NEW GitHub Issues for Stellar Insights
+55 NEW GitHub Issues for PayRaider
 Based on comprehensive codebase analysis
 Organized by priority: Critical (5), High (20), Medium (20), Low (10)
 """
@@ -420,7 +420,7 @@ throw new Error('Test error')
 cat docs/API_VERSIONING.md
 
 # Test version negotiation
-curl -H "Accept: application/vnd.stellar-insights.v2+json" http://localhost:8080/api/corridors
+curl -H "Accept: application/vnd.payraider.v2+json" http://localhost:8080/api/corridors
 
 # Verify deprecation warnings in v1"""
     },
@@ -833,7 +833,7 @@ for i in {1..20}; do curl http://localhost:8080/auth/challenge; done
 6. Test with multiple instances
 7. Document scaling procedures""",
         "verification": """# Deploy 3 instances
-kubectl scale deployment stellar-insights --replicas=3
+kubectl scale deployment payraider --replicas=3
 
 # Test WebSocket across instances
 # Verify background jobs coordinated
@@ -1453,7 +1453,7 @@ npm run test:a11y
 6. Create index optimization guide
 7. Review indexes quarterly""",
         "verification": """# Analyze index usage
-sqlite3 stellar_insights.db "EXPLAIN QUERY PLAN SELECT * FROM corridors WHERE source_asset = 'USDC'"
+sqlite3 payraider.db "EXPLAIN QUERY PLAN SELECT * FROM corridors WHERE source_asset = 'USDC'"
 
 # Check index usage
 # Identify unused indexes
@@ -1555,11 +1555,11 @@ cargo test --release -- --ignored fuzz
 6. Publish to npm/PyPI
 7. Document SDK usage""",
         "verification": """# Install SDK
-npm install @stellar-insights/sdk
+npm install @payraider/sdk
 
 # Use SDK
-import { StellarInsights } from '@stellar-insights/sdk'
-const client = new StellarInsights({ apiKey: 'xxx' })
+import { PayRaider } from '@payraider/sdk'
+const client = new PayRaider({ apiKey: 'xxx' })
 const corridors = await client.corridors.list()"""
     },
     
@@ -1904,7 +1904,7 @@ npm run test:coverage
 ./backend/seed_data.sh
 
 # Verify data created
-sqlite3 stellar_insights.db "SELECT COUNT(*) FROM corridors"
+sqlite3 payraider.db "SELECT COUNT(*) FROM corridors"
 
 # Test application with seed data"""
     }

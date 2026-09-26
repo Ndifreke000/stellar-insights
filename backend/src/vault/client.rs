@@ -16,7 +16,7 @@ use crate::vault::{VaultConfig, VaultError};
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+/// use payraider_backend::vault::{VaultClient, VaultConfig};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -85,7 +85,7 @@ struct KvData {
 /// # Example
 ///
 /// ```rust,no_run
-/// use stellar_insights_backend::vault::client::DatabaseCredentials;
+/// use payraider_backend::vault::client::DatabaseCredentials;
 ///
 /// // Credentials received from Vault
 /// let creds: DatabaseCredentials = DatabaseCredentials {
@@ -129,7 +129,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -191,7 +191,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -261,6 +261,12 @@ impl VaultClient {
     /// These credentials are automatically managed by the lease system to ensure
     /// they don't expire during application runtime.
     ///
+    /// **Currently unused**: the backend is SQLite-only
+    /// (`docs/adr/0001-sqlite-vs-postgres.md`), so there is no Postgres
+    /// instance for Vault's database secrets engine to issue credentials
+    /// against, and no call site in this codebase invokes this method.
+    /// Kept for if that decision is revisited.
+    ///
     /// # Arguments
     ///
     /// * `role` - Database role for credential generation (e.g., "read-write", "read-only")
@@ -272,7 +278,7 @@ impl VaultClient {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use stellar_insights_backend::vault::{VaultClient, VaultConfig};
+    /// use payraider_backend::vault::{VaultClient, VaultConfig};
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -408,6 +414,8 @@ impl VaultClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path};
 
     #[test]
     fn lease_info_fields() {
@@ -442,5 +450,231 @@ mod tests {
         );
         let result = VaultClient::new(config).await;
         assert!(matches!(result, Err(VaultError::VaultUnavailable)));
+    }
+
+    #[tokio::test]
+    async fn read_secret_returns_error_when_secret_not_found() {
+        let mock_server = MockServer::start().await;
+        let config = VaultConfig::new(
+            mock_server.uri(),
+            "test-token".to_string(),
+            "stellar-app".to_string(),
+        );
+
+        // Mock 404 response for missing secret
+        Mock::given(method("GET"))
+            .and(path("/v1/data/app/secrets"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = VaultClient::new(config).await.unwrap();
+        let result = client.read_secret("app/secrets", None).await;
+
+        assert!(matches!(result, Err(VaultError::SecretNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn read_secret_returns_field_value() {
+        let mock_server = MockServer::start().await;
+        let config = VaultConfig::new(
+            mock_server.uri(),
+            "test-token".to_string(),
+            "stellar-app".to_string(),
+        );
+
+        let mock_response = serde_json::json!({
+            "request_id": "req-123",
+            "lease_id": "",
+            "lease_duration": 0,
+            "renewable": false,
+            "data": {
+                "data": {
+                    "api_key": "secret-key-123"
+                },
+                "metadata": {}
+            }
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/v1/data/app/secrets"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = VaultClient::new(config).await.unwrap();
+        let result = client.read_secret("app/secrets", Some("api_key")).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "secret-key-123");
+    }
+
+    #[tokio::test]
+    async fn read_secret_returns_first_field_when_no_field_specified() {
+        let mock_server = MockServer::start().await;
+        let config = VaultConfig::new(
+            mock_server.uri(),
+            "test-token".to_string(),
+            "stellar-app".to_string(),
+        );
+
+        let mock_response = serde_json::json!({
+            "request_id": "req-123",
+            "lease_id": "",
+            "lease_duration": 0,
+            "renewable": false,
+            "data": {
+                "data": {
+                    "api_key": "secret-key-123",
+                    "other_field": "other-value"
+                },
+                "metadata": {}
+            }
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/v1/data/app/secrets"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = VaultClient::new(config).await.unwrap();
+        let result = client.read_secret("app/secrets", None).await;
+
+        assert!(result.is_ok());
+        // Should return the first field value
+        let value = result.unwrap();
+        assert!(value == "secret-key-123" || value == "other-value");
+    }
+
+    #[tokio::test]
+    async fn renew_lease_fails_when_lease_not_found() {
+        let mock_server = MockServer::start().await;
+        let config = VaultConfig::new(
+            mock_server.uri(),
+            "test-token".to_string(),
+            "stellar-app".to_string(),
+        );
+
+        let mock_response = serde_json::json!({
+            "errors": ["lease not found"]
+        });
+
+        Mock::given(method("PUT"))
+            .and(path("/v1/sys/leases/renew"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(mock_response))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = VaultClient::new(config).await.unwrap();
+        let result = client.renew_lease("non-existent-lease").await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn revoke_lease_successfully_removes_from_cache() {
+        let mock_server = MockServer::start().await;
+        let config = VaultConfig::new(
+            mock_server.uri(),
+            "test-token".to_string(),
+            "stellar-app".to_string(),
+        );
+
+        Mock::given(method("PUT"))
+            .and(path("/v1/sys/leases/revoke"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = VaultClient::new(config).await.unwrap();
+
+        // Add a lease to the cache
+        {
+            let mut leases = client.lease_manager.write().await;
+            leases.insert(
+                "test-lease-123".to_string(),
+                LeaseInfo {
+                    lease_id: "test-lease-123".to_string(),
+                    lease_duration: 3600,
+                    renewable: true,
+                    created_at: std::time::Instant::now(),
+                },
+            );
+        }
+
+        let result = client.revoke_lease("test-lease-123").await;
+        assert!(result.is_ok());
+
+        // Verify lease was removed from cache
+        let leases = client.lease_manager.read().await;
+        assert!(!leases.contains_key("test-lease-123"));
+    }
+
+    #[tokio::test]
+    async fn health_check_returns_error_when_vault_unreachable() {
+        let config = VaultConfig::new(
+            "http://127.0.0.1:19998".to_string(), // nothing listening here
+            "s.fake".to_string(),
+            "stellar-app".to_string(),
+        );
+        let client = VaultClient::new(config).await.unwrap();
+
+        // Health check should fail
+        let result = client.health_check().await;
+        assert!(matches!(result, Err(VaultError::VaultUnavailable)));
+    }
+
+    #[test]
+    fn vault_error_display_all_variants() {
+        assert_eq!(
+            VaultError::ConfigError("test".to_string()).to_string(),
+            "Vault config error: test"
+        );
+        assert_eq!(
+            VaultError::ClientError("test".to_string()).to_string(),
+            "Vault client error: test"
+        );
+        assert_eq!(
+            VaultError::RequestError("test".to_string()).to_string(),
+            "Vault request error: test"
+        );
+        assert_eq!(
+            VaultError::ParseError("test".to_string()).to_string(),
+            "Vault parse error: test"
+        );
+        assert_eq!(
+            VaultError::VaultUnavailable.to_string(),
+            "Vault is unavailable"
+        );
+        assert_eq!(
+            VaultError::SecretNotFound("path".to_string()).to_string(),
+            "Secret not found: path"
+        );
+        assert_eq!(
+            VaultError::FieldNotFound("field".to_string()).to_string(),
+            "Field not found: field"
+        );
+        assert_eq!(
+            VaultError::NoDataInSecret.to_string(),
+            "No data in secret"
+        );
+        assert_eq!(
+            VaultError::CredentialsFailed("role".to_string()).to_string(),
+            "Failed to get credentials for role: role"
+        );
+        assert_eq!(
+            VaultError::LeaseRenewalFailed("lease".to_string()).to_string(),
+            "Failed to renew lease: lease"
+        );
+        assert_eq!(
+            VaultError::LeaseRevokeFailed("lease".to_string()).to_string(),
+            "Failed to revoke lease: lease"
+        );
     }
 }

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import withPWA from "@ducanh2912/next-pwa";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -26,33 +27,18 @@ const analyzer = withBundleAnalyzer({
 
 /**
  * Security headers applied to every route via next.config.ts.
- * The middleware (src/middleware.ts) also sets these at runtime so they are
- * present on both static and dynamic responses.
+ * The proxy (src/proxy.ts) also sets these at runtime so they are present on
+ * both static and dynamic responses.
  *
- * `upgrade-insecure-requests` is omitted here because next.config.ts headers
- * run in all environments; the middleware applies it in production only.
+ * Content-Security-Policy is set only by src/proxy.ts: page responses need a
+ * per-request nonce, and browsers enforce every CSP header they receive, so a
+ * second static policy here would only add confusion.
  */
 const securityHeaders = [
   {
     // HSTS: enforce HTTPS for 2 years across all subdomains and opt into preload list
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.stellar.org",
-      "font-src 'self'",
-      "connect-src 'self' wss: https: https://*.sentry.io https://soroban-testnet.stellar.org https://stellar.api.onfinality.io https://horizon-testnet.stellar.org https://horizon.stellar.org",
-      "frame-src 'none'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join("; "),
   },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -163,7 +149,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default analyzer(withNextIntl(withPWA({
+const finalConfig = analyzer(withNextIntl(withPWA({
   dest: "public",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
@@ -176,3 +162,13 @@ export default analyzer(withNextIntl(withPWA({
     disableDevLogs: true,
   },
 })(nextConfig)));
+
+export default withSentryConfig(finalConfig, {
+  org: process.env.SENTRY_ORG || "payraider",
+  project: process.env.SENTRY_PROJECT || "payraider-frontend",
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+});

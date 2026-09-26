@@ -29,8 +29,8 @@ export default function Layout({ children }) {
 Check `/public/manifest.json`:
 ```json
 {
-  "name": "Stellar Insights",
-  "short_name": "Stellar Insights",
+  "name": "PayRaider",
+  "short_name": "PayRaider",
   "description": "Real-time payment analytics",
   "start_url": "/",
   "display": "standalone",
@@ -172,7 +172,7 @@ import { ProgressiveWebApp } from '@/components/ProgressiveWebApp';
 
 test('shows installation prompt', () => {
   render(<ProgressiveWebApp showInstallPrompt={true} />);
-  expect(screen.getByText(/Install Stellar Insights/i)).toBeInTheDocument();
+  expect(screen.getByText(/Install PayRaider/i)).toBeInTheDocument();
 });
 ```
 

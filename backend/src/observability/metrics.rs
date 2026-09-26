@@ -25,7 +25,7 @@ lazy_static! {
             "HTTP request duration in seconds with p50/p95/p99 buckets"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ])
     )
     .expect("Failed to register http_request_duration_seconds histogram");
@@ -35,7 +35,7 @@ lazy_static! {
             "HTTP request duration in seconds per endpoint"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ]),
         &["method", "endpoint"]
     )
@@ -183,6 +183,19 @@ lazy_static! {
         &["result"]
     )
     .expect("Failed to register backup_verifications_total counter");
+    pub static ref AUTH_SECURITY_EVENTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "auth_security_events_total",
+            "Authentication security events (failures, lockouts, brute-force alerts) by endpoint"
+        ),
+        &["endpoint", "event"]
+    )
+    .expect("Failed to register auth_security_events_total counter");
+    pub static ref BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS: IntGauge = IntGauge::new(
+        "backup_last_success_timestamp_seconds",
+        "Unix time of the most recent backup that passed verification"
+    )
+    .expect("Failed to register backup_last_success_timestamp_seconds gauge");
     pub static ref BACKUP_SIZE_BYTES: IntGauge = IntGauge::new(
         "backup_size_bytes",
         "Size of the most recent backup in bytes"
@@ -271,6 +284,8 @@ pub fn init_metrics() {
         DB_QUERY_DURATION_BY_OPERATION,
         BACKUP_VERIFICATIONS_TOTAL,
         BACKUP_SIZE_BYTES,
+        BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS,
+        AUTH_SECURITY_EVENTS_TOTAL,
         STELLAR_LEDGER_LAG_SECONDS,
         STELLAR_TRANSACTION_SUCCESS_RATE,
         STELLAR_ANCHOR_HEALTH,
@@ -434,11 +449,18 @@ pub fn record_backup_verification_success() {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&["success"])
         .inc();
+    BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS.set(chrono::Utc::now().timestamp());
 }
 
 pub fn record_backup_verification_failure(reason: &str) {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&[reason])
+        .inc();
+}
+
+pub fn record_auth_security_event(endpoint: &str, event: &str) {
+    AUTH_SECURITY_EVENTS_TOTAL
+        .with_label_values(&[endpoint, event])
         .inc();
 }
 
@@ -501,6 +523,7 @@ pub fn check_slo_violation(endpoint: &str, duration_ms: f64) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use axum::{
@@ -556,6 +579,39 @@ mod tests {
 
         assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1);
         assert!(text.contains("http_requests_total"));
+    }
+
+    #[tokio::test]
+    async fn http_middleware_records_latency_histogram_and_slo() {
+        init_metrics();
+
+        let app = Router::new()
+            .route("/api/v1/corridors", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(http_metrics_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/corridors")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        check_slo_violation("/api/v1/corridors", 650.0);
+
+        let metrics_response = metrics_handler();
+        let body = to_bytes(metrics_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("http_request_duration_seconds"));
+        assert!(text.contains("http_request_duration_by_endpoint_seconds"));
+        assert!(text.contains("http_request_slo_violations_total"));
     }
 
     #[tokio::test]

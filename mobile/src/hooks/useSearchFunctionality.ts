@@ -1,5 +1,4 @@
 import React from 'react';
-import { Platform } from 'react-native';
 import { Corridor, Anchor, Asset } from '@app-types/index';
 
 export type SearchableItem = Corridor | Anchor | Asset | Record<string, any>;
@@ -168,7 +167,10 @@ export function useSearchFunctionality<T extends SearchableItem = SearchableItem
   items: T[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
+  const mergedConfig = React.useMemo(
+    () => ({ ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars }),
+    [config],
+  );
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -178,7 +180,7 @@ export function useSearchFunctionality<T extends SearchableItem = SearchableItem
   const [currentPage, setCurrentPage] = React.useState(0);
 
   // Debounce search
-  const debounceTimer = React.useRef<NodeJS.Timeout>();
+  const debounceTimer = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
   const performSearchOperation = React.useCallback(() => {
     if (query.length < mergedConfig.minChars) {
@@ -302,7 +304,10 @@ export function useAdvancedSearch<T extends SearchableItem = SearchableItem>(
   searchFields: (keyof T)[],
   config?: SearchConfig
 ): UseSearchFunctionalityResult<T> {
-  const mergedConfig = { ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars };
+  const mergedConfig = React.useMemo(
+    () => ({ ...DEFAULT_CONFIG, ...config, minChars: config?.minChars ?? DEFAULT_CONFIG.minChars }),
+    [config],
+  );
   const [query, setQueryState] = React.useState('');
   const [filters, setFilters] = React.useState<SearchFilter[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -311,7 +316,7 @@ export function useAdvancedSearch<T extends SearchableItem = SearchableItem>(
   const [allResults, setAllResults] = React.useState<SearchResult<T>[]>([]);
   const [currentPage, setCurrentPage] = React.useState(0);
 
-  const debounceTimer = React.useRef<NodeJS.Timeout>();
+  const debounceTimer = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
   const performSearchOperation = React.useCallback(() => {
     if (query.length < mergedConfig.minChars) {

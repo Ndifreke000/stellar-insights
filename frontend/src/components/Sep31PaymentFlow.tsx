@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   getSep31Anchors,
   getSep31Info,
@@ -211,15 +212,31 @@ export function Sep31PaymentFlow() {
     else setInfo(null);
   }, [resolvedTransferServer, loadInfo]);
 
+  // Anchor compliance fields are discovered at runtime from SEP-31 /info, so
+  // their shape can't be part of the static `sep31PaymentFlowSchema`. We build
+  // an equivalent Zod schema on the fly instead, so error messages stay
+  // consistent with the rest of the form's validation.
   const validateComplianceFields = (): boolean => {
-    const errors: Record<string, string> = {};
+    const shape: Record<string, z.ZodTypeAny> = {};
     for (const field of complianceFields) {
-      if (!field.optional && !complianceValues[field.name]?.trim()) {
-        errors[field.name] = `${field.name} is required`;
-      }
+      shape[field.name] = field.optional
+        ? z.string().optional()
+        : z.string().trim().min(1, `${field.name} is required`);
     }
-    setComplianceErrors(errors);
-    return Object.keys(errors).length === 0;
+
+    const result = z.object(shape).safeParse(complianceValues);
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path[0];
+        if (typeof key === "string") errors[key] = issue.message;
+      }
+      setComplianceErrors(errors);
+      return false;
+    }
+
+    setComplianceErrors({});
+    return true;
   };
 
   const handleSendPayment: SubmitHandler<Sep31PaymentFlowForm> = async (data) => {

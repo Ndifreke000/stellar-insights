@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   TrendingUp,
@@ -15,11 +15,10 @@ import {
   Home,
 } from "lucide-react";
 import {
-  getCorridorDetail,
   generateMockCorridorData,
-  CorridorDetailData,
   CorridorMetrics,
 } from "@/lib/api/corridors";
+import { useCorridorDetail, useRealtimeCacheSync } from "@/lib/react-query/queries";
 import { logger } from "@/lib/logger";
 import {
   SuccessRateChart,
@@ -39,10 +38,20 @@ export default function CorridorDetailPage() {
   const params = useParams();
   const corridorPair = params.pair as string;
 
-  const [data, setData] = useState<CorridorDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const cacheSync = useRealtimeCacheSync();
+
+  const detailQuery = useCorridorDetail(corridorPair);
+  // Fall back to demo data when the backend is unreachable.
+  const data = useMemo(
+    () =>
+      detailQuery.data ??
+      (detailQuery.isError && corridorPair
+        ? generateMockCorridorData(corridorPair)
+        : null),
+    [detailQuery.data, detailQuery.isError, corridorPair],
+  );
+  const loading = detailQuery.isPending && !detailQuery.isError;
 
   const {
     isConnected,
@@ -57,23 +66,8 @@ export default function CorridorDetailPage() {
     onCorridorUpdate: (update) => {
       logger.debug("Received real-time corridor update:", update as unknown as Record<string, unknown>);
       setLastUpdate(new Date());
-
-      setData((prevData) => {
-        if (!prevData || update.corridor_key !== corridorPair) return prevData;
-
-        const updatedData = { ...prevData };
-        updatedData.corridor = {
-          ...updatedData.corridor,
-          success_rate:
-            update.success_rate || updatedData.corridor.success_rate,
-          health_score:
-            update.health_score || updatedData.corridor.health_score,
-          last_updated:
-            update.last_updated || updatedData.corridor.last_updated,
-        };
-
-        return updatedData;
-      });
+      // Patches the cached corridor so every view of it updates together.
+      cacheSync.onCorridorUpdate(update);
     },
     onHealthAlert: (alert) => {
       logger.debug("Health alert for corridor:", alert as unknown as Record<string, unknown>);
@@ -82,31 +76,6 @@ export default function CorridorDetailPage() {
       logger.debug("New payment in corridor:", payment as unknown as Record<string, unknown>);
     },
   });
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        try {
-          const result = await getCorridorDetail(corridorPair);
-          setData(result);
-        } catch {
-          logger.debug("API not available, using mock data");
-          const mockData = generateMockCorridorData(corridorPair);
-          setData(mockData);
-        }
-      } catch (err) {
-        setError("Failed to load corridor data");
-        logger.error(err as string);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (corridorPair) {
-      fetchData();
-    }
-  }, [corridorPair]);
 
   if (loading) {
     return (
@@ -137,14 +106,14 @@ export default function CorridorDetailPage() {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <MainLayout>
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           <BackButton fallbackHref="/corridors" label="Back to Corridors" className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6 group" />
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-lg p-6 text-red-800 dark:text-red-300">
             <AlertCircle className="w-6 h-6 inline mr-2" />
-            {error || "Failed to load corridor data"}
+            Failed to load corridor data
           </div>
         </div>
       </MainLayout>

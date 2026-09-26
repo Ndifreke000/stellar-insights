@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 /**
- * Automated accessibility scan (stellar-insights#1871).
+ * Automated accessibility scan (payraider#1871).
  *
  * Static jsdom-rendered component tests (frontend/src/components/__tests__/accessibility.a11y.test.tsx)
  * and ESLint's jsx-a11y plugin only catch a fraction of real accessibility issues — they never

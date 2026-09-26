@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Translation completeness audit (stellar-insights#1872).
+ * Translation completeness audit (payraider#1872).
  *
  * Enumerates every supported locale from src/i18n/routing.ts, flattens each
  * locale's messages/<locale>.json into dot-separated keys, and diffs every

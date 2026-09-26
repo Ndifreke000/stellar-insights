@@ -7,6 +7,7 @@
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
+    middleware,
     routing::get,
     Router,
 };
@@ -15,17 +16,18 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-use stellar_insights_backend::api::anchors::get_anchors;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::handlers::{health_check, pool_metrics};
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::price_feed::{
+use payraider_backend::api::{anchors::get_anchors, webhooks};
+use payraider_backend::auth_middleware::AuthUser;
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::database::Database;
+use payraider_backend::handlers::{health_check, pool_metrics};
+use payraider_backend::ingestion::DataIngestionService;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::websocket::WsState;
+use payraider_backend::state::AppState;
+use payraider_backend::websocket::WsState;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -241,6 +243,39 @@ async fn test_list_anchors_zero_limit_param() {
         "unexpected status: {}",
         resp.status()
     );
+}
+
+#[tokio::test]
+async fn test_webhook_routes_mount_at_api_v1_webhooks() {
+    let db = setup_db().await;
+    let app = Router::new()
+        .nest(
+            "/api/v1/webhooks",
+            webhooks::routes(db.pool().clone()),
+        )
+        .layer(middleware::from_fn(
+            |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+                req.extensions_mut().insert(AuthUser {
+                    user_id: "test-user".to_string(),
+                    username: "tester".to_string(),
+                    session_id: None,
+                    is_admin: false,
+                });
+                Ok::<_, axum::response::Response>(next.run(req).await)
+            },
+        ));
+
+    let resolved = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/webhooks")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resolved.status(), StatusCode::UNAUTHORIZED, "expected auth middleware to reject the unauthenticated request to a protected webhook route");
 }
 
 // ── GET /api/pool-metrics ─────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
-# Stellar Insights Testnet SLOs and Alerting Thresholds
+# PayRaider Testnet SLOs and Alerting Thresholds
 
-This document defines Service Level Objectives (SLOs) for the Stellar Insights testnet environment and the alert thresholds that trigger operational notifications. These thresholds were chosen to balance responsiveness (catching real issues quickly) with noise reduction (avoiding alert fatigue).
+This document defines Service Level Objectives (SLOs) for the PayRaider testnet environment and the alert thresholds that trigger operational notifications. These thresholds were chosen to balance responsiveness (catching real issues quickly) with noise reduction (avoiding alert fatigue).
 
 ## Overview
 
@@ -154,7 +154,7 @@ Add the following alert rules to your Prometheus configuration (`prometheus.yml`
 
 ```yaml
 groups:
-  - name: stellar_insights_testnet
+  - name: payraider_testnet
     interval: 30s
     rules:
       # Tier 1: Critical Infrastructure
@@ -375,7 +375,7 @@ receivers:
   # Default: dev channel
   - name: default
     slack_configs:
-      - channel: '#stellar-insights-alerts'
+      - channel: '#payraider-alerts'
         title: '{{ .GroupLabels.alertname }}'
         text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
 
@@ -388,24 +388,24 @@ receivers:
   # Warnings: Slack dev channel
   - name: slack_dev
     slack_configs:
-      - channel: '#stellar-insights-dev'
+      - channel: '#payraider-dev'
         title: '[WARNING] {{ .GroupLabels.alertname }}'
         text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
 ```
 
 ### Slack Channel Setup
 
-**#stellar-insights-alerts** (critical incidents only)
+**#payraider-alerts** (critical incidents only)
 - Subscribers: On-call engineer, engineering manager, platform team lead
 - Notification: @here for SEV-1 alerts
 - SLA for response: 5 minutes
 
-**#stellar-insights-dev** (warnings and informational)
+**#payraider-dev** (warnings and informational)
 - Subscribers: Dev team
 - Notification: No escalation; developers check channel during work hours
 - SLA for response: Best effort (not a paging alert)
 
-**#stellar-insights-monitoring** (all metrics and observability)
+**#payraider-monitoring** (all metrics and observability)
 - Subscribers: SRE/devops team, optional for interested developers
 - Purpose: Audit log of all metric changes; not actionable
 - Retention: 90 days
@@ -416,7 +416,7 @@ receivers:
 
 To monitor these SLOs in real time, create a Grafana dashboard with the following panels:
 
-### Dashboard: Stellar Insights Testnet SLOs
+### Dashboard: PayRaider Testnet SLOs
 
 **Row 1: Tier 1 - Critical Infrastructure**
 - Panel: Health endpoint availability (% of successful requests, target: 99.9%)
@@ -576,7 +576,7 @@ Before deploying to testnet, verify:
 
 ## 8. Related Documentation
 
-- **Monitoring Stack Audit:** [Issue #1881](https://github.com/Ndifreke000/stellar-insights/issues/1881) — documents Prometheus/Jaeger/ELK setup
+- **Monitoring Stack Audit:** [Issue #1881](https://github.com/Ndifreke000/payraider/issues/1881) — documents Prometheus/Jaeger/ELK setup
 - **Incident Response Runbook:** `docs/runbooks/mainnet-incident-response.md`
 - **Prometheus Metrics Reference:** `docs/prometheus-metrics.md`
 - **Backend Observability:** `backend/src/observability/`

@@ -1,6 +1,6 @@
 # Gas Costs
 
-Gas cost benchmarks for Stellar Insights Soroban contracts, measured with [Criterion](https://bheisler.github.io/criterion.rs/book/).
+Gas cost benchmarks for PayRaider Soroban contracts, measured with [Criterion](https://bheisler.github.io/criterion.rs/book/).
 
 ## Running benchmarks
 
@@ -37,13 +37,13 @@ open contracts/target/criterion/report/index.html
 | `governance::multi_vote/N` | N votes on one proposal (N = 5, 10, 25, 50) |
 | `governance::get_proposal` | Point read of a stored proposal |
 
-### Stellar Insights contract
+### PayRaider contract
 
 | Benchmark | What it measures |
 |---|---|
-| `stellar_insights::submit_snapshot` | Snapshot write |
-| `stellar_insights::get_snapshot` | Point read from a 100-snapshot store |
-| `stellar_insights::latest_snapshot` | Read the latest-epoch pointer |
+| `payraider::submit_snapshot` | Snapshot write |
+| `payraider::get_snapshot` | Point read from a 100-snapshot store |
+| `payraider::latest_snapshot` | Read the latest-epoch pointer |
 
 ## Baseline
 

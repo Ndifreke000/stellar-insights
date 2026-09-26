@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
-# Security Update Script for Stellar Insights Frontend
+# Security Update Script for PayRaider Frontend
 # This script updates vulnerable dependencies and verifies the fixes
 
-Write-Host "🔒 Stellar Insights - Security Update Script" -ForegroundColor Cyan
+Write-Host "🔒 PayRaider - Security Update Script" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
 

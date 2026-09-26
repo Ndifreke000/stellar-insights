@@ -4,8 +4,9 @@
 //! verification status, and on-chain audit trails.
 
 use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
+use crate::pagination::{PaginatedResponse, PaginationParams};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::get,
@@ -17,6 +18,7 @@ use tracing::{error, info};
 
 /// Response for verification summary endpoint
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct VerificationSummaryResponse {
     #[serde(rename = "latestEpoch")]
     pub latest_epoch: Option<u64>,
@@ -36,6 +38,8 @@ pub struct VerificationSummaryResponse {
 #[derive(Debug, Deserialize)]
 pub struct EventListQuery {
     pub limit: Option<i64>,
+    pub cursor: Option<String>,
+    /// Deprecated: prefer `cursor`.
     pub offset: Option<i64>,
     pub event_type: Option<String>,
     pub verification_status: Option<String>,
@@ -88,30 +92,45 @@ pub async fn get_verification_summary(
     get,
     path = "/api/analytics/contract-events",
     params(
-        ("limit" = Option<i64>, Query, description = "Maximum number of events to return"),
-        ("offset" = Option<i64>, Query, description = "Number of events to skip"),
+        ("limit" = Option<i64>, Query, description = "Maximum number of events to return (default 50, max 200)"),
+        ("cursor" = Option<String>, Query, description = "Opaque cursor from `pagination.next_cursor` / `prev_cursor`"),
+        ("offset" = Option<i64>, Query, description = "Deprecated: number of events to skip. Prefer `cursor`"),
         ("event_type" = Option<String>, Query, description = "Filter by event type"),
         ("verification_status" = Option<String>, Query, description = "Filter by verification status"),
         ("contract_ids" = Option<Vec<String>>, Query, description = "Filter by one or more contract IDs (repeated query param)")
     ),
     responses(
-        (status = 200, description = "List of contract events", body = Vec<crate::services::event_indexer::IndexedEvent>),
+        (status = 200, description = "Paginated list of contract events (`PaginatedResponse<IndexedEvent>`; `total` is null)"),
+        (status = 400, description = "Invalid pagination cursor"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Contract Events"
 )]
 pub async fn list_contract_events(
     State(event_indexer): State<Arc<EventIndexer>>,
+    OriginalUri(uri): OriginalUri,
     Query(params): Query<EventListQuery>,
-) -> Result<Json<Vec<crate::services::event_indexer::IndexedEvent>>, (StatusCode, String)> {
+) -> Result<
+    Json<PaginatedResponse<crate::services::event_indexer::IndexedEvent>>,
+    (StatusCode, String),
+> {
     info!("Listing contract events with params: {:?}", params);
+
+    let page = PaginationParams {
+        limit: params.limit,
+        cursor: params.cursor,
+        offset: params.offset,
+    }
+    .resolve(50, 200)
+    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let query = EventQuery {
         event_type: params.event_type,
         verification_status: params.verification_status,
         contract_ids: params.contract_ids.unwrap_or_default(),
-        limit: params.limit.or(Some(50)),
-        offset: params.offset,
+        // Fetch one extra row to learn whether a next page exists without a COUNT(*).
+        limit: Some(page.limit + 1),
+        offset: Some(page.offset),
         order_by: Some(EventOrderBy::CreatedAtDesc),
         ..Default::default()
     };
@@ -124,7 +143,7 @@ pub async fn list_contract_events(
         )
     })?;
 
-    Ok(Json(events))
+    Ok(Json(PaginatedResponse::from_probe(events, page).with_links(&uri)))
 }
 
 /// Handler for GET /api/analytics/contract-events/:id

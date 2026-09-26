@@ -16,6 +16,7 @@
 //! - **Idempotency**: events are inserted with `INSERT OR REPLACE` so re-running
 //!   a range is safe.
 
+use crate::observability::job_metrics::JobMetricsCollector;
 use crate::rpc::StellarRpcClient;
 use crate::services::event_indexer::{EventIndexer, IndexedEvent};
 use anyhow::{Context, Result};
@@ -213,6 +214,7 @@ impl BackfillJob {
         let delay_ms = req.delay_ms.unwrap_or(DEFAULT_BACKFILL_DELAY_MS);
 
         tokio::spawn(async move {
+            let metrics = JobMetricsCollector::new("event-backfill");
             let result = run_backfill(indexer, rpc, state_ref.clone(), req, gaps, delay_ms).await;
 
             let mut state = state_ref.write().await;
@@ -225,11 +227,13 @@ impl BackfillJob {
                         ledgers = state.ledgers_processed,
                         "Backfill completed"
                     );
+                    metrics.complete_success();
                 }
                 Err(e) => {
                     state.status = BackfillStatus::Failed;
                     state.error = Some(e.to_string());
                     error!(error = %e, "Backfill failed");
+                    metrics.complete_failure(&e.to_string());
                 }
             }
         });
@@ -276,7 +280,6 @@ async fn run_backfill(
 
         let mut events_buffer = Vec::new();
         let mut chunk_ledgers = 0;
-        let mut uncommitted_events = 0;
 
         loop {
             // Fetch a page of ledgers
@@ -301,7 +304,6 @@ async fn run_backfill(
                 // Build synthetic events from ledger metadata.
                 let events = extract_events_from_ledger(ledger, req.contract_id.as_deref());
                 page_events += events.len() as u64;
-                uncommitted_events += events.len() as u64;
                 events_buffer.extend(events);
                 chunk_ledgers += 1;
 
@@ -311,7 +313,6 @@ async fn run_backfill(
                         return Err(e);
                     }
                     chunk_ledgers = 0;
-                    uncommitted_events = 0;
                 }
 
                 // Update progress
@@ -344,10 +345,10 @@ async fn run_backfill(
             }
         }
 
-        // Commit any remaining events in the buffer for this gap
+        // Commit any remaining events in the buffer for this gap.
+        // `current` has already been advanced past the last processed ledger,
+        // so use the state's `current_ledger` as the checkpoint target.
         if !events_buffer.is_empty() {
-            let last_ledger = current - 1; // It was updated before the break, wait, `current` is the next ledger to fetch, but the last processed is what we should checkpoint.
-            // Better to use the last processed ledger from state
             let current_ledger = state_ref.read().await.current_ledger;
             if let Err(e) = indexer.index_events_with_checkpoint(std::mem::take(&mut events_buffer), current_ledger).await {
                 warn!(ledger = current_ledger, error = %e, "Failed to index remaining event chunk — aborting");
@@ -415,7 +416,7 @@ mod tests {
             contract_id: None,
             delay_ms: Some(100),
         };
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req).expect("BackfillRequest should serialize");
         assert!(json.contains("from_ledger"));
         assert!(json.contains("1000"));
     }
@@ -426,15 +427,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
@@ -451,7 +454,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must be <="));
+        assert!(result
+            .expect_err("start should reject an inverted range")
+            .to_string()
+            .contains("must be <="));
     }
 
     #[tokio::test]
@@ -460,15 +466,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
@@ -485,7 +493,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
+        assert!(result
+            .expect_err("start should reject an oversized range")
+            .to_string()
+            .contains("exceeds maximum"));
     }
 
     #[tokio::test]
@@ -494,15 +505,17 @@ mod tests {
         use crate::database::Database;
         use crate::db::schema::Schema;
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events table creation should succeed");
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .expect("contract_events indexes creation should succeed");
         let db = Arc::new(Database::new(pool));
         let indexer = Arc::new(EventIndexer::new(db));
         let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));

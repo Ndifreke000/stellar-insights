@@ -36,7 +36,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 dev.db
-stellar_insights.db
+payraider.db
 
 # Environment files - NEVER commit!
 .env
@@ -70,6 +70,7 @@ logs/
 # ============================================
 coverage/
 .nyc_output/
+backup-verification/
 
 # ============================================
 # Build artifacts
@@ -100,6 +101,7 @@ mobile/android/app/build/
 requirements.md
 AGENTS.md
 somzilla.md
+pr-*.md
 
 # ============================================
 # Local AI / editor tooling — NEVER commit!
@@ -112,4 +114,5 @@ somzilla.md
 .cursor/
 .aider/
 .cline/
-.continue/
+.continue/# PR templates - NEVER commit
+.github/PR_*.md

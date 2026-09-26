@@ -1,6 +1,6 @@
 use serde_json::json;
 use std::sync::Arc;
-use stellar_insights_backend::websocket::{WsMessage, WsState};
+use payraider_backend::websocket::{WsMessage, WsState};
 
 #[tokio::test]
 async fn test_websocket_subscription_flow() {
@@ -102,7 +102,7 @@ async fn test_new_payment_message_serialization() {
 
 #[tokio::test]
 async fn test_websocket_rate_limit_enforcement() {
-    use stellar_insights_backend::websocket::WsState;
+    use payraider_backend::websocket::WsState;
 
     let state = WsState::new();
     // Unique key avoids any cross-test collision if the map were ever shared.
@@ -126,7 +126,7 @@ async fn test_websocket_rate_limit_enforcement() {
 
 #[tokio::test]
 async fn test_websocket_connection_limit_boundary() {
-    use stellar_insights_backend::websocket::{WsMessage, WsState};
+    use payraider_backend::websocket::{WsMessage, WsState};
 
     let state = std::sync::Arc::new(WsState::new());
 

@@ -19,10 +19,6 @@ export function ConsentManager({ onClose }: ConsentManagerProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadConsents();
-  }, []);
-
   const loadConsents = async () => {
     try {
       setLoading(true);
@@ -35,6 +31,10 @@ export function ConsentManager({ onClose }: ConsentManagerProps) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadConsents();
+  }, []);
 
   const handleConsentChange = (consentType: string, consentGiven: boolean) => {
     setConsents((prev) =>

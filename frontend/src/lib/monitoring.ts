@@ -1,6 +1,7 @@
 /**
  * Frontend Monitoring Utility
- * Handles tracking of performance metrics and application errors.
+ * Handles tracking of performance metrics (Web Vitals, page loads, API latency)
+ * and application errors, and ships them to the backend RUM endpoint.
  */
 import { logger } from "@/lib/logger";
 
@@ -21,6 +22,28 @@ export interface AppError {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Performance budgets (Core Web Vitals "good" thresholds). Values in ms, CLS unitless.
+ * Kept in sync with the backend budgets in `observability/frontend_metrics.rs`.
+ */
+export const PERFORMANCE_BUDGETS: Record<string, number> = {
+  "web-vitals-lcp": 2500,
+  "web-vitals-fid": 100,
+  "web-vitals-inp": 200,
+  "web-vitals-cls": 0.1,
+  "web-vitals-fcp": 1800,
+  "web-vitals-ttfb": 800,
+  "page-load-time": 3000,
+  "api-response-time": 1000,
+  "api-latency": 1000,
+};
+
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+).replace(/\/api\/?$/, "");
+/** Backend RUM summary endpoint (GET), read by the internal monitoring dashboard. */
+export const FRONTEND_METRICS_ENDPOINT = `${API_BASE_URL}/api/metrics/frontend`;
+
 class Monitoring {
   private static instance: Monitoring;
   private metricsBuffer: Metric[] = [];
@@ -32,6 +55,11 @@ class Monitoring {
     if (typeof window !== "undefined") {
       // Automatic flushing
       setInterval(() => this.flush(), this.FLUSH_INTERVAL);
+      // Flush remaining data when the page is hidden/unloaded
+      window.addEventListener("pagehide", () => this.flush());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") this.flush();
+      });
     }
   }
 
@@ -59,10 +87,35 @@ class Monitoring {
     };
 
     logger.debug(`[Monitoring] Metric: ${name} = ${value}`, metadata);
+    this.checkBudget(metric);
     this.metricsBuffer.push(metric);
 
     if (this.metricsBuffer.length >= this.MAX_BUFFER_SIZE) {
       this.flush();
+    }
+  }
+
+  /**
+   * Track the latency of an API call
+   */
+  public trackApiCall(
+    endpoint: string,
+    method: string,
+    status: number,
+    durationMs: number,
+  ) {
+    // Strip query strings and IDs to keep the endpoint label low-cardinality
+    const normalized = endpoint
+      .split("?")[0]
+      .replace(/^https?:\/\/[^/]+/, "")
+      .replace(/\/[0-9a-f-]{16,}|\/G[A-Z2-7]{55}|\/\d+/g, "/:id");
+    this.trackMetric("api-response-time", durationMs, {
+      endpoint: normalized,
+      method: method.toUpperCase(),
+      status,
+    });
+    if (status === 0 || status >= 500) {
+      this.trackMetric("api-error", 1, { endpoint: normalized, status });
     }
   }
 
@@ -98,10 +151,27 @@ class Monitoring {
   }
 
   /**
-   * Flush buffers to the backend
+   * Warn when a metric exceeds its performance budget
+   */
+  private checkBudget(metric: Metric) {
+    const budget = PERFORMANCE_BUDGETS[metric.name];
+    if (budget !== undefined && metric.value > budget) {
+      logger.warn(
+        `[Monitoring] Performance budget exceeded: ${metric.name} = ${metric.value.toFixed(2)} (budget ${budget}) on ${metric.path}`,
+        metric.metadata,
+      );
+    }
+  }
+
+  /**
+   * Flush buffers to the backend RUM endpoint.
+   * `keepalive` lets the request outlive the page when flushing on unload.
    */
   private async flush() {
     if (this.metricsBuffer.length === 0 && this.errorsBuffer.length === 0) {
+      return;
+    }
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -111,15 +181,54 @@ class Monitoring {
     this.metricsBuffer = [];
     this.errorsBuffer = [];
 
+    const body = JSON.stringify({
+      metrics: metricsToFlush,
+      errors: errorsToFlush.map(({ message, path, metadata }) => ({
+        message,
+        path,
+        metadata,
+      })),
+    });
+
+    this.persistLocally(metricsToFlush, errorsToFlush);
+
     try {
+      // Same-origin Next.js route proxies to the backend (avoids CORS)
       await fetch("/api/metrics/frontend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metrics: metricsToFlush, errors: errorsToFlush }),
+        body,
         keepalive: true,
       });
     } catch (e) {
-      logger.error("[Monitoring] Failed to flush metrics", e);
+      logger.debug("[Monitoring] Failed to send metrics to backend", {
+        error: String(e),
+      });
+    }
+  }
+
+  /**
+   * Keep a small local history for offline debugging
+   */
+  private persistLocally(metrics: Metric[], errors: AppError[]) {
+    try {
+      const storedMetrics = JSON.parse(
+        localStorage.getItem("mon_metrics") || "[]",
+      );
+      const storedErrors = JSON.parse(
+        localStorage.getItem("mon_errors") || "[]",
+      );
+
+      localStorage.setItem(
+        "mon_metrics",
+        JSON.stringify([...storedMetrics, ...metrics].slice(-100)),
+      );
+      localStorage.setItem(
+        "mon_errors",
+        JSON.stringify([...storedErrors, ...errors].slice(-100)),
+      );
+    } catch {
+      // Storage unavailable (private mode, quota) — ignore
     }
   }
 

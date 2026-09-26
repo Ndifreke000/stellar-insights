@@ -200,6 +200,20 @@ pub fn validate_stellar_address(address: &str) -> ApiResult<()> {
     Ok(())
 }
 
+/// Validates a Stellar issuer address (same rules as validate_stellar_address
+/// but with a distinct error message for the issuer field).
+pub fn validate_issuer(issuer: &str) -> ApiResult<()> {
+    if issuer == "native" {
+        return Ok(());
+    }
+    validate_stellar_address(issuer).map_err(|_| {
+        ApiError::bad_request(
+            "INVALID_ISSUER",
+            "Issuer must be a valid Stellar public key (G followed by 55 base32 characters) or 'native'",
+        )
+    })
+}
+
 /// Validates asset code format (1-12 alphanumeric characters)
 pub fn validate_asset_code(code: &str) -> ApiResult<()> {
     if code.is_empty() || code.len() > 12 {
@@ -208,10 +222,10 @@ pub fn validate_asset_code(code: &str) -> ApiResult<()> {
             format!("Asset code must be 1-12 characters (got {})", code.len()),
         ));
     }
-    if !code.chars().all(|c| c.is_ascii_alphanumeric()) {
+    if !code.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
         return Err(ApiError::bad_request(
             "INVALID_ASSET_CODE",
-            "Asset code must contain only alphanumeric characters",
+            "Asset code must contain only uppercase alphanumeric characters (A-Z, 0-9)",
         ));
     }
     Ok(())
@@ -430,6 +444,20 @@ mod tests {
         assert!(validate_asset_code("").is_err()); // Empty
         assert!(validate_asset_code("ABCDEFGHIJKLM").is_err()); // 13 chars
         assert!(validate_asset_code("USD$").is_err()); // Special char
+        assert!(validate_asset_code("usdc").is_err()); // Lowercase not allowed
+        assert!(validate_asset_code("Usdc").is_err()); // Mixed case not allowed
+    }
+
+    #[test]
+    fn test_validate_issuer() {
+        assert!(validate_issuer("native").is_ok());
+        assert!(validate_issuer(
+            "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+        )
+        .is_ok());
+        assert!(validate_issuer("ABCD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5").is_err());
+        assert!(validate_issuer("short").is_err());
+        assert!(validate_issuer("").is_err());
     }
 
     #[test]

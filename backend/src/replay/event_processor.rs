@@ -12,7 +12,7 @@ use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use super::ContractEvent;
-use crate::replay::{LedgerProtocolVersion, PROTOCOL_V20};
+use crate::replay::LedgerProtocolVersion;
 
 /// Context provided to event processors
 #[derive(Debug, Clone)]

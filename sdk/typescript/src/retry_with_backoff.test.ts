@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { RetryWithBackoff, SDKError, StellarInsightsError } from "../src/index.js";
+import { RetryWithBackoff, SDKError, PayRaiderError } from "../src/index.js";
 
 describe("RetryWithBackoff", () => {
   let retry: RetryWithBackoff;
@@ -33,8 +33,8 @@ describe("RetryWithBackoff", () => {
   it("retries on retryable errors and eventually succeeds", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(new StellarInsightsError(503, "UNAVAILABLE", "Service unavailable"))
-      .mockRejectedValueOnce(new StellarInsightsError(502, "BAD_GATEWAY", "Bad gateway"))
+      .mockRejectedValueOnce(new PayRaiderError(503, "UNAVAILABLE", "Service unavailable"))
+      .mockRejectedValueOnce(new PayRaiderError(502, "BAD_GATEWAY", "Bad gateway"))
       .mockResolvedValue("success");
 
     const resultPromise = retry.execute({ operation, maxRetries: 3, initialDelayMs: 100 });
@@ -52,7 +52,7 @@ describe("RetryWithBackoff", () => {
   it("does not retry non-retryable 4xx errors", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValue(new StellarInsightsError(404, "NOT_FOUND", "Not found"));
+      .mockRejectedValue(new PayRaiderError(404, "NOT_FOUND", "Not found"));
 
     await expect(retry.execute({ operation })).rejects.toBeInstanceOf(SDKError);
     expect(operation).toHaveBeenCalledTimes(1);
@@ -61,7 +61,7 @@ describe("RetryWithBackoff", () => {
   it("retries on 429 rate limit errors", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(new StellarInsightsError(429, "RATE_LIMITED", "Too many requests"))
+      .mockRejectedValueOnce(new PayRaiderError(429, "RATE_LIMITED", "Too many requests"))
       .mockResolvedValue("ok");
 
     const resultPromise = retry.execute({ operation, initialDelayMs: 50 });
@@ -90,7 +90,7 @@ describe("RetryWithBackoff", () => {
   it("throws SDKError after exhausting max retries", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValue(new StellarInsightsError(500, "SERVER_ERROR", "Server error"));
+      .mockRejectedValue(new PayRaiderError(500, "SERVER_ERROR", "Server error"));
 
     const resultPromise = retry.execute({ operation, maxRetries: 2, initialDelayMs: 10 });
     const expectation = expect(resultPromise).rejects.toBeInstanceOf(SDKError);
@@ -142,11 +142,11 @@ describe("RetryWithBackoff", () => {
   it("isRetryableError identifies retryable HTTP statuses", () => {
     expect(
       RetryWithBackoff.isRetryableError(
-        new StellarInsightsError(503, "UNAVAILABLE", "Unavailable"),
+        new PayRaiderError(503, "UNAVAILABLE", "Unavailable"),
       ),
     ).toBe(true);
     expect(
-      RetryWithBackoff.isRetryableError(new StellarInsightsError(404, "NOT_FOUND", "Missing")),
+      RetryWithBackoff.isRetryableError(new PayRaiderError(404, "NOT_FOUND", "Missing")),
     ).toBe(false);
     expect(RetryWithBackoff.isRetryableError(new TypeError("network"))).toBe(true);
   });
@@ -156,7 +156,7 @@ describe("RetryWithBackoff", () => {
   it("tracks retry metrics", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(new StellarInsightsError(500, "ERR", "fail"))
+      .mockRejectedValueOnce(new PayRaiderError(500, "ERR", "fail"))
       .mockResolvedValue("done");
 
     const resultPromise = retry.execute({ operation, initialDelayMs: 10 });

@@ -34,4 +34,8 @@ pub enum Error {
     QuorumNotMet = 14,
     /// Arithmetic overflow in vote weight calculation
     Overflow = 15,
+    /// Contract is paused (emergency stop) - integrates with #2141
+    ContractPaused = 16,
+    /// Governance token not configured
+    VotingTokenNotSet = 17,
 }

@@ -2,10 +2,11 @@ use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::helpers::cached_query;
-use crate::cache::{keys, CacheManager};
+use crate::cache::keys;
 use crate::state::AppState;
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct NetworkVolumeDataPoint {
     pub time: String,
     pub volume: f64,
@@ -14,6 +15,7 @@ pub struct NetworkVolumeDataPoint {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct CorridorPerformanceMetric {
     pub corridor: String,
     pub success_rate: f64,
@@ -22,6 +24,7 @@ pub struct CorridorPerformanceMetric {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct NetworkStats {
     pub volume_24h: f64,
     pub volume_growth: f64,
@@ -32,6 +35,7 @@ pub struct NetworkStats {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(utoipa::ToSchema)]
 pub struct AnalyticsDashboardData {
     pub stats: NetworkStats,
     pub time_series_data: Vec<NetworkVolumeDataPoint>,

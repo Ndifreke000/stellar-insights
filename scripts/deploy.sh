@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Blue-green deployment script for stellar-insights backend
+# Blue-green deployment script for payraider backend
 # Usage: ./scripts/deploy.sh <environment> <image-tag>
 
 AWS_REGION="us-east-1"
-ECR_REPOSITORY="stellar-insights-backend"
-CONTAINER_NAME="stellar-insights"
+ECR_REPOSITORY="payraider-backend"
+CONTAINER_NAME="payraider"
 CONTAINER_PORT=8080
 
 usage() {
@@ -32,10 +32,10 @@ if [[ "$ENVIRONMENT" != "staging" && "$ENVIRONMENT" != "production" ]]; then
     exit 1
 fi
 
-CLUSTER="stellar-insights-${ENVIRONMENT}"
-TASK_FAMILY="stellar-insights-${ENVIRONMENT}"
-CODEDEPLOY_APP="stellar-insights-${ENVIRONMENT}"
-CODEDEPLOY_GROUP="stellar-insights-${ENVIRONMENT}-dg"
+CLUSTER="payraider-${ENVIRONMENT}"
+TASK_FAMILY="payraider-${ENVIRONMENT}"
+CODEDEPLOY_APP="payraider-${ENVIRONMENT}"
+CODEDEPLOY_GROUP="payraider-${ENVIRONMENT}-dg"
 
 # Get AWS account ID
 ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)

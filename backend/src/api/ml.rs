@@ -18,6 +18,7 @@ fn default_timestamp() -> DateTime<Utc> {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f32,
     pub confidence: f32,
@@ -81,6 +82,7 @@ pub async fn predict_payment_success(
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ModelStatusResponse {
     pub version: String,
     pub last_trained: String,

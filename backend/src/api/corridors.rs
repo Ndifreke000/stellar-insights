@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Extension, OriginalUri, Path, Query, State},
     http::HeaderMap,
     response::Response,
     Json,
@@ -19,7 +19,7 @@ use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::models::corridor::Corridor;
 use crate::models::{CreateCorridorRequest, SortBy};
-use crate::pagination::PaginatedResponse;
+use crate::pagination::{Page, PaginatedResponse, PaginationParams};
 use crate::request_id::RequestId;
 use crate::rpc::{
     circuit_breaker::rpc_circuit_breaker,
@@ -211,15 +211,15 @@ pub struct CorridorDetailResponse {
 #[serde(default)]
 #[into_params(parameter_in = Query)]
 pub struct ListCorridorsQuery {
-    /// Maximum number of results to return (default: 50)
-    #[serde(default = "default_limit")]
+    /// Maximum number of results to return (default: 50, max: 200)
     #[param(example = 50)]
-    pub limit: i64,
-    /// Pagination offset (default: 0)
-    #[serde(default)]
+    pub limit: Option<i64>,
+    /// Opaque cursor from `pagination.next_cursor` / `prev_cursor`
+    pub cursor: Option<String>,
+    /// Deprecated: pagination offset. Prefer `cursor`.
     #[param(example = 0)]
-    pub offset: i64,
-    /// Sort by field (`success_rate` or volume)
+    pub offset: Option<i64>,
+    /// Sort by field (`success_rate`, `volume`/`liquidity`, or `health_score`)
     #[serde(default)]
     pub sort_by: SortBy,
     /// Minimum success rate filter
@@ -242,8 +242,18 @@ pub struct ListCorridorsQuery {
     pub time_period: Option<String>,
 }
 
-const fn default_limit() -> i64 {
-    50
+const DEFAULT_LIMIT: i64 = 50;
+const MAX_LIMIT: i64 = 200;
+
+impl ListCorridorsQuery {
+    fn page(&self) -> ApiResult<Page> {
+        PaginationParams {
+            limit: self.limit,
+            cursor: self.cursor.clone(),
+            offset: self.offset,
+        }
+        .resolve(DEFAULT_LIMIT, MAX_LIMIT)
+    }
 }
 
 fn calculate_health_score(success_rate: f64, total_transactions: i64, volume_usd: f64) -> f64 {
@@ -278,17 +288,18 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
 }
 
 /// Generate cache key for corridor list with filters
-fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
+fn generate_corridor_list_cache_key(params: &ListCorridorsQuery, page: Page) -> String {
     let filter_str = format!(
-        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_period:{:?}",
+        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_period:{:?}_sort:{:?}",
         params.success_rate_min,
         params.success_rate_max,
         params.volume_min,
         params.volume_max,
         params.asset_code,
-        params.time_period
+        params.time_period,
+        params.sort_by
     );
-    keys::corridor_list(params.limit, params.offset, &filter_str)
+    keys::corridor_list(page.limit, page.offset, &filter_str)
 }
 
 /// List all payment corridors
@@ -306,13 +317,14 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery) -> String {
     path = "/api/corridors",
     params(ListCorridorsQuery),
     responses(
-        (status = 200, description = "List of corridors retrieved successfully", body = Vec<CorridorResponse>),
+        (status = 200, description = "Paginated list of corridors (`PaginatedResponse<CorridorResponse>`)", body = PaginatedResponse<CorridorResponse>),
+        (status = 400, description = "Invalid filter or pagination cursor"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Corridors"
 )]
 #[tracing::instrument(
-    skip(_db, cache, rpc_client, price_feed, params),
+    skip(_db, cache, rpc_client, price_feed, params, headers, uri),
     fields(request_id = %request_id.0, query = ?params)
 )]
 pub async fn list_corridors(
@@ -323,10 +335,13 @@ pub async fn list_corridors(
         Arc<StellarRpcClient>,
         Arc<PriceFeedClient>,
     )>,
+    OriginalUri(uri): OriginalUri,
     Query(params): Query<ListCorridorsQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     info!("Listing corridors");
+
+    let page = params.page()?;
 
     validation::validate_corridor_filters(
         params.success_rate_min,
@@ -335,7 +350,7 @@ pub async fn list_corridors(
         params.volume_max,
     )?;
 
-    let cache_key = generate_corridor_list_cache_key(&params);
+    let cache_key = generate_corridor_list_cache_key(&params, page);
 
     let corridors = cached_query(
         &cache,
@@ -512,25 +527,34 @@ pub async fn list_corridors(
                 })
                 .collect();
 
-            // Apply limit/offset pagination to the filtered results
+            // Corridors come out of a HashMap, so impose a stable order before
+            // paging or cursors would skip/repeat items between requests.
+            let mut filtered = filtered;
+            filtered.sort_by(|a, b| {
+                let (x, y) = match params.sort_by {
+                    SortBy::SuccessRate => (a.success_rate, b.success_rate),
+                    SortBy::Volume => (a.liquidity_depth_usd, b.liquidity_depth_usd),
+                    SortBy::HealthScore => (a.health_score, b.health_score),
+                };
+                y.total_cmp(&x).then_with(|| a.id.cmp(&b.id))
+            });
+
             let total = filtered.len() as i64;
-            let page: Vec<_> = filtered
+            let items: Vec<_> = filtered
                 .into_iter()
-                .skip(params.offset as usize)
-                .take(params.limit as usize)
+                .skip(page.offset as usize)
+                .take(page.limit as usize)
                 .collect();
 
-            Ok(PaginatedResponse::new(
-                page,
-                total,
-                params.limit,
-                params.offset,
-            ))
+            Ok(PaginatedResponse::from_page(items, total, page))
         },
     )
     .await?;
 
-    crate::observability::metrics::set_corridors_tracked(corridors.pagination.total);
+    crate::observability::metrics::set_corridors_tracked(
+        corridors.pagination.total.unwrap_or_default(),
+    );
+    let corridors = corridors.with_links(&uri);
 
     let ttl = cache.config.get_ttl("corridor");
     let response = crate::http_cache::cached_json_response(&headers, &cache_key, &corridors, ttl)?;
@@ -954,6 +978,19 @@ pub async fn get_corridor_detail(
 }
 
 /// POST /api/corridors - Create a new corridor
+#[utoipa::path(
+    post,
+    path = "/api/corridors",
+    request_body = crate::models::CreateCorridorRequest,
+    responses(
+        (status = 200, description = "Corridor created", body = Corridor),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Corridors"
+)]
 pub async fn create_corridor(
     State(app_state): State<AppState>,
     crate::validation::ValidatedJson(req): crate::validation::ValidatedJson<CreateCorridorRequest>,
@@ -971,18 +1008,33 @@ pub async fn create_corridor(
 }
 
 /// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateCorridorMetricsFromTxns {
     pub transactions: Vec<CorridorPaymentDto>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"successful": true, "settlement_latency_ms": 3500, "amount_usd": 250.0}))]
 pub struct CorridorPaymentDto {
     pub successful: bool,
     pub settlement_latency_ms: Option<i32>,
     pub amount_usd: f64,
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/corridors/{id}/metrics-from-transactions",
+    params(("id" = String, Path, description = "Corridor UUID")),
+    request_body = UpdateCorridorMetricsFromTxns,
+    responses(
+        (status = 200, description = "Corridor metrics recomputed", body = Corridor),
+        (status = 401, description = "Missing or invalid credentials"),
+        (status = 404, description = "Corridor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Corridors"
+)]
 pub async fn update_corridor_metrics_from_transactions(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -1060,7 +1112,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "XLM:native->XLM:native");
@@ -1089,7 +1142,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USDC:GISSUER");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "USDC:GISSUER->USDC:GISSUER");
@@ -1118,7 +1172,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "USD:GUSDISSUER");
         assert_eq!(pair.destination_asset, "EUR:GEURISSUER");
         assert_eq!(pair.to_corridor_key(), "USD:GUSDISSUER->EUR:GEURISSUER");
@@ -1147,7 +1202,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "XLM:native");
         assert_eq!(pair.destination_asset, "USDC:GISSUER");
         assert_eq!(pair.to_corridor_key(), "XLM:native->USDC:GISSUER");
@@ -1176,7 +1232,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "BRL:GBRLISSUER");
         assert_eq!(pair.destination_asset, "XLM:native");
         assert_eq!(pair.to_corridor_key(), "BRL:GBRLISSUER->XLM:native");
@@ -1206,7 +1263,8 @@ mod tests {
             asset_balance_changes: None,
         };
 
-        let pair = extract_asset_pair_from_payment(&payment).unwrap();
+        let pair = extract_asset_pair_from_payment(&payment)
+            .expect("extract_asset_pair_from_payment should succeed for this fixture");
         assert_eq!(pair.source_asset, "NGNT:GNGNTISSUER");
         assert_eq!(pair.destination_asset, "NGNT:GNGNTISSUER");
     }
@@ -1335,7 +1393,7 @@ mod tests {
 
         let related = find_related_corridors(target, &corridors);
         assert!(related.is_some());
-        let related_corridors = related.unwrap();
+        let related_corridors = related.expect("related corridors should be Some after asserting is_some");
         assert!(related_corridors.len() >= 2); // At least target and one related
     }
 }

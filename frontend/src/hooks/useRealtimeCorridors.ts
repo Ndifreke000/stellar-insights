@@ -59,7 +59,6 @@ export function useRealtimeCorridors(
     onNewPayment,
   } = options;
 
-// TODO: Intended for future use
   const [corridorUpdates, setCorridorUpdates] = useState<
     Map<string, CorridorUpdate>
   >(new Map());

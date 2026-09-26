@@ -10,9 +10,6 @@ import {
   QUESTS,
   ACHIEVEMENTS,
   getProgress,
-  getTotalXP,
-  getCompletedCount,
-  getUnlockedAchievements,
   getLeaderboard,
   checkPathCompletion,
 } from '@/lib/quests';
@@ -20,16 +17,29 @@ import {
 export default function QuestsPage() {
   const pathname = usePathname();
   const [showLeaderboard, setShowLeaderboard] = useState(true);
+  const [progress, setProgress] = useState<ReturnType<typeof getProgress>>(getProgress);
 
   useEffect(() => {
     checkPathCompletion(pathname);
+    setProgress(getProgress());
   }, [pathname]);
 
-  const progress = getProgress();
-
-  const completedCount = getCompletedCount();
-  const totalXP = getTotalXP();
-  const achievements = getUnlockedAchievements();
+  const completedCount = progress.length;
+  const totalXP = progress.reduce((sum, p) => {
+    const q = QUESTS.find((x) => x.id === p.questId);
+    return sum + (q?.xp ?? 0);
+  }, 0);
+  const achievements = ACHIEVEMENTS.filter((a) => {
+    if (a.condition === 'quests') return completedCount >= a.threshold;
+    if (a.condition === 'explorer') {
+      const defiQuests = QUESTS.filter((q) => q.category === 'defi');
+      const defiCompleted = progress.filter((p) =>
+        defiQuests.some((q) => q.id === p.questId),
+      ).length;
+      return defiCompleted >= a.threshold;
+    }
+    return false;
+  });
   const leaderboard = getLeaderboard();
 
   return (

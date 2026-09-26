@@ -20,15 +20,26 @@ success() {
     echo "[SUCCESS] $*"
 }
 
+# Extracts the file path from a sqlite:// or sqlite: DATABASE_URL.
+# The backend is SQLite-only -- see docs/adr/0001-sqlite-vs-postgres.md.
+sqlite_db_path() {
+    local url="${DATABASE_URL}"
+    url="${url#sqlite://}"
+    url="${url#sqlite:}"
+    echo "${url%%\?*}"
+}
+
 backup_database() {
-    local backup_file="${BACKUP_DIR}/backup_$(date +%Y%m%d_%H%M%S).sql"
-    
+    local backup_file="${BACKUP_DIR}/backup_$(date +%Y%m%d_%H%M%S).db"
+    local db_path
+    db_path="$(sqlite_db_path)"
+
     log "Creating database backup: ${backup_file}"
-    
-    if ! pg_dump "${DATABASE_URL}" > "${backup_file}"; then
+
+    if ! sqlite3 "${db_path}" ".backup '${backup_file}'"; then
         error "Failed to create database backup"
     fi
-    
+
     log "Backup created successfully"
     echo "${backup_file}"
 }
@@ -50,22 +61,19 @@ run_migration() {
 
 rollback_migration() {
     local backup_file="$1"
-    
+    local db_path
+    db_path="$(sqlite_db_path)"
+
     log "Rolling back database from backup: ${backup_file}"
-    
+
     if [[ ! -f "${backup_file}" ]]; then
         error "Backup file not found: ${backup_file}"
     fi
-    
-    local db_name=$(echo "${DATABASE_URL}" | grep -oP '(?<=/)[^/?]+$')
-    
-    log "Dropping current database: ${db_name}"
-    dropdb "${db_name}" || true
-    
-    log "Restoring from backup"
-    createdb "${db_name}"
-    psql "${DATABASE_URL}" < "${backup_file}" || error "Failed to restore from backup"
-    
+
+    log "Replacing ${db_path} with ${backup_file}"
+    cp "${db_path}" "${db_path}.pre-rollback.$(date +%s)" 2>/dev/null || true
+    cp "${backup_file}" "${db_path}" || error "Failed to restore from backup"
+
     success "Database rolled back successfully"
 }
 
@@ -115,12 +123,13 @@ Commands:
     help                 Show this help message
 
 Environment Variables:
-    DATABASE_URL         PostgreSQL connection string (required)
+    DATABASE_URL         SQLite database URL (required, sqlite://... -- see
+                          docs/adr/0001-sqlite-vs-postgres.md)
 
 Examples:
     $0 migrate
     $0 migrate-dry-run
-    $0 rollback backups/backup_20240424_183000.sql
+    $0 rollback backups/backup_20240424_183000.db
     $0 status
 
 EOF

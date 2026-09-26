@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { InfiniteScroll } from '../InfiniteScroll';
 import { useInfiniteScroll } from '@hooks/useInfiniteScroll';
 
@@ -27,21 +26,18 @@ describe('InfiniteScroll', () => {
     mockedUseInfiniteScroll.mockReturnValue(state);
   });
 
-  it('renders correctly', () => {
-    const tree = renderer.create(<InfiniteScroll />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+  it('renders correctly', async () => {
+    const { getByText } = await render(<InfiniteScroll />);
 
-    expect(texts).toContain('Infinite Scroll');
-    expect(texts).toContain('Insight 1');
+    expect(getByText('Infinite Scroll')).toBeTruthy();
+    expect(getByText('Insight 1')).toBeTruthy();
   });
 
-  it('loads more from the footer action', () => {
-    const tree = renderer.create(<InfiniteScroll />);
-    const button = tree.root.findByProps({ accessibilityLabel: 'Load more infinite scroll results' });
+  it('loads more from the footer action', async () => {
+    const { getByLabelText } = await render(<InfiniteScroll />);
+    const button = getByLabelText('Load more infinite scroll results');
 
-    act(() => {
-      button.props.onPress();
-    });
+    await fireEvent.press(button);
 
     expect(state.loadMore).toHaveBeenCalled();
   });

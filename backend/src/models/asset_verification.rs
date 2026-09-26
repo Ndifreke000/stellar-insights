@@ -115,6 +115,7 @@ pub struct AssetMetrics {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(utoipa::ToSchema)]
 pub enum ReportType {
     Suspicious,
     Scam,
@@ -194,6 +195,7 @@ pub struct VerifyAssetRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ReportAssetRequest {
     pub asset_code: String,
     pub asset_issuer: String,

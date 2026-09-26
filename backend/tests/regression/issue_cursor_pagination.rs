@@ -18,10 +18,10 @@
 //! `fetch_payments_page` call inside `fetch_all_payments`.
 //!
 //! # References
-//! - GitHub Issue: stellar-insights#cursor-pagination
+//! - GitHub Issue: payraider#cursor-pagination
 //! - Stellar Horizon pagination docs: https://developers.stellar.org/api/introduction/pagination/
 
-use stellar_insights_backend::rpc::StellarRpcClient;
+use payraider_backend::rpc::StellarRpcClient;
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -30,7 +30,7 @@ use stellar_insights_backend::rpc::StellarRpcClient;
 /// Assert that every payment in the collection has a non-empty `paging_token`.
 /// Horizon guarantees that every payment record carries a unique paging token;
 /// if any are empty the client is discarding or not parsing them correctly.
-fn assert_paging_tokens_present(payments: &[stellar_insights_backend::rpc::Payment]) {
+fn assert_paging_tokens_present(payments: &[payraider_backend::rpc::Payment]) {
     for (i, p) in payments.iter().enumerate() {
         assert!(
             !p.paging_token.is_empty(),

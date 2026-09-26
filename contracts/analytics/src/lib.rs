@@ -682,6 +682,46 @@ impl AnalyticsContract {
         get_config(&env)
     }
 
+    /// Admin-only storage cleanup: removes a single epoch's entry from the
+    /// `SnapshotHashes` duplicate-detection map. The map grows by one entry per
+    /// `submit_snapshot` call and is never pruned automatically, so long-lived
+    /// deployments should periodically retire epochs old enough that a
+    /// duplicate-hash resubmission is no longer a realistic concern. This only
+    /// removes the hash-lookup entry; the underlying `Snapshot`/`CompactSnapshot`
+    /// data for that epoch is left untouched.
+    pub fn prune_snapshot_hash(env: Env, admin: Address, epoch: u64) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = require_admin(&env)?;
+        if admin != stored_admin {
+            return Err(Error::Unauthorized.log_context(&env, "prune_snapshot_hash: caller is not the admin"));
+        }
+
+        let mut hash_map: Map<BytesN<32>, u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SnapshotHashes)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let target_hash = hash_map
+            .iter()
+            .find(|(_, e)| *e == epoch)
+            .map(|(h, _)| h);
+
+        if let Some(hash) = target_hash {
+            hash_map.remove(hash);
+            env.storage()
+                .persistent()
+                .set(&DataKey::SnapshotHashes, &hash_map);
+            env.storage().persistent().extend_ttl(
+                &DataKey::SnapshotHashes,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+
+        Ok(())
+    }
+
     /// Submit a single snapshot. Returns the ledger timestamp on success.
     pub fn submit_snapshot(
         env: Env,
@@ -1941,19 +1981,20 @@ impl AnalyticsContract {
 
     pub fn get_metadata(env: Env) -> PublicMetadata {
         PublicMetadata {
-            name: String::from_str(&env, "Stellar Insights Analytics"),
+            name: String::from_str(&env, "PayRaider Analytics"),
             version: String::from_str(&env, VERSION),
-            author: String::from_str(&env, "Stellar Insights Team"),
+            author: String::from_str(&env, "PayRaider Team"),
             description: String::from_str(
                 &env,
                 "Advanced analytics and data aggregation contract for Stellar network",
             ),
-            repository: String::from_str(&env, "https://github.com/stellar-insights/contracts"),
+            repository: String::from_str(&env, "https://github.com/payraider/contracts"),
             license: String::from_str(&env, "MIT"),
         }
     }
 
     /// Get aggregate statistics over all submitted snapshots.
+    /// Optimized to use a single pass through epochs and a Map for O(1) unique submitter tracking.
     pub fn get_statistics(env: Env) -> Result<SnapshotStatistics, Error> {
         require_initialized(&env)?;
 
@@ -1975,11 +2016,15 @@ impl AnalyticsContract {
             });
         }
 
-        let mut unique_submitters: Vec<Address> = Vec::new(&env);
+        // Use a Map for O(1) unique submitter tracking instead of Vec.contains()
+        let mut unique_submitters_map: Map<Address, bool> = Map::new(&env);
         let mut first_timestamp = u64::MAX;
         let mut last_timestamp = 0u64;
         let mut total_count = 0u64;
+        let mut total_timestamp_diff = 0u64;
+        let mut prev_timestamp: Option<u64> = None;
 
+        // Single pass through epochs - O(n) where n = latest_epoch
         for epoch in 1..=latest_epoch {
             if let Some(metadata) = env
                 .storage()
@@ -1988,21 +2033,30 @@ impl AnalyticsContract {
             {
                 total_count += 1;
 
-                if !unique_submitters.contains(&metadata.submitter) {
-                    unique_submitters.push_back(metadata.submitter);
+                // O(1) unique submitter tracking using Map
+                if !unique_submitters_map.contains_key(&metadata.submitter) {
+                    unique_submitters_map.set(metadata.submitter.clone(), true);
                 }
 
+                // Track first and last timestamps
                 if metadata.timestamp < first_timestamp {
                     first_timestamp = metadata.timestamp;
                 }
                 if metadata.timestamp > last_timestamp {
                     last_timestamp = metadata.timestamp;
                 }
+
+                // Calculate average time between consecutive snapshots
+                if let Some(prev_ts) = prev_timestamp {
+                    total_timestamp_diff += metadata.timestamp - prev_ts;
+                }
+                prev_timestamp = Some(metadata.timestamp);
             }
         }
 
+        // Calculate average time between snapshots using only consecutive pairs
         let avg_time = if total_count > 1 {
-            (last_timestamp - first_timestamp) / (total_count - 1)
+            total_timestamp_diff / (total_count - 1)
         } else {
             0
         };
@@ -2011,7 +2065,7 @@ impl AnalyticsContract {
             total_snapshots: total_count,
             first_epoch: 1,
             latest_epoch,
-            unique_submitters: unique_submitters.len(),
+            unique_submitters: unique_submitters_map.len(),
             average_time_between_snapshots: avg_time,
             oldest_snapshot_timestamp: first_timestamp,
             newest_snapshot_timestamp: last_timestamp,

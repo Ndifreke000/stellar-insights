@@ -1,6 +1,6 @@
-# Stellar Insights Mobile
+# PayRaider Mobile
 
-React Native mobile application for Stellar Insights payment analytics.
+React Native mobile application for PayRaider payment analytics.
 
 ## Current Status
 
@@ -200,7 +200,7 @@ Configure Firebase for push notifications:
 
 ```bash
 cd ios
-xcodebuild -workspace StellarInsights.xcworkspace -scheme StellarInsights -configuration Release
+xcodebuild -workspace PayRaider.xcworkspace -scheme PayRaider -configuration Release
 ```
 
 ### Android

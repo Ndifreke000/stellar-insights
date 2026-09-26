@@ -12,10 +12,10 @@ use sqlx::SqlitePool;
 use crate::auth_middleware::AuthUser;
 use crate::webhooks::{CreateWebhookRequest, WebhookResponse, WebhookService};
 
-/// POST /api/webhooks - Register a new webhook
+/// POST /webhooks - Register a new webhook
 #[utoipa::path(
     post,
-    path = "/api/webhooks",
+    path = "/api/v1/webhooks",
     request_body = CreateWebhookRequest,
     responses(
         (status = 201, description = "Webhook registered successfully"),
@@ -50,10 +50,10 @@ pub async fn register_webhook(
     Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
-/// GET /api/webhooks - List webhooks for authenticated user
+/// GET /webhooks - List webhooks for authenticated user
 #[utoipa::path(
     get,
-    path = "/api/webhooks",
+    path = "/api/v1/webhooks",
     responses(
         (status = 200, description = "List of webhooks"),
         (status = 401, description = "Unauthorized"),
@@ -93,10 +93,10 @@ pub async fn list_webhooks(
     Ok((StatusCode::OK, Json(json!({"webhooks": response}))).into_response())
 }
 
-/// DELETE /api/webhooks/:id - Delete/deactivate webhook
+/// DELETE /webhooks/:id - Delete/deactivate webhook
 #[utoipa::path(
     delete,
-    path = "/api/webhooks/{id}",
+    path = "/api/v1/webhooks/{id}",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -130,10 +130,10 @@ pub async fn delete_webhook(
         .into_response())
 }
 
-/// GET /api/webhooks/:id - Get a single webhook by ID
+/// GET /webhooks/:id - Get a single webhook by ID
 #[utoipa::path(
     get,
-    path = "/api/webhooks/{id}",
+    path = "/api/v1/webhooks/{id}",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -181,10 +181,10 @@ pub async fn get_webhook(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
-/// POST /api/webhooks/:id/test - Queue a test event for delivery
+/// POST /webhooks/:id/test - Queue a test event for delivery
 #[utoipa::path(
     post,
-    path = "/api/webhooks/{id}/test",
+    path = "/api/v1/webhooks/{id}/test",
     params(
         ("id" = String, Path, description = "Webhook ID")
     ),
@@ -264,8 +264,8 @@ impl IntoResponse for WebhookApiError {
 /// Create webhook routes
 pub fn routes(db: SqlitePool) -> Router {
     Router::new()
-        .route("/api/webhooks", post(register_webhook).get(list_webhooks))
-        .route("/api/webhooks/{id}", get(get_webhook).delete(delete_webhook))
-        .route("/api/webhooks/{id}/test", post(test_webhook))
+        .route("/", post(register_webhook).get(list_webhooks))
+        .route("/{id}", get(get_webhook).delete(delete_webhook))
+        .route("/{id}/test", post(test_webhook))
         .with_state(db)
 }

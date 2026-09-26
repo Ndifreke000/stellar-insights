@@ -4,16 +4,15 @@ use std::time::Duration;
 
 use failsafe::futures::CircuitBreaker as _;
 use failsafe::{backoff, failure_policy, Config};
-use tokio::time;
 use uuid::Uuid;
 
-use stellar_insights_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::rpc::circuit_breaker::{
+use payraider_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::rpc::circuit_breaker::{
     rpc_circuit_breaker, CircuitBreaker, SharedCircuitBreaker,
 };
-use stellar_insights_backend::rpc::error::{with_retry, RetryConfig, RpcError};
-use stellar_insights_backend::rpc::stellar::StellarRpcClient;
+use payraider_backend::rpc::error::{with_retry, RetryConfig, RpcError};
+use payraider_backend::rpc::stellar::StellarRpcClient;
 
 fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCircuitBreaker {
     let backoff = backoff::constant(timeout);
@@ -22,7 +21,7 @@ fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCirc
     Arc::new(breaker)
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test(flavor = "current_thread")]
 async fn test_rpc_retry_on_failure() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let call_count_clone = Arc::clone(&call_count);
@@ -50,10 +49,8 @@ async fn test_rpc_retry_on_failure() {
         .await
     });
 
-    tokio::task::yield_now().await;
-    // `with_retry` uses `tokio::time::sleep`; advance past backoffs (1ms + 2ms + …).
-    time::advance(Duration::from_secs(1)).await;
-
+    // Wait for the task to complete with retries
+    // In current_thread mode, the task will run to completion
     let result: Result<String, RpcError> = join.await.expect("join with_retry task");
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "success");
@@ -62,11 +59,11 @@ async fn test_rpc_retry_on_failure() {
 
 #[tokio::test]
 async fn test_circuit_breaker_opens_on_failures() {
-    // Two consecutive Inner failures open the circuit; backoff duration comes from the policy.
-    // Failsafe uses `std::time::Instant` (`clock::now()`), not Tokio's paused clock, so
-    // `start_paused` + `time::advance` does not elapse the open window — use wall-clock sleep.
+    // Circuit breaker uses failsafe which relies on std::time::Instant,
+    // so we use tokio::time::sleep for the backoff period
     let circuit_breaker = test_circuit_breaker(2, Duration::from_millis(100));
 
+    // Fail twice to trip the circuit
     let result1: Result<String, failsafe::Error<RpcError>> = circuit_breaker
         .call(async { Err(RpcError::NetworkError("fail".to_string())) })
         .await;
@@ -77,13 +74,16 @@ async fn test_circuit_breaker_opens_on_failures() {
         .await;
     assert!(matches!(result2, Err(failsafe::Error::Inner(_))));
 
+    // Circuit should now be open
     let result3: Result<String, failsafe::Error<RpcError>> = circuit_breaker
         .call(async { Ok("success".to_string()) })
         .await;
     assert!(matches!(result3, Err(failsafe::Error::Rejected)));
 
-    time::sleep(Duration::from_millis(200)).await;
+    // Wait for the circuit to transition to half-open
+    tokio::time::sleep(Duration::from_millis(150)).await;
 
+    // In half-open state, success should close the circuit
     let result4: Result<String, failsafe::Error<RpcError>> = circuit_breaker
         .call(async { Ok("recovered".to_string()) })
         .await;
@@ -95,8 +95,9 @@ async fn test_circuit_breaker_fallback() {
     let anchor_id = Uuid::new_v4();
     let client = StellarRpcClient::new_with_defaults(true);
     let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
-
     let circuit_breaker = rpc_circuit_breaker();
+
+    // Open the circuit with repeated failures
     let mut tripped = false;
     for _ in 0..128 {
         let r: Result<(), failsafe::Error<RpcError>> = circuit_breaker
@@ -112,6 +113,7 @@ async fn test_circuit_breaker_fallback() {
         "expected global circuit breaker to open after repeated failures"
     );
 
+    // Set up fallback data in cache
     let fallback = AnchorMetrics {
         anchor_id,
         total_payments: 10,
@@ -124,6 +126,7 @@ async fn test_circuit_breaker_fallback() {
         .await
         .unwrap();
 
+    // Verify fallback works when circuit is open
     let metrics = get_anchor_metrics_with_fallback(anchor_id, Arc::new(client), cache)
         .await
         .unwrap();
@@ -132,6 +135,7 @@ async fn test_circuit_breaker_fallback() {
     assert_eq!(metrics.total_payments, fallback.total_payments);
 
     // Best-effort: nudge shared breaker toward closed so other tests are not starved.
+    // In half-open state, one success closes the circuit.
     for _ in 0..8 {
         let _: Result<(), failsafe::Error<RpcError>> = circuit_breaker.call(async { Ok(()) }).await;
     }

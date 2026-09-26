@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Query, State},
-    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -114,6 +114,7 @@ pub async fn get_info(
 
 /// POST /api/sep24/deposit/interactive
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct DepositInteractiveBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -196,6 +197,7 @@ pub async fn post_deposit_interactive(
 
 /// POST /api/sep24/withdraw/interactive
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct WithdrawInteractiveBody {
     pub transfer_server: String,
     #[serde(default)]

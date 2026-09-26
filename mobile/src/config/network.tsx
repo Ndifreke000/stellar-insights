@@ -21,7 +21,7 @@ export const NETWORKS: Record<'testnet' | 'mainnet', NetworkConfig> = {
   mainnet: {
     id: 'mainnet',
     name: 'Mainnet',
-    apiBaseUrl: process.env.EXPO_PUBLIC_MAINNET_API_URL || 'https://api.stellar-insights.com',
+    apiBaseUrl: process.env.EXPO_PUBLIC_MAINNET_API_URL || 'https://api.payraider.com',
     horizonUrl: 'https://horizon.stellar.org',
     networkPassphrase: 'Public Global Stellar Network ; September 2015',
   },

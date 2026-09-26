@@ -156,7 +156,7 @@ export default function Home() {
           <div className="w-6 h-6 bg-accent rounded flex items-center justify-center">
             <TrendingUp className="w-4 h-4 text-white" />
           </div>
-          <span className="font-bold tracking-tight">{t("footer.stellarInsights")}</span>
+          <span className="font-bold tracking-tight">{t("footer.payRaider")}</span>
         </div>
         <div className="flex gap-8 text-sm text-muted-foreground">
           <a href="#" className="hover:text-foreground transition-colors">

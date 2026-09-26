@@ -1,6 +1,6 @@
 # Prometheus Metrics
 
-This document describes the Prometheus metrics exposed by the Stellar Insights backend.
+This document describes the Prometheus metrics exposed by the PayRaider backend.
 
 ## Endpoint
 
@@ -71,7 +71,7 @@ Or add the following scrape job to an existing configuration:
 
 ```yaml
 scrape_configs:
-  - job_name: 'stellar-insights'
+  - job_name: 'payraider'
     static_configs:
       - targets: ['localhost:8080']
     metrics_path: '/metrics'
@@ -109,7 +109,7 @@ Three importable dashboard JSON files are committed in `docs/grafana/`:
 1. Open Grafana → **Dashboards → Import**.
 2. Upload or paste the contents of any JSON file above.
 3. Select your Prometheus data source.
-4. Confirm the `job` variable matches your Prometheus scrape job name (default: `stellar-insights`).
+4. Confirm the `job` variable matches your Prometheus scrape job name (default: `payraider`).
 
 All panels target metrics that are registered by `init_metrics()` and emitted by the HTTP
 middleware, so they will populate against a live scrape target immediately — no "No data"

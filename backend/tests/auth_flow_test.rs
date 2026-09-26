@@ -5,8 +5,8 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use stellar_insights_backend::api::auth;
-use stellar_insights_backend::auth::{AuthService, User};
+use payraider_backend::api::auth;
+use payraider_backend::auth::{AuthService, User};
 use tokio::sync::RwLock;
 use tower::util::ServiceExt;
 
@@ -15,6 +15,16 @@ fn create_auth_router() -> Router {
         std::env::set_var(
             "JWT_SECRET",
             "test_jwt_secret_key_that_is_long_enough_for_tests_32",
+        );
+    }
+    if std::env::var("ENCRYPTION_KEY").is_err() {
+        // AuthService::new now also builds a TwoFAService (CryptoService::
+        // from_env), which panics without a real ENCRYPTION_KEY -- 64 hex
+        // chars, distinct from the well-known test/placeholder value that
+        // from_env() explicitly rejects.
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "11111111111111111111111111111111111111111111111111111111111111ab",
         );
     }
 
@@ -101,6 +111,16 @@ async fn test_token_generation_and_validation_for_access_tokens() {
             "test_jwt_secret_key_that_is_long_enough_for_tests_32",
         );
     }
+    if std::env::var("ENCRYPTION_KEY").is_err() {
+        // AuthService::new now also builds a TwoFAService (CryptoService::
+        // from_env), which panics without a real ENCRYPTION_KEY -- 64 hex
+        // chars, distinct from the well-known test/placeholder value that
+        // from_env() explicitly rejects.
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "11111111111111111111111111111111111111111111111111111111111111ab",
+        );
+    }
 
     let redis = Arc::new(RwLock::new(None));
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -109,9 +129,10 @@ async fn test_token_generation_and_validation_for_access_tokens() {
     let user = User {
         id: "user-1".to_string(),
         username: "test-user".to_string(),
+        is_admin: false,
     };
 
-    let access_token = auth_service.generate_access_token(&user).unwrap();
+    let access_token = auth_service.generate_access_token(&user, None).unwrap();
     let claims = auth_service.validate_token(&access_token).unwrap();
 
     assert_eq!(claims.sub, "user-1");

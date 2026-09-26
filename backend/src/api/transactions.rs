@@ -18,6 +18,7 @@ const MAX_PAGE_LIMIT: i64 = 100;
 
 // Request/Response DTOs
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct CreateTransactionRequest {
     pub source_account: String,
     pub xdr: String,
@@ -25,6 +26,7 @@ pub struct CreateTransactionRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct AddSignatureRequest {
     pub signer: String,
     pub signature: String,
@@ -67,6 +69,7 @@ impl TransactionCursor {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ListTransactionsResponse {
     pub data: Vec<PendingTransaction>,
     /// Opaque token to pass as `cursor` to retrieve the next page.

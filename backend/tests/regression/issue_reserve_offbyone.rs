@@ -21,13 +21,13 @@
 //! sync process.
 //!
 //! # References
-//! - GitHub Issue: stellar-insights#reserve-offbyone
+//! - GitHub Issue: payraider#reserve-offbyone
 //! - Relevant commit: (see git log for defensive guard in sync_pools)
 
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use stellar_insights_backend::rpc::{HorizonLiquidityPool, HorizonPoolReserve, MockStellarRpcClient};
-use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use payraider_backend::rpc::{HorizonLiquidityPool, HorizonPoolReserve, MockStellarRpcClient};
+use payraider_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
 // ---------------------------------------------------------------------------
 // Shared DB setup (mirrors liquidity_pool_test.rs)

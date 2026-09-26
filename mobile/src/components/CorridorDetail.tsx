@@ -202,6 +202,7 @@ export const CorridorDetail: React.FC<CorridorDetailProps> = ({
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
+        testID="corridor-detail-scroll"
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl

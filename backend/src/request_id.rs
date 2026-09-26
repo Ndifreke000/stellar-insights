@@ -1,12 +1,22 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{HeaderValue, StatusCode},
+    http::{HeaderName, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use std::fmt;
+use tracing::Instrument;
 use uuid::Uuid;
+
+/// Header carrying the per-request ID (one per HTTP request/response).
+pub static REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
+/// Header carrying the correlation ID shared by every request in one
+/// distributed flow (e.g. frontend → backend → webhook).
+pub static CORRELATION_ID_HEADER: HeaderName = HeaderName::from_static("x-correlation-id");
+
+/// Upstream-supplied IDs longer than this are replaced, so clients can't bloat logs.
+const MAX_ID_LEN: usize = 128;
 
 /// Request ID wrapper for storing in request extensions
 #[derive(Clone, Debug)]
@@ -38,48 +48,82 @@ impl fmt::Display for RequestId {
     }
 }
 
-/// Middleware to add request ID tracking
+/// Correlation ID wrapper for storing in request extensions.
+#[derive(Clone, Debug)]
+pub struct CorrelationId(pub String);
+
+impl fmt::Display for CorrelationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Accept an upstream ID only if it is short and made of safe characters —
+/// anything else could inject fake fields/lines into structured logs.
+fn sanitize_id(value: &HeaderValue) -> Option<String> {
+    let id = value.to_str().ok()?.trim();
+    let valid = !id.is_empty()
+        && id.len() <= MAX_ID_LEN
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b':'));
+    valid.then(|| id.to_string())
+}
+
+/// Middleware to add request and correlation ID tracking
 ///
 /// This middleware:
-/// - Generates a unique request ID for each request
-/// - Adds it to request extensions for use in handlers
-/// - Includes it in response headers as X-Request-ID
-/// - Logs the request ID for tracing
+/// - Reuses a valid upstream `X-Request-ID` or generates a new one
+/// - Reuses a valid upstream `X-Correlation-ID`, defaulting to the request ID
+/// - Stores both in request extensions (and normalised request headers) for handlers
+/// - Runs the request inside an `http_request` span carrying both IDs, so every
+///   log line emitted while handling the request includes them
+/// - Echoes both IDs in the response headers
 pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Response {
-    // Check if request already has an X-Request-ID header (from upstream)
-    let request_id = if let Some(existing_id) = req.headers().get("X-Request-ID") {
-        existing_id.to_str().ok().map_or_else(
-            || Uuid::new_v4().to_string(),
-            std::string::ToString::to_string,
-        )
-    } else {
-        Uuid::new_v4().to_string()
-    };
+    let request_id = req
+        .headers()
+        .get(&REQUEST_ID_HEADER)
+        .and_then(sanitize_id)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let correlation_id = req
+        .headers()
+        .get(&CORRELATION_ID_HEADER)
+        .and_then(sanitize_id)
+        .unwrap_or_else(|| request_id.clone());
 
-    // Store request ID in extensions for handlers to access
+    // IDs are validated ASCII, so these conversions cannot fail.
+    let request_id_value = HeaderValue::from_str(&request_id).ok();
+    let correlation_id_value = HeaderValue::from_str(&correlation_id).ok();
+
+    // Normalise the request headers so handlers that forward them downstream
+    // propagate the sanitised values.
+    if let Some(v) = &request_id_value {
+        req.headers_mut().insert(REQUEST_ID_HEADER.clone(), v.clone());
+    }
+    if let Some(v) = &correlation_id_value {
+        req.headers_mut().insert(CORRELATION_ID_HEADER.clone(), v.clone());
+    }
     req.extensions_mut().insert(RequestId(request_id.clone()));
+    req.extensions_mut()
+        .insert(CorrelationId(correlation_id.clone()));
 
-    // Log the request with ID
-    let method = req.method().clone();
-    let uri = req.uri().clone();
-    tracing::info!(
+    let span = tracing::info_span!(
+        "http_request",
         request_id = %request_id,
-        method = %method,
-        uri = %uri,
-        "Incoming request"
+        correlation_id = %correlation_id
     );
+    let mut response = next.run(req).instrument(span).await;
 
-    // Process the request
-    let response = next.run(req).await;
-
-    // Add request ID to response headers
-    let (mut parts, body) = response.into_parts();
-
-    if let Ok(header_value) = HeaderValue::from_str(&request_id) {
-        parts.headers.insert("X-Request-ID", header_value);
+    if let Some(v) = request_id_value {
+        response.headers_mut().insert(REQUEST_ID_HEADER.clone(), v);
+    }
+    if let Some(v) = correlation_id_value {
+        response
+            .headers_mut()
+            .insert(CORRELATION_ID_HEADER.clone(), v);
     }
 
-    Response::from_parts(parts, body)
+    response
 }
 
 /// Extract request ID from request extensions

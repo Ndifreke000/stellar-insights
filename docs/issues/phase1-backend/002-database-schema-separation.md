@@ -6,7 +6,7 @@ Short and specific summary: Implement separate SQLite databases for testnet and 
 
 ## Project Context
 
-This task is part of Phase 1: Backend Refactoring for the Stellar Insights multi-network architecture. The goal is to ensure complete data isolation between testnet and mainnet environments.
+This task is part of Phase 1: Backend Refactoring for the PayRaider multi-network architecture. The goal is to ensure complete data isolation between testnet and mainnet environments.
 
 ---
 
@@ -60,7 +60,7 @@ This task is part of Phase 1: Backend Refactoring for the Stellar Insights multi
 
 ### Acceptance Criteria
 
-1. System MUST maintain separate SQLite database files: `stellar_insights_testnet.db` and `stellar_insights_mainnet.db`
+1. System MUST maintain separate SQLite database files: `payraider_testnet.db` and `payraider_mainnet.db`
 2. System MUST provide separate connection pools for each network
 3. System MUST route queries to correct database based on NetworkContext
 4. System MUST prevent accidental cross-network queries

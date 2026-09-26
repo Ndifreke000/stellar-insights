@@ -56,12 +56,12 @@ describe('ProgressiveWebApp Component', () => {
   describe('installation prompt', () => {
     it('should show installation prompt when canInstall is true', () => {
       render(<ProgressiveWebApp showInstallPrompt={true} />);
-      expect(screen.getByText(/Install Stellar Insights/i)).toBeInTheDocument();
+      expect(screen.getByText(/Install PayRaider/i)).toBeInTheDocument();
     });
 
     it('should not show installation prompt when showInstallPrompt is false', () => {
       render(<ProgressiveWebApp showInstallPrompt={false} />);
-      expect(screen.queryByText(/Install Stellar Insights/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Install PayRaider/i)).not.toBeInTheDocument();
     });
 
     it('should not show installation prompt when already installed', () => {
@@ -71,7 +71,7 @@ describe('ProgressiveWebApp Component', () => {
       });
 
       render(<ProgressiveWebApp showInstallPrompt={true} />);
-      expect(screen.queryByText(/Install Stellar Insights/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Install PayRaider/i)).not.toBeInTheDocument();
     });
 
     it('should call install when Install button is clicked', async () => {

@@ -1,4 +1,4 @@
-use stellar_insights_backend::network::{NetworkConfig, StellarNetwork};
+use payraider_backend::network::{NetworkConfig, StellarNetwork};
 
 #[test]
 fn test_network_config_mainnet() {
@@ -77,7 +77,7 @@ async fn test_network_api_endpoints() {
         body::Body,
         http::{Request, StatusCode},
     };
-    use stellar_insights_backend::api::network;
+    use payraider_backend::api::network;
     use tower::ServiceExt;
 
     let app = network::routes();

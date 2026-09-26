@@ -26,10 +26,6 @@ export function DataExport({ onClose }: DataExportProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"new" | "history">("new");
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
@@ -48,6 +44,10 @@ export function DataExport({ onClose }: DataExportProps) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const handleTypeToggle = (typeId: string) => {
     setSelectedTypes((prev) =>

@@ -207,6 +207,7 @@ fn set_cache_headers(
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use axum::body::to_bytes;

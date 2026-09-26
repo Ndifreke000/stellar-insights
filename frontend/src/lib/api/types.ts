@@ -1,3 +1,4 @@
+import type { PaginatedResponse } from "./pagination";
 
 
 /**
@@ -37,6 +38,8 @@ export interface PredictionResponse {
   recommendation: string;
   alternative_routes: AlternativeRoute[];
   model_version: string;
+  /** True when the backend was unreachable and the result is locally generated. */
+  is_mock?: boolean;
 }
 
 // =========================
@@ -128,10 +131,8 @@ export interface AnchorMetrics {
   status: string;
 }
 
-export interface AnchorsResponse {
-  anchors: AnchorMetrics[];
-  total: number;
-}
+/** Paginated anchor list, as returned by `GET /api/anchors`. */
+export type AnchorsResponse = PaginatedResponse<AnchorMetrics>;
 
 export interface ReliabilityDataPoint {
   timestamp: string;

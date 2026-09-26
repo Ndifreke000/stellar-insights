@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GitHub Issues Creator for Stellar Insights - 55 NEW Issues
+GitHub Issues Creator for PayRaider - 55 NEW Issues
 Creates comprehensive issues from deep codebase analysis
 Usage: python create_new_issues.py [--dry-run] [--start N] [--end N]
 """
@@ -89,7 +89,7 @@ def main():
             print("Install it from: https://cli.github.com/")
             sys.exit(1)
     
-    print(f"🚀 Creating {args.end - args.start + 1} NEW GitHub Issues for Stellar Insights")
+    print(f"🚀 Creating {args.end - args.start + 1} NEW GitHub Issues for PayRaider")
     print(f"   Issues #{args.start} to #{args.end}\n")
     
     # Import issue definitions

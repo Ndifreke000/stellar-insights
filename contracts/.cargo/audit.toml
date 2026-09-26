@@ -1,0 +1,9 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2024-0436", # paste 1.0.15 unmaintained: pulled in transitively by the official
+                          # soroban-sdk -> soroban-env-host -> ark-bls12-381/ark-ff (arkworks)
+                          # dependency chain (`cargo tree -i paste`). Not a direct or
+                          # controllable dependency of this project -- fixing it requires an
+                          # upstream soroban-sdk/arkworks release. No known vulnerability, only
+                          # an "unmaintained" advisory.
+]

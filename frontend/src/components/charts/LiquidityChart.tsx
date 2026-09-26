@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  TooltipValueType,
 } from 'recharts';
 import { LiquidityDataPoint } from '@/lib/analytics-api';
 import { ChartExportButton } from './ChartExportButton';
@@ -110,7 +111,10 @@ export function LiquidityChart({ data }: LiquidityChartProps) {
               }}
               itemStyle={{ color: '#6366f1', fontWeight: 'bold' }}
               labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-              formatter={(value?: number): [string, string] => [formatCurrency(value ?? 0), 'GLOBAL_DEPTH']}
+              formatter={(value?: TooltipValueType): [string, string] => [
+                formatCurrency(typeof value === 'number' ? value : Number(value ?? 0)),
+                'GLOBAL_DEPTH',
+              ]}
             />
             <Line
               type="monotone"

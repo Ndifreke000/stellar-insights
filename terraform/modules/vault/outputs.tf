@@ -9,7 +9,7 @@ output "vault_secret_paths" {
     jwt_secret    = "secret/stellar/jwt-secret"
     oauth_clients = "secret/stellar/oauth-clients"
     webhooks      = "secret/stellar/webhooks"
-    db_role       = "database/creds/stellar-insights-${var.environment}"
+    db_role       = "database/creds/payraider-${var.environment}"
   }
 }
 

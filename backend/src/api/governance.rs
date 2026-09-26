@@ -5,7 +5,7 @@
 //! endpoints are single-query fetches.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderName, HeaderValue, StatusCode},
     middleware,
     response::{IntoResponse, Response},
@@ -17,6 +17,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::auth::sep10_simple::Sep10Service;
+use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::auth::{sep10_auth_middleware, Sep10User};
 use crate::services::governance::{
     AddCommentRequest, CastVoteRequest, CreateProposalRequest, GovernanceService,
@@ -46,14 +47,10 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
 #[derive(Debug, Deserialize)]
 pub struct ListProposalsQuery {
     pub status: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-const fn default_limit() -> i64 {
-    20
+    pub limit: Option<i64>,
+    pub cursor: Option<String>,
+    /// Deprecated: prefer `cursor`.
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +74,7 @@ const fn default_comments_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema)]
 pub struct ActivateRequest {
     #[serde(default = "default_voting_duration")]
     pub voting_duration_secs: i64,
@@ -92,6 +90,7 @@ pub struct ErrorResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema)]
 pub struct HasVotedResponse {
     pub has_voted: bool,
 }
@@ -164,25 +163,35 @@ async fn activate_proposal(
     params(
         ("status" = Option<String>, Query, description = "Filter by status"),
         ("limit" = Option<i64>, Query, description = "Maximum results (1-100, default 20)"),
-        ("offset" = Option<i64>, Query, description = "Results offset")
+        ("cursor" = Option<String>, Query, description = "Opaque cursor from `pagination.next_cursor` / `prev_cursor`"),
+        ("offset" = Option<i64>, Query, description = "Deprecated: results offset. Prefer `cursor`")
     ),
     responses(
-        (status = 200, description = "List of proposals")
+        (status = 200, description = "Paginated list of proposals (`PaginatedResponse<ProposalResponse>`)"),
+        (status = 400, description = "Invalid pagination cursor")
     ),
     tag = "Governance"
 )]
 async fn list_proposals(
     State(service): State<Arc<GovernanceService>>,
+    OriginalUri(uri): OriginalUri,
     Query(query): Query<ListProposalsQuery>,
 ) -> Result<Response, GovernanceError> {
-    let limit = query.limit.clamp(1, 100);
-    let offset = query.offset.max(0);
+    let page = PaginationParams {
+        limit: query.limit,
+        cursor: query.cursor.clone(),
+        offset: query.offset,
+    }
+    .resolve(20, 100)
+    .map_err(|e| GovernanceError::BadRequest(e.to_string()))?;
 
-    let response = service
-        .list_proposals(query.status.as_deref(), limit, offset)
+    let result = service
+        .list_proposals(query.status.as_deref(), page.limit, page.offset)
         .await
         .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
 
+    let response =
+        PaginatedResponse::from_page(result.proposals, result.total, page).with_links(&uri);
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 

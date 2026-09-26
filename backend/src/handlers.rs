@@ -21,12 +21,6 @@ use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 
 pub mod job_monitoring;
-/// DTO for corridor transaction data
-#[derive(Debug, Deserialize, Clone)]
-pub struct CorridorTransactionDto {
-    pub status: String,
-    pub settlement_time_ms: i64,
-}
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -301,15 +295,15 @@ pub async fn get_prometheus_metrics() -> impl IntoResponse {
 #[cfg(test)]
 fn render_pool_metrics_prometheus(metrics: &crate::database::PoolMetrics) -> String {
     format!(
-        "# HELP stellar_insights_db_pool_size Database pool size\n\
-# TYPE stellar_insights_db_pool_size gauge\n\
-stellar_insights_db_pool_size {}\n\
-# HELP stellar_insights_db_pool_idle Database pool idle connections\n\
-# TYPE stellar_insights_db_pool_idle gauge\n\
-stellar_insights_db_pool_idle {}\n\
-# HELP stellar_insights_db_pool_active Database pool active connections\n\
-# TYPE stellar_insights_db_pool_active gauge\n\
-stellar_insights_db_pool_active {}\n",
+        "# HELP payraider_db_pool_size Database pool size\n\
+# TYPE payraider_db_pool_size gauge\n\
+payraider_db_pool_size {}\n\
+# HELP payraider_db_pool_idle Database pool idle connections\n\
+# TYPE payraider_db_pool_idle gauge\n\
+payraider_db_pool_idle {}\n\
+# HELP payraider_db_pool_active Database pool active connections\n\
+# TYPE payraider_db_pool_active gauge\n\
+payraider_db_pool_active {}\n",
         metrics.size, metrics.idle, metrics.active
     )
 }
@@ -328,10 +322,13 @@ pub async fn list_corridors(
     State(app_state): State<AppState>,
     Query(params): Query<ListCorridorsQuery>,
 ) -> ApiResult<Json<ListCorridorsResponse>> {
-    let corridors = app_state
-        .db
-        .list_corridors(params.limit, params.offset)
-        .await?;
+    let page = crate::pagination::PaginationParams {
+        limit: params.limit,
+        cursor: params.cursor.clone(),
+        offset: params.offset,
+    }
+    .resolve(50, 200)?;
+    let corridors = app_state.db.list_corridors(page.limit, page.offset).await?;
     let total = corridors.len();
     Ok(Json(ListCorridorsResponse { corridors, total }))
 }
@@ -355,20 +352,40 @@ pub async fn create_corridor(
     broadcast_corridor_update(&app_state.ws_state, &corridor);
     Ok(Json(corridor))
 }
-
-/// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
-#[derive(Debug, Deserialize)]
-pub struct UpdateCorridorMetricsFromTxns {
-    pub transactions: Vec<CorridorTransactionDto>,
 }
 
-/// PUT /api/corridors/:id/metrics-from-transactions - Placeholder for updating metrics from batch transactions
-pub async fn update_corridor_metrics_from_transactions(
-    State(_app_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> ApiResult<Json<serde_json::Value>> {
-    // Implementation for processing transaction batch logic goes here
-    Ok(Json(serde_json::json!({ "status": "not_implemented" })))
+/// Recently captured slow queries with EXPLAIN plans and per-operation aggregates
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/slow-queries",
+    responses((status = 200, description = "Slow query report with EXPLAIN QUERY PLAN output")),
+    tag = "Database"
+)]
+pub async fn slow_queries(State(state): State<AppState>) -> impl IntoResponse {
+    Json(crate::observability::db_performance::slow_query_report(
+        state.db.slow_query_threshold_ms(),
+    ))
+}
+
+/// Index inventory plus missing-index candidates derived from slow query plans
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/index-report",
+    responses(
+        (status = 200, description = "Existing indexes, full table scans and index suggestions"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Database"
+)]
+pub async fn index_report(
+    State(state): State<AppState>,
+) -> crate::error::ApiResult<Json<crate::observability::db_performance::IndexReport>> {
+    let report = crate::observability::db_performance::index_report(state.db.pool())
+        .await
+        .map_err(|e| {
+            crate::error::ApiError::internal("DATABASE_ERROR", format!("Index report failed: {e}"))
+        })?;
+    Ok(Json(report))
 }
 
 pub async fn ingestion_status(
@@ -387,9 +404,9 @@ mod tests {
         let metrics = crate::database::PoolMetrics::new(12, 3, 9);
         let rendered = render_pool_metrics_prometheus(&metrics);
 
-        assert!(rendered.contains("stellar_insights_db_pool_size 12"));
-        assert!(rendered.contains("stellar_insights_db_pool_idle 3"));
-        assert!(rendered.contains("stellar_insights_db_pool_active 9"));
-        assert!(rendered.contains("# TYPE stellar_insights_db_pool_size gauge"));
+        assert!(rendered.contains("payraider_db_pool_size 12"));
+        assert!(rendered.contains("payraider_db_pool_idle 3"));
+        assert!(rendered.contains("payraider_db_pool_active 9"));
+        assert!(rendered.contains("# TYPE payraider_db_pool_size gauge"));
     }
 }

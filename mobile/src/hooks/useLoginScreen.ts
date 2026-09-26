@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 import { apiClient } from '@services/api';
-import { getToken, saveToken } from '@services/tokenStorage';
+import { getToken, saveToken } from '@services/auth';
 import { useBiometricAuthentication } from '@hooks/useBiometricAuthentication';
 import type { BiometricType } from '@services/biometricService';
 import { useAuthStore } from '@store/authStore';

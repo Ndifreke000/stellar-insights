@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
   Cell,
+  TooltipValueType,
 } from "recharts";
 import { Badge } from "../ui/badge";
 import { getTooltipContentStyle } from "@/lib/chart-utils";
@@ -89,7 +90,7 @@ export const SettlementSpeedChart: React.FC<SettlementSpeedChartProps> = ({
                 fontSize: "12px",
                 fontFamily: "monospace",
               })}
-              formatter={(value?: number) => {
+              formatter={(value?: TooltipValueType) => {
                 if (typeof value !== "number") return ["-", "Settlement Time"];
                 return [`${value}s`, "Settlement Time"];
               }}

@@ -3,6 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const Sep24Flow = dynamic(
   () => import("@/components/Sep24Flow").then((m) => ({ default: m.Sep24Flow })),
@@ -30,7 +31,9 @@ export default function DepositWithdrawPage() {
         </p>
       </div>
 
-      <Sep24Flow />
+      <ErrorBoundary>
+        <Sep24Flow />
+      </ErrorBoundary>
     </div>
   );
 }

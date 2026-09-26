@@ -3,7 +3,7 @@
 # Usage:
 #   docker compose -f docker-compose.jaeger.yml up -d
 #   OTEL_ENABLED=true cargo run          # from backend/
-#   open http://localhost:16686           # Jaeger UI — select "stellar-insights-backend"
+#   open http://localhost:16686           # Jaeger UI — select "payraider-backend"
 #
 # The backend reads OTEL_EXPORTER_OTLP_ENDPOINT from the environment; the
 # default value in .env.example already points at the port exposed below

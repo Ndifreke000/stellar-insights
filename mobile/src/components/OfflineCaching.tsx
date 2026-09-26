@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useOfflineCache, UseOfflineCacheResult } from '@hooks/useOfflineCaching';
+import { useOfflineCache } from '@hooks/useOfflineCaching';
 import { useAppStore } from '@store/appStore';
 
 export interface OfflineCachingProps {
@@ -79,7 +79,7 @@ export const OfflineCaching: React.FC<OfflineCachingProps> = ({
             calculateStats();
             Alert.alert('Success', 'Cache cleared successfully');
             onCacheCleared?.();
-          } catch (error) {
+          } catch {
             Alert.alert('Error', 'Failed to clear cache');
           } finally {
             setIsClearing(false);

@@ -39,7 +39,7 @@ fn init_otel_tracer(service_name: &str) -> Result<opentelemetry_sdk::trace::Trac
 
     global::set_tracer_provider(provider.clone());
     let _ = OTEL_PROVIDER.set(provider.clone());
-    Ok(provider.tracer("stellar-insights-backend"))
+    Ok(provider.tracer("payraider-backend"))
 }
 
 /// Initialize tracing. When `LOG_DIR` is set, logs are also written to a rotating file
@@ -50,10 +50,15 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     // `traceparent` / `tracestate` headers are used for context propagation.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let _ = tracing_log::LogTracer::init();
+    // Note: no separate `tracing_log::LogTracer::init()` call here -
+    // `tracing_subscriber`'s `.init()` below already installs the log/tracing
+    // bridge itself (via its "tracing-log" feature), so calling both panics
+    // with a `SetLoggerError` on the second, redundant registration.
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "backend=info,tower_http=info".into());
+        // Log targets are module paths under the crate name, so the crate name
+        // (not "backend") must be used or every application log is filtered out.
+        .unwrap_or_else(|_| "payraider_backend=info,tower_http=info".into());
 
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
     let use_json = log_format.eq_ignore_ascii_case("json");
@@ -68,7 +73,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
         std::fs::create_dir_all(dir)?;
         let appender = RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
-            .filename_prefix("stellar-insights")
+            .filename_prefix("payraider")
             .filename_suffix("log")
             .max_log_files(MAX_LOG_FILES)
             .build(dir)?;
@@ -93,12 +98,16 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(w)
                     .with_target(true)
                     .with_level(true)
@@ -108,6 +117,8 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
@@ -143,12 +154,16 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(w)
                     .with_target(true)
                     .with_level(true)
@@ -158,6 +173,8 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             (true, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
                     .json()
+                    // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
+                    .flatten_event(true)
                     .with_writer(stdout)
                     .with_target(true)
                     .with_level(true)

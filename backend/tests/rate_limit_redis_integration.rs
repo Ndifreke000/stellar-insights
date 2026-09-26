@@ -11,7 +11,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use stellar_insights_backend::rate_limit::{
+use payraider_backend::rate_limit::{
     ClientIdentifier, ClientRateLimits, ClientTier, RateLimitConfig, RateLimiter,
 };
 
@@ -148,7 +148,7 @@ async fn redis_resets_after_window_expiry() {
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let client = redis::Client::open(redis_url).expect("valid redis url");
     let mut conn = client
-        .get_multiplexed_tokio_connection()
+        .get_multiplexed_async_connection()
         .await
         .expect("redis connection");
     let key = format!("apikey_ratelimit:{api_key}");

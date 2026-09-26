@@ -324,4 +324,87 @@ mod tests {
         assert_eq!(LedgerProtocolVersion(20).to_string(), "protocol/20");
         assert_eq!(LedgerProtocolVersion(21).to_string(), "protocol/21");
     }
+
+    fn sample_event() -> ContractEvent {
+        ContractEvent {
+            id: "evt-1".to_string(),
+            ledger_sequence: 42,
+            transaction_hash: "abc123".to_string(),
+            contract_id: "CONTRACT_A".to_string(),
+            event_type: "transfer".to_string(),
+            data: serde_json::json!({ "amount": 100 }),
+            timestamp: chrono::Utc::now(),
+            network: "testnet".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_contract_event_unique_id() {
+        let event = sample_event();
+        // unique_id is derived from ledger, tx hash and event type.
+        assert_eq!(event.unique_id(), "42:abc123:transfer");
+    }
+
+    #[test]
+    fn test_matches_filter_empty_matches_everything() {
+        let event = sample_event();
+        assert!(event.matches_filter(&EventFilter::default()));
+    }
+
+    #[test]
+    fn test_matches_filter_by_contract_id() {
+        let event = sample_event();
+        let matching = EventFilter {
+            contract_ids: Some(vec!["CONTRACT_A".to_string()]),
+            ..Default::default()
+        };
+        let non_matching = EventFilter {
+            contract_ids: Some(vec!["CONTRACT_B".to_string()]),
+            ..Default::default()
+        };
+        assert!(event.matches_filter(&matching));
+        assert!(!event.matches_filter(&non_matching));
+    }
+
+    #[test]
+    fn test_matches_filter_by_event_type() {
+        let event = sample_event();
+        let matching = EventFilter {
+            event_types: Some(vec!["transfer".to_string()]),
+            ..Default::default()
+        };
+        let non_matching = EventFilter {
+            event_types: Some(vec!["mint".to_string()]),
+            ..Default::default()
+        };
+        assert!(event.matches_filter(&matching));
+        assert!(!event.matches_filter(&non_matching));
+    }
+
+    #[test]
+    fn test_matches_filter_by_network() {
+        let event = sample_event();
+        let matching = EventFilter {
+            network: Some("testnet".to_string()),
+            ..Default::default()
+        };
+        let non_matching = EventFilter {
+            network: Some("mainnet".to_string()),
+            ..Default::default()
+        };
+        assert!(event.matches_filter(&matching));
+        assert!(!event.matches_filter(&non_matching));
+    }
+
+    #[test]
+    fn test_matches_filter_requires_all_conditions() {
+        let event = sample_event();
+        // Contract matches but network does not -> overall no match.
+        let filter = EventFilter {
+            contract_ids: Some(vec!["CONTRACT_A".to_string()]),
+            network: Some("mainnet".to_string()),
+            ..Default::default()
+        };
+        assert!(!event.matches_filter(&filter));
+    }
 }

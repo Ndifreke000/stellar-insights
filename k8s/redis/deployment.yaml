@@ -2,9 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
-  namespace: stellar-insights
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis
 spec:
   replicas: 1
@@ -15,15 +15,15 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: redis
   template:
     metadata:
       labels:
-        app: stellar-insights
+        app: payraider
         component: redis
     spec:
-      serviceAccountName: stellar-insights-redis
+      serviceAccountName: payraider-redis
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -105,9 +105,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: stellar-insights
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis
 data:
   redis.conf: |
@@ -153,8 +153,8 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: stellar-insights-redis
-  namespace: stellar-insights
+  name: payraider-redis
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis

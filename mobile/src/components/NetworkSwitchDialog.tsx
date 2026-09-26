@@ -53,7 +53,7 @@ export const NetworkSwitchDialog: React.FC<NetworkSwitchDialogProps> = ({
       try {
         await switchNetwork(network);
         Alert.alert('Success', `Switched to ${network} network`);
-      } catch (err) {
+      } catch {
         Alert.alert('Error', `Failed to switch to ${network} network`);
       }
     },
@@ -219,7 +219,7 @@ export interface NetworkSwitchButtonProps {
   testID?: string;
 }
 
-export const NetworkSwitchButton: React.FC<NetworkSwitchButtonProps> = ({ onPress, testID }) => {
+export const NetworkSwitchButton: React.FC<NetworkSwitchButtonProps> = ({ onPress: _onPress, testID }) => {
   const { network } = useAppStore();
   const [showDialog, setShowDialog] = React.useState(false);
 

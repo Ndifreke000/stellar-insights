@@ -89,11 +89,48 @@ keeping until there is measured evidence of write pressure.
 - [x] **Set `busy_timeout`.** Included in this change: 5 s by default,
       overridable via `DB_BUSY_TIMEOUT_MS`. Turns lock contention from an
       immediate error into a bounded wait.
-- [ ] **Right-size the write pool.** 100 connections is a read-side number.
-      Worth splitting reader and writer pools if contention appears.
-- [ ] **Durability story.** SQLite's backup is a file copy, but a *consistent*
-      one needs care under WAL. Litestream (or an equivalent) gives continuous
-      replication; `backup.rs` currently schedules snapshots without it.
+- [x] **Right-size the write pool.** `PoolConfig::create_write_pool` now opens
+      a small dedicated write pool (default 2 connections, via
+      `DB_WRITE_POOL_MAX_CONNECTIONS`) alongside the existing read pool, wired
+      up in `main.rs` via `Database::with_write_pool`. Not yet consumed by
+      existing write call sites (`Database::pool()` still services both reads
+      and writes in handlers) -- that migration is deliberately incremental,
+      not done in the same change that added the capability.
+- [x] **Durability story.** Litestream now replicates the SQLite database
+      continuously to S3, as an ECS sidecar container
+      (`terraform/modules/compute/ecs/main.tf`) and a k8s sidecar
+      (`k8s/backend/deployment.yaml`), both sharing the same volume as the
+      backend and both scoped to a dedicated backups bucket
+      (`terraform/global/backups.tf`). `backup.rs`'s periodic snapshots still
+      run alongside it as a second, independent recovery path.
+
+### Infrastructure follow-up (found and fixed during this session)
+
+The docs were corrected in #1877, but the infrastructure that provisioned
+Postgres was never cleaned up to match, and nobody had run `terraform plan`
+against it since:
+
+- `terraform/environments/{staging,production}/main.tf` provisioned a real
+  RDS Postgres instance and built `DATABASE_URL` as `postgresql://...` for
+  the ECS task -- had this ever been applied, the backend would have
+  refused to boot (see `DatabaseBackend::from_database_url`'s explicit
+  Postgres-rejection error). Removed, along with the RDS security group,
+  IAM permissions, and CloudWatch widget.
+- Both environments (and the base `k8s/backend/deployment.yaml`) were
+  already configured for multiple backend replicas (`desired_count` 2-3,
+  k8s `replicas: 3`) -- i.e., trigger #4 below was already latent in the
+  unapplied IaC even though nothing in application code had asked for it.
+  Pinned to 1 everywhere, since SQLite still can't support it. If this
+  environment configuration reflects a real intended requirement rather
+  than boilerplate copied from a template, that's a stronger signal to
+  revisit trigger #4 than anything below.
+- Fargate/pod local storage is ephemeral; pinning to 1 replica without a
+  persistent volume would have meant every redeploy wiped the database.
+  Added an EFS volume (ECS) and a PVC (k8s), both mounted at `/data`.
+
+None of this was ever live (confirmed: this Terraform has never been
+applied), so no data or uptime was actually at risk -- but it would have
+broken the first real deployment attempt.
 
 ### Revisit this decision when
 

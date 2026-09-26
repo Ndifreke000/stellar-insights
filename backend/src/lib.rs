@@ -1,4 +1,5 @@
 pub mod admin_audit_log;
+pub mod admin_ip_whitelist;
 pub mod alerts;
 pub mod analytics;
 pub mod api;
@@ -15,6 +16,7 @@ pub mod backup;
 pub mod broadcast;
 pub mod cache;
 pub mod cache_invalidation;
+pub mod client_ip;
 // cache_middleware removed in favor of cache helper APIs
 pub mod crypto;
 pub mod database;
@@ -24,11 +26,13 @@ pub mod email;
 pub mod env_config;
 pub mod error;
 pub mod features;
+pub mod graphql;
 pub mod handlers; // Core handlers (pool_metrics, health_check, ingestion_status)
 pub mod health_check_enhanced; // Enhanced health check with mobile support
 pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod ingestion;
 pub mod ip_whitelist_middleware;
+pub mod leader_election;
 pub mod jobs;
 pub mod logging;
 pub mod ml;
@@ -46,9 +50,12 @@ pub mod rate_limit;
 pub mod replay;
 pub mod request_id;
 pub mod services;
+pub mod session;
 pub mod shutdown;
 pub mod snapshot;
 pub mod state;
+pub mod telegram;
+pub mod twofa;
 pub mod validation;
 pub mod vault;
 pub mod webhooks;

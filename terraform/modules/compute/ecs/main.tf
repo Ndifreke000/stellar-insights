@@ -7,7 +7,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
   retention_in_days = var.log_retention_days
 
   tags = {
-    Name = "stellar-insights-ecs-logs-${var.environment}"
+    Name = "payraider-ecs-logs-${var.environment}"
   }
 }
 
@@ -17,7 +17,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
 
 # Task Execution Role (used by ECS agent to pull image and write logs)
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "stellar-insights-ecs-task-execution-${var.environment}"
+  name = "payraider-ecs-task-execution-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -33,7 +33,7 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-task-execution-${var.environment}"
+    Name = "payraider-ecs-task-execution-${var.environment}"
   }
 }
 
@@ -44,7 +44,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
 
 # Task Role (used by the application inside the container)
 resource "aws_iam_role" "ecs_task_role" {
-  name = "stellar-insights-ecs-task-${var.environment}"
+  name = "payraider-ecs-task-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -60,13 +60,13 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-task-${var.environment}"
+    Name = "payraider-ecs-task-${var.environment}"
   }
 }
 
 # Task role policy: allow reading from Vault and writing to S3 for artifacts
 resource "aws_iam_role_policy" "ecs_task_policy" {
-  name = "stellar-insights-ecs-task-policy"
+  name = "payraider-ecs-task-policy"
   role = aws_iam_role.ecs_task_role.id
 
   policy = jsonencode({
@@ -75,8 +75,7 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
       {
         Effect = "Allow"
         Action = [
-          "vault:ReadSecret",
-          "vault:GetDatabaseCredentials"
+          "vault:ReadSecret"
         ]
         Resource = "*"
       },
@@ -97,10 +96,158 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
   })
 }
 
+# ============================================================================
+# EFS: persistent storage for the SQLite database file
+# ============================================================================
+#
+# The backend is SQLite-only (docs/adr/0001-sqlite-vs-postgres.md) and is
+# pinned to a single task (desired_count = 1, see the environment configs).
+# Fargate's local storage is ephemeral -- without a mounted volume, every
+# task restart or redeploy would silently wipe the database. EFS gives that
+# single task durable, restart-safe storage.
+#
+# This is new infrastructure, not a rename -- it has not been validated
+# with `terraform validate`/`plan` (no terraform CLI in this environment).
+# Review carefully, and run a real plan before applying.
+
+resource "aws_efs_file_system" "backend_data" {
+  creation_token = "payraider-backend-data-${var.environment}"
+  encrypted      = true
+
+  lifecycle_policy {
+    transition_to_ia = "AFTER_30_DAYS"
+  }
+
+  tags = {
+    Name = "payraider-backend-data-${var.environment}"
+  }
+}
+
+resource "aws_security_group" "efs" {
+  name_prefix = "payraider-efs-${var.environment}-"
+  description = "Security group for EFS mount targets (backend SQLite data)"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = var.security_groups
+    description     = "Allow NFS from backend ECS tasks"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound"
+  }
+
+  tags = {
+    Name = "payraider-efs-sg-${var.environment}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_efs_mount_target" "backend_data" {
+  for_each        = toset(var.subnets)
+  file_system_id  = aws_efs_file_system.backend_data.id
+  subnet_id       = each.value
+  security_groups = [aws_security_group.efs.id]
+}
+
+resource "aws_efs_access_point" "backend_data" {
+  file_system_id = aws_efs_file_system.backend_data.id
+
+  posix_user {
+    uid = 1000
+    gid = 1000
+  }
+
+  root_directory {
+    path = "/payraider-data"
+    creation_info {
+      owner_uid   = 1000
+      owner_gid   = 1000
+      permissions = "0755"
+    }
+  }
+
+  tags = {
+    Name = "payraider-backend-data-ap-${var.environment}"
+  }
+}
+
+# Task role needs S3 access for the Litestream sidecar to replicate the
+# SQLite database, scoped to this environment's prefix in the shared
+# backups bucket (terraform/global/backups.tf).
+resource "aws_iam_role_policy" "task_litestream_access" {
+  name = "payraider-${var.environment}-litestream-access"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::${var.litestream_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "${var.environment}/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::${var.litestream_bucket_name}/${var.environment}/*"
+      }
+    ]
+  })
+}
+
+# Task role (not execution role) needs EFS client permissions -- the task
+# itself mounts the volume at container start, scoped to this one access
+# point only.
+resource "aws_iam_role_policy" "task_efs_access" {
+  name = "payraider-${var.environment}-efs-access"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite"
+        ]
+        Resource = aws_efs_file_system.backend_data.arn
+        Condition = {
+          StringEquals = {
+            "elasticfilesystem:AccessPointArn" = aws_efs_access_point.backend_data.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
 # EC2 Instance Profile Role (only needed for EC2 launch type)
 resource "aws_iam_role" "ecs_instance_role" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name  = "stellar-insights-ecs-instance-${var.environment}"
+  name  = "payraider-ecs-instance-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -116,7 +263,7 @@ resource "aws_iam_role" "ecs_instance_role" {
   })
 
   tags = {
-    Name = "stellar-insights-ecs-instance-${var.environment}"
+    Name = "payraider-ecs-instance-${var.environment}"
   }
 }
 
@@ -128,7 +275,7 @@ resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
 
 resource "aws_iam_instance_profile" "ecs" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name  = "stellar-insights-ecs-instance-profile-${var.environment}"
+  name  = "payraider-ecs-instance-profile-${var.environment}"
   role  = aws_iam_role.ecs_instance_role[0].name
 }
 
@@ -145,7 +292,7 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = {
-    Name = "stellar-insights-ecs-cluster-${var.environment}"
+    Name = "payraider-ecs-cluster-${var.environment}"
   }
 }
 
@@ -166,7 +313,7 @@ data "aws_ami" "ecs_optimized" {
 
 resource "aws_launch_template" "ecs" {
   count = var.launch_type == "EC2" ? 1 : 0
-  name_prefix   = "stellar-insights-ecs-"
+  name_prefix   = "payraider-ecs-"
   image_id      = data.aws_ami.ecs_optimized[0].id
   instance_type = var.instance_type
 
@@ -202,7 +349,7 @@ resource "aws_launch_template" "ecs" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name = "stellar-insights-ecs-${var.environment}"
+      Name = "payraider-ecs-${var.environment}"
     }
   }
 
@@ -232,7 +379,7 @@ resource "aws_autoscaling_group" "ecs" {
 
   tag {
     key                 = "Name"
-    value               = "stellar-insights-ecs-${var.environment}"
+    value               = "payraider-ecs-${var.environment}"
     propagate_at_launch = true
   }
 
@@ -252,7 +399,7 @@ resource "aws_autoscaling_group" "ecs" {
 # ============================================================================
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = "stellar-insights-${var.environment}"
+  family                   = "payraider-${var.environment}"
   network_mode             = "awsvpc"
   requires_compatibilities = var.launch_type == "FARGATE" ? ["FARGATE"] : ["EC2"]
   cpu                      = var.container_cpu
@@ -260,9 +407,21 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
+  volume {
+    name = "data"
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.backend_data.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.backend_data.id
+        iam             = "ENABLED"
+      }
+    }
+  }
+
   container_definitions = jsonencode([
     {
-      name      = "stellar-insights"
+      name      = "payraider"
       image     = var.container_image
       essential = true
       portMappings = [
@@ -270,6 +429,14 @@ resource "aws_ecs_task_definition" "app" {
           containerPort = var.container_port
           hostPort      = var.container_port
           protocol      = "tcp"
+        }
+      ]
+
+      mountPoints = [
+        {
+          sourceVolume  = "data"
+          containerPath = "/data"
+          readOnly      = false
         }
       ]
 
@@ -315,11 +482,47 @@ resource "aws_ecs_task_definition" "app" {
         retries     = 3
         startPeriod = 60
       }
+    },
+    {
+      # Litestream sidecar: continuous replication of the SQLite database
+      # to S3 (ADR 0001's "durability story" hardening item). Uses the
+      # stock litestream/litestream image with CLI args, no custom image
+      # or config file needed -- credentials come from the task role via
+      # the IAM condition scoped in aws_iam_role_policy.task_litestream_access.
+      #
+      # Shares the same EFS-backed "data" volume as the main container so
+      # it can tail the WAL directly, and is non-essential: if it dies,
+      # ECS restarts just this container rather than cycling the backend.
+      name      = "litestream"
+      image     = "litestream/litestream:0.3.13"
+      essential = false
+      command = [
+        "replicate",
+        "/data/payraider.db",
+        "s3://${var.litestream_bucket_name}/${var.environment}/payraider.db"
+      ]
+
+      mountPoints = [
+        {
+          sourceVolume  = "data"
+          containerPath = "/data"
+          readOnly      = false
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-region"        = data.aws_caller_identity.current.account
+          "awslogs-stream-prefix" = "litestream"
+        }
+      }
     }
   ])
 
   tags = {
-    Name = "stellar-insights-task-${var.environment}"
+    Name = "payraider-task-${var.environment}"
   }
 }
 
@@ -328,7 +531,7 @@ resource "aws_ecs_task_definition" "app" {
 # ============================================================================
 
 resource "aws_ecs_service" "app" {
-  name            = "stellar-insights-service"
+  name            = "payraider-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
@@ -342,7 +545,7 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "stellar-insights"
+    container_name   = "payraider"
     container_port   = var.container_port
   }
 
@@ -360,7 +563,7 @@ resource "aws_ecs_service" "app" {
   ]
 
   tags = {
-    Name = "stellar-insights-service-${var.environment}"
+    Name = "payraider-service-${var.environment}"
   }
 
   lifecycle {
@@ -383,7 +586,7 @@ resource "aws_appautoscaling_target" "ecs_target" {
 
 resource "aws_appautoscaling_policy" "ecs_target_cpu" {
   count              = var.enable_auto_scaling ? 1 : 0
-  name               = "stellar-insights-cpu-scaling-${var.environment}"
+  name               = "payraider-cpu-scaling-${var.environment}"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_target[0].resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_target[0].scalable_dimension
@@ -402,11 +605,11 @@ resource "aws_appautoscaling_policy" "ecs_target_cpu" {
 # ============================================================================
 
 resource "aws_secretsmanager_secret" "database_url" {
-  name                    = "stellar-insights/database-url-${var.environment}"
+  name                    = "payraider/database-url-${var.environment}"
   recovery_window_in_days = 7
 
   tags = {
-    Name = "stellar-insights-db-url-${var.environment}"
+    Name = "payraider-db-url-${var.environment}"
   }
 }
 
@@ -417,11 +620,11 @@ resource "aws_secretsmanager_secret_version" "database_url" {
 }
 
 resource "aws_secretsmanager_secret" "redis_url" {
-  name                    = "stellar-insights/redis-url-${var.environment}"
+  name                    = "payraider/redis-url-${var.environment}"
   recovery_window_in_days = 7
 
   tags = {
-    Name = "stellar-insights-redis-url-${var.environment}"
+    Name = "payraider-redis-url-${var.environment}"
   }
 }
 

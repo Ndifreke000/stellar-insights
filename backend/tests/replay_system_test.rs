@@ -12,7 +12,7 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
-use stellar_insights_backend::replay::{
+use payraider_backend::replay::{
     checkpoint::{Checkpoint, CheckpointManager},
     config::ReplayConfig,
     event_processor::{EventProcessor, ProcessingContext, SnapshotEventProcessor},
@@ -329,7 +329,7 @@ async fn test_replay_config_validation() {
 
 #[tokio::test]
 async fn test_replay_range() {
-    use stellar_insights_backend::replay::config::ReplayRange;
+    use payraider_backend::replay::config::ReplayRange;
 
     let range = ReplayRange::FromTo {
         start: 100,
@@ -350,10 +350,10 @@ async fn test_replay_storage() {
     let storage = ReplayStorage::new(pool);
 
     // Create metadata
-    let metadata = stellar_insights_backend::replay::ReplayMetadata {
+    let metadata = payraider_backend::replay::ReplayMetadata {
         session_id: "test-session".to_string(),
         config: ReplayConfig::default(),
-        status: stellar_insights_backend::replay::ReplayStatus::Pending,
+        status: payraider_backend::replay::ReplayStatus::Pending,
         started_at: Utc::now(),
         ended_at: None,
         checkpoint: None,

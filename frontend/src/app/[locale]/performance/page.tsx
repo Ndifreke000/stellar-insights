@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  TooltipValueType,
 } from "recharts";
 import type { Metric, AppError } from "@/lib/monitoring";
 
@@ -57,16 +58,27 @@ const RATING_BG: Record<string, string> = {
   poor: "bg-red-500/10 border-red-500/20",
 };
 
-export default function PerformancePage() {
-  const [rawMetrics, setRawMetrics] = useState<Metric[]>([]);
-  const [rawErrors, setRawErrors] = useState<AppError[]>([]);
+function readLocalMetrics(): Metric[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("mon_metrics") || "[]");
+  } catch {
+    return [];
+  }
+}
 
-  useEffect(() => {
-    const metrics: Metric[] = JSON.parse(localStorage.getItem("mon_metrics") || "[]");
-    const errors: AppError[] = JSON.parse(localStorage.getItem("mon_errors") || "[]");
-    setRawMetrics(metrics);
-    setRawErrors(errors);
-  }, []);
+function readLocalErrors(): AppError[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("mon_errors") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export default function PerformancePage() {
+  const [rawMetrics] = useState<Metric[]>(readLocalMetrics);
+  const [rawErrors] = useState<AppError[]>(readLocalErrors);
 
   const vitals = useMemo(() => {
     const vitalsMap = new Map<string, number>();
@@ -150,7 +162,7 @@ export default function PerformancePage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis type="number" unit="ms" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="endpoint" tick={{ fontSize: 11 }} width={140} />
-                <Tooltip formatter={(v?: number): [string, string] => [`${v ?? 0}ms`, "Avg latency"]} />
+                <Tooltip formatter={(v?: TooltipValueType): [string, string] => [`${typeof v === 'number' ? v : Number(v ?? 0)}ms`, "Avg latency"]} />
                 <Bar dataKey="latency" fill="rgb(99,102,241)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

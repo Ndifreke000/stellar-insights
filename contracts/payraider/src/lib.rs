@@ -1,0 +1,959 @@
+#![no_std]
+
+mod errors;
+mod events;
+
+use errors::Error;
+use events::{emit_admin_transferred, emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// ~30 days at 5 s/ledger
+const LEDGERS_TO_EXTEND: u32 = 518_400;
+const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
+const INSTANCE_TTL_EXTEND: u32 = 518_400;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+/// Role-based access control for contract functions
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Role {
+    /// Can perform all operations (backwards compat: original admin role)
+    Admin = 0,
+    /// Can submit snapshots
+    SnapshotSubmitter = 1,
+    /// Can pause/unpause the contract
+    PauseManager = 2,
+    /// Can perform upgrades
+    UpgradeManager = 3,
+}
+
+/// Storage keys for persistent contract data
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    /// Administrator address authorized to submit snapshots
+    Admin,
+    /// Map of epoch -> snapshot hash
+    Snapshots,
+    /// Latest epoch number recorded
+    LatestEpoch,
+    /// Emergency pause state (true = paused, false = active)
+    Paused,
+    /// Contract package version at initialization
+    Version,
+    /// Governance contract permitted to update parameters on-chain (#2137)
+    Governance,
+    /// Schema version of the data currently in storage (#2133)
+    StorageVersion,
+}
+
+/// Schema version this build reads and writes.
+///
+/// Bumped whenever the *shape* of stored data changes — not on every release.
+/// `migrate()` moves storage from whatever version it is on up to this one, and
+/// refuses to run against anything newer than it understands.
+pub const CURRENT_STORAGE_VERSION: u32 = 1;
+
+/// Analytics snapshot data structure
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Snapshot {
+    /// SHA-256 hash of analytics data
+    pub hash: BytesN<32>,
+    /// Epoch identifier
+    pub epoch: u64,
+    /// Ledger timestamp when recorded
+    pub timestamp: u64,
+}
+
+/// Extended contract metadata for public disclosure
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub repository: String,
+    pub license: String,
+}
+
+/// Represents an optional admin address in contract info
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MaybeAddress {
+    None,
+    Some(Address),
+}
+
+/// Contract info combining metadata with runtime state
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractInfo {
+    pub metadata: PublicMetadata,
+    pub initialized: bool,
+    pub paused: bool,
+    pub admin: MaybeAddress,
+    pub total_snapshots: u64,
+}
+
+#[contract]
+pub struct PayRaiderContract;
+
+#[contractimpl]
+impl PayRaiderContract {
+    /// Initialize the contract with an admin address
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `admin` - Address that will be authorized to submit snapshots
+    ///
+    /// # Returns
+    /// * Success confirmation
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        // Verify admin doesn't already exist to prevent re-initialization
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        // Store the admin address
+        env.storage().instance().set(&DataKey::Admin, &admin);
+
+        // Initialize latest epoch to 0
+        env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
+
+        // Stamp the schema version so a fresh deploy is never mistaken for
+        // pre-versioning state that still needs migrating.
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &CURRENT_STORAGE_VERSION);
+
+        // Initialize contract as not paused
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::Version, &String::from_str(&env, VERSION));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
+        // Grant Admin role to initial admin
+        let mut roles = Vec::new(&env);
+        roles.push_back(Role::Admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(admin.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(admin.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        emit_contract_initialized(&env, admin);
+
+        Ok(())
+    }
+
+    pub fn get_version(env: Env) -> String {
+        env.storage()
+            .instance()
+            .get(&DataKey::Version)
+            .unwrap_or_else(|| String::from_str(&env, VERSION))
+    }
+
+    /// Submit a cryptographic hash of an analytics snapshot on-chain
+    ///
+    /// Only the authorized admin can call this function. Each epoch can only
+    /// have one snapshot submitted. Upon successful submission, an event is
+    /// emitted for verification purposes.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `epoch` - Epoch identifier (must be positive and unique)
+    /// * `hash` - 32-byte SHA-256 hash of the analytics snapshot
+    /// * `caller` - Address attempting to submit the snapshot
+    ///
+    /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::UnauthorizedCaller` - If caller is not the admin
+    /// * `Error::InvalidEpoch` - If epoch is 0
+    /// * `Error::DuplicateEpoch` - If snapshot already exists for this epoch
+    /// * `Error::EpochMonotonicityViolated` - If epoch <= latest (out-of-order submission)
+    ///
+    /// # Returns
+    /// * Ledger timestamp when the snapshot was recorded
+    pub fn submit_snapshot(
+        env: Env,
+        epoch: u64,
+        hash: BytesN<32>,
+        caller: Address,
+    ) -> Result<u64, Error> {
+        // Check if contract is paused
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
+        // Verify caller is authenticated
+        caller.require_auth();
+
+        // Check if caller has Admin or SnapshotSubmitter role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_submitter_role = Self::has_role(env.clone(), caller.clone(), Role::SnapshotSubmitter);
+
+        if !has_admin_role && !has_submitter_role {
+            return Err(Error::Unauthorized);
+        }
+
+        // Validate epoch is not zero
+        if epoch == 0 {
+            return Err(Error::InvalidEpochZero);
+        }
+
+        // Prevent u64 overflow on mainnet by capping at u64::MAX
+        if epoch == u64::MAX {
+            return Err(Error::EpochOverflow);
+        }
+
+        // Validate hash is not all zeros (security-critical — the
+        // Error::InvalidHashZero variant existed but was never actually
+        // checked, so a degenerate all-zero hash silently passed through).
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if hash == zero_hash {
+            return Err(Error::InvalidHashZero);
+        }
+
+        // Get existing snapshots map or create new one
+        let mut snapshots: Map<u64, Snapshot> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .unwrap_or_else(|| Map::new(&env));
+
+        // Check for duplicate epoch
+        if snapshots.contains_key(epoch) {
+            return Err(Error::DuplicateEpoch);
+        }
+
+        // Enforce monotonic epoch increase to prevent rollback attacks
+        let current_latest: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+        if epoch <= current_latest {
+            return Err(Error::EpochMonotonicityViolated);
+        }
+
+        // Get current ledger timestamp
+        let timestamp = env.ledger().timestamp();
+
+        // Create snapshot entry
+        let snapshot = Snapshot {
+            hash: hash.clone(),
+            epoch,
+            timestamp,
+        };
+
+        // Store snapshot
+        snapshots.set(epoch, snapshot);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Snapshots, &snapshots);
+
+        // Extend storage TTL (~30 days at 5s per ledger)
+        env.storage().persistent().extend_ttl(
+            &DataKey::Snapshots,
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
+
+        // Emit structured event for off-chain indexing
+        // Event payload matches stored data exactly:
+        // - hash: same as snapshot.hash
+        // - epoch: same as snapshot.epoch
+        // - timestamp: same as snapshot.timestamp
+        // - submitter: the authenticated caller
+        emit_snapshot_submitted(&env, hash, epoch, timestamp, caller);
+
+        Ok(timestamp)
+    }
+
+    /// Retrieve a snapshot hash for a specific epoch
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `epoch` - Epoch to retrieve
+    ///
+    /// # Errors
+    /// * `Error::SnapshotNotFound` - If no snapshot exists for the epoch
+    ///
+    /// # Returns
+    /// * The 32-byte hash stored for that epoch
+    pub fn get_snapshot(env: Env, epoch: u64) -> Result<BytesN<32>, Error> {
+        // Extend TTL on read to keep data alive
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+        let snapshots: Map<u64, Snapshot> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .unwrap_or_else(|| Map::new(&env));
+
+        snapshots
+            .get(epoch)
+            .map(|s| s.hash)
+            .ok_or(Error::SnapshotNotFound)
+    }
+
+    /// Get the most recent snapshot
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Errors
+    /// * `Error::SnapshotNotFound` - If no snapshots exist
+    ///
+    /// # Returns
+    /// * Tuple of (hash, epoch, timestamp) for the latest snapshot
+    pub fn latest_snapshot(env: Env) -> Result<(BytesN<32>, u64, u64), Error> {
+        let latest_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0);
+
+        if latest_epoch == 0 {
+            return Err(Error::SnapshotNotFound);
+        }
+
+        if env.storage().persistent().has(&DataKey::Snapshots) {
+            env.storage().persistent().extend_ttl(
+                &DataKey::Snapshots,
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+        }
+
+        let snapshots: Map<u64, Snapshot> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshots)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let snapshot = snapshots.get(latest_epoch).ok_or(Error::SnapshotNotFound)?;
+
+        Ok((snapshot.hash, snapshot.epoch, snapshot.timestamp))
+    }
+
+    /// Get the current admin address
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    ///
+    /// # Returns
+    /// * The admin address
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)
+    }
+
+    /// Transfer admin ownership to a new address.
+    ///
+    /// Only the current admin can call this function.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Current admin address (must match stored admin)
+    /// * `new_admin` - Address to transfer admin rights to
+    ///
+    /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the current admin
+    pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
+            return Err(Error::ContractPaused);
+        }
+
+        caller.require_auth();
+
+        // Check if caller has Admin role
+        if !Self::has_role(env.clone(), caller.clone(), Role::Admin) {
+            return Err(Error::Unauthorized);
+        }
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        // Require the new admin to also sign to prevent unilateral transfer
+        new_admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        // Grant Admin role to the new admin
+        let mut roles = Vec::new(&env);
+        roles.push_back(Role::Admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(new_admin.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(new_admin.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+
+        bump_instance(&env);
+        emit_admin_transferred(&env, old_admin, new_admin);
+        Ok(())
+    }
+
+    /// Get the latest epoch number
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Returns
+    /// * The latest epoch number (0 if no snapshots)
+    pub fn get_latest_epoch(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::LatestEpoch)
+            .unwrap_or(0)
+    }
+
+    /// Emergency pause the contract
+    ///
+    /// Pauses all snapshot submissions. Only the admin can pause the contract.
+    /// Read operations remain available during pause.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to pause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        // Check if caller has Admin or PauseManager role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
+
+        if !has_admin_role && !has_pause_manager_role {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        bump_instance(&env);
+
+        emit_contract_paused(&env, caller);
+
+        Ok(())
+    }
+
+    /// Unpause the contract
+    ///
+    /// Resumes normal operations. Only the admin can unpause the contract.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to unpause (must be admin)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        // Check if caller has Admin or PauseManager role
+        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
+
+        if !has_admin_role && !has_pause_manager_role {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        bump_instance(&env);
+
+        emit_contract_unpaused(&env, caller);
+
+        Ok(())
+    }
+
+    /// Upgrade the contract Wasm. Admin-only.
+    ///
+    /// The contract must not be paused to perform an upgrade.
+    /// After a successful upgrade the new Wasm is active immediately.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `new_wasm_hash` - 32-byte hash of the new Wasm blob (must be uploaded first)
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::ContractPaused` - If contract is currently paused
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        // Authorisation stays with the admin. `GovernedContract::upgrade`
+        // carries no caller argument, so there is nothing to distinguish a
+        // governance invocation from any other — governance drives an upgrade
+        // by *being* the admin, which `set_admin_by_governance` allows a vote
+        // to arrange.
+        admin.require_auth();
+
+        // Verify contract is not paused
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+
+        if paused {
+            return Err(Error::ContractPaused);
+        }
+
+        // A zero hash is never a real Wasm blob; accepting one would replace
+        // the contract with nothing and brick it permanently.
+        let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+        if new_wasm_hash == zero_hash {
+            return Err(Error::InvalidWasmHash);
+        }
+
+        // Perform upgrade
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        bump_instance(&env);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (caller, new_wasm_hash),
+        );
+
+        Ok(())
+    }
+
+    /// Schema version of the data currently in storage.
+    ///
+    /// Contracts deployed before versioning existed report `0`, which is what
+    /// [`Self::migrate`] uses to decide there is work to do.
+    pub fn get_storage_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::StorageVersion)
+            .unwrap_or(0)
+    }
+
+    /// Bring stored data up to the schema this build expects.
+    ///
+    /// `upgrade()` swaps the Wasm but cannot touch storage in the same
+    /// invocation — the new code is not running yet. Migration is therefore a
+    /// separate admin-invoked step, run once against the *new* Wasm:
+    ///
+    /// ```text
+    ///   upgrade(new_wasm_hash)   →  new code active, storage still old shape
+    ///   migrate()                →  storage transformed, version stamped
+    /// ```
+    ///
+    /// Idempotent by construction: it refuses with `MigrationNotNeeded` once
+    /// storage is already current, so a retry after a partial failure is safe
+    /// and a double-invocation cannot corrupt state.
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` — admin was never initialized
+    /// * `Error::Unauthorized` — caller is neither admin nor governance
+    /// * `Error::MigrationNotNeeded` — storage is already current
+    /// * `Error::StorageVersionTooNew` — storage was written by a newer build,
+    ///   which means a downgrade happened; migrating would lose data
+    pub fn migrate(env: Env, caller: Address) -> Result<u32, Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        let governance: Option<Address> = env.storage().instance().get(&DataKey::Governance);
+
+        let authorized = caller == admin || governance.as_ref() == Some(&caller);
+        if !authorized {
+            return Err(Error::Unauthorized);
+        }
+
+        let from = Self::get_storage_version(env.clone());
+
+        if from > CURRENT_STORAGE_VERSION {
+            return Err(Error::StorageVersionTooNew);
+        }
+        if from == CURRENT_STORAGE_VERSION {
+            return Err(Error::MigrationNotNeeded);
+        }
+
+        // ── Migration steps ──────────────────────────────────────────────
+        // Each step moves storage forward exactly one version and must be
+        // safe to re-run. Add the next as `if from < N { … }` below, in order.
+
+        if from < 1 {
+            // v0 → v1: pre-versioning deployments never stamped LatestEpoch
+            // when they had no snapshots, so a missing key is read as 0. The
+            // rollback guard in submit_snapshot depends on that value being
+            // present and correct, so it is materialised here rather than
+            // left to `unwrap_or(0)`.
+            let latest: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0);
+            env.storage().instance().set(&DataKey::LatestEpoch, &latest);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &CURRENT_STORAGE_VERSION);
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("migrate"),),
+            (caller, from, CURRENT_STORAGE_VERSION),
+        );
+
+        Ok(CURRENT_STORAGE_VERSION)
+    }
+
+    /// Point the contract at the governance contract allowed to update its
+    /// parameters on-chain. Admin-only.
+    ///
+    /// Setting this is what makes a passed governance proposal executable
+    /// against this contract; until then the `*_by_governance` entrypoints
+    /// reject every caller.
+    pub fn set_governance(env: Env, caller: Address, governance: Address) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Governance, &governance);
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("govset"),),
+            (caller, governance),
+        );
+
+        Ok(())
+    }
+
+    /// The governance contract permitted to update parameters, if configured.
+    pub fn get_governance(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Governance)
+    }
+
+    /// Transfer admin as the outcome of a passed governance proposal.
+    ///
+    /// Callable only by the configured governance contract. This is the
+    /// counterpart of `set_admin`, which requires the current admin — together
+    /// they let control move either by the admin's own hand or by a vote.
+    pub fn set_admin_by_governance(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(Error::GovernanceNotSet)?;
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+
+        emit_admin_transferred(&env, old_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Pause or unpause as the outcome of a passed governance proposal.
+    ///
+    /// Callable only by the configured governance contract.
+    pub fn set_paused_by_governance(
+        env: Env,
+        caller: Address,
+        paused: bool,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(Error::GovernanceNotSet)?;
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        bump_instance(&env);
+
+        if paused {
+            emit_contract_paused(&env, caller);
+        } else {
+            emit_contract_unpaused(&env, caller);
+        }
+
+        Ok(())
+    }
+
+    /// Check if contract is paused
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    ///
+    /// # Returns
+    /// * `true` if contract is paused, `false` otherwise
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    // =========================================================================
+    // Role-Based Access Control (#2140)
+    // =========================================================================
+
+    /// Grant a role to an address. Only admin can grant roles.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to grant role (must be admin)
+    /// * `user` - Address to grant role to
+    /// * `role` - Role to grant
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is not admin
+    /// * `Error::AdminNotSet` - If admin not initialized
+    pub fn grant_role(env: Env, caller: Address, user: Address, role: Role) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut roles = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if !roles.iter().any(|r| r == role) {
+            roles.push_back(role);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(user.clone()), &roles);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Roles(user.clone()),
+            LEDGERS_TO_EXTEND,
+            LEDGERS_TO_EXTEND,
+        );
+        bump_instance(&env);
+
+        env.events().publish(
+            (symbol_short!("role_grnt"), user.clone()),
+            (caller, user, role),
+        );
+
+        Ok(())
+    }
+
+    /// Revoke a role from an address. Only admin can revoke roles.
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `caller` - Address attempting to revoke role (must be admin)
+    /// * `user` - Address to revoke role from
+    /// * `role` - Role to revoke
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is not admin
+    /// * `Error::AdminNotSet` - If admin not initialized
+    pub fn revoke_role(env: Env, caller: Address, user: Address, role: Role) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::AdminNotSet)?;
+
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        if let Some(roles) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
+        {
+            let mut new_roles = Vec::new(&env);
+            for r in roles.iter() {
+                if r != role {
+                    new_roles.push_back(r);
+                }
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::Roles(user.clone()), &new_roles);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Roles(user.clone()),
+                LEDGERS_TO_EXTEND,
+                LEDGERS_TO_EXTEND,
+            );
+            bump_instance(&env);
+
+            env.events().publish(
+                (symbol_short!("role_rvk"), user.clone()),
+                (caller, user, role),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Check if an address has a specific role
+    ///
+    /// # Arguments
+    /// * `env` - Contract environment
+    /// * `user` - Address to check
+    /// * `role` - Role to check for
+    ///
+    /// # Returns
+    /// * `true` if user has the role, `false` otherwise
+    pub fn has_role(env: Env, user: Address, role: Role) -> bool {
+        if let Some(roles) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user))
+        {
+            roles.iter().any(|r| r == role)
+        } else {
+            false
+        }
+    }
+
+    // =========================================================================
+    // Contract Metadata
+    // =========================================================================
+
+    /// Get public contract metadata
+    pub fn get_metadata(env: Env) -> PublicMetadata {
+        PublicMetadata {
+            name: String::from_str(&env, "PayRaider Core"),
+            version: String::from_str(&env, VERSION),
+            author: String::from_str(&env, "PayRaider Team"),
+            description: String::from_str(
+                &env,
+                "Core analytics snapshot contract for Stellar network",
+            ),
+            repository: String::from_str(&env, "https://github.com/payraider/contracts"),
+            license: String::from_str(&env, "MIT"),
+        }
+    }
+
+    /// Get comprehensive contract information
+    pub fn get_contract_info(env: Env) -> ContractInfo {
+        let initialized = env.storage().instance().has(&DataKey::Admin);
+        let admin = if initialized {
+            match env.storage().instance().get(&DataKey::Admin) {
+                Some(addr) => MaybeAddress::Some(addr),
+                None => MaybeAddress::None,
+            }
+        } else {
+            MaybeAddress::None
+        };
+
+        ContractInfo {
+            metadata: Self::get_metadata(env.clone()),
+            initialized,
+            paused: env
+                .storage()
+                .instance()
+                .get(&DataKey::Paused)
+                .unwrap_or(false),
+            admin,
+            total_snapshots: env
+                .storage()
+                .instance()
+                .get(&DataKey::LatestEpoch)
+                .unwrap_or(0),
+        }
+    }
+}
+
+mod test;
