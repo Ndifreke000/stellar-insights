@@ -1994,6 +1994,7 @@ impl AnalyticsContract {
     }
 
     /// Get aggregate statistics over all submitted snapshots.
+    /// Optimized to use a single pass through epochs and a Map for O(1) unique submitter tracking.
     pub fn get_statistics(env: Env) -> Result<SnapshotStatistics, Error> {
         require_initialized(&env)?;
 
@@ -2015,11 +2016,15 @@ impl AnalyticsContract {
             });
         }
 
-        let mut unique_submitters: Vec<Address> = Vec::new(&env);
+        // Use a Map for O(1) unique submitter tracking instead of Vec.contains()
+        let mut unique_submitters_map: Map<Address, bool> = Map::new(&env);
         let mut first_timestamp = u64::MAX;
         let mut last_timestamp = 0u64;
         let mut total_count = 0u64;
+        let mut total_timestamp_diff = 0u64;
+        let mut prev_timestamp: Option<u64> = None;
 
+        // Single pass through epochs - O(n) where n = latest_epoch
         for epoch in 1..=latest_epoch {
             if let Some(metadata) = env
                 .storage()
@@ -2028,21 +2033,30 @@ impl AnalyticsContract {
             {
                 total_count += 1;
 
-                if !unique_submitters.contains(&metadata.submitter) {
-                    unique_submitters.push_back(metadata.submitter);
+                // O(1) unique submitter tracking using Map
+                if !unique_submitters_map.contains_key(&metadata.submitter) {
+                    unique_submitters_map.set(metadata.submitter.clone(), true);
                 }
 
+                // Track first and last timestamps
                 if metadata.timestamp < first_timestamp {
                     first_timestamp = metadata.timestamp;
                 }
                 if metadata.timestamp > last_timestamp {
                     last_timestamp = metadata.timestamp;
                 }
+
+                // Calculate average time between consecutive snapshots
+                if let Some(prev_ts) = prev_timestamp {
+                    total_timestamp_diff += metadata.timestamp - prev_ts;
+                }
+                prev_timestamp = Some(metadata.timestamp);
             }
         }
 
+        // Calculate average time between snapshots using only consecutive pairs
         let avg_time = if total_count > 1 {
-            (last_timestamp - first_timestamp) / (total_count - 1)
+            total_timestamp_diff / (total_count - 1)
         } else {
             0
         };
@@ -2051,7 +2065,7 @@ impl AnalyticsContract {
             total_snapshots: total_count,
             first_epoch: 1,
             latest_epoch,
-            unique_submitters: unique_submitters.len(),
+            unique_submitters: unique_submitters_map.len(),
             average_time_between_snapshots: avg_time,
             oldest_snapshot_timestamp: first_timestamp,
             newest_snapshot_timestamp: last_timestamp,

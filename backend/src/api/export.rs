@@ -60,7 +60,7 @@ pub async fn export_corridors(
         .map_or(today - Duration::days(30), |d| d.date_naive());
     let end_date = params.end_date.map_or(today, |d| d.date_naive());
 
-    let mut corridors = app_state
+    let corridors = app_state
         .db
         .corridor_aggregates()
         .get_aggregated_corridor_metrics(start_date, end_date)
@@ -72,161 +72,175 @@ pub async fn export_corridors(
             )
         })?;
 
-    if let Some(corridor_id) = &params.corridor_id {
-        corridors.retain(|c| &c.corridor_key == corridor_id);
-    }
+    let filtered_corridors: Vec<_> = if let Some(corridor_id) = &params.corridor_id {
+        corridors
+            .into_iter()
+            .filter(|c| &c.corridor_key == corridor_id)
+            .collect()
+    } else {
+        corridors
+    };
 
     match params.format.to_lowercase().as_str() {
-        "csv" => {
-            let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record([
-                "Corridor ID",
-                "Source Asset",
-                "Source Issuer",
-                "Destination Asset",
-                "Destination Issuer",
-                "Success Rate (%)",
-                "Total Transactions",
-                "Successful Transactions",
-                "Failed Transactions",
-                "Volume (USD)",
-                "Latest Date",
-            ])
-            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            for m in corridors {
-                wtr.write_record(&[
-                    sanitize_csv_field(m.corridor_key),
-                    sanitize_csv_field(m.source_asset_code),
-                    sanitize_csv_field(m.source_asset_issuer),
-                    sanitize_csv_field(m.destination_asset_code),
-                    sanitize_csv_field(m.destination_asset_issuer),
-                    format!("{:.2}", m.avg_success_rate),
-                    m.total_transactions.to_string(),
-                    m.successful_transactions.to_string(),
-                    m.failed_transactions.to_string(),
-                    format!("{:.2}", m.total_volume_usd),
-                    m.latest_date.to_string(),
-                ])
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = wtr
-                .into_inner()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"corridors_export.csv\""),
-            );
-
-            Ok((headers, data))
-        }
-        "json" => {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"corridors_export.json\""),
-            );
-
-            let data = serde_json::to_vec(&corridors)
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            Ok((headers, data))
-        }
-        "excel" | "xlsx" => {
-            let mut workbook = Workbook::new();
-            let worksheet = workbook.add_worksheet();
-
-            let header_format = Format::new()
-                .set_bold()
-                .set_background_color(Color::RGB(0x00D9_EAD3));
-
-            let headers = [
-                "Corridor ID",
-                "Source Asset",
-                "Source Issuer",
-                "Destination Asset",
-                "Destination Issuer",
-                "Success Rate (%)",
-                "Total Transactions",
-                "Successful Transactions",
-                "Failed Transactions",
-                "Volume (USD)",
-                "Latest Date",
-            ];
-
-            for (i, h) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            for (row, m) in corridors.iter().enumerate() {
-                let row = (row + 1) as u32;
-                worksheet
-                    .write(row, 0, &m.corridor_key)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 1, &m.source_asset_code)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 2, &m.source_asset_issuer)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 3, &m.destination_asset_code)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 4, &m.destination_asset_issuer)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 5, m.avg_success_rate)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 6, m.total_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 7, m.successful_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 8, m.failed_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 9, m.total_volume_usd)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 10, m.latest_date.to_string())
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = workbook
-                .save_to_buffer()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"corridors_export.xlsx\""),
-            );
-
-            Ok((headers, data))
-        }
+        "csv" => export_corridors_csv(&filtered_corridors),
+        "json" => export_corridors_json(&filtered_corridors),
+        "excel" | "xlsx" => export_corridors_excel(&filtered_corridors),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
         )),
     }
+}
+
+/// Helper to export corridors as CSV
+fn export_corridors_csv(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+    let mut wtr = Writer::from_writer(vec![]);
+    wtr.write_record([
+        "Corridor ID",
+        "Source Asset",
+        "Source Issuer",
+        "Destination Asset",
+        "Destination Issuer",
+        "Success Rate (%)",
+        "Total Transactions",
+        "Successful Transactions",
+        "Failed Transactions",
+        "Volume (USD)",
+        "Latest Date",
+    ])
+    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    for m in corridors {
+        wtr.write_record(&[
+            sanitize_csv_field(m.corridor_key.clone()),
+            sanitize_csv_field(m.source_asset_code.clone()),
+            sanitize_csv_field(m.source_asset_issuer.clone()),
+            sanitize_csv_field(m.destination_asset_code.clone()),
+            sanitize_csv_field(m.destination_asset_issuer.clone()),
+            format!("{:.2}", m.avg_success_rate),
+            m.total_transactions.to_string(),
+            m.successful_transactions.to_string(),
+            m.failed_transactions.to_string(),
+            format!("{:.2}", m.total_volume_usd),
+            m.latest_date.to_string(),
+        ])
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = wtr
+        .into_inner()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"corridors_export.csv\""),
+    );
+
+    Ok((headers, data))
+}
+
+/// Helper to export corridors as JSON
+fn export_corridors_json(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"corridors_export.json\""),
+    );
+
+    let data = serde_json::to_vec(corridors)
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    Ok((headers, data))
+}
+
+/// Helper to export corridors as Excel
+fn export_corridors_excel(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+
+    let header_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0x00D9_EAD3));
+
+    let headers = [
+        "Corridor ID",
+        "Source Asset",
+        "Source Issuer",
+        "Destination Asset",
+        "Destination Issuer",
+        "Success Rate (%)",
+        "Total Transactions",
+        "Successful Transactions",
+        "Failed Transactions",
+        "Volume (USD)",
+        "Latest Date",
+    ];
+
+    for (i, h) in headers.iter().enumerate() {
+        worksheet
+            .write_with_format(0, i as u16, *h, &header_format)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    for (row, m) in corridors.iter().enumerate() {
+        let row = (row + 1) as u32;
+        worksheet
+            .write(row, 0, &m.corridor_key)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 1, &m.source_asset_code)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 2, &m.source_asset_issuer)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 3, &m.destination_asset_code)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 4, &m.destination_asset_issuer)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 5, m.avg_success_rate)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 6, m.total_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 7, m.successful_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 8, m.failed_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 9, m.total_volume_usd)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 10, m.latest_date.to_string())
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = workbook
+        .save_to_buffer()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"corridors_export.xlsx\""),
+    );
+
+    Ok((headers, data))
 }
 
 /// Export anchors as CSV, JSON or Excel
@@ -253,156 +267,165 @@ pub async fn export_anchors(
     })?;
 
     match params.format.to_lowercase().as_str() {
-        "csv" => {
-            let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record([
-                "Anchor ID",
-                "Name",
-                "Stellar Account",
-                "Home Domain",
-                "Reliability Score (%)",
-                "Total Transactions",
-                "Successful Transactions",
-                "Failed Transactions",
-                "Volume (USD)",
-                "Status",
-                "Last Updated",
-            ])
-            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            for a in anchors {
-                wtr.write_record(&[
-                    sanitize_csv_field(a.id),
-                    sanitize_csv_field(a.name),
-                    sanitize_csv_field(a.stellar_account),
-                    sanitize_csv_field(a.home_domain.unwrap_or_default()),
-                    format!("{:.2}", a.reliability_score),
-                    a.total_transactions.to_string(),
-                    a.successful_transactions.to_string(),
-                    a.failed_transactions.to_string(),
-                    format!("{:.2}", a.total_volume_usd),
-                    sanitize_csv_field(a.status),
-                    a.updated_at.to_rfc3339(),
-                ])
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = wtr
-                .into_inner()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"anchors_export.csv\""),
-            );
-
-            Ok((headers, data))
-        }
-        "json" => {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"anchors_export.json\""),
-            );
-
-            let data = serde_json::to_vec(&anchors)
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            Ok((headers, data))
-        }
-        "excel" | "xlsx" => {
-            let mut workbook = Workbook::new();
-            let worksheet = workbook.add_worksheet();
-
-            let header_format = Format::new()
-                .set_bold()
-                .set_background_color(Color::RGB(0x00D9_EAD3));
-
-            let headers = [
-                "Anchor ID",
-                "Name",
-                "Stellar Account",
-                "Home Domain",
-                "Reliability Score (%)",
-                "Total Transactions",
-                "Successful Transactions",
-                "Failed Transactions",
-                "Volume (USD)",
-                "Status",
-                "Last Updated",
-            ];
-
-            for (i, h) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            for (row, a) in anchors.iter().enumerate() {
-                let row = (row + 1) as u32;
-                worksheet
-                    .write(row, 0, &a.id)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 1, &a.name)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 2, &a.stellar_account)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 3, a.home_domain.as_deref().unwrap_or(""))
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 4, a.reliability_score)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 5, a.total_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 6, a.successful_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 7, a.failed_transactions as f64)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 8, a.total_volume_usd)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 9, &a.status)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 10, a.updated_at.to_rfc3339())
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = workbook
-                .save_to_buffer()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"anchors_export.xlsx\""),
-            );
-
-            Ok((headers, data))
-        }
+        "csv" => export_anchors_csv(&anchors),
+        "json" => export_anchors_json(&anchors),
+        "excel" | "xlsx" => export_anchors_excel(&anchors),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
         )),
     }
+}
+
+/// Helper to export anchors as CSV
+fn export_anchors_csv(anchors: &[crate::models::Anchor]) -> ApiResult<impl IntoResponse> {
+    let mut wtr = Writer::from_writer(vec![]);
+    wtr.write_record([
+        "Anchor ID",
+        "Name",
+        "Stellar Account",
+        "Home Domain",
+        "Reliability Score (%)",
+        "Total Transactions",
+        "Successful Transactions",
+        "Failed Transactions",
+        "Volume (USD)",
+        "Status",
+        "Last Updated",
+    ])
+    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    for a in anchors {
+        wtr.write_record(&[
+            sanitize_csv_field(a.id.clone()),
+            sanitize_csv_field(a.name.clone()),
+            sanitize_csv_field(a.stellar_account.clone()),
+            sanitize_csv_field(a.home_domain.clone().unwrap_or_default()),
+            format!("{:.2}", a.reliability_score),
+            a.total_transactions.to_string(),
+            a.successful_transactions.to_string(),
+            a.failed_transactions.to_string(),
+            format!("{:.2}", a.total_volume_usd),
+            sanitize_csv_field(a.status.clone()),
+            a.updated_at.to_rfc3339(),
+        ])
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = wtr
+        .into_inner()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"anchors_export.csv\""),
+    );
+
+    Ok((headers, data))
+}
+
+/// Helper to export anchors as JSON
+fn export_anchors_json(anchors: &[crate::models::Anchor]) -> ApiResult<impl IntoResponse> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"anchors_export.json\""),
+    );
+
+    let data = serde_json::to_vec(anchors)
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    Ok((headers, data))
+}
+
+/// Helper to export anchors as Excel
+fn export_anchors_excel(anchors: &[crate::models::Anchor]) -> ApiResult<impl IntoResponse> {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+
+    let header_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0x00D9_EAD3));
+
+    let headers = [
+        "Anchor ID",
+        "Name",
+        "Stellar Account",
+        "Home Domain",
+        "Reliability Score (%)",
+        "Total Transactions",
+        "Successful Transactions",
+        "Failed Transactions",
+        "Volume (USD)",
+        "Status",
+        "Last Updated",
+    ];
+
+    for (i, h) in headers.iter().enumerate() {
+        worksheet
+            .write_with_format(0, i as u16, *h, &header_format)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    for (row, a) in anchors.iter().enumerate() {
+        let row = (row + 1) as u32;
+        worksheet
+            .write(row, 0, &a.id)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 1, &a.name)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 2, &a.stellar_account)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 3, a.home_domain.as_deref().unwrap_or(""))
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 4, a.reliability_score)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 5, a.total_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 6, a.successful_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 7, a.failed_transactions as f64)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 8, a.total_volume_usd)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 9, &a.status)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 10, a.updated_at.to_rfc3339())
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = workbook
+        .save_to_buffer()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"anchors_export.xlsx\""),
+    );
+
+    Ok((headers, data))
 }
 
 /// Export payments as CSV, JSON or Excel
@@ -446,153 +469,162 @@ pub async fn export_payments(
     })?;
 
     match params.format.to_lowercase().as_str() {
-        "csv" => {
-            let mut wtr = Writer::from_writer(vec![]);
-            wtr.write_record([
-                "Transaction Hash",
-                "Source Account",
-                "Destination Account",
-                "Source Asset",
-                "Destination Asset",
-                "Amount",
-                "Successful",
-                "Timestamp",
-            ])
-            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            for p in payments {
-                wtr.write_record(&[
-                    sanitize_csv_field(p.transaction_hash),
-                    sanitize_csv_field(p.source_account),
-                    sanitize_csv_field(p.destination_account),
-                    sanitize_csv_field(format!(
-                        "{}:{}",
-                        p.source_asset_code, p.source_asset_issuer
-                    )),
-                    sanitize_csv_field(format!(
-                        "{}:{}",
-                        p.destination_asset_code, p.destination_asset_issuer
-                    )),
-                    p.amount.to_string(),
-                    p.successful.to_string(),
-                    p.created_at.to_rfc3339(),
-                ])
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = wtr
-                .into_inner()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"payments_export.csv\""),
-            );
-
-            Ok((headers, data))
-        }
-        "json" => {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"payments_export.json\""),
-            );
-
-            let data = serde_json::to_vec(&payments)
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            Ok((headers, data))
-        }
-        "excel" | "xlsx" => {
-            let mut workbook = Workbook::new();
-            let worksheet = workbook.add_worksheet();
-
-            let header_format = Format::new()
-                .set_bold()
-                .set_background_color(Color::RGB(0x00D9_EAD3));
-
-            let headers = [
-                "Transaction Hash",
-                "Source Account",
-                "Destination Account",
-                "Source Asset",
-                "Destination Asset",
-                "Amount",
-                "Successful",
-                "Timestamp",
-            ];
-
-            for (i, h) in headers.iter().enumerate() {
-                worksheet
-                    .write_with_format(0, i as u16, *h, &header_format)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            for (row, p) in payments.iter().enumerate() {
-                let row = (row + 1) as u32;
-                worksheet
-                    .write(row, 0, &p.transaction_hash)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 1, &p.source_account)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 2, &p.destination_account)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(
-                        row,
-                        3,
-                        format!("{}:{}", p.source_asset_code, p.source_asset_issuer),
-                    )
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(
-                        row,
-                        4,
-                        format!(
-                            "{}:{}",
-                            p.destination_asset_code, p.destination_asset_issuer
-                        ),
-                    )
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 5, p.amount)
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 6, if p.successful { "Yes" } else { "No" })
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-                worksheet
-                    .write(row, 7, p.created_at.to_rfc3339())
-                    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-            }
-
-            let data = workbook
-                .save_to_buffer()
-                .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ),
-            );
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"payments_export.xlsx\""),
-            );
-
-            Ok((headers, data))
-        }
+        "csv" => export_payments_csv(&payments),
+        "json" => export_payments_json(&payments),
+        "excel" | "xlsx" => export_payments_excel(&payments),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
         )),
     }
+}
+
+/// Helper to export payments as CSV
+fn export_payments_csv(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> {
+    let mut wtr = Writer::from_writer(vec![]);
+    wtr.write_record([
+        "Transaction Hash",
+        "Source Account",
+        "Destination Account",
+        "Source Asset",
+        "Destination Asset",
+        "Amount",
+        "Successful",
+        "Timestamp",
+    ])
+    .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    for p in payments {
+        wtr.write_record(&[
+            sanitize_csv_field(p.transaction_hash.clone()),
+            sanitize_csv_field(p.source_account.clone()),
+            sanitize_csv_field(p.destination_account.clone()),
+            sanitize_csv_field(format!(
+                "{}:{}",
+                p.source_asset_code, p.source_asset_issuer
+            )),
+            sanitize_csv_field(format!(
+                "{}:{}",
+                p.destination_asset_code, p.destination_asset_issuer
+            )),
+            p.amount.to_string(),
+            p.successful.to_string(),
+            p.created_at.to_rfc3339(),
+        ])
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = wtr
+        .into_inner()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"payments_export.csv\""),
+    );
+
+    Ok((headers, data))
+}
+
+/// Helper to export payments as JSON
+fn export_payments_json(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"payments_export.json\""),
+    );
+
+    let data = serde_json::to_vec(payments)
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    Ok((headers, data))
+}
+
+/// Helper to export payments as Excel
+fn export_payments_excel(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+
+    let header_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0x00D9_EAD3));
+
+    let headers = [
+        "Transaction Hash",
+        "Source Account",
+        "Destination Account",
+        "Source Asset",
+        "Destination Asset",
+        "Amount",
+        "Successful",
+        "Timestamp",
+    ];
+
+    for (i, h) in headers.iter().enumerate() {
+        worksheet
+            .write_with_format(0, i as u16, *h, &header_format)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    for (row, p) in payments.iter().enumerate() {
+        let row = (row + 1) as u32;
+        worksheet
+            .write(row, 0, &p.transaction_hash)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 1, &p.source_account)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 2, &p.destination_account)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(
+                row,
+                3,
+                format!("{}:{}", p.source_asset_code, p.source_asset_issuer),
+            )
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(
+                row,
+                4,
+                format!(
+                    "{}:{}",
+                    p.destination_asset_code, p.destination_asset_issuer
+                ),
+            )
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 5, p.amount)
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 6, if p.successful { "Yes" } else { "No" })
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+        worksheet
+            .write(row, 7, p.created_at.to_rfc3339())
+            .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    }
+
+    let data = workbook
+        .save_to_buffer()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"payments_export.xlsx\""),
+    );
+
+    Ok((headers, data))
 }

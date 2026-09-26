@@ -101,6 +101,7 @@ mobile/android/app/build/
 requirements.md
 AGENTS.md
 somzilla.md
+pr-*.md
 
 # ============================================
 # Local AI / editor tooling — NEVER commit!
