@@ -125,6 +125,8 @@ impl SecretsService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
 
     #[tokio::test]
     async fn secrets_service_fallback_to_env() {
@@ -155,5 +157,129 @@ mod tests {
         assert_eq!(secrets.jwt_secret, "secret");
         assert_eq!(secrets.encryption_key, "key");
         assert_eq!(secrets.database_password, Some("password".to_string()));
+    }
+
+    #[test]
+    fn application_secrets_database_password_optional() {
+        let secrets = ApplicationSecrets {
+            jwt_secret: "secret".to_string(),
+            encryption_key: "key".to_string(),
+            database_password: None,
+        };
+
+        assert_eq!(secrets.jwt_secret, "secret");
+        assert_eq!(secrets.encryption_key, "key");
+        assert_eq!(secrets.database_password, None);
+    }
+
+    #[tokio::test]
+    async fn secrets_service_get_jwt_secret() {
+        std::env::set_var("JWT_SECRET", "test-jwt-secret");
+        std::env::set_var("ENCRYPTION_KEY", "test-encryption-key");
+        std::env::remove_var("VAULT_ADDR");
+
+        let service = SecretsService::new().await.unwrap();
+        let jwt_secret = service.get_jwt_secret().await.unwrap();
+
+        assert_eq!(jwt_secret, "test-jwt-secret");
+
+        // Clean up
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("ENCRYPTION_KEY");
+    }
+
+    #[tokio::test]
+    async fn secrets_service_fetch_from_env() {
+        std::env::set_var("JWT_SECRET", "env-jwt-secret");
+        std::env::set_var("ENCRYPTION_KEY", "env-encryption-key");
+        std::env::remove_var("VAULT_ADDR");
+
+        let service = SecretsService::new().await.unwrap();
+        let secrets = service.fetch_from_env().unwrap();
+
+        assert_eq!(secrets.jwt_secret, "env-jwt-secret");
+        assert_eq!(secrets.encryption_key, "env-encryption-key");
+
+        // Clean up
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("ENCRYPTION_KEY");
+    }
+
+    #[test]
+    fn secrets_service_from_env() {
+        std::env::set_var("JWT_SECRET", "env-jwt-secret");
+        std::env::set_var("ENCRYPTION_KEY", "env-encryption-key");
+
+        let secrets = SecretsService::from_env().unwrap();
+
+        assert_eq!(secrets.jwt_secret, "env-jwt-secret");
+        assert_eq!(secrets.encryption_key, "env-encryption-key");
+
+        // Clean up
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("ENCRYPTION_KEY");
+    }
+
+    #[test]
+    fn secrets_service_from_env_fails_when_jwt_secret_missing() {
+        std::env::remove_var("JWT_SECRET");
+        std::env::set_var("ENCRYPTION_KEY", "test-key");
+
+        let result = SecretsService::from_env();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("JWT_SECRET"));
+
+        // Clean up
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("ENCRYPTION_KEY");
+    }
+
+    #[test]
+    fn secrets_service_from_env_fails_when_encryption_key_missing() {
+        std::env::set_var("JWT_SECRET", "test-secret");
+        std::env::remove_var("ENCRYPTION_KEY");
+
+        let result = SecretsService::from_env();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("ENCRYPTION_KEY"));
+
+        // Clean up
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("ENCRYPTION_KEY");
+    }
+
+    #[test]
+    fn application_secrets_is_send_and_sync() {
+        let secrets = ApplicationSecrets {
+            jwt_secret: "secret".to_string(),
+            encryption_key: "key".to_string(),
+            database_password: Some("password".to_string()),
+        };
+
+        // Compile-time check that ApplicationSecrets is Send and Sync
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<ApplicationSecrets>();
+        assert_sync::<ApplicationSecrets>();
+        let _ = secrets;
+    }
+
+    #[tokio::test]
+    async fn secrets_service_is_send_and_sync() {
+        std::env::set_var("JWT_SECRET", "test-secret");
+        std::env::set_var("ENCRYPTION_KEY", "test-key");
+        std::env::remove_var("VAULT_ADDR");
+
+        let service = SecretsService::new().await.unwrap();
+
+        // Compile-time check that SecretsService is Send and Sync
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<SecretsService>();
+        assert_sync::<SecretsService>();
+
+        let _ = service;
     }
 }

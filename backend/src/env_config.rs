@@ -13,13 +13,30 @@ const REQUIRED_VARS: &[&str] = &["DATABASE_URL", "ENCRYPTION_KEY", "JWT_SECRET"]
 /// Environment variables that should be validated if present
 const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("SERVER_PORT", validate_port),
-    ("DB_POOL_MAX_CONNECTIONS", validate_positive_number),
-    ("DB_POOL_MIN_CONNECTIONS", validate_positive_number),
-    ("RPC_MAX_RECORDS_PER_REQUEST", validate_positive_number),
-    ("RPC_MAX_TOTAL_RECORDS", validate_positive_number),
-    ("RPC_PAGINATION_DELAY_MS", validate_positive_number),
+    ("DB_POOL_MAX_CONNECTIONS", validate_db_pool_max_connections),
+    ("DB_POOL_MIN_CONNECTIONS", validate_db_pool_min_connections),
+    ("DB_POOL_CONNECT_TIMEOUT_SECONDS", validate_db_pool_connect_timeout),
+    ("DB_POOL_IDLE_TIMEOUT_SECONDS", validate_db_pool_idle_timeout),
+    ("DB_POOL_MAX_LIFETIME_SECONDS", validate_db_pool_max_lifetime),
+    ("DB_BUSY_TIMEOUT_MS", validate_db_busy_timeout),
+    ("DB_WRITE_POOL_MAX_CONNECTIONS", validate_db_write_pool_max_connections),
+    ("RPC_MAX_RECORDS_PER_REQUEST", validate_rpc_max_records_per_request),
+    ("RPC_MAX_TOTAL_RECORDS", validate_rpc_max_total_records),
+    ("RPC_PAGINATION_DELAY_MS", validate_rpc_pagination_delay_ms),
+    ("RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD", validate_circuit_breaker_failure_threshold),
+    ("RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD", validate_circuit_breaker_success_threshold),
+    ("RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS", validate_circuit_breaker_timeout_seconds),
+    ("RPC_MAX_RETRIES", validate_rpc_max_retries),
+    ("RPC_INITIAL_BACKOFF_MS", validate_rpc_initial_backoff_ms),
+    ("RPC_MAX_BACKOFF_MS", validate_rpc_max_backoff_ms),
     ("REQUEST_TIMEOUT_SECONDS", validate_request_timeout),
     ("SLOW_QUERY_THRESHOLD_MS", validate_slow_query_threshold),
+    ("CACHE_CORRIDOR_METRICS_TTL", validate_cache_ttl),
+    ("CACHE_ANCHOR_DATA_TTL", validate_cache_ttl),
+    ("CACHE_DASHBOARD_STATS_TTL", validate_cache_ttl),
+    ("MAX_IN_FLIGHT_REQUESTS", validate_max_in_flight_requests),
+    ("COMPRESSION_MIN_SIZE", validate_compression_min_size),
+    ("WEBHOOK_DISPATCHER_MAX_RESTARTS", validate_webhook_dispatcher_max_restarts),
     ("JWT_SECRET", validate_jwt_secret),
     ("ENCRYPTION_KEY", validate_encryption_key),
 ];
@@ -249,6 +266,157 @@ fn validate_positive_number(value: &str) -> bool {
     value.parse::<u32>().map(|n| n > 0).unwrap_or(false)
 }
 
+/// Validate positive number with maximum bound
+fn validate_positive_number_with_max(value: &str, max: u32) -> bool {
+    value.parse::<u32>().map(|n| n > 0 && n <= max).unwrap_or(false)
+}
+
+/// Validate DB pool max connections: [1, 1000]
+fn validate_db_pool_max_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 1000)
+}
+
+/// Validate DB pool min connections: [1, 100]
+fn validate_db_pool_min_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate DB pool connect timeout: [1, 60] seconds
+fn validate_db_pool_connect_timeout(value: &str) -> bool {
+    validate_positive_number_with_max(value, 60)
+}
+
+/// Validate DB pool idle timeout: [60, 3600] seconds
+fn validate_db_pool_idle_timeout(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 60 && n <= 3600)
+        .unwrap_or(false)
+}
+
+/// Validate DB pool max lifetime: [300, 7200] seconds
+fn validate_db_pool_max_lifetime(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 300 && n <= 7200)
+        .unwrap_or(false)
+}
+
+/// Validate DB busy timeout: [100, 30000] ms
+fn validate_db_busy_timeout(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 100 && n <= 30_000)
+        .unwrap_or(false)
+}
+
+/// Validate DB write pool max connections: [1, 10]
+fn validate_db_write_pool_max_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 10)
+}
+
+/// Validate RPC max records per request: [1, 1000]
+fn validate_rpc_max_records_per_request(value: &str) -> bool {
+    validate_positive_number_with_max(value, 1000)
+}
+
+/// Validate RPC max total records: [1, 100000]
+fn validate_rpc_max_total_records(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100_000)
+}
+
+/// Validate RPC pagination delay: [0, 1000] ms
+fn validate_rpc_pagination_delay_ms(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n <= 1000)
+        .unwrap_or(false)
+}
+
+/// Validate circuit breaker failure threshold: [1, 100]
+fn validate_circuit_breaker_failure_threshold(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate circuit breaker success threshold: [1, 100]
+fn validate_circuit_breaker_success_threshold(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate circuit breaker timeout: [1, 3600] seconds
+fn validate_circuit_breaker_timeout_seconds(value: &str) -> bool {
+    validate_positive_number_with_max(value, 3600)
+}
+
+/// Validate RPC max retries: [0, 20]
+fn validate_rpc_max_retries(value: &str) -> bool {
+    value
+        .parse::<u32>()
+        .map(|n| n <= 20)
+        .unwrap_or(false)
+}
+
+/// Validate RPC initial backoff: [10, 10000] ms
+fn validate_rpc_initial_backoff_ms(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 10 && n <= 10_000)
+        .unwrap_or(false)
+}
+
+/// Validate RPC max backoff: [100, 60000] ms
+fn validate_rpc_max_backoff_ms(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 100 && n <= 60_000)
+        .unwrap_or(false)
+}
+
+/// Validate REQUEST_TIMEOUT_SECONDS: must be in range [5, 300]
+fn validate_request_timeout(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| (5..=300).contains(&n))
+        .unwrap_or(false)
+}
+
+/// Validate SLOW_QUERY_THRESHOLD_MS: must be in range [1, 60000]
+fn validate_slow_query_threshold(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| (1..=60_000).contains(&n))
+        .unwrap_or(false)
+}
+
+/// Validate cache TTL: must be in range [10, 86400] seconds
+fn validate_cache_ttl(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 10 && n <= 86_400)
+        .unwrap_or(false)
+}
+
+/// Validate MAX_IN_FLIGHT_REQUESTS: must be in range [1, 10000]
+fn validate_max_in_flight_requests(value: &str) -> bool {
+    validate_positive_number_with_max(value, 10_000)
+}
+
+/// Validate COMPRESSION_MIN_SIZE: must be in range [100, 65535]
+fn validate_compression_min_size(value: &str) -> bool {
+    value
+        .parse::<u16>()
+        .map(|n| n >= 100 && n <= 65_535)
+        .unwrap_or(false)
+}
+
+/// Validate WEBHOOK_DISPATCHER_MAX_RESTARTS: must be in range [0, 100]
+fn validate_webhook_dispatcher_max_restarts(value: &str) -> bool {
+    value
+        .parse::<u32>()
+        .map(|n| n <= 100)
+        .unwrap_or(false)
+}
+
 /// Validate JWT secret
 /// Must not be the placeholder value and should be at least 32 characters
 fn validate_jwt_secret(value: &str) -> bool {
@@ -271,22 +439,6 @@ fn validate_encryption_key(value: &str) -> bool {
 
     // Ensure minimum length of 64 characters (32 bytes × 2 for hex encoding)
     value.len() >= 64
-}
-
-/// Validate REQUEST_TIMEOUT_SECONDS: must be in range [1, 300]
-fn validate_request_timeout(value: &str) -> bool {
-    value
-        .parse::<u64>()
-        .map(|n| (1..=300).contains(&n))
-        .unwrap_or(false)
-}
-
-/// Validate SLOW_QUERY_THRESHOLD_MS: must be in range [1, 60000]
-fn validate_slow_query_threshold(value: &str) -> bool {
-    value
-        .parse::<u64>()
-        .map(|n| (1..=60_000).contains(&n))
-        .unwrap_or(false)
 }
 
 /// Validate Stellar public key format
@@ -553,3 +705,4 @@ mod tests {
         std::env::remove_var("JWT_SECRET");
     }
 }
+

@@ -21,12 +21,6 @@ use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 
 pub mod job_monitoring;
-/// DTO for corridor transaction data
-#[derive(Debug, Deserialize, Clone)]
-pub struct CorridorTransactionDto {
-    pub status: String,
-    pub settlement_time_ms: i64,
-}
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -358,20 +352,6 @@ pub async fn create_corridor(
     broadcast_corridor_update(&app_state.ws_state, &corridor);
     Ok(Json(corridor))
 }
-
-/// PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist
-#[derive(Debug, Deserialize)]
-pub struct UpdateCorridorMetricsFromTxns {
-    pub transactions: Vec<CorridorTransactionDto>,
-}
-
-/// PUT /api/corridors/:id/metrics-from-transactions - Placeholder for updating metrics from batch transactions
-pub async fn update_corridor_metrics_from_transactions(
-    State(_app_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> ApiResult<Json<serde_json::Value>> {
-    // Implementation for processing transaction batch logic goes here
-    Ok(Json(serde_json::json!({ "status": "not_implemented" })))
 }
 
 /// Recently captured slow queries with EXPLAIN plans and per-operation aggregates

@@ -1,0 +1,58 @@
+name: Dependency Policy
+
+# Enforces docs/DEPENDENCIES.md (Issues #2376, #2377, #2375).
+#
+# The policy file has required exact versions for a while, but nothing checked
+# it, and 24 frontend dependencies had drifted to caret ranges. This closes that
+# gap so the document and the manifests cannot disagree again.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "frontend/package.json"
+      - "backend/Cargo.toml"
+      - "contracts/Cargo.toml"
+      - "docs/DEPENDENCIES.md"
+      - "scripts/check-dependency-policy.sh"
+      - ".github/workflows/dependency-policy.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "frontend/package.json"
+      - "backend/Cargo.toml"
+      - "contracts/Cargo.toml"
+      - "docs/DEPENDENCIES.md"
+      - "scripts/check-dependency-policy.sh"
+      - ".github/workflows/dependency-policy.yml"
+  # Weekly, so SDK drift surfaces even when nobody touches a manifest.
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Version pinning and unused dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Path-filtered runs check pinning and unused deps only. The scheduled run
+      # additionally queries crates.io for the SDK version — a network call is
+      # fine weekly but would be a flaky dependency on every PR.
+      - name: Check dependency policy
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ./scripts/check-dependency-policy.sh --online
+          else
+            ./scripts/check-dependency-policy.sh
+          fi
