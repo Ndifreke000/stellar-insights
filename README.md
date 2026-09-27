@@ -117,3 +117,6 @@ and `react-native-biometrics` for biometric prompts. All three are actively used
 
 <!-- handsoff-issue-2349 -->
 - #2349: 🟡 MEDIUM: Contract Profile Configuration Warnings (3 instances)
+
+<!-- handsoff-issue-2350 -->
+- #2350: 🟡 MEDIUM: Unreachable Patterns in Contracts (14 warnings)
