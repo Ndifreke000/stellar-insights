@@ -114,3 +114,6 @@ and `react-native-biometrics` for biometric prompts. All three are actively used
 
 <!-- handsoff-issue-2346 -->
 - #2346: 🟠 HIGH: Deprecated SEP-10 Module Not Removed
+
+<!-- handsoff-issue-2347 -->
+- #2347: 🟠 HIGH: Test Code in Production Directories
