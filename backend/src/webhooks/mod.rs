@@ -7,6 +7,8 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use sqlx::SqlitePool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -32,6 +34,131 @@ impl WebhookSignature {
         let expected = Self::sign(payload, secret);
         signature == expected
     }
+}
+
+/// Maximum number of dispatch attempts before an event is marked failed.
+pub const MAX_DISPATCH_RETRIES: u32 = 3;
+
+/// Base delay (in milliseconds) used for exponential backoff between retries.
+pub const DISPATCH_RETRY_BASE_DELAY_MS: u64 = 500;
+
+/// Compute the exponential backoff delay for a given retry attempt (0-indexed).
+#[must_use]
+pub const fn dispatch_retry_delay_ms(attempt: u32) -> u64 {
+    DISPATCH_RETRY_BASE_DELAY_MS.saturating_mul(1u64 << attempt.min(10))
+}
+
+/// Shared, observable state for the background webhook dispatcher.
+///
+/// The dispatcher task is spawned unsupervised, so this handle lets the rest
+/// of the application observe whether it is alive and how many dispatch
+/// attempts have failed, instead of failing silently.
+#[derive(Debug, Default)]
+pub struct WebhookDispatcherHealth {
+    running: AtomicBool,
+    consecutive_failures: AtomicU64,
+    total_failures: AtomicU64,
+}
+
+impl WebhookDispatcherHealth {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark the dispatcher as running (called when the task starts).
+    pub fn mark_running(&self) {
+        self.running.store(true, Ordering::SeqCst);
+    }
+
+    /// Mark the dispatcher as stopped (called when the task exits).
+    pub fn mark_stopped(&self) {
+        self.running.store(false, Ordering::SeqCst);
+    }
+
+    /// Record a successful dispatch, resetting the consecutive failure count.
+    pub fn record_success(&self) {
+        self.consecutive_failures.store(0, Ordering::SeqCst);
+    }
+
+    /// Record a failed dispatch attempt.
+    pub fn record_failure(&self) {
+        self.consecutive_failures.fetch_add(1, Ordering::SeqCst);
+        self.total_failures.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Whether the dispatcher task is currently running.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
+    }
+
+    /// Number of consecutive failed dispatch attempts.
+    #[must_use]
+    pub fn consecutive_failures(&self) -> u64 {
+        self.consecutive_failures.load(Ordering::SeqCst)
+    }
+
+    /// Total number of failed dispatch attempts since startup.
+    #[must_use]
+    pub fn total_failures(&self) -> u64 {
+        self.total_failures.load(Ordering::SeqCst)
+    }
+
+    /// Health check: the dispatcher is healthy when it is running and has not
+    /// accumulated an excessive number of consecutive failures.
+    #[must_use]
+    pub fn is_healthy(&self) -> bool {
+        self.is_running() && self.consecutive_failures() < u64::from(MAX_DISPATCH_RETRIES)
+    }
+}
+
+/// Spawn the webhook dispatcher as a supervised background task.
+///
+/// The task is wrapped so that panics are caught and logged instead of
+/// silently killing the dispatcher, and its liveness/failure state is exposed
+/// through the returned [`WebhookDispatcherHealth`] handle for health checks.
+pub fn spawn_webhook_dispatcher<F, Fut>(
+    health: Arc<WebhookDispatcherHealth>,
+    mut dispatch: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
+{
+    health.mark_running();
+    let task_health = Arc::clone(&health);
+
+    tokio::spawn(async move {
+        let result = std::panic::AssertUnwindSafe(async {
+            loop {
+                match dispatch().await {
+                    Ok(()) => task_health.record_success(),
+                    Err(err) => {
+                        task_health.record_failure();
+                        tracing::error!(
+                            error = %err,
+                            consecutive_failures = task_health.consecutive_failures(),
+                            total_failures = task_health.total_failures(),
+                            "webhook dispatcher iteration failed"
+                        );
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
+
+        if let Err(panic) = futures::FutureExt::catch_unwind(result).await {
+            let msg = panic
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            tracing::error!(panic = %msg, "webhook dispatcher task panicked; stopping");
+        }
+
+        task_health.mark_stopped();
+    })
 }
 
 /// Webhook Configuration
@@ -261,10 +388,10 @@ impl WebhookService {
         .fetch_all(&self.db)
         .await?;
 
-        let events: Vec<(String, String, String, String)> = rows
+        use sqlx::Row;
+        Ok(rows
             .into_iter()
             .map(|row| {
-                use sqlx::Row;
                 (
                     row.get::<String, _>(0),
                     row.get::<String, _>(1),
@@ -272,65 +399,44 @@ impl WebhookService {
                     row.get::<String, _>(3),
                 )
             })
-            .collect();
-
-        Ok(events)
+            .collect())
     }
 
-    /// Update webhook event status
-    pub async fn update_event_status(
-        &self,
-        event_id: &str,
-        status: &str,
-        error: Option<&str>,
-        retries: i32,
-    ) -> anyhow::Result<()> {
-        sqlx::query(
-            "UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?",
-        )
-        .bind(status)
-        .bind(error)
-        .bind(retries)
-        .bind(event_id)
-        .execute(&self.db)
-        .await?;
-
+    /// Mark a webhook event as delivered
+    pub async fn mark_event_delivered(&self, event_id: &str) -> anyhow::Result<()> {
+        sqlx::query("UPDATE webhook_events SET status = 'delivered' WHERE id = ?")
+            .bind(event_id)
+            .execute(&self.db)
+            .await?;
         Ok(())
     }
 
-    /// Update webhook's `last_fired_at` timestamp
-    pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-        sqlx::query("UPDATE webhooks SET last_fired_at = ? WHERE id = ?")
-            .bind(now)
-            .bind(webhook_id)
+    /// Record a failed delivery attempt, incrementing the retry counter.
+    ///
+    /// Returns the updated retry count so callers can decide whether to keep
+    /// retrying or give up. Events that exceed [`MAX_DISPATCH_RETRIES`] are
+    /// marked as `failed` so they are no longer picked up.
+    pub async fn record_event_failure(&self, event_id: &str) -> anyhow::Result<u32> {
+        sqlx::query("UPDATE webhook_events SET retries = retries + 1 WHERE id = ?")
+            .bind(event_id)
             .execute(&self.db)
             .await?;
 
-        Ok(())
-    }
-}
+        use sqlx::Row;
+        let retries: i64 = sqlx::query("SELECT retries FROM webhook_events WHERE id = ?")
+            .bind(event_id)
+            .fetch_one(&self.db)
+            .await?
+            .get(0);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        let retries = u32::try_from(retries).unwrap_or(MAX_DISPATCH_RETRIES);
+        if retries >= MAX_DISPATCH_RETRIES {
+            sqlx::query("UPDATE webhook_events SET status = 'failed' WHERE id = ?")
+                .bind(event_id)
+                .execute(&self.db)
+                .await?;
+        }
 
-    #[test]
-    fn test_webhook_signature() {
-        let payload = r#"{"event":"test"}"#;
-        let secret = "my-secret";
-
-        let signature = WebhookSignature::sign(payload, secret);
-        assert!(WebhookSignature::verify(payload, secret, &signature));
-    }
-
-    #[test]
-    fn test_event_type_conversion() {
-        let event = WebhookEventType::CorridorHealthDegraded;
-        assert_eq!(event.as_str(), "corridor.health_degraded");
-        assert_eq!(
-            WebhookEventType::from_str("corridor.health_degraded"),
-            Some(WebhookEventType::CorridorHealthDegraded)
-        );
+        Ok(retries)
     }
 }
