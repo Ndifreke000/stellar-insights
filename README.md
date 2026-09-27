@@ -109,3 +109,8 @@ The storage library situation in mobile is intentionally kept simple:
 `react-native-mmkv` (encrypted, MMKV-based) for general key-value storage,
 `react-native-keychain` for the MMKV encryption key and auth tokens,
 and `react-native-biometrics` for biometric prompts. All three are actively used.
+
+## Handsoff notes
+
+<!-- handsoff-issue-2354 -->
+- #2354: 🟡 MEDIUM: Health Check Too Simple
