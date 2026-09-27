@@ -124,10 +124,10 @@ describe('useProgressiveWebApp', () => {
     it('should install app when install is called', async () => {
       const { result } = renderHook(() => useProgressiveWebApp());
 
-      // Manually set install prompt for testing
       act(() => {
-        (result.current as unknown as { installPrompt: Partial<BeforeInstallPromptEvent> }).installPrompt =
-          mockBeforeInstallPromptEvent;
+        const event = new Event('beforeinstallprompt') as unknown as BeforeInstallPromptEvent;
+        Object.assign(event, mockBeforeInstallPromptEvent);
+        window.dispatchEvent(event);
       });
 
       await act(async () => {
@@ -283,10 +283,12 @@ describe('useProgressiveWebApp', () => {
     it('should update app', async () => {
       const { result } = renderHook(() => useProgressiveWebApp());
 
-      // Mock waiting service worker
       const mockWaitingSW = { postMessage: vi.fn() };
-      (mockServiceWorkerRegistration.waiting as unknown as ServiceWorker) =
-        mockWaitingSW as unknown as ServiceWorker;
+      mockServiceWorkerRegistration.waiting = mockWaitingSW as unknown as ServiceWorker;
+
+      await waitFor(() => {
+        expect(result.current.capabilities.serviceWorkerReady).toBe(true);
+      });
 
       await act(async () => {
         result.current.updateApp();
