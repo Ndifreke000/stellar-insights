@@ -120,3 +120,6 @@ and `react-native-biometrics` for biometric prompts. All three are actively used
 
 <!-- handsoff-issue-2350 -->
 - #2350: 🟡 MEDIUM: Unreachable Patterns in Contracts (14 warnings)
+
+<!-- handsoff-issue-2351 -->
+- #2351: 🟡 MEDIUM: Unused Helper Functions (6 instances)
