@@ -895,20 +895,21 @@ pub async fn get_corridor_detail(
             });
         }
 
-        // Calculate volume for target corridor
+        // Calculate volume for target corridor using batch-fetched prices
         let total_attempts = corridor_payments.len() as i64;
         let successful_payments = total_attempts;
         let failed_payments = 0;
         let success_rate = 100.0;
 
         let mut volume_usd = 0.0;
-        if let Ok(price) = price_feed.get_price(source_key).await {
+        if let Some(&price) = related_prices.get(source_key) {
             for payment in &corridor_payments {
                 if let Ok(amount) = payment.get_amount().parse::<f64>() {
                     volume_usd += amount * price;
                 }
             }
         } else {
+            // Fallback: sum without USD conversion if price not available
             volume_usd = corridor_payments
                 .iter()
                 .filter_map(|p| p.get_amount().parse::<f64>().ok())

@@ -5,8 +5,10 @@ mod events;
 
 use errors::Error;
 use events::{
-    emit_admin_changed, emit_initialized, emit_proposal_created, emit_proposal_finalized,
-    emit_vote_cast, emit_voter_registered,
+    emit_admin_changed, emit_contract_paused, emit_contract_unpaused,
+    emit_initialized, emit_proposal_created, emit_proposal_finalized,
+    emit_quorum_updated, emit_voter_deregistered, emit_vote_cast,
+    emit_voter_registered, emit_voting_period_updated,
 };
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Map, String, Vec};
 
@@ -249,6 +251,7 @@ impl GovernanceVotingContract {
         env.storage().instance().set(&DataKey::VoterList, &new_list);
 
         bump_instance(&env);
+        emit_voter_deregistered(&env, voter);
         Ok(())
     }
 
@@ -546,8 +549,10 @@ impl GovernanceVotingContract {
         if caller != admin {
             return Err(Error::Unauthorized);
         }
+        let old_quorum: u64 = env.storage().instance().get(&DataKey::Quorum).unwrap_or(0);
         env.storage().instance().set(&DataKey::Quorum, &new_quorum);
         bump_instance(&env);
+        emit_quorum_updated(&env, old_quorum, new_quorum);
         Ok(())
     }
 
@@ -561,10 +566,16 @@ impl GovernanceVotingContract {
         if caller != admin {
             return Err(Error::Unauthorized);
         }
+        let old_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap_or(0);
         env.storage()
             .instance()
             .set(&DataKey::VotingPeriod, &new_period);
         bump_instance(&env);
+        emit_voting_period_updated(&env, old_period, new_period);
         Ok(())
     }
 
@@ -586,6 +597,7 @@ impl GovernanceVotingContract {
 
         env.storage().instance().set(&DataKey::Paused, &true);
         bump_instance(&env);
+        emit_contract_paused(&env, caller);
 
         Ok(())
     }
@@ -608,6 +620,7 @@ impl GovernanceVotingContract {
 
         env.storage().instance().set(&DataKey::Paused, &false);
         bump_instance(&env);
+        emit_contract_unpaused(&env, caller);
 
         Ok(())
     }

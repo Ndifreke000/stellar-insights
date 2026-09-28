@@ -14,6 +14,41 @@ pub fn emit_voter_registered(env: &Env, voter: Address, weight: u64) {
     );
 }
 
+pub fn emit_voter_deregistered(env: &Env, voter: Address) {
+    env.events().publish(
+        (symbol_short!("GV_DEREG"),),
+        voter,
+    );
+}
+
+pub fn emit_quorum_updated(env: &Env, old_quorum: u64, new_quorum: u64) {
+    env.events().publish(
+        (symbol_short!("GV_QUORUM"),),
+        (old_quorum, new_quorum),
+    );
+}
+
+pub fn emit_voting_period_updated(env: &Env, old_period: u64, new_period: u64) {
+    env.events().publish(
+        (symbol_short!("GV_PERIOD"),),
+        (old_period, new_period),
+    );
+}
+
+pub fn emit_contract_paused(env: &Env, caller: Address) {
+    env.events().publish(
+        (symbol_short!("GV_PAUSE"),),
+        caller,
+    );
+}
+
+pub fn emit_contract_unpaused(env: &Env, caller: Address) {
+    env.events().publish(
+        (symbol_short!("GV_UNPAUSE"),),
+        caller,
+    );
+}
+
 pub fn emit_proposal_created(env: &Env, proposal_id: u64, proposer: Address, title: String, voting_ends_at: u64) {
     env.events().publish(
         (symbol_short!("GV_PROP"),),
