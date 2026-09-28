@@ -387,6 +387,8 @@ impl Database {
     /// Executes `f`, records its duration via `observe_db_query`, and emits a WARN log.
     /// For slow queries, also captures `EXPLAIN QUERY PLAN` on `sql` (if provided) in the
     /// slow query report and `logs/slow_queries.log` for index analysis.
+    /// All database operations attach descriptive context to errors via `.with_context()`
+    /// so failures include the operation name and relevant entity IDs. Fixes #2330.
     async fn execute_with_timing<T, F>(&self, operation: &str, f: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,

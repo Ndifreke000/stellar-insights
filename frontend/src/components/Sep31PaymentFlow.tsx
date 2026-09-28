@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, FormProvider, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -52,13 +52,7 @@ export function Sep31PaymentFlow() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const {
-    handleSubmit,
-    formState: { isValid, isDirty },
-    setValue,
-    watch,
-    trigger,
-  } = useForm<Sep31PaymentFlowForm>({
+  const methods = useForm<Sep31PaymentFlowForm>({
     resolver: zodResolver(sep31PaymentFlowSchema),
     mode: "onChange",
     defaultValues: {
@@ -70,6 +64,13 @@ export function Sep31PaymentFlow() {
       jwt: "",
     },
   });
+  const {
+    handleSubmit,
+    formState: { isValid, isDirty },
+    setValue,
+    watch,
+    trigger,
+  } = methods;
 
   // Watch form values for real-time updates
   const transferServer = watch("transferServer");
@@ -299,6 +300,7 @@ export function Sep31PaymentFlow() {
   };
 
   return (
+    <FormProvider {...methods}>
     <div className="space-y-8">
       {/* Anchor selection */}
       <section className="glass-card rounded-2xl p-6">
@@ -596,5 +598,6 @@ export function Sep31PaymentFlow() {
         )}
       </section>
     </div>
+    </FormProvider>
   );
 }
