@@ -112,14 +112,5 @@ and `react-native-biometrics` for biometric prompts. All three are actively used
 
 ## Handsoff notes
 
-<!-- handsoff-issue-2348 -->
-- #2348: 🟠 HIGH: Duplicate Function Implementation (get_event_stats_old)
-
-<!-- handsoff-issue-2349 -->
-- #2349: 🟡 MEDIUM: Contract Profile Configuration Warnings (3 instances)
-
-<!-- handsoff-issue-2350 -->
-- #2350: 🟡 MEDIUM: Unreachable Patterns in Contracts (14 warnings)
-
-<!-- handsoff-issue-2351 -->
-- #2351: 🟡 MEDIUM: Unused Helper Functions (6 instances)
+<!-- handsoff-issue-2354 -->
+- #2354: 🟡 MEDIUM: Health Check Too Simple
