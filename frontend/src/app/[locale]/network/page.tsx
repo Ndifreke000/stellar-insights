@@ -12,7 +12,6 @@ const NetworkGraph = dynamic(() => import('@/components/charts/NetworkGraph'), {
         </div>
     ),
 });
-import { Badge } from '@/components/ui/badge';
 import { Activity, Share2, Info } from 'lucide-react';
 
 export default function NetworkPage() {

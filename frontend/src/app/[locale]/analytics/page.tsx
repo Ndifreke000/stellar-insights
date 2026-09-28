@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Download,
 } from "lucide-react";
-import { Link } from "@/i18n/navigation";
 import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
 import dynamic from "next/dynamic";
 import { ErrorBoundary } from "@/components/ErrorBoundary";

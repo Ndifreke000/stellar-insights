@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Bell, BellOff, X, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import { BellOff, CheckCircle, AlertCircle, AlertTriangle, Info, ExternalLink, MoreVertical, Eye, Trash2, Copy } from 'lucide-react';
+import { BaseNotification } from '@/types/notifications';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,7 +76,6 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   }, [onSelect, notification, handleMarkAsRead]);
 
   const IconComponent = NOTIFICATION_ICONS[notification.type];
-  const priorityColor = PRIORITY_COLORS[notification.priority];
   const typeColor = TYPE_COLORS[notification.type];
 
   return (

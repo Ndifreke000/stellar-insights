@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { format, subDays, subHours, startOfDay, endOfDay } from "date-fns";
+import { format, subDays, subHours, startOfDay } from "date-fns";
 
 export type Preset = "24h" | "7d" | "30d" | "custom";
 

@@ -16,6 +16,21 @@ const eslintConfig = defineConfig([
   {
     rules: {
       "no-console": "off",
+      // Enforce no unused variables/imports; use @typescript-eslint variant
+      // so TypeScript type-only imports are handled correctly.
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          vars: "all",
+          args: "after-used",
+          ignoreRestSiblings: true,
+          varsIgnorePattern: "^_",
+          argsIgnorePattern: "^_",
+        },
+      ],
+      // Disallow CommonJS require() in favour of ES module imports
+      "@typescript-eslint/no-require-imports": "error",
     },
   },
 ]);

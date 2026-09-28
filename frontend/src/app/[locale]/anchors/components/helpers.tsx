@@ -1,5 +1,4 @@
 import { formatAddressShort } from "@/lib/address";
-import { Activity, AlertCircle, CheckCircle } from "lucide-react";
 import {
   Search,
   TrendingUp,

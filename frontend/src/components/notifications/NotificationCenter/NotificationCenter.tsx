@@ -20,12 +20,11 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { format, isToday, isYesterday, subDays, startOfDay, endOfDay } from 'date-fns';
-import { BaseNotification, NotificationType, NotificationPriority } from '@/types/notifications';
+import { format, isToday, isYesterday, subDays } from 'date-fns';
+import { BaseNotification } from '@/types/notifications';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationService, NotificationFilter, NotificationAnalytics } from '@/services/notificationService';
+import { NotificationService, NotificationFilter } from '@/services/notificationService';
 import AnalyticsTab from './AnalyticsTab';
-import { ICON_COLORS, NOTIFICATION_ICONS, PRIORITY_BADGES } from './helpers';
 import NotificationsTab from './NotificationsTab';
 
 interface NotificationCenterProps {
