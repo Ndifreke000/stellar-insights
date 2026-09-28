@@ -19,16 +19,98 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-const MAX_CONCURRENT_CONNECTIONS: usize = 10_000;
-const MAX_CONNECTIONS_PER_IP: usize = 10;
-const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
-const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
-const MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
-const MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
-const MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
-const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-const MAX_MESSAGES_PER_WINDOW: u32 = 100;
-const MESSAGE_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+/// Default WebSocket limits — all overridable via environment variables.
+/// See `.env.example` for documentation on each variable.
+const DEFAULT_MAX_CONCURRENT_CONNECTIONS: usize = 10_000;
+const DEFAULT_MAX_CONNECTIONS_PER_IP: usize = 10;
+const DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
+const DEFAULT_IP_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+const DEFAULT_MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
+const DEFAULT_MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
+const DEFAULT_MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
+const DEFAULT_WS_IDLE_TIMEOUT_SECS: u64 = 300;
+const DEFAULT_MAX_MESSAGES_PER_WINDOW: u32 = 100;
+const DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+
+// Keep the old names as runtime values loaded from env (used by WsState).
+fn ws_max_concurrent_connections() -> usize {
+    std::env::var("WS_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONCURRENT_CONNECTIONS)
+}
+fn ws_max_connections_per_ip() -> usize {
+    std::env::var("WS_MAX_CONNECTIONS_PER_IP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP)
+}
+fn ws_max_connect_attempts_per_ip() -> u32 {
+    std::env::var("WS_MAX_CONNECT_ATTEMPTS_PER_IP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP)
+}
+fn ws_ip_rate_limit_window() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_IP_RATE_LIMIT_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_IP_RATE_LIMIT_WINDOW_SECS),
+    )
+}
+fn ws_max_pending_outgoing_messages() -> usize {
+    std::env::var("WS_MAX_PENDING_OUTGOING_MESSAGES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_PENDING_OUTGOING_MESSAGES)
+}
+fn ws_max_text_message_size() -> usize {
+    std::env::var("WS_MAX_TEXT_MESSAGE_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_TEXT_MESSAGE_SIZE)
+}
+fn ws_max_binary_message_size() -> usize {
+    std::env::var("WS_MAX_BINARY_MESSAGE_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_BINARY_MESSAGE_SIZE)
+}
+fn ws_idle_timeout() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_WS_IDLE_TIMEOUT_SECS),
+    )
+}
+fn ws_max_messages_per_window() -> u32 {
+    std::env::var("WS_MAX_MESSAGES_PER_WINDOW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_MESSAGES_PER_WINDOW)
+}
+fn ws_message_rate_limit_window() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_MESSAGE_RATE_LIMIT_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS),
+    )
+}
+
+// Legacy constant aliases kept for any internal code that still references them.
+const MAX_CONCURRENT_CONNECTIONS: usize = DEFAULT_MAX_CONCURRENT_CONNECTIONS;
+const MAX_CONNECTIONS_PER_IP: usize = DEFAULT_MAX_CONNECTIONS_PER_IP;
+const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP;
+const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(DEFAULT_IP_RATE_LIMIT_WINDOW_SECS);
+const MAX_PENDING_OUTGOING_MESSAGES: usize = DEFAULT_MAX_PENDING_OUTGOING_MESSAGES;
+const MAX_TEXT_MESSAGE_SIZE: usize = DEFAULT_MAX_TEXT_MESSAGE_SIZE;
+const MAX_BINARY_MESSAGE_SIZE: usize = DEFAULT_MAX_BINARY_MESSAGE_SIZE;
+const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(DEFAULT_WS_IDLE_TIMEOUT_SECS);
+const MAX_MESSAGES_PER_WINDOW: u32 = DEFAULT_MAX_MESSAGES_PER_WINDOW;
+const MESSAGE_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS);
 
 type SharedWebSocketSender = Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>;
 
@@ -133,19 +215,9 @@ impl Default for WsState {
 impl WsState {
     #[must_use]
     pub fn new() -> Self {
-        let max_concurrent_connections = std::env::var("WS_MAX_CONNECTIONS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(MAX_CONCURRENT_CONNECTIONS);
-        let max_connections_per_ip = std::env::var("WS_MAX_CONNECTIONS_PER_IP")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(MAX_CONNECTIONS_PER_IP);
-        let idle_timeout = std::env::var("WS_IDLE_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .map(Duration::from_secs)
-            .unwrap_or(WS_IDLE_TIMEOUT);
+        let max_concurrent_connections = ws_max_concurrent_connections();
+        let max_connections_per_ip = ws_max_connections_per_ip();
+        let idle_timeout = ws_idle_timeout();
 
         let (tx, _rx) = broadcast::channel(100);
         // Only fan out through Redis when explicitly configured; defaulting to
@@ -260,18 +332,21 @@ impl WsState {
     /// Check whether `client_id` is within its rate limit.
     /// Returns `true` if the message should be processed.
     pub fn check_rate_limit(&self, client_id: &str) -> bool {
+        let max_messages_per_window = ws_max_messages_per_window();
+        let message_rate_limit_window = ws_message_rate_limit_window();
+
         let mut entry = self
             .rate_limits
             .entry(client_id.to_string())
             .or_insert_with(RateLimitInfo::new);
 
         let now = Instant::now();
-        if now.duration_since(entry.window_start) > MESSAGE_RATE_LIMIT_WINDOW {
+        if now.duration_since(entry.window_start) > message_rate_limit_window {
             entry.message_count = 0;
             entry.window_start = now;
         }
 
-        if entry.message_count >= MAX_MESSAGES_PER_WINDOW {
+        if entry.message_count >= max_messages_per_window {
             return false;
         }
 
@@ -286,6 +361,9 @@ impl WsState {
     /// Check per-IP connection limit and connection-attempt rate limit.
     /// Returns `Ok(())` if the connection should be allowed, `Err` with a message otherwise.
     pub fn check_ip_limits(&self, ip: IpAddr) -> Result<(), &'static str> {
+        let max_connect_attempts = ws_max_connect_attempts_per_ip();
+        let ip_rate_limit_window = ws_ip_rate_limit_window();
+
         let mut entry = self
             .ip_rate_limits
             .entry(ip)
@@ -293,12 +371,12 @@ impl WsState {
 
         // Reset attempt window if expired.
         let now = Instant::now();
-        if now.duration_since(entry.window_start) > IP_RATE_LIMIT_WINDOW {
+        if now.duration_since(entry.window_start) > ip_rate_limit_window {
             entry.connect_attempts = 0;
             entry.window_start = now;
         }
 
-        if entry.connect_attempts >= MAX_CONNECT_ATTEMPTS_PER_IP {
+        if entry.connect_attempts >= max_connect_attempts {
             return Err("Too many connection attempts from this IP");
         }
         entry.connect_attempts += 1;
@@ -562,8 +640,8 @@ impl WsState {
 
 fn is_oversized_message(message: &Message) -> bool {
     match message {
-        Message::Text(text) => text.len() > MAX_TEXT_MESSAGE_SIZE,
-        Message::Binary(data) => data.len() > MAX_BINARY_MESSAGE_SIZE,
+        Message::Text(text) => text.len() > ws_max_text_message_size(),
+        Message::Binary(data) => data.len() > ws_max_binary_message_size(),
         _ => false,
     }
 }
@@ -744,7 +822,7 @@ async fn handle_socket(
 
     let (sender, receiver) = socket.split();
     let sender = Arc::new(tokio::sync::Mutex::new(sender));
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(MAX_PENDING_OUTGOING_MESSAGES);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(ws_max_pending_outgoing_messages());
 
     state.connections.insert(connection_id, tx);
     crate::observability::metrics::set_active_connections(state.connection_count() as i64);
