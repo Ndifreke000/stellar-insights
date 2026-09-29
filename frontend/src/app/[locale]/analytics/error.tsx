@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -15,7 +16,7 @@ interface ErrorProps {
  */
 export default function AnalyticsError({ error, reset }: ErrorProps) {
   useEffect(() => {
-    console.error("Analytics page error:", error);
+    logger.error("Analytics page error:", error);
   }, [error]);
 
   return (

@@ -78,7 +78,7 @@ export const performanceMiddleware = <T extends object>(
         const end = performance.now();
 
         if (end - start > 1) { // Only log if update takes more than 1ms
-          console.warn(`[Performance] Slow state update: ${(end - start).toFixed(2)}ms`);
+          logger.warn(`[Performance] Slow state update: ${(end - start).toFixed(2)}ms`);
         }
       }
 
@@ -102,11 +102,11 @@ export const validationMiddleware = <T extends object>(
       if (config.validator && typeof partialState === 'object' && partialState !== null) {
         const result = config.validator(partialState as Partial<T>);
         if (result === false) {
-          console.error('[Validation] State update rejected');
+          logger.error('[Validation] State update rejected');
           return;
         }
         if (typeof result === 'string') {
-          console.error(`[Validation] State update rejected: ${result}`);
+          logger.error(`[Validation] State update rejected: ${result}`);
           return;
         }
       }
@@ -205,7 +205,7 @@ export const localStorageMiddleware = <T extends object>(
           set(parsed as Partial<T>);
         }
       } catch (error) {
-        console.error(`[LocalStorage] Failed to load state for ${config.key}:`, error);
+        logger.error(`[LocalStorage] Failed to load state for ${config.key}:`, error);
       }
     }
 
@@ -231,7 +231,7 @@ export const localStorageMiddleware = <T extends object>(
               }
             });
           }
-          
+
           // Apply blacklist if provided
           if (config.blacklist) {
             const temp = { ...stateToSave };
@@ -240,13 +240,13 @@ export const localStorageMiddleware = <T extends object>(
             });
             stateToSave = temp;
           }
-          
+
           localStorage.setItem(config.key, JSON.stringify(stateToSave));
         } catch (error) {
-          console.error(`[LocalStorage] Failed to save state for ${config.key}:`, error);
+          logger.error(`[LocalStorage] Failed to save state for ${config.key}:`, error);
         }
       }
-      
+
       return result;
     };
 

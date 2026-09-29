@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -15,7 +16,7 @@ interface ErrorProps {
  */
 export default function GovernanceError({ error, reset }: ErrorProps) {
   useEffect(() => {
-    console.error("Governance page error:", error);
+    logger.error("Governance page error:", error);
   }, [error]);
 
   return (

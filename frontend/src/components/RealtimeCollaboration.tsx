@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Users, Send, Trash2, Copy } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface CollaborativeUser {
   id: string;
@@ -151,7 +152,7 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
               break;
           }
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          logger.error('Failed to parse WebSocket message:', error);
         }
       };
 
@@ -165,7 +166,7 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
         setIsConnected(false);
       };
     } catch (error) {
-      console.error('WebSocket connection failed:', error);
+      logger.error('WebSocket connection failed:', error);
       setConnectionStatus('disconnected');
     }
   }, [sessionId, userId, userName, onMessageReceived, onUserJoined, onUserLeft, maxMessages]);

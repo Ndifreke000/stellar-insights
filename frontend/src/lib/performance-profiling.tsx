@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Profiler, ProfilerOnRenderCallback, ReactNode } from "react";
+import { logger } from "@/lib/logger";
 
 /**
  * Development-only performance profiling helpers.
@@ -22,16 +23,16 @@ const defaultOnRender: ProfilerOnRenderCallback = (
   startTime,
   commitTime,
 ) => {
-  // eslint-disable-next-line no-console
-  console.debug(
+  logger.performance(
     `[profiler] ${id} (${phase}) actual=${actualDuration.toFixed(2)}ms base=${baseDuration.toFixed(2)}ms`,
+    actualDuration,
     { startTime, commitTime },
   );
 };
 
 /**
  * Wraps `children` in a React `Profiler` that logs render timings via
- * `console.debug` in development. Renders `children` unwrapped in production
+ * logger.performance in development. Renders `children` unwrapped in production
  * so the Profiler never adds overhead outside of local development.
  */
 export function DevProfiler({

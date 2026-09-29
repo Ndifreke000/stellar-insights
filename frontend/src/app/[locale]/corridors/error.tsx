@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -16,7 +17,7 @@ interface ErrorProps {
 export default function CorridorsError({ error, reset }: ErrorProps) {
   useEffect(() => {
     // Log to an error reporting service in production
-    console.error("Corridors page error:", error);
+    logger.error("Corridors page error:", error);
   }, [error]);
 
   return (

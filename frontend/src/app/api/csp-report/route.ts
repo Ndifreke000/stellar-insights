@@ -5,6 +5,16 @@ const MAX_REPORT_BYTES = 16 * 1024;
 
 type CspViolation = Record<string, unknown>;
 
+// Server-side logging for API routes
+function logWarning(message: string, data?: string | object) {
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(message, data);
+  } else {
+    // In production, rely on Sentry
+    Sentry.captureMessage(`${message} ${data ? JSON.stringify(data) : ''}`, 'warning');
+  }
+}
+
 /**
  * Receives CSP violation reports, both the legacy `report-uri` format
  * (`application/csp-report`) and the Reporting API format (`application/reports+json`).
@@ -39,7 +49,7 @@ export async function POST(request: Request) {
       disposition: v.disposition,
       userAgent: request.headers.get("user-agent"),
     };
-    console.warn("[csp-violation]", JSON.stringify(summary));
+    logWarning("[csp-violation]", summary);
 
     if (process.env.SENTRY_DSN) {
       Sentry.captureMessage(
