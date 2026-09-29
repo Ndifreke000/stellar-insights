@@ -95,7 +95,7 @@ describe("AnchorsAPIModule", () => {
 
   it("throws SDKError for invalid action", async () => {
     const module = new AnchorsAPIModule();
-    await expect(module.execute({ action: "invalid" as any })).rejects.toBeInstanceOf(SDKError);
+    await expect(module.execute({ action: "invalid" as unknown as "list" })).rejects.toBeInstanceOf(SDKError);
   });
 
   it("throws SDKError when anchorId is missing for get", async () => {

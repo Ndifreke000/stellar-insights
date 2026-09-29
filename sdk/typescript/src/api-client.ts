@@ -122,7 +122,7 @@ export class ApiClient {
 
   constructor(config: PayRaiderConfig = {}) {
     this.httpClient = new HttpClient(config);
-    this.cacheTimeout = (config as any).cacheTimeout ?? 60;
+    this.cacheTimeout = (config as PayRaiderConfig & { cacheTimeout?: number }).cacheTimeout ?? 60;
     this.requestTimeout = config.timeout ?? 30000;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 500;

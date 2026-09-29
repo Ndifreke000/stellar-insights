@@ -4,6 +4,7 @@ import {
   FlatList,
   Platform,
   RefreshControl,
+  RefreshControlProps,
   StyleSheet,
   View,
   ViewStyle,
@@ -70,14 +71,14 @@ export interface PullToRefreshListProps<T> {
   isLoading?: boolean;
   config?: PullToRefreshConfig;
   contentContainerStyle?: ViewStyle;
-  ListHeaderComponent?: React.ComponentType<any> | React.ReactElement | null;
-  ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
+  ListHeaderComponent?: React.ComponentType<unknown> | React.ReactElement | null;
+  ListFooterComponent?: React.ComponentType<unknown> | React.ReactElement | null;
   onEndReached?: () => void;
   onEndReachedThreshold?: number;
   testID?: string;
 }
 
-export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListProps<any>>(
+export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListProps<unknown>>(
   (
     {
       data,
@@ -118,7 +119,7 @@ export const PullToRefreshList = React.forwardRef<FlatList, PullToRefreshListPro
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         refreshControl={
-          <RefreshControl {...(refreshControlProps as any)} onRefresh={handleRefresh} />
+          <RefreshControl {...(refreshControlProps as RefreshControlProps)} onRefresh={handleRefresh} />
         }
         ListHeaderComponent={ListHeaderComponent ?? undefined}
         ListFooterComponent={ListFooterComponent ?? undefined}

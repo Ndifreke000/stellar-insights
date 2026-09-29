@@ -7,6 +7,9 @@ import {
   SDKUnitTests,
   TypeScriptTypes,
 } from "../src/index.js";
+import type { SDKUnitTestsParams } from "../src/types/sdk_unit_tests.js";
+import type { AnalyticsAPIModuleParams } from "../src/types/analytics_api_module.js";
+import type { TypeScriptTypesParams } from "../src/types/typescript_types.js";
 
 describe("SDK extensions", () => {
   beforeEach(() => {
@@ -25,7 +28,7 @@ describe("SDK extensions", () => {
 
     it("throws SDKError when suiteName is missing", async () => {
       const sdk = new SDKUnitTests();
-      await expect(sdk.execute({ suiteName: "" } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(sdk.execute({ suiteName: "" } as SDKUnitTestsParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 
@@ -90,7 +93,7 @@ describe("SDK extensions", () => {
 
     it("throws SDKError if event is invalid", async () => {
       const analytics = new AnalyticsAPIModule();
-      await expect(analytics.execute({ event: "", payload: {} } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(analytics.execute({ event: "", payload: {} } as AnalyticsAPIModuleParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 
@@ -112,12 +115,12 @@ describe("SDK extensions", () => {
 
     it("throws SDKError when typeName is empty", async () => {
       const ts = new TypeScriptTypes();
-      await expect(ts.execute({ typeName: "" } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(ts.execute({ typeName: "" } as TypeScriptTypesParams)).rejects.toBeInstanceOf(SDKError);
     });
 
     it("throws SDKError when typeName is missing", async () => {
       const ts = new TypeScriptTypes();
-      await expect(ts.execute({} as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(ts.execute({} as TypeScriptTypesParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 });

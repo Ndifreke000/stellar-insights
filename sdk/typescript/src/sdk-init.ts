@@ -46,7 +46,7 @@ export class EnvironmentDetector {
       navigator.userAgent?.includes("React Native") === true
     ) ||
       (typeof global !== "undefined" &&
-        (global as any).HermesInternal !== undefined);
+        (globalThis as unknown as { HermesInternal?: unknown }).HermesInternal !== undefined);
   }
 
   static isBrowser(): boolean {
@@ -84,7 +84,7 @@ export class EnvironmentDetector {
       // React Native's `Platform` export isn't a JS global - it comes from
       // the `react-native` package, which this SDK doesn't depend on. Look
       // it up defensively, the same way isReactNative() checks HermesInternal.
-      const platform = (globalThis as { Platform?: { OS?: string } }).Platform;
+      const platform = (globalThis as unknown as { Platform?: { OS?: string } }).Platform;
       return platform?.OS ?? "react-native";
     }
     if (this.isBrowser()) {
