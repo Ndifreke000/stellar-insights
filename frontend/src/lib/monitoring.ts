@@ -38,9 +38,13 @@ export const PERFORMANCE_BUDGETS: Record<string, number> = {
   "api-latency": 1000,
 };
 
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
-).replace(/\/api\/?$/, "");
+const API_BASE_URL = (() => {
+  const url = process.env.NEXT_PUBLIC_API_URL;
+  if (!url) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is required');
+  }
+  return url.replace(/\/api\/?$/, "");
+})();
 /** Backend RUM summary endpoint (GET), read by the internal monitoring dashboard. */
 export const FRONTEND_METRICS_ENDPOINT = `${API_BASE_URL}/api/metrics/frontend`;
 

@@ -6,62 +6,33 @@ function normalizeBackendBaseUrl(url: string): string {
   return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
 }
 
-function backendCandidates(): string[] {
-  const envCandidates = [
-    process.env.BACKEND_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizeBackendBaseUrl);
-
-  const fallbackCandidates = ["http://127.0.0.1:8080", "http://localhost:8080"];
-
-  return [...new Set([...envCandidates, ...fallbackCandidates])];
+function backendUrl(): string {
+  const url = process.env.NEXT_PUBLIC_API_URL;
+  if (!url) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is required');
+  }
+  return normalizeBackendBaseUrl(url);
 }
 
 export async function GET() {
-  const candidates = backendCandidates();
-
   try {
-    let corridorsRes: Response | null = null;
-    let ledgerRes: Response | null = null;
-    let paymentsRes: Response | null = null;
-    let lastError: Error | null = null;
+    const baseUrl = backendUrl();
 
-    for (const backendUrl of candidates) {
-      try {
-        const responses = await Promise.all([
-          fetch(`${backendUrl}/api/corridors?limit=200`, { cache: "no-store" }),
-          fetch(`${backendUrl}/api/rpc/ledger/latest`, { cache: "no-store" }),
-          fetch(`${backendUrl}/api/rpc/payments?limit=50`, {
-            cache: "no-store",
-          }),
-        ]);
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/api/corridors?limit=200`, { cache: "no-store" }),
+      fetch(`${baseUrl}/api/rpc/ledger/latest`, { cache: "no-store" }),
+      fetch(`${baseUrl}/api/rpc/payments?limit=50`, {
+        cache: "no-store",
+      }),
+    ]);
 
-        if (!responses[0].ok) {
-          lastError = new Error(
-            `Corridors API failed (${backendUrl}): ${responses[0].status}`,
-          );
-          continue;
-        }
+    const [corridorsRes, ledgerRes, paymentsRes] = responses;
 
-        [corridorsRes, ledgerRes, paymentsRes] = responses;
-        break;
-      } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error("Unknown backend fetch error");
-      }
+    if (!corridorsRes.ok || !ledgerRes.ok || !paymentsRes.ok) {
+      throw new Error(
+        `API failed: corridors=${corridorsRes.ok} ledger=${ledgerRes.ok} payments=${paymentsRes.ok}`,
+      );
     }
-
-    if (!corridorsRes || !ledgerRes || !paymentsRes) {
-      throw lastError ?? new Error("No reachable backend URL");
-    }
-
-    // Handle initial fetch errors (graceful degradation)
-    if (!corridorsRes.ok)
-      throw new Error(`Corridors API failed: ${corridorsRes.status}`);
 
     interface BackendCorridor {
       id: number;
@@ -135,15 +106,6 @@ export async function GET() {
     };
 
     // 2. Map Corridor Health
-    interface BackendCorridor {
-      id: number;
-      source_asset: string;
-      destination_asset: string;
-      success_rate: number;
-      health_score: number;
-      total_volume_usd: number;
-    }
-
     const corridorHealth = corridors.map((c: BackendCorridor) => {
       // Parse asset codes (e.g. "USDC:G..." -> "USDC")
       const getCode = (s: string) => s.split(":")[0];
