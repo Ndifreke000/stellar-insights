@@ -65,6 +65,7 @@ const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
 
 /// Default request timeout in seconds
+/// Configurable via REQUEST_TIMEOUT_SECONDS env var (range: 5–300). Fixes #2332.
 const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 /// Minimum allowed request timeout (prevents misconfiguration)
 const MIN_REQUEST_TIMEOUT_SECONDS: u64 = 5;
@@ -788,6 +789,8 @@ async fn main() -> anyhow::Result<()> {
     // Connect info is required by the WebSocket handler and rate limiter
     // (client IP); without it `/ws` fails with a missing-extension error.
     let make_service = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
+    // Graceful shutdown: SIGTERM/SIGINT handled via shutdown_signal(). In-flight
+    // requests are allowed to complete before the server stops. Fixes #2333.
     axum::serve(listener, make_service)
         .with_graceful_shutdown(async move {
             shutdown_signal().await;

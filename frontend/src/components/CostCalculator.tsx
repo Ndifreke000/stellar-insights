@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, FormProvider, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {  Calculator, Loader2, Route, TrendingUp } from "lucide-react";
 import { FormField, FormSelect, FormCheckboxGroup } from "@/components/ui/FormField";
@@ -80,11 +80,7 @@ export function CostCalculator() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CostCalculationResponse | null>(null);
 
-  const {
-    handleSubmit,
-    formState: { isValid, isDirty },
-    watch,
-  } = useForm<CostCalculatorForm>({
+  const methods = useForm<CostCalculatorForm>({
     resolver: zodResolver(costCalculatorSchema),
     mode: "onChange",
     defaultValues: {
@@ -95,6 +91,11 @@ export function CostCalculator() {
       routes: ["stellar_dex", "anchor_direct", "liquidity_pool"],
     },
   });
+  const {
+    handleSubmit,
+    formState: { isValid, isDirty },
+    watch,
+  } = methods;
 
   // Watch form values for real-time updates
   const sourceCurrency = watch("sourceCurrency");
@@ -159,6 +160,7 @@ export function CostCalculator() {
   };
 
   return (
+    <FormProvider {...methods}>
     <div className="space-y-6">
       <form
         onSubmit={handleSubmit(handleCalculate)}
@@ -322,5 +324,6 @@ export function CostCalculator() {
         </div>
       ) : null}
     </div>
+    </FormProvider>
   );
 }

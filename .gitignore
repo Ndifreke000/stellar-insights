@@ -102,6 +102,7 @@ requirements.md
 AGENTS.md
 somzilla.md
 pr-*.md
+PR_ISSUE_*.md
 
 # ============================================
 # Local AI / editor tooling — NEVER commit!

@@ -1,7 +1,7 @@
 "use client";
 
 import React, {  useEffect, useMemo, useRef, useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, FormProvider, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowDownToLine,
@@ -50,17 +50,18 @@ export function Sep24Flow() {
 
   const POLLING_TIMEOUT_MS = 10 * 60 * 1000;
 
+  const methods = useForm<Sep24FlowForm>({
+    resolver: zodResolver(sep24FlowSchema),
+    mode: "onChange",
+    defaultValues: formData,
+  });
   const {
     handleSubmit,
     formState: { isValid, isDirty },
     setValue,
     watch,
     trigger,
-  } = useForm<Sep24FlowForm>({
-    resolver: zodResolver(sep24FlowSchema),
-    mode: "onChange",
-    defaultValues: formData,
-  });
+  } = methods;
 
   // Watch form values for real-time updates
   // React Hook Form's watch() API cannot be analyzed by React Compiler; this is an unavoidable library limitation
@@ -168,6 +169,7 @@ export function Sep24Flow() {
   };
 
   return (
+    <FormProvider {...methods}>
     <div className="space-y-8">
       {/* Anchor selection */}
       <section className="glass-card rounded-2xl p-6">
@@ -427,5 +429,6 @@ export function Sep24Flow() {
         )}
       </section>
     </div>
+    </FormProvider>
   );
 }

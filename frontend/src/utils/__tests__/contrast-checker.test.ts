@@ -87,13 +87,13 @@ describe('Color Contrast Checker', () => {
   });
 
   describe('Status Colors', () => {
-    it('should pass for success (Green-600 on white)', () => {
-      const ratio = getContrastRatio('#059669', '#ffffff');
+    it('should pass for success (Green-700 on white)', () => {
+      const ratio = getContrastRatio('#047857', '#ffffff');
       expect(meetsWCAG_AA(ratio)).toBe(true);
     });
 
-    it('should pass for warning (Amber-600 on white)', () => {
-      const ratio = getContrastRatio('#d97706', '#ffffff');
+    it('should pass for warning (Amber-700 on white)', () => {
+      const ratio = getContrastRatio('#b45309', '#ffffff');
       expect(meetsWCAG_AA(ratio)).toBe(true);
     });
 
