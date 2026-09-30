@@ -286,6 +286,10 @@ fn estimate_route(
     mid_market_rate: f64,
 ) -> RouteEstimate {
     let fees = RouteFees::for_route(route);
+    // TODO #2326: Integrate real-time order book data for slippage calculation
+    // Currently uses static base and per-10k fee multipliers (hardcoded in RouteFees::for_route)
+    // Production requirement: Query order book depth, calculate market impact based on trade size,
+    // factor in volatility to provide accurate slippage estimates
     let slippage_bps = (source_amount / 10_000.0)
         .mul_add(fees.slippage_per_10k_bps, fees.slippage_base_bps)
         .min(200.0);

@@ -154,6 +154,7 @@ impl AnchorMonitor {
             let mut last_metrics = self.last_metrics.write().await;
 
             if let Some(prev_metrics) = last_metrics.get(&anchor.id) {
+                // TODO #2326: Make alert thresholds configurable instead of hardcoded
                 // Alert on significant success rate drop (>10%)
                 if current_metrics.success_rate < prev_metrics.success_rate - 10.0 {
                     self.alert_manager.send_anchor_alert(

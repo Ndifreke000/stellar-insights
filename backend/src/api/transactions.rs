@@ -374,12 +374,13 @@ pub async fn submit_transaction(
         return Err((StatusCode::BAD_REQUEST, "Not enough signatures".to_string()));
     }
 
-    // In a real implementation we would:
-    // 1. Unpack XDR
-    // 2. Attach signatures to it using Stellar SDK (or do it in frontend and send final XDR here)
-    // 3. Submit to Stellar network using `reqwest` or `rpc_client`
+    // TODO #2326: Implement real transaction signing and submission
+    // Currently using mock implementation. Production requirements:
+    // 1. Unpack XDR transaction envelope
+    // 2. Attach collected signatures to transaction using stellar-sdk (or validate final XDR from frontend)
+    // 3. Submit to Stellar network using reqwest HTTP calls to rpc_client
+    // Dependencies: stellar-sdk crate for XDR handling, proper error handling for network failures
 
-    // Mock successful submission
     let mock_hash = Uuid::new_v4().to_string().replace('-', "");
 
     // Update status in DB

@@ -102,7 +102,10 @@ impl MLService {
     }
 
     fn prepare_training_data(&self) -> anyhow::Result<Vec<(Vec<f32>, f32)>> {
-        // Mock training data for now
+        // TODO #2326: Replace synthetic training data with real historical payment data
+        // Currently generates mock data for model training. Production requirement:
+        // Query actual historical payment transactions from database, extract features like
+        // corridor pair, amount, success/failure outcome, settlement time for model to learn real patterns
         let mut training_data = Vec::new();
 
         // Generate some sample data
@@ -162,12 +165,16 @@ impl MLService {
     }
 
     fn get_corridor_liquidity(&self, corridor: &str) -> Option<f64> {
-        // Mock data for now - in production this would query the database
+        // TODO #2326: Query real corridor liquidity from order book / trading data
+        // Currently returns mock data based on corridor name length. Production requirement:
+        // Query actual Stellar CLOB order book depth, aggregate across all market makers, calculate real liquidity
         Some((corridor.len() as f64).mul_add(100.0, 1000.0))
     }
 
     fn get_recent_success_rate(&self, corridor: &str) -> Option<f32> {
-        // Mock data for now - in production this would query the database
+        // TODO #2326: Calculate recent success rate from actual transaction history
+        // Currently returns mock data based on corridor name length. Production requirement:
+        // Query transactions from past 24-48 hours for this corridor, calculate success/failure ratio
         Some(0.8 + (corridor.len() as f32 * 0.01) % 0.2)
     }
 

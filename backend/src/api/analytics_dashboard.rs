@@ -88,8 +88,10 @@ pub async fn analytics_dashboard(
 }
 
 fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyhow::Error> {
-    // For now, return realistic mock data
-    // In production, this would query the database for actual time series data
+    // TODO #2326: Query real network volume data from transaction history
+    // Currently returns hardcoded mock data. Production requirement:
+    // Query transactions aggregated by hour, count active corridors and anchors per time bucket,
+    // sum transaction volumes to create real network activity time series
     Ok(vec![
         NetworkVolumeDataPoint {
             time: "00:00".to_string(),

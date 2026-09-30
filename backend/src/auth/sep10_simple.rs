@@ -121,8 +121,9 @@ impl Sep10Service {
 
     /// Generate SEP-10 challenge transaction
     ///
-    /// In a full implementation, this would create a proper Stellar transaction.
-    /// This simplified version creates a challenge structure that can be signed.
+    /// TODO #2326: Implement full SEP-10 Stellar transaction generation
+    /// Currently simplified: creates JSON challenge structure instead of proper Stellar transaction envelope
+    /// Required for production: Build actual Stellar transaction using stellar-sdk, sign with server key
     pub async fn generate_challenge(&self, request: ChallengeRequest) -> Result<ChallengeResponse> {
         // Validate account address format
         if !request.account.starts_with('G') || request.account.len() != 56 {
@@ -169,8 +170,9 @@ impl Sep10Service {
 
     /// Verify signed challenge transaction
     ///
-    /// In a full implementation, this would verify Stellar signatures.
-    /// This simplified version validates the challenge structure and nonce.
+    /// TODO #2326: Implement Ed25519 signature verification against Stellar transaction
+    /// Currently simplified: only validates nonce and expiration, does not verify actual Stellar signatures
+    /// Required for production: Verify Ed25519 signatures using stellar-sdk, validate transaction envelope format
     pub async fn verify_challenge(
         &self,
         request: VerificationRequest,
