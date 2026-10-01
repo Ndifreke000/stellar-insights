@@ -10,7 +10,6 @@ use crate::{
     rpc::StellarRpcClient,
     services::{
         account_merge_detector::AccountMergeDetector,
-        broadcaster_port::BroadcasterPort,
         data_port::DataPort,
         fee_bump_tracker::FeeBumpTrackerService,
         liquidity_pool_analyzer::LiquidityPoolAnalyzer,
@@ -30,7 +29,7 @@ pub struct ServiceContainer {
     pub price_feed: Arc<PriceFeedClient>,
     pub webhook_dispatcher: Arc<WebhookDispatcher>,
     pub webhook_event_service: Arc<WebhookEventService>,
-    pub realtime_broadcaster: Arc<Box<dyn BroadcasterPort>>,
+    pub realtime_broadcaster: RealtimeBroadcaster,
 }
 
 impl ServiceContainer {
@@ -39,7 +38,7 @@ impl ServiceContainer {
         pool: SqlitePool,
         rpc_client: Arc<StellarRpcClient>,
         ws_state: Arc<WsState>,
-        db: Arc<crate::Database>,
+        db: Arc<crate::database::Database>,
     ) -> Self {
         let webhook_event_service = Arc::new(WebhookEventService::new(pool.clone()));
         
@@ -63,7 +62,7 @@ impl ServiceContainer {
             )),
             webhook_dispatcher: Arc::new(WebhookDispatcher::new(pool)),
             webhook_event_service,
-            realtime_broadcaster: Arc::new(Box::new(realtime_broadcaster)),
+            realtime_broadcaster,
         }
     }
 }

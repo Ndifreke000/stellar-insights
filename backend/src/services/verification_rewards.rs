@@ -399,7 +399,7 @@ impl VerificationRewardsService {
         // Use a single transaction to execute both operations atomically
         // This reduces round-trips while maintaining compatibility with older SQLite
         let pool = self.db.pool();
-        let txn = pool.begin().await.context("Failed to begin transaction")?;
+        let mut txn = pool.begin().await.context("Failed to begin transaction")?;
 
         // Insert or update user rewards
         sqlx::query(

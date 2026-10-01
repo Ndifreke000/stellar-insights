@@ -352,7 +352,6 @@ pub async fn create_corridor(
     broadcast_corridor_update(&app_state.ws_state, &corridor);
     Ok(Json(corridor))
 }
-}
 
 /// Recently captured slow queries with EXPLAIN plans and per-operation aggregates
 #[utoipa::path(

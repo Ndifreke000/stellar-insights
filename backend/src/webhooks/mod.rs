@@ -45,7 +45,8 @@ pub const DISPATCH_RETRY_BASE_DELAY_MS: u64 = 500;
 /// Compute the exponential backoff delay for a given retry attempt (0-indexed).
 #[must_use]
 pub const fn dispatch_retry_delay_ms(attempt: u32) -> u64 {
-    DISPATCH_RETRY_BASE_DELAY_MS.saturating_mul(1u64 << attempt.min(10))
+    let shift = if attempt > 10 { 10 } else { attempt };
+    DISPATCH_RETRY_BASE_DELAY_MS.saturating_mul(1u64 << shift)
 }
 
 /// Shared, observable state for the background webhook dispatcher.
@@ -406,6 +407,36 @@ impl WebhookService {
     pub async fn mark_event_delivered(&self, event_id: &str) -> anyhow::Result<()> {
         sqlx::query("UPDATE webhook_events SET status = 'delivered' WHERE id = ?")
             .bind(event_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    /// Set an event's delivery status, last error and retry count.
+    pub async fn update_event_status(
+        &self,
+        event_id: &str,
+        status: &str,
+        last_error: Option<&str>,
+        retries: i32,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE webhook_events SET status = ?, last_error = ?, retries = ? WHERE id = ?",
+        )
+        .bind(status)
+        .bind(last_error)
+        .bind(retries)
+        .bind(event_id)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    /// Record the time a webhook last delivered successfully.
+    pub async fn update_last_fired(&self, webhook_id: &str) -> anyhow::Result<()> {
+        sqlx::query("UPDATE webhooks SET last_fired_at = ? WHERE id = ?")
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(webhook_id)
             .execute(&self.db)
             .await?;
         Ok(())

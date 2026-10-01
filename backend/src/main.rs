@@ -243,10 +243,9 @@ async fn main() -> anyhow::Result<()> {
     let lp_analyzer = services.lp_analyzer;
     let price_feed = services.price_feed.clone();
     let webhook_event_service = services.webhook_event_service.clone();
-    let realtime_broadcaster = services.realtime_broadcaster.clone();
-    
+
     // Start the realtime broadcaster background task
-    let mut broadcaster = (**realtime_broadcaster).clone();
+    let mut broadcaster = services.realtime_broadcaster;
     let broadcaster_handle = tokio::spawn(async move {
         broadcaster.start().await;
     });
@@ -286,11 +285,6 @@ async fn main() -> anyhow::Result<()> {
         payraider_backend::models::push_notification_registration::Config::default(),
     );
     tracing::info!("Push notification registration initialized");
-
-    let fee_bump_tracker = services.fee_bump_tracker;
-    let account_merge_detector = services.account_merge_detector;
-    let lp_analyzer = services.lp_analyzer;
-    let price_feed = services.price_feed.clone();
 
     let cached_state = (
         db.clone(),
@@ -701,9 +695,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(handle) = slack_handle {
         background_tasks.push(handle);
     }
-    if let Some(handle) = broadcaster_handle {
-        background_tasks.push(handle);
-    }
+    background_tasks.push(broadcaster_handle);
 
     // Graceful shutdown handler
     let shutdown_handler: JoinHandle<()> = {

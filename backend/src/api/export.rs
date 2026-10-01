@@ -7,7 +7,7 @@
 use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, HeaderValue},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use chrono::{DateTime, Duration, Utc};
 use csv::Writer;
@@ -53,7 +53,7 @@ pub struct ExportQuery {
 pub async fn export_corridors(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Response> {
     let today = Utc::now().date_naive();
     let start_date = params
         .start_date
@@ -82,9 +82,9 @@ pub async fn export_corridors(
     };
 
     match params.format.to_lowercase().as_str() {
-        "csv" => export_corridors_csv(&filtered_corridors),
-        "json" => export_corridors_json(&filtered_corridors),
-        "excel" | "xlsx" => export_corridors_excel(&filtered_corridors),
+        "csv" => export_corridors_csv(&filtered_corridors).map(IntoResponse::into_response),
+        "json" => export_corridors_json(&filtered_corridors).map(IntoResponse::into_response),
+        "excel" | "xlsx" => export_corridors_excel(&filtered_corridors).map(IntoResponse::into_response),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
@@ -93,7 +93,7 @@ pub async fn export_corridors(
 }
 
 /// Helper to export corridors as CSV
-fn export_corridors_csv(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_csv(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
     let mut wtr = Writer::from_writer(vec![]);
     wtr.write_record([
         "Corridor ID",
@@ -142,7 +142,7 @@ fn export_corridors_csv(corridors: &[crate::models::CorridorMetrics]) -> ApiResu
 }
 
 /// Helper to export corridors as JSON
-fn export_corridors_json(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_json(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
@@ -159,7 +159,7 @@ fn export_corridors_json(corridors: &[crate::models::CorridorMetrics]) -> ApiRes
 }
 
 /// Helper to export corridors as Excel
-fn export_corridors_excel(corridors: &[crate::models::CorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_excel(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -258,7 +258,7 @@ fn export_corridors_excel(corridors: &[crate::models::CorridorMetrics]) -> ApiRe
 pub async fn export_anchors(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Response> {
     let anchors = app_state.db.list_anchors(1000, 0).await.map_err(|e| {
         ApiError::internal(
             "DATABASE_ERROR",
@@ -267,9 +267,9 @@ pub async fn export_anchors(
     })?;
 
     match params.format.to_lowercase().as_str() {
-        "csv" => export_anchors_csv(&anchors),
-        "json" => export_anchors_json(&anchors),
-        "excel" | "xlsx" => export_anchors_excel(&anchors),
+        "csv" => export_anchors_csv(&anchors).map(IntoResponse::into_response),
+        "json" => export_anchors_json(&anchors).map(IntoResponse::into_response),
+        "excel" | "xlsx" => export_anchors_excel(&anchors).map(IntoResponse::into_response),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
@@ -443,7 +443,7 @@ fn export_anchors_excel(anchors: &[crate::models::Anchor]) -> ApiResult<impl Int
 pub async fn export_payments(
     State(app_state): State<AppState>,
     Query(params): Query<ExportQuery>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Response> {
     let start_date = params
         .start_date
         .unwrap_or_else(|| Utc::now() - Duration::days(30));
@@ -469,9 +469,9 @@ pub async fn export_payments(
     })?;
 
     match params.format.to_lowercase().as_str() {
-        "csv" => export_payments_csv(&payments),
-        "json" => export_payments_json(&payments),
-        "excel" | "xlsx" => export_payments_excel(&payments),
+        "csv" => export_payments_csv(&payments).map(IntoResponse::into_response),
+        "json" => export_payments_json(&payments).map(IntoResponse::into_response),
+        "excel" | "xlsx" => export_payments_excel(&payments).map(IntoResponse::into_response),
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),

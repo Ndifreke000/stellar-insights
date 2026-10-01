@@ -2034,7 +2034,7 @@ impl AnalyticsContract {
                 total_count += 1;
 
                 // O(1) unique submitter tracking using Map
-                if !unique_submitters_map.contains_key(&metadata.submitter) {
+                if !unique_submitters_map.contains_key(metadata.submitter.clone()) {
                     unique_submitters_map.set(metadata.submitter.clone(), true);
                 }
 
