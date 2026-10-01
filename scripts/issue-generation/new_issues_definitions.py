@@ -453,7 +453,7 @@ curl -H "Accept: application/vnd.payraider.v2+json" http://localhost:8080/api/co
 7. Add load tests to CI/CD
 8. Create performance dashboard""",
         "verification": """# Run load test
-k6 run load-tests/corridors.js
+k6 run backend/load-tests/corridors.js
 
 # Verify metrics collected
 # Check performance dashboard

@@ -665,7 +665,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum number of events to return",
+            "description": "Maximum number of events to return (default 50, max 200)",
             "required": false,
             "schema": {
               "type": "integer",
@@ -673,9 +673,18 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from `pagination.next_cursor` / `prev_cursor`",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "offset",
             "in": "query",
-            "description": "Number of events to skip",
+            "description": "Deprecated: number of events to skip. Prefer `cursor`",
             "required": false,
             "schema": {
               "type": "integer",
@@ -715,17 +724,10 @@
         ],
         "responses": {
           "200": {
-            "description": "List of contract events",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/IndexedEvent"
-                  }
-                }
-              }
-            }
+            "description": "Paginated list of contract events (`PaginatedResponse<IndexedEvent>`; `total` is null)"
+          },
+          "400": {
+            "description": "Invalid pagination cursor"
           },
           "500": {
             "description": "Internal server error"
@@ -901,7 +903,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum number of results to return (default: 50)",
+            "description": "Maximum number of results to return (default: 50, max: 200)",
             "required": false,
             "schema": {
               "type": "integer",
@@ -910,9 +912,18 @@
             "example": 50
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from `pagination.next_cursor` / `prev_cursor`",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "offset",
             "in": "query",
-            "description": "Pagination offset (default: 0)",
+            "description": "Deprecated: pagination offset. Prefer `cursor`.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -923,19 +934,65 @@
         ],
         "responses": {
           "200": {
-            "description": "List of anchors retrieved successfully",
+            "description": "Paginated list of anchors (`PaginatedResponse<AnchorMetricsResponse>`)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnchorsResponse"
+                  "$ref": "#/components/schemas/PaginatedResponse_AnchorMetricsResponse"
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid pagination cursor"
           },
           "500": {
             "description": "Internal server error"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Anchors"
+        ],
+        "summary": "POST /api/anchors - Create a new anchor",
+        "operationId": "create_anchor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnchorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Anchor created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Anchor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/anchors/account/{stellar_account}": {
@@ -998,6 +1055,158 @@
             "description": "Internal server error"
           }
         }
+      }
+    },
+    "/api/anchors/{id}/assets": {
+      "get": {
+        "tags": [
+          "Anchors"
+        ],
+        "summary": "GET /api/anchors/:id/assets - Get assets for an anchor",
+        "operationId": "get_anchor_assets",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Anchor UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assets issued by the anchor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Asset"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Anchor not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Anchors"
+        ],
+        "operationId": "create_anchor_asset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Anchor UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Asset added to anchor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "description": "Anchor not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/anchors/{id}/metrics": {
+      "put": {
+        "tags": [
+          "Anchors"
+        ],
+        "operationId": "update_anchor_metrics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Anchor UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMetricsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Anchor metrics updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Anchor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "description": "Anchor not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/api-keys": {
@@ -1636,7 +1845,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum number of results to return (default: 50)",
+            "description": "Maximum number of results to return (default: 50, max: 200)",
             "required": false,
             "schema": {
               "type": "integer",
@@ -1645,9 +1854,18 @@
             "example": 50
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from `pagination.next_cursor` / `prev_cursor`",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "offset",
             "in": "query",
-            "description": "Pagination offset (default: 0)",
+            "description": "Deprecated: pagination offset. Prefer `cursor`.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -1658,7 +1876,7 @@
           {
             "name": "sort_by",
             "in": "query",
-            "description": "Sort by field (`success_rate` or volume)",
+            "description": "Sort by field (`success_rate`, `volume`/`liquidity`, or `health_score`)",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SortBy"
@@ -1731,22 +1949,65 @@
         ],
         "responses": {
           "200": {
-            "description": "List of corridors retrieved successfully",
+            "description": "Paginated list of corridors (`PaginatedResponse<CorridorResponse>`)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CorridorResponse"
-                  }
+                  "$ref": "#/components/schemas/PaginatedResponse_CorridorResponse"
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid filter or pagination cursor"
           },
           "500": {
             "description": "Internal server error"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Corridors"
+        ],
+        "summary": "POST /api/corridors - Create a new corridor",
+        "operationId": "create_corridor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCorridorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Corridor created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Corridor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/corridors/{corridor_key}": {
@@ -1786,6 +2047,61 @@
             "description": "Internal server error"
           }
         }
+      }
+    },
+    "/api/corridors/{id}/metrics-from-transactions": {
+      "put": {
+        "tags": [
+          "Corridors"
+        ],
+        "operationId": "update_corridor_metrics_from_transactions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Corridor UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCorridorMetricsFromTxns"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Corridor metrics recomputed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Corridor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "description": "Corridor not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/cost-calculator/estimate": {
@@ -1932,9 +2248,18 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from `pagination.next_cursor` / `prev_cursor`",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "offset",
             "in": "query",
-            "description": "Results offset",
+            "description": "Deprecated: results offset. Prefer `cursor`",
             "required": false,
             "schema": {
               "type": "integer",
@@ -1944,7 +2269,10 @@
         ],
         "responses": {
           "200": {
-            "description": "List of proposals"
+            "description": "Paginated list of proposals (`PaginatedResponse<ProposalResponse>`)"
+          },
+          "400": {
+            "description": "Invalid pagination cursor"
           }
         }
       },
@@ -2440,6 +2768,52 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/metrics/frontend": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "Summary of frontend performance (p50/p75/p95 per metric, budget status, slowest pages)",
+        "operationId": "frontend_metrics_summary",
+        "responses": {
+          "200": {
+            "description": "Frontend performance summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendMetricsSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "Ingest a batch of frontend metrics and errors",
+        "operationId": "ingest_frontend_metrics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrontendMetricsBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Batch accepted"
+          },
+          "400": {
+            "description": "Batch too large"
           }
         }
       }
@@ -3192,7 +3566,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum number of payments to return (default 20)",
+            "description": "Maximum number of payments to return (default 20, max 200)",
             "required": false,
             "schema": {
               "type": "integer",
@@ -3203,7 +3577,7 @@
           {
             "name": "cursor",
             "in": "query",
-            "description": "Pagination cursor for next page",
+            "description": "Opaque cursor from `pagination.next_cursor`",
             "required": false,
             "schema": {
               "type": "string"
@@ -3212,7 +3586,17 @@
         ],
         "responses": {
           "200": {
-            "description": "List of recent payments"
+            "description": "Paginated list of recent payments, newest first (`PaginatedResponse<Payment>`; `total` is null)"
+          },
+          "400": {
+            "description": "Invalid pagination cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error",
@@ -4230,6 +4614,208 @@
         }
       }
     },
+    "/api/v1/db/index-report": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Index inventory plus missing-index candidates derived from slow query plans",
+        "operationId": "index_report",
+        "responses": {
+          "200": {
+            "description": "Existing indexes, full table scans and index suggestions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/db/slow-queries": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Recently captured slow queries with EXPLAIN plans and per-operation aggregates",
+        "operationId": "slow_queries",
+        "responses": {
+          "200": {
+            "description": "Slow query report with EXPLAIN QUERY PLAN output"
+          }
+        }
+      }
+    },
+    "/api/v1/export/anchors": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export anchors as CSV, JSON or Excel",
+        "operationId": "export_anchors",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Output format: `csv`, `json` or `excel`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "corridor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exported anchors file (content type depends on `format`)"
+          },
+          "400": {
+            "description": "Unsupported export format"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/export/corridors": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export corridors as CSV, JSON or Excel",
+        "operationId": "export_corridors",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Output format: `csv`, `json` or `excel`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "corridor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exported corridors file (content type depends on `format`)"
+          },
+          "400": {
+            "description": "Unsupported export format"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/export/payments": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export payments as CSV, JSON or Excel",
+        "operationId": "export_payments",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Output format: `csv`, `json` or `excel`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "corridor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exported payments file (content type depends on `format`)"
+          },
+          "400": {
+            "description": "Unsupported export format"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/api/v1/webhooks": {
       "get": {
         "tags": [
@@ -4703,6 +5289,75 @@
           }
         }
       },
+      "Anchor": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "stellar_account",
+          "total_transactions",
+          "successful_transactions",
+          "failed_transactions",
+          "total_volume_usd",
+          "avg_settlement_time_ms",
+          "reliability_score",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "avg_settlement_time_ms": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "failed_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "home_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reliability_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stellar_account": {
+            "type": "string"
+          },
+          "successful_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_volume_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "AnchorMetricsResponse": {
         "type": "object",
         "required": [
@@ -4831,6 +5486,51 @@
           "total_requests": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "Asset": {
+        "type": "object",
+        "required": [
+          "id",
+          "anchor_id",
+          "asset_code",
+          "asset_issuer",
+          "num_holders",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "anchor_id": {
+            "type": "string"
+          },
+          "asset_code": {
+            "type": "string"
+          },
+          "asset_issuer": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "num_holders": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_supply": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -4972,6 +5672,29 @@
           }
         }
       },
+      "Corridor": {
+        "type": "object",
+        "required": [
+          "asset_a_code",
+          "asset_a_issuer",
+          "asset_b_code",
+          "asset_b_issuer"
+        ],
+        "properties": {
+          "asset_a_code": {
+            "type": "string"
+          },
+          "asset_a_issuer": {
+            "type": "string"
+          },
+          "asset_b_code": {
+            "type": "string"
+          },
+          "asset_b_issuer": {
+            "type": "string"
+          }
+        }
+      },
       "CorridorDetailResponse": {
         "type": "object",
         "required": [
@@ -5016,6 +5739,34 @@
             },
             "description": "Related corridors"
           }
+        }
+      },
+      "CorridorPaymentDto": {
+        "type": "object",
+        "required": [
+          "successful",
+          "amount_usd"
+        ],
+        "properties": {
+          "amount_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "settlement_latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "successful": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "amount_usd": 250.0,
+          "settlement_latency_ms": 3500,
+          "successful": true
         }
       },
       "CorridorResponse": {
@@ -5260,6 +6011,32 @@
           }
         }
       },
+      "CreateAnchorRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "stellar_account"
+        ],
+        "properties": {
+          "home_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "stellar_account": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "home_domain": "anchor.example.com",
+          "name": "Example Anchor",
+          "stellar_account": "GAEXAMPLEACCOUNTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        }
+      },
       "CreateApiKeyRequest": {
         "type": "object",
         "required": [
@@ -5281,6 +6058,55 @@
               "null"
             ]
           }
+        }
+      },
+      "CreateAssetRequest": {
+        "type": "object",
+        "description": "POST /api/anchors/:id/assets - Add asset to anchor",
+        "required": [
+          "asset_code",
+          "asset_issuer"
+        ],
+        "properties": {
+          "asset_code": {
+            "type": "string"
+          },
+          "asset_issuer": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "asset_code": "USDC",
+          "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        }
+      },
+      "CreateCorridorRequest": {
+        "type": "object",
+        "required": [
+          "source_asset_code",
+          "source_asset_issuer",
+          "dest_asset_code",
+          "dest_asset_issuer"
+        ],
+        "properties": {
+          "dest_asset_code": {
+            "type": "string"
+          },
+          "dest_asset_issuer": {
+            "type": "string"
+          },
+          "source_asset_code": {
+            "type": "string"
+          },
+          "source_asset_issuer": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "dest_asset_code": "EURC",
+          "dest_asset_issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2",
+          "source_asset_code": "USDC",
+          "source_asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
         }
       },
       "CreateProposalRequest": {
@@ -5512,7 +6338,7 @@
       },
       "EventStats": {
         "type": "object",
-        "description": "Event statistics",
+        "description": "Aggregate statistics about indexed contract events.\n\nProvides summary metrics about the event data stored in the database,\nuseful for monitoring and analytics dashboards.\n\n# Fields\n\n* `total_events` - Total number of events in the database\n* `verified_snapshots` - Number of events with verified status\n* `failed_verifications` - Number of events with failed verification status\n* `latest_epoch` - Highest epoch number indexed (None if no events)\n* `latest_ledger` - Highest ledger sequence number indexed (None if no events)\n* `events_last_24h` - Number of events indexed in the last 24 hours\n\n# Example\n\n```rust,ignore\nuse payraider_backend::services::event_indexer::EventIndexer;\n\nlet indexer = EventIndexer::new(db);\nlet stats = indexer.get_event_stats().await?;\nprintln!(\"Total events: {}\", stats.total_events);\nprintln!(\"Verified: {}\", stats.verified_snapshots);\nprintln!(\"Failed: {}\", stats.failed_verifications);\n```",
         "required": [
           "total_events",
           "verified_snapshots",
@@ -5635,6 +6461,167 @@
           }
         }
       },
+      "FrontendError": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "FrontendMetric": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "metadata": {
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "FrontendMetricSummary": {
+        "type": "object",
+        "required": [
+          "name",
+          "count",
+          "p50",
+          "p75",
+          "p95",
+          "status"
+        ],
+        "properties": {
+          "budget": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "p50": {
+            "type": "number",
+            "format": "double"
+          },
+          "p75": {
+            "type": "number",
+            "format": "double"
+          },
+          "p95": {
+            "type": "number",
+            "format": "double"
+          },
+          "status": {
+            "type": "string",
+            "description": "`good` when p75 is within budget, `poor` otherwise, `n/a` without a budget"
+          }
+        }
+      },
+      "FrontendMetricsBatch": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontendError"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontendMetric"
+            }
+          }
+        },
+        "example": {
+          "errors": [],
+          "metrics": [
+            {
+              "metadata": {
+                "rating": "good"
+              },
+              "name": "web-vitals-lcp",
+              "path": "/en/corridors",
+              "value": 1830.5
+            },
+            {
+              "metadata": {
+                "endpoint": "/anchors",
+                "status": 200
+              },
+              "name": "api-response-time",
+              "path": "/en/anchors",
+              "value": 212.0
+            }
+          ]
+        }
+      },
+      "FrontendMetricsSummary": {
+        "type": "object",
+        "required": [
+          "metrics",
+          "slowest_pages",
+          "error_count"
+        ],
+        "properties": {
+          "error_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontendMetricSummary"
+            }
+          },
+          "slowest_pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageSummary"
+            },
+            "description": "Per-page p75 for page-level metrics (LCP, page load)"
+          }
+        }
+      },
       "GenerateSnapshotRequest": {
         "type": "object",
         "description": "Request for snapshot generation",
@@ -5665,7 +6652,7 @@
       },
       "IndexedEvent": {
         "type": "object",
-        "description": "Indexed contract event with metadata",
+        "description": "Indexed contract event with full metadata from the Stellar protocol.\n\nRepresents a single contract event that has been indexed and stored in the\ndatabase for querying and analytics.\n\n# Fields\n\n* `id` - Unique identifier for this indexed event record\n* `contract_id` - The Stellar contract that emitted this event\n* `event_type` - The event type name (e.g., \"SNAP_SUB\")\n* `epoch` - Optional epoch number for this event\n* `hash` - Optional transaction hash containing this event\n* `timestamp` - Optional UNIX timestamp of the event\n* `ledger` - The ledger sequence number containing this event\n* `transaction_hash` - The transaction hash containing this event\n* `created_at` - When this event was indexed in the database\n* `verification_status` - Optional verification status for this event\n\n# Example\n\n```rust,ignore\nuse payraider_backend::services::event_indexer::IndexedEvent;\n\nlet event = IndexedEvent {\n    id: \"evt_123\".to_string(),\n    contract_id: \"CD234...\".to_string(),\n    event_type: \"SNAP_SUB\".to_string(),\n    epoch: Some(123456),\n    hash: Some(\"TX_HASH_...\".to_string()),\n    timestamp: Some(1698765432),\n    ledger: 123456,\n    transaction_hash: \"TX_123...\".to_string(),\n    created_at: chrono::Utc::now(),\n    verification_status: Some(\"verified\".to_string()),\n};\n```",
         "required": [
           "id",
           "contract_id",
@@ -6254,6 +7241,382 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "PageLinks": {
+        "type": "object",
+        "description": "Ready-to-follow links to adjacent pages.",
+        "required": [
+          "self"
+        ],
+        "properties": {
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "/api/corridors?limit=50&cursor=djE6bzo1MA"
+          },
+          "prev": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": null
+          },
+          "self": {
+            "type": "string",
+            "example": "/api/corridors?limit=50"
+          }
+        }
+      },
+      "PageMeta": {
+        "type": "object",
+        "description": "Pagination metadata included in every list response.",
+        "required": [
+          "limit",
+          "has_next",
+          "has_prev"
+        ],
+        "properties": {
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there is a next page.",
+            "example": true
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there is a previous page.",
+            "example": false
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum number of items requested.",
+            "example": 50
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the next page, or `null` on the last page.",
+            "example": "djE6bzo1MA"
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Deprecated: offset for the next page. Prefer `next_cursor`.",
+            "example": 50
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Deprecated: number of items skipped. `null` for token-paged endpoints.",
+            "example": 0
+          },
+          "prev_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the previous page, or `null` on the first page.",
+            "example": null
+          },
+          "prev_offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Deprecated: offset for the previous page. Prefer `prev_cursor`.",
+            "example": null
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Total number of items available across all pages, when cheaply known.",
+            "example": 312
+          }
+        }
+      },
+      "PageSummary": {
+        "type": "object",
+        "required": [
+          "path",
+          "metric",
+          "p75",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metric": {
+            "type": "string"
+          },
+          "p75": {
+            "type": "number",
+            "format": "double"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginatedResponse_AnchorMetricsResponse": {
+        "type": "object",
+        "description": "Standard paginated response envelope used by all list endpoints.\n\nReference concrete instantiations directly in `#[utoipa::path]` bodies\n(e.g. `body = PaginatedResponse<CorridorResponse>`); utoipa 5 resolves the\ngeneric so the spec documents the real item type.",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "stellar_account",
+                "reliability_score",
+                "asset_coverage",
+                "failure_rate",
+                "total_transactions",
+                "successful_transactions",
+                "failed_transactions",
+                "status"
+              ],
+              "properties": {
+                "asset_coverage": {
+                  "type": "integer",
+                  "description": "Number of assets supported",
+                  "example": 5,
+                  "minimum": 0
+                },
+                "failed_transactions": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of failed transactions",
+                  "example": 50
+                },
+                "failure_rate": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Failure rate percentage",
+                  "example": 0.5
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Unique identifier for the anchor",
+                  "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Name of the anchor",
+                  "example": "MoneyGram Access"
+                },
+                "reliability_score": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Reliability score (0-100)",
+                  "example": 99.5
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Health status (green, yellow, red)",
+                  "example": "green"
+                },
+                "stellar_account": {
+                  "type": "string",
+                  "description": "Stellar account address",
+                  "example": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                },
+                "successful_transactions": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of successful transactions",
+                  "example": 9950
+                },
+                "total_transactions": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Total number of transactions",
+                  "example": 10000
+                }
+              }
+            },
+            "description": "The page of items."
+          },
+          "links": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageLinks",
+                "description": "Links to the current, next and previous pages."
+              }
+            ]
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PageMeta",
+            "description": "Pagination metadata."
+          }
+        }
+      },
+      "PaginatedResponse_CorridorResponse": {
+        "type": "object",
+        "description": "Standard paginated response envelope used by all list endpoints.\n\nReference concrete instantiations directly in `#[utoipa::path]` bodies\n(e.g. `body = PaginatedResponse<CorridorResponse>`); utoipa 5 resolves the\ngeneric so the spec documents the real item type.",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "source_asset",
+                "destination_asset",
+                "success_rate",
+                "total_attempts",
+                "successful_payments",
+                "failed_payments",
+                "average_latency_ms",
+                "median_latency_ms",
+                "p95_latency_ms",
+                "p99_latency_ms",
+                "liquidity_depth_usd",
+                "liquidity_volume_24h_usd",
+                "liquidity_trend",
+                "health_score",
+                "last_updated"
+              ],
+              "properties": {
+                "average_latency_ms": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Average latency in milliseconds",
+                  "example": 450.5
+                },
+                "destination_asset": {
+                  "type": "string",
+                  "description": "Destination asset code",
+                  "example": "XLM"
+                },
+                "failed_payments": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of failed payments",
+                  "example": 10
+                },
+                "health_score": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Overall health score (0-100)",
+                  "example": 95.5
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Unique identifier for the corridor",
+                  "example": "USDC:native->XLM:native"
+                },
+                "last_updated": {
+                  "type": "string",
+                  "description": "Last update timestamp",
+                  "example": "2024-01-15T10:30:00Z"
+                },
+                "liquidity_depth_usd": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Liquidity depth in USD",
+                  "example": 1500000.0
+                },
+                "liquidity_trend": {
+                  "type": "string",
+                  "description": "Liquidity trend (increasing, stable, decreasing)",
+                  "example": "stable"
+                },
+                "liquidity_volume_24h_usd": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "24-hour trading volume in USD",
+                  "example": 150000.0
+                },
+                "median_latency_ms": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Median latency in milliseconds",
+                  "example": 380.0
+                },
+                "p95_latency_ms": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "95th percentile latency in milliseconds",
+                  "example": 850.0
+                },
+                "p99_latency_ms": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "99th percentile latency in milliseconds",
+                  "example": 1200.0
+                },
+                "source_asset": {
+                  "type": "string",
+                  "description": "Source asset code",
+                  "example": "USDC"
+                },
+                "success_rate": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Success rate percentage",
+                  "example": 99.8
+                },
+                "successful_payments": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of successful payments",
+                  "example": 4990
+                },
+                "total_attempts": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Total payment attempts",
+                  "example": 5000
+                }
+              }
+            },
+            "description": "The page of items."
+          },
+          "links": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageLinks",
+                "description": "Links to the current, next and previous pages."
+              }
+            ]
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PageMeta",
+            "description": "Pagination metadata."
           }
         }
       },
@@ -7038,6 +8401,65 @@
           }
         }
       },
+      "UpdateCorridorMetricsFromTxns": {
+        "type": "object",
+        "description": "PUT /api/corridors/:id/metrics-from-transactions - Compute metrics from transactions and persist",
+        "required": [
+          "transactions"
+        ],
+        "properties": {
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorridorPaymentDto"
+            }
+          }
+        }
+      },
+      "UpdateMetricsRequest": {
+        "type": "object",
+        "description": "PUT /api/anchors/:id/metrics - Update anchor metrics",
+        "required": [
+          "total_transactions",
+          "successful_transactions",
+          "failed_transactions"
+        ],
+        "properties": {
+          "avg_settlement_time_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "failed_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "successful_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_transactions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volume_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "example": {
+          "avg_settlement_time_ms": 4200,
+          "failed_transactions": 20,
+          "successful_transactions": 980,
+          "total_transactions": 1000,
+          "volume_usd": 125000.5
+        }
+      },
       "VerificationRequest": {
         "type": "object",
         "description": "SEP-10 Verification Request",
@@ -7273,6 +8695,20 @@
         ],
         "description": "POST /api/sep24/withdraw/interactive"
       }
+    },
+    "securitySchemes": {
+      "api_key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key created via `POST /api/keys`. Example: `X-API-Key: si_live_...`"
+      },
+      "bearer_auth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token from `POST /api/auth/login`. Example: `Authorization: Bearer eyJhbGciOi...`"
+      }
     }
   },
   "tags": [
@@ -7299,6 +8735,14 @@
     {
       "name": "Corridors",
       "description": "Payment corridor analytics endpoints"
+    },
+    {
+      "name": "Database",
+      "description": "Database query performance monitoring"
+    },
+    {
+      "name": "Export",
+      "description": "Data export endpoints (CSV, JSON, Excel)"
     },
     {
       "name": "Fee Bumps",

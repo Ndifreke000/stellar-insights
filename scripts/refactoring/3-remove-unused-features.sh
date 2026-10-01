@@ -53,7 +53,7 @@ rm -f backend/check_out.txt
 rm -f backend/check_output.txt
 rm -f backend/errors.txt
 rm -f backend/check_warnings.ps1
-rm -f backend/check_warnings.sh
+rm -f backend/scripts/check_warnings.sh
 echo "  ✓ Removed temporary files"
 
 # 2.5 Create removal summary

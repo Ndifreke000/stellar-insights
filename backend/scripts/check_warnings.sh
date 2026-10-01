@@ -3,6 +3,9 @@
 
 set -e
 
+# Run from backend/ regardless of where the script is invoked.
+cd "$(dirname "$0")/.."
+
 echo "🔍 Checking for compiler warnings..."
 echo "=================================="
 

@@ -22,6 +22,18 @@ payraider/
 └── 📋 package.json      # Repo-root tooling only (Playwright + commitlint)
 ```
 
+Placement rules:
+
+- Markdown at the repo root is limited to `README`, `CHANGELOG`, `CONTRIBUTING`,
+  `CODE_OF_CONDUCT`, `SECURITY` and `LICENSE`. Everything else lives in `docs/`
+  (`docs/backend/`, `docs/security/`, `docs/issues/`, ...).
+- `.github/` holds only workflows, issue/PR templates and `dependabot.yml`.
+  Workflows must be in the root `.github/workflows/`; GitHub ignores nested ones.
+- Backend helper scripts live in `backend/scripts/`; repo-wide ones in `scripts/`
+  (issue generators in `scripts/issue-generation/`).
+- k6 load tests live in `backend/load-tests/`.
+- Root tooling uses npm (`package-lock.json`); the frontend uses pnpm.
+
 Note: the repo root used to also have a second, disconnected Vite/React app
 (`src/`, `index.html`, `vite.config.ts`, package name `"awpwrate"`) from a
 single auto-generated commit, unrelated to the real Next.js app in

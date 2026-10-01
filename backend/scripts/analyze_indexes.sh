@@ -4,7 +4,7 @@
 # queries against the app's hot tables, flagging any that fall back to a full
 # table SCAN instead of using an index.
 #
-# Usage: ./analyze_indexes.sh [database_path]
+# Usage: ./scripts/analyze_indexes.sh [database_path]
 
 set -e
 

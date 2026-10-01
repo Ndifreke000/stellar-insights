@@ -7,6 +7,9 @@
 
 set -e
 
+# Run from backend/ regardless of where the script is invoked.
+cd "$(dirname "$0")/.."
+
 echo "🔧 Setting up database for SQLx compile-time verification..."
 
 DB_FILE="./payraider.db"

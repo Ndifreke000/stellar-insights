@@ -346,7 +346,7 @@ export ZAPSCAN_TOKEN="${{ secrets.ZAPSCAN_TOKEN }}"
 
 ### For Contributors
 
-- `backend/SECURITY_TESTING.md` - Local testing guide
+- `docs/backend/SECURITY_TESTING.md` - Local testing guide
 - `backend/.zap-rules.tsv` - Suppressed rules and justifications
 - `.github/workflows/security-scan.yml` - CI pipeline
 

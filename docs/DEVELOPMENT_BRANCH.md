@@ -66,7 +66,7 @@ This branch contains the implemented changes for the following issues:
 ## Pull Request Markdown
 
 A PR documentation file has been created at:
-- `.github/pr_2455_2367_2369_2368.md`
+- `docs/issues/pr_2455_2367_2369_2368.md`
 
 This file contains detailed information about all changes, testing notes, and related issues.
 
@@ -101,5 +101,5 @@ All changes have been tested for:
 
 ## Related Documentation
 
-- `.github/pr_2455_2367_2369_2368.md` - Full PR documentation
+- `docs/issues/pr_2455_2367_2369_2368.md` - Full PR documentation
 - `docs/backup-system.md` - Backup system documentation (referenced in P2-2368)
