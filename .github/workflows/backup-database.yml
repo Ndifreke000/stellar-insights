@@ -9,7 +9,8 @@ name: Database Backup Verification
 # (docs/adr/0001-sqlite-vs-postgres.md, docs/backup-system.md).
 #
 # Requires the `backup-verifier` role (terraform/global/backups.tf) and the
-# AWS_ACCOUNT_ID secret.
+# AWS_ACCOUNT_ID secret. Until that secret is configured there is no replica to
+# verify, so the job reports "skipped" instead of failing and filing an issue.
 
 on:
   schedule:
@@ -46,10 +47,25 @@ jobs:
     name: Verify ${{ github.event.inputs.environment || 'production' }} backup
     runs-on: ubuntu-latest
     steps:
+      - name: Check backup infrastructure is configured
+        id: config
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          if [ -z "$AWS_ACCOUNT_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::AWS_ACCOUNT_ID secret is not set; skipping backup verification."
+            echo "### Backup verification skipped: AWS_ACCOUNT_ID secret is not configured (see docs/backup-system.md)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout code
+        if: steps.config.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Resolve target
+        if: steps.config.outputs.configured == 'true'
         id: target
         run: |
           ENVIRONMENT="${{ github.event.inputs.environment || 'production' }}"
@@ -61,6 +77,7 @@ jobs:
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Install Litestream and sqlite3
+        if: steps.config.outputs.configured == 'true'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 jq
           curl -fsSL -o litestream.deb \
@@ -69,12 +86,14 @@ jobs:
           litestream version
 
       - name: Configure AWS credentials
+        if: steps.config.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/backup-verifier
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Restore and verify
+        if: steps.config.outputs.configured == 'true'
         env:
           LITESTREAM_REPLICA_URL: s3://payraider-db-backups-${{ secrets.AWS_ACCOUNT_ID }}/${{ steps.target.outputs.environment }}/payraider.db
           BACKUP_REPORT_DIR: backup-verification
@@ -82,7 +101,7 @@ jobs:
         run: ./scripts/verify-backup.sh "${{ steps.target.outputs.target }}"
 
       - name: Summarize
-        if: always()
+        if: always() && steps.config.outputs.configured == 'true'
         run: |
           if [ -f backup-verification/latest.json ]; then
             {
@@ -94,7 +113,7 @@ jobs:
           fi
 
       - name: Upload report
-        if: always()
+        if: always() && steps.config.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: backup-verification-${{ steps.target.outputs.environment }}
