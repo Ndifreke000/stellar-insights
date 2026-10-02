@@ -15,7 +15,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "smoke-test": "node scripts/smoke-test.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "keywords": ["stellar", "mcp", "model-context-protocol", "analytics", "ai-agent"],
   "license": "MIT",
