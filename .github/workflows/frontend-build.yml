@@ -13,6 +13,11 @@ jobs:
   build:
     name: Build & Metrics
     runs-on: ubuntu-latest
+    env:
+      # src/config.ts throws without it, so every page Lighthouse loaded from
+      # the built app returned 500. No backend runs here; the pages render
+      # their empty/loading states.
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8080
     defaults:
       run:
         working-directory: frontend
