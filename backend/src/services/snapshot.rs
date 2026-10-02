@@ -132,8 +132,7 @@ impl SnapshotService {
         info!(
             "Latest ledger {} hash verified (matching hash: {}) — \
              snapshot is anchored to canonical chain",
-            latest_ledger.sequence,
-            verified_ledger.hash,
+            latest_ledger.sequence, verified_ledger.hash,
         );
 
         // Step 4: Store hash in database
@@ -1007,14 +1006,16 @@ mod tests {
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let json1 = SnapshotService::serialize_deterministically(snapshot1).context("failed to serialize snapshot1")?;
+        let json1 = SnapshotService::serialize_deterministically(snapshot1)
+            .context("failed to serialize snapshot1")?;
 
         // Create same snapshot with metrics added in different order
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let json2 = SnapshotService::serialize_deterministically(snapshot2).context("failed to serialize snapshot2")?;
+        let json2 = SnapshotService::serialize_deterministically(snapshot2)
+            .context("failed to serialize snapshot2")?;
 
         // Same content should produce same JSON regardless of insertion order
         assert_eq!(json1, json2);
@@ -1031,14 +1032,16 @@ mod tests {
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
+        let hash1 =
+            SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         // Create same snapshot with metrics added in different order
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
+        let hash2 =
+            SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Same input should always yield same hash
         assert_eq!(hash1, hash2);
@@ -1054,12 +1057,14 @@ mod tests {
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
+        let hash1 =
+            SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
+        let hash2 =
+            SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Different content should produce different hashes
         assert_ne!(hash1, hash2);
@@ -1074,12 +1079,14 @@ mod tests {
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
+        let hash1 =
+            SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         let mut snapshot2 = AnalyticsSnapshot::new(2, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
+        let hash2 =
+            SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Different epoch should produce different hash
         assert_ne!(hash1, hash2);
@@ -1091,7 +1098,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let hex = SnapshotService::hash_snapshot_hex(snapshot).context("failed to compute hash hex")?;
+        let hex =
+            SnapshotService::hash_snapshot_hex(snapshot).context("failed to compute hash hex")?;
 
         // Should be 64 characters (32 bytes × 2 hex chars)
         assert_eq!(hex.len(), 64);
@@ -1118,7 +1126,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot).context("failed to compute version and hash")?;
+        let (hash_bytes, hash_hex, version) = SnapshotService::version_and_hash(snapshot)
+            .context("failed to compute version and hash")?;
 
         assert_eq!(hash_bytes.len(), 32);
         assert_eq!(hash_hex.len(), 64);
@@ -1141,7 +1150,8 @@ mod tests {
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id1, "corridor1"));
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id2, "corridor2"));
 
-        let hash1 = SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
+        let hash1 =
+            SnapshotService::hash_snapshot(snapshot1).context("failed to hash snapshot1")?;
 
         // Create snapshot in reverse order
         let mut snapshot2 = AnalyticsSnapshot::new(100, now);
@@ -1150,7 +1160,8 @@ mod tests {
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id1, "Anchor1"));
 
-        let hash2 = SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
+        let hash2 =
+            SnapshotService::hash_snapshot(snapshot2).context("failed to hash snapshot2")?;
 
         // Should produce identical hashes
         assert_eq!(hash1, hash2);
@@ -1162,7 +1173,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot")?;
+        let json = SnapshotService::serialize_deterministically(snapshot)
+            .context("failed to serialize snapshot")?;
 
         // Should not contain unnecessary whitespace
         assert!(!json.contains("  ")); // No double spaces
@@ -1183,8 +1195,10 @@ mod tests {
         metrics.failure_rate = 0.876_543_210_987_655;
         snapshot.add_anchor_metrics(metrics);
 
-        let json1 = SnapshotService::serialize_deterministically(snapshot.clone()).context("failed to serialize snapshot (first)")?;
-        let json2 = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot (second)")?;
+        let json1 = SnapshotService::serialize_deterministically(snapshot.clone())
+            .context("failed to serialize snapshot (first)")?;
+        let json2 = SnapshotService::serialize_deterministically(snapshot)
+            .context("failed to serialize snapshot (second)")?;
 
         // Same floating point values should serialize identically
         assert_eq!(json1, json2);
@@ -1196,8 +1210,10 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotService::serialize_deterministically(snapshot).context("failed to serialize snapshot")?;
-        let parsed: serde_json::Value = serde_json::from_str(&json).context("failed to parse JSON")?;
+        let json = SnapshotService::serialize_deterministically(snapshot)
+            .context("failed to serialize snapshot")?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).context("failed to parse JSON")?;
 
         // Verify top-level keys are in sorted order
         if let serde_json::Value::Object(map) = parsed {

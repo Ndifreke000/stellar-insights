@@ -41,14 +41,14 @@ impl ServiceContainer {
         db: Arc<crate::database::Database>,
     ) -> Self {
         let webhook_event_service = Arc::new(WebhookEventService::new(pool.clone()));
-        
+
         // RealtimeBroadcaster needs: ws_state, data_port (Database), webhook_events
         let realtime_broadcaster = RealtimeBroadcaster::new(
             ws_state,
             Arc::clone(&db) as Arc<dyn DataPort>,
             webhook_event_service.clone(),
         );
-        
+
         Self {
             fee_bump_tracker: Arc::new(FeeBumpTrackerService::new(pool.clone())),
             account_merge_detector: Arc::new(AccountMergeDetector::new(

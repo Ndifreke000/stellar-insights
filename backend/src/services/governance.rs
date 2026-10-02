@@ -8,8 +8,7 @@ use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CreateProposalRequest {
     pub title: String,
     pub description: Option<String>,
@@ -45,8 +44,7 @@ pub struct ProposalsListResponse {
     pub total: i64,
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CastVoteRequest {
     pub choice: String,
     pub tx_hash: Option<String>,
@@ -62,8 +60,7 @@ pub struct VoteResponse {
     pub voted_at: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct AddCommentRequest {
     pub content: String,
 }
@@ -113,10 +110,7 @@ impl GovernanceService {
 
     /// Returns `(proposal, cache_age_secs)`. `cache_age_secs` is `None` on a
     /// cache miss (the value was just fetched from the DB).
-    pub async fn get_proposal_cached(
-        &self,
-        id: &str,
-    ) -> Result<(ProposalResponse, Option<u64>)> {
+    pub async fn get_proposal_cached(&self, id: &str) -> Result<(ProposalResponse, Option<u64>)> {
         let key = Self::tally_cache_key(id);
 
         if let Ok(Some(cached)) = self.cache.get::<CachedProposal>(&key).await {

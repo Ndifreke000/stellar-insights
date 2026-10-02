@@ -26,7 +26,10 @@ pub struct CorridorPerformanceAlert {
 }
 
 impl CorridorPerformanceMonitor {
-    pub fn new(db: Arc<Database>, alert_manager: Arc<AlertManager>) -> (Self, broadcast::Receiver<CorridorPerformanceAlert>) {
+    pub fn new(
+        db: Arc<Database>,
+        alert_manager: Arc<AlertManager>,
+    ) -> (Self, broadcast::Receiver<CorridorPerformanceAlert>) {
         let (tx, rx) = broadcast::channel(256);
         (
             Self {
@@ -60,7 +63,8 @@ impl CorridorPerformanceMonitor {
         }
 
         // Group configs by corridor_key (None = global monitoring)
-        let mut corridor_configs: HashMap<Option<String>, Vec<&CorridorAlertConfig>> = HashMap::new();
+        let mut corridor_configs: HashMap<Option<String>, Vec<&CorridorAlertConfig>> =
+            HashMap::new();
         for config in &configs {
             corridor_configs
                 .entry(config.corridor_key.clone())
@@ -71,7 +75,8 @@ impl CorridorPerformanceMonitor {
         // For corridor-specific configs, check each corridor
         for (corridor_key_opt, configs_for_corridor) in &corridor_configs {
             if let Some(corridor_key) = corridor_key_opt {
-                self.evaluate_corridor(corridor_key, configs_for_corridor).await?;
+                self.evaluate_corridor(corridor_key, configs_for_corridor)
+                    .await?;
             }
         }
 
@@ -84,12 +89,19 @@ impl CorridorPerformanceMonitor {
         corridor_key: &str,
         configs: &[&CorridorAlertConfig],
     ) -> anyhow::Result<()> {
-        let current = match self.db.get_latest_snapshot_for_corridor(corridor_key).await? {
+        let current = match self
+            .db
+            .get_latest_snapshot_for_corridor(corridor_key)
+            .await?
+        {
             Some(s) => s,
             None => return Ok(()),
         };
 
-        let previous = self.db.get_previous_snapshot_for_corridor(corridor_key).await?;
+        let previous = self
+            .db
+            .get_previous_snapshot_for_corridor(corridor_key)
+            .await?;
 
         for config in configs {
             // Check cooldown
@@ -102,7 +114,14 @@ impl CorridorPerformanceMonitor {
                 }
             }
 
-            let mut triggered_alerts: Vec<(String, String, String, Option<f64>, Option<f64>, Option<f64>)> = Vec::new();
+            let mut triggered_alerts: Vec<(
+                String,
+                String,
+                String,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+            )> = Vec::new();
 
             // Check absolute thresholds
             if let Some(threshold) = config.success_rate_threshold {
@@ -112,7 +131,9 @@ impl CorridorPerformanceMonitor {
                         "critical".to_string(),
                         format!(
                             "Corridor {} success rate {:.1}% dropped below threshold {:.1}%",
-                            corridor_key, current.success_rate * 100.0, threshold * 100.0
+                            corridor_key,
+                            current.success_rate * 100.0,
+                            threshold * 100.0
                         ),
                         previous.as_ref().map(|p| p.success_rate),
                         Some(current.success_rate),
@@ -157,14 +178,23 @@ impl CorridorPerformanceMonitor {
             if let Some(ref prev) = previous {
                 // Success rate drop
                 if prev.success_rate > 0.0 {
-                    let drop_pct = ((prev.success_rate - current.success_rate) / prev.success_rate) * 100.0;
+                    let drop_pct =
+                        ((prev.success_rate - current.success_rate) / prev.success_rate) * 100.0;
                     if drop_pct > config.success_rate_drop_pct {
                         triggered_alerts.push((
                             "success_rate_drop".to_string(),
-                            if drop_pct > 25.0 { "critical" } else { "warning" }.to_string(),
+                            if drop_pct > 25.0 {
+                                "critical"
+                            } else {
+                                "warning"
+                            }
+                            .to_string(),
                             format!(
                                 "Corridor {} success rate dropped {:.1}% (from {:.1}% to {:.1}%)",
-                                corridor_key, drop_pct, prev.success_rate * 100.0, current.success_rate * 100.0
+                                corridor_key,
+                                drop_pct,
+                                prev.success_rate * 100.0,
+                                current.success_rate * 100.0
                             ),
                             Some(prev.success_rate),
                             Some(current.success_rate),
@@ -175,7 +205,8 @@ impl CorridorPerformanceMonitor {
 
                 // Latency increase
                 if prev.avg_settlement_latency_ms > 0.0 {
-                    let increase_pct = ((current.avg_settlement_latency_ms - prev.avg_settlement_latency_ms)
+                    let increase_pct = ((current.avg_settlement_latency_ms
+                        - prev.avg_settlement_latency_ms)
                         / prev.avg_settlement_latency_ms)
                         * 100.0;
                     if increase_pct > config.latency_increase_pct {
@@ -184,7 +215,10 @@ impl CorridorPerformanceMonitor {
                             "warning".to_string(),
                             format!(
                                 "Corridor {} latency increased {:.1}% (from {:.0}ms to {:.0}ms)",
-                                corridor_key, increase_pct, prev.avg_settlement_latency_ms, current.avg_settlement_latency_ms
+                                corridor_key,
+                                increase_pct,
+                                prev.avg_settlement_latency_ms,
+                                current.avg_settlement_latency_ms
                             ),
                             Some(prev.avg_settlement_latency_ms),
                             Some(current.avg_settlement_latency_ms),
@@ -201,10 +235,18 @@ impl CorridorPerformanceMonitor {
                     if drop_pct > config.liquidity_drop_pct {
                         triggered_alerts.push((
                             "liquidity_drop".to_string(),
-                            if drop_pct > 50.0 { "critical" } else { "warning" }.to_string(),
+                            if drop_pct > 50.0 {
+                                "critical"
+                            } else {
+                                "warning"
+                            }
+                            .to_string(),
                             format!(
                                 "Corridor {} liquidity dropped {:.1}% (from ${:.0} to ${:.0})",
-                                corridor_key, drop_pct, prev.liquidity_depth_usd, current.liquidity_depth_usd
+                                corridor_key,
+                                drop_pct,
+                                prev.liquidity_depth_usd,
+                                current.liquidity_depth_usd
                             ),
                             Some(prev.liquidity_depth_usd),
                             Some(current.liquidity_depth_usd),

@@ -25,8 +25,7 @@ const FAILED_VERIFICATION_PENALTY: i32 = 0;
 const MAX_VERIFICATIONS_PER_DAY: i32 = 50;
 
 /// Request to verify a snapshot hash
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VerifySnapshotRequest {
     pub snapshot_id: String,
     pub submitted_hash: String,

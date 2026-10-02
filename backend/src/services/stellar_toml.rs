@@ -772,7 +772,9 @@ name = "Euro"
         let toml = result.expect("parse_toml should succeed for valid TOML fixture");
         assert!(toml.currencies.is_some());
 
-        let currencies = toml.currencies.expect("toml.currencies should be Some after asserting is_some");
+        let currencies = toml
+            .currencies
+            .expect("toml.currencies should be Some after asserting is_some");
         assert_eq!(currencies.len(), 2);
         assert_eq!(currencies[0].code, "USD");
         assert_eq!(currencies[0].name, Some("US Dollar".to_string()));

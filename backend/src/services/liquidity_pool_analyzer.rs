@@ -68,7 +68,9 @@ impl LiquidityPoolAnalyzer {
 
             // Estimate total value (simplified: assume both sides equivalent for AMM)
             // Use Decimal for precision, then convert to f64 for DB storage
-            let total_value_usd_f64 = (primary_reserve + secondary_reserve).to_f64().unwrap_or(0.0);
+            let total_value_usd_f64 = (primary_reserve + secondary_reserve)
+                .to_f64()
+                .unwrap_or(0.0);
 
             // Compute volume from recent trades
             let trades = self

@@ -93,8 +93,7 @@ use tracing::{debug, info, warn};
 ///     verification_status: Some("verified".to_string()),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexedEvent {
     pub id: String,
     pub contract_id: String,
@@ -220,8 +219,7 @@ pub enum EventOrderBy {
 /// println!("Verified: {}", stats.verified_snapshots);
 /// println!("Failed: {}", stats.failed_verifications);
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct EventStats {
     pub total_events: i64,
     pub verified_snapshots: i64,
@@ -352,10 +350,23 @@ impl EventIndexer {
     }
 
     /// Index a batch of contract events and record a checkpoint ledger in a single transaction
-    pub async fn index_events_with_checkpoint(&self, events: Vec<IndexedEvent>, checkpoint_ledger: u64) -> Result<()> {
-        debug!("Indexing {} events and setting checkpoint to {}", events.len(), checkpoint_ledger);
+    pub async fn index_events_with_checkpoint(
+        &self,
+        events: Vec<IndexedEvent>,
+        checkpoint_ledger: u64,
+    ) -> Result<()> {
+        debug!(
+            "Indexing {} events and setting checkpoint to {}",
+            events.len(),
+            checkpoint_ledger
+        );
 
-        let mut tx = self.db.pool().begin().await.context("Failed to begin transaction")?;
+        let mut tx = self
+            .db
+            .pool()
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
 
         let event_query = r"
             INSERT OR REPLACE INTO contract_events (
@@ -415,7 +426,12 @@ impl EventIndexer {
 
         // Add filters
         if !query.contract_ids.is_empty() {
-            let placeholders = query.contract_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let placeholders = query
+                .contract_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
             let _ = write!(sql, " AND contract_id IN ({placeholders})");
             bindings.extend(query.contract_ids.iter().cloned());
         }
@@ -920,8 +936,7 @@ impl EventIndexer {
 }
 
 /// Verification summary for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerificationSummary {
     pub epoch: u64,
     pub hash: Option<String>,
@@ -939,7 +954,9 @@ mod tests {
     use std::sync::Arc;
 
     async fn setup_contract_event_db() -> Result<Arc<Database>> {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.context("failed to create in-memory SQLite pool")?;
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .context("failed to create in-memory SQLite pool")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
@@ -975,10 +992,16 @@ mod tests {
         };
 
         // Test indexing
-        indexer.index_event(event.clone()).await.context("failed to index event")?;
+        indexer
+            .index_event(event.clone())
+            .await
+            .context("failed to index event")?;
 
         // Test retrieval
-        let retrieved = indexer.get_event_by_id("test-event-1").await.context("failed to retrieve event")?;
+        let retrieved = indexer
+            .get_event_by_id("test-event-1")
+            .await
+            .context("failed to retrieve event")?;
         assert!(retrieved.is_some());
         assert_eq!(retrieved.expect("event should exist").epoch, Some(42));
 
@@ -987,7 +1010,10 @@ mod tests {
             event_type: Some("SNAP_SUB".to_string()),
             ..Default::default()
         };
-        let results = indexer.query_events(query).await.context("failed to query events")?;
+        let results = indexer
+            .query_events(query)
+            .await
+            .context("failed to query events")?;
         assert_eq!(results.len(), 1);
         Ok(())
     }
@@ -1010,7 +1036,10 @@ mod tests {
             verification_status: None,
         };
 
-        indexer.index_event(event).await.context("failed to index event")?;
+        indexer
+            .index_event(event)
+            .await
+            .context("failed to index event")?;
 
         // Update verification status
         indexer
@@ -1019,7 +1048,10 @@ mod tests {
             .context("failed to update verification status")?;
 
         // Verify update
-        let retrieved = indexer.get_event_by_id("test-event-2").await.context("failed to retrieve event")?;
+        let retrieved = indexer
+            .get_event_by_id("test-event-2")
+            .await
+            .context("failed to retrieve event")?;
         assert!(retrieved.is_some());
         assert_eq!(
             retrieved.expect("event should exist").verification_status,
@@ -1066,7 +1098,11 @@ mod tests {
 
         // Only the known event should be indexed
         assert_eq!(count, 1);
-        assert!(indexer.get_event_by_id("ev-known").await.context("failed to retrieve known event")?.is_some());
+        assert!(indexer
+            .get_event_by_id("ev-known")
+            .await
+            .context("failed to retrieve known event")?
+            .is_some());
         assert!(indexer
             .get_event_by_id("ev-unknown")
             .await
@@ -1081,18 +1117,34 @@ mod tests {
         let indexer = EventIndexer::new(db);
 
         // No checkpoint yet
-        assert!(indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?.is_none());
+        assert!(indexer
+            .get_last_processed_ledger()
+            .await
+            .context("failed to get last processed ledger")?
+            .is_none());
 
-        indexer.persist_checkpoint(42_000).await.context("failed to persist checkpoint (first)")?;
+        indexer
+            .persist_checkpoint(42_000)
+            .await
+            .context("failed to persist checkpoint (first)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(42_000)
         );
 
         // Overwrite moves it forward
-        indexer.persist_checkpoint(42_001).await.context("failed to persist checkpoint (second)")?;
+        indexer
+            .persist_checkpoint(42_001)
+            .await
+            .context("failed to persist checkpoint (second)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(42_001)
         );
         Ok(())
@@ -1118,10 +1170,16 @@ mod tests {
             })
             .collect();
 
-        indexer.process_events(&events, 21).await.context("failed to process events")?;
+        indexer
+            .process_events(&events, 21)
+            .await
+            .context("failed to process events")?;
 
         assert_eq!(
-            indexer.get_last_processed_ledger().await.context("failed to get last processed ledger")?,
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(202)
         );
         Ok(())

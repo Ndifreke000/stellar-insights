@@ -1,7 +1,6 @@
 pub mod account_merge_detector;
 pub mod aggregation;
 pub mod alert_manager;
-pub mod corridor_performance_monitor;
 pub mod alert_service;
 pub mod analytics;
 pub mod anchor_monitor;
@@ -9,6 +8,7 @@ pub mod asset_verifier;
 pub mod broadcaster_port;
 pub mod contract;
 pub mod contract_listener;
+pub mod corridor_performance_monitor;
 pub mod data_port;
 pub mod event_indexer;
 pub mod fee_bump_tracker;

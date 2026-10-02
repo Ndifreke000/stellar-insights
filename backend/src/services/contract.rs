@@ -335,11 +335,7 @@ impl ContractService {
 
         let tx = match &envelope {
             TransactionEnvelope::Tx(v1) => v1.tx.clone(),
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unsupported transaction envelope version"
-                ))
-            }
+            _ => return Err(anyhow::anyhow!("Unsupported transaction envelope version")),
         };
 
         // Build the transaction signature base per the Stellar protocol:
@@ -381,10 +377,7 @@ impl ContractService {
             .to_xdr_base64(Limits::none())
             .context("Failed to re-encode signed transaction XDR")?;
 
-        debug!(
-            "Signed transaction XDR ({} chars)",
-            signed_xdr.len()
-        );
+        debug!("Signed transaction XDR ({} chars)", signed_xdr.len());
 
         Ok(signed_xdr)
     }

@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDataExport {
@@ -136,8 +136,16 @@ impl GdprService {
             .map(|row| ConsentRecord {
                 consent_type: row.0,
                 consent_given: row.1,
-                granted_at: row.2.and_then(|dt| DateTime::parse_from_rfc3339(&dt).ok().map(|d| d.with_timezone(&Utc))),
-                revoked_at: row.3.and_then(|dt| DateTime::parse_from_rfc3339(&dt).ok().map(|d| d.with_timezone(&Utc))),
+                granted_at: row.2.and_then(|dt| {
+                    DateTime::parse_from_rfc3339(&dt)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
+                revoked_at: row.3.and_then(|dt| {
+                    DateTime::parse_from_rfc3339(&dt)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
             })
             .collect();
 
@@ -225,19 +233,25 @@ impl GdprService {
 
     /// Confirm a deletion request (after user confirms via email/2FA)
     pub async fn confirm_deletion(&self, deletion_id: &str, user_id: &str) -> Result<()> {
-        sqlx::query("UPDATE data_deletion_requests SET status = 'confirmed' WHERE id = ? AND user_id = ?")
-            .bind(deletion_id)
-            .bind(user_id)
-            .execute(&self.db_pool)
-            .await
-            .context("Failed to confirm deletion")?;
+        sqlx::query(
+            "UPDATE data_deletion_requests SET status = 'confirmed' WHERE id = ? AND user_id = ?",
+        )
+        .bind(deletion_id)
+        .bind(user_id)
+        .execute(&self.db_pool)
+        .await
+        .context("Failed to confirm deletion")?;
 
         Ok(())
     }
 
     /// Execute deletion: anonymize audit logs, delete personal data
     pub async fn execute_deletion(&self, user_id: &str) -> Result<()> {
-        let mut tx = self.db_pool.begin().await.context("Failed to begin transaction")?;
+        let mut tx = self
+            .db_pool
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
 
         // Anonymize admin_audit_log entries (keep logs, anonymize user reference)
         sqlx::query("UPDATE admin_audit_log SET user_id = 'anonymized' WHERE user_id = ?")
@@ -313,7 +327,12 @@ impl GdprService {
     }
 
     /// Set or update user consent
-    pub async fn set_consent(&self, user_id: &str, consent_type: &str, consent_given: bool) -> Result<()> {
+    pub async fn set_consent(
+        &self,
+        user_id: &str,
+        consent_type: &str,
+        consent_given: bool,
+    ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
@@ -357,8 +376,16 @@ impl GdprService {
             .map(|row| ConsentRecord {
                 consent_type: row.0,
                 consent_given: row.1,
-                granted_at: row.2.and_then(|dt| DateTime::parse_from_rfc3339(&dt).ok().map(|d| d.with_timezone(&Utc))),
-                revoked_at: row.3.and_then(|dt| DateTime::parse_from_rfc3339(&dt).ok().map(|d| d.with_timezone(&Utc))),
+                granted_at: row.2.and_then(|dt| {
+                    DateTime::parse_from_rfc3339(&dt)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
+                revoked_at: row.3.and_then(|dt| {
+                    DateTime::parse_from_rfc3339(&dt)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
             })
             .collect())
     }

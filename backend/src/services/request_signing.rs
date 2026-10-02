@@ -59,9 +59,10 @@ impl RequestSigningService {
 
         if let Some(mut conn) = redis_conn.clone() {
             let key = format!("request_signing:nonce:{}", nonce);
-            let exists: bool = conn.exists(&key).await.map_err(|e| {
-                anyhow!("Redis nonce check failed: {}", e)
-            })?;
+            let exists: bool = conn
+                .exists(&key)
+                .await
+                .map_err(|e| anyhow!("Redis nonce check failed: {}", e))?;
 
             Ok(exists)
         } else {
@@ -115,7 +116,8 @@ impl RequestSigningService {
 
         // Compute expected signature
         let body_hash = Self::body_hash(body);
-        let canonical = Self::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
+        let canonical =
+            Self::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
         let expected_signature = Self::compute_signature(&canonical, signing_secret);
 
         // Compare signatures (constant-time comparison)
@@ -123,9 +125,7 @@ impl RequestSigningService {
 
         if valid {
             // Record nonce usage
-            let _ = self
-                .record_nonce(nonce, "", clock_skew_secs as usize)
-                .await;
+            let _ = self.record_nonce(nonce, "", clock_skew_secs as usize).await;
         }
 
         Ok(valid)
@@ -196,21 +196,11 @@ mod tests {
         params.insert("key".to_string(), "value".to_string());
 
         let canonical1 = RequestSigningService::canonical_request(
-            "GET",
-            "/path",
-            &params,
-            "hash123",
-            100,
-            "nonce1",
+            "GET", "/path", &params, "hash123", 100, "nonce1",
         );
 
         let canonical2 = RequestSigningService::canonical_request(
-            "GET",
-            "/path",
-            &params,
-            "hash123",
-            100,
-            "nonce1",
+            "GET", "/path", &params, "hash123", 100, "nonce1",
         );
 
         assert_eq!(canonical1, canonical2);
