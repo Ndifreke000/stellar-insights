@@ -48,7 +48,8 @@
         "analytics": "Analytics",
         "monitoring": "Monitoring",
         "developer": "Developer"
-      }
+      },
+      "chartExport": "Chart Export"
     }
   },
   "navbar": {
