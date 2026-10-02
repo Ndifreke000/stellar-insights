@@ -11,7 +11,7 @@
  * ```
  */
 import dynamic from 'next/dynamic';
-import type { ComponentType } from 'react';
+import type { ComponentType, JSX } from 'react';
 
 interface LazyRouteOptions {
   /** Loading fallback component */
