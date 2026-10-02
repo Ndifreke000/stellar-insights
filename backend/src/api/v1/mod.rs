@@ -209,6 +209,18 @@ pub fn routes(
         )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
+    // 5b. Read-only reference modules. Their handlers and OpenAPI entries
+    // existed but nothing mounted them, so the SDKs and the MCP plugin got
+    // 404s for documented endpoints.
+    let reference_routes = Router::new()
+        // `POST /network/switch` is a placeholder that changes nothing, so
+        // only the two read endpoints are exposed.
+        .route("/network/info", get(crate::api::network::get_network_info))
+        .route(
+            "/network/available",
+            get(crate::api::network::get_available_networks),
+        );
+
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool.clone());
 
@@ -283,6 +295,7 @@ pub fn routes(
         .merge(gdpr_routes)
         .merge(rpc_routes)
         .merge(service_routes)
+        .merge(reference_routes)
         .merge(oauth_routes)
         .merge(digest_routes)
         .merge(admin_ip_whitelist_routes)
