@@ -21,31 +21,31 @@ if (typeof global.crypto === 'undefined') {
 }
 
 describe('CSRF Token Generation', () => {
-  it('should generate a token', () => {
-    const token = generateCsrfToken();
+  it('should generate a token', async () => {
+    const token = await generateCsrfToken();
     expect(token).toBeDefined();
     expect(typeof token).toBe('string');
     expect(token.length).toBeGreaterThanOrEqual(64);
   });
 
-  it('should generate unique tokens', () => {
-    const token1 = generateCsrfToken();
-    const token2 = generateCsrfToken();
+  it('should generate unique tokens', async () => {
+    const token1 = await generateCsrfToken();
+    const token2 = await generateCsrfToken();
     // With random generation, tokens should be different
     // (unless using mocked UUID which returns same value)
     expect(token1).toBeDefined();
     expect(token2).toBeDefined();
   });
 
-  it('should generate tokens with valid hex characters', () => {
-    const token = generateCsrfToken();
+  it('should generate tokens with valid hex characters', async () => {
+    const token = await generateCsrfToken();
     expect(token).toMatch(/^[0-9a-f]+$/);
   });
 });
 
 describe('CSRF Token Validation', () => {
-  it('should validate matching tokens', () => {
-    const token = generateCsrfToken();
+  it('should validate matching tokens', async () => {
+    const token = await generateCsrfToken();
     expect(validateCsrfToken(token, token)).toBe(true);
   });
 
@@ -55,13 +55,13 @@ describe('CSRF Token Validation', () => {
     expect(validateCsrfToken(token1, token2)).toBe(false);
   });
 
-  it('should reject undefined cookie token', () => {
-    const token = generateCsrfToken();
+  it('should reject undefined cookie token', async () => {
+    const token = await generateCsrfToken();
     expect(validateCsrfToken(undefined, token)).toBe(false);
   });
 
-  it('should reject undefined header token', () => {
-    const token = generateCsrfToken();
+  it('should reject undefined header token', async () => {
+    const token = await generateCsrfToken();
     expect(validateCsrfToken(token, undefined)).toBe(false);
   });
 
@@ -73,8 +73,8 @@ describe('CSRF Token Validation', () => {
     expect(validateCsrfToken('', '')).toBe(false);
   });
 
-  it('should reject tokens of different lengths', () => {
-    const token = generateCsrfToken();
+  it('should reject tokens of different lengths', async () => {
+    const token = await generateCsrfToken();
     expect(validateCsrfToken(token, token.substring(0, 32))).toBe(false);
   });
 });
