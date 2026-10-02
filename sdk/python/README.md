@@ -29,9 +29,26 @@ Point at testnet or a local backend with `base_url`:
 client = PayRaider(api_key="sk_...", base_url="http://localhost:8080")
 ```
 
+## Check a corridor before paying
+
+Off-ramp and payout apps can ask whether a corridor is healthy enough to pay
+on right now. No API key is needed.
+
+```python
+async with PayRaider() as client:
+    check = await client.preflight.check("USDC", "NGN", amount_usd=2500)
+    if check["decision"] == "proceed":
+        ...  # send the payment
+    else:
+        print(check["summary"], check["checks"], check["alternatives"])
+```
+
+`decision` is `proceed`, `caution`, `hold` or `unknown` (no recent data for
+that corridor).
+
 ## Resources
 
-`anchors`, `corridors`, `prices`, `cost_calculator`, `alerts`, `webhooks`,
+`anchors`, `corridors`, `prices`, `cost_calculator`, `preflight`, `alerts`, `webhooks`,
 `api_keys`, `auth`, `liquidity_pools`, `transactions`, `network`, `ml`,
 `governance`, `asset_verification` — see `payraider/resources.py` for
 the full method list on each.
