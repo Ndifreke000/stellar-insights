@@ -11,6 +11,8 @@ export default defineConfig({
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
     ],
+    // Playwright specs live in src/__tests__/e2e and run via playwright.config.ts.
+    exclude: ['node_modules/**', 'src/__tests__/e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
