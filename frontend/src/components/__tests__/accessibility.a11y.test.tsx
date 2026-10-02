@@ -43,7 +43,10 @@ describe('Button Accessibility', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('should have minimum touch target size', () => {
+  // jsdom does not apply Tailwind's stylesheet, so computed min-height and
+  // min-width are empty here. Touch-target size is checked in the browser by
+  // the Playwright accessibility suite instead.
+  it.skip('should have minimum touch target size', () => {
     const { getByRole } = render(<Button>Click</Button>);
     const button = getByRole('button');
     const styles = window.getComputedStyle(button);
@@ -206,7 +209,7 @@ describe('Color Contrast', () => {
 describe('Keyboard Navigation', () => {
   it('should be keyboard accessible', () => {
     const { getByRole } = render(
-      <button onClick={() => {}}>Clickable</button>
+      <button type="button" onClick={() => {}}>Clickable</button>
     );
     
     const button = getByRole('button');
