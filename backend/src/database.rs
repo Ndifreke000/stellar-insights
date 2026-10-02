@@ -48,8 +48,11 @@ impl DatabaseBackend {
             return Ok(Self::default());
         }
 
+        // The scheme ends at the first ':' so that the forms SQLite accepts
+        // without an authority ("sqlite::memory:", "sqlite:./payraider.db")
+        // are recognised as well as "sqlite://...".
         let scheme = trimmed
-            .split("://")
+            .split(':')
             .next()
             .unwrap_or(trimmed)
             .trim()
