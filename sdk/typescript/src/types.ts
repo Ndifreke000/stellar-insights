@@ -151,6 +151,62 @@ export interface CostEstimateResponse {
   routes: PaymentRoute[];
 }
 
+// ─── Preflight (pre-payment check) ───────────────────────────────────────────
+
+export interface PreflightRequest {
+  /** Asset the payment is sent in: a code ("USDC") or "CODE:ISSUER". */
+  source_asset: string;
+  /** Asset the recipient receives: a code ("NGN") or "CODE:ISSUER". */
+  destination_asset: string;
+  /** Payment size in USD. Omit to skip the liquidity check. */
+  amount_usd?: number;
+  /** Minimum acceptable success rate in percent (default 95). */
+  min_success_rate?: number;
+  /** Maximum acceptable p95 latency in milliseconds (default 5000). */
+  max_p95_latency_ms?: number;
+}
+
+export type PreflightDecision = "proceed" | "caution" | "hold" | "unknown";
+export type PreflightCheckStatus = "pass" | "warn" | "fail";
+
+export interface PreflightCheck {
+  name: "success_rate" | "liquidity" | "latency" | "sample_size" | "health_score";
+  status: PreflightCheckStatus;
+  detail: string;
+}
+
+export interface PreflightCorridor {
+  id: string;
+  source_asset: string;
+  destination_asset: string;
+  success_rate: number;
+  total_attempts: number;
+  successful_payments: number;
+  failed_payments: number;
+  average_latency_ms: number;
+  median_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
+  liquidity_depth_usd: number;
+  liquidity_volume_24h_usd: number;
+  liquidity_trend: string;
+  health_score: number;
+  last_updated: string;
+}
+
+export interface PreflightResponse {
+  decision: PreflightDecision;
+  /** One-line summary suitable for showing to an operator. */
+  summary: string;
+  /** Corridor health score (0-100), or null when the corridor is unknown. */
+  score: number | null;
+  corridor: PreflightCorridor | null;
+  checks: PreflightCheck[];
+  /** Healthier corridors to the same destination asset, best first. */
+  alternatives: PreflightCorridor[];
+  evaluated_at: string;
+}
+
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
 export interface AlertRule {
