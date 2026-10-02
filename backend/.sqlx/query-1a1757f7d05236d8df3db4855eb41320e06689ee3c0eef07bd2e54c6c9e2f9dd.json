@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!\", anchor_id, timestamp as \"timestamp: _\", success_rate, failure_rate,\n                reliability_score, total_transactions, successful_transactions,\n                failed_transactions, avg_settlement_time_ms as \"avg_settlement_time_ms: i32\",\n                volume_usd,\n                created_at as \"created_at!: _\"\n            FROM anchor_metrics_history\n            WHERE anchor_id = ?\n            ORDER BY timestamp DESC\n            LIMIT ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "anchor_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "timestamp: _",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "success_rate",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "failure_rate",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "reliability_score",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "total_transactions",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "successful_transactions",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "failed_transactions",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "avg_settlement_time_ms: i32",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "volume_usd",
+        "ordinal": 10,
+        "type_info": "Float"
+      },
+      {
+        "name": "created_at!: _",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1a1757f7d05236d8df3db4855eb41320e06689ee3c0eef07bd2e54c6c9e2f9dd"
+}

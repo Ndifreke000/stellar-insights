@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!\", source_asset_code, source_asset_issuer,\n                destination_asset_code, destination_asset_issuer,\n                reliability_score as \"reliability_score!\", status as \"status!\",\n                created_at as \"created_at!: _\", updated_at as \"updated_at!: _\"\n            FROM corridors\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_asset_code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_asset_issuer",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_asset_code",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_asset_issuer",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "reliability_score!",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "status!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: _",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: _",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "920aecafa9b3459dca7f1a753a70cc823b93e74ecdc55a5ee8a0a993c97eedc7"
+}

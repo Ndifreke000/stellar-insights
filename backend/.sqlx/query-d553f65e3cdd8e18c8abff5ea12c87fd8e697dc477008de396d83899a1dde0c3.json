@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE data_deletion_requests SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND user_id = ? AND status IN ('pending', 'scheduled')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d553f65e3cdd8e18c8abff5ea12c87fd8e697dc477008de396d83899a1dde0c3"
+}

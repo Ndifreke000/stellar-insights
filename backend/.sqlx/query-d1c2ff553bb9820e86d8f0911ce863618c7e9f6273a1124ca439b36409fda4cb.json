@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!\", name, stellar_account, home_domain,\n                total_transactions as \"total_transactions!\",\n                successful_transactions as \"successful_transactions!\",\n                failed_transactions as \"failed_transactions!\",\n                total_volume_usd as \"total_volume_usd!\",\n                avg_settlement_time_ms as \"avg_settlement_time_ms!\",\n                reliability_score as \"reliability_score!\",\n                status as \"status!\",\n                created_at as \"created_at!: _\", updated_at as \"updated_at!: _\"\n            FROM anchors\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "stellar_account",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "home_domain",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "total_transactions!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "successful_transactions!",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "failed_transactions!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_volume_usd!",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "avg_settlement_time_ms!",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "reliability_score!",
+        "ordinal": 9,
+        "type_info": "Float"
+      },
+      {
+        "name": "status!",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: _",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: _",
+        "ordinal": 12,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d1c2ff553bb9820e86d8f0911ce863618c7e9f6273a1124ca439b36409fda4cb"
+}

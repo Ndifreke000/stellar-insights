@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO user_consents\n                   (id, user_id, consent_type, consent_given, consent_version,\n                    granted_at, revoked_at, created_at, updated_at)\n               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "3f7dbc6c84ef0a59eb7c0a05efcf739304d2178a5e0ac14bdcd221db05b38d04"
+}

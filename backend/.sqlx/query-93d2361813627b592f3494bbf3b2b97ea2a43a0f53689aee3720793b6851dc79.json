@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO data_export_requests\n               (id, user_id, status, requested_data_types, export_format, requested_at, expires_at)\n           VALUES (?, ?, 'pending', ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "93d2361813627b592f3494bbf3b2b97ea2a43a0f53689aee3720793b6851dc79"
+}

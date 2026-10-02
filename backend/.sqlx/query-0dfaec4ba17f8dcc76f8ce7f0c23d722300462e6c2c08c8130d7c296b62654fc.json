@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO anchors (id, name, stellar_account, home_domain)\n            VALUES (?, ?, ?, ?)\n            RETURNING\n                id as \"id!\", name, stellar_account, home_domain,\n                total_transactions as \"total_transactions!\",\n                successful_transactions as \"successful_transactions!\",\n                failed_transactions as \"failed_transactions!\",\n                total_volume_usd as \"total_volume_usd!\",\n                avg_settlement_time_ms as \"avg_settlement_time_ms!\",\n                reliability_score as \"reliability_score!\",\n                status as \"status!\",\n                created_at as \"created_at!: _\", updated_at as \"updated_at!: _\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "stellar_account",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "home_domain",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "total_transactions!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "successful_transactions!",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "failed_transactions!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_volume_usd!",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "avg_settlement_time_ms!",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "reliability_score!",
+        "ordinal": 9,
+        "type_info": "Float"
+      },
+      {
+        "name": "status!",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: _",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: _",
+        "ordinal": 12,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "0dfaec4ba17f8dcc76f8ce7f0c23d722300462e6c2c08c8130d7c296b62654fc"
+}

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                COUNT(*) as \"total_assets_tracked: _\",\n                COALESCE(SUM(total_trustlines), 0) as \"total_trustlines_across_network: _\",\n                COUNT(CASE WHEN total_trustlines > 0 THEN 1 END) as \"active_assets: _\"\n            FROM trustline_stats\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "total_assets_tracked: _",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_trustlines_across_network: _",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "active_assets: _",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c7f36694d8188a7261aa9f685f7a8a012c94432ceb250820daca4a1794230dfa"
+}

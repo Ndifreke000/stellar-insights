@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE user_consents\n               SET consent_given   = ?,\n                   consent_version = ?,\n                   granted_at      = ?,\n                   revoked_at      = ?,\n                   updated_at      = ?\n               WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "c08a8fb1e38575cf5dc404167fe4ae42a1bb2b32a9a6046e3c75bee1068792aa"
+}
