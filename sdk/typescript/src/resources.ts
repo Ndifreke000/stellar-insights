@@ -288,20 +288,23 @@ export class GovernanceResource {
 export class AssetVerificationResource {
   constructor(private http: HttpClient) {}
 
+  /** Run verification for an asset and return its status. */
   verify(assetCode: string, assetIssuer: string): Promise<VerifiedAsset> {
-    return this.http.request("POST", "/api/asset-verification/verify", {
-      body: { asset_code: assetCode, asset_issuer: assetIssuer },
-    });
+    return this.http.request(
+      "GET",
+      `/api/assets/verify/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}`,
+    );
   }
 
+  /** Read a previously computed verification result. */
   get(assetCode: string, assetIssuer: string): Promise<VerifiedAsset> {
     return this.http.request(
       "GET",
-      `/api/asset-verification/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}`,
+      `/api/assets/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}/verification`,
     );
   }
 
   list(params?: PaginationParams): Promise<PaginatedResponse<VerifiedAsset>> {
-    return this.http.request("GET", "/api/asset-verification", { params: params as Record<string, unknown> });
+    return this.http.request("GET", "/api/assets/verified", { params: params as Record<string, unknown> });
   }
 }
