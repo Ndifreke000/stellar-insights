@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/bundle
+**/.git
+python
+react
+**/*.log
