@@ -54,3 +54,15 @@ Object.defineProperty(navigator, 'onLine', {
   value: true,
   writable: true
 });
+
+// jsdom does not implement scrollIntoView.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
+
+// The localStorage mock above is shared by every test in a file; without this
+// one test's persisted state (for example a disabled shortcut) leaks into the
+// next.
+afterEach(() => {
+  window.localStorage.clear();
+});
