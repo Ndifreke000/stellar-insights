@@ -1,6 +1,9 @@
 # PayRaider MCP Plugin — Business Model, Architecture & Work Breakdown
 
-Status: proposal. Scope: expose PayRaider corridor/anchor/network analytics
+Status: the read-only server, the HTTP transport, the pre-payment check and
+the Claude plugin are implemented; see [PLUGIN.md](PLUGIN.md) for what exists
+today. `verify_snapshot` and write tools (§3.4) are not built. The sections
+below are the original proposal, kept for the rationale. Scope: expose PayRaider corridor/anchor/network analytics
 to AI agents (Claude, ChatGPT, and other MCP-compatible clients) as a Model
 Context Protocol (MCP) server, distributed as an installable plugin.
 
