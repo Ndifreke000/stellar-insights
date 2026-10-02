@@ -46,7 +46,7 @@ jobs:
       - name: Run tests with coverage
         working-directory: backend
         env:
-          DATABASE_URL: sqlite::memory:
+          DATABASE_URL: "sqlite::memory:"
           REDIS_URL: redis://127.0.0.1:6379
         run: |
           cargo llvm-cov \
