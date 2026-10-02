@@ -64,5 +64,5 @@ if (!Element.prototype.scrollIntoView) {
 // one test's persisted state (for example a disabled shortcut) leaks into the
 // next.
 afterEach(() => {
-  window.localStorage.clear();
+  window.localStorage?.clear?.();
 });
