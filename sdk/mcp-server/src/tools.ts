@@ -2,95 +2,152 @@ import { z } from "zod";
 import type { PayRaiderClient } from "./sdk-types.js";
 
 const pagination = {
-  page: z.number().int().min(1).optional().describe("Page number, 1-indexed"),
-  limit: z.number().int().min(1).max(200).optional().describe("Results per page"),
-  sort: z.string().optional().describe("Field to sort by"),
-  order: z.enum(["asc", "desc"]).optional(),
+  limit: z.number().int().min(1).max(200).optional().describe("Results per page (default 50)"),
+  cursor: z
+    .string()
+    .optional()
+    .describe("Opaque cursor from the previous page's pagination.next_cursor"),
 };
+
+const asset = (role: string) =>
+  z.string().min(1).describe(`${role}: an asset code ("USDC") or "CODE:ISSUER"`);
 
 export interface ToolDef {
   name: string;
   description: string;
   schema: z.ZodRawShape;
+  /** True when the backend needs a signed-in user, not just an API key. */
+  requiresAuth?: boolean;
   call: (client: PayRaiderClient, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /**
- * Read-only tool set (v1). Every tool maps 1:1 onto an existing
- * @payraider/sdk resource method — no new backend behaviour.
- * Mutating operations (transactions, governance votes, webhooks, api keys,
- * alert rule writes, auth) are intentionally excluded; see README for the
- * write-tool opt-in.
+ * Read-only tool set. Every tool maps onto a @payraider/sdk resource method
+ * that the backend actually serves. Mutating operations (transactions,
+ * governance votes, webhooks, API keys, alert-rule writes, auth) are
+ * intentionally excluded.
  */
 export const READ_ONLY_TOOLS: ToolDef[] = [
   {
+    name: "preflight_payment",
+    description:
+      "Check a payment corridor BEFORE paying out. Returns one decision " +
+      "(proceed, caution, hold, or unknown when there is no recent data), the " +
+      "checks behind it (success rate, liquidity headroom for the amount, p95 " +
+      "latency, sample size, health score) and healthier alternative corridors " +
+      "to the same destination asset. Works without an API key.",
+    schema: {
+      source_asset: asset("Asset the payment is sent in"),
+      destination_asset: asset("Asset the recipient receives"),
+      amount_usd: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Payment size in USD; omit to skip the liquidity check"),
+      min_success_rate: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Minimum acceptable success rate in percent (default 95)"),
+      max_p95_latency_ms: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Maximum acceptable p95 latency in milliseconds (default 5000)"),
+    },
+    call: (c, a) =>
+      c.preflight.check({
+        source_asset: a.source_asset as string,
+        destination_asset: a.destination_asset as string,
+        amount_usd: a.amount_usd as number | undefined,
+        min_success_rate: a.min_success_rate as number | undefined,
+        max_p95_latency_ms: a.max_p95_latency_ms as number | undefined,
+      }),
+  },
+  {
     name: "list_corridors",
-    description: "List Stellar payment corridors (directional asset pairs) with health, success rate and volume.",
+    description:
+      "List Stellar payment corridors (directional asset pairs) with success rate, latency, liquidity and health score. Each corridor's `id` is its corridor key.",
     schema: pagination,
     call: (c, a) => c.corridors.list(a),
   },
   {
     name: "get_corridor",
-    description: "Get detail for one corridor, including historical success-rate and latency data.",
+    description:
+      "Get detail for one corridor: historical success rate, latency distribution, liquidity trend and related corridors.",
     schema: {
-      source: z.string().describe("Source asset, e.g. 'USDC:issuer' or 'native'"),
-      destination: z.string().describe("Destination asset"),
+      corridor_key: z
+        .string()
+        .min(1)
+        .describe('Corridor key from list_corridors, e.g. "USDC:G...->NGN:G..."'),
     },
-    call: (c, a) => c.corridors.get(a.source as string, a.destination as string),
+    call: (c, a) => c.corridors.get(a.corridor_key as string),
   },
   {
     name: "list_anchors",
-    description: "List Stellar anchor operators with health scores and supported assets.",
+    description: "List Stellar anchor operators with reliability scores and supported assets.",
     schema: pagination,
     call: (c, a) => c.anchors.list(a),
   },
   {
     name: "get_anchor",
-    description: "Get detail for one anchor by ID.",
-    schema: { id: z.string() },
+    description: "Get detail for one anchor by its ID (a UUID from list_anchors).",
+    schema: { id: z.string().min(1) },
     call: (c, a) => c.anchors.get(a.id as string),
   },
   {
     name: "get_anchor_by_account",
     description: "Look up an anchor by its Stellar account address.",
-    schema: { account: z.string().describe("Stellar account (G...) address") },
+    schema: { account: z.string().min(1).describe("Stellar account (G...) address") },
     call: (c, a) => c.anchors.getByAccount(a.account as string),
   },
   {
-    name: "list_prices",
-    description: "List current prices for all tracked assets.",
-    schema: {},
-    call: (c) => c.prices.list(),
-  },
-  {
     name: "get_price",
-    description: "Get the current price for one asset.",
-    schema: { asset: z.string() },
+    description: 'Get the current USD price of one asset, e.g. "XLM:native".',
+    schema: { asset: asset("Asset to price") },
     call: (c, a) => c.prices.get(a.asset as string),
   },
   {
-    name: "convert_price",
-    description: "Convert an amount between two assets using current price data.",
+    name: "get_prices",
+    description: "Get current USD prices for several assets in one call.",
     schema: {
-      from: z.string(),
-      to: z.string(),
+      assets: z.array(z.string().min(1)).min(1).max(50).describe("Assets to price"),
+    },
+    call: (c, a) => c.prices.batch(a.assets as string[]),
+  },
+  {
+    name: "convert_to_usd",
+    description: "Convert an amount of an asset to USD using current price data.",
+    schema: {
+      asset: asset("Asset to convert"),
       amount: z.number().positive(),
     },
-    call: (c, a) => c.prices.convert(a.from as string, a.to as string, a.amount as number),
+    call: (c, a) => c.prices.convertToUsd(a.asset as string, a.amount as number),
   },
   {
     name: "estimate_transfer_cost",
-    description: "Estimate the total cost (fees) of transferring an amount between two assets.",
+    description:
+      "Estimate the fees, spread and slippage of a transfer between two currencies across the available payment routes, and the amount the recipient would receive.",
     schema: {
-      source_asset: z.string(),
-      destination_asset: z.string(),
-      amount: z.number().positive(),
+      source_currency: z.string().min(1).describe('Currency the sender pays in, e.g. "USDC"'),
+      destination_currency: z
+        .string()
+        .min(1)
+        .describe('Currency the recipient receives, e.g. "NGN"'),
+      source_amount: z.number().positive().describe("Amount in the source currency"),
+      destination_amount: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Amount the recipient must receive, to report any shortfall"),
     },
     call: (c, a) =>
       c.costCalculator.estimate({
-        source_asset: a.source_asset as string,
-        destination_asset: a.destination_asset as string,
-        amount: a.amount as number,
+        source_currency: a.source_currency as string,
+        destination_currency: a.destination_currency as string,
+        source_amount: a.source_amount as number,
+        destination_amount: a.destination_amount as number | undefined,
       }),
   },
   {
@@ -102,12 +159,12 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
   {
     name: "get_liquidity_pool",
     description: "Get detail for one liquidity pool by ID.",
-    schema: { id: z.string() },
+    schema: { id: z.string().min(1) },
     call: (c, a) => c.liquidityPools.get(a.id as string),
   },
   {
     name: "get_network_info",
-    description: "Get network-wide statistics for the currently configured Stellar network.",
+    description: "Get the Stellar network this PayRaider instance reports on (name, RPC and Horizon URLs).",
     schema: {},
     call: (c) => c.network.info(),
   },
@@ -118,18 +175,6 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
     call: (c) => c.network.available(),
   },
   {
-    name: "predict_payment_outcome",
-    description: "Run the ML anomaly/outcome predictor for a payment or corridor scenario.",
-    schema: { params: z.record(z.string(), z.unknown()).describe("Prediction input parameters") },
-    call: (c, a) => c.ml.predict((a.params as Record<string, unknown>) ?? {}),
-  },
-  {
-    name: "get_ml_status",
-    description: "Get the status/health of the ML anomaly-detection model.",
-    schema: {},
-    call: (c) => c.ml.modelStatus(),
-  },
-  {
     name: "list_governance_proposals",
     description: "List on-chain governance proposals.",
     schema: pagination,
@@ -138,30 +183,32 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
   {
     name: "get_governance_proposal",
     description: "Get detail for one governance proposal by ID.",
-    schema: { id: z.string() },
+    schema: { id: z.string().min(1) },
     call: (c, a) => c.governance.getProposal(a.id as string),
   },
   {
     name: "list_alert_history",
-    description: "List past triggered alerts (read-only; does not create or modify alert rules).",
+    description:
+      "List past triggered alerts for the signed-in user (read-only). Needs a user access token, not just an API key.",
     schema: pagination,
+    requiresAuth: true,
     call: (c, a) => c.alerts.listHistory(a),
   },
   {
     name: "verify_asset",
-    description: "Verify a Stellar asset (code + issuer) against the anchor registry and stellar.toml.",
-    schema: { asset_code: z.string(), asset_issuer: z.string() },
+    description: "Verify a Stellar asset (code + issuer) and return its verification status and risk signals.",
+    schema: { asset_code: z.string().min(1), asset_issuer: z.string().min(1) },
     call: (c, a) => c.assetVerification.verify(a.asset_code as string, a.asset_issuer as string),
   },
   {
     name: "get_verified_asset",
     description: "Get a previously computed asset verification result.",
-    schema: { asset_code: z.string(), asset_issuer: z.string() },
+    schema: { asset_code: z.string().min(1), asset_issuer: z.string().min(1) },
     call: (c, a) => c.assetVerification.get(a.asset_code as string, a.asset_issuer as string),
   },
   {
     name: "list_verified_assets",
-    description: "List assets that have been verified against the anchor registry.",
+    description: "List assets that have been verified.",
     schema: pagination,
     call: (c, a) => c.assetVerification.list(a),
   },
