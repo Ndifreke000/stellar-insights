@@ -278,6 +278,14 @@ pub fn routes(
         .clone()
         .map_or_else(Router::new, crate::api::sep10::routes);
 
+    // 5e. Alert rules and history are per-user, so they sit behind the JWT.
+    let alert_routes = Router::new()
+        .nest(
+            "/alerts",
+            crate::api::alerts::router().with_state(app_state.clone()),
+        )
+        .layer(middleware::from_fn(auth_middleware));
+
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool.clone());
 
@@ -354,6 +362,7 @@ pub fn routes(
         .merge(service_routes)
         .merge(reference_routes)
         .merge(governance_routes)
+        .merge(alert_routes)
         .merge(oauth_routes)
         .merge(digest_routes)
         .merge(admin_ip_whitelist_routes)
