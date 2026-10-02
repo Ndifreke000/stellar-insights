@@ -384,7 +384,7 @@ async fn test_create_corridor_mutation() {
                 sourceAssetCode: "USDC",
                 sourceAssetIssuer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
                 destinationAssetCode: "EUR",
-                destinationAssetIssuer: "GARE5K4KJL3VQ4E5VZ6JZ7X7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q"
+                destinationAssetIssuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
             }) {
                 corridor { id sourceAssetCode destinationAssetCode }
                 success
