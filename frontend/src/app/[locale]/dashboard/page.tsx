@@ -243,6 +243,129 @@ export default function DashboardPage() {
               <LiquidityChart data={data.liquidity} />
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
-        
+                {t("waitingLiquidity")}
+              </div>
+            )}
+          </div>
+        );
+      case "assets-table":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
+            {data.assets.length > 0 ? (
+              <TopAssetsTable assets={data.assets} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                {t("waitingAsset")}
+              </div>
+            )}
+          </div>
+        );
+      case "corridor-health":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
+            {data.corridors.length > 0 ? (
+              <CorridorHealth corridors={data.corridors} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                {t("waitingCorridor")}
+              </div>
+            )}
+          </div>
+        );
+      case "settlement-speed":
+        return (
+          <div className="glass-card rounded-2xl p-1 h-full transition-all duration-300 flex flex-col">
+            {data.settlement.length > 0 ? (
+              <SettlementSpeedChart data={data.settlement} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                {t("waitingSettlement")}
+              </div>
+            )}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
-/* … truncated 4750 chars — edit only what you need near the top … */
+  return (
+    <WidgetProvider definitions={WIDGET_DEFS} storageKey="dashboard_widget_layout">
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
+          <div>
+            <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
+              {t("intelligenceTerminal")}
+            </div>
+            <h2 className="text-4xl font-black tracking-tighter uppercase italic">
+              {t("networkOverview")}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <CustomiseButton
+              onClick={() => setCustomizerOpen(true)}
+              activeCount={WIDGET_DEFS.length}
+              totalCount={WIDGET_DEFS.length}
+            />
+            <WebSocketStatus
+              isConnected={corridorsConnected && anchorsConnected}
+              isConnecting={corridorsConnecting}
+              connectionAttempts={corridorAttempts}
+              onReconnect={() => {
+                reconnectCorridors();
+                reconnectAnchors();
+              }}
+            />
+            <DataRefreshIndicator
+              lastUpdated={lastUpdated}
+              secondsUntilRefresh={secondsUntilRefresh}
+              refreshIntervalSec={30}
+              isRefreshing={isRefreshing}
+              onRefresh={triggerRefresh}
+            />
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            label={t("paymentSuccessRate")}
+            value={`${data.kpi.successRate.value}%`}
+            trend={data.kpi.successRate.trend}
+            trendDirection={data.kpi.successRate.trendDirection}
+          />
+          <MetricCard
+            label={t("activeCorridors")}
+            value={data.kpi.activeCorridors.value}
+            trend={data.kpi.activeCorridors.trend}
+            trendDirection={data.kpi.activeCorridors.trendDirection}
+          />
+          <MetricCard
+            label={t("liquidityDepth")}
+            value={formatVolume(data.kpi.liquidityDepth.value)}
+            trend={data.kpi.liquidityDepth.trend}
+            trendDirection={data.kpi.liquidityDepth.trendDirection}
+          />
+          <MetricCard
+            label={t("avgSettlementSpeed")}
+            value={`${data.kpi.settlementSpeed.value}s`}
+            trend={Math.abs(data.kpi.settlementSpeed.trend)}
+            trendDirection={data.kpi.settlementSpeed.trendDirection}
+            inverse={true}
+          />
+          <BookmarksDashboardWidget />
+        </div>
+
+        {/* Customizable widget grid (#2109) */}
+        <WidgetGrid definitions={WIDGET_DEFS} renderWidget={renderWidget} />
+
+        {/* Widget customizer modal */}
+        <WidgetCustomizer
+          definitions={WIDGET_DEFS}
+          isOpen={customizerOpen}
+          onClose={() => setCustomizerOpen(false)}
+        />
+      </div>
+    </WidgetProvider>
+  );
+}
