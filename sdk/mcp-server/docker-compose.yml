@@ -1,0 +1,26 @@
+# Run the PayRaider plugin (MCP server) against a PayRaider backend.
+#
+#   cp .env.example .env        # set PAYRAIDER_BASE_URL and a bearer token
+#   docker compose up --build
+#
+# MCP endpoint: http://localhost:3333/mcp   Health: http://localhost:3333/healthz
+services:
+  payraider-mcp:
+    build:
+      context: ..
+      dockerfile: mcp-server/Dockerfile
+    image: payraider-mcp:local
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3333}:3333"
+    environment:
+      PAYRAIDER_BASE_URL: ${PAYRAIDER_BASE_URL:?set PAYRAIDER_BASE_URL to your PayRaider backend URL}
+      PAYRAIDER_NETWORK: ${PAYRAIDER_NETWORK:-testnet}
+      PAYRAIDER_API_KEY: ${PAYRAIDER_API_KEY:-}
+      PAYRAIDER_MCP_AUTH_TOKEN: ${PAYRAIDER_MCP_AUTH_TOKEN:-}
+      PAYRAIDER_MCP_ALLOWED_ORIGINS: ${PAYRAIDER_MCP_ALLOWED_ORIGINS:-}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
