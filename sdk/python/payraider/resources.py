@@ -54,8 +54,10 @@ class CorridorsResource:
     async def list(self, *, page: Optional[int] = None, limit: Optional[int] = None) -> PaginatedResponse[Corridor]:
         return await self._http.request("GET", "/api/corridors", params={"page": page, "limit": limit})
 
-    async def get(self, source: str, destination: str) -> Any:
-        return await self._http.request("GET", f"/api/corridors/{_enc(source)}/{_enc(destination)}")
+    async def get(self, source_or_key: str, destination: Optional[str] = None) -> Any:
+        """Get one corridor by its key ("SRC->DST"), or by source and destination."""
+        key = source_or_key if destination is None else f"{source_or_key}->{destination}"
+        return await self._http.request("GET", f"/api/corridors/{_enc(key)}")
 
 
 class PricesResource:
@@ -87,16 +89,16 @@ class CostCalculatorResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    async def estimate(self, source_asset: str, destination_asset: str, amount: float) -> CostEstimateResponse:
+    async def estimate(
+        self, source_currency: str, destination_currency: str, source_amount: float
+    ) -> CostEstimateResponse:
         return await self._http.request(
             "POST", "/api/cost-calculator/estimate",
-            json={"source_asset": source_asset, "destination_asset": destination_asset, "amount": amount},
-        )
-
-    async def routes(self, source_asset: str, destination_asset: str, amount: float) -> CostEstimateResponse:
-        return await self._http.request(
-            "POST", "/api/cost-calculator/routes",
-            json={"source_asset": source_asset, "destination_asset": destination_asset, "amount": amount},
+            json={
+                "source_currency": source_currency,
+                "destination_currency": destination_currency,
+                "source_amount": source_amount,
+            },
         )
 
 
@@ -251,7 +253,7 @@ class NetworkResource:
         self._http = http
 
     async def info(self) -> NetworkInfo:
-        return await self._http.request("GET", "/api/network")
+        return await self._http.request("GET", "/api/network/info")
 
     async def available(self) -> List[NetworkInfo]:
         return await self._http.request("GET", "/api/network/available")
@@ -290,13 +292,12 @@ class AssetVerificationResource:
         self._http = http
 
     async def verify(self, asset_code: str, asset_issuer: str) -> VerifiedAsset:
-        return await self._http.request(
-            "POST", "/api/asset-verification/verify",
-            json={"asset_code": asset_code, "asset_issuer": asset_issuer},
-        )
+        return await self._http.request("GET", f"/api/assets/verify/{_enc(asset_code)}/{_enc(asset_issuer)}")
 
     async def get(self, asset_code: str, asset_issuer: str) -> VerifiedAsset:
-        return await self._http.request("GET", f"/api/asset-verification/{_enc(asset_code)}/{_enc(asset_issuer)}")
+        return await self._http.request(
+            "GET", f"/api/assets/{_enc(asset_code)}/{_enc(asset_issuer)}/verification"
+        )
 
     async def list(self, *, page: Optional[int] = None, limit: Optional[int] = None) -> PaginatedResponse[VerifiedAsset]:
-        return await self._http.request("GET", "/api/asset-verification", params={"page": page, "limit": limit})
+        return await self._http.request("GET", "/api/assets/verified", params={"page": page, "limit": limit})
