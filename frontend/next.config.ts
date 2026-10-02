@@ -168,7 +168,7 @@ export default withSentryConfig(finalConfig, {
   project: process.env.SENTRY_PROJECT || "payraider-frontend",
   silent: !process.env.CI,
   widenClientFileUpload: true,
-  hideSourceMaps: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
   disableLogger: true,
   automaticVercelMonitors: true,
 });
