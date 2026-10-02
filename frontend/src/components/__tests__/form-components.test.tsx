@@ -132,7 +132,7 @@ describe("FormSelect Component", () => {
   it("should show validation error", async () => {
     const user = userEvent.setup();
     render(
-      <TestForm schema={testSchema}>
+      <TestForm schema={testSchema} defaultValues={{ testSelect: "" }}>
         <FormSelect name="testSelect" label="Test Select" options={options} />
       </TestForm>
     );
