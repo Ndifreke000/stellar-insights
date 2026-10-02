@@ -93,7 +93,6 @@ export function CostCalculator() {
   });
   const {
     handleSubmit,
-    formState: { isValid, isDirty },
     watch,
   } = methods;
 
@@ -107,16 +106,17 @@ export function CostCalculator() {
   const canSubmit = useMemo(() => {
     const parsed = Number(sourceAmount);
     const destParsed = destinationAmount ? Number(destinationAmount) : null;
+    // Not gated on isDirty or isValid: the form opens with usable defaults,
+    // and gating on them left Calculate disabled until the user edited a
+    // field. handleSubmit still runs the full schema before anything is sent.
     return (
-      isValid &&
-      isDirty &&
       Number.isFinite(parsed) &&
       parsed > 0 &&
       selectedRoutes.length > 0 &&
       sourceCurrency !== destinationCurrency &&
       (destParsed === null || (Number.isFinite(destParsed) && destParsed > 0))
     );
-  }, [isValid, isDirty, sourceAmount, destinationAmount, selectedRoutes, sourceCurrency, destinationCurrency]);
+  }, [sourceAmount, destinationAmount, selectedRoutes, sourceCurrency, destinationCurrency]);
 
   const handleCalculate: SubmitHandler<CostCalculatorForm> = async (data) => {
     setLoading(true);
