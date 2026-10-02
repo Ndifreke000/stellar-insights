@@ -1,0 +1,16 @@
+{
+  "name": "payraider",
+  "description": "PayRaider plugins for Stellar payment and off-ramp applications",
+  "owner": {
+    "name": "PayRaider"
+  },
+  "plugins": [
+    {
+      "name": "payraider",
+      "description": "Check a Stellar payment corridor before paying out: a proceed / caution / hold decision with the reasons behind it, plus corridor, anchor, price and asset-verification data.",
+      "source": "./plugins/payraider",
+      "category": "productivity",
+      "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/plugins/payraider"
+    }
+  ]
+}
