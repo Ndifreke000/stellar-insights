@@ -1,24 +1,13 @@
-import { PayRaider, NETWORKS } from "@payraider/sdk";
+import { PayRaider } from "@payraider/sdk";
+import type { ServerConfig } from "./config.js";
 import type { PayRaiderClient } from "./sdk-types.js";
 
 /**
  * One client per server process, matching how every other SDK consumer
- * authenticates. PAYRAIDER_BASE_URL overrides the network default,
- * for pointing at a local/dev backend.
+ * authenticates. The API key is optional: without it requests go out
+ * unauthenticated and the backend's anonymous rate-limit tier applies, which
+ * is enough for the pre-payment check and the other public read endpoints.
  */
-export function createClientFromEnv(): PayRaiderClient {
-  const apiKey = process.env.PAYRAIDER_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "PAYRAIDER_API_KEY is required. Set it to a PayRaider API key " +
-        "(see /api/api-keys) before starting the MCP server.",
-    );
-  }
-
-  const network = process.env.PAYRAIDER_NETWORK === "mainnet" ? "mainnet" : "testnet";
-  const baseUrl = process.env.PAYRAIDER_BASE_URL ?? NETWORKS[network].apiBaseUrl;
-
-  return new PayRaider({ apiKey, baseUrl });
+export function createClient(config: Pick<ServerConfig, "apiKey" | "baseUrl">): PayRaiderClient {
+  return new PayRaider({ apiKey: config.apiKey, baseUrl: config.baseUrl });
 }
-
-export const ALLOW_WRITES = process.env.PAYRAIDER_MCP_ALLOW_WRITES === "true";
