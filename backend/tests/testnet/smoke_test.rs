@@ -4,18 +4,25 @@ use std::time::Duration;
 use tokio_tungstenite::connect_async;
 use url::Url;
 
-fn get_config() -> (String, String) {
-    let url = env::var("TESTNET_API_URL").expect("TESTNET_API_URL must be set");
-    let key = env::var("TESTNET_API_KEY").expect("TESTNET_API_KEY must be set");
+/// Target of the smoke tests, or `None` when they are not configured. These
+/// tests call a deployed testnet backend, so without TESTNET_API_URL and
+/// TESTNET_API_KEY they skip rather than fail (they are compiled whenever the
+/// whole test suite is built with --all-features, e.g. for coverage).
+fn get_config() -> Option<(String, String)> {
+    let url = env::var("TESTNET_API_URL").ok()?;
+    let key = env::var("TESTNET_API_KEY").ok()?;
 
     // Strip trailing slash if present
     let url = url.trim_end_matches('/').to_string();
-    (url, key)
+    Some((url, key))
 }
 
 #[tokio::test]
 async fn test_health_endpoint() {
-    let (url, _) = get_config();
+    let Some((url, _)) = get_config() else {
+        eprintln!("skipping: TESTNET_API_URL / TESTNET_API_KEY are not set");
+        return;
+    };
     let client = Client::new();
 
     let res = client
@@ -29,7 +36,10 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_auth_endpoint() {
-    let (url, key) = get_config();
+    let Some((url, key)) = get_config() else {
+        eprintln!("skipping: TESTNET_API_URL / TESTNET_API_KEY are not set");
+        return;
+    };
     let client = Client::new();
 
     let res = client
@@ -50,7 +60,10 @@ async fn test_auth_endpoint() {
 
 #[tokio::test]
 async fn test_transactions_endpoint() {
-    let (url, key) = get_config();
+    let Some((url, key)) = get_config() else {
+        eprintln!("skipping: TESTNET_API_URL / TESTNET_API_KEY are not set");
+        return;
+    };
     let client = Client::new();
 
     let res = client
@@ -70,7 +83,10 @@ async fn test_transactions_endpoint() {
 
 #[tokio::test]
 async fn test_analytics_endpoint() {
-    let (url, key) = get_config();
+    let Some((url, key)) = get_config() else {
+        eprintln!("skipping: TESTNET_API_URL / TESTNET_API_KEY are not set");
+        return;
+    };
     let client = Client::new();
 
     let res = client
@@ -90,7 +106,10 @@ async fn test_analytics_endpoint() {
 
 #[tokio::test]
 async fn test_websocket_endpoint() {
-    let (http_url, _) = get_config();
+    let Some((http_url, _)) = get_config() else {
+        eprintln!("skipping: TESTNET_API_URL / TESTNET_API_KEY are not set");
+        return;
+    };
     let ws_url = if http_url.starts_with("https://") {
         http_url.replace("https://", "wss://")
     } else {
