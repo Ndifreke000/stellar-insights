@@ -52,8 +52,7 @@ impl From<ApiKey> for ApiKeyInfo {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Deserialize, Validate, utoipa::ToSchema)]
 pub struct CreateApiKeyRequest {
     #[validate(length(
         min = 1,

@@ -2,8 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct AlertRule {
     pub id: String,
     pub user_id: String,
@@ -20,8 +19,7 @@ pub struct AlertRule {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct AlertHistory {
     pub id: String,
     pub rule_id: String,
@@ -37,8 +35,7 @@ pub struct AlertHistory {
     pub triggered_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct CreateAlertRuleRequest {
     #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
@@ -64,8 +61,7 @@ pub struct CreateAlertRuleRequest {
     pub notify_in_app: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct UpdateAlertRuleRequest {
     #[validate(length(max = 256, message = "corridor_id must not exceed 256 characters"))]
     pub corridor_id: Option<String>,
@@ -89,8 +85,7 @@ pub struct UpdateAlertRuleRequest {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SnoozeAlertRequest {
     pub snoozed_until: DateTime<Utc>,
 }
