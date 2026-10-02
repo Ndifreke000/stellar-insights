@@ -16,9 +16,11 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-use payraider_backend::api::{admin_ip_whitelist, audit_log, corridor_alerts, failed_payments, settlement_distribution, twofa};
 use payraider_backend::admin_audit_log::AdminAuditLogger;
 use payraider_backend::admin_ip_whitelist::IpWhitelistService;
+use payraider_backend::api::{
+    admin_ip_whitelist, audit_log, corridor_alerts, failed_payments, settlement_distribution, twofa,
+};
 use payraider_backend::cache::{CacheConfig, CacheManager};
 use payraider_backend::crypto::CryptoService;
 use payraider_backend::database::Database;
@@ -176,8 +178,10 @@ async fn test_corridor_alerts_snapshots_and_summary_endpoints() {
     let pool = setup_test_pool().await;
     let app_state = make_test_app_state(pool).await;
 
-    let app = Router::new()
-        .nest("/api/v1/corridor-alerts", corridor_alerts::routes(app_state.clone()));
+    let app = Router::new().nest(
+        "/api/v1/corridor-alerts",
+        corridor_alerts::routes(app_state.clone()),
+    );
 
     // Test snapshots endpoint
     let resp = app
@@ -216,8 +220,10 @@ async fn test_admin_ip_whitelist_endpoints() {
     let pool = setup_test_pool().await;
     let service = Arc::new(IpWhitelistService::new(pool));
 
-    let app = Router::new()
-        .nest("/api/v1/admin/ip-whitelist", admin_ip_whitelist::routes(service));
+    let app = Router::new().nest(
+        "/api/v1/admin/ip-whitelist",
+        admin_ip_whitelist::routes(service),
+    );
 
     // 1. Check list initially empty
     let resp = app
@@ -293,8 +299,7 @@ async fn test_admin_audit_log_endpoints() {
         .await
         .unwrap();
 
-    let app = Router::new()
-        .nest("/api/v1/admin/audit-log", audit_log::routes(logger));
+    let app = Router::new().nest("/api/v1/admin/audit-log", audit_log::routes(logger));
 
     // 1. Query audit log
     let resp = app
@@ -336,8 +341,10 @@ async fn test_settlement_distribution_endpoint() {
     let pool = setup_test_pool().await;
     let app_state = make_test_app_state(pool).await;
 
-    let app = Router::new()
-        .nest("/api/v1/analytics", settlement_distribution::routes(app_state));
+    let app = Router::new().nest(
+        "/api/v1/analytics",
+        settlement_distribution::routes(app_state),
+    );
 
     let resp = app
         .oneshot(
@@ -361,8 +368,7 @@ async fn test_failed_payments_endpoint() {
     let pool = setup_test_pool().await;
     let app_state = make_test_app_state(pool).await;
 
-    let app = Router::new()
-        .nest("/api/v1/analytics", failed_payments::routes(app_state));
+    let app = Router::new().nest("/api/v1/analytics", failed_payments::routes(app_state));
 
     let resp = app
         .oneshot(
@@ -387,8 +393,7 @@ async fn test_twofa_routes_mounted() {
     let crypto = CryptoService::new_for_tests();
     let service = Arc::new(TwoFAService::new(pool, crypto));
 
-    let app = Router::new()
-        .nest("/api/v1/auth/2fa", twofa::routes(service));
+    let app = Router::new().nest("/api/v1/auth/2fa", twofa::routes(service));
 
     // Confirm router routes exist: post to backup code without auth returns 401 or expected status
     let resp = app

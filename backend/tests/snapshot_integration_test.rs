@@ -8,12 +8,12 @@
 //! 5. Submit to smart contract ✅ (mocked)
 //! 6. Verify submission success ✅ (mocked)
 
-use sqlx::Row;
-use std::sync::Arc;
 use payraider_backend::database::Database;
 use payraider_backend::rpc::StellarRpcClient;
 use payraider_backend::services::snapshot::SnapshotService;
 use payraider_backend::snapshot::schema::AnalyticsSnapshot;
+use sqlx::Row;
+use std::sync::Arc;
 
 async fn setup_test_database() -> Arc<Database> {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();

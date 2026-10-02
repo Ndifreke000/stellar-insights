@@ -16,10 +16,11 @@ async fn test_migrations_apply_cleanly() {
         .await
         .expect("Migrations should apply cleanly");
 
-    let tables: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table'")
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to query tables");
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table'")
+            .fetch_all(&pool)
+            .await
+            .expect("Failed to query tables");
 
     assert!(
         tables.contains(&"anchors".to_string()),
@@ -50,17 +51,19 @@ async fn test_migration_backward_compatibility() {
         .expect("Migrations should apply");
 
     // Verify key columns exist (proof of schema compatibility)
-    let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pragma_table_info('anchors') WHERE name = 'id'")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to check anchors table");
+    let result: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM pragma_table_info('anchors') WHERE name = 'id'")
+            .fetch_one(&pool)
+            .await
+            .expect("Failed to check anchors table");
 
     assert_eq!(result.0, 1, "anchors table should have id column");
 
-    let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'id'")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to check users table");
+    let result: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'id'")
+            .fetch_one(&pool)
+            .await
+            .expect("Failed to check users table");
 
     assert_eq!(result.0, 1, "users table should have id column");
 

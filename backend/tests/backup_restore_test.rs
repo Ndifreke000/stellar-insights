@@ -4,8 +4,8 @@
 //! destroy the live database, restore from the backup, and confirm the data
 //! survived — rather than only asserting that the scheduler fires.
 
-use std::path::Path;
 use payraider_backend::backup::{BackupConfig, BackupManager};
+use std::path::Path;
 use tempfile::tempdir;
 
 const LIVE_CONTENTS: &[u8] = b"SQLite format 3\0payraider-live-data";
@@ -32,11 +32,16 @@ async fn backup_then_restore_preserves_data() {
     let manager = BackupManager::new(config(&db_path, &backup_dir));
 
     // 1. Take a backup of the live database.
-    let backup_path = manager.create_backup().await.expect("backup should succeed");
+    let backup_path = manager
+        .create_backup()
+        .await
+        .expect("backup should succeed");
     assert!(backup_path.exists(), "backup file should exist on disk");
 
     // 2. Simulate the incident: the live database is lost.
-    tokio::fs::remove_file(&db_path).await.expect("drop live db");
+    tokio::fs::remove_file(&db_path)
+        .await
+        .expect("drop live db");
     assert!(!db_path.exists());
 
     // 3. Restore from the backup (the runbook's `cp` step).
@@ -62,7 +67,10 @@ async fn verify_backup_accepts_a_freshly_created_backup() {
         .expect("seed live db");
 
     let manager = BackupManager::new(config(&db_path, &backup_dir));
-    let backup_path = manager.create_backup().await.expect("backup should succeed");
+    let backup_path = manager
+        .create_backup()
+        .await
+        .expect("backup should succeed");
 
     let result = manager
         .verify_backup(&backup_path)
@@ -70,7 +78,11 @@ async fn verify_backup_accepts_a_freshly_created_backup() {
         .expect("verification should run");
 
     assert!(result.size_bytes > 0, "backup should not be empty");
-    assert!(result.checksum_ok, "checksum should match: {:?}", result.error);
+    assert!(
+        result.checksum_ok,
+        "checksum should match: {:?}",
+        result.error
+    );
 }
 
 #[tokio::test]
@@ -83,10 +95,16 @@ async fn verify_backup_flags_a_corrupted_backup() {
         .expect("seed live db");
 
     let manager = BackupManager::new(config(&db_path, &backup_dir));
-    let backup_path = manager.create_backup().await.expect("backup should succeed");
+    let backup_path = manager
+        .create_backup()
+        .await
+        .expect("backup should succeed");
 
     // First verification writes the .sha256 sidecar; then corrupt the backup.
-    manager.verify_backup(&backup_path).await.expect("baseline verify");
+    manager
+        .verify_backup(&backup_path)
+        .await
+        .expect("baseline verify");
     tokio::fs::write(&backup_path, b"corrupted")
         .await
         .expect("corrupt backup");

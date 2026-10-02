@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use payraider_backend::services::request_signing::RequestSigningService;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -16,8 +16,14 @@ async fn test_valid_signature_verification() {
     let nonce = "test-nonce-123";
 
     let body_hash = RequestSigningService::body_hash(body);
-    let canonical =
-        RequestSigningService::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
+    let canonical = RequestSigningService::canonical_request(
+        method,
+        path,
+        &query_params,
+        &body_hash,
+        timestamp,
+        nonce,
+    );
     let signature = RequestSigningService::compute_signature(&canonical, signing_secret);
 
     let result = service
@@ -50,8 +56,14 @@ async fn test_invalid_signature_rejected() {
     let nonce = "test-nonce-123";
 
     let body_hash = RequestSigningService::body_hash(body);
-    let canonical =
-        RequestSigningService::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
+    let canonical = RequestSigningService::canonical_request(
+        method,
+        path,
+        &query_params,
+        &body_hash,
+        timestamp,
+        nonce,
+    );
     let mut signature = RequestSigningService::compute_signature(&canonical, signing_secret);
 
     // Tamper with signature
@@ -218,8 +230,14 @@ async fn test_method_mismatch_rejected() {
     let nonce = "test-nonce-123";
 
     let body_hash = RequestSigningService::body_hash(body);
-    let canonical =
-        RequestSigningService::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
+    let canonical = RequestSigningService::canonical_request(
+        method,
+        path,
+        &query_params,
+        &body_hash,
+        timestamp,
+        nonce,
+    );
     let signature = RequestSigningService::compute_signature(&canonical, signing_secret);
 
     // Verify with different method
@@ -247,7 +265,8 @@ fn test_canonical_request_sorted_params() {
     params.insert("a_param".to_string(), "value_a".to_string());
     params.insert("m_param".to_string(), "value_m".to_string());
 
-    let canonical = RequestSigningService::canonical_request("GET", "/path", &params, "hash", 100, "nonce");
+    let canonical =
+        RequestSigningService::canonical_request("GET", "/path", &params, "hash", 100, "nonce");
 
     // Verify parameters appear in sorted order
     let lines: Vec<&str> = canonical.lines().collect();

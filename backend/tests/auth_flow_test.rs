@@ -3,10 +3,10 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use serde_json::{json, Value};
-use std::sync::Arc;
 use payraider_backend::api::auth;
 use payraider_backend::auth::{AuthService, User};
+use serde_json::{json, Value};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::util::ServiceExt;
 

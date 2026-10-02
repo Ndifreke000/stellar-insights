@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod ip_whitelist_tests {
-    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
     use payraider_backend::admin_ip_whitelist::IpWhitelistService;
+    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
     async fn setup_test_db() -> SqlitePool {
         let db_url = "sqlite::memory:";
@@ -53,16 +53,10 @@ mod ip_whitelist_tests {
             .await
             .unwrap();
 
-        let whitelisted = service
-            .is_whitelisted("192.168.1.100")
-            .await
-            .unwrap();
+        let whitelisted = service.is_whitelisted("192.168.1.100").await.unwrap();
         assert!(whitelisted);
 
-        let not_whitelisted = service
-            .is_whitelisted("192.168.1.99")
-            .await
-            .unwrap();
+        let not_whitelisted = service.is_whitelisted("192.168.1.99").await.unwrap();
         assert!(!not_whitelisted);
     }
 
@@ -71,10 +65,7 @@ mod ip_whitelist_tests {
         let pool = setup_test_db().await;
         let service = IpWhitelistService::new(pool);
 
-        let denied = service
-            .is_whitelisted("192.168.1.1")
-            .await
-            .unwrap();
+        let denied = service.is_whitelisted("192.168.1.1").await.unwrap();
         assert!(!denied);
     }
 
@@ -88,21 +79,12 @@ mod ip_whitelist_tests {
             .await
             .unwrap();
 
-        let whitelisted = service
-            .is_whitelisted("192.168.1.1")
-            .await
-            .unwrap();
+        let whitelisted = service.is_whitelisted("192.168.1.1").await.unwrap();
         assert!(whitelisted);
 
-        service
-            .remove_from_whitelist("192.168.1.1")
-            .await
-            .unwrap();
+        service.remove_from_whitelist("192.168.1.1").await.unwrap();
 
-        let not_whitelisted = service
-            .is_whitelisted("192.168.1.1")
-            .await
-            .unwrap();
+        let not_whitelisted = service.is_whitelisted("192.168.1.1").await.unwrap();
         assert!(!not_whitelisted);
     }
 }

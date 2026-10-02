@@ -24,10 +24,10 @@
 //! - GitHub Issue: payraider#reserve-offbyone
 //! - Relevant commit: (see git log for defensive guard in sync_pools)
 
-use sqlx::SqlitePool;
-use std::sync::Arc;
 use payraider_backend::rpc::{HorizonLiquidityPool, HorizonPoolReserve, MockStellarRpcClient};
 use payraider_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
+use sqlx::SqlitePool;
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Shared DB setup (mirrors liquidity_pool_test.rs)
@@ -147,7 +147,10 @@ async fn test_sync_pools_skips_zero_reserve_pool() {
         .await
         .expect("sync_pools panicked on empty pool list");
 
-    assert_eq!(count, 0, "expected 0 pools synced from mock (which returns empty list)");
+    assert_eq!(
+        count, 0,
+        "expected 0 pools synced from mock (which returns empty list)"
+    );
 }
 
 /// Unit regression: the guard logic itself is correct for every boundary.

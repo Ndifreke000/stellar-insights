@@ -1,8 +1,8 @@
 use chrono::Utc;
-use sqlx::SqlitePool;
-use std::sync::Arc;
 use payraider_backend::database::Database;
 use payraider_backend::models::PaymentRow;
+use sqlx::SqlitePool;
+use std::sync::Arc;
 
 async fn setup_test_db() -> Arc<Database> {
     let pool = SqlitePool::connect(":memory:").await.unwrap();

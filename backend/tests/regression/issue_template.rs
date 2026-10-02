@@ -37,5 +37,8 @@
 fn test_template_placeholder() {
     // This test intentionally does nothing; it is a compile-time proof that
     // the regression module is wired up correctly.
-    assert!(true, "template placeholder – replace with a real regression test");
+    assert!(
+        true,
+        "template placeholder – replace with a real regression test"
+    );
 }

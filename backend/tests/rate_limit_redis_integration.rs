@@ -9,11 +9,11 @@
 //! REDIS_URL=redis://127.0.0.1:6379 cargo test --test rate_limit_redis_integration -- --ignored
 //! ```
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use payraider_backend::rate_limit::{
     ClientIdentifier, ClientRateLimits, ClientTier, RateLimitConfig, RateLimiter,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn unique_suffix() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);

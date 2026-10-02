@@ -1,6 +1,6 @@
-use sqlx::SqlitePool;
 use payraider_backend::database::Database;
 use payraider_backend::models::SnapshotRecord;
+use sqlx::SqlitePool;
 
 #[tokio::test]
 async fn test_snapshot_storage_with_hash_and_epoch() {

@@ -227,7 +227,10 @@ async fn test_set_and_get_consent() {
     assert!(result.is_ok());
 
     // Get consents
-    let consents = service.get_consents(user_id).await.expect("Failed to get consents");
+    let consents = service
+        .get_consents(user_id)
+        .await
+        .expect("Failed to get consents");
     assert_eq!(consents.len(), 1);
     assert_eq!(consents[0].consent_type, "marketing");
     assert!(consents[0].consent_given);
@@ -236,7 +239,10 @@ async fn test_set_and_get_consent() {
     let result = service.set_consent(user_id, "marketing", false).await;
     assert!(result.is_ok());
 
-    let updated_consents = service.get_consents(user_id).await.expect("Failed to get updated consents");
+    let updated_consents = service
+        .get_consents(user_id)
+        .await
+        .expect("Failed to get updated consents");
     assert_eq!(updated_consents[0].consent_given, false);
 }
 
@@ -355,25 +361,22 @@ async fn test_execute_deletion_anonymizes_audit_logs() {
     assert!(result.is_ok());
 
     // Verify audit log is anonymized (not deleted)
-    let audit_rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT user_id FROM admin_audit_log WHERE id = ?"
-    )
-    .bind("audit_123")
-    .fetch_all(&pool)
-    .await
-    .expect("Failed to fetch audit log");
+    let audit_rows: Vec<(String,)> =
+        sqlx::query_as("SELECT user_id FROM admin_audit_log WHERE id = ?")
+            .bind("audit_123")
+            .fetch_all(&pool)
+            .await
+            .expect("Failed to fetch audit log");
 
     assert_eq!(audit_rows.len(), 1);
     assert_eq!(audit_rows[0].0, "anonymized");
 
     // Verify user is anonymized
-    let user_rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT username FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_all(&pool)
-    .await
-    .expect("Failed to fetch user");
+    let user_rows: Vec<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to fetch user");
 
     assert_eq!(user_rows.len(), 1);
     assert!(user_rows[0].0.starts_with("deleted_user_"));

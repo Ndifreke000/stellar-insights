@@ -15,14 +15,17 @@ pub async fn mock_anchor_url() -> String {
     }
 
     let app = Router::new()
-        .route("/info", get(|| async {
-            Json(json!({
-                "version": "1.0.0",
-                "fee": { "enabled": true },
-                "deposit": { "enabled": true },
-                "withdraw": { "enabled": true }
-            }))
-        }))
+        .route(
+            "/info",
+            get(|| async {
+                Json(json!({
+                    "version": "1.0.0",
+                    "fee": { "enabled": true },
+                    "deposit": { "enabled": true },
+                    "withdraw": { "enabled": true }
+                }))
+            }),
+        )
         .route(
             "/transactions/deposit/interactive",
             post(|| async { Json(json!({ "type": "interactive_customer_info_needed" })) }),
@@ -33,26 +36,27 @@ pub async fn mock_anchor_url() -> String {
         )
         .route(
             "/transactions",
-            get(|| async { Json(json!({ "transactions": [] })) }).post(|| async {
-                Json(json!({ "id": "tx-1", "status": "pending" }))
-            }),
+            get(|| async { Json(json!({ "transactions": [] })) })
+                .post(|| async { Json(json!({ "id": "tx-1", "status": "pending" })) }),
         )
-        .route("/transactions/{id}", get(|| async {
-            Json(json!({ "id": "tx-1", "status": "pending" }))
-        }))
+        .route(
+            "/transactions/{id}",
+            get(|| async { Json(json!({ "id": "tx-1", "status": "pending" })) }),
+        )
         // sep24's "get one transaction" uses ?id= as a query param on this
         // singular path, unlike sep31's /transactions/{id}.
-        .route("/transaction", get(|| async {
-            Json(json!({ "id": "tx-1", "status": "pending" }))
-        }))
-        .route("/quote", post(|| async {
-            Json(json!({ "id": "quote-1", "price": "1.0" }))
-        }))
+        .route(
+            "/transaction",
+            get(|| async { Json(json!({ "id": "tx-1", "status": "pending" })) }),
+        )
+        .route(
+            "/quote",
+            post(|| async { Json(json!({ "id": "quote-1", "price": "1.0" })) }),
+        )
         .route(
             "/customer",
-            get(|| async { Json(json!({ "id": "customer-1", "status": "ACCEPTED" })) }).put(
-                || async { Json(json!({ "id": "customer-1", "status": "ACCEPTED" })) },
-            ),
+            get(|| async { Json(json!({ "id": "customer-1", "status": "ACCEPTED" })) })
+                .put(|| async { Json(json!({ "id": "customer-1", "status": "ACCEPTED" })) }),
         );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -60,7 +64,9 @@ pub async fn mock_anchor_url() -> String {
         .expect("bind mock anchor");
     let addr = listener.local_addr().expect("mock anchor addr");
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("mock anchor server");
+        axum::serve(listener, app)
+            .await
+            .expect("mock anchor server");
     });
 
     format!("http://{addr}")
@@ -89,9 +95,9 @@ pub fn sep31_router() -> Router {
 }
 
 pub fn sep10_router() -> Router {
-    use std::sync::Arc;
     use payraider_backend::api::sep10;
     use payraider_backend::auth::sep10_simple::Sep10Service;
+    use std::sync::Arc;
 
     let service = Arc::new(
         Sep10Service::new(

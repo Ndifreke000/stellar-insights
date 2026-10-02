@@ -11,7 +11,10 @@ async fn sep31_info_proxies_mock_anchor() {
     let mock_url = common::mock_anchor_url().await;
 
     let app = common::sep31_router();
-    let uri = format!("/api/sep31/info?transfer_server={}", urlencoding::encode(&mock_url));
+    let uri = format!(
+        "/api/sep31/info?transfer_server={}",
+        urlencoding::encode(&mock_url)
+    );
 
     let (status, body) = common::response_json(
         app,
@@ -82,7 +85,10 @@ async fn sep31_transactions_create_and_list() {
     );
     let (status, body) = common::response_json(
         app.clone(),
-        Request::builder().uri(&list_uri).body(Body::empty()).unwrap(),
+        Request::builder()
+            .uri(&list_uri)
+            .body(Body::empty())
+            .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

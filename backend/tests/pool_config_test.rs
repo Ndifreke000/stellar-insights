@@ -1,6 +1,6 @@
+use payraider_backend::database::PoolConfig;
 use std::env;
 use std::sync::Mutex;
-use payraider_backend::database::PoolConfig;
 
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
 

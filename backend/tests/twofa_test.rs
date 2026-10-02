@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod twofa_tests {
-    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-    use payraider_backend::twofa::TwoFAService;
     use payraider_backend::crypto::CryptoService;
+    use payraider_backend::twofa::TwoFAService;
+    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
     async fn setup_test_db() -> SqlitePool {
         let db_url = "sqlite::memory:";
@@ -132,11 +132,17 @@ mod twofa_tests {
         let test_code = &codes[0];
 
         // First use should succeed
-        let first_use = twofa.verify_backup_code("user123", test_code).await.unwrap();
+        let first_use = twofa
+            .verify_backup_code("user123", test_code)
+            .await
+            .unwrap();
         assert!(first_use);
 
         // Second use should fail (already consumed)
-        let second_use = twofa.verify_backup_code("user123", test_code).await.unwrap();
+        let second_use = twofa
+            .verify_backup_code("user123", test_code)
+            .await
+            .unwrap();
         assert!(!second_use);
     }
 
@@ -160,7 +166,10 @@ mod twofa_tests {
         assert_eq!(count, 10);
 
         // Use one code
-        twofa.verify_backup_code("user123", &codes[0]).await.unwrap();
+        twofa
+            .verify_backup_code("user123", &codes[0])
+            .await
+            .unwrap();
 
         let count = twofa
             .get_unused_backup_codes_count("user123")
@@ -205,10 +214,7 @@ mod twofa_tests {
         twofa.generate_backup_codes("user123").await.unwrap();
 
         // Try to use an invalid code
-        let result = twofa
-            .verify_backup_code("user123", "000000")
-            .await
-            .unwrap();
+        let result = twofa.verify_backup_code("user123", "000000").await.unwrap();
         assert!(!result);
     }
 }

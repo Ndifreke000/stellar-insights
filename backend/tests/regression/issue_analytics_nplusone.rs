@@ -235,9 +235,27 @@ async fn test_batch_load_asset_anchor_mapping_is_correct() {
     let anchor_a = insert_anchor(&pool, "AnchorAlpha").await;
     let anchor_b = insert_anchor(&pool, "AnchorBeta").await;
 
-    insert_asset(&pool, &anchor_a, "USDC", "GUSDC_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").await;
-    insert_asset(&pool, &anchor_a, "EURT", "GEURT_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").await;
-    insert_asset(&pool, &anchor_b, "BRL", "GBRL_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").await;
+    insert_asset(
+        &pool,
+        &anchor_a,
+        "USDC",
+        "GUSDC_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+    .await;
+    insert_asset(
+        &pool,
+        &anchor_a,
+        "EURT",
+        "GEURT_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+    .await;
+    insert_asset(
+        &pool,
+        &anchor_b,
+        "BRL",
+        "GBRL_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+    .await;
 
     let result = batch_load_assets(&pool, &[anchor_a.clone(), anchor_b.clone()]).await;
 
@@ -248,9 +266,18 @@ async fn test_batch_load_asset_anchor_mapping_is_correct() {
     assert_eq!(b_assets.len(), 1, "AnchorBeta should have 1 asset");
 
     // Verify specific asset codes are in the right bucket.
-    assert!(a_assets.contains(&"USDC".to_string()), "USDC should belong to AnchorAlpha");
-    assert!(a_assets.contains(&"EURT".to_string()), "EURT should belong to AnchorAlpha");
-    assert!(b_assets.contains(&"BRL".to_string()), "BRL should belong to AnchorBeta");
+    assert!(
+        a_assets.contains(&"USDC".to_string()),
+        "USDC should belong to AnchorAlpha"
+    );
+    assert!(
+        a_assets.contains(&"EURT".to_string()),
+        "EURT should belong to AnchorAlpha"
+    );
+    assert!(
+        b_assets.contains(&"BRL".to_string()),
+        "BRL should belong to AnchorBeta"
+    );
 }
 
 /// Regression: batch load with a single anchor works correctly.
@@ -261,7 +288,13 @@ async fn test_batch_load_single_anchor() {
     let pool = setup_db().await;
 
     let anchor_id = insert_anchor(&pool, "SingleAnchor").await;
-    insert_asset(&pool, &anchor_id, "NGNT", "GNGNT_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").await;
+    insert_asset(
+        &pool,
+        &anchor_id,
+        "NGNT",
+        "GNGNT_ISSUER_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+    .await;
 
     let result = batch_load_assets(&pool, &[anchor_id.clone()]).await;
 

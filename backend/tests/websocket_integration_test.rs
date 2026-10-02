@@ -1,6 +1,6 @@
+use payraider_backend::websocket::{WsMessage, WsState};
 use serde_json::json;
 use std::sync::Arc;
-use payraider_backend::websocket::{WsMessage, WsState};
 
 #[tokio::test]
 async fn test_websocket_subscription_flow() {

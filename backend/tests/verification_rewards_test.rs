@@ -1,10 +1,10 @@
 use anyhow::Result;
-use sqlx::SqlitePool;
-use std::sync::Arc;
 use payraider_backend::database::Database;
 use payraider_backend::services::verification_rewards::{
     VerificationRewardsService, VerifySnapshotRequest,
 };
+use sqlx::SqlitePool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup_test_db() -> Result<SqlitePool> {

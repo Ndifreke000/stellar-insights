@@ -203,7 +203,10 @@ async fn test_list_anchors_returns_json_object_with_anchors_array() {
     let body = json_body(resp).await;
     // Response is a PaginatedResponse: { data: [...], pagination: { total, ... } }
     assert!(body["data"].is_array(), "expected data array");
-    assert!(body["pagination"]["total"].is_number(), "expected total count");
+    assert!(
+        body["pagination"]["total"].is_number(),
+        "expected total count"
+    );
     assert_eq!(body["data"].as_array().unwrap().len(), 0);
     assert_eq!(body["pagination"]["total"], 0);
 }
@@ -249,10 +252,7 @@ async fn test_list_anchors_zero_limit_param() {
 async fn test_webhook_routes_mount_at_api_v1_webhooks() {
     let db = setup_db().await;
     let app = Router::new()
-        .nest(
-            "/api/v1/webhooks",
-            webhooks::routes(db.pool().clone()),
-        )
+        .nest("/api/v1/webhooks", webhooks::routes(db.pool().clone()))
         .layer(middleware::from_fn(
             |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
                 req.extensions_mut().insert(AuthUser {

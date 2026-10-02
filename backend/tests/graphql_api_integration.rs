@@ -183,7 +183,9 @@ async fn create_test_schema() -> graphql::AppSchema {
 #[tokio::test]
 async fn test_health_query() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ health { status version database cache } }").await;
+    let result = schema
+        .execute("{ health { status version database cache } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -203,7 +205,9 @@ async fn test_anchor_count_empty() {
 #[tokio::test]
 async fn test_anchors_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ anchors { nodes { id name } totalCount } }").await;
+    let result = schema
+        .execute("{ anchors { nodes { id name } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -214,7 +218,9 @@ async fn test_anchors_empty() {
 #[tokio::test]
 async fn test_corridors_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ corridors { nodes { id } totalCount } }").await;
+    let result = schema
+        .execute("{ corridors { nodes { id } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -224,7 +230,9 @@ async fn test_corridors_empty() {
 #[tokio::test]
 async fn test_payments_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ payments { nodes { id amount } totalCount } }").await;
+    let result = schema
+        .execute("{ payments { nodes { id amount } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -234,7 +242,9 @@ async fn test_payments_empty() {
 #[tokio::test]
 async fn test_liquidity_pools_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ liquidityPools { nodes { poolId } totalCount } }").await;
+    let result = schema
+        .execute("{ liquidityPools { nodes { poolId } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -242,7 +252,9 @@ async fn test_liquidity_pools_empty() {
 #[tokio::test]
 async fn test_trustline_stats_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ trustlineStats { nodes { assetCode } totalCount } }").await;
+    let result = schema
+        .execute("{ trustlineStats { nodes { assetCode } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -250,7 +262,9 @@ async fn test_trustline_stats_empty() {
 #[tokio::test]
 async fn test_snapshots_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ snapshots { nodes { id } totalCount } }").await;
+    let result = schema
+        .execute("{ snapshots { nodes { id } totalCount } }")
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -258,7 +272,9 @@ async fn test_snapshots_empty() {
 #[tokio::test]
 async fn test_search_empty() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ search(query: \"test\") { anchors { id } corridors { id } } }").await;
+    let result = schema
+        .execute("{ search(query: \"test\") { anchors { id } corridors { id } } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -268,7 +284,9 @@ async fn test_search_empty() {
 #[tokio::test]
 async fn test_introspection_types() {
     let schema = create_test_schema().await;
-    let result = schema.execute("{ __type(name: \"Anchor\") { name fields { name } } }").await;
+    let result = schema
+        .execute("{ __type(name: \"Anchor\") { name fields { name } } }")
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -286,7 +304,9 @@ async fn test_introspection_types() {
 async fn test_create_anchor_mutation() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         mutation {
             createAnchor(input: {
                 name: "Test Anchor",
@@ -297,7 +317,9 @@ async fn test_create_anchor_mutation() {
                 message
             }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
     let data = result.data.into_json().unwrap();
@@ -309,7 +331,9 @@ async fn test_create_anchor_mutation() {
 async fn test_create_anchor_name_too_long() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(&format!(r#"
+    let result = schema
+        .execute(&format!(
+            r#"
         mutation {{
             createAnchor(input: {{
                 name: "{}",
@@ -318,7 +342,10 @@ async fn test_create_anchor_name_too_long() {
                 success
             }}
         }}
-    "#, "x".repeat(101))).await;
+    "#,
+            "x".repeat(101)
+        ))
+        .await;
 
     assert!(!result.errors.is_empty());
 }
@@ -327,7 +354,9 @@ async fn test_create_anchor_name_too_long() {
 async fn test_create_anchor_stellar_account_wrong_length() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         mutation {
             createAnchor(input: {
                 name: "Test",
@@ -336,7 +365,9 @@ async fn test_create_anchor_stellar_account_wrong_length() {
                 success
             }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(!result.errors.is_empty());
 }
@@ -345,7 +376,9 @@ async fn test_create_anchor_stellar_account_wrong_length() {
 async fn test_create_corridor_mutation() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         mutation {
             createCorridor(input: {
                 sourceAssetCode: "USDC",
@@ -358,12 +391,17 @@ async fn test_create_corridor_mutation() {
                 message
             }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
     let data = result.data.into_json().unwrap();
     assert_eq!(data["createCorridor"]["success"], true);
-    assert_eq!(data["createCorridor"]["corridor"]["sourceAssetCode"], "USDC");
+    assert_eq!(
+        data["createCorridor"]["corridor"]["sourceAssetCode"],
+        "USDC"
+    );
 }
 
 #[tokio::test]
@@ -371,7 +409,9 @@ async fn test_create_anchor_then_query() {
     let schema = create_test_schema().await;
 
     // Create anchor
-    schema.execute(r#"
+    schema
+        .execute(
+            r#"
         mutation {
             createAnchor(input: {
                 name: "My Anchor",
@@ -380,10 +420,14 @@ async fn test_create_anchor_then_query() {
                 success
             }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     // Query anchors
-    let result = schema.execute("{ anchors { nodes { id name } totalCount } }").await;
+    let result = schema
+        .execute("{ anchors { nodes { id name } totalCount } }")
+        .await;
     assert!(result.errors.is_empty());
 
     let data = result.data.into_json().unwrap();
@@ -396,7 +440,9 @@ async fn test_delete_anchor_mutation() {
     let schema = create_test_schema().await;
 
     // Create
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         mutation {
             createAnchor(input: {
                 name: "To Delete",
@@ -406,18 +452,27 @@ async fn test_delete_anchor_mutation() {
                 success
             }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     let data = result.data.into_json().unwrap();
-    let anchor_id = data["createAnchor"]["anchor"]["id"].as_str().unwrap().to_string();
+    let anchor_id = data["createAnchor"]["anchor"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Delete
-    let result = schema.execute(&format!(
-        r#"
+    let result = schema
+        .execute(&format!(
+            r#"
         mutation {{
             deleteAnchor(id: "{}")
         }}
-    "#, anchor_id)).await;
+    "#,
+            anchor_id
+        ))
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -433,11 +488,15 @@ async fn test_delete_anchor_mutation() {
 async fn test_delete_nonexistent_anchor() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         mutation {
             deleteAnchor(id: "nonexistent-id")
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -451,9 +510,13 @@ async fn test_sql_injection_in_search() {
     let schema = create_test_schema().await;
 
     // Try SQL injection via search query
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { search(query: "'; DROP TABLE anchors; --") { anchors { id } } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     // Should not error (no SQL injection possible with parameterized queries)
     assert!(result.errors.is_empty());
@@ -467,9 +530,13 @@ async fn test_sql_injection_in_search() {
 async fn test_sql_injection_in_anchor_filter() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { anchors(filter: { search: "'; DROP TABLE anchors; --" }) { nodes { id } } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -478,9 +545,13 @@ async fn test_sql_injection_in_anchor_filter() {
 async fn test_sql_injection_in_corridor_filter() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { corridors(filter: { sourceAssetCode: "'; DROP TABLE corridors; --" }) { nodes { id } } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -491,9 +562,13 @@ async fn test_sql_injection_in_corridor_filter() {
 async fn test_subscription_type_exists() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { __type(name: "SubscriptionRoot") { name kind } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -505,9 +580,13 @@ async fn test_subscription_type_exists() {
 async fn test_subscription_fields_exist() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { __type(name: "SubscriptionRoot") { fields { name } } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
     let data = result.data.into_json().unwrap();
@@ -526,7 +605,9 @@ async fn test_subscription_fields_exist() {
 async fn test_complex_query_does_not_panic() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         {
             health { status }
             anchorCount
@@ -540,9 +621,15 @@ async fn test_complex_query_does_not_panic() {
             liquidityPoolStats { totalPools }
             trustlineMetrics { totalAssetsTracked }
         }
-    "#).await;
+    "#,
+        )
+        .await;
 
-    assert!(result.errors.is_empty(), "Complex query should not error: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "Complex query should not error: {:?}",
+        result.errors
+    );
 }
 
 // ── Pagination Tests ──────────────────────────────────────────────────────────
@@ -551,9 +638,13 @@ async fn test_complex_query_does_not_panic() {
 async fn test_pagination_input() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { anchors(pagination: { limit: 5, offset: 0 }) { nodes { id } totalCount hasNextPage } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
 }
@@ -563,9 +654,13 @@ async fn test_pagination_max_limit() {
     let schema = create_test_schema().await;
 
     // Even with limit > 100, should be capped at 100
-    let result = schema.execute(r#"
+    let result = schema
+        .execute(
+            r#"
         { anchors(pagination: { limit: 200 }) { nodes { id } } }
-    "#).await;
+    "#,
+        )
+        .await;
 
     assert!(result.errors.is_empty());
 }

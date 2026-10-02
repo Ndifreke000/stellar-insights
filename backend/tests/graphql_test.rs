@@ -255,9 +255,14 @@ async fn create_test_schema() -> payraider_backend::graphql::AppSchema {
 async fn consolidated_health_query_works() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ health { status version database cache } }").await;
+    let result = schema
+        .execute("{ health { status version database cache } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "health query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "health query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["health"]["status"], "ok");
     assert!(!data["health"]["version"].as_str().unwrap().is_empty());
@@ -269,7 +274,10 @@ async fn consolidated_anchor_count_query_works() {
 
     let result = schema.execute("{ anchorCount }").await;
 
-    assert!(result.errors.is_empty(), "anchorCount query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "anchorCount query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["anchorCount"], 0);
 }
@@ -278,9 +286,14 @@ async fn consolidated_anchor_count_query_works() {
 async fn consolidated_anchors_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ anchors { nodes { id name } totalCount hasNextPage } }").await;
+    let result = schema
+        .execute("{ anchors { nodes { id name } totalCount hasNextPage } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "anchors query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "anchors query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert!(data["anchors"]["nodes"].as_array().unwrap().is_empty());
     assert_eq!(data["anchors"]["totalCount"], 0);
@@ -291,9 +304,14 @@ async fn consolidated_anchors_query_empty() {
 async fn consolidated_corridors_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ corridors { nodes { id sourceAssetCode } totalCount } }").await;
+    let result = schema
+        .execute("{ corridors { nodes { id sourceAssetCode } totalCount } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "corridors query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "corridors query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert!(data["corridors"]["nodes"].as_array().unwrap().is_empty());
 }
@@ -302,9 +320,14 @@ async fn consolidated_corridors_query_empty() {
 async fn consolidated_payments_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ payments { nodes { id amount } totalCount } }").await;
+    let result = schema
+        .execute("{ payments { nodes { id amount } totalCount } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "payments query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "payments query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert!(data["payments"]["nodes"].as_array().unwrap().is_empty());
 }
@@ -313,31 +336,52 @@ async fn consolidated_payments_query_empty() {
 async fn consolidated_liquidity_pools_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ liquidityPools { nodes { poolId } totalCount } }").await;
+    let result = schema
+        .execute("{ liquidityPools { nodes { poolId } totalCount } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "liquidityPools query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "liquidityPools query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
-    assert!(data["liquidityPools"]["nodes"].as_array().unwrap().is_empty());
+    assert!(data["liquidityPools"]["nodes"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
 async fn consolidated_trustline_stats_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ trustlineStats { nodes { assetCode } totalCount } }").await;
+    let result = schema
+        .execute("{ trustlineStats { nodes { assetCode } totalCount } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "trustlineStats query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "trustlineStats query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
-    assert!(data["trustlineStats"]["nodes"].as_array().unwrap().is_empty());
+    assert!(data["trustlineStats"]["nodes"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
 async fn consolidated_search_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ search(query: \"test\") { anchors { id } corridors { id } } }").await;
+    let result = schema
+        .execute("{ search(query: \"test\") { anchors { id } corridors { id } } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "search query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "search query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert!(data["search"]["anchors"].as_array().unwrap().is_empty());
     assert!(data["search"]["corridors"].as_array().unwrap().is_empty());
@@ -371,7 +415,11 @@ async fn consolidated_create_anchor_mutation_works() {
     if !result.errors.is_empty() {
         eprintln!("Errors: {:?}", result.errors);
     }
-    assert!(result.errors.is_empty(), "createAnchor mutation should have no errors: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "createAnchor mutation should have no errors: {:?}",
+        result.errors
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["createAnchor"]["success"], true);
     assert_eq!(data["createAnchor"]["anchor"]["name"], "Test Anchor");
@@ -405,10 +453,17 @@ async fn consolidated_create_corridor_mutation_works() {
     if !result.errors.is_empty() {
         eprintln!("Errors: {:?}", result.errors);
     }
-    assert!(result.errors.is_empty(), "createCorridor mutation should have no errors: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "createCorridor mutation should have no errors: {:?}",
+        result.errors
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["createCorridor"]["success"], true);
-    assert_eq!(data["createCorridor"]["corridor"]["sourceAssetCode"], "USDC");
+    assert_eq!(
+        data["createCorridor"]["corridor"]["sourceAssetCode"],
+        "USDC"
+    );
 }
 
 #[tokio::test]
@@ -432,16 +487,24 @@ async fn consolidated_create_anchor_validation_error() {
 
     let result = schema.execute(&mutation).await;
 
-    assert!(!result.errors.is_empty(), "should return validation error for long name");
+    assert!(
+        !result.errors.is_empty(),
+        "should return validation error for long name"
+    );
 }
 
 #[tokio::test]
 async fn consolidated_liquidity_pool_stats_query() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ liquidityPoolStats { totalPools totalLiquidityUsd } }").await;
+    let result = schema
+        .execute("{ liquidityPoolStats { totalPools totalLiquidityUsd } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "liquidityPoolStats query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "liquidityPoolStats query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["liquidityPoolStats"]["totalPools"], 0);
 }
@@ -450,9 +513,14 @@ async fn consolidated_liquidity_pool_stats_query() {
 async fn consolidated_trustline_metrics_query() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ trustlineMetrics { totalAssetsTracked activeAssets } }").await;
+    let result = schema
+        .execute("{ trustlineMetrics { totalAssetsTracked activeAssets } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "trustlineMetrics query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "trustlineMetrics query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["trustlineMetrics"]["totalAssetsTracked"], 0);
 }
@@ -461,9 +529,14 @@ async fn consolidated_trustline_metrics_query() {
 async fn consolidated_snapshots_query_empty() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ snapshots { nodes { id } totalCount } }").await;
+    let result = schema
+        .execute("{ snapshots { nodes { id } totalCount } }")
+        .await;
 
-    assert!(result.errors.is_empty(), "snapshots query should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "snapshots query should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert!(data["snapshots"]["nodes"].as_array().unwrap().is_empty());
 }
@@ -472,11 +545,21 @@ async fn consolidated_snapshots_query_empty() {
 async fn consolidated_introspection_works() {
     let schema = create_test_schema().await;
 
-    let result = schema.execute("{ __schema { queryType { name } mutationType { name } subscriptionType { name } } }").await;
+    let result = schema
+        .execute(
+            "{ __schema { queryType { name } mutationType { name } subscriptionType { name } } }",
+        )
+        .await;
 
-    assert!(result.errors.is_empty(), "introspection should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "introspection should have no errors"
+    );
     let data = result.data.into_json().unwrap();
     assert_eq!(data["__schema"]["queryType"]["name"], "QueryRoot");
     assert_eq!(data["__schema"]["mutationType"]["name"], "MutationRoot");
-    assert_eq!(data["__schema"]["subscriptionType"]["name"], "SubscriptionRoot");
+    assert_eq!(
+        data["__schema"]["subscriptionType"]["name"],
+        "SubscriptionRoot"
+    );
 }

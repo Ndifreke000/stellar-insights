@@ -1,6 +1,6 @@
-use sqlx::SqlitePool;
 use payraider_backend::models::asset_verification::VerificationStatus;
 use payraider_backend::services::asset_verifier::AssetVerifier;
+use sqlx::SqlitePool;
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePool::connect(":memory:").await.unwrap();

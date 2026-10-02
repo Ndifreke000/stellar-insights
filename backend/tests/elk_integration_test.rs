@@ -1,5 +1,5 @@
 //! Integration test for ELK stack log aggregation
-//! 
+//!
 //! This test validates that:
 //! 1. Log format is JSON (required for Logstash parsing)
 //! 2. Application initialization completes without errors
@@ -26,10 +26,10 @@ async fn test_logstash_config_exists() {
         "Logstash pipeline configuration must exist at {}",
         logstash_conf_path
     );
-    
-    let config = std::fs::read_to_string(logstash_conf_path)
-        .expect("Failed to read Logstash config");
-    
+
+    let config =
+        std::fs::read_to_string(logstash_conf_path).expect("Failed to read Logstash config");
+
     // Verify essential Logstash configuration elements
     assert!(
         config.contains("input {"),
@@ -54,10 +54,9 @@ async fn test_elk_docker_compose_valid() {
         "Docker Compose file must exist at {}",
         compose_path
     );
-    
-    let compose = std::fs::read_to_string(compose_path)
-        .expect("Failed to read docker-compose.yml");
-    
+
+    let compose = std::fs::read_to_string(compose_path).expect("Failed to read docker-compose.yml");
+
     // Verify essential services
     assert!(
         compose.contains("elasticsearch"),
@@ -71,7 +70,7 @@ async fn test_elk_docker_compose_valid() {
         compose.contains("kibana"),
         "Docker Compose must define Kibana service"
     );
-    
+
     // Verify port mappings
     assert!(
         compose.contains("9200:9200"),
@@ -88,7 +87,7 @@ async fn test_redaction_configuration() {
     // Verify Logstash configuration includes sensitive data redaction
     let logstash_conf = std::fs::read_to_string("elk/logstash/pipeline/logstash.conf")
         .expect("Failed to read Logstash config");
-    
+
     // Check for redaction patterns
     assert!(
         logstash_conf.contains("authorization") || logstash_conf.contains("REDACTED"),
@@ -113,21 +112,20 @@ async fn test_kibana_config_exists() {
         "Kibana dashboard configuration must exist at {}",
         kibana_config
     );
-    
-    let config = std::fs::read_to_string(kibana_config)
-        .expect("Failed to read Kibana config");
-    
+
+    let config = std::fs::read_to_string(kibana_config).expect("Failed to read Kibana config");
+
     // Verify it's valid JSON
-    let _: serde_json::Value = serde_json::from_str(&config)
-        .expect("Kibana config must be valid JSON");
+    let _: serde_json::Value =
+        serde_json::from_str(&config).expect("Kibana config must be valid JSON");
 }
 
 #[tokio::test]
 async fn test_index_pattern_configured() {
     // Verify Kibana has index pattern for payraider logs
-    let kibana_config = std::fs::read_to_string("elk/kibana/dashboard.json")
-        .expect("Failed to read Kibana config");
-    
+    let kibana_config =
+        std::fs::read_to_string("elk/kibana/dashboard.json").expect("Failed to read Kibana config");
+
     assert!(
         kibana_config.contains("payraider"),
         "Kibana must be configured with payraider index pattern"
@@ -137,9 +135,9 @@ async fn test_index_pattern_configured() {
 #[tokio::test]
 async fn test_request_id_correlation() {
     // Verify that request/response logging includes request_id for correlation
-    let logging_rs = std::fs::read_to_string("src/observability/logging.rs")
-        .expect("Failed to read logging.rs");
-    
+    let logging_rs =
+        std::fs::read_to_string("src/observability/logging.rs").expect("Failed to read logging.rs");
+
     assert!(
         logging_rs.contains("request_id"),
         "Request logging must include request_id for correlation with APM traces"
