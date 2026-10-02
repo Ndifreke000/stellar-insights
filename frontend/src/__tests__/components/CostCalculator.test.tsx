@@ -220,6 +220,9 @@ describe('CostCalculator – successful calculation', () => {
 
   it('shows loading indicator while request is in flight', async () => {
     let resolveRequest!: (v: unknown) => void;
+    // Drop the immediately-resolving response queued by this block's
+    // beforeEach, so the request stays pending while the label is checked.
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
     (global.fetch as ReturnType<typeof vi.fn>).mockReturnValueOnce(
       new Promise((res) => { resolveRequest = res; }),
     );
