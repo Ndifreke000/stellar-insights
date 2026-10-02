@@ -5,8 +5,7 @@ use crate::cache::helpers::cached_query;
 use crate::cache::keys;
 use crate::state::AppState;
 
-#[derive(Serialize, Deserialize, Clone)]
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct NetworkVolumeDataPoint {
     pub time: String,
     pub volume: f64,
@@ -14,8 +13,7 @@ pub struct NetworkVolumeDataPoint {
     pub anchors: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct CorridorPerformanceMetric {
     pub corridor: String,
     pub success_rate: f64,
@@ -23,8 +21,7 @@ pub struct CorridorPerformanceMetric {
     pub health: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct NetworkStats {
     pub volume_24h: f64,
     pub volume_growth: f64,
@@ -34,8 +31,7 @@ pub struct NetworkStats {
     pub corridors_growth: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct AnalyticsDashboardData {
     pub stats: NetworkStats,
     pub time_series_data: Vec<NetworkVolumeDataPoint>,

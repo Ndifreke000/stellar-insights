@@ -1394,7 +1394,8 @@ mod tests {
 
         let related = find_related_corridors(target, &corridors);
         assert!(related.is_some());
-        let related_corridors = related.expect("related corridors should be Some after asserting is_some");
+        let related_corridors =
+            related.expect("related corridors should be Some after asserting is_some");
         assert!(related_corridors.len() >= 2); // At least target and one related
     }
 }

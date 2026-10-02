@@ -17,16 +17,14 @@ const DEFAULT_PAGE_LIMIT: i64 = 20;
 const MAX_PAGE_LIMIT: i64 = 100;
 
 // Request/Response DTOs
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CreateTransactionRequest {
     pub source_account: String,
     pub xdr: String,
     pub required_signatures: i32,
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct AddSignatureRequest {
     pub signer: String,
     pub signature: String,
@@ -63,13 +61,14 @@ impl TransactionCursor {
     }
 
     fn decode(token: &str) -> Result<Self, &'static str> {
-        let bytes = BASE64.decode(token).map_err(|_| "cursor is not valid base64")?;
+        let bytes = BASE64
+            .decode(token)
+            .map_err(|_| "cursor is not valid base64")?;
         serde_json::from_slice(&bytes).map_err(|_| "cursor payload is not valid JSON")
     }
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ListTransactionsResponse {
     pub data: Vec<PendingTransaction>,
     /// Opaque token to pass as `cursor` to retrieve the next page.
@@ -128,7 +127,8 @@ pub async fn list_transactions(
             if decoded.account != query.account {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    "cursor was issued for a different account filter; start a new query".to_string(),
+                    "cursor was issued for a different account filter; start a new query"
+                        .to_string(),
                 ));
             }
             Some(decoded.last_id)
@@ -138,11 +138,7 @@ pub async fn list_transactions(
     // Fetch one extra row to detect whether a next page exists.
     let mut rows = state
         .db
-        .list_pending_transactions(
-            query.account.as_deref(),
-            after_id.as_deref(),
-            limit + 1,
-        )
+        .list_pending_transactions(query.account.as_deref(), after_id.as_deref(), limit + 1)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list transactions: {}", e);

@@ -261,8 +261,14 @@ pub fn routes(service: Arc<IpWhitelistService>) -> Router {
         .route("/", get(list_whitelist).post(add_to_whitelist))
         .route("/{ip_or_cidr}", delete(remove_from_whitelist))
         .route("/check", post(check_whitelist))
-        .route("/admin/ip-whitelist", get(list_whitelist).post(add_to_whitelist))
-        .route("/admin/ip-whitelist/{ip_or_cidr}", delete(remove_from_whitelist))
+        .route(
+            "/admin/ip-whitelist",
+            get(list_whitelist).post(add_to_whitelist),
+        )
+        .route(
+            "/admin/ip-whitelist/{ip_or_cidr}",
+            delete(remove_from_whitelist),
+        )
         .route("/admin/ip-whitelist/check", post(check_whitelist))
         .with_state(service)
 }

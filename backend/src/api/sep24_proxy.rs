@@ -113,8 +113,7 @@ pub async fn get_info(
 }
 
 /// POST /api/sep24/deposit/interactive
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct DepositInteractiveBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -196,8 +195,7 @@ pub async fn post_deposit_interactive(
 }
 
 /// POST /api/sep24/withdraw/interactive
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct WithdrawInteractiveBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -473,10 +471,7 @@ fn allowed_anchor_origins() -> Vec<String> {
         .flat_map(|domain| {
             let domain = domain.trim().trim_end_matches('/').to_string();
             // Emit both schemes so local / self-signed setups work in dev.
-            vec![
-                format!("https://{}", domain),
-                format!("http://{}", domain),
-            ]
+            vec![format!("https://{}", domain), format!("http://{}", domain)]
         })
         .collect()
 }
@@ -499,8 +494,7 @@ fn callback_cors_headers(origin: &str) -> HeaderMap {
     // header value.  The `unwrap_or_else` is a defensive fallback.
     headers.insert(
         header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        HeaderValue::from_str(origin)
-            .unwrap_or_else(|_| HeaderValue::from_static("null")),
+        HeaderValue::from_str(origin).unwrap_or_else(|_| HeaderValue::from_static("null")),
     );
     headers.insert(
         header::ACCESS_CONTROL_ALLOW_METHODS,
@@ -512,10 +506,7 @@ fn callback_cors_headers(origin: &str) -> HeaderMap {
     );
     // Do not reflect credentials for anchor callbacks — they are server-to-
     // server notifications, not browser sessions.
-    headers.insert(
-        header::VARY,
-        HeaderValue::from_static("Origin"),
-    );
+    headers.insert(header::VARY, HeaderValue::from_static("Origin"));
     headers
 }
 
@@ -606,10 +597,7 @@ pub async fn options_callback(headers: HeaderMap) -> impl IntoResponse {
     ),
     tag = "SEP-24"
 )]
-pub async fn get_callback(
-    headers: HeaderMap,
-    Query(q): Query<CallbackQuery>,
-) -> impl IntoResponse {
+pub async fn get_callback(headers: HeaderMap, Query(q): Query<CallbackQuery>) -> impl IntoResponse {
     let origin = headers
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())
@@ -679,10 +667,7 @@ pub async fn get_callback(
     ),
     tag = "SEP-24"
 )]
-pub async fn post_callback(
-    headers: HeaderMap,
-    body: Option<Json<Value>>,
-) -> impl IntoResponse {
+pub async fn post_callback(headers: HeaderMap, body: Option<Json<Value>>) -> impl IntoResponse {
     let origin = headers
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())

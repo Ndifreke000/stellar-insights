@@ -120,7 +120,10 @@ pub fn routes(
     // 2b. Export routes (#1784) — handlers already existed but were never
     // mounted, so CSV/Excel export was unreachable from the API.
     let export_routes = Router::new()
-        .route("/export/corridors", get(crate::api::export::export_corridors))
+        .route(
+            "/export/corridors",
+            get(crate::api::export::export_corridors),
+        )
         .route("/export/anchors", get(crate::api::export::export_anchors))
         .route("/export/payments", get(crate::api::export::export_payments))
         .with_state(app_state.clone());
@@ -182,10 +185,22 @@ pub fn routes(
         .nest("/cost-calculator", cost_calculator::routes(price_feed))
         .nest("/cache/stats", cache_stats::routes(cache.clone()))
         .nest("/metrics", metrics::routes(cache.clone()))
-        .nest("/analytics", crate::api::analytics_dashboard::routes(app_state.clone()))
-        .nest("/analytics", crate::api::failed_payments::routes(app_state.clone()))
-        .nest("/analytics", crate::api::settlement_distribution::routes(app_state.clone()))
-        .nest("/corridor-alerts", crate::api::corridor_alerts::routes(app_state.clone()))
+        .nest(
+            "/analytics",
+            crate::api::analytics_dashboard::routes(app_state.clone()),
+        )
+        .nest(
+            "/analytics",
+            crate::api::failed_payments::routes(app_state.clone()),
+        )
+        .nest(
+            "/analytics",
+            crate::api::settlement_distribution::routes(app_state.clone()),
+        )
+        .nest(
+            "/corridor-alerts",
+            crate::api::corridor_alerts::routes(app_state.clone()),
+        )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // 6. OAuth routes
@@ -208,9 +223,14 @@ pub fn routes(
     // though it required auth, but nothing enforced it; each handler had a
     // "TODO: Verify admin auth" that was never followed up. Added the same
     // layer every other protected group here uses.
-    let ip_whitelist_service = Arc::new(crate::admin_ip_whitelist::IpWhitelistService::new(pool.clone()));
+    let ip_whitelist_service = Arc::new(crate::admin_ip_whitelist::IpWhitelistService::new(
+        pool.clone(),
+    ));
     let admin_ip_whitelist_routes = Router::new()
-        .nest("/admin/ip-whitelist", crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()))
+        .nest(
+            "/admin/ip-whitelist",
+            crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()),
+        )
         .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service))
         .layer(middleware::from_fn(auth_middleware));
 
@@ -220,7 +240,10 @@ pub fn routes(
     // could read the audit log or trigger integrity checks unauthenticated.
     let audit_logger = Arc::new(crate::admin_audit_log::AdminAuditLogger::new(pool.clone()));
     let audit_log_routes = Router::new()
-        .nest("/admin/audit-log", crate::api::audit_log::routes(audit_logger.clone()))
+        .nest(
+            "/admin/audit-log",
+            crate::api::audit_log::routes(audit_logger.clone()),
+        )
         .merge(crate::api::audit_log::routes(audit_logger))
         .layer(middleware::from_fn(auth_middleware));
 
@@ -232,7 +255,10 @@ pub fn routes(
     let crypto = crate::crypto::CryptoService::from_env();
     let twofa_service = Arc::new(crate::twofa::TwoFAService::new(pool.clone(), crypto));
     let twofa_routes = Router::new()
-        .nest("/auth/2fa", crate::api::twofa::routes(twofa_service.clone()))
+        .nest(
+            "/auth/2fa",
+            crate::api::twofa::routes(twofa_service.clone()),
+        )
         .merge(crate::api::twofa::routes(twofa_service));
 
     // 11. Login/refresh/logout/session-management routes. AuthService was
@@ -276,9 +302,9 @@ pub fn routes(
         .layer(axum::Extension(crate::auth_middleware::JwtSecret(
             Arc::from(auth_service.jwt_secret()),
         )))
-        .layer(axum::Extension(crate::auth_middleware::TokenRevocationStore(
-            Arc::new(auth_service.db_pool().clone()),
-        )));
+        .layer(axum::Extension(
+            crate::auth_middleware::TokenRevocationStore(Arc::new(auth_service.db_pool().clone())),
+        ));
 
     // Combine all routes
     Router::new()

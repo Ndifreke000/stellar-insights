@@ -3,8 +3,8 @@
 //! Provides REST API endpoints for querying contract events,
 //! verification status, and on-chain audit trails.
 
-use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
 use crate::pagination::{PaginatedResponse, PaginationParams};
+use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
 use axum::{
     extract::{OriginalUri, Path, Query, State},
     http::StatusCode,
@@ -17,8 +17,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 /// Response for verification summary endpoint
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct VerificationSummaryResponse {
     #[serde(rename = "latestEpoch")]
     pub latest_epoch: Option<u64>,
@@ -143,7 +142,9 @@ pub async fn list_contract_events(
         )
     })?;
 
-    Ok(Json(PaginatedResponse::from_probe(events, page).with_links(&uri)))
+    Ok(Json(
+        PaginatedResponse::from_probe(events, page).with_links(&uri),
+    ))
 }
 
 /// Handler for GET /api/analytics/contract-events/:id

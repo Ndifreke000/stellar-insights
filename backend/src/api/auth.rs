@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::auth::brute_force;
-use crate::auth::{AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest, VerifyTwoFaRequest};
+use crate::auth::{
+    AuthService, LoginRequest, LogoutRequest, RefreshTokenRequest, VerifyTwoFaRequest,
+};
 use crate::auth_middleware::AuthUser;
 use crate::observability::metrics::record_auth_security_event;
 
@@ -38,10 +40,14 @@ static FAILED_LOGIN_STATE: LazyLock<Mutex<HashMap<String, FailedAuthState>>> =
 pub enum AuthApiError {
     InvalidCredentials,
     InvalidToken,
-    AccountLocked { retry_after_seconds: u64 },
+    AccountLocked {
+        retry_after_seconds: u64,
+    },
     CaptchaRequired,
     CaptchaInvalid,
-    RateLimited { retry_after_seconds: u64 },
+    RateLimited {
+        retry_after_seconds: u64,
+    },
     /// Session doesn't exist, is already revoked/expired, or belongs to a
     /// different user. Deliberately the same response for "doesn't exist"
     /// and "not yours" -- returning 403 for the latter would let a caller
@@ -578,7 +584,10 @@ pub fn routes(auth_service: Arc<AuthService>) -> Router {
     let protected = Router::new()
         .route("/api/auth/sessions", get(list_sessions))
         .route("/api/auth/sessions/{session_id}", delete(revoke_session))
-        .route("/api/auth/sessions/revoke-others", post(revoke_other_sessions))
+        .route(
+            "/api/auth/sessions/revoke-others",
+            post(revoke_other_sessions),
+        )
         .layer(axum::middleware::from_fn(
             crate::auth_middleware::auth_middleware,
         ));

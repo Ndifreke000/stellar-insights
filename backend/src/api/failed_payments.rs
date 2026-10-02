@@ -56,9 +56,7 @@ impl FailureCategory {
             Self::InsufficientBalance => {
                 "Ensure the sending account holds sufficient funds plus fees."
             }
-            Self::NoTrustline => {
-                "Add a trustline for the destination asset before sending."
-            }
+            Self::NoTrustline => "Add a trustline for the destination asset before sending.",
             Self::PathNotFound => {
                 "Increase path-payment slippage tolerance or retry during higher liquidity."
             }
@@ -259,7 +257,10 @@ async fn query_failed_payments(
     })
 }
 
-fn build_breakdown(rows: Vec<FailureCategoryRow>, total_failed: i64) -> Vec<FailureCategoryBreakdown> {
+fn build_breakdown(
+    rows: Vec<FailureCategoryRow>,
+    total_failed: i64,
+) -> Vec<FailureCategoryBreakdown> {
     rows.into_iter()
         .map(|row| {
             let cat = FailureCategory::from_str(&row.category);

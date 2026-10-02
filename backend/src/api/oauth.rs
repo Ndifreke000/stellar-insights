@@ -16,8 +16,7 @@ use crate::auth::oauth::{OAuthService, TokenResponse};
 use crate::auth_middleware::AuthUser;
 
 /// OAuth Token Request (for /api/oauth/token)
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct OAuthTokenRequest {
     pub grant_type: String,            // "authorization_code" or "refresh_token"
     pub code: Option<String>,          // for authorization_code
@@ -28,8 +27,7 @@ pub struct OAuthTokenRequest {
 }
 
 /// OAuth Authorization Request (for /api/oauth/authorize)
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct OAuthAuthorizeRequest {
     pub client_id: String,
     pub redirect_uri: String,
@@ -39,8 +37,7 @@ pub struct OAuthAuthorizeRequest {
 }
 
 /// OAuth Authorization Response
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct OAuthAuthorizeResponse {
     pub authorization_code: String,
     pub state: String,
@@ -54,8 +51,7 @@ pub struct OAuthTokenErrorResponse {
 }
 
 /// OAuth Revoke Request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct OAuthRevokeRequest {
     pub access_token: String,
     pub client_id: String,
@@ -63,16 +59,14 @@ pub struct OAuthRevokeRequest {
 }
 
 /// List OAuth Apps Response
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct OAuthAppInfo {
     pub client_id: String,
     pub app_name: String,
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ListOAuthAppsResponse {
     pub apps: Vec<OAuthAppInfo>,
 }
@@ -417,9 +411,7 @@ pub async fn me(
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(str::trim)
         .filter(|t| !t.is_empty())
-        .ok_or_else(|| {
-            OAuthApiError::InvalidRequest("Missing Bearer access token".to_string())
-        })?;
+        .ok_or_else(|| OAuthApiError::InvalidRequest("Missing Bearer access token".to_string()))?;
 
     let service = OAuthService::new(db);
     let claims = service

@@ -109,7 +109,10 @@ pub async fn initiate_enrollment(
         .generate_totp_secret(&auth_user.user_id, &auth_user.username)
         .map_err(|_| TwoFAApiError::ServerError)?;
 
-    let response = EnrollmentQRResponse { otpauth_uri, secret };
+    let response = EnrollmentQRResponse {
+        otpauth_uri,
+        secret,
+    };
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }
@@ -163,7 +166,8 @@ pub async fn confirm_enrollment(
 
     let response = EnrollResponse {
         backup_codes,
-        message: "2FA enrollment confirmed. Save your backup codes in a secure location.".to_string(),
+        message: "2FA enrollment confirmed. Save your backup codes in a secure location."
+            .to_string(),
     };
 
     Ok((StatusCode::OK, Json(response)).into_response())
@@ -266,7 +270,10 @@ pub fn routes(twofa_service: Arc<TwoFAService>) -> Router {
         .route("/api/auth/2fa/enroll/initiate", post(initiate_enrollment))
         .route("/api/auth/2fa/enroll/confirm", post(confirm_enrollment))
         .route("/api/auth/2fa/disable", post(disable_2fa))
-        .route("/api/auth/2fa/regenerate-backup", post(regenerate_backup_codes))
+        .route(
+            "/api/auth/2fa/regenerate-backup",
+            post(regenerate_backup_codes),
+        )
         .layer(axum::middleware::from_fn(
             crate::auth_middleware::auth_middleware,
         ));

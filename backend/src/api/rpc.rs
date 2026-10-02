@@ -36,8 +36,7 @@ pub struct OrderBookQuery {
     pub limit: u32,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ErrorResponse {
     pub error: String,
 }

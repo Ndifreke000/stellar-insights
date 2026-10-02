@@ -250,7 +250,9 @@ pub enum Sep10ApiError {
     VerificationFailed(String),
     ChallengeExpired,
     LogoutFailed(String),
-    RateLimited { retry_after_seconds: u64 },
+    RateLimited {
+        retry_after_seconds: u64,
+    },
     /// Lockout / backoff / CAPTCHA rejection from the shared auth guards.
     Auth(AuthApiError),
 }

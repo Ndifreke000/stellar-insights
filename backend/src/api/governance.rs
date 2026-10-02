@@ -17,8 +17,8 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::auth::sep10_simple::Sep10Service;
-use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::auth::{sep10_auth_middleware, Sep10User};
+use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::services::governance::{
     AddCommentRequest, CastVoteRequest, CreateProposalRequest, GovernanceService,
 };
@@ -73,8 +73,7 @@ const fn default_comments_limit() -> i64 {
     50
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ActivateRequest {
     #[serde(default = "default_voting_duration")]
     pub voting_duration_secs: i64,
@@ -89,8 +88,7 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HasVotedResponse {
     pub has_voted: bool,
 }
@@ -252,7 +250,11 @@ async fn refresh_tally(
         .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
 
     info!("Cache busted for proposal {} by admin request", id);
-    Ok((StatusCode::OK, Json(serde_json::json!({ "invalidated": true }))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "invalidated": true })),
+    )
+        .into_response())
 }
 
 // POST /api/governance/proposals/:id/vote - Cast a vote on a proposal

@@ -84,7 +84,9 @@ pub async fn export_corridors(
     match params.format.to_lowercase().as_str() {
         "csv" => export_corridors_csv(&filtered_corridors).map(IntoResponse::into_response),
         "json" => export_corridors_json(&filtered_corridors).map(IntoResponse::into_response),
-        "excel" | "xlsx" => export_corridors_excel(&filtered_corridors).map(IntoResponse::into_response),
+        "excel" | "xlsx" => {
+            export_corridors_excel(&filtered_corridors).map(IntoResponse::into_response)
+        }
         _ => Err(ApiError::bad_request(
             "INVALID_FORMAT",
             format!("Format {} is not supported", params.format),
@@ -93,7 +95,9 @@ pub async fn export_corridors(
 }
 
 /// Helper to export corridors as CSV
-fn export_corridors_csv(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_csv(
+    corridors: &[crate::db::aggregates::AggregatedCorridorMetrics],
+) -> ApiResult<impl IntoResponse> {
     let mut wtr = Writer::from_writer(vec![]);
     wtr.write_record([
         "Corridor ID",
@@ -142,7 +146,9 @@ fn export_corridors_csv(corridors: &[crate::db::aggregates::AggregatedCorridorMe
 }
 
 /// Helper to export corridors as JSON
-fn export_corridors_json(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_json(
+    corridors: &[crate::db::aggregates::AggregatedCorridorMetrics],
+) -> ApiResult<impl IntoResponse> {
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
@@ -159,7 +165,9 @@ fn export_corridors_json(corridors: &[crate::db::aggregates::AggregatedCorridorM
 }
 
 /// Helper to export corridors as Excel
-fn export_corridors_excel(corridors: &[crate::db::aggregates::AggregatedCorridorMetrics]) -> ApiResult<impl IntoResponse> {
+fn export_corridors_excel(
+    corridors: &[crate::db::aggregates::AggregatedCorridorMetrics],
+) -> ApiResult<impl IntoResponse> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -499,10 +507,7 @@ fn export_payments_csv(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> 
             sanitize_csv_field(p.transaction_hash.clone()),
             sanitize_csv_field(p.source_account.clone()),
             sanitize_csv_field(p.destination_account.clone()),
-            sanitize_csv_field(format!(
-                "{}:{}",
-                p.source_asset_code, p.source_asset_issuer
-            )),
+            sanitize_csv_field(format!("{}:{}", p.source_asset_code, p.source_asset_issuer)),
             sanitize_csv_field(format!(
                 "{}:{}",
                 p.destination_asset_code, p.destination_asset_issuer

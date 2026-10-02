@@ -8,8 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-#[derive(Debug, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NetworkInfo {
     pub network: StellarNetwork,
     pub display_name: String,
@@ -21,14 +20,12 @@ pub struct NetworkInfo {
     pub is_testnet: bool,
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct SwitchNetworkRequest {
     pub network: StellarNetwork,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SwitchNetworkResponse {
     pub success: bool,
     pub message: String,

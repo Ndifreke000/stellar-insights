@@ -17,8 +17,8 @@ use crate::{
     error::{ApiError, ApiResult},
     models::corridor_alerts::{
         CorridorAlertConfig, CorridorAlertEvent, CorridorPerformanceSnapshot,
-        CorridorPerformanceSummary, CorridorPerformanceTimeline,
-        CreateCorridorAlertConfigRequest, UpdateCorridorAlertConfigRequest,
+        CorridorPerformanceSummary, CorridorPerformanceTimeline, CreateCorridorAlertConfigRequest,
+        UpdateCorridorAlertConfigRequest,
     },
     services::corridor_performance_monitor::CorridorPerformanceMonitor,
     state::AppState,
@@ -125,7 +125,9 @@ async fn get_config(
         .db
         .get_corridor_alert_config_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found("CONFIG_NOT_FOUND", "Corridor alert config not found"))?;
+        .ok_or_else(|| {
+            ApiError::not_found("CONFIG_NOT_FOUND", "Corridor alert config not found")
+        })?;
 
     if config.user_id != auth_user.user_id {
         return Err(ApiError::forbidden("ACCESS_DENIED", "Access denied"));
@@ -199,9 +201,7 @@ async fn delete_config(
     ),
     tag = "Corridor Alerts"
 )]
-async fn list_all_latest_snapshots(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+async fn list_all_latest_snapshots(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let snapshots = state.db.get_latest_snapshots_all_corridors().await?;
     Ok(Json(snapshots))
 }
@@ -365,7 +365,12 @@ async fn get_corridor_summary(
         .db
         .get_latest_snapshot_for_corridor(&corridor_key)
         .await?
-        .ok_or_else(|| ApiError::not_found("CORRIDOR_SNAPSHOT_NOT_FOUND", "No performance data for this corridor"))?;
+        .ok_or_else(|| {
+            ApiError::not_found(
+                "CORRIDOR_SNAPSHOT_NOT_FOUND",
+                "No performance data for this corridor",
+            )
+        })?;
 
     let previous = state
         .db
@@ -400,8 +405,7 @@ async fn get_corridor_summary(
 
     let liquidity_trend = match &previous {
         Some(p) if p.liquidity_depth_usd > 0.0 => {
-            ((snapshot.liquidity_depth_usd - p.liquidity_depth_usd) / p.liquidity_depth_usd)
-                * 100.0
+            ((snapshot.liquidity_depth_usd - p.liquidity_depth_usd) / p.liquidity_depth_usd) * 100.0
         }
         _ => 0.0,
     };

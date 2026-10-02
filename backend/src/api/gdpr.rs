@@ -29,10 +29,16 @@ pub fn routes(pool: SqlitePool) -> Router {
         .route("/summary", get(get_summary))
         .route("/consents", get(get_consents).put(update_consent))
         .route("/consents/batch", put(batch_update_consents))
-        .route("/export", get(list_export_requests).post(create_export_request))
+        .route(
+            "/export",
+            get(list_export_requests).post(create_export_request),
+        )
         .route("/export/{id}", get(get_export_request))
         .route("/export-types", get(get_export_types))
-        .route("/deletion", get(list_deletion_requests).post(create_deletion_request))
+        .route(
+            "/deletion",
+            get(list_deletion_requests).post(create_deletion_request),
+        )
         .route("/deletion/{id}", get(get_deletion_request))
         .route("/deletion/{id}/cancel", post(cancel_deletion_request))
         .route("/deletion/confirm", post(confirm_deletion))
@@ -163,13 +169,12 @@ async fn get_summary(
     .map_err(ApiError::from)?;
 
     // Processing activities count
-    let activities: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM data_processing_log WHERE user_id = ?"
-    )
-    .bind(uid)
-    .fetch_one(&pool)
-    .await
-    .map_err(ApiError::from)?;
+    let activities: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM data_processing_log WHERE user_id = ?")
+            .bind(uid)
+            .fetch_one(&pool)
+            .await
+            .map_err(ApiError::from)?;
 
     Ok(Json(GdprSummary {
         user_id: uid.clone(),
@@ -234,7 +239,9 @@ async fn update_consent(
         .await?
         .into_iter()
         .find(|c| c.consent_type == req.consent_type)
-        .ok_or_else(|| ApiError::internal("GDPR_CONSENT_ERROR", "Consent not found after upsert"))?;
+        .ok_or_else(|| {
+            ApiError::internal("GDPR_CONSENT_ERROR", "Consent not found after upsert")
+        })?;
     Ok(Json(updated))
 }
 
@@ -258,8 +265,16 @@ async fn upsert_consent(
 ) -> ApiResult<()> {
     let version = req.consent_version.as_deref().unwrap_or("1.0");
     let now = now_iso();
-    let granted_at: Option<String> = if req.consent_given { Some(now.clone()) } else { None };
-    let revoked_at: Option<String> = if !req.consent_given { Some(now.clone()) } else { None };
+    let granted_at: Option<String> = if req.consent_given {
+        Some(now.clone())
+    } else {
+        None
+    };
+    let revoked_at: Option<String> = if !req.consent_given {
+        Some(now.clone())
+    } else {
+        None
+    };
 
     // Check whether a row already exists for this (user_id, consent_type)
     let existing_id: Option<String> = sqlx::query_scalar(
@@ -378,8 +393,7 @@ async fn create_export_request(
     let now = now_iso();
     let expires_at = (Utc::now() + chrono::Duration::days(7)).to_rfc3339();
     let format = req.export_format.as_deref().unwrap_or("json");
-    let types_json = serde_json::to_string(&req.data_types)
-        .unwrap_or_else(|_| "[]".to_string());
+    let types_json = serde_json::to_string(&req.data_types).unwrap_or_else(|_| "[]".to_string());
 
     sqlx::query!(
         r#"INSERT INTO data_export_requests
@@ -466,7 +480,8 @@ async fn get_export_types() -> ApiResult<impl IntoResponse> {
             DataTypeInfo {
                 id: "api_keys".to_string(),
                 name: "API Keys".to_string(),
-                description: "Your generated API key metadata (secrets are not included)".to_string(),
+                description: "Your generated API key metadata (secrets are not included)"
+                    .to_string(),
                 category: "Security".to_string(),
             },
             DataTypeInfo {

@@ -10,8 +10,7 @@ pub struct PredictionQuery {
     pub time_of_day: String,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct PredictionResponse {
     pub success_probability: f64,
     pub confidence_interval: (f64, f64),

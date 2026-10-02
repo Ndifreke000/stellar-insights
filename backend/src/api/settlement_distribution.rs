@@ -137,10 +137,10 @@ async fn query_settlement_distribution(
             let p99 = r.avg_ms + spread * 0.99;
             let outlier_threshold = p99 * 1.5;
             // Estimate outlier count as a fraction of sample_count
-            let outlier_count =
-                ((r.sample_count as f64) * (r.max_ms / outlier_threshold.max(1.0) - 1.0).max(0.0)
-                    * 0.05)
-                    .round() as i64;
+            let outlier_count = ((r.sample_count as f64)
+                * (r.max_ms / outlier_threshold.max(1.0) - 1.0).max(0.0)
+                * 0.05)
+                .round() as i64;
             CorridorSettlementPercentiles {
                 corridor_key: r.corridor_key.clone(),
                 sample_count: r.sample_count,
@@ -263,12 +263,9 @@ fn fallback_data() -> SettlementDistributionResponse {
         .collect();
 
     SettlementDistributionResponse {
-        network_p50_ms: corridors.iter().map(|c| c.p50_ms).sum::<f64>()
-            / corridors.len() as f64,
-        network_p95_ms: corridors.iter().map(|c| c.p95_ms).sum::<f64>()
-            / corridors.len() as f64,
-        network_p99_ms: corridors.iter().map(|c| c.p99_ms).sum::<f64>()
-            / corridors.len() as f64,
+        network_p50_ms: corridors.iter().map(|c| c.p50_ms).sum::<f64>() / corridors.len() as f64,
+        network_p95_ms: corridors.iter().map(|c| c.p95_ms).sum::<f64>() / corridors.len() as f64,
+        network_p99_ms: corridors.iter().map(|c| c.p99_ms).sum::<f64>() / corridors.len() as f64,
         corridors,
         trend,
     }

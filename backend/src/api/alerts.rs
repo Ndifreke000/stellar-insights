@@ -3,6 +3,7 @@
 //! #1868 N+1 audit: list/create/update/delete handlers issue one DB call each.
 //! No loops over related entities with per-iteration queries.
 
+use crate::models::alerts::{AlertHistory, AlertRule};
 use axum::{
     extract::{ws::WebSocket, Path, State, WebSocketUpgrade},
     http::StatusCode,
@@ -10,7 +11,6 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use crate::models::alerts::{AlertHistory, AlertRule};
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 
