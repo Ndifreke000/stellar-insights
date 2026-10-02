@@ -7,7 +7,6 @@
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
-    middleware,
     routing::get,
     Router,
 };
@@ -17,7 +16,6 @@ use std::sync::Arc;
 use tower::util::ServiceExt;
 
 use payraider_backend::api::{anchors::get_anchors, webhooks};
-use payraider_backend::auth_middleware::AuthUser;
 use payraider_backend::cache::{CacheConfig, CacheManager};
 use payraider_backend::database::Database;
 use payraider_backend::handlers::{health_check, pool_metrics};
@@ -251,19 +249,9 @@ async fn test_list_anchors_zero_limit_param() {
 #[tokio::test]
 async fn test_webhook_routes_mount_at_api_v1_webhooks() {
     let db = setup_db().await;
-    let app = Router::new()
-        .nest("/api/v1/webhooks", webhooks::routes(db.pool().clone()))
-        .layer(middleware::from_fn(
-            |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
-                req.extensions_mut().insert(AuthUser {
-                    user_id: "test-user".to_string(),
-                    username: "tester".to_string(),
-                    session_id: None,
-                    is_admin: false,
-                });
-                Ok::<_, axum::response::Response>(next.run(req).await)
-            },
-        ));
+    // No AuthUser is attached, as when a request reaches the route without
+    // passing auth_middleware. The handler's extractor must reject it.
+    let app = Router::new().nest("/api/v1/webhooks", webhooks::routes(db.pool().clone()));
 
     let resolved = app
         .oneshot(
