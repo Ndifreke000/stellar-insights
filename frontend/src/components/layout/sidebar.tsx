@@ -138,7 +138,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps = {}) {
   const collapsed = prefs.sidebarCollapsed;
   const setCollapsed = (val: boolean) => setPrefs({ sidebarCollapsed: val });
 
-  const collapsedGroups = prefs.sidebarCollapsedGroups;
+  // Preferences saved before grouped navigation existed have no such field.
+  const collapsedGroups = prefs.sidebarCollapsedGroups ?? [];
   const toggleGroup = (groupKey: string) => {
     setPrefs({
       sidebarCollapsedGroups: collapsedGroups.includes(groupKey)
