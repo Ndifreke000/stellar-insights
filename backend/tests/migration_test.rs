@@ -3,7 +3,7 @@ use std::env;
 
 #[tokio::test]
 async fn test_migrations_apply_cleanly() {
-    let db_url = "sqlite://test_migration_forward.db";
+    let db_url = "sqlite://test_migration_forward.db?mode=rwc";
     std::fs::remove_file("test_migration_forward.db").ok();
 
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -37,7 +37,7 @@ async fn test_migrations_apply_cleanly() {
 
 #[tokio::test]
 async fn test_migration_backward_compatibility() {
-    let db_url = "sqlite://test_migration_compat.db";
+    let db_url = "sqlite://test_migration_compat.db?mode=rwc";
     std::fs::remove_file("test_migration_compat.db").ok();
 
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -73,7 +73,7 @@ async fn test_migration_backward_compatibility() {
 
 #[tokio::test]
 async fn test_migrations_idempotent() {
-    let db_url = "sqlite://test_migration_idempotent.db";
+    let db_url = "sqlite://test_migration_idempotent.db?mode=rwc";
     std::fs::remove_file("test_migration_idempotent.db").ok();
 
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
