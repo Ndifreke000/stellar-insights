@@ -15,6 +15,12 @@ const DEFAULT_CONFIG: ShortcutConfig = {
 
 const STORAGE_KEY = 'stellar-keyboard-shortcuts';
 
+/** Everything about a shortcut that a consumer can render, i.e. not its handler. */
+function describeAction(action: ShortcutAction): string {
+  const { handler: _handler, ...rest } = action;
+  return JSON.stringify(rest);
+}
+
 interface KeyboardShortcutsContextType {
   /** Current platform */
   platform: Platform;
@@ -55,7 +61,10 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
   const [config, setConfigState] = useLocalStorage<ShortcutConfig>(STORAGE_KEY, DEFAULT_CONFIG);
   const [isHelpVisible, setIsHelpVisible] = useState(false);
   const registryRef = useRef<ShortcutRegistry>(new ShortcutRegistry(platform));
-  const [, forceUpdate] = useState({});
+  // Bumped whenever the registry changes. The registry lives in a ref, so
+  // without this the memoized context value never changes and consumers that
+  // list shortcuts (help overlay, customizer) keep rendering a stale list.
+  const [registryVersion, setRegistryVersion] = useState(0);
 
   const setConfig = useCallback((partial: Partial<ShortcutConfig>) => {
     setConfigState(prev => ({ ...prev, ...partial }));
@@ -66,22 +75,33 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
   }, [setConfigState]);
 
   const registerShortcut = useCallback((action: ShortcutAction) => {
+    const previous = registryRef.current.get(action.id);
     registryRef.current.register(action);
-    forceUpdate({});
+    // Re-registering the same shortcut with a new handler (which happens on
+    // every render of a component that builds its actions inline) changes
+    // nothing a consumer can display, so it must not trigger a re-render.
+    if (!previous || describeAction(previous) !== describeAction(action)) {
+      setRegistryVersion(version => version + 1);
+    }
   }, []);
 
   const unregisterShortcut = useCallback((actionId: string) => {
+    if (!registryRef.current.get(actionId)) return;
     registryRef.current.unregister(actionId);
-    forceUpdate({});
+    setRegistryVersion(version => version + 1);
   }, []);
 
+  // registryVersion is a dependency on purpose: a new function identity is
+  // what tells consumers the registry contents changed.
   const getShortcuts = useCallback(() => {
     return registryRef.current.getAll();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registryVersion]);
 
   const getShortcutsByCategory = useCallback((category: string) => {
     return registryRef.current.getByCategory(category);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registryVersion]);
 
   const customizeBinding = useCallback((actionId: string, binding: KeyBinding) => {
     setConfig({
