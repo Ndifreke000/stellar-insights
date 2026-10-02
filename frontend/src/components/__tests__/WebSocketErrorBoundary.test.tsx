@@ -88,13 +88,14 @@ describe("WebSocketErrorBoundary", () => {
 
     expect(screen.getByText("Connection Issue")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Retry Connection/i }));
-
+    // The child must stop throwing before the retry, or it fails again.
     rerender(
       <WebSocketErrorBoundary>
         <ThrowError shouldThrow={false} />
       </WebSocketErrorBoundary>,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /Retry Connection/i }));
 
     expect(screen.getByText("Live data")).toBeInTheDocument();
   });

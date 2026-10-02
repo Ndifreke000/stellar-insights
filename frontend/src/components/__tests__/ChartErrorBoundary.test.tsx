@@ -106,13 +106,14 @@ describe("ChartErrorBoundary", () => {
 
     expect(screen.getByText("Chart — Failed to load")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
-
+    // The child must stop throwing before the retry, or it fails again.
     rerender(
       <ChartErrorBoundary>
         <ThrowError shouldThrow={false} />
       </ChartErrorBoundary>,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
 
     expect(screen.getByText("Chart content")).toBeInTheDocument();
   });
