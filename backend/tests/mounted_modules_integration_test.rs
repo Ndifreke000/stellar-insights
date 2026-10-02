@@ -30,6 +30,24 @@ use payraider_backend::state::AppState;
 use payraider_backend::twofa::TwoFAService;
 use payraider_backend::websocket::WsState;
 
+/// Run a router as a signed-in admin. These modules sit behind
+/// auth_middleware in the real router, which is what puts an `AuthUser` on
+/// the request; the tests mount the modules directly, so they supply one.
+fn as_admin(router: Router) -> Router {
+    router.layer(axum::middleware::from_fn(
+        |mut req: axum::extract::Request, next: axum::middleware::Next| async move {
+            req.extensions_mut()
+                .insert(payraider_backend::auth_middleware::AuthUser {
+                    user_id: "test-admin".to_string(),
+                    username: "admin".to_string(),
+                    session_id: None,
+                    is_admin: true,
+                });
+            next.run(req).await
+        },
+    ))
+}
+
 const TEST_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS corridor_alert_configs (
     id TEXT PRIMARY KEY,
@@ -178,10 +196,10 @@ async fn test_corridor_alerts_snapshots_and_summary_endpoints() {
     let pool = setup_test_pool().await;
     let app_state = make_test_app_state(pool).await;
 
-    let app = Router::new().nest(
+    let app = as_admin(Router::new().nest(
         "/api/v1/corridor-alerts",
         corridor_alerts::routes(app_state.clone()),
-    );
+    ));
 
     // Test snapshots endpoint
     let resp = app
@@ -220,10 +238,10 @@ async fn test_admin_ip_whitelist_endpoints() {
     let pool = setup_test_pool().await;
     let service = Arc::new(IpWhitelistService::new(pool));
 
-    let app = Router::new().nest(
+    let app = as_admin(Router::new().nest(
         "/api/v1/admin/ip-whitelist",
         admin_ip_whitelist::routes(service),
-    );
+    ));
 
     // 1. Check list initially empty
     let resp = app
@@ -239,7 +257,7 @@ async fn test_admin_ip_whitelist_endpoints() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = json_body(resp).await;
-    assert_eq!(body["count"], 0);
+    assert_eq!(body["entries"].as_array().map(Vec::len), Some(0));
 
     // 2. Add an IP to whitelist
     let add_req = json!({
@@ -299,7 +317,7 @@ async fn test_admin_audit_log_endpoints() {
         .await
         .unwrap();
 
-    let app = Router::new().nest("/api/v1/admin/audit-log", audit_log::routes(logger));
+    let app = as_admin(Router::new().nest("/api/v1/admin/audit-log", audit_log::routes(logger)));
 
     // 1. Query audit log
     let resp = app
@@ -391,11 +409,22 @@ async fn test_failed_payments_endpoint() {
 async fn test_twofa_routes_mounted() {
     let pool = setup_test_pool().await;
     let crypto = CryptoService::new_for_tests();
-    let service = Arc::new(TwoFAService::new(pool, crypto));
+    let service = Arc::new(TwoFAService::new(pool.clone(), crypto));
 
-    let app = Router::new().nest("/api/v1/auth/2fa", twofa::routes(service));
+    // The 2FA routes carry auth_middleware, which needs these two extensions
+    // (the real router adds them once for every protected group).
+    let app = Router::new()
+        .nest("/api/v1/auth/2fa", twofa::routes(service))
+        .layer(axum::Extension(
+            payraider_backend::auth_middleware::JwtSecret(Arc::from(
+                "test-secret-value-at-least-32-characters",
+            )),
+        ))
+        .layer(axum::Extension(
+            payraider_backend::auth_middleware::TokenRevocationStore(Arc::new(pool)),
+        ));
 
-    // Confirm router routes exist: post to backup code without auth returns 401 or expected status
+    // The route exists and rejects a caller with no token.
     let resp = app
         .oneshot(
             Request::builder()
@@ -407,7 +436,5 @@ async fn test_twofa_routes_mounted() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = json_body(resp).await;
-    assert!(body.get("backup_codes").is_some());
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
