@@ -40,13 +40,9 @@ describe.skipIf(skipTestnet)("Testnet: Client Integration Tests", () => {
   });
 
   it("retrieves price data", async () => {
-    const prices = await client.prices.list();
-    expect(prices).toBeDefined();
-    expect(prices).toBeInstanceOf(Array);
-    if (prices.length > 0) {
-      expect(prices[0].asset).toBeDefined();
-      expect(prices[0].price_usd).toBeDefined();
-    }
+    const price = await client.prices.get("XLM:native");
+    expect(price).toBeDefined();
+    expect(price.price_usd).toBeDefined();
   });
 
   it("retrieves available networks", async () => {
