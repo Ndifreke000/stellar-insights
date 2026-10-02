@@ -53,6 +53,10 @@ export interface PaginationParams {
   limit?: number;
   sort?: string;
   order?: "asc" | "desc";
+  /** Opaque cursor from a previous response's `pagination.next_cursor`. */
+  cursor?: string;
+  /** Deprecated offset pagination; prefer `cursor`. */
+  offset?: number;
 }
 
 export interface PaginatedResponse<T> {
