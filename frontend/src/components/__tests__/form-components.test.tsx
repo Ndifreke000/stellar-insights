@@ -12,7 +12,9 @@ const TestForm = ({ children, schema, defaultValues = {} }) => {
   const methods = useForm({
     resolver: zodResolver(schema),
     defaultValues,
-    mode: "onChange",
+    // The tests blur an untouched field and expect an error; "onChange" never
+    // validates without a change.
+    mode: "onTouched",
   });
 
   return (
