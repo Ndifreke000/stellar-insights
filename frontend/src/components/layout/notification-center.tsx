@@ -1,9 +1,40 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Trash2, X, AlertCircle, Info, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
-import { useNotifications, NotificationType, AppNotification } from "../lib/notification-context";
+import { useNotifications as useAppNotifications } from "@/contexts/NotificationContext";
+import type { NotificationType, AppNotification } from "../lib/notification-context";
+
+/**
+ * Reads from the app-wide NotificationProvider mounted in the locale layout.
+ * This component used to read a second, demo-only context whose provider was
+ * never mounted, so every page with the header threw on the server.
+ */
+function useNotifications() {
+    const context = useAppNotifications();
+    const notifications = useMemo<AppNotification[]>(
+        () =>
+            context.notifications.map((notification) => ({
+                id: notification.id,
+                title: notification.title,
+                message: notification.message,
+                type: notification.type as NotificationType,
+                read: notification.read,
+                createdAt: new Date(notification.timestamp).getTime(),
+            })),
+        [context.notifications],
+    );
+
+    return {
+        notifications,
+        unreadCount: context.unreadCount,
+        markAsRead: context.markAsRead,
+        markAllAsRead: context.markAllAsRead,
+        removeNotification: context.clearNotification,
+        clearAll: context.clearAllNotifications,
+    };
+}
 
 export function NotificationCenter() {
     const {
