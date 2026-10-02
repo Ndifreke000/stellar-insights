@@ -221,15 +221,16 @@ describe("ErrorBoundary", () => {
 
       expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
-      const tryAgainButton = screen.getByRole("button", { name: /Try Again/i });
-      fireEvent.click(tryAgainButton);
-
-      // After reset, should render children again
+      // The child has to stop throwing before the boundary is reset, or the
+      // retry just catches the same error again.
       rerender(
         <ErrorBoundary>
           <ThrowError shouldThrow={false} />
         </ErrorBoundary>,
       );
+
+      const tryAgainButton = screen.getByRole("button", { name: /Try Again/i });
+      fireEvent.click(tryAgainButton);
 
       await waitFor(() => {
         expect(screen.getByText("No error")).toBeInTheDocument();
@@ -339,9 +340,9 @@ describe("ErrorBoundary", () => {
         </ErrorBoundary>,
       );
 
-      const container = screen.getByText("Something went wrong").closest("div");
-      expect(container?.parentElement).toHaveClass("min-h-screen");
-      expect(container?.parentElement).toHaveClass("bg-gray-50");
+      const root = screen.getByText("Something went wrong").closest(".min-h-screen");
+      expect(root).toHaveClass("min-h-screen");
+      expect(root).toHaveClass("bg-gray-50");
     });
 
     it("should support dark mode classes", () => {
@@ -351,8 +352,8 @@ describe("ErrorBoundary", () => {
         </ErrorBoundary>,
       );
 
-      const container = screen.getByText("Something went wrong").closest("div");
-      expect(container?.parentElement).toHaveClass("dark:bg-slate-950");
+      const root = screen.getByText("Something went wrong").closest(".min-h-screen");
+      expect(root).toHaveClass("dark:bg-slate-950");
     });
   });
 
@@ -400,16 +401,18 @@ describe("ErrorBoundary", () => {
 
       expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
-      // Click Try Again multiple times rapidly
-      const tryAgainButton = screen.getByRole("button", { name: /Try Again/i });
-      fireEvent.click(tryAgainButton);
-      fireEvent.click(tryAgainButton);
+      // Retrying while the child still throws lands back in the fallback
+      // each time rather than crashing.
+      fireEvent.click(screen.getByRole("button", { name: /Try Again/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Try Again/i }));
+      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
       rerender(
         <ErrorBoundary>
           <ThrowError shouldThrow={false} />
         </ErrorBoundary>,
       );
+      fireEvent.click(screen.getByRole("button", { name: /Try Again/i }));
 
       await waitFor(() => {
         expect(screen.getByText("No error")).toBeInTheDocument();
