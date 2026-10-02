@@ -100,6 +100,12 @@ pub fn routes(
             "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
+        // Pre-payment check for off-ramps: public and read-only so an
+        // integrator can try it before taking an API key.
+        .route(
+            "/preflight",
+            get(crate::api::preflight::preflight_get).post(crate::api::preflight::preflight_post),
+        )
         .with_state(cached_state);
 
     // 2. Public anchor routes
@@ -252,11 +258,7 @@ pub fn routes(
     // ENCRYPTION_KEY (Vault or env), same as jwt_secret is resolved below.
     let crypto = crate::crypto::CryptoService::from_env();
     let twofa_service = Arc::new(crate::twofa::TwoFAService::new(pool.clone(), crypto));
-    let twofa_routes = Router::new()
-        .nest(
-            "/auth/2fa",
-            crate::api::twofa::routes(twofa_service),
-        );
+    let twofa_routes = Router::new().nest("/auth/2fa", crate::api::twofa::routes(twofa_service));
 
     // 11. Login/refresh/logout/session-management routes. AuthService was
     // never constructed anywhere in this codebase before, so this whole
