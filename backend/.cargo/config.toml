@@ -1,11 +1,12 @@
-# SQLx compile-time check needs either DATABASE_URL or offline cache.
+# SQLx checks `query!` macros at compile time. The checked-in .sqlx/ cache lets
+# that happen without a database, which is what CI, Docker builds and a fresh
+# clone have.
 #
-# Option A — build with DB: set DATABASE_URL (e.g. in .env) and run `cargo build`.
-# Option B — build without DB: run once (with DB + DATABASE_URL):
-#   cargo sqlx prepare
-# then uncomment below so future builds use the .sqlx cache.
+# After changing a `query!` macro or a migration, regenerate the cache:
+#   DATABASE_URL=sqlite://<a migrated database> cargo sqlx prepare -- --all-targets
+# and commit the updated .sqlx/ directory.
 #
-# [env]
-# SQLX_OFFLINE = "true"
-
-
+# To check against a live database instead, run with SQLX_OFFLINE=false and
+# DATABASE_URL set.
+[env]
+SQLX_OFFLINE = "true"
