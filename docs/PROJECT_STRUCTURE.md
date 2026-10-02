@@ -10,7 +10,8 @@ payraider/
 ├── 🌐 frontend/         # Next.js web application
 ├── ⚙️  backend/          # Rust API server
 ├── 📜 contracts/        # Soroban smart contracts
-├── 📦 sdk/              # TypeScript + Python client SDKs
+├── 📦 sdk/              # TypeScript + Python client SDKs, and the MCP server
+├── 🔌 plugins/          # Claude plugin (bundled MCP server, skill, command)
 ├── 📚 docs/             # All documentation
 ├── 🔧 scripts/          # Build, deployment, and maintenance scripts
 ├── ☁️  k8s/              # Kubernetes configs

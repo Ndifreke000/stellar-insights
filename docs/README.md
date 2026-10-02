@@ -19,6 +19,7 @@ Welcome to the PayRaider documentation hub. All project documentation has been o
 - [PWA_QUICK_START.md](PWA_QUICK_START.md)
 
 ### 🐛 Issues & Project Management
+- [PLUGIN.md](PLUGIN.md) - Pre-payment check for off-ramp apps: REST, SDK, MCP server and Claude plugin
 - [issues/](issues/) - Feature/backlog issue specs organized by phase
 - [ISSUE_MANAGEMENT_GUIDE.md](ISSUE_MANAGEMENT_GUIDE.md)
 
