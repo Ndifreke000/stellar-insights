@@ -12,10 +12,7 @@ pub struct QueryRoot {
 impl QueryRoot {
     /// Get system health status
     async fn health(&self) -> HealthType {
-        let db_status = match sqlx::query("SELECT 1")
-            .fetch_one(self.pool.as_ref())
-            .await
-        {
+        let db_status = match sqlx::query("SELECT 1").fetch_one(self.pool.as_ref()).await {
             Ok(_) => "ok".to_string(),
             Err(_) => "error".to_string(),
         };
@@ -111,7 +108,8 @@ impl QueryRoot {
             .fetch_all(pool.as_ref())
             .await?;
 
-        let mut count_builder = QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
+        let mut count_builder =
+            QueryBuilder::new("SELECT COUNT(*) as count FROM anchors WHERE 1=1");
         if let Some(f) = &filter {
             if let Some(status) = &f.status {
                 count_builder.push(" AND status = ");
@@ -130,7 +128,10 @@ impl QueryRoot {
             }
         }
 
-        let total: (i32,) = count_builder.build_query_as().fetch_one(pool.as_ref()).await?;
+        let total: (i32,) = count_builder
+            .build_query_as()
+            .fetch_one(pool.as_ref())
+            .await?;
 
         Ok(AnchorsConnection {
             nodes: anchors,
@@ -338,10 +339,7 @@ impl QueryRoot {
     }
 
     /// Get paginated snapshots
-    async fn snapshots(
-        &self,
-        pagination: Option<PaginationInput>,
-    ) -> Result<SnapshotsConnection> {
+    async fn snapshots(&self, pagination: Option<PaginationInput>) -> Result<SnapshotsConnection> {
         let pool = &self.pool;
         let limit = pagination
             .as_ref()
@@ -368,9 +366,10 @@ impl QueryRoot {
         .fetch_all(pool.as_ref())
         .await?;
 
-        let total: (i32,) = sqlx::query_as("SELECT COUNT(*) FROM snapshots WHERE epoch IS NOT NULL")
-            .fetch_one(pool.as_ref())
-            .await?;
+        let total: (i32,) =
+            sqlx::query_as("SELECT COUNT(*) FROM snapshots WHERE epoch IS NOT NULL")
+                .fetch_one(pool.as_ref())
+                .await?;
 
         Ok(SnapshotsConnection {
             nodes,
@@ -754,11 +753,7 @@ impl QueryRoot {
     }
 
     /// Search across anchors, corridors, and payments
-    async fn search(
-        &self,
-        query: String,
-        limit: Option<i32>,
-    ) -> Result<SearchResults> {
+    async fn search(&self, query: String, limit: Option<i32>) -> Result<SearchResults> {
         let pool = &self.pool;
         let search_limit = limit.unwrap_or(10).min(50);
         let search_pattern = format!("%{}%", query);
@@ -824,10 +819,7 @@ pub struct MutationRoot {
 #[Object]
 impl MutationRoot {
     /// Create a new anchor
-    async fn create_anchor(
-        &self,
-        input: CreateAnchorInput,
-    ) -> Result<CreateAnchorPayload> {
+    async fn create_anchor(&self, input: CreateAnchorInput) -> Result<CreateAnchorPayload> {
         if input.name.is_empty() || input.name.len() > 100 {
             return Err("Name must be between 1 and 100 characters".into());
         }
@@ -871,10 +863,7 @@ impl MutationRoot {
     }
 
     /// Create a new corridor
-    async fn create_corridor(
-        &self,
-        input: CreateCorridorInput,
-    ) -> Result<CreateCorridorPayload> {
+    async fn create_corridor(&self, input: CreateCorridorInput) -> Result<CreateCorridorPayload> {
         if input.source_asset_code.is_empty() || input.source_asset_code.len() > 12 {
             return Err("Source asset code must be between 1 and 12 characters".into());
         }

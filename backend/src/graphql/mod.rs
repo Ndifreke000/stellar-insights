@@ -1,8 +1,8 @@
-pub mod schema;
-pub mod types;
-pub mod resolvers;
-pub mod subscription;
 pub mod handlers;
+pub mod resolvers;
+pub mod schema;
+pub mod subscription;
+pub mod types;
 
 #[cfg(test)]
 mod tests;

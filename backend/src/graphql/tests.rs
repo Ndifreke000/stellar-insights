@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::super::types::*;
     use super::super::resolvers::*;
     use super::super::schema::*;
+    use super::super::types::*;
     use async_graphql::*;
     use std::sync::Arc;
 
@@ -38,9 +38,11 @@ mod tests {
         let corridor = CorridorType {
             id: "test-corridor".to_string(),
             source_asset_code: "USDC".to_string(),
-            source_asset_issuer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H".to_string(),
+            source_asset_issuer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"
+                .to_string(),
             destination_asset_code: "EUR".to_string(),
-            destination_asset_issuer: "GARE5K4KJL3VQ4E5VZ6JZ7X7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q".to_string(),
+            destination_asset_issuer: "GARE5K4KJL3VQ4E5VZ6JZ7X7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q"
+                .to_string(),
             reliability_score: 98.5,
             status: "active".to_string(),
             created_at: chrono::Utc::now(),
@@ -272,9 +274,11 @@ mod tests {
     fn test_create_corridor_input() {
         let input = CreateCorridorInput {
             source_asset_code: "USDC".to_string(),
-            source_asset_issuer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H".to_string(),
+            source_asset_issuer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"
+                .to_string(),
             destination_asset_code: "EUR".to_string(),
-            destination_asset_issuer: "GARE5K4KJL3VQ4E5VZ6JZ7X7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q".to_string(),
+            destination_asset_issuer: "GARE5K4KJL3VQ4E5VZ6JZ7X7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q"
+                .to_string(),
         };
 
         assert_eq!(input.source_asset_code, "USDC");
@@ -293,7 +297,10 @@ mod tests {
         };
 
         assert_eq!(input.total_transactions, 1000);
-        assert_eq!(input.successful_transactions + input.failed_transactions, input.total_transactions);
+        assert_eq!(
+            input.successful_transactions + input.failed_transactions,
+            input.total_transactions
+        );
     }
 
     // ── Mutation Payload Tests ─────────────────────────────────────────────────
