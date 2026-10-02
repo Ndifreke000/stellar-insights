@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -101,6 +101,24 @@ class PaymentRoute:
 @dataclass
 class CostEstimateResponse:
     routes: List[PaymentRoute]
+
+
+@dataclass
+class PreflightCheck:
+    name: str
+    status: str  # "pass" | "warn" | "fail"
+    detail: str
+
+
+@dataclass
+class PreflightResponse:
+    decision: str  # "proceed" | "caution" | "hold" | "unknown"
+    summary: str
+    score: Optional[float]
+    corridor: Optional[Dict[str, Any]]
+    checks: List[PreflightCheck]
+    alternatives: List[Dict[str, Any]]
+    evaluated_at: str
 
 
 @dataclass

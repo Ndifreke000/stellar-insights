@@ -16,6 +16,7 @@ from .resources import (
     LiquidityPoolsResource,
     MlResource,
     NetworkResource,
+    PreflightResource,
     PricesResource,
     TransactionsResource,
     WebhooksResource,
@@ -53,6 +54,7 @@ class PayRaider:
         self.corridors = CorridorsResource(self._http)
         self.prices = PricesResource(self._http)
         self.cost_calculator = CostCalculatorResource(self._http)
+        self.preflight = PreflightResource(self._http)
         self.alerts = AlertsResource(self._http)
         self.webhooks = WebhooksResource(self._http)
         self.api_keys = ApiKeysResource(self._http)

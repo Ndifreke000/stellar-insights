@@ -18,6 +18,7 @@ from .types import (
     NetworkInfo,
     PaginatedResponse,
     PaymentPrediction,
+    PreflightResponse,
     Price,
     PriceCacheStats,
     PricesBatchResult,
@@ -97,6 +98,45 @@ class CostCalculatorResource:
             "POST", "/api/cost-calculator/routes",
             json={"source_asset": source_asset, "destination_asset": destination_asset, "amount": amount},
         )
+
+
+class PreflightResource:
+    """Pre-payment check for off-ramp and payout apps. Works without an API key."""
+
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    async def check(
+        self,
+        source_asset: str,
+        destination_asset: str,
+        *,
+        amount_usd: Optional[float] = None,
+        min_success_rate: Optional[float] = None,
+        max_p95_latency_ms: Optional[float] = None,
+    ) -> PreflightResponse:
+        body = {
+            "source_asset": source_asset,
+            "destination_asset": destination_asset,
+            "amount_usd": amount_usd,
+            "min_success_rate": min_success_rate,
+            "max_p95_latency_ms": max_p95_latency_ms,
+        }
+        return await self._http.request(
+            "POST", "/api/v1/preflight",
+            json={key: value for key, value in body.items() if value is not None},
+        )
+
+    async def is_safe_to_pay(
+        self,
+        source_asset: str,
+        destination_asset: str,
+        *,
+        amount_usd: Optional[float] = None,
+    ) -> bool:
+        """True only when every check passed."""
+        result = await self.check(source_asset, destination_asset, amount_usd=amount_usd)
+        return result["decision"] == "proceed"
 
 
 class AlertsResource:
