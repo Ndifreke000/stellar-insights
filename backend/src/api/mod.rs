@@ -31,6 +31,7 @@ pub mod ml;
 pub mod network;
 pub mod oauth;
 pub mod prediction;
+pub mod preflight;
 pub mod price_feed;
 pub mod replay_handlers;
 pub mod rpc;
