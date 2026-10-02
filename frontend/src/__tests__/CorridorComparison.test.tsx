@@ -50,8 +50,9 @@ describe('CorridorComparisonTable', () => {
     render(<CorridorComparisonTable corridors={mockCorridors} />);
     
     expect(screen.getByText('Detailed Comparison')).toBeInTheDocument();
-    expect(screen.getByText('USDC')).toBeInTheDocument();
-    expect(screen.getByText('EURC')).toBeInTheDocument();
+    // Each row is labelled with the whole corridor, "SOURCE → DESTINATION".
+    expect(screen.getByText('USDC → XLM')).toBeInTheDocument();
+    expect(screen.getByText('EURC → PHP')).toBeInTheDocument();
   });
 
   it('displays all metrics', () => {
@@ -69,11 +70,11 @@ describe('CorridorComparisonTable', () => {
     const { container } = render(<CorridorComparisonTable corridors={mockCorridors} />);
     
     // Check for trophy icons (best performers)
-    const trophyIcons = container.querySelectorAll('[title="Best"]');
+    const trophyIcons = container.querySelectorAll('[aria-label="Best performance in category"]');
     expect(trophyIcons.length).toBeGreaterThan(0);
     
     // Check for warning icons (worst performers)
-    const warningIcons = container.querySelectorAll('[title="Worst"]');
+    const warningIcons = container.querySelectorAll('[aria-label="Worst performance in category"]');
     expect(warningIcons.length).toBeGreaterThan(0);
   });
 
