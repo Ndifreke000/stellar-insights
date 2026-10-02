@@ -12,6 +12,7 @@ A lean, production-grade stack for measuring and improving cross-border payment 
 - Mobile: React Native (Expo) — [current status](mobile/README.md#current-status)
 - Contracts: 1 integrated Soroban contract ([`payraider`](#deployed-contracts)), [deployed to testnet](#deployed-contracts)
 - SDKs: TypeScript + Python clients
+- Plugin: a [pre-payment check](#plugin-check-a-corridor-before-you-pay) for off-ramp apps, over REST, SDK, MCP or as a Claude plugin
 - DB: SQLite (WAL mode) — see [Database](#database) below
 
 ## 🔧 Quick start
@@ -36,6 +37,23 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Plugin: check a corridor before you pay
+
+Off-ramp and payout apps can ask whether a corridor is healthy enough to pay
+on right now. The check is public and read-only, and needs no API key:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/preflight \
+  -H 'content-type: application/json' \
+  -d '{"source_asset":"USDC","destination_asset":"NGN","amount_usd":2500}'
+```
+
+It returns `proceed`, `caution`, `hold` or `unknown` with the checks behind the
+decision and healthier alternative corridors. The same check is available
+through the TypeScript and Python SDKs, as an MCP server you can host
+(`sdk/mcp-server`), and as a Claude plugin (`plugins/payraider`). See
+[docs/PLUGIN.md](docs/PLUGIN.md).
 
 ## Database
 
