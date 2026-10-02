@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use hmac::{Hmac, KeyInit, Mac};
+use rand::Rng;
 use sha1::Sha1;
 use sha2::Digest;
 use sqlx::SqlitePool;
@@ -41,10 +42,12 @@ impl TwoFAService {
     pub fn generate_totp_secret(&self, user_id: &str, username: &str) -> Result<(String, String)> {
         use base32::{encode, Alphabet};
 
-        // Generate a random secret (standard for TOTP)
-        let secret_uuid = uuid::Uuid::new_v4();
-        let secret_bytes = secret_uuid.as_bytes();
-        let secret_base32 = encode(Alphabet::Rfc4648 { padding: false }, secret_bytes);
+        // 160 bits from the CSPRNG, the secret size RFC 4226 recommends. A
+        // UUID v4 was used before, which is 16 bytes with only 122 random
+        // bits.
+        let mut secret_bytes = [0u8; 20];
+        rand::rng().fill_bytes(&mut secret_bytes);
+        let secret_base32 = encode(Alphabet::Rfc4648 { padding: false }, &secret_bytes);
 
         // Generate otpauth URI for QR code
         let otpauth_uri = format!(
