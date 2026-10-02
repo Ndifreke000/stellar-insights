@@ -635,8 +635,7 @@ mod tests {
 
     #[test]
     fn test_validate_encryption_key() {
-        // Valid keys (64+ characters)
-        assert!(validate_encryption_key("a".repeat(64).as_str()));
+        // Valid key: exactly 64 hex characters
         assert!(validate_encryption_key(
             "0123456789abcdef".repeat(4).as_str()
         ));
@@ -649,6 +648,9 @@ mod tests {
         // Invalid - too short
         assert!(!validate_encryption_key("short"));
         assert!(!validate_encryption_key("a".repeat(63).as_str()));
+
+        // Invalid - trivially weak (a single repeated character)
+        assert!(!validate_encryption_key("a".repeat(64).as_str()));
     }
 
     #[test]
@@ -722,7 +724,7 @@ mod tests {
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var(
             "ENCRYPTION_KEY",
-            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f",
         );
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
@@ -798,12 +800,8 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
-            msg.contains("too short"),
-            "Error should mention 'too short', got: {msg}"
-        );
-        assert!(
-            msg.contains("64 characters"),
-            "Error should mention minimum length, got: {msg}"
+            msg.contains("exactly 64 hex characters"),
+            "Error should mention the required length, got: {msg}"
         );
 
         std::env::remove_var("STELLAR_NETWORK");
@@ -819,7 +817,7 @@ mod tests {
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var(
             "ENCRYPTION_KEY",
-            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f",
         );
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
@@ -946,7 +944,7 @@ mod tests {
     #[test]
     fn test_encryption_key_strength_accepts_valid_hex_key() {
         // A realistic `openssl rand -hex 32` output (64 lowercase hex chars)
-        let key = "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3";
+        let key = "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f";
         assert_eq!(key.len(), 64);
         assert!(
             validate_encryption_key_strength(key).is_ok(),
@@ -954,7 +952,7 @@ mod tests {
         );
 
         // Also accept uppercase hex
-        let key_upper = "A3F1C2E4B5D607890A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3";
+        let key_upper = "A3F1C2E4B5D607890A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F";
         assert_eq!(key_upper.len(), 64);
         assert!(
             validate_encryption_key_strength(key_upper).is_ok(),
