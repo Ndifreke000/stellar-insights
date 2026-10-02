@@ -19,7 +19,9 @@
     "test": "vitest run",
     "smoke-test": "node scripts/smoke-test.mjs",
     "lint": "tsc --noEmit && tsc -p tsconfig.test.json",
-    "build:bundle": "tsup --config tsup.bundle.config.ts"
+    "build:bundle": "tsup --config tsup.bundle.config.ts",
+    "build:plugin": "npm run build:bundle && node scripts/sync-plugin.mjs",
+    "check:plugin": "npm run build:bundle && node scripts/sync-plugin.mjs --check"
   },
   "keywords": [
     "stellar",
