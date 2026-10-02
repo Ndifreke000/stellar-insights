@@ -219,7 +219,8 @@ pub fn routes(
         .route(
             "/network/available",
             get(crate::api::network::get_available_networks),
-        );
+        )
+        .nest("/achievements", crate::api::achievements::routes());
 
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool.clone());
