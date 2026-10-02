@@ -308,7 +308,13 @@ async fn run_backfill(
                 chunk_ledgers += 1;
 
                 if chunk_ledgers >= 1000 {
-                    if let Err(e) = indexer.index_events_with_checkpoint(std::mem::take(&mut events_buffer), ledger.sequence).await {
+                    if let Err(e) = indexer
+                        .index_events_with_checkpoint(
+                            std::mem::take(&mut events_buffer),
+                            ledger.sequence,
+                        )
+                        .await
+                    {
                         warn!(ledger = ledger.sequence, error = %e, "Failed to index event chunk — aborting");
                         return Err(e);
                     }
@@ -350,7 +356,10 @@ async fn run_backfill(
         // so use the state's `current_ledger` as the checkpoint target.
         if !events_buffer.is_empty() {
             let current_ledger = state_ref.read().await.current_ledger;
-            if let Err(e) = indexer.index_events_with_checkpoint(std::mem::take(&mut events_buffer), current_ledger).await {
+            if let Err(e) = indexer
+                .index_events_with_checkpoint(std::mem::take(&mut events_buffer), current_ledger)
+                .await
+            {
                 warn!(ledger = current_ledger, error = %e, "Failed to index remaining event chunk — aborting");
                 return Err(e);
             }

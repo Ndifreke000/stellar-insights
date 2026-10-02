@@ -150,9 +150,7 @@ impl CacheManager {
     pub async fn ping(&self) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            redis::cmd("PING")
-                .query_async::<String>(&mut conn)
-                .await?;
+            redis::cmd("PING").query_async::<String>(&mut conn).await?;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Redis connection not available"))

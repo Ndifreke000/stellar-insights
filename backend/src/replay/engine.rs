@@ -218,9 +218,7 @@ impl ReplayEngine {
                                 || self.config.mode == ReplayMode::Verification
                             {
                                 let mut state_builder = self.state_builder.write().await;
-                                state_builder
-                                    .apply_event(event, resolved_protocol)
-                                    .await?;
+                                state_builder.apply_event(event, resolved_protocol).await?;
                             }
                         } else {
                             total_failed += 1;
@@ -274,11 +272,7 @@ impl ReplayEngine {
     /// 2. The `protocol_version` field stored on the first event in the batch
     ///    that carries one (events ingested after the field was added).
     /// 3. Fall back to the config value as-is (0 means "use floor / legacy").
-    fn resolve_protocol_version(
-        &self,
-        _current_ledger: u64,
-        events: &[ContractEvent],
-    ) -> u32 {
+    fn resolve_protocol_version(&self, _current_ledger: u64, events: &[ContractEvent]) -> u32 {
         // Explicit caller override always wins.
         if self.config.protocol_version != 0 {
             return self.config.protocol_version;

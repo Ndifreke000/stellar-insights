@@ -33,8 +33,8 @@ pub mod health_check_enhanced; // Enhanced health check with mobile support
 pub mod http_cache; // HTTP caching layer (ETag/conditional responses)
 pub mod ingestion;
 pub mod ip_whitelist_middleware;
-pub mod leader_election;
 pub mod jobs;
+pub mod leader_election;
 pub mod logging;
 pub mod ml;
 pub mod models;

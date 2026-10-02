@@ -32,8 +32,7 @@ fn session_expiry_days() -> i64 {
 }
 
 /// SEP-10 Challenge Request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ChallengeRequest {
     pub account: String,
     #[serde(default)]
@@ -52,8 +51,7 @@ pub struct ChallengeResponse {
 }
 
 /// SEP-10 Verification Request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VerificationRequest {
     pub transaction: String, // Base64-encoded signed XDR
 }

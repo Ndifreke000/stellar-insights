@@ -131,11 +131,7 @@ impl PushNotificationRegistration {
     ///
     /// Returns `Ok(true)` when the token was found and removed, `Ok(false)` when
     /// no matching registration existed (idempotent removal).
-    pub async fn deregister(
-        &self,
-        device_token: &str,
-        context: &NetworkContext,
-    ) -> Result<bool> {
+    pub async fn deregister(&self, device_token: &str, context: &NetworkContext) -> Result<bool> {
         if !self.config.enabled {
             bail!("Push notification registration service is disabled");
         }
@@ -279,9 +275,7 @@ mod tests {
     #[tokio::test]
     async fn test_deregister_empty_token_rejected() {
         let instance = PushNotificationRegistration::new(Config::default());
-        let result = instance
-            .deregister("", &NetworkContext::testnet())
-            .await;
+        let result = instance.deregister("", &NetworkContext::testnet()).await;
         assert!(result.is_err());
     }
 

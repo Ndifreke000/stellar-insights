@@ -146,9 +146,7 @@ impl NetworkConfig {
         resp["_embedded"]["records"][0]["protocol_version"]
             .as_u64()
             .map(|v| v as u32)
-            .ok_or_else(|| {
-                anyhow::anyhow!("Missing protocol_version in Horizon ledger response")
-            })
+            .ok_or_else(|| anyhow::anyhow!("Missing protocol_version in Horizon ledger response"))
     }
 }
 

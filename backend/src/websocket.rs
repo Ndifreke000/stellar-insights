@@ -110,7 +110,8 @@ const MAX_TEXT_MESSAGE_SIZE: usize = DEFAULT_MAX_TEXT_MESSAGE_SIZE;
 const MAX_BINARY_MESSAGE_SIZE: usize = DEFAULT_MAX_BINARY_MESSAGE_SIZE;
 const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(DEFAULT_WS_IDLE_TIMEOUT_SECS);
 const MAX_MESSAGES_PER_WINDOW: u32 = DEFAULT_MAX_MESSAGES_PER_WINDOW;
-const MESSAGE_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS);
+const MESSAGE_RATE_LIMIT_WINDOW: Duration =
+    Duration::from_secs(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS);
 
 type SharedWebSocketSender = Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>;
 

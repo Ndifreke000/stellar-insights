@@ -85,7 +85,8 @@ impl JobScheduler {
                 let lock_key = format!("job-lock:{}", config.name);
                 // TTL is slightly shorter than the interval so the lock expires before
                 // the next tick, allowing any instance to acquire it next round.
-                let lock_ttl = Duration::from_secs(config.interval_seconds.saturating_sub(5).max(1));
+                let lock_ttl =
+                    Duration::from_secs(config.interval_seconds.saturating_sub(5).max(1));
                 let Some(guard) = lock.try_acquire(&lock_key, lock_ttl).await else {
                     info!(
                         "Job '{}' skipped — another instance holds the lock (or Redis is unavailable)",

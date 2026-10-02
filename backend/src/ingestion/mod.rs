@@ -131,7 +131,10 @@ impl DataIngestionService {
     pub async fn get_network_health(&self) -> Result<NetworkHealth> {
         let client = &self.rpc_client;
         let health = Retry::spawn(retry_strategy(), || async {
-            client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+            client
+                .check_health()
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
         })
         .await?;
 
@@ -171,7 +174,10 @@ impl DataIngestionService {
         // We get network state
         let client = &self.rpc_client;
         let health = Retry::spawn(retry_strategy(), || async {
-            client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+            client
+                .check_health()
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
         })
         .await?;
 

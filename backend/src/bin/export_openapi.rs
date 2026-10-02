@@ -4,8 +4,8 @@
 
 use std::path::PathBuf;
 
-use serde_json::{json, Value};
 use payraider_backend::openapi::ApiDoc;
+use serde_json::{json, Value};
 use utoipa::OpenApi;
 
 fn main() -> anyhow::Result<()> {
@@ -130,8 +130,5 @@ fn resolve_example(spec: &Value, schema: &Value) -> Value {
         .as_str()
         .and_then(|r| r.strip_prefix("#/components/schemas/"))
         .map_or(schema, |name| &spec["components"]["schemas"][name]);
-    schema
-        .get("example")
-        .cloned()
-        .unwrap_or_else(|| json!({}))
+    schema.get("example").cloned().unwrap_or_else(|| json!({}))
 }

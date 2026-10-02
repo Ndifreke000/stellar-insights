@@ -16,17 +16,41 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("SERVER_PORT", validate_port),
     ("DB_POOL_MAX_CONNECTIONS", validate_db_pool_max_connections),
     ("DB_POOL_MIN_CONNECTIONS", validate_db_pool_min_connections),
-    ("DB_POOL_CONNECT_TIMEOUT_SECONDS", validate_db_pool_connect_timeout),
-    ("DB_POOL_IDLE_TIMEOUT_SECONDS", validate_db_pool_idle_timeout),
-    ("DB_POOL_MAX_LIFETIME_SECONDS", validate_db_pool_max_lifetime),
+    (
+        "DB_POOL_CONNECT_TIMEOUT_SECONDS",
+        validate_db_pool_connect_timeout,
+    ),
+    (
+        "DB_POOL_IDLE_TIMEOUT_SECONDS",
+        validate_db_pool_idle_timeout,
+    ),
+    (
+        "DB_POOL_MAX_LIFETIME_SECONDS",
+        validate_db_pool_max_lifetime,
+    ),
     ("DB_BUSY_TIMEOUT_MS", validate_db_busy_timeout),
-    ("DB_WRITE_POOL_MAX_CONNECTIONS", validate_db_write_pool_max_connections),
-    ("RPC_MAX_RECORDS_PER_REQUEST", validate_rpc_max_records_per_request),
+    (
+        "DB_WRITE_POOL_MAX_CONNECTIONS",
+        validate_db_write_pool_max_connections,
+    ),
+    (
+        "RPC_MAX_RECORDS_PER_REQUEST",
+        validate_rpc_max_records_per_request,
+    ),
     ("RPC_MAX_TOTAL_RECORDS", validate_rpc_max_total_records),
     ("RPC_PAGINATION_DELAY_MS", validate_rpc_pagination_delay_ms),
-    ("RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD", validate_circuit_breaker_failure_threshold),
-    ("RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD", validate_circuit_breaker_success_threshold),
-    ("RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS", validate_circuit_breaker_timeout_seconds),
+    (
+        "RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
+        validate_circuit_breaker_failure_threshold,
+    ),
+    (
+        "RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD",
+        validate_circuit_breaker_success_threshold,
+    ),
+    (
+        "RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS",
+        validate_circuit_breaker_timeout_seconds,
+    ),
     ("RPC_MAX_RETRIES", validate_rpc_max_retries),
     ("RPC_INITIAL_BACKOFF_MS", validate_rpc_initial_backoff_ms),
     ("RPC_MAX_BACKOFF_MS", validate_rpc_max_backoff_ms),
@@ -37,7 +61,10 @@ const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("CACHE_DASHBOARD_STATS_TTL", validate_cache_ttl),
     ("MAX_IN_FLIGHT_REQUESTS", validate_max_in_flight_requests),
     ("COMPRESSION_MIN_SIZE", validate_compression_min_size),
-    ("WEBHOOK_DISPATCHER_MAX_RESTARTS", validate_webhook_dispatcher_max_restarts),
+    (
+        "WEBHOOK_DISPATCHER_MAX_RESTARTS",
+        validate_webhook_dispatcher_max_restarts,
+    ),
     ("JWT_SECRET", validate_jwt_secret),
     ("ENCRYPTION_KEY", validate_encryption_key),
 ];
@@ -110,9 +137,7 @@ pub fn validate_env() -> Result<()> {
     // silently route a testnet deployment against mainnet data.
     match env::var("STELLAR_NETWORK") {
         Ok(ref n) if n == "mainnet" || n == "testnet" => {}
-        Ok(ref n) => panic!(
-            "STELLAR_NETWORK must be set to 'mainnet' or 'testnet', got '{n}'"
-        ),
+        Ok(ref n) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet', got '{n}'"),
         Err(_) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet'"),
     }
 
@@ -307,7 +332,10 @@ fn validate_positive_number(value: &str) -> bool {
 
 /// Validate positive number with maximum bound
 fn validate_positive_number_with_max(value: &str, max: u32) -> bool {
-    value.parse::<u32>().map(|n| n > 0 && n <= max).unwrap_or(false)
+    value
+        .parse::<u32>()
+        .map(|n| n > 0 && n <= max)
+        .unwrap_or(false)
 }
 
 /// Validate DB pool max connections: [1, 1000]
@@ -366,10 +394,7 @@ fn validate_rpc_max_total_records(value: &str) -> bool {
 
 /// Validate RPC pagination delay: [0, 1000] ms
 fn validate_rpc_pagination_delay_ms(value: &str) -> bool {
-    value
-        .parse::<u64>()
-        .map(|n| n <= 1000)
-        .unwrap_or(false)
+    value.parse::<u64>().map(|n| n <= 1000).unwrap_or(false)
 }
 
 /// Validate circuit breaker failure threshold: [1, 100]
@@ -389,10 +414,7 @@ fn validate_circuit_breaker_timeout_seconds(value: &str) -> bool {
 
 /// Validate RPC max retries: [0, 20]
 fn validate_rpc_max_retries(value: &str) -> bool {
-    value
-        .parse::<u32>()
-        .map(|n| n <= 20)
-        .unwrap_or(false)
+    value.parse::<u32>().map(|n| n <= 20).unwrap_or(false)
 }
 
 /// Validate RPC initial backoff: [10, 10000] ms
@@ -450,10 +472,7 @@ fn validate_compression_min_size(value: &str) -> bool {
 
 /// Validate WEBHOOK_DISPATCHER_MAX_RESTARTS: must be in range [0, 100]
 fn validate_webhook_dispatcher_max_restarts(value: &str) -> bool {
-    value
-        .parse::<u32>()
-        .map(|n| n <= 100)
-        .unwrap_or(false)
+    value.parse::<u32>().map(|n| n <= 100).unwrap_or(false)
 }
 
 /// Validate JWT secret strength and return a descriptive error if it fails.
@@ -465,12 +484,10 @@ fn validate_webhook_dispatcher_max_restarts(value: &str) -> bool {
 /// Called during startup validation before the server binds.
 pub fn validate_jwt_secret_strength(secret: &str) -> std::result::Result<(), String> {
     if secret.starts_with("CHANGE_ME") {
-        return Err(
-            "JWT_SECRET is set to the placeholder value. \
+        return Err("JWT_SECRET is set to the placeholder value. \
             This is a critical security risk. \
             Generate a secure secret with: openssl rand -base64 48"
-                .to_string(),
-        );
+            .to_string());
     }
     if secret.len() < 32 {
         return Err(format!(
@@ -620,7 +637,9 @@ mod tests {
     fn test_validate_encryption_key() {
         // Valid keys (64+ characters)
         assert!(validate_encryption_key("a".repeat(64).as_str()));
-        assert!(validate_encryption_key("0123456789abcdef".repeat(4).as_str()));
+        assert!(validate_encryption_key(
+            "0123456789abcdef".repeat(4).as_str()
+        ));
 
         // Invalid - placeholder
         assert!(!validate_encryption_key(
@@ -701,7 +720,10 @@ mod tests {
         let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
-        std::env::set_var("ENCRYPTION_KEY", "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3");
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+        );
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
         let result = validate_env();
@@ -795,7 +817,10 @@ mod tests {
         let _guard = crate::lock_env_test();
         std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
-        std::env::set_var("ENCRYPTION_KEY", "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3");
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+        );
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
         let result = validate_env();
@@ -811,10 +836,8 @@ mod tests {
 
     #[test]
     fn test_jwt_secret_strength_rejects_placeholder() {
-        let err = validate_jwt_secret_strength(
-            "CHANGE_ME_generate_with_openssl_rand_base64_48",
-        )
-        .unwrap_err();
+        let err = validate_jwt_secret_strength("CHANGE_ME_generate_with_openssl_rand_base64_48")
+            .unwrap_err();
         assert!(
             err.contains("placeholder"),
             "Error should mention 'placeholder', got: {err}"
@@ -829,8 +852,7 @@ mod tests {
     fn test_jwt_secret_strength_rejects_any_change_me_prefix() {
         // Any value starting with "CHANGE_ME" must be rejected, not just the
         // exact placeholder string.
-        let err = validate_jwt_secret_strength("CHANGE_ME_something_else_entirely")
-            .unwrap_err();
+        let err = validate_jwt_secret_strength("CHANGE_ME_something_else_entirely").unwrap_err();
         assert!(
             err.contains("placeholder"),
             "Error should mention 'placeholder', got: {err}"

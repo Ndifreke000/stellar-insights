@@ -342,10 +342,7 @@ mod tests {
 
         let _a = limiter.acquire().await.expect("acquire a should succeed");
         let _b = limiter.acquire().await.expect("acquire b should succeed");
-        let _c = limiter
-            .acquire()
-            .await
-            .expect("acquire c should succeed");
+        let _c = limiter.acquire().await.expect("acquire c should succeed");
         let start = Instant::now();
         limiter
             .acquire()
@@ -404,8 +401,7 @@ mod tests {
                 .expect("rfc2822 date should be a valid header value"),
         );
 
-        let parsed = parse_retry_after_seconds(&headers)
-            .expect("retry-after header should parse");
+        let parsed = parse_retry_after_seconds(&headers).expect("retry-after header should parse");
         assert!(parsed <= 2);
     }
 }

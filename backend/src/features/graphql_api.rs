@@ -1,4 +1,6 @@
-use crate::models::graphql_api::{GraphQLErrorDetail, GraphQLHealthStatus, GraphQLRequest, GraphQLResponse};
+use crate::models::graphql_api::{
+    GraphQLErrorDetail, GraphQLHealthStatus, GraphQLRequest, GraphQLResponse,
+};
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -126,19 +128,27 @@ impl GraphQLAPI {
     fn validate_query_depth(&self, query: &str) -> Result<(), GraphQLAPIError> {
         let depth = query.matches('{').count() as u32;
         if depth > self.config.max_query_depth {
-            warn!("GraphQL query depth {} exceeds max {}", depth, self.config.max_query_depth);
+            warn!(
+                "GraphQL query depth {} exceeds max {}",
+                depth, self.config.max_query_depth
+            );
             return Err(GraphQLAPIError::QueryTooDeep(self.config.max_query_depth));
         }
         Ok(())
     }
 
-    pub async fn execute(&self, request: GraphQLRequest) -> Result<GraphQLResponse, GraphQLAPIError> {
+    pub async fn execute(
+        &self,
+        request: GraphQLRequest,
+    ) -> Result<GraphQLResponse, GraphQLAPIError> {
         if !self.config.enabled {
             return Err(GraphQLAPIError::Disabled);
         }
 
         if request.query.trim().is_empty() {
-            return Err(GraphQLAPIError::InvalidQuery("Query must not be empty".to_string()));
+            return Err(GraphQLAPIError::InvalidQuery(
+                "Query must not be empty".to_string(),
+            ));
         }
 
         self.validate_query_depth(&request.query)?;

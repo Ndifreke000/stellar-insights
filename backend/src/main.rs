@@ -32,9 +32,8 @@ use payraider_backend::{
         concurrency_limit_middleware, panic_recovery_middleware, ApiVersioning, BatchEndpoints,
         ConcurrencyLimitState, DatabaseSchemaSeparation, ETagCachingSupport,
         FieldSelectionParameter, MobilePaginationEndpoints, MobileRequestLogging,
-        NetworkAwareRpcClient, NetworkContextMiddleware, PushNotificationService,
-        ResponseCompression, WebSocketRealTimeUpdates, PushNotificationRegistration,
-        Sep10ForMobile,
+        NetworkAwareRpcClient, NetworkContextMiddleware, PushNotificationRegistration,
+        PushNotificationService, ResponseCompression, Sep10ForMobile, WebSocketRealTimeUpdates,
     },
     network::StellarNetwork,
     observability::logging::request_response_logging_middleware,
@@ -102,8 +101,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
+    let db_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://payraider.db".to_string());
     let pool_config = PoolConfig::from_env();
     let pool = pool_config
         .create_pool(&db_url)
@@ -173,9 +172,7 @@ async fn main() -> anyhow::Result<()> {
                         active,
                         size
                     );
-                    payraider_backend::observability::metrics::record_pool_error(
-                        "near_exhaustion",
-                    );
+                    payraider_backend::observability::metrics::record_pool_error("near_exhaustion");
                 }
                 payraider_backend::observability::metrics::set_pool_connections(
                     active,
@@ -275,9 +272,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Push notification service initialized");
 
     // Initialize SEP-10 for mobile (issue #1376)
-    let _sep10_for_mobile = Sep10ForMobile::new(
-        payraider_backend::models::sep10_for_mobile::Config::default(),
-    );
+    let _sep10_for_mobile =
+        Sep10ForMobile::new(payraider_backend::models::sep10_for_mobile::Config::default());
     tracing::info!("SEP-10 for mobile initialized");
 
     // Initialize push notification registration (issue #1377)
@@ -600,10 +596,8 @@ async fn main() -> anyhow::Result<()> {
     //   - Subscription resolvers for real-time updates via WebSocket
     //   - Query complexity/depth limiting via async-graphql
     let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
-    let graphql_schema = payraider_backend::graphql::build_schema(
-        Arc::new(pool.clone()),
-        broadcast_tx,
-    );
+    let graphql_schema =
+        payraider_backend::graphql::build_schema(Arc::new(pool.clone()), broadcast_tx);
     let graphql_routes = Router::new()
         .route(
             "/graphql",
@@ -624,12 +618,10 @@ async fn main() -> anyhow::Result<()> {
         .nest("/admin", admin_routes)
         .merge(graphql_routes)
         .merge(ws_routes)
-        .merge(
-            utoipa_swagger_ui::SwaggerUi::new("/api/docs").url(
-                "/api/docs/openapi.json",
-                <payraider_backend::openapi::ApiDoc as utoipa::OpenApi>::openapi(),
-            ),
-        )
+        .merge(utoipa_swagger_ui::SwaggerUi::new("/api/docs").url(
+            "/api/docs/openapi.json",
+            <payraider_backend::openapi::ApiDoc as utoipa::OpenApi>::openapi(),
+        ))
         .route(
             "/swagger-ui",
             get(|| async { axum::response::Redirect::permanent("/api/docs/") }),

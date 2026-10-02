@@ -310,7 +310,10 @@ impl BackupManager {
         match self.verify_existing_checksums().await {
             Ok(0) => {}
             Ok(mismatches) => {
-                tracing::error!(mismatches, "Existing backup snapshots failed checksum re-verification");
+                tracing::error!(
+                    mismatches,
+                    "Existing backup snapshots failed checksum re-verification"
+                );
             }
             Err(e) => tracing::error!(error = %e, "Backup checksum re-verification error"),
         }

@@ -414,8 +414,8 @@ impl VaultClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn lease_info_fields() {
@@ -660,10 +660,7 @@ mod tests {
             VaultError::FieldNotFound("field".to_string()).to_string(),
             "Field not found: field"
         );
-        assert_eq!(
-            VaultError::NoDataInSecret.to_string(),
-            "No data in secret"
-        );
+        assert_eq!(VaultError::NoDataInSecret.to_string(), "No data in secret");
         assert_eq!(
             VaultError::CredentialsFailed("role".to_string()).to_string(),
             "Failed to get credentials for role: role"

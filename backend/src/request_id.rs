@@ -98,10 +98,12 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
     // Normalise the request headers so handlers that forward them downstream
     // propagate the sanitised values.
     if let Some(v) = &request_id_value {
-        req.headers_mut().insert(REQUEST_ID_HEADER.clone(), v.clone());
+        req.headers_mut()
+            .insert(REQUEST_ID_HEADER.clone(), v.clone());
     }
     if let Some(v) = &correlation_id_value {
-        req.headers_mut().insert(CORRELATION_ID_HEADER.clone(), v.clone());
+        req.headers_mut()
+            .insert(CORRELATION_ID_HEADER.clone(), v.clone());
     }
     req.extensions_mut().insert(RequestId(request_id.clone()));
     req.extensions_mut()

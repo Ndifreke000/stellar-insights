@@ -35,7 +35,10 @@ impl IpWhitelistService {
             return Ok(());
         }
 
-        Err(anyhow!("Invalid IP address or CIDR notation: {}", ip_or_cidr))
+        Err(anyhow!(
+            "Invalid IP address or CIDR notation: {}",
+            ip_or_cidr
+        ))
     }
 
     /// Add IP/CIDR to whitelist
@@ -119,13 +122,16 @@ impl IpWhitelistService {
 
     /// Get all whitelist entries
     pub async fn get_all_entries(&self) -> Result<Vec<WhitelistEntry>> {
-        let entries = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            chrono::DateTime<chrono::Utc>,
-        )>(
+        let entries = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             r"
             SELECT id, ip_or_cidr, description, added_by_user_id, added_at
             FROM admin_ip_whitelist
@@ -137,22 +143,20 @@ impl IpWhitelistService {
 
         Ok(entries
             .into_iter()
-            .map(|(id, ip_or_cidr, description, added_by_user_id, added_at)| WhitelistEntry {
-                id,
-                ip_or_cidr,
-                description,
-                added_by_user_id,
-                added_at,
-            })
+            .map(
+                |(id, ip_or_cidr, description, added_by_user_id, added_at)| WhitelistEntry {
+                    id,
+                    ip_or_cidr,
+                    description,
+                    added_by_user_id,
+                    added_at,
+                },
+            )
             .collect())
     }
 
     /// Update whitelist entry description
-    pub async fn update_entry(
-        &self,
-        ip_or_cidr: &str,
-        description: Option<String>,
-    ) -> Result<()> {
+    pub async fn update_entry(&self, ip_or_cidr: &str, description: Option<String>) -> Result<()> {
         sqlx::query("UPDATE admin_ip_whitelist SET description = ? WHERE ip_or_cidr = ?")
             .bind(description)
             .bind(ip_or_cidr)

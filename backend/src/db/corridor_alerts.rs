@@ -113,7 +113,9 @@ impl crate::database::Database {
         Ok(snapshots)
     }
 
-    pub async fn get_latest_snapshots_all_corridors(&self) -> Result<Vec<CorridorPerformanceSnapshot>> {
+    pub async fn get_latest_snapshots_all_corridors(
+        &self,
+    ) -> Result<Vec<CorridorPerformanceSnapshot>> {
         let snapshots = sqlx::query_as::<_, CorridorPerformanceSnapshot>(
             r"
             SELECT * FROM corridor_performance_snapshots
@@ -443,7 +445,10 @@ impl crate::database::Database {
         Ok(events)
     }
 
-    pub async fn get_alert_events_24h_for_user(&self, user_id: &str) -> Result<Vec<CorridorAlertEvent>> {
+    pub async fn get_alert_events_24h_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<CorridorAlertEvent>> {
         let events = sqlx::query_as::<_, CorridorAlertEvent>(
             r"
             SELECT * FROM corridor_alert_events
@@ -459,11 +464,7 @@ impl crate::database::Database {
         Ok(events)
     }
 
-    pub async fn acknowledge_corridor_alert_event(
-        &self,
-        id: &str,
-        user_id: &str,
-    ) -> Result<()> {
+    pub async fn acknowledge_corridor_alert_event(&self, id: &str, user_id: &str) -> Result<()> {
         sqlx::query(
             r"
             UPDATE corridor_alert_events

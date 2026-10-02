@@ -185,7 +185,13 @@ impl DistributedLock {
         }
     }
 
-    async fn run_script(&self, script: &str, key: &str, token: &str, ttl: Option<Duration>) -> bool {
+    async fn run_script(
+        &self,
+        script: &str,
+        key: &str,
+        token: &str,
+        ttl: Option<Duration>,
+    ) -> bool {
         if matches!(self.backend, Backend::SingleInstance) {
             return true;
         }

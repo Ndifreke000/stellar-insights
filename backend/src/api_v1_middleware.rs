@@ -58,7 +58,9 @@ pub async fn version_middleware(request: Request, next: Next) -> Response {
             "Link",
             HeaderValue::from_static("</api/v2/>; rel=\"successor-version\""),
         );
-        if let Ok(v) = HeaderValue::from_str("299 - \"API v1 is deprecated. Please migrate to v2. See docs/API_VERSIONING.md\"") {
+        if let Ok(v) = HeaderValue::from_str(
+            "299 - \"API v1 is deprecated. Please migrate to v2. See docs/API_VERSIONING.md\"",
+        ) {
             headers.insert("Warning", v);
         }
     }
@@ -98,7 +100,10 @@ mod tests {
         assert_eq!(res.headers().get("X-API-Version").unwrap(), "v1");
         assert_eq!(res.headers().get("X-API-Status").unwrap(), "deprecated");
         assert_eq!(res.headers().get("Deprecation").unwrap(), "true");
-        assert_eq!(res.headers().get("Sunset").unwrap(), "Thu, 31 Dec 2026 00:00:00 GMT");
+        assert_eq!(
+            res.headers().get("Sunset").unwrap(),
+            "Thu, 31 Dec 2026 00:00:00 GMT"
+        );
         assert!(res.headers().contains_key("Link"));
         assert!(res.headers().contains_key("Warning"));
     }
@@ -149,4 +154,3 @@ mod tests {
         assert_eq!(json_body["error"], "unsupported_api_version");
     }
 }
-

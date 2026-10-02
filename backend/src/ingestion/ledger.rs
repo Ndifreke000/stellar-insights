@@ -82,7 +82,10 @@ impl LedgerIngestionService {
         } else {
             let client = &self.rpc_client;
             let health = Retry::spawn(retry_strategy(), || async {
-                client.check_health().await.map_err(|e| anyhow::anyhow!("{e}"))
+                client
+                    .check_health()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
             })
             .await
             .context("Failed to check health")?;

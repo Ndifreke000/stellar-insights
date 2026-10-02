@@ -222,8 +222,7 @@ mod tests {
 
     #[test]
     fn test_parse_multiple_ips() -> Result<(), Box<dyn std::error::Error>> {
-        let config =
-            IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1")?;
+        let config = IpWhitelistConfig::parse_whitelist("192.168.1.1, 10.0.0.0/8, 172.16.0.1")?;
         assert_eq!(config.len(), 3);
         Ok(())
     }
@@ -252,9 +251,9 @@ mod tests {
     #[test]
     fn test_is_allowed() -> Result<(), Box<dyn std::error::Error>> {
         let config = IpWhitelistConfig {
-            allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("192.168.1.0/24, 10.0.0.1")?,
-            ),
+            allowed_networks: Arc::new(IpWhitelistConfig::parse_whitelist(
+                "192.168.1.0/24, 10.0.0.1",
+            )?),
             trust_proxy: false,
             max_forwarded_ips: 3,
         };
@@ -269,9 +268,7 @@ mod tests {
     #[test]
     fn test_localhost_ipv4_and_ipv6() -> Result<(), Box<dyn std::error::Error>> {
         let config = IpWhitelistConfig {
-            allowed_networks: Arc::new(
-                IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1")?,
-            ),
+            allowed_networks: Arc::new(IpWhitelistConfig::parse_whitelist("127.0.0.1, ::1")?),
             trust_proxy: false,
             max_forwarded_ips: 3,
         };

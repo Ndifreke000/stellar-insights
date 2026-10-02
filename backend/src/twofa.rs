@@ -39,7 +39,7 @@ impl TwoFAService {
 
     /// Generate TOTP secret and return otpauth URI for QR code + raw secret
     pub fn generate_totp_secret(&self, user_id: &str, username: &str) -> Result<(String, String)> {
-        use base32::{Alphabet, encode};
+        use base32::{encode, Alphabet};
 
         // Generate a random secret (standard for TOTP)
         let secret_uuid = uuid::Uuid::new_v4();

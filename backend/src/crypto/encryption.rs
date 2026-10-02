@@ -5,7 +5,6 @@
 /// - HMAC authentication tag
 /// - Hex encoding for database storage
 /// - Support for key versioning
-
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -29,11 +28,7 @@ pub struct EncryptedData {
 impl fmt::Display for EncryptedData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Format for storage: key_version:nonce:ciphertext
-        write!(
-            f,
-            "{}:{}:{}",
-            self.key_version, self.nonce, self.ciphertext
-        )
+        write!(f, "{}:{}:{}", self.key_version, self.nonce, self.ciphertext)
     }
 }
 
@@ -47,9 +42,7 @@ impl std::str::FromStr for EncryptedData {
         }
 
         Ok(EncryptedData {
-            key_version: parts[0]
-                .parse()
-                .map_err(|_| "Invalid key version")?,
+            key_version: parts[0].parse().map_err(|_| "Invalid key version")?,
             nonce: parts[1].to_string(),
             ciphertext: parts[2].to_string(),
         })
@@ -111,8 +104,7 @@ impl EncryptionService {
         }
 
         let mut key = [0u8; 32];
-        hex::decode_to_slice(key_hex, &mut key)
-            .map_err(|e| format!("Invalid hex key: {}", e))?;
+        hex::decode_to_slice(key_hex, &mut key).map_err(|e| format!("Invalid hex key: {}", e))?;
 
         Ok(Self {
             primary_key: key,
@@ -131,8 +123,7 @@ impl EncryptionService {
         }
 
         let mut key = [0u8; 32];
-        hex::decode_to_slice(key_hex, &mut key)
-            .map_err(|e| format!("Invalid hex key: {}", e))?;
+        hex::decode_to_slice(key_hex, &mut key).map_err(|e| format!("Invalid hex key: {}", e))?;
 
         self.previous_keys.insert(version, key);
         Ok(())
@@ -192,8 +183,8 @@ impl EncryptionService {
 
         let cipher = Aes256Gcm::new(key_bytes.into());
 
-        let nonce_bytes = hex::decode(&encrypted.nonce)
-            .map_err(|e| format!("Invalid nonce hex: {}", e))?;
+        let nonce_bytes =
+            hex::decode(&encrypted.nonce).map_err(|e| format!("Invalid nonce hex: {}", e))?;
         if nonce_bytes.len() != 12 {
             return Err(format!("Invalid nonce length: {}", nonce_bytes.len()));
         }
@@ -263,9 +254,10 @@ mod tests {
     #[test]
     fn decryption_with_wrong_key_fails() {
         let service1 = EncryptionService::new(&test_key()).unwrap();
-        let service2 =
-            EncryptionService::new("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
-                .unwrap();
+        let service2 = EncryptionService::new(
+            "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        )
+        .unwrap();
 
         let plaintext = "secret-data";
         let encrypted = service1.encrypt(plaintext).unwrap();

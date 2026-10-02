@@ -37,8 +37,8 @@ impl DatabaseBackend {
             return Self::parse(explicit.trim());
         }
 
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://payraider.db".to_string());
+        let database_url =
+            std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://payraider.db".to_string());
         Self::from_database_url(&database_url)
     }
 
@@ -444,7 +444,6 @@ impl Database {
         result
     }
 
-
     #[must_use]
     pub const fn slow_query_threshold_ms(&self) -> u64 {
         self.slow_query_threshold_ms
@@ -521,7 +520,9 @@ impl Database {
     #[tracing::instrument(skip(self, req), fields(anchor_name = %req.name, stellar_account = %req.stellar_account))]
     pub async fn create_anchor(&self, req: CreateAnchorRequest) -> Result<Anchor> {
         self.execute_with_timing("create_anchor", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).create_anchor(req).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .create_anchor(req)
+                .await
         })
         .await
     }
@@ -556,7 +557,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(anchor_id = %id))]
     pub async fn get_anchor_by_id(&self, id: Uuid) -> Result<Option<Anchor>> {
         self.execute_with_timing("get_anchor_by_id", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).get_anchor_by_id(id).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .get_anchor_by_id(id)
+                .await
         })
         .await
     }
@@ -585,7 +588,9 @@ impl Database {
         stellar_account: &str,
     ) -> Result<Option<Anchor>> {
         self.execute_with_timing("get_anchor_by_stellar_account", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).get_anchor_by_stellar_account(stellar_account).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .get_anchor_by_stellar_account(stellar_account)
+                .await
         })
         .await
     }
@@ -600,7 +605,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_anchors(&self, limit: i64, offset: i64) -> Result<Vec<Anchor>> {
         self.execute_with_timing("list_anchors", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).list_anchors(limit, offset).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .list_anchors(limit, offset)
+                .await
         })
         .await
     }
@@ -621,7 +628,9 @@ impl Database {
     #[tracing::instrument(skip(self, update), fields(anchor_id = %update.anchor_id))]
     pub async fn update_anchor_metrics(&self, update: AnchorMetricsUpdate) -> Result<Anchor> {
         self.execute_with_timing("update_anchor_metrics", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).update_anchor_metrics(update).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .update_anchor_metrics(update)
+                .await
         })
         .await
     }
@@ -664,7 +673,9 @@ impl Database {
         asset_issuer: String,
     ) -> Result<Asset> {
         self.execute_with_timing("create_asset", async {
-            crate::db::assets::AssetDb::new(self.pool.clone()).create_asset(anchor_id, asset_code, asset_issuer).await
+            crate::db::assets::AssetDb::new(self.pool.clone())
+                .create_asset(anchor_id, asset_code, asset_issuer)
+                .await
         })
         .await
     }
@@ -690,7 +701,9 @@ impl Database {
     /// ```
     pub async fn get_assets_by_anchor(&self, anchor_id: Uuid) -> Result<Vec<Asset>> {
         self.execute_with_timing("get_assets_by_anchor", async {
-            crate::db::assets::AssetDb::new(self.pool.clone()).get_assets_by_anchor(anchor_id).await
+            crate::db::assets::AssetDb::new(self.pool.clone())
+                .get_assets_by_anchor(anchor_id)
+                .await
         })
         .await
     }
@@ -730,7 +743,9 @@ impl Database {
     #[tracing::instrument(skip(self))]
     pub async fn get_all_anchors(&self) -> Result<Vec<Anchor>> {
         self.execute_with_timing("get_all_anchors", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).get_all_anchors().await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .get_all_anchors()
+                .await
         })
         .await
     }
@@ -744,7 +759,9 @@ impl Database {
         anchor_ids: &[Uuid],
     ) -> Result<std::collections::HashMap<String, Vec<Asset>>> {
         self.execute_with_timing("get_assets_by_anchors", async {
-            crate::db::assets::AssetDb::new(self.pool.clone()).get_assets_by_anchors(anchor_ids).await
+            crate::db::assets::AssetDb::new(self.pool.clone())
+                .get_assets_by_anchors(anchor_ids)
+                .await
         })
         .await
     }
@@ -753,7 +770,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(anchor_id = %anchor_id))]
     pub async fn count_assets_by_anchor(&self, anchor_id: Uuid) -> Result<i64> {
         self.execute_with_timing("count_assets_by_anchor", async {
-            crate::db::assets::AssetDb::new(self.pool.clone()).count_assets_by_anchor(anchor_id).await
+            crate::db::assets::AssetDb::new(self.pool.clone())
+                .count_assets_by_anchor(anchor_id)
+                .await
         })
         .await
     }
@@ -762,7 +781,9 @@ impl Database {
     #[tracing::instrument(skip(self, params), fields(stellar_account = %params.stellar_account))]
     pub async fn update_anchor_from_rpc(&self, params: AnchorRpcUpdate) -> Result<()> {
         self.execute_with_timing("update_anchor_from_rpc", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).update_anchor_from_rpc(params).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .update_anchor_from_rpc(params)
+                .await
         })
         .await
     }
@@ -776,7 +797,9 @@ impl Database {
         params: AnchorMetricsParams,
     ) -> Result<AnchorMetricsHistory> {
         self.execute_with_timing("record_anchor_metrics_history", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).record_anchor_metrics_history(params).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .record_anchor_metrics_history(params)
+                .await
         })
         .await
     }
@@ -789,7 +812,9 @@ impl Database {
         limit: i64,
     ) -> Result<Vec<AnchorMetricsHistory>> {
         self.execute_with_timing("get_anchor_metrics_history", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).get_anchor_metrics_history(anchor_id, limit).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .get_anchor_metrics_history(anchor_id, limit)
+                .await
         })
         .await
     }
@@ -830,7 +855,9 @@ impl Database {
         req: crate::models::CreateCorridorRequest,
     ) -> Result<crate::models::corridor::Corridor> {
         self.execute_with_timing("create_corridor", async {
-            crate::db::corridors::CorridorDb::new(self.pool.clone()).create_corridor(req).await
+            crate::db::corridors::CorridorDb::new(self.pool.clone())
+                .create_corridor(req)
+                .await
         })
         .await
     }
@@ -843,7 +870,9 @@ impl Database {
         offset: i64,
     ) -> Result<Vec<crate::models::corridor::Corridor>> {
         self.execute_with_timing("list_corridors", async {
-            crate::db::corridors::CorridorDb::new(self.pool.clone()).list_corridors(limit, offset).await
+            crate::db::corridors::CorridorDb::new(self.pool.clone())
+                .list_corridors(limit, offset)
+                .await
         })
         .await
     }
@@ -867,7 +896,9 @@ impl Database {
         id: Uuid,
     ) -> Result<Option<crate::models::corridor::Corridor>> {
         self.execute_with_timing("get_corridor_by_id", async {
-            crate::db::corridors::CorridorDb::new(self.pool.clone()).get_corridor_by_id(id).await
+            crate::db::corridors::CorridorDb::new(self.pool.clone())
+                .get_corridor_by_id(id)
+                .await
         })
         .await
     }
@@ -881,7 +912,9 @@ impl Database {
         cache: &CacheManager,
     ) -> Result<crate::models::corridor::Corridor> {
         self.execute_with_timing("update_corridor_metrics", async {
-            crate::db::corridors::CorridorDb::new(self.pool.clone()).update_corridor_metrics(id, metrics, cache).await
+            crate::db::corridors::CorridorDb::new(self.pool.clone())
+                .update_corridor_metrics(id, metrics, cache)
+                .await
         })
         .await
     }
@@ -898,7 +931,9 @@ impl Database {
         entity_type: Option<String>,
     ) -> Result<MetricRecord> {
         self.execute_with_timing("record_metric", async {
-            crate::db::metrics::MetricsDb::new(self.pool.clone()).record_metric(name, value, entity_id, entity_type).await
+            crate::db::metrics::MetricsDb::new(self.pool.clone())
+                .record_metric(name, value, entity_id, entity_type)
+                .await
         })
         .await
     }
@@ -916,7 +951,9 @@ impl Database {
         epoch: Option<i64>,
     ) -> Result<SnapshotRecord> {
         self.execute_with_timing("create_snapshot", async {
-            crate::db::metrics::MetricsDb::new(self.pool.clone()).create_snapshot(entity_id, entity_type, data, hash, epoch).await
+            crate::db::metrics::MetricsDb::new(self.pool.clone())
+                .create_snapshot(entity_id, entity_type, data, hash, epoch)
+                .await
         })
         .await
     }
@@ -925,7 +962,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(epoch = epoch))]
     pub async fn get_snapshot_by_epoch(&self, epoch: i64) -> Result<Option<SnapshotRecord>> {
         self.execute_with_timing("get_snapshot_by_epoch", async {
-            crate::db::metrics::MetricsDb::new(self.pool.clone()).get_snapshot_by_epoch(epoch).await
+            crate::db::metrics::MetricsDb::new(self.pool.clone())
+                .get_snapshot_by_epoch(epoch)
+                .await
         })
         .await
     }
@@ -934,7 +973,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(limit = limit, offset = offset))]
     pub async fn list_snapshots(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotRecord>> {
         self.execute_with_timing("list_snapshots", async {
-            crate::db::metrics::MetricsDb::new(self.pool.clone()).list_snapshots(limit, offset).await
+            crate::db::metrics::MetricsDb::new(self.pool.clone())
+                .list_snapshots(limit, offset)
+                .await
         })
         .await
     }
@@ -1533,7 +1574,9 @@ impl Database {
         req: CreateApiKeyRequest,
     ) -> Result<CreateApiKeyResponse> {
         self.execute_with_timing("create_api_key", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).create_api_key(wallet_address, req).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .create_api_key(wallet_address, req)
+                .await
         })
         .await
     }
@@ -1542,7 +1585,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(wallet_address = %wallet_address))]
     pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
         self.execute_with_timing("list_api_keys", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).list_api_keys(wallet_address).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .list_api_keys(wallet_address)
+                .await
         })
         .await
     }
@@ -1555,7 +1600,9 @@ impl Database {
         wallet_address: &str,
     ) -> Result<Option<ApiKeyInfo>> {
         self.execute_with_timing("get_api_key_by_id", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).get_api_key_by_id(id, wallet_address).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .get_api_key_by_id(id, wallet_address)
+                .await
         })
         .await
     }
@@ -1563,7 +1610,9 @@ impl Database {
     #[tracing::instrument(skip(self), fields(key_id = %id, wallet_address = %wallet_address))]
     pub async fn revoke_api_key(&self, id: &str, wallet_address: &str) -> Result<bool> {
         self.execute_with_timing("revoke_api_key", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).revoke_api_key(id, wallet_address).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .revoke_api_key(id, wallet_address)
+                .await
         })
         .await
     }
@@ -1575,7 +1624,9 @@ impl Database {
         wallet_address: &str,
     ) -> Result<Option<CreateApiKeyResponse>> {
         self.execute_with_timing("rotate_api_key", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).rotate_api_key(id, wallet_address).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .rotate_api_key(id, wallet_address)
+                .await
         })
         .await
     }
@@ -1584,7 +1635,9 @@ impl Database {
     #[tracing::instrument(skip(self, plain_key))]
     pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
         self.execute_with_timing("validate_api_key", async {
-            crate::db::api_keys::ApiKeyDb::new(self.pool.clone()).validate_api_key(plain_key).await
+            crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
+                .validate_api_key(plain_key)
+                .await
         })
         .await
     }
@@ -1597,7 +1650,9 @@ impl Database {
         minutes: i64,
     ) -> Result<crate::models::AnchorMetrics> {
         self.execute_with_timing("get_recent_anchor_performance", async {
-            crate::db::anchors::AnchorDb::new(self.pool.clone()).get_recent_anchor_performance(anchor_id, minutes).await
+            crate::db::anchors::AnchorDb::new(self.pool.clone())
+                .get_recent_anchor_performance(anchor_id, minutes)
+                .await
         })
         .await
     }
@@ -1608,7 +1663,9 @@ impl Database {
         &self,
     ) -> Result<Vec<crate::models::corridor::CorridorMetrics>> {
         self.execute_with_timing("fetch_latest_corridor_metrics_for_broadcast", async {
-            crate::db::corridors::CorridorDb::new(self.pool.clone()).fetch_latest_corridor_metrics_for_broadcast().await
+            crate::db::corridors::CorridorDb::new(self.pool.clone())
+                .fetch_latest_corridor_metrics_for_broadcast()
+                .await
         })
         .await
     }

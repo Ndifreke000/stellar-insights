@@ -190,7 +190,10 @@ impl AdminAuditLogger {
         let total_entries = entries.len();
 
         let message = if is_valid {
-            format!("Audit log integrity verified: {} entries in valid hash chain", total_entries)
+            format!(
+                "Audit log integrity verified: {} entries in valid hash chain",
+                total_entries
+            )
         } else {
             format!(
                 "Audit log integrity check failed: {} invalid entries out of {}",
@@ -230,20 +233,23 @@ impl AdminAuditLogger {
 
         query.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
 
-        let mut q = sqlx::query_as::<_, (
-            String,
-            chrono::DateTime<chrono::Utc>,
-            String,
-            String,
-            String,
-            String,
-            serde_json::Value,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>(&query);
+        let mut q = sqlx::query_as::<
+            _,
+            (
+                String,
+                chrono::DateTime<chrono::Utc>,
+                String,
+                String,
+                String,
+                String,
+                serde_json::Value,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(&query);
 
         if let Some(uid) = user_id {
             q = q.bind(uid);
@@ -260,7 +266,20 @@ impl AdminAuditLogger {
         Ok(results
             .into_iter()
             .map(
-                |(id, timestamp, action, resource, user_id, status, details, hash, session_id, device_user_agent, ip_address, event_type)| {
+                |(
+                    id,
+                    timestamp,
+                    action,
+                    resource,
+                    user_id,
+                    status,
+                    details,
+                    hash,
+                    session_id,
+                    device_user_agent,
+                    ip_address,
+                    event_type,
+                )| {
                     AdminAuditLogEntry {
                         id,
                         timestamp,

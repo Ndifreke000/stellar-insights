@@ -102,19 +102,22 @@ impl SessionService {
     pub async fn get_active_session(&self, session_id: &str) -> Result<Option<Session>> {
         let now = Utc::now();
 
-        let session = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            Option<String>,
-            String,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-            i64,
-            i64,
-            Option<chrono::DateTime<chrono::Utc>>,
-        )>(
+        let session = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                i64,
+                i64,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),
+        >(
             r"
             SELECT id, user_id, refresh_token_jti, device_user_agent, ip_address,
                    created_at, last_activity_at, expires_at, idle_timeout_seconds,
@@ -127,8 +130,19 @@ impl SessionService {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some((id, user_id, jti, device, ip, created, last_activity, expires, idle, max_lifetime, revoked)) =
-            session
+        if let Some((
+            id,
+            user_id,
+            jti,
+            device,
+            ip,
+            created,
+            last_activity,
+            expires,
+            idle,
+            max_lifetime,
+            revoked,
+        )) = session
         {
             // Check if revoked
             if revoked.is_some() {
@@ -196,14 +210,17 @@ impl SessionService {
     pub async fn list_active_sessions(&self, user_id: &str) -> Result<Vec<SessionInfo>> {
         let now = Utc::now();
 
-        let sessions = sqlx::query_as::<_, (
-            String,
-            Option<String>,
-            String,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-        )>(
+        let sessions = sqlx::query_as::<
+            _,
+            (
+                String,
+                Option<String>,
+                String,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             r"
             SELECT id, device_user_agent, ip_address, created_at, last_activity_at, expires_at
             FROM sessions
@@ -218,8 +235,8 @@ impl SessionService {
 
         let result: Vec<SessionInfo> = sessions
             .into_iter()
-            .map(|(id, device, ip, created, last_activity, expires)| {
-                SessionInfo {
+            .map(
+                |(id, device, ip, created, last_activity, expires)| SessionInfo {
                     id,
                     device_user_agent: device,
                     ip_address: ip,
@@ -227,15 +244,19 @@ impl SessionService {
                     last_activity_at: last_activity,
                     expires_at: expires,
                     is_current: false,
-                }
-            })
+                },
+            )
             .collect();
 
         Ok(result)
     }
 
     /// Revoke all sessions except the current one
-    pub async fn revoke_all_other_sessions(&self, user_id: &str, current_session_id: &str) -> Result<()> {
+    pub async fn revoke_all_other_sessions(
+        &self,
+        user_id: &str,
+        current_session_id: &str,
+    ) -> Result<()> {
         let now = Utc::now();
 
         sqlx::query(
@@ -265,19 +286,22 @@ impl SessionService {
 
     /// Get session by refresh token JTI
     pub async fn get_session_by_jti(&self, jti: &str) -> Result<Option<Session>> {
-        let session = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            Option<String>,
-            String,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-            i64,
-            i64,
-            Option<chrono::DateTime<chrono::Utc>>,
-        )>(
+        let session = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                i64,
+                i64,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),
+        >(
             r"
             SELECT id, user_id, refresh_token_jti, device_user_agent, ip_address,
                    created_at, last_activity_at, expires_at, idle_timeout_seconds,
@@ -290,8 +314,19 @@ impl SessionService {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some((id, user_id, jti, device, ip, created, last_activity, expires, idle, max_lifetime, revoked)) =
-            session
+        if let Some((
+            id,
+            user_id,
+            jti,
+            device,
+            ip,
+            created,
+            last_activity,
+            expires,
+            idle,
+            max_lifetime,
+            revoked,
+        )) = session
         {
             return Ok(Some(Session {
                 id,

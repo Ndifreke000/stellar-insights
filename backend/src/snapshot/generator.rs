@@ -93,7 +93,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotGenerator::to_canonical_json(snapshot).expect("to_canonical_json should succeed for this fixture");
+        let json = SnapshotGenerator::to_canonical_json(snapshot)
+            .expect("to_canonical_json should succeed for this fixture");
 
         // Should be valid JSON
         let parsed: serde_json::Value =
@@ -117,14 +118,16 @@ mod tests {
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash1 = SnapshotGenerator::generate_hash(snapshot1).expect("generate_hash should succeed for this fixture");
+        let hash1 = SnapshotGenerator::generate_hash(snapshot1)
+            .expect("generate_hash should succeed for this fixture");
 
         // Create same snapshot with metrics added in different order
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash2 = SnapshotGenerator::generate_hash(snapshot2).expect("generate_hash should succeed for this fixture");
+        let hash2 = SnapshotGenerator::generate_hash(snapshot2)
+            .expect("generate_hash should succeed for this fixture");
 
         // Same content should produce same hash regardless of insertion order
         assert_eq!(hash1, hash2);
@@ -139,12 +142,14 @@ mod tests {
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id1, "Anchor1"));
 
-        let hash1 = SnapshotGenerator::generate_hash(snapshot1).expect("generate_hash should succeed for this fixture");
+        let hash1 = SnapshotGenerator::generate_hash(snapshot1)
+            .expect("generate_hash should succeed for this fixture");
 
         let mut snapshot2 = AnalyticsSnapshot::new(1, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id2, "Anchor2"));
 
-        let hash2 = SnapshotGenerator::generate_hash(snapshot2).expect("generate_hash should succeed for this fixture");
+        let hash2 = SnapshotGenerator::generate_hash(snapshot2)
+            .expect("generate_hash should succeed for this fixture");
 
         // Different content should produce different hashes
         assert_ne!(hash1, hash2);
@@ -158,12 +163,14 @@ mod tests {
         let mut snapshot1 = AnalyticsSnapshot::new(1, now);
         snapshot1.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash1 = SnapshotGenerator::generate_hash(snapshot1).expect("generate_hash should succeed for this fixture");
+        let hash1 = SnapshotGenerator::generate_hash(snapshot1)
+            .expect("generate_hash should succeed for this fixture");
 
         let mut snapshot2 = AnalyticsSnapshot::new(2, now);
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(id, "Anchor1"));
 
-        let hash2 = SnapshotGenerator::generate_hash(snapshot2).expect("generate_hash should succeed for this fixture");
+        let hash2 = SnapshotGenerator::generate_hash(snapshot2)
+            .expect("generate_hash should succeed for this fixture");
 
         // Different epoch should produce different hash
         assert_ne!(hash1, hash2);
@@ -174,7 +181,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let hex = SnapshotGenerator::generate_hash_hex(snapshot).expect("generate_hash_hex should succeed for this fixture");
+        let hex = SnapshotGenerator::generate_hash_hex(snapshot)
+            .expect("generate_hash_hex should succeed for this fixture");
 
         // Should be 64 characters (32 bytes × 2 hex chars)
         assert_eq!(hex.len(), 64);
@@ -198,7 +206,8 @@ mod tests {
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id1, "corridor1"));
         snapshot1.add_corridor_metrics(create_test_corridor_metrics(corridor_id2, "corridor2"));
 
-        let hash1 = SnapshotGenerator::generate_hash(snapshot1).expect("generate_hash should succeed for this fixture");
+        let hash1 = SnapshotGenerator::generate_hash(snapshot1)
+            .expect("generate_hash should succeed for this fixture");
 
         // Create snapshot in reverse order
         let mut snapshot2 = AnalyticsSnapshot::new(100, now);
@@ -207,7 +216,8 @@ mod tests {
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id2, "Anchor2"));
         snapshot2.add_anchor_metrics(create_test_anchor_metrics(anchor_id1, "Anchor1"));
 
-        let hash2 = SnapshotGenerator::generate_hash(snapshot2).expect("generate_hash should succeed for this fixture");
+        let hash2 = SnapshotGenerator::generate_hash(snapshot2)
+            .expect("generate_hash should succeed for this fixture");
 
         // Should produce identical hashes
         assert_eq!(hash1, hash2);
@@ -218,7 +228,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let json = SnapshotGenerator::to_canonical_json(snapshot).expect("to_canonical_json should succeed for this fixture");
+        let json = SnapshotGenerator::to_canonical_json(snapshot)
+            .expect("to_canonical_json should succeed for this fixture");
 
         // Should not contain unnecessary whitespace
         assert!(!json.contains("  ")); // No double spaces
@@ -231,7 +242,8 @@ mod tests {
         let now = Utc::now();
         let snapshot = AnalyticsSnapshot::new(1, now);
 
-        let hash = SnapshotGenerator::generate_hash(snapshot).expect("generate_hash should succeed for this fixture");
+        let hash = SnapshotGenerator::generate_hash(snapshot)
+            .expect("generate_hash should succeed for this fixture");
 
         // Should be exactly 32 bytes
         assert_eq!(hash.len(), 32);

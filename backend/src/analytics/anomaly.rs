@@ -54,8 +54,7 @@ pub fn detect_reliability_anomalies(
     for i in window..values.len() {
         let baseline = &values[i - window..i];
         let mean = baseline.iter().sum::<f64>() / window as f64;
-        let variance =
-            baseline.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / window as f64;
+        let variance = baseline.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / window as f64;
         let stddev = variance.sqrt();
 
         let value = values[i];

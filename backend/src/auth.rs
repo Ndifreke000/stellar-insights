@@ -42,8 +42,7 @@ pub struct User {
 }
 
 /// Login request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -78,16 +77,14 @@ pub enum LoginOutcome {
 }
 
 /// Request body for completing a 2FA-gated login.
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VerifyTwoFaRequest {
     pub pending_token: String,
     pub code: String,
 }
 
 /// Refresh token request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
@@ -100,8 +97,7 @@ pub struct RefreshTokenResponse {
 }
 
 /// Logout request
-#[derive(Debug, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct LogoutRequest {
     pub refresh_token: String,
 }
@@ -158,7 +154,10 @@ impl AuthService {
         );
 
         let session_service = crate::session::SessionService::new(db_pool.clone());
-        let twofa = crate::twofa::TwoFAService::new(db_pool.clone(), crate::crypto::CryptoService::from_env());
+        let twofa = crate::twofa::TwoFAService::new(
+            db_pool.clone(),
+            crate::crypto::CryptoService::from_env(),
+        );
 
         Self {
             jwt_secret,
@@ -184,7 +183,10 @@ impl AuthService {
         );
 
         let session_service = crate::session::SessionService::new(db_pool.clone());
-        let twofa = crate::twofa::TwoFAService::new(db_pool.clone(), crate::crypto::CryptoService::from_env());
+        let twofa = crate::twofa::TwoFAService::new(
+            db_pool.clone(),
+            crate::crypto::CryptoService::from_env(),
+        );
 
         Self {
             jwt_secret,
@@ -280,7 +282,12 @@ impl AuthService {
     }
 
     /// Generate refresh token with session tracking
-    pub fn generate_refresh_token(&self, user: &User, session_id: Option<&str>, refresh_token_jti: &str) -> Result<String> {
+    pub fn generate_refresh_token(
+        &self,
+        user: &User,
+        session_id: Option<&str>,
+        refresh_token_jti: &str,
+    ) -> Result<String> {
         let expiration = Utc::now()
             .checked_add_signed(Duration::days(REFRESH_TOKEN_EXPIRY_DAYS))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
@@ -452,7 +459,11 @@ impl AuthService {
             return Err(anyhow!("Pending 2FA token already used"));
         }
 
-        if !self.twofa.verify_login_code(&claims.sub, &request.code).await? {
+        if !self
+            .twofa
+            .verify_login_code(&claims.sub, &request.code)
+            .await?
+        {
             return Err(anyhow!("Invalid 2FA code"));
         }
 
@@ -472,7 +483,8 @@ impl AuthService {
             is_admin: claims.is_admin,
         };
 
-        self.complete_login(&user, device_user_agent, ip_address).await
+        self.complete_login(&user, device_user_agent, ip_address)
+            .await
     }
 
     /// Shared tail of both login paths: create a session and issue real
@@ -488,12 +500,20 @@ impl AuthService {
         let refresh_token_jti = Uuid::new_v4().to_string();
         let session = self
             .session_service
-            .create_session(&user.id, &refresh_token_jti, device_user_agent, ip_address, None, None)
+            .create_session(
+                &user.id,
+                &refresh_token_jti,
+                device_user_agent,
+                ip_address,
+                None,
+                None,
+            )
             .await?;
 
         // Generate tokens with session_id
         let access_token = self.generate_access_token(user, Some(&session.id))?;
-        let refresh_token = self.generate_refresh_token(user, Some(&session.id), &refresh_token_jti)?;
+        let refresh_token =
+            self.generate_refresh_token(user, Some(&session.id), &refresh_token_jti)?;
 
         // Store refresh token
         self.store_refresh_token(&refresh_token, &user.id).await?;
@@ -737,7 +757,13 @@ mod pending_2fa_tests {
     #[tokio::test]
     async fn login_with_2fa_enabled_requires_and_completes_verify_2fa() {
         let pool = migrated_pool().await;
-        insert_user(&pool, "user-2fa-test-1", "twofa_tester", "correct horse battery staple").await;
+        insert_user(
+            &pool,
+            "user-2fa-test-1",
+            "twofa_tester",
+            "correct horse battery staple",
+        )
+        .await;
         let service = test_service(pool);
 
         // No 2FA enrolled yet: login should succeed immediately.

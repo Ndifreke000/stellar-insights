@@ -722,11 +722,7 @@ impl StellarRpcClient {
             "id": 1
         });
 
-        let response = inject_trace_context(
-            self.client
-                .post(&self.rpc_url)
-                .json(&payload)
-        )
+        let response = inject_trace_context(self.client.post(&self.rpc_url).json(&payload))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -769,10 +765,7 @@ impl StellarRpcClient {
 
     async fn fetch_latest_ledger_internal(&self) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -805,12 +798,12 @@ impl StellarRpcClient {
         })
     }
 
-    async fn fetch_ledger_by_sequence_internal(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
+    async fn fetch_ledger_by_sequence_internal(
+        &self,
+        sequence: u64,
+    ) -> Result<LedgerInfo, RpcError> {
         let url = format!("{}/ledgers/{}", self.horizon_url, sequence);
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -877,11 +870,7 @@ impl StellarRpcClient {
             "id": 1,
             "params": params
         });
-        let response = inject_trace_context(
-            self.client
-                .post(&self.rpc_url)
-                .json(&payload)
-        )
+        let response = inject_trace_context(self.client.post(&self.rpc_url).json(&payload))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -932,10 +921,7 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -980,10 +966,7 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1039,10 +1022,7 @@ impl StellarRpcClient {
             "{}/order_book?{}&{}&limit={}",
             self.horizon_url, selling_params, buying_params, limit
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1077,10 +1057,7 @@ impl StellarRpcClient {
             "{}/ledgers/{}/payments?limit=200",
             self.horizon_url, sequence
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1123,10 +1100,7 @@ impl StellarRpcClient {
             "{}/ledgers/{}/transactions?limit=200&include_failed=true",
             self.horizon_url, sequence
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1169,10 +1143,7 @@ impl StellarRpcClient {
             "{}/ledgers/{}/operations?limit=200",
             self.horizon_url, sequence
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1217,10 +1188,7 @@ impl StellarRpcClient {
             "{}/operations/{}/effects?limit=200",
             self.horizon_url, operation_id
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1265,10 +1233,7 @@ impl StellarRpcClient {
             "{}/accounts/{}/payments?order=desc&limit={}",
             self.horizon_url, account_id, limit
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1488,7 +1453,9 @@ impl StellarRpcClient {
             }
 
             let response = self
-                .retry_request(|| async { inject_trace_context(self.client.get(&url)).send().await })
+                .retry_request(|| async {
+                    inject_trace_context(self.client.get(&url)).send().await
+                })
                 .await
                 .context("Failed to fetch account payments page")?;
 
@@ -1684,10 +1651,7 @@ impl StellarRpcClient {
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1732,10 +1696,7 @@ impl StellarRpcClient {
         pool_id: &str,
     ) -> Result<HorizonLiquidityPool, RpcError> {
         let url = format!("{}/liquidity_pools/{}", self.horizon_url, pool_id);
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1776,10 +1737,7 @@ impl StellarRpcClient {
             "{}/liquidity_pools/{}/trades?order=desc&limit={}",
             self.horizon_url, pool_id, limit
         );
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1826,10 +1784,7 @@ impl StellarRpcClient {
         } else {
             url.push_str("&order=desc");
         }
-        let response = inject_trace_context(
-            self.client
-                .get(&url)
-        )
+        let response = inject_trace_context(self.client.get(&url))
             .send()
             .await
             .map_err(|e| RpcError::NetworkError(e.to_string()))?;
@@ -1883,7 +1838,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_health_check() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let health = client.check_health().await.context("failed to check health in mock mode")?;
+        let health = client
+            .check_health()
+            .await
+            .context("failed to check health in mock mode")?;
 
         assert_eq!(health.status, "healthy");
         assert!(health.latest_ledger > 0);
@@ -1893,7 +1851,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_ledger() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let ledger = client.fetch_latest_ledger().await.context("failed to fetch latest ledger in mock mode")?;
+        let ledger = client
+            .fetch_latest_ledger()
+            .await
+            .context("failed to fetch latest ledger in mock mode")?;
 
         assert!(ledger.sequence > 0);
         assert!(!ledger.hash.is_empty());
@@ -1903,7 +1864,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_payments() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let payments = client.fetch_payments(5, None).await.context("failed to fetch payments in mock mode")?;
+        let payments = client
+            .fetch_payments(5, None)
+            .await
+            .context("failed to fetch payments in mock mode")?;
 
         assert_eq!(payments.len(), 5);
         assert!(!payments[0].id.is_empty());
@@ -1913,7 +1877,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_trades() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let trades = client.fetch_trades(3, None).await.context("failed to fetch trades in mock mode")?;
+        let trades = client
+            .fetch_trades(3, None)
+            .await
+            .context("failed to fetch trades in mock mode")?;
 
         assert_eq!(trades.len(), 3);
         assert!(!trades[0].id.is_empty());
@@ -1949,7 +1916,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_liquidity_pools() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let pools = client.fetch_liquidity_pools(3, None).await.context("failed to fetch liquidity pools in mock mode")?;
+        let pools = client
+            .fetch_liquidity_pools(3, None)
+            .await
+            .context("failed to fetch liquidity pools in mock mode")?;
 
         assert_eq!(pools.len(), 3);
         assert!(!pools[0].id.is_empty());
@@ -1961,7 +1931,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_single_liquidity_pool() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let pool = client.fetch_liquidity_pool("test_pool_id").await.context("failed to fetch liquidity pool in mock mode")?;
+        let pool = client
+            .fetch_liquidity_pool("test_pool_id")
+            .await
+            .context("failed to fetch liquidity pool in mock mode")?;
 
         assert_eq!(pool.id, "test_pool_id");
         assert_eq!(pool.reserves.len(), 2);
@@ -1971,7 +1944,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_pool_trades() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let trades = client.fetch_pool_trades("test_pool_id", 5).await.context("failed to fetch pool trades in mock mode")?;
+        let trades = client
+            .fetch_pool_trades("test_pool_id", 5)
+            .await
+            .context("failed to fetch pool trades in mock mode")?;
 
         assert_eq!(trades.len(), 5);
         assert!(!trades[0].id.is_empty());
@@ -1981,7 +1957,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_operations_for_ledger() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let operations = client.fetch_operations_for_ledger(123).await.context("failed to fetch operations for ledger in mock mode")?;
+        let operations = client
+            .fetch_operations_for_ledger(123)
+            .await
+            .context("failed to fetch operations for ledger in mock mode")?;
 
         assert_eq!(operations.len(), 3);
         assert_eq!(operations[0].operation_type, "account_merge");
@@ -1991,7 +1970,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_fetch_operation_effects() -> Result<()> {
         let client = StellarRpcClient::new_with_defaults(true);
-        let effects = client.fetch_operation_effects("op_123_0").await.context("failed to fetch operation effects in mock mode")?;
+        let effects = client
+            .fetch_operation_effects("op_123_0")
+            .await
+            .context("failed to fetch operation effects in mock mode")?;
 
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].effect_type, "account_credited");
@@ -2011,10 +1993,7 @@ mod tests {
             .context("failed to fetch ledgers in mock mode")?;
 
         assert!(result.ledgers.is_empty());
-        assert_eq!(
-            result.latest_ledger,
-            mock_stellar::MOCK_LATEST_LEDGER
-        );
+        assert_eq!(result.latest_ledger, mock_stellar::MOCK_LATEST_LEDGER);
         Ok(())
     }
 
@@ -2036,11 +2015,17 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Test with custom limit
-        let payments = client.fetch_all_payments(Some(50)).await.context("failed to fetch all payments (custom limit) in mock mode")?;
+        let payments = client
+            .fetch_all_payments(Some(50))
+            .await
+            .context("failed to fetch all payments (custom limit) in mock mode")?;
         assert_eq!(payments.len(), 50);
 
         // Test with default limit (should use max_total_records)
-        let payments = client.fetch_all_payments(None).await.context("failed to fetch all payments (default limit) in mock mode")?;
+        let payments = client
+            .fetch_all_payments(None)
+            .await
+            .context("failed to fetch all payments (default limit) in mock mode")?;
         assert_eq!(payments.len(), client.max_total_records as usize);
         Ok(())
     }
@@ -2050,11 +2035,17 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Test with custom limit
-        let trades = client.fetch_all_trades(Some(30)).await.context("failed to fetch all trades (custom limit) in mock mode")?;
+        let trades = client
+            .fetch_all_trades(Some(30))
+            .await
+            .context("failed to fetch all trades (custom limit) in mock mode")?;
         assert_eq!(trades.len(), 30);
 
         // Test with default limit
-        let trades = client.fetch_all_trades(None).await.context("failed to fetch all trades (default limit) in mock mode")?;
+        let trades = client
+            .fetch_all_trades(None)
+            .await
+            .context("failed to fetch all trades (default limit) in mock mode")?;
         assert_eq!(trades.len(), client.max_total_records as usize);
         Ok(())
     }
@@ -2085,7 +2076,10 @@ mod tests {
         let client = StellarRpcClient::new_with_defaults(true);
 
         // Request more than available, should stop when no more data
-        let payments = client.fetch_all_payments(Some(500)).await.context("failed to fetch all payments in mock mode")?;
+        let payments = client
+            .fetch_all_payments(Some(500))
+            .await
+            .context("failed to fetch all payments in mock mode")?;
 
         // In mock mode, we should get exactly what we asked for
         assert_eq!(payments.len(), 500);
@@ -2319,7 +2313,8 @@ mod tests {
             ]
         }"#;
 
-        let payment: Payment = serde_json::from_str(json).context("failed to deserialize new format payment")?;
+        let payment: Payment =
+            serde_json::from_str(json).context("failed to deserialize new format payment")?;
         assert_eq!(payment.get_destination(), Some("GDEST".to_string()));
         assert_eq!(payment.get_amount(), "250.0000000");
         assert_eq!(payment.get_asset_code(), Some("USDC".to_string()));
@@ -2346,7 +2341,8 @@ mod tests {
             "type": "payment"
         }"#;
 
-        let payment: Payment = serde_json::from_str(json).context("failed to deserialize legacy payment format")?;
+        let payment: Payment =
+            serde_json::from_str(json).context("failed to deserialize legacy payment format")?;
         assert!(payment.asset_balance_changes.is_none());
         assert_eq!(payment.get_destination(), Some("GDEST_LEGACY".to_string()));
         assert_eq!(payment.get_amount(), "100.0000000");
@@ -2369,7 +2365,10 @@ mod tests {
                     i
                 );
                 // Safe to unwrap here since we just asserted .is_some() above
-                let changes = p.asset_balance_changes.as_ref().expect("verified is_some above");
+                let changes = p
+                    .asset_balance_changes
+                    .as_ref()
+                    .expect("verified is_some above");
                 assert_eq!(changes.len(), 1);
                 assert_eq!(changes[0].change_type, "transfer");
                 // Verify helper methods return the new-format values

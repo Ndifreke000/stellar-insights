@@ -89,7 +89,11 @@ mod tests {
 
         let status = result.unwrap();
         assert!(status.operational);
-        assert!(status.latency_ms <= 10_000, "latency sanity check: {}ms exceeds 10s", status.latency_ms);
+        assert!(
+            status.latency_ms <= 10_000,
+            "latency sanity check: {}ms exceeds 10s",
+            status.latency_ms
+        );
     }
 
     #[tokio::test]

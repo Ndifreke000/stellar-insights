@@ -222,7 +222,10 @@ pub fn validate_asset_code(code: &str) -> ApiResult<()> {
             format!("Asset code must be 1-12 characters (got {})", code.len()),
         ));
     }
-    if !code.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+    if !code
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    {
         return Err(ApiError::bad_request(
             "INVALID_ASSET_CODE",
             "Asset code must contain only uppercase alphanumeric characters (A-Z, 0-9)",
@@ -451,11 +454,12 @@ mod tests {
     #[test]
     fn test_validate_issuer() {
         assert!(validate_issuer("native").is_ok());
-        assert!(validate_issuer(
-            "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
-        )
-        .is_ok());
-        assert!(validate_issuer("ABCD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5").is_err());
+        assert!(
+            validate_issuer("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5").is_ok()
+        );
+        assert!(
+            validate_issuer("ABCD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5").is_err()
+        );
         assert!(validate_issuer("short").is_err());
         assert!(validate_issuer("").is_err());
     }

@@ -918,6 +918,9 @@ mod tests {
             limiter.get_api_key_limit_per_minute("configured-key").await,
             15
         );
-        assert_eq!(limiter.get_api_key_limit_per_minute("missing-key").await, 60);
+        assert_eq!(
+            limiter.get_api_key_limit_per_minute("missing-key").await,
+            60
+        );
     }
 }

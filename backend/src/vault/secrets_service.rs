@@ -2,7 +2,6 @@
 ///
 /// Provides a single interface for fetching application secrets from Vault
 /// with fallback to environment variables for development environments.
-
 use crate::vault::{VaultClient, VaultError};
 use std::sync::Arc;
 use tokio::sync::RwLock;
