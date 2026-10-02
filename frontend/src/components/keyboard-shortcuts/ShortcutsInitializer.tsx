@@ -7,6 +7,7 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCommandPalette } from '@/contexts/CommandPaletteContext';
 import { createDefaultShortcuts } from '@/lib/keyboard-shortcuts/default-shortcuts';
+import { routing } from '@/i18n/routing';
 
 /**
  * Initialize default keyboard shortcuts
@@ -21,8 +22,12 @@ export function ShortcutsInitializer() {
   const { open: openCommandPalette } = useCommandPalette();
 
   useEffect(() => {
-    // Extract locale from pathname (e.g., /en/dashboard -> en)
-    const locale = pathname.split('/')[1] || 'en';
+    // Extract locale from pathname (e.g., /en/dashboard -> en). A path with no
+    // locale prefix (/dashboard) must not turn its first segment into one.
+    const segment = pathname.split('/')[1];
+    const locale = (routing.locales as readonly string[]).includes(segment)
+      ? segment
+      : routing.defaultLocale;
 
     const shortcuts = createDefaultShortcuts({
       showHelp: () => {
