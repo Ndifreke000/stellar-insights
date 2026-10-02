@@ -26,6 +26,10 @@ on first start.
 cd backend
 cp .env.example .env
 # DATABASE_URL already defaults to sqlite:./payraider.db
+# replace the CHANGE_ME placeholders: the backend refuses to start with them
+#   JWT_SECRET=$(openssl rand -base64 48)
+#   ENCRYPTION_KEY=$(openssl rand -hex 32)
+#   SEP10_SERVER_PUBLIC_KEY=<a real Stellar public key>
 # set STELLAR_RPC_URL etc. as needed
 cargo run
 ```
@@ -34,8 +38,9 @@ cargo run
 
 ```bash
 cd frontend
-npm install
-npm run dev
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL must point at the backend
+pnpm install
+pnpm dev
 ```
 
 ## Plugin: check a corridor before you pay
