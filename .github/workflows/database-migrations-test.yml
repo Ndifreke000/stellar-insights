@@ -50,6 +50,9 @@ jobs:
         run: |
           export DATABASE_URL="sqlite:./test_migrations.db"
           rm -f test_migrations.db
+          # SQLite does not create the file on connect; without this the next
+          # step failed with "unable to open database file".
+          sqlx database create
 
       - name: Run forward migrations
         working-directory: backend
