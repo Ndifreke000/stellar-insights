@@ -212,6 +212,10 @@ pub fn routes(
     // 5b. Read-only reference modules. Their handlers and OpenAPI entries
     // existed but nothing mounted them, so the SDKs and the MCP plugin got
     // 404s for documented endpoints.
+    let trustline_analyzer = Arc::new(crate::services::trustline_analyzer::TrustlineAnalyzer::new(
+        pool.clone(),
+        Arc::clone(&rpc_client),
+    ));
     let reference_routes = Router::new()
         // `POST /network/switch` is a placeholder that changes nothing, so
         // only the two read endpoints are exposed.
@@ -224,6 +228,10 @@ pub fn routes(
         .nest(
             "/assets",
             crate::api::asset_verification::routes(pool.clone()),
+        )
+        .nest(
+            "/trustlines",
+            crate::api::trustlines::routes(trustline_analyzer),
         );
 
     // 6. OAuth routes
