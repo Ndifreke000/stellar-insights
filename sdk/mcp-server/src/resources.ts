@@ -16,7 +16,11 @@ export function registerResources(server: McpServer, client: PayRaiderClient): v
     new ResourceTemplate("payraider://corridor/{source}/{destination}", { list: undefined }),
     { title: "Stellar payment corridor", description: "Corridor detail: success rate, latency, liquidity trend" },
     async (uri, { source, destination }) => {
-      const detail = await client.corridors.get(String(source), String(destination));
+      // URI template variables arrive percent-encoded ("USDC%3AG...").
+      const detail = await client.corridors.get(
+        decodeURIComponent(String(source)),
+        decodeURIComponent(String(destination)),
+      );
       return asJsonContents(uri, detail);
     },
   );
@@ -26,7 +30,7 @@ export function registerResources(server: McpServer, client: PayRaiderClient): v
     new ResourceTemplate("payraider://anchor/{id}", { list: undefined }),
     { title: "Stellar anchor operator", description: "Anchor detail: health score, supported assets, SEP compliance" },
     async (uri, { id }) => {
-      const detail = await client.anchors.get(String(id));
+      const detail = await client.anchors.get(decodeURIComponent(String(id)));
       return asJsonContents(uri, detail);
     },
   );
