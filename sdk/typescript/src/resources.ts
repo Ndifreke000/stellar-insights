@@ -243,7 +243,7 @@ export class NetworkResource {
   constructor(private http: HttpClient) {}
 
   info(): Promise<NetworkInfo> {
-    return this.http.request("GET", "/api/network");
+    return this.http.request("GET", "/api/network/info");
   }
 
   available(): Promise<NetworkInfo[]> {
