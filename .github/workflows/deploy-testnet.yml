@@ -45,9 +45,32 @@ jobs:
         # exists in this repo and has not compiled for some time.
         run: cargo test --features sep-integration
 
+  # Secrets cannot be read in a job-level `if`, so this job reports whether
+  # the testnet deployment is configured; otherwise the deploy is skipped
+  # instead of failing on every push.
+  config:
+    name: Check deploy configuration
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          KUBECONFIG_TESTNET: ${{ secrets.KUBECONFIG_TESTNET }}
+          TESTNET_BACKEND_URL: ${{ vars.TESTNET_BACKEND_URL }}
+        run: |
+          if [ -n "$AWS_ACCOUNT_ID" ] && [ -n "$KUBECONFIG_TESTNET" ] && [ -n "$TESTNET_BACKEND_URL" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Testnet deploy is not configured (AWS_ACCOUNT_ID, KUBECONFIG_TESTNET, TESTNET_BACKEND_URL); skipping it."
+          fi
+
   build-and-deploy:
     name: Build, Push & Deploy Testnet
-    needs: test
+    needs: [test, config]
+    if: needs.config.outputs.ready == 'true'
     runs-on: ubuntu-latest
     environment: testnet
 
