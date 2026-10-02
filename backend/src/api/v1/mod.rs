@@ -272,6 +272,12 @@ pub fn routes(
         )
     });
 
+    // 5d. SEP-10 wallet auth (challenge, verify, logout). The module's routes
+    // carry absolute /api/sep10 paths, so it is merged at the root below.
+    let sep10_routes = sep10_service
+        .clone()
+        .map_or_else(Router::new, crate::api::sep10::routes);
+
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool.clone());
 
@@ -394,6 +400,7 @@ pub fn routes(
         // endpoint manages its own per-origin CORS headers dynamically
         // (the anchor home_domain is not known at startup).
         .merge(sep24_proxy::routes())
+        .merge(sep10_routes)
         .layer(cors)
         .layer(middleware::from_fn(
             crate::request_id::request_id_middleware,
