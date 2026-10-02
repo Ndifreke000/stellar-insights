@@ -122,3 +122,51 @@ async def test_prices_convert_to_usd(client):
     assert params["asset"] == "XLM:native"
     assert params["amount"] == "100.0"
     assert result["amount_usd"] == 17.0
+
+
+# ── Preflight (pre-payment check) ────────────────────────────────────────────
+
+PREFLIGHT_OK = {
+    "decision": "proceed",
+    "summary": "All checks passed; safe to pay on this corridor.",
+    "score": 92.0,
+    "corridor": None,
+    "checks": [],
+    "alternatives": [],
+    "evaluated_at": "2026-01-01T00:00:00Z",
+}
+
+
+@respx.mock
+async def test_preflight_posts_only_the_fields_that_were_set(client):
+    route = respx.post(f"{BASE}/api/v1/preflight").mock(
+        return_value=httpx.Response(200, json=PREFLIGHT_OK)
+    )
+    result = await client.preflight.check("USDC", "NGN", amount_usd=2500)
+
+    import json
+
+    assert json.loads(route.calls[0].request.content) == {
+        "source_asset": "USDC",
+        "destination_asset": "NGN",
+        "amount_usd": 2500,
+    }
+    assert result["decision"] == "proceed"
+
+
+@respx.mock
+async def test_preflight_works_without_an_api_key():
+    anonymous = PayRaider(max_retries=0)
+    route = respx.post(f"{BASE}/api/v1/preflight").mock(
+        return_value=httpx.Response(200, json=PREFLIGHT_OK)
+    )
+    await anonymous.preflight.check("USDC", "NGN")
+    assert "Authorization" not in route.calls[0].request.headers
+
+
+@respx.mock
+async def test_is_safe_to_pay_is_false_unless_decision_is_proceed(client):
+    respx.post(f"{BASE}/api/v1/preflight").mock(
+        return_value=httpx.Response(200, json={**PREFLIGHT_OK, "decision": "hold"})
+    )
+    assert await client.preflight.is_safe_to_pay("USDC", "NGN", amount_usd=100) is False
