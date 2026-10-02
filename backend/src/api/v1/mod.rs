@@ -229,9 +229,8 @@ pub fn routes(
     let admin_ip_whitelist_routes = Router::new()
         .nest(
             "/admin/ip-whitelist",
-            crate::api::admin_ip_whitelist::routes(ip_whitelist_service.clone()),
+            crate::api::admin_ip_whitelist::routes(ip_whitelist_service),
         )
-        .merge(crate::api::admin_ip_whitelist::routes(ip_whitelist_service))
         .layer(middleware::from_fn(auth_middleware));
 
     // 9. Admin audit log routes (#2219). Like admin_ip_whitelist_routes
@@ -242,9 +241,8 @@ pub fn routes(
     let audit_log_routes = Router::new()
         .nest(
             "/admin/audit-log",
-            crate::api::audit_log::routes(audit_logger.clone()),
+            crate::api::audit_log::routes(audit_logger),
         )
-        .merge(crate::api::audit_log::routes(audit_logger))
         .layer(middleware::from_fn(auth_middleware));
 
     // 10. 2FA routes (#2219). Previously built with
@@ -257,9 +255,8 @@ pub fn routes(
     let twofa_routes = Router::new()
         .nest(
             "/auth/2fa",
-            crate::api::twofa::routes(twofa_service.clone()),
-        )
-        .merge(crate::api::twofa::routes(twofa_service));
+            crate::api::twofa::routes(twofa_service),
+        );
 
     // 11. Login/refresh/logout/session-management routes. AuthService was
     // never constructed anywhere in this codebase before, so this whole
