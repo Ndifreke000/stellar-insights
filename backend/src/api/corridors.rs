@@ -357,136 +357,7 @@ pub async fn list_corridors(
         &cache_key,
         cache.config.get_ttl("corridor"),
         || async {
-            let circuit_breaker = rpc_circuit_breaker();
-
-            // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
-            let payments = with_retry(
-                || async {
-                    rpc_client
-                        .fetch_all_payments(Some(1000))
-                        .await
-                        .map_err(|e| RpcError::categorize(&e.to_string()))
-                },
-                RetryConfig::default(),
-                circuit_breaker.clone(),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {e}"))?;
-
-            // **RPC DATA**: Fetch recent trades with pagination for volume data
-            let _trades = with_retry(
-                || async {
-                    rpc_client
-                        .fetch_all_trades(Some(1000))
-                        .await
-                        .map_err(|e| RpcError::categorize(&e.to_string()))
-                },
-                RetryConfig::default(),
-                circuit_breaker.clone(),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
-
-            // Group payments by asset pairs to identify corridors
-            use std::collections::HashMap;
-            let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
-
-            for payment in &payments {
-                // Extract the actual asset pair from the payment
-                if let Some(asset_pair) = extract_asset_pair_from_payment(payment) {
-                    let corridor_key = asset_pair.to_corridor_key();
-                    corridor_map.entry(corridor_key).or_default().push(payment);
-                } else {
-                    warn!(
-                        payment_id = crate::logging::redaction::redact_hash(&payment.id),
-                        "Failed to extract asset pair from payment"
-                    );
-                }
-            }
-
-            // Calculate metrics for each corridor
-            let mut corridor_responses = Vec::new();
-
-            // Batch-fetch prices for every distinct source asset up front instead of
-            // awaiting price_feed.get_price() once per corridor below — with a large
-            // number of distinct corridors that turned into N sequential round trips.
-            let source_assets: Vec<String> = corridor_map
-                .keys()
-                .filter_map(|k| k.split("->").next())
-                .map(String::from)
-                .collect();
-            let prices = price_feed.get_prices(&source_assets).await;
-
-            for (corridor_key, corridor_payments) in &corridor_map {
-                let total_attempts = corridor_payments.len() as i64;
-
-                // In Stellar, payments in the stream are successful
-                let successful_payments = total_attempts;
-                let failed_payments = 0;
-                let success_rate = if total_attempts > 0 { 100.0 } else { 0.0 };
-
-                // Parse corridor key to get assets
-                let parts: Vec<&str> = corridor_key.split("->").collect();
-                if parts.len() != 2 {
-                    continue;
-                }
-
-                let source_parts: Vec<&str> = parts[0].split(':').collect();
-                let dest_parts: Vec<&str> = parts[1].split(':').collect();
-
-                if source_parts.len() != 2 || dest_parts.len() != 2 {
-                    continue;
-                }
-
-                // Calculate volume from payment amounts and convert to USD
-                let mut volume_usd: f64 = 0.0;
-                let source_asset_key = parts[0];
-
-                // Get price for source asset from the batch fetched above
-                if let Some(&price) = prices.get(source_asset_key) {
-                    for payment in corridor_payments {
-                        if let Ok(amount) = payment.get_amount().parse::<f64>() {
-                            volume_usd += amount * price;
-                        }
-                    }
-                } else {
-                    // Fallback: use raw amounts if price unavailable
-                    tracing::warn!(
-                        "Price unavailable for {}, using raw amounts",
-                        source_asset_key
-                    );
-                    volume_usd = corridor_payments
-                        .iter()
-                        .filter_map(|p| p.get_amount().parse::<f64>().ok())
-                        .sum();
-                }
-
-                // Calculate health score
-                let health_score = calculate_health_score(success_rate, total_attempts, volume_usd);
-                let liquidity_trend = get_liquidity_trend(volume_usd);
-                let avg_latency = 400.0 + (success_rate * 2.0);
-
-                let corridor_response = CorridorResponse {
-                    id: corridor_key.clone(),
-                    source_asset: source_parts[0].to_string(),
-                    destination_asset: dest_parts[0].to_string(),
-                    success_rate,
-                    total_attempts,
-                    successful_payments,
-                    failed_payments,
-                    average_latency_ms: avg_latency,
-                    median_latency_ms: avg_latency * 0.75,
-                    p95_latency_ms: avg_latency * 2.5,
-                    p99_latency_ms: avg_latency * 4.0,
-                    liquidity_depth_usd: volume_usd,
-                    liquidity_volume_24h_usd: volume_usd * 0.1,
-                    liquidity_trend,
-                    health_score,
-                    last_updated: chrono::Utc::now().to_rfc3339(),
-                };
-
-                corridor_responses.push(corridor_response);
-            }
+            let corridor_responses = compute_live_corridors(&rpc_client, &price_feed).await?;
 
             // Apply filters
             let filtered: Vec<_> = corridor_responses
@@ -559,6 +430,148 @@ pub async fn list_corridors(
     let ttl = cache.config.get_ttl("corridor");
     let response = crate::http_cache::cached_json_response(&headers, &cache_key, &corridors, ttl)?;
     Ok(response)
+}
+
+/// Build the live corridor table from recent RPC payments.
+///
+/// Shared by the corridor list endpoint and the pre-payment check so both
+/// score corridors from the same data.
+pub(crate) async fn compute_live_corridors(
+    rpc_client: &StellarRpcClient,
+    price_feed: &PriceFeedClient,
+) -> anyhow::Result<Vec<CorridorResponse>> {
+    let circuit_breaker = rpc_circuit_breaker();
+
+    // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
+    let payments = with_retry(
+        || async {
+            rpc_client
+                .fetch_all_payments(Some(1000))
+                .await
+                .map_err(|e| RpcError::categorize(&e.to_string()))
+        },
+        RetryConfig::default(),
+        circuit_breaker.clone(),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to fetch payments from RPC: {e}"))?;
+
+    // **RPC DATA**: Fetch recent trades with pagination for volume data
+    let _trades = with_retry(
+        || async {
+            rpc_client
+                .fetch_all_trades(Some(1000))
+                .await
+                .map_err(|e| RpcError::categorize(&e.to_string()))
+        },
+        RetryConfig::default(),
+        circuit_breaker.clone(),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to fetch trades from RPC: {e}"))?;
+
+    // Group payments by asset pairs to identify corridors
+    use std::collections::HashMap;
+    let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
+
+    for payment in &payments {
+        // Extract the actual asset pair from the payment
+        if let Some(asset_pair) = extract_asset_pair_from_payment(payment) {
+            let corridor_key = asset_pair.to_corridor_key();
+            corridor_map.entry(corridor_key).or_default().push(payment);
+        } else {
+            warn!(
+                payment_id = crate::logging::redaction::redact_hash(&payment.id),
+                "Failed to extract asset pair from payment"
+            );
+        }
+    }
+
+    // Calculate metrics for each corridor
+    let mut corridor_responses = Vec::new();
+
+    // Batch-fetch prices for every distinct source asset up front instead of
+    // awaiting price_feed.get_price() once per corridor below — with a large
+    // number of distinct corridors that turned into N sequential round trips.
+    let source_assets: Vec<String> = corridor_map
+        .keys()
+        .filter_map(|k| k.split("->").next())
+        .map(String::from)
+        .collect();
+    let prices = price_feed.get_prices(&source_assets).await;
+
+    for (corridor_key, corridor_payments) in &corridor_map {
+        let total_attempts = corridor_payments.len() as i64;
+
+        // In Stellar, payments in the stream are successful
+        let successful_payments = total_attempts;
+        let failed_payments = 0;
+        let success_rate = if total_attempts > 0 { 100.0 } else { 0.0 };
+
+        // Parse corridor key to get assets
+        let parts: Vec<&str> = corridor_key.split("->").collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        let source_parts: Vec<&str> = parts[0].split(':').collect();
+        let dest_parts: Vec<&str> = parts[1].split(':').collect();
+
+        if source_parts.len() != 2 || dest_parts.len() != 2 {
+            continue;
+        }
+
+        // Calculate volume from payment amounts and convert to USD
+        let mut volume_usd: f64 = 0.0;
+        let source_asset_key = parts[0];
+
+        // Get price for source asset from the batch fetched above
+        if let Some(&price) = prices.get(source_asset_key) {
+            for payment in corridor_payments {
+                if let Ok(amount) = payment.get_amount().parse::<f64>() {
+                    volume_usd += amount * price;
+                }
+            }
+        } else {
+            // Fallback: use raw amounts if price unavailable
+            tracing::warn!(
+                "Price unavailable for {}, using raw amounts",
+                source_asset_key
+            );
+            volume_usd = corridor_payments
+                .iter()
+                .filter_map(|p| p.get_amount().parse::<f64>().ok())
+                .sum();
+        }
+
+        // Calculate health score
+        let health_score = calculate_health_score(success_rate, total_attempts, volume_usd);
+        let liquidity_trend = get_liquidity_trend(volume_usd);
+        let avg_latency = 400.0 + (success_rate * 2.0);
+
+        let corridor_response = CorridorResponse {
+            id: corridor_key.clone(),
+            source_asset: source_parts[0].to_string(),
+            destination_asset: dest_parts[0].to_string(),
+            success_rate,
+            total_attempts,
+            successful_payments,
+            failed_payments,
+            average_latency_ms: avg_latency,
+            median_latency_ms: avg_latency * 0.75,
+            p95_latency_ms: avg_latency * 2.5,
+            p99_latency_ms: avg_latency * 4.0,
+            liquidity_depth_usd: volume_usd,
+            liquidity_volume_24h_usd: volume_usd * 0.1,
+            liquidity_trend,
+            health_score,
+            last_updated: chrono::Utc::now().to_rfc3339(),
+        };
+
+        corridor_responses.push(corridor_response);
+    }
+
+    Ok(corridor_responses)
 }
 
 /// Calculate historical success rate data points (30-day buckets)
