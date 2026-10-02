@@ -1,85 +1,65 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 
-// Mock navigator.onLine
-Object.defineProperty(globalThis, 'navigator', {
-  value: {
-    onLine: true,
-    serviceWorker: {
-      register: vi.fn(),
-      ready: Promise.resolve({
-        active: { state: 'activated' }
-      })
-    }
-  },
-  writable: true
-});
-
-// Mock window properties for PWA
 beforeEach(() => {
-  // Mock serviceWorker
-  globalThis.navigator.serviceWorker = {
-    register: vi.fn(),
-    ready: Promise.resolve({
-      active: { state: 'activated' }
-    })
-  } as unknown as ServiceWorkerContainer;
-
-  // Mock caches
-  globalThis.caches = {
-    open: vi.fn(),
-    match: vi.fn(),
-    delete: vi.fn()
-  } as unknown as CacheStorage;
+  // The shared setup defines navigator.serviceWorker as writable.
+  (navigator as unknown as { serviceWorker: unknown }).serviceWorker = {
+    register: vi.fn().mockResolvedValue({}),
+    ready: Promise.resolve({ active: { state: 'activated' } }),
+  };
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.resetModules();
 });
 
-describe('PWA Offline Implementation', () => {
-  it('renders offline page correctly', async () => {
+describe('PWA offline support', () => {
+  it('renders the offline page with a retry action and a way home', async () => {
     const OfflinePage = (await import('@/app/offline/page')).default;
-    
+
     render(<OfflinePage />);
-    
+
     expect(screen.getByText('Offline Mode')).toBeInTheDocument();
-    expect(screen.getByText('Retry Connection')).toBeInTheDocument();
-    expect(screen.getByText('Go Home')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
   });
 
-  it('pwa utils detect offline status', async () => {
-    const { isOffline, getSWStatus, registerSW } = await import('@/lib/pwa');
-    
+  it('tracks connectivity from the online and offline events', async () => {
+    const { addOfflineListener, isOffline } = await import('@/lib/pwa');
+    const onChange = vi.fn();
+    addOfflineListener(onChange);
+
     expect(isOffline()).toBe(false);
 
-    // Mock offline
-    (globalThis.navigator as unknown as { onLine: boolean }).onLine = false;
+    window.dispatchEvent(new Event('offline'));
     expect(isOffline()).toBe(true);
-    
-    // Mock SW status
-    expect(await getSWStatus()).toBe('registered');
-    
-    // Mock registration
-    await registerSW();
-    expect(globalThis.navigator.serviceWorker.register).toHaveBeenCalledWith('/sw.js');
+    expect(onChange).toHaveBeenLastCalledWith(false);
+
+    window.dispatchEvent(new Event('online'));
+    expect(isOffline()).toBe(false);
+    expect(onChange).toHaveBeenLastCalledWith(true);
   });
 
-  it('caches static assets correctly (simulated)', async () => {
-    // Simulate CacheFirst for images/fonts
-    (globalThis.caches as unknown as CacheStorage).open.mockResolvedValue({
-      addAll: vi.fn(),
-      match: vi.fn().mockResolvedValue({}),
-      keys: vi.fn().mockResolvedValue([])
-    });
+  it('registers the service worker script', async () => {
+    const { registerSW } = await import('@/lib/pwa');
 
-    const { readFileSync } = await import('fs');
-    // Verify icons exist for manifest
-    const icons = ['icon-192x192.png', 'icon-512x512.png', 'apple-touch-icon.png'];
-    icons.forEach(icon => {
-      expect(() => readFileSync(join(process.cwd(), 'public', icon))).not.toThrow();
-    });
+    await registerSW();
+
+    expect(navigator.serviceWorker.register).toHaveBeenCalledWith('/sw.js');
+  });
+
+  it('ships every icon the web manifest references', () => {
+    const publicDir = join(process.cwd(), 'public');
+    const manifest = JSON.parse(readFileSync(join(publicDir, 'manifest.json'), 'utf8')) as {
+      icons: Array<{ src: string }>;
+    };
+
+    expect(manifest.icons.length).toBeGreaterThan(0);
+    for (const icon of manifest.icons) {
+      expect(existsSync(join(publicDir, icon.src)), `${icon.src} is missing from public/`).toBe(true);
+    }
   });
 });
-
