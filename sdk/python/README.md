@@ -17,7 +17,7 @@ from payraider import PayRaider
 async def main():
     async with PayRaider(api_key="sk_...") as client:
         anchors = await client.anchors.list()
-        corridor = await client.corridors.get("USDC:issuer", "native")
+        corridor = await client.corridors.get("USDC:issuer", "XLM:native")
         price = await client.prices.get("XLM:native")
 
 asyncio.run(main())

@@ -65,7 +65,7 @@ async def test_retries_on_429():
             httpx.Response(200, json={"routes": []}),
         ]
     )
-    result = await client.cost_calculator.estimate("USD:GXXX", "EUR:GYYY", 100)
+    result = await client.cost_calculator.estimate("USDC", "NGN", 100)
     assert route.call_count == 3
     assert result == {"routes": []}
 
@@ -75,17 +75,18 @@ async def test_post_body(client):
     route = respx.post(f"{BASE}/api/cost-calculator/estimate").mock(
         return_value=httpx.Response(200, json={"routes": []})
     )
-    await client.cost_calculator.estimate("USD:GXXX", "EUR:GYYY", 500.0)
+    await client.cost_calculator.estimate("USDC", "NGN", 500.0)
     import json
     body = json.loads(route.calls[0].request.content)
-    assert body["amount"] == 500.0
-    assert body["source_asset"] == "USD:GXXX"
+    assert body["source_amount"] == 500.0
+    assert body["source_currency"] == "USDC"
+    assert body["destination_currency"] == "NGN"
 
 
 @respx.mock
 async def test_context_manager():
     async with PayRaider(api_key="test-key") as client:
-        respx.get(f"{BASE}/api/network").mock(
+        respx.get(f"{BASE}/api/network/info").mock(
             return_value=httpx.Response(200, json={"network": "testnet", "passphrase": "x", "horizon_url": "y", "rpc_url": "z"})
         )
         result = await client.network.info()
@@ -170,3 +171,31 @@ async def test_is_safe_to_pay_is_false_unless_decision_is_proceed(client):
         return_value=httpx.Response(200, json={**PREFLIGHT_OK, "decision": "hold"})
     )
     assert await client.preflight.is_safe_to_pay("USDC", "NGN", amount_usd=100) is False
+
+
+# ── Paths that must match the backend router ─────────────────────────────────
+
+
+@respx.mock
+async def test_corridor_get_uses_the_corridor_key(client):
+    route = respx.get(url__regex=rf"{BASE}/api/corridors/.*").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    await client.corridors.get("USDC:GA", "NGN:GB")
+    assert route.calls[0].request.url.raw_path == b"/api/corridors/USDC%3AGA-%3ENGN%3AGB"
+
+    await client.corridors.get("USDC:GA->NGN:GB")
+    assert route.calls[1].request.url.raw_path == b"/api/corridors/USDC%3AGA-%3ENGN%3AGB"
+
+
+@respx.mock
+async def test_asset_verification_paths(client):
+    verify = respx.get(f"{BASE}/api/assets/verify/USDC/GA").mock(return_value=httpx.Response(200, json={}))
+    read = respx.get(f"{BASE}/api/assets/USDC/GA/verification").mock(return_value=httpx.Response(200, json={}))
+    listing = respx.get(f"{BASE}/api/assets/verified").mock(return_value=httpx.Response(200, json={}))
+
+    await client.asset_verification.verify("USDC", "GA")
+    await client.asset_verification.get("USDC", "GA")
+    await client.asset_verification.list()
+
+    assert verify.called and read.called and listing.called
