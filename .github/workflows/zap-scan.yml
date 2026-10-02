@@ -8,21 +8,27 @@ on:
 jobs:
   zap-scan:
     runs-on: ubuntu-latest
+    env:
+      # The secrets context is not available in `if:` conditions.
+      HAS_STAGING_URL: ${{ secrets.STAGING_URL != '' }}
+      HAS_MAIL: ${{ secrets.MAIL_HOST != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Skip when no staging URL is configured
+        if: env.HAS_STAGING_URL != 'true'
+        run: echo "::notice::STAGING_URL secret is not set; skipping the ZAP scan."
+
       - name: Run OWASP ZAP baseline (docker)
+        if: env.HAS_STAGING_URL == 'true'
         env:
           TARGET_URL: ${{ secrets.STAGING_URL }}
         run: |
-          if [ -z "$TARGET_URL" ]; then
-            echo "STAGING_URL secret is not set; aborting ZAP scan.";
-            exit 78;
-          fi
           docker run --rm -v $(pwd):/zap/wrk/:Z owasp/zap2docker-stable zap-baseline.py -t "$TARGET_URL" -r zap-report.html -J zap-report.json || true
 
       - name: Upload ZAP artifacts
+        if: env.HAS_STAGING_URL == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: zap-report
@@ -31,17 +37,19 @@ jobs:
             zap-report.json
 
       - name: Parse ZAP results and create issue
+        if: env.HAS_STAGING_URL == 'true'
         id: parse
         run: |
           if [ ! -f zap-report.json ]; then
             echo "no_report=true" >> $GITHUB_OUTPUT
+            echo "alerts=0" >> $GITHUB_OUTPUT
             exit 0
           fi
           ALERTS=$(jq '[.site[].alerts[]?] | length' zap-report.json 2>/dev/null || echo 0)
           echo "alerts=$ALERTS" >> $GITHUB_OUTPUT
 
       - name: Create GitHub issue for ZAP findings
-        if: steps.parse.outputs.alerts != '0'
+        if: steps.parse.outputs.alerts != '' && steps.parse.outputs.alerts != '0'
         uses: peter-evans/create-issue@v4
         with:
           title: "[Security][ZAP] Staging scan found vulnerabilities"
@@ -53,7 +61,7 @@ jobs:
             Please triage and assign.
 
       - name: Optional email notification for ZAP
-        if: ${{ secrets.MAIL_HOST != '' && steps.parse.outputs.alerts != '0' }}
+        if: env.HAS_MAIL == 'true' && steps.parse.outputs.alerts != '' && steps.parse.outputs.alerts != '0'
         uses: dawidd6/action-send-mail@v9
         with:
           server_address: ${{ secrets.MAIL_HOST }}
