@@ -7,6 +7,7 @@ import {
   AuthResource,
   CorridorsResource,
   CostCalculatorResource,
+  PreflightResource,
   GovernanceResource,
   LiquidityPoolsResource,
   MlResource,
@@ -72,6 +73,7 @@ export class PayRaider {
   readonly corridors: CorridorsResource;
   readonly prices: PricesResource;
   readonly costCalculator: CostCalculatorResource;
+  readonly preflight: PreflightResource;
   readonly alerts: AlertsResource;
   readonly webhooks: WebhooksResource;
   readonly apiKeys: ApiKeysResource;
@@ -96,6 +98,7 @@ export class PayRaider {
     this.corridors = new CorridorsResource(this.http);
     this.prices = new PricesResource(this.http);
     this.costCalculator = new CostCalculatorResource(this.http);
+    this.preflight = new PreflightResource(this.http);
     this.alerts = new AlertsResource(this.http);
     this.webhooks = new WebhooksResource(this.http);
     this.apiKeys = new ApiKeysResource(this.http);

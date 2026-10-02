@@ -21,6 +21,8 @@ import type {
   PaginatedResponse,
   PaginationParams,
   PaymentPrediction,
+  PreflightRequest,
+  PreflightResponse,
   Price,
   Proposal,
   Transaction,
@@ -88,6 +90,24 @@ export class CostCalculatorResource {
 
   routes(req: CostEstimateRequest): Promise<CostEstimateResponse> {
     return this.http.request("POST", "/api/cost-calculator/routes", { body: req });
+  }
+}
+
+/**
+ * Pre-payment check for off-ramp and payout apps: ask whether a corridor is
+ * healthy enough to pay on right now. Works without an API key.
+ */
+export class PreflightResource {
+  constructor(private http: HttpClient) {}
+
+  check(req: PreflightRequest): Promise<PreflightResponse> {
+    return this.http.request("POST", "/api/v1/preflight", { body: req });
+  }
+
+  /** True only when every check passed. */
+  async isSafeToPay(req: PreflightRequest): Promise<boolean> {
+    const result = await this.check(req);
+    return result.decision === "proceed";
   }
 }
 
