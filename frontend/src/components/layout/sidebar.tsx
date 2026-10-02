@@ -204,7 +204,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps = {}) {
                     onClick={() => toggleGroup(group.key)}
                     aria-expanded={expanded}
                     aria-controls={panelId}
-                    className="w-full flex items-center justify-between px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <span>{tGroups(group.key)}</span>
                     <ChevronDown
@@ -249,7 +249,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps = {}) {
                 {t("systemNominal")}
               </span>
             </div>
-            <div className="text-[10px] font-mono text-muted-foreground/50 tabular-nums uppercase tracking-tighter">
+            <div className="text-[10px] font-mono text-muted-foreground tabular-nums uppercase tracking-tighter">
               RPC_ID: STLR_MAIN_01
             </div>
           </div>
