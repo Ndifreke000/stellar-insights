@@ -128,9 +128,14 @@ export interface ConvertResult {
 // ─── Cost Calculator ─────────────────────────────────────────────────────────
 
 export interface CostEstimateRequest {
-  source_asset: string;
-  destination_asset: string;
-  amount: number;
+  /** Currency or asset code the sender pays in, e.g. "USDC". */
+  source_currency: string;
+  /** Currency or asset code the recipient receives, e.g. "NGN". */
+  destination_currency: string;
+  /** Amount in the source currency. */
+  source_amount: number;
+  /** Amount the recipient must receive, to report any shortfall. */
+  destination_amount?: number;
 }
 
 export interface RouteFees {

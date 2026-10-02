@@ -86,11 +86,11 @@ describe("PayRaider SDK", () => {
   it("posts body as JSON for cost estimate", async () => {
     mockFetch.mockReturnValueOnce(ok({ routes: [] }));
     await client.costCalculator.estimate({
-      source_asset: "USD:GXXX",
-      destination_asset: "EUR:GYYY",
-      amount: 100,
+      source_currency: "USDC",
+      destination_currency: "NGN",
+      source_amount: 100,
     });
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toMatchObject({ amount: 100 });
+    expect(JSON.parse(init.body as string)).toMatchObject({ source_amount: 100 });
   });
 });

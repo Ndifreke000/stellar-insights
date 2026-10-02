@@ -90,10 +90,6 @@ export class CostCalculatorResource {
   estimate(req: CostEstimateRequest): Promise<CostEstimateResponse> {
     return this.http.request("POST", "/api/cost-calculator/estimate", { body: req });
   }
-
-  routes(req: CostEstimateRequest): Promise<CostEstimateResponse> {
-    return this.http.request("POST", "/api/cost-calculator/routes", { body: req });
-  }
 }
 
 /**
