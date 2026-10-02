@@ -6,6 +6,17 @@
 //! 3. Request/response logging middleware is functional
 //! 4. Sensitive data is properly redacted
 
+/// Resolve a path given relative to the repository root. `cargo test` runs
+/// with the crate directory (backend/) as the working directory, so
+/// repo-relative literals such as "elk/..." did not resolve.
+fn repo_file(relative: &str) -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(relative)
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[tokio::test]
 async fn test_json_logging_format() {
     // Verify LOG_FORMAT environment variable defaults to JSON
@@ -20,7 +31,7 @@ async fn test_json_logging_format() {
 #[tokio::test]
 async fn test_logstash_config_exists() {
     // Verify Logstash pipeline configuration is present
-    let logstash_conf_path = "elk/logstash/pipeline/logstash.conf";
+    let logstash_conf_path = &repo_file("elk/logstash/pipeline/logstash.conf");
     assert!(
         std::path::Path::new(logstash_conf_path).exists(),
         "Logstash pipeline configuration must exist at {}",
@@ -48,7 +59,7 @@ async fn test_logstash_config_exists() {
 #[tokio::test]
 async fn test_elk_docker_compose_valid() {
     // Verify Docker Compose configuration is present
-    let compose_path = "docker-compose.elk.yml";
+    let compose_path = &repo_file("docker-compose.elk.yml");
     assert!(
         std::path::Path::new(compose_path).exists(),
         "Docker Compose file must exist at {}",
@@ -85,7 +96,7 @@ async fn test_elk_docker_compose_valid() {
 #[tokio::test]
 async fn test_redaction_configuration() {
     // Verify Logstash configuration includes sensitive data redaction
-    let logstash_conf = std::fs::read_to_string("elk/logstash/pipeline/logstash.conf")
+    let logstash_conf = std::fs::read_to_string(repo_file("elk/logstash/pipeline/logstash.conf"))
         .expect("Failed to read Logstash config");
 
     // Check for redaction patterns
@@ -106,7 +117,7 @@ async fn test_redaction_configuration() {
 #[tokio::test]
 async fn test_kibana_config_exists() {
     // Verify Kibana configuration is present
-    let kibana_config = "elk/kibana/dashboard.json";
+    let kibana_config = &repo_file("elk/kibana/dashboard.json");
     assert!(
         std::path::Path::new(kibana_config).exists(),
         "Kibana dashboard configuration must exist at {}",
@@ -123,8 +134,8 @@ async fn test_kibana_config_exists() {
 #[tokio::test]
 async fn test_index_pattern_configured() {
     // Verify Kibana has index pattern for payraider logs
-    let kibana_config =
-        std::fs::read_to_string("elk/kibana/dashboard.json").expect("Failed to read Kibana config");
+    let kibana_config = std::fs::read_to_string(repo_file("elk/kibana/dashboard.json"))
+        .expect("Failed to read Kibana config");
 
     assert!(
         kibana_config.contains("payraider"),
