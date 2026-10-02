@@ -82,6 +82,8 @@ impl Modify for SecurityAddon {
         crate::api::price_feed::get_cache_stats,
         // Cost Calculator
         crate::api::cost_calculator::estimate_costs,
+        crate::api::preflight::preflight_get,
+        crate::api::preflight::preflight_post,
         // Alerts
         crate::api::alerts::list_rules,
         crate::api::alerts::create_rule,
@@ -235,6 +237,11 @@ impl Modify for SecurityAddon {
             crate::api::anchors::AnchorsResponse,
             crate::api::anchors::AnchorMetricsResponse,
             crate::api::corridors::CorridorResponse,
+            crate::api::preflight::PreflightRequest,
+            crate::api::preflight::PreflightResponse,
+            crate::api::preflight::PreflightCheck,
+            crate::api::preflight::PreflightDecision,
+            crate::api::preflight::CheckStatus,
             crate::api::corridors::CorridorDetailResponse,
             crate::api::corridors::SuccessRateDataPoint,
             crate::api::corridors::LatencyDataPoint,
@@ -286,6 +293,7 @@ impl Modify for SecurityAddon {
         (name = "Liquidity Pools", description = "Liquidity pool analytics"),
         (name = "Metrics", description = "System metrics and monitoring"),
         (name = "ML", description = "Machine learning prediction endpoints"),
+        (name = "Preflight", description = "Pre-payment corridor check for off-ramp and payout apps"),
         (name = "Network", description = "Stellar network configuration"),
         (name = "Prediction", description = "Payment prediction endpoints"),
         (name = "Prices", description = "Real-time asset price feed endpoints"),

@@ -4816,6 +4816,121 @@
         }
       }
     },
+    "/api/v1/preflight": {
+      "get": {
+        "tags": [
+          "Preflight"
+        ],
+        "summary": "Check a corridor before paying (query string).",
+        "operationId": "preflight_get",
+        "parameters": [
+          {
+            "name": "source_asset",
+            "in": "query",
+            "description": "Asset the payment is sent in: a code (`USDC`) or `CODE:ISSUER`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "USDC"
+          },
+          {
+            "name": "destination_asset",
+            "in": "query",
+            "description": "Asset the recipient receives: a code (`NGN`) or `CODE:ISSUER`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "NGN"
+          },
+          {
+            "name": "amount_usd",
+            "in": "query",
+            "description": "Payment size in USD. Omit to skip the liquidity check.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            },
+            "example": 2500.0
+          },
+          {
+            "name": "min_success_rate",
+            "in": "query",
+            "description": "Minimum acceptable success rate in percent (default 95).",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "max_p95_latency_ms",
+            "in": "query",
+            "description": "Maximum acceptable p95 latency in milliseconds (default 5000).",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Decision with the checks behind it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing asset or invalid amount/threshold"
+          },
+          "500": {
+            "description": "Corridor data could not be loaded"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Preflight"
+        ],
+        "summary": "Check a corridor before paying (JSON body).",
+        "operationId": "preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreflightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decision with the checks behind it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing asset or invalid amount/threshold"
+          },
+          "500": {
+            "description": "Corridor data could not be loaded"
+          }
+        }
+      }
+    },
     "/api/v1/webhooks": {
       "get": {
         "tags": [
@@ -5616,6 +5731,15 @@
             ]
           }
         }
+      },
+      "CheckStatus": {
+        "type": "string",
+        "description": "Outcome of one check.",
+        "enum": [
+          "pass",
+          "warn",
+          "fail"
+        ]
       },
       "ContractHealthResponse": {
         "type": "object",
@@ -7739,6 +7863,142 @@
           }
         }
       },
+      "PreflightCheck": {
+        "type": "object",
+        "description": "One check that contributed to the decision.",
+        "required": [
+          "name",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "Human-readable explanation with the observed value and threshold."
+          },
+          "name": {
+            "type": "string",
+            "description": "Stable identifier: `success_rate`, `liquidity`, `latency`,\n`sample_size` or `health_score`.",
+            "example": "success_rate"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          }
+        }
+      },
+      "PreflightDecision": {
+        "type": "string",
+        "description": "Overall recommendation.",
+        "enum": [
+          "proceed",
+          "caution",
+          "hold",
+          "unknown"
+        ]
+      },
+      "PreflightRequest": {
+        "type": "object",
+        "description": "Pre-payment check request.",
+        "required": [
+          "source_asset",
+          "destination_asset"
+        ],
+        "properties": {
+          "amount_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Payment size in USD. Omit to skip the liquidity check.",
+            "example": 2500.0
+          },
+          "destination_asset": {
+            "type": "string",
+            "description": "Asset the recipient receives: a code (`NGN`) or `CODE:ISSUER`.",
+            "example": "NGN"
+          },
+          "max_p95_latency_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Maximum acceptable p95 latency in milliseconds (default 5000).",
+            "example": 5000.0
+          },
+          "min_success_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Minimum acceptable success rate in percent (default 95).",
+            "example": 95.0
+          },
+          "source_asset": {
+            "type": "string",
+            "description": "Asset the payment is sent in: a code (`USDC`) or `CODE:ISSUER`.",
+            "example": "USDC"
+          }
+        }
+      },
+      "PreflightResponse": {
+        "type": "object",
+        "description": "Pre-payment check result.",
+        "required": [
+          "decision",
+          "summary",
+          "checks",
+          "alternatives",
+          "evaluated_at"
+        ],
+        "properties": {
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorridorResponse"
+            },
+            "description": "Healthier corridors to the same destination asset, best first."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightCheck"
+            }
+          },
+          "corridor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CorridorResponse",
+                "description": "The corridor that was evaluated, if recent data exists for it."
+              }
+            ]
+          },
+          "decision": {
+            "$ref": "#/components/schemas/PreflightDecision"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp of the evaluation."
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Corridor health score (0-100) when the corridor is known."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One-line summary suitable for showing to an operator."
+          }
+        }
+      },
       "PriceResponse": {
         "type": "object",
         "required": [
@@ -8759,6 +9019,10 @@
     {
       "name": "ML",
       "description": "Machine learning prediction endpoints"
+    },
+    {
+      "name": "Preflight",
+      "description": "Pre-payment corridor check for off-ramp and payout apps"
     },
     {
       "name": "Network",
