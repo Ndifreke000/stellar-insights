@@ -45,6 +45,15 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .expect("Failed to create user_consents table");
 
+    // Mirrors migrations/046_unique_user_consents.sql; set_consent's upsert
+    // needs it.
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_consents_user_type ON user_consents(user_id, consent_type)",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create user_consents unique index");
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS api_keys (
