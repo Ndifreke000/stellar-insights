@@ -34,6 +34,29 @@ const client = new PayRaider({
 });
 ```
 
+### Check a corridor before paying
+
+Off-ramp and payout apps can ask whether a corridor is healthy enough to pay
+on right now. No API key is needed.
+
+```ts
+const check = await client.preflight.check({
+  source_asset: "USDC",
+  destination_asset: "NGN",
+  amount_usd: 2500,
+});
+
+if (check.decision === "proceed") {
+  // send the payment
+} else {
+  console.warn(check.summary, check.checks, check.alternatives);
+}
+```
+
+`decision` is `proceed`, `caution`, `hold` or `unknown` (no recent data for
+that corridor). `client.preflight.isSafeToPay(req)` returns `true` only for
+`proceed`.
+
 ### Authentication
 
 ```ts
@@ -63,6 +86,7 @@ type-safe wrapper over the REST API:
 | `client.anchors` | Anchor directory and health |
 | `client.prices` | Asset price feeds |
 | `client.costCalculator` | Transaction cost estimation |
+| `client.preflight` | Pre-payment corridor check (proceed / caution / hold) |
 | `client.alerts` / `client.webhooks` | Alerting and webhook subscriptions |
 | `client.liquidityPools` | AMM liquidity pool data |
 | `client.transactions` | Transaction history and lookups |
