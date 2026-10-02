@@ -12,7 +12,7 @@ schedule.
 | `backend/Cargo.toml` | Major/minor ranges (`"1.0"`, `"0.8"`) are acceptable; `Cargo.lock` pins the resolved version. | `Cargo.lock` committed |
 | `contracts/Cargo.toml` | Exact patch version for `soroban-sdk`, via `[workspace.dependencies]`. | reviewed on change |
 
-Both lockfiles (`frontend/package-lock.json`, `Cargo.lock`) are committed and
+Both lockfiles (`frontend/pnpm-lock.yaml`, `Cargo.lock`) are committed and
 are the source of truth for reproducible builds.
 
 ### Why the frontend is stricter than the backend
