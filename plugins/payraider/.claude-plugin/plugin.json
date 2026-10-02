@@ -1,0 +1,12 @@
+{
+  "name": "payraider",
+  "description": "Check a Stellar payment corridor before paying out. Gives off-ramp and payout apps a proceed / caution / hold decision with the reasons behind it, plus corridor, anchor, price and asset-verification data.",
+  "version": "0.2.0",
+  "author": {
+    "name": "PayRaider"
+  },
+  "homepage": "https://github.com/Ndifreke000/stellar-insights/tree/main/plugins/payraider",
+  "repository": "https://github.com/Ndifreke000/stellar-insights",
+  "license": "MIT",
+  "keywords": ["stellar", "payments", "off-ramp", "preflight", "mcp"]
+}
