@@ -139,6 +139,8 @@ describe('useShortcut', () => {
   });
 
   it('should support platform-specific bindings', () => {
+    // The mac binding only applies on a Mac; jsdom reports Linux.
+    const platformSpy = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
     const handler = vi.fn();
 
     function TestComponent() {
@@ -165,6 +167,7 @@ describe('useShortcut', () => {
     );
 
     fireEvent.keyDown(document, { key: 'x', metaKey: true });
+    platformSpy.mockRestore();
 
     expect(handler).toHaveBeenCalledTimes(1);
   });
