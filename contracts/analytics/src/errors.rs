@@ -63,7 +63,9 @@ impl Error {
             Error::InvalidThreshold => "Invalid multisig threshold value",
             Error::SignerNotAdmin => "Signer is not a registered multisig admin",
             Error::UnknownActionType => "Unknown action type",
-            Error::DuplicateHash => "A snapshot with this hash already exists across a different epoch",
+            Error::DuplicateHash => {
+                "A snapshot with this hash already exists across a different epoch"
+            }
         }
     }
 

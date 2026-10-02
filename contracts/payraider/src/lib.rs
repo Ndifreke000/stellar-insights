@@ -4,8 +4,13 @@ mod errors;
 mod events;
 
 use errors::Error;
-use events::{emit_admin_transferred, emit_contract_initialized, emit_contract_paused, emit_contract_unpaused, emit_snapshot_submitted};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec};
+use events::{
+    emit_admin_transferred, emit_contract_initialized, emit_contract_paused,
+    emit_contract_unpaused, emit_snapshot_submitted,
+};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -219,7 +224,8 @@ impl PayRaiderContract {
 
         // Check if caller has Admin or SnapshotSubmitter role
         let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
-        let has_submitter_role = Self::has_role(env.clone(), caller.clone(), Role::SnapshotSubmitter);
+        let has_submitter_role =
+            Self::has_role(env.clone(), caller.clone(), Role::SnapshotSubmitter);
 
         if !has_admin_role && !has_submitter_role {
             return Err(Error::Unauthorized);
@@ -483,7 +489,8 @@ impl PayRaiderContract {
 
         // Check if caller has Admin or PauseManager role
         let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
-        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
+        let has_pause_manager_role =
+            Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
 
         if !has_admin_role && !has_pause_manager_role {
             return Err(Error::Unauthorized);
@@ -513,7 +520,8 @@ impl PayRaiderContract {
 
         // Check if caller has Admin or PauseManager role
         let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
-        let has_pause_manager_role = Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
+        let has_pause_manager_role =
+            Self::has_role(env.clone(), caller.clone(), Role::PauseManager);
 
         if !has_admin_role && !has_pause_manager_role {
             return Err(Error::Unauthorized);
@@ -573,14 +581,13 @@ impl PayRaiderContract {
         }
 
         // Perform upgrade
-        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        env.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
         bump_instance(&env);
 
         // Emit event
-        env.events().publish(
-            (symbol_short!("upgrade"),),
-            (admin, new_wasm_hash),
-        );
+        env.events()
+            .publish((symbol_short!("upgrade"),), (admin, new_wasm_hash));
 
         Ok(())
     }
@@ -695,10 +702,8 @@ impl PayRaiderContract {
             .set(&DataKey::Governance, &governance);
         bump_instance(&env);
 
-        env.events().publish(
-            (symbol_short!("govset"),),
-            (caller, governance),
-        );
+        env.events()
+            .publish((symbol_short!("govset"),), (caller, governance));
 
         Ok(())
     }
@@ -763,11 +768,7 @@ impl PayRaiderContract {
     /// Pause or unpause as the outcome of a passed governance proposal.
     ///
     /// Callable only by the configured governance contract.
-    pub fn set_paused_by_governance(
-        env: Env,
-        caller: Address,
-        paused: bool,
-    ) -> Result<(), Error> {
+    pub fn set_paused_by_governance(env: Env, caller: Address, paused: bool) -> Result<(), Error> {
         caller.require_auth();
 
         let governance: Address = env

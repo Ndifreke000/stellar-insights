@@ -147,13 +147,21 @@ fn main() {
     rows.push(("governance::finalize (50 proposals)", finalize_large));
 
     // ── Report ──────────────────────────────────────────────────────────────
-    let max_cpu: Option<u64> = std::env::var("GAS_MAX_CPU").ok().and_then(|v| v.parse().ok());
-    println!("{:<42} {:>14} {:>14}", "operation", "cpu_insns", "mem_bytes");
+    let max_cpu: Option<u64> = std::env::var("GAS_MAX_CPU")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    println!(
+        "{:<42} {:>14} {:>14}",
+        "operation", "cpu_insns", "mem_bytes"
+    );
     for (name, cost) in &rows {
         println!("{name:<42} {:>14} {:>14}", cost.cpu, cost.mem);
         if let Some(max) = max_cpu {
             if cost.cpu > max {
-                failures.push(format!("{name} = {} cpu exceeds GAS_MAX_CPU={max}", cost.cpu));
+                failures.push(format!(
+                    "{name} = {} cpu exceeds GAS_MAX_CPU={max}",
+                    cost.cpu
+                ));
             }
         }
     }

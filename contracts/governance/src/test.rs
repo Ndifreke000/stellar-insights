@@ -344,7 +344,11 @@ fn test_quorum_bps_precision_low_turnout_fails() {
 
     env.ledger().with_mut(|li| li.timestamp = 2000);
     let status = client.finalize(&1, &1000u64);
-    assert_eq!(status, ProposalStatus::Failed, "1 vote out of 1000 supply must not meet 1% quorum");
+    assert_eq!(
+        status,
+        ProposalStatus::Failed,
+        "1 vote out of 1000 supply must not meet 1% quorum"
+    );
 }
 
 #[test]
@@ -370,7 +374,11 @@ fn test_quorum_bps_precision_exact_boundary() {
 
     env.ledger().with_mut(|li| li.timestamp = 2000);
     let status = client.finalize(&1, &100u64);
-    assert_eq!(status, ProposalStatus::Passed, "exactly 10% turnout must meet 10% quorum");
+    assert_eq!(
+        status,
+        ProposalStatus::Passed,
+        "exactly 10% turnout must meet 10% quorum"
+    );
 }
 
 #[test]
@@ -444,7 +452,10 @@ fn test_create_parameter_proposal_emits_prm_prop_topic() {
         }
     });
 
-    assert!(param_event.is_some(), "PRM_PROP event should be emitted for parameter proposals");
+    assert!(
+        param_event.is_some(),
+        "PRM_PROP event should be emitted for parameter proposals"
+    );
 
     if let Some(e) = param_event {
         if let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body {
@@ -493,5 +504,8 @@ fn test_create_proposal_upgrade_still_emits_prop_crt_topic() {
         }
     });
 
-    assert!(upgrade_event.is_some(), "PROP_CRT event should still be emitted for upgrade proposals");
+    assert!(
+        upgrade_event.is_some(),
+        "PROP_CRT event should still be emitted for upgrade proposals"
+    );
 }

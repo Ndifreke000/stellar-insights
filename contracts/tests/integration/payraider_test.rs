@@ -21,7 +21,12 @@ use super::{contract_id, rpc_url};
 /// skip the actual TCP connection and return a sentinel value instead.
 /// Against the real testnet the helper connects to the RPC host and returns
 /// the simulated response string.
-fn invoke_read_only(rpc_url: &str, contract_id: &str, method: &str, _args: &[&str]) -> Result<String, String> {
+fn invoke_read_only(
+    rpc_url: &str,
+    contract_id: &str,
+    method: &str,
+    _args: &[&str],
+) -> Result<String, String> {
     let body = format!(
         r#"{{"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":{{"transaction":"placeholder:{contract_id}:{method}"}}}}"#
     );

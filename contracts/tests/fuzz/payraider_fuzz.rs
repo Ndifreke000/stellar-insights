@@ -6,8 +6,8 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
 
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 use payraider::{PayRaiderContract, PayRaiderContractClient};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
 fn setup(env: &Env) -> (PayRaiderContractClient, Address) {
     let id = env.register_contract(None, PayRaiderContract);
@@ -55,7 +55,10 @@ fn fuzz_epoch_monotonicity_enforced() {
 
     // Same epoch must be rejected (duplicate)
     let dup = client.try_submit_snapshot(&5u64, &nonzero_hash(&env, 2), &admin);
-    assert!(matches!(dup, Err(Ok(_))), "duplicate epoch=5 must be rejected");
+    assert!(
+        matches!(dup, Err(Ok(_))),
+        "duplicate epoch=5 must be rejected"
+    );
 
     // Earlier epoch must also be rejected
     for earlier in [1u64, 3, 4] {
@@ -176,7 +179,13 @@ fn fuzz_latest_snapshot_tracks_last_submission() {
         let h = nonzero_hash(&env, epoch as u8);
         client.submit_snapshot(&epoch, &h, &admin);
         let (stored_hash, stored_epoch, _ts) = client.latest_snapshot();
-        assert_eq!(stored_epoch, epoch, "latest_snapshot must report epoch={epoch}");
-        assert_eq!(stored_hash, h, "latest_snapshot must return the correct hash");
+        assert_eq!(
+            stored_epoch, epoch,
+            "latest_snapshot must report epoch={epoch}"
+        );
+        assert_eq!(
+            stored_hash, h,
+            "latest_snapshot must return the correct hash"
+        );
     }
 }

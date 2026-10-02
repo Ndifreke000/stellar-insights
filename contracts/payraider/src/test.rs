@@ -6,8 +6,9 @@
 use super::*;
 use crate::events::{SnapshotSubmitted, SNAPSHOT_LIFECYCLE, SNAPSHOT_SUBMITTED};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events},
-    symbol_short, Address, BytesN, Env, Symbol, TryFromVal,
+    Address, BytesN, Env, Symbol, TryFromVal,
 };
 
 /// Helper function to create a 32-byte hash for testing
@@ -737,11 +738,9 @@ fn test_set_admin_unauthorized_emits_no_event() {
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let admin_topic_events_before =
-        count_contract_events_with_topic0(&env, symbol_short!("admin"));
+    let admin_topic_events_before = count_contract_events_with_topic0(&env, symbol_short!("admin"));
     let _ = client.try_set_admin(&attacker, &new_admin);
-    let admin_topic_events_after =
-        count_contract_events_with_topic0(&env, symbol_short!("admin"));
+    let admin_topic_events_after = count_contract_events_with_topic0(&env, symbol_short!("admin"));
 
     // Unauthorized transfer must not emit admin-transfer audit events.
     assert_eq!(admin_topic_events_before, admin_topic_events_after);
@@ -947,7 +946,10 @@ fn test_migrate_is_idempotent() {
 
     client.migrate(&admin);
     // A second call must refuse rather than re-run the steps.
-    assert_eq!(client.try_migrate(&admin), Err(Ok(Error::MigrationNotNeeded)));
+    assert_eq!(
+        client.try_migrate(&admin),
+        Err(Ok(Error::MigrationNotNeeded))
+    );
 }
 
 #[test]
@@ -967,7 +969,10 @@ fn test_migrate_refuses_storage_from_a_newer_build() {
             .set(&DataKey::StorageVersion, &(CURRENT_STORAGE_VERSION + 1));
     });
 
-    assert_eq!(client.try_migrate(&admin), Err(Ok(Error::StorageVersionTooNew)));
+    assert_eq!(
+        client.try_migrate(&admin),
+        Err(Ok(Error::StorageVersionTooNew))
+    );
 }
 
 #[test]

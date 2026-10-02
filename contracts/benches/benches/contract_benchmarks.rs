@@ -1,7 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
-use payraider::{PayRaiderContract, PayRaiderContractClient};
 use analytics::{AnalyticsContract, AnalyticsContractClient};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use payraider::{PayRaiderContract, PayRaiderContractClient};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
 fn setup_payraider(env: &Env) -> (PayRaiderContractClient, Address) {
     let contract_id = env.register_contract(None, PayRaiderContract);

@@ -5,11 +5,13 @@ mod events;
 
 use errors::Error;
 use events::{
-    emit_governance_initialized, emit_governance_param_changed, emit_governance_admin_changed,
-    emit_parameter_proposal_created, emit_proposal_created,
-    emit_proposal_executed, emit_proposal_finalized, emit_vote_cast,
+    emit_governance_admin_changed, emit_governance_initialized, emit_governance_param_changed,
+    emit_parameter_proposal_created, emit_proposal_created, emit_proposal_executed,
+    emit_proposal_finalized, emit_vote_cast,
 };
-use soroban_sdk::{contract, contractclient, contractimpl, contracttype, Address, BytesN, Env, String};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, contracttype, Address, BytesN, Env, String,
+};
 
 /// Interface shared by any contract that governance can administer (e.g.
 /// analytics). Declared locally via `#[contractclient]` — rather than
@@ -370,7 +372,14 @@ impl GovernanceContract {
             ParameterAction::SetAdmin(_) => String::from_str(&env, "set_admin"),
             ParameterAction::SetPaused(_) => String::from_str(&env, "set_paused"),
         };
-        emit_parameter_proposal_created(&env, count, caller, target_contract, voting_ends_at, action_label);
+        emit_parameter_proposal_created(
+            &env,
+            count,
+            caller,
+            target_contract,
+            voting_ends_at,
+            action_label,
+        );
 
         Ok(count)
     }
@@ -410,11 +419,9 @@ impl GovernanceContract {
 
         // Record the vote as a single persistent entry.
         env.storage().persistent().set(&vote_key, &choice);
-        env.storage().persistent().extend_ttl(
-            &vote_key,
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&vote_key, LEDGERS_TO_EXTEND, LEDGERS_TO_EXTEND);
 
         // Update tally
         let mut tally: VoteTally = env
@@ -454,7 +461,11 @@ impl GovernanceContract {
     /// Anyone can call this function once the deadline passes.
     /// `total_supply` is the circulating token supply used for basis-points quorum check:
     /// quorum passes when `(votes_cast * 10_000) / total_supply >= quorum_bps`.
-    pub fn finalize(env: Env, proposal_id: u64, total_supply: u64) -> Result<ProposalStatus, Error> {
+    pub fn finalize(
+        env: Env,
+        proposal_id: u64,
+        total_supply: u64,
+    ) -> Result<ProposalStatus, Error> {
         let mut proposal: Proposal = env
             .storage()
             .persistent()
@@ -491,10 +502,10 @@ impl GovernanceContract {
 
         // Quorum check: (votes_cast * 10_000) / total_supply >= quorum_bps
         // Using u128 for the intermediate product to avoid overflow.
-        let votes_bps =
-            (tally.total_voters as u128 * 10_000) / total_supply as u128;
+        let votes_bps = (tally.total_voters as u128 * 10_000) / total_supply as u128;
 
-        let new_status = if votes_bps >= quorum_bps as u128 && tally.votes_for > tally.votes_against {
+        let new_status = if votes_bps >= quorum_bps as u128 && tally.votes_for > tally.votes_against
+        {
             ProposalStatus::Passed
         } else {
             ProposalStatus::Failed
@@ -736,7 +747,12 @@ impl GovernanceContract {
         let mut removed: u32 = 0;
         for voter in voters.iter() {
             let key = DataKey::Vote(proposal_id, voter);
-            if env.storage().persistent().get::<DataKey, VoteChoice>(&key).is_some() {
+            if env
+                .storage()
+                .persistent()
+                .get::<DataKey, VoteChoice>(&key)
+                .is_some()
+            {
                 env.storage().persistent().remove(&key);
                 removed += 1;
             }
@@ -749,7 +765,9 @@ impl GovernanceContract {
             .get::<DataKey, VoteTally>(&DataKey::VoteTally(proposal_id))
             .is_some()
         {
-            env.storage().persistent().remove(&DataKey::VoteTally(proposal_id));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::VoteTally(proposal_id));
         }
 
         Ok(removed)
