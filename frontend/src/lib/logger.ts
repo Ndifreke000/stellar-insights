@@ -131,7 +131,8 @@ function recordBreadcrumb(breadcrumb: Breadcrumb): void {
         Sentry.addBreadcrumb({
           category: item.category,
           message: item.message,
-          level: item.level || 'info',
+          // Sentry's SeverityLevel spells it 'warning'.
+          level: item.level === 'warn' ? 'warning' : item.level || 'info',
           data: item.data,
         });
       })
