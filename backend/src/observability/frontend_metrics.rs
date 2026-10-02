@@ -197,15 +197,12 @@ pub async fn ingest_frontend_metrics(Json(batch): Json<FrontendMetricsBatch>) ->
             .with_label_values(&[name.as_str()])
             .observe(m.value);
         if budget_for(&name).is_some_and(|b| m.value > b) {
-            FRONTEND_BUDGET_VIOLATIONS.with_label_values(&[name.as_str()]).inc();
+            FRONTEND_BUDGET_VIOLATIONS
+                .with_label_values(&[name.as_str()])
+                .inc();
         }
 
-        let path: String = m
-            .path
-            .unwrap_or_default()
-            .chars()
-            .take(200)
-            .collect();
+        let path: String = m.path.unwrap_or_default().chars().take(200).collect();
         let window = store.by_metric.entry(name).or_default();
         if window.len() >= WINDOW_PER_METRIC {
             window.pop_front();
@@ -220,7 +217,11 @@ pub async fn ingest_frontend_metrics(Json(batch): Json<FrontendMetricsBatch>) ->
             .and_then(|m| m.get("type"))
             .and_then(|t| t.as_str())
             .unwrap_or("runtime");
-        let kind = if kind == "promise_rejection" { kind } else { "runtime" };
+        let kind = if kind == "promise_rejection" {
+            kind
+        } else {
+            "runtime"
+        };
         FRONTEND_ERRORS_TOTAL.with_label_values(&[kind]).inc();
         tracing::warn!(message = %e.message, path = ?e.path, "Frontend error reported");
     }

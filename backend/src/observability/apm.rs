@@ -9,7 +9,6 @@
 //! APM is gated by the OTEL_ENABLED environment variable and fails soft if
 //! configuration is missing (never crashes the app on APM config issues).
 
-
 /// APM configuration from environment
 pub struct ApmConfig {
     pub enabled: bool,
@@ -27,8 +26,8 @@ impl ApmConfig {
             .map(|v| v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
-        let service_name = std::env::var("OTEL_SERVICE_NAME")
-            .unwrap_or_else(|_| "payraider-backend".to_string());
+        let service_name =
+            std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "payraider-backend".to_string());
 
         let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:4318/v1/traces".to_string());
@@ -51,9 +50,7 @@ impl ApmConfig {
 
         // Validate OTLP endpoint is reachable (best effort)
         if self.otlp_endpoint.is_empty() {
-            tracing::warn!(
-                "OTEL_EXPORTER_OTLP_ENDPOINT is empty; traces may not be exported"
-            );
+            tracing::warn!("OTEL_EXPORTER_OTLP_ENDPOINT is empty; traces may not be exported");
         }
 
         Ok(())

@@ -778,9 +778,13 @@ pub fn observe_stellar_transaction_success_rate(rate: f64) {
 }
 
 pub fn set_stellar_anchor_health(anchor: &str, healthy: bool) {
-    STELLAR_ANCHOR_HEALTH.with_label_values(&[anchor]).set(if healthy { 1 } else { 0 });
+    STELLAR_ANCHOR_HEALTH
+        .with_label_values(&[anchor])
+        .set(if healthy { 1 } else { 0 });
 }
 
 pub fn observe_stellar_corridor_reliability(corridor: &str, reliability: f64) {
-    STELLAR_CORRIDOR_RELIABILITY.with_label_values(&[corridor]).observe(reliability);
+    STELLAR_CORRIDOR_RELIABILITY
+        .with_label_values(&[corridor])
+        .observe(reliability);
 }

@@ -155,9 +155,8 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
     let response_bytes = response.body().size_hint().exact();
 
     // Errors and slow requests are always logged; the rest can be sampled.
-    let always_log = status.is_client_error()
-        || status.is_server_error()
-        || latency_ms >= cfg.slow_ms;
+    let always_log =
+        status.is_client_error() || status.is_server_error() || latency_ms >= cfg.slow_ms;
     if !always_log && cfg.sample_rate < 1.0 && rand::random::<f64>() >= cfg.sample_rate {
         return response;
     }
@@ -216,7 +215,10 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
     response
 }
 
-async fn capture_request_body(req: Request<Body>, max_log: usize) -> (Request<Body>, Option<String>) {
+async fn capture_request_body(
+    req: Request<Body>,
+    max_log: usize,
+) -> (Request<Body>, Option<String>) {
     if !should_capture(req.headers(), req.body()) {
         return (req, None);
     }
@@ -246,7 +248,10 @@ async fn capture_response_body(response: Response, max_log: usize) -> (Response,
         Ok(collected) => {
             let bytes = collected.to_bytes();
             let snippet = render_body(&bytes, &content_type, max_log);
-            (Response::from_parts(parts, Body::from(bytes)), Some(snippet))
+            (
+                Response::from_parts(parts, Body::from(bytes)),
+                Some(snippet),
+            )
         }
         Err(_) => (Response::from_parts(parts, Body::empty()), None),
     }

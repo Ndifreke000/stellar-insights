@@ -140,7 +140,9 @@ pub async fn record_slow_query(
     let full_scans = full_scan_tables(&plan);
 
     for table in &full_scans {
-        DB_FULL_TABLE_SCANS_TOTAL.with_label_values(&[table.as_str()]).inc();
+        DB_FULL_TABLE_SCANS_TOTAL
+            .with_label_values(&[table.as_str()])
+            .inc();
     }
 
     let record = SlowQueryRecord {
@@ -182,7 +184,11 @@ fn append_to_log_file(record: &SlowQueryRecord) {
     let Ok(line) = serde_json::to_string(record) else {
         return;
     };
-    match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         Ok(mut file) => {
             let _ = writeln!(file, "{line}");
         }
