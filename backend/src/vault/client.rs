@@ -417,6 +417,17 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    /// Mock Vault that passes the health check `VaultClient::new` performs.
+    async fn healthy_vault() -> MockServer {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/sys/health"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+        mock_server
+    }
+
     #[test]
     fn lease_info_fields() {
         let lease = LeaseInfo {
@@ -454,7 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_secret_returns_error_when_secret_not_found() {
-        let mock_server = MockServer::start().await;
+        let mock_server = healthy_vault().await;
         let config = VaultConfig::new(
             mock_server.uri(),
             "test-token".to_string(),
@@ -477,7 +488,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_secret_returns_field_value() {
-        let mock_server = MockServer::start().await;
+        let mock_server = healthy_vault().await;
         let config = VaultConfig::new(
             mock_server.uri(),
             "test-token".to_string(),
@@ -513,7 +524,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_secret_returns_first_field_when_no_field_specified() {
-        let mock_server = MockServer::start().await;
+        let mock_server = healthy_vault().await;
         let config = VaultConfig::new(
             mock_server.uri(),
             "test-token".to_string(),
@@ -552,7 +563,7 @@ mod tests {
 
     #[tokio::test]
     async fn renew_lease_fails_when_lease_not_found() {
-        let mock_server = MockServer::start().await;
+        let mock_server = healthy_vault().await;
         let config = VaultConfig::new(
             mock_server.uri(),
             "test-token".to_string(),
@@ -578,7 +589,7 @@ mod tests {
 
     #[tokio::test]
     async fn revoke_lease_successfully_removes_from_cache() {
-        let mock_server = MockServer::start().await;
+        let mock_server = healthy_vault().await;
         let config = VaultConfig::new(
             mock_server.uri(),
             "test-token".to_string(),
@@ -623,7 +634,12 @@ mod tests {
             "s.fake".to_string(),
             "stellar-app".to_string(),
         );
-        let client = VaultClient::new(config).await.unwrap();
+        // `new` runs the health check itself, so build the client directly.
+        let client = VaultClient {
+            http_client: reqwest::Client::new(),
+            config,
+            lease_manager: Arc::new(RwLock::new(HashMap::new())),
+        };
 
         // Health check should fail
         let result = client.health_check().await;
