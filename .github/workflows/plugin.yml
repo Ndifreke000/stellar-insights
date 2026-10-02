@@ -1,0 +1,112 @@
+name: Plugin (MCP server)
+
+# Builds and tests the TypeScript SDK and the MCP server, checks that the
+# bundle committed in plugins/payraider is current, and builds the Docker
+# image.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdk/typescript/**'
+      - 'sdk/mcp-server/**'
+      - 'plugins/**'
+      - '.claude-plugin/**'
+      - '.github/workflows/plugin.yml'
+  pull_request:
+    paths:
+      - 'sdk/typescript/**'
+      - 'sdk/mcp-server/**'
+      - 'plugins/**'
+      - '.claude-plugin/**'
+      - '.github/workflows/plugin.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint, test and bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            sdk/typescript/package-lock.json
+            sdk/mcp-server/package-lock.json
+
+      - name: Build and test the SDK
+        working-directory: sdk/typescript
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Install the MCP server
+        working-directory: sdk/mcp-server
+        run: npm ci
+
+      - name: Lint
+        working-directory: sdk/mcp-server
+        run: npm run lint
+
+      - name: Test
+        working-directory: sdk/mcp-server
+        run: npm test
+
+      - name: Build
+        working-directory: sdk/mcp-server
+        run: npm run build
+
+      - name: Smoke-test the built server
+        working-directory: sdk/mcp-server
+        run: npm run smoke-test
+
+      - name: Check the plugin's bundled server is current
+        working-directory: sdk/mcp-server
+        run: npm run check:plugin
+
+      - name: Smoke-test the plugin's bundled server
+        working-directory: sdk/mcp-server
+        run: node scripts/smoke-test.mjs ../../plugins/payraider/server/server.mjs
+
+      - name: Validate plugin and marketplace manifests
+        run: |
+          for file in plugins/payraider/.claude-plugin/plugin.json plugins/payraider/.mcp.json .claude-plugin/marketplace.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$file','utf8'))" && echo "ok $file"
+          done
+          node -e "
+            const p = require('./plugins/payraider/.claude-plugin/plugin.json');
+            const s = require('./sdk/mcp-server/package.json');
+            if (p.version !== s.version) { console.error('plugin version ' + p.version + ' != server version ' + s.version); process.exit(1); }
+          "
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -f sdk/mcp-server/Dockerfile -t payraider-mcp:ci sdk
+
+      - name: Start it and probe the health endpoint
+        run: |
+          docker run -d --name mcp -p 3333:3333 -e PAYRAIDER_BASE_URL=http://127.0.0.1:1 payraider-mcp:ci
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:3333/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs mcp
+          exit 1
