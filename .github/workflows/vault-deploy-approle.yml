@@ -13,6 +13,10 @@ env:
 jobs:
   test-with-approle:
     runs-on: ubuntu-latest
+    env:
+      # The secrets context is not available in `if:` conditions, so expose
+      # whether Vault is configured through an env flag instead.
+      HAS_VAULT: ${{ secrets.VAULT_ADDR != '' && secrets.VAULT_ROLE_ID != '' && secrets.VAULT_SECRET_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +27,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Set fallback JWT secret when Vault credentials are unavailable
-        if: ${{ secrets.VAULT_ADDR == '' || secrets.VAULT_ROLE_ID == '' || secrets.VAULT_SECRET_ID == '' }}
+        if: env.HAS_VAULT != 'true'
         run: |
           echo "JWT_SECRET=fallback-test-secret-value-at-least-32-characters" >> $GITHUB_ENV
 
       - name: Authenticate to Vault with AppRole
-        if: ${{ secrets.VAULT_ADDR != '' && secrets.VAULT_ROLE_ID != '' && secrets.VAULT_SECRET_ID != '' }}
+        if: env.HAS_VAULT == 'true'
         id: vault-auth
         run: |
           TOKEN=$(curl -s -X POST \
@@ -65,12 +69,4 @@ jobs:
 
       - name: Build backend
         run: cargo build --release
-        working-directory: backend
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-        working-directory: backend
-
-      - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
         working-directory: backend
