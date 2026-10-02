@@ -17,6 +17,13 @@ export default defineConfig({
     ],
     // Playwright specs live in src/__tests__/e2e and run via playwright.config.ts.
     exclude: ['node_modules/**', 'src/__tests__/e2e/**'],
+    // next-intl's ESM build imports 'next/navigation' without an extension,
+    // which Node's resolver rejects unless Vite transforms the package.
+    server: {
+      deps: {
+        inline: ['next-intl'],
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
