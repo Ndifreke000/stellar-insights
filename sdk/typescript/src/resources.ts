@@ -55,11 +55,13 @@ export class CorridorsResource {
     return this.http.request("GET", "/api/corridors", { params: params as Record<string, unknown> });
   }
 
-  get(source: string, destination: string): Promise<CorridorDetail> {
-    return this.http.request(
-      "GET",
-      `/api/corridors/${encodeURIComponent(source)}/${encodeURIComponent(destination)}`,
-    );
+  /**
+   * Get one corridor. Pass the corridor key from `list()` (its `id`, e.g.
+   * "USDC:G...->NGN:G..."), or the source and destination assets separately.
+   */
+  get(sourceOrKey: string, destination?: string): Promise<CorridorDetail> {
+    const key = destination === undefined ? sourceOrKey : `${sourceOrKey}->${destination}`;
+    return this.http.request("GET", `/api/corridors/${encodeURIComponent(key)}`);
   }
 }
 
