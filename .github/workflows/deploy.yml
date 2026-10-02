@@ -25,8 +25,30 @@ env:
   ECR_REPOSITORY: payraider-backend
 
 jobs:
+  # Secrets cannot be read in a job-level `if`, so a small job reports whether
+  # AWS is configured. Without it the deploy is skipped instead of failing on
+  # every push at "Could not assume role with OIDC".
+  config:
+    name: Check deploy configuration
+    runs-on: ubuntu-latest
+    outputs:
+      aws: ${{ steps.check.outputs.aws }}
+    steps:
+      - id: check
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          if [ -n "$AWS_ACCOUNT_ID" ]; then
+            echo "aws=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "aws=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AWS_ACCOUNT_ID secret is not set; skipping the backend deploy."
+          fi
+
   deploy:
     name: Build & Deploy
+    needs: config
+    if: needs.config.outputs.aws == 'true'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'production' }}
 
