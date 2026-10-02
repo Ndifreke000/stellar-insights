@@ -25,6 +25,31 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
+/// SEP-10 service built from `SEP10_SERVER_PUBLIC_KEY` and
+/// `SEP10_HOME_DOMAIN`, or `None` (with a warning) when they are not usable,
+/// so a missing wallet-auth config disables those routes instead of aborting
+/// startup.
+fn sep10_service_from_env() -> Option<Arc<crate::auth::sep10_simple::Sep10Service>> {
+    let server_public_key = std::env::var("SEP10_SERVER_PUBLIC_KEY").ok()?;
+    let home_domain =
+        std::env::var("SEP10_HOME_DOMAIN").unwrap_or_else(|_| "localhost".to_string());
+    let network_passphrase = std::env::var("STELLAR_NETWORK_PASSPHRASE")
+        .unwrap_or_else(|_| crate::network::NetworkConfig::from_env().network_passphrase);
+
+    match crate::auth::sep10_simple::Sep10Service::new(
+        server_public_key,
+        network_passphrase,
+        home_domain,
+        Arc::new(tokio::sync::RwLock::new(None)),
+    ) {
+        Ok(service) => Some(Arc::new(service)),
+        Err(error) => {
+            tracing::warn!("SEP-10 disabled, wallet-authenticated routes not mounted: {error}");
+            None
+        }
+    }
+}
+
 /// Job monitoring routes
 fn job_monitoring_routes(pool: sqlx::SqlitePool) -> Router {
     Router::new()
@@ -234,6 +259,19 @@ pub fn routes(
             crate::api::trustlines::routes(trustline_analyzer),
         );
 
+    // 5c. Governance: reads are public, writes need a SEP-10 wallet session.
+    let sep10_service = sep10_service_from_env();
+    let governance_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
+        let governance_service = Arc::new(crate::services::governance::GovernanceService::new(
+            app_state.db.clone(),
+            cache.clone(),
+        ));
+        Router::new().nest(
+            "/governance",
+            crate::api::governance::routes(governance_service, sep10),
+        )
+    });
+
     // 6. OAuth routes
     let oauth_routes = oauth::routes(pool.clone());
 
@@ -309,6 +347,7 @@ pub fn routes(
         .merge(rpc_routes)
         .merge(service_routes)
         .merge(reference_routes)
+        .merge(governance_routes)
         .merge(oauth_routes)
         .merge(digest_routes)
         .merge(admin_ip_whitelist_routes)
