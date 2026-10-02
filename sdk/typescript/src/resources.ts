@@ -68,18 +68,19 @@ export class CorridorsResource {
 export class PricesResource {
   constructor(private http: HttpClient) {}
 
-  list(): Promise<Price[]> {
-    return this.http.request("GET", "/api/prices");
-  }
-
+  /** USD price of one asset, e.g. "XLM:native" or "USDC:G...". */
   get(asset: string): Promise<Price> {
-    return this.http.request("GET", `/api/prices/${encodeURIComponent(asset)}`);
+    return this.http.request("GET", "/api/prices", { params: { asset } });
   }
 
-  convert(from: string, to: string, amount: number): Promise<ConvertResult> {
-    return this.http.request("POST", "/api/prices/convert", {
-      body: { from_asset: from, to_asset: to, amount },
-    });
+  /** USD prices for several assets in one request. */
+  batch(assets: string[]): Promise<Record<string, unknown>> {
+    return this.http.request("GET", "/api/prices/batch", { params: { assets: assets.join(",") } });
+  }
+
+  /** Convert an amount of an asset to USD. */
+  convertToUsd(asset: string, amount: number): Promise<ConvertResult> {
+    return this.http.request("GET", "/api/prices/convert", { params: { asset, amount } });
   }
 }
 
