@@ -8,6 +8,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.ts'],
+    // src/config.ts and src/lib/monitoring.ts throw at import time without it.
+    env: {
+      NEXT_PUBLIC_API_URL: 'http://localhost:8080/api',
+    },
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
     ],
