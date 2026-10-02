@@ -92,9 +92,28 @@ export default async function middleware(request: NextRequest) {
   request.headers.set("x-nonce", nonce);
   request.headers.set(cspHeaderName(), csp);
 
-  const response = intlMiddleware(request);
+  // Pages that live outside app/[locale] have no localized variant. Sending
+  // them through next-intl redirects /offline to /en/offline, which does not
+  // exist, so the PWA's offline fallback (and the others) returned 404.
+  const response = isUnlocalizedPath(request.nextUrl.pathname)
+    ? NextResponse.next({ request: { headers: request.headers } })
+    : intlMiddleware(request);
   applySecurityHeaders(response, csp);
   return response;
+}
+
+/** Routes served from app/ directly rather than app/[locale]. */
+const UNLOCALIZED_PATHS = [
+  "/offline",
+  "/alerts",
+  "/api-docs",
+  "/settings/gdpr",
+  // app/components/time-range and app/demo/notifications are demo pages that
+  // need the locale layout's providers; they are intentionally not listed.
+];
+
+export function isUnlocalizedPath(pathname: string): boolean {
+  return UNLOCALIZED_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 async function handleApiRequest(request: NextRequest, isProd: boolean) {
