@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::api_key::hash_api_key;
+use crate::models::api_key::{extract_key_prefix, verify_api_key};
 
 /// Rate limit configuration for an endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,7 +118,16 @@ pub struct RateLimiter {
     endpoint_configs: Arc<RwLock<HashMap<String, RateLimitConfig>>>,
     fallback_memory_store: Arc<RwLock<HashMap<String, (u32, i64)>>>,
     db_pool: Option<sqlx::SqlitePool>,
+    /// SHA-256 of a presented key -> (key id, when the entry expires). Keys
+    /// are stored as salted Argon2 hashes, which are deliberately slow to
+    /// check, so a verified key is remembered briefly instead of re-verified
+    /// on every request.
+    verified_keys: Arc<dashmap::DashMap<[u8; 32], (String, std::time::Instant)>>,
 }
+
+/// How long a verified API key is trusted without re-checking its hash. A
+/// revoked key stops working within this window.
+const VERIFIED_KEY_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl RateLimiter {
     pub async fn new() -> anyhow::Result<Self> {
@@ -153,6 +162,7 @@ impl RateLimiter {
             endpoint_configs: Arc::new(RwLock::new(HashMap::new())),
             fallback_memory_store: Arc::new(RwLock::new(HashMap::new())),
             db_pool,
+            verified_keys: Arc::new(dashmap::DashMap::new()),
         })
     }
 
@@ -164,6 +174,7 @@ impl RateLimiter {
             endpoint_configs: Arc::new(RwLock::new(HashMap::new())),
             fallback_memory_store: Arc::new(RwLock::new(HashMap::new())),
             db_pool,
+            verified_keys: Arc::new(dashmap::DashMap::new()),
         }
     }
 
@@ -188,13 +199,8 @@ impl RateLimiter {
         if let Some(token) = bearer_token {
             if token.starts_with("si_live_") || token.starts_with("si_test_") {
                 // Validate API key against database if available
-                if let Some(pool) = &self.db_pool {
-                    let key_hash = hash_api_key(&token);
-                    if let Ok(Some(api_key)) = self.get_api_key_by_hash(pool, &key_hash).await {
-                        // Update last_used_at timestamp
-                        let _ = self.update_api_key_last_used(pool, &api_key.id).await;
-                        return ClientIdentifier::ApiKey(api_key.id);
-                    }
+                if let Some(api_key_id) = self.resolve_api_key_id(&token).await {
+                    return ClientIdentifier::ApiKey(api_key_id);
                 }
             }
         }
@@ -208,18 +214,26 @@ impl RateLimiter {
         ClientIdentifier::IpAddress(normalize_ip_for_rate_limit(&ip_address))
     }
 
-    /// Get API key from database by hash
-    async fn get_api_key_by_hash(
+    /// Find the active key matching a presented plaintext key.
+    ///
+    /// Stored hashes are salted Argon2, so the presented key cannot be
+    /// re-hashed and matched by equality (which is what this used to do, so no
+    /// key was ever recognised). Narrow by the stored prefix, then verify.
+    async fn find_active_api_key(
         &self,
         pool: &sqlx::SqlitePool,
-        key_hash: &str,
+        plain_key: &str,
     ) -> Result<Option<crate::models::api_key::ApiKey>, sqlx::Error> {
-        sqlx::query_as::<_, crate::models::api_key::ApiKey>(
-            "SELECT * FROM api_keys WHERE key_hash = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))"
+        let candidates = sqlx::query_as::<_, crate::models::api_key::ApiKey>(
+            "SELECT * FROM api_keys WHERE key_prefix = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))"
         )
-        .bind(key_hash)
-        .fetch_optional(pool)
-        .await
+        .bind(extract_key_prefix(plain_key))
+        .fetch_all(pool)
+        .await?;
+
+        Ok(candidates
+            .into_iter()
+            .find(|candidate| verify_api_key(plain_key, &candidate.key_hash)))
     }
 
     /// Update API key `last_used_at` timestamp
@@ -510,13 +524,37 @@ impl RateLimiter {
             return None;
         }
 
+        let fingerprint: [u8; 32] = {
+            use sha2::Digest;
+            sha2::Sha256::digest(bearer_token.as_bytes()).into()
+        };
+        if let Some(entry) = self.verified_keys.get(&fingerprint) {
+            let (key_id, expires) = entry.value();
+            if *expires > std::time::Instant::now() {
+                return Some(key_id.clone());
+            }
+        }
+
         let pool = self.db_pool.as_ref()?;
-        let key_hash = hash_api_key(bearer_token);
-        self.get_api_key_by_hash(pool, &key_hash)
+        let api_key = self
+            .find_active_api_key(pool, bearer_token)
             .await
             .ok()
-            .flatten()
-            .map(|api_key| api_key.id)
+            .flatten();
+        let Some(api_key) = api_key else {
+            self.verified_keys.remove(&fingerprint);
+            return None;
+        };
+
+        let _ = self.update_api_key_last_used(pool, &api_key.id).await;
+        self.verified_keys.insert(
+            fingerprint,
+            (
+                api_key.id.clone(),
+                std::time::Instant::now() + VERIFIED_KEY_TTL,
+            ),
+        );
+        Some(api_key.id)
     }
 
     /// Check rate limit in Redis
