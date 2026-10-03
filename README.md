@@ -1,5 +1,14 @@
 # PayRaider
 
+> **PayRaider has moved to the [Pay-Raider organisation](https://github.com/Pay-Raider).**
+> Development continues in separate repositories:
+> [backend](https://github.com/Pay-Raider/payraider-backend) ·
+> [web app](https://github.com/Pay-Raider/payraider-app) ·
+> [plugin & SDKs](https://github.com/Pay-Raider/payraider-plugin) ·
+> [contracts](https://github.com/Pay-Raider/payraider-contracts) ·
+> [mobile](https://github.com/Pay-Raider/payraider-mobile).
+> This repository is kept for its history and is no longer updated.
+
 [![Coverage](https://codecov.io/gh/Ndifreke000/stellar-insights/branch/main/graph/badge.svg)](https://codecov.io/gh/Ndifreke000/stellar-insights)
 [![Coverage CI](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml/badge.svg)](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml)
 
