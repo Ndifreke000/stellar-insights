@@ -53,7 +53,12 @@ pub struct ChallengeResponse {
 /// SEP-10 Verification Request
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VerificationRequest {
-    pub transaction: String, // Base64-encoded signed XDR
+    /// The challenge exactly as `generate_challenge` returned it.
+    pub transaction: String,
+    /// Base64 Ed25519 signature, by the challenged account's key, over the
+    /// UTF-8 bytes of `transaction`. Proves the caller holds that account.
+    #[serde(default)]
+    pub signature: Option<String>,
 }
 
 /// SEP-10 Verification Response
@@ -166,11 +171,11 @@ impl Sep10Service {
         })
     }
 
-    /// Verify signed challenge transaction
+    /// Verify a signed challenge and open a session for its account.
     ///
-    /// TODO #2326: Implement Ed25519 signature verification against Stellar transaction
-    /// Currently simplified: only validates nonce and expiration, does not verify actual Stellar signatures
-    /// Required for production: Verify Ed25519 signatures using stellar-sdk, validate transaction envelope format
+    /// The caller must sign the challenge with the account's Ed25519 key
+    /// (#2326). Before this check existed, returning the challenge unsigned
+    /// produced a session for any account the caller chose to name.
     pub async fn verify_challenge(
         &self,
         request: VerificationRequest,
@@ -200,6 +205,12 @@ impl Sep10Service {
             .as_str()
             .ok_or_else(|| anyhow!("Missing client account"))?
             .to_string();
+
+        verify_account_signature(
+            &client_account,
+            request.transaction.as_bytes(),
+            request.signature.as_deref(),
+        )?;
 
         // Validate expiration
         let expires_at = challenge["expires_at"]
@@ -355,9 +366,121 @@ impl Sep10Service {
     }
 }
 
+/// Check that `signature` (base64) is the Ed25519 signature of `message` by
+/// the Stellar account `account` (a `G...` public key).
+pub fn verify_account_signature(
+    account: &str,
+    message: &[u8],
+    signature: Option<&str>,
+) -> Result<()> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    let signature = signature.ok_or_else(|| anyhow!("Missing challenge signature"))?;
+    let signature_bytes: [u8; 64] = BASE64
+        .decode(signature)
+        .map_err(|_| anyhow!("Invalid signature encoding"))?
+        .try_into()
+        .map_err(|_| anyhow!("Invalid signature length"))?;
+
+    let public_key = stellar_strkey::ed25519::PublicKey::from_string(account)
+        .map_err(|_| anyhow!("Invalid account address"))?;
+    let verifying_key =
+        VerifyingKey::from_bytes(&public_key.0).map_err(|_| anyhow!("Invalid account key"))?;
+
+    let signature = Signature::from_bytes(&signature_bytes);
+
+    // Wallets that implement SEP-53 (Freighter's signMessage) sign
+    // SHA-256("Stellar Signed Message:\n" + message) rather than the raw
+    // bytes. Accept either form; both prove control of the account key.
+    let sep53_digest = {
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"Stellar Signed Message:\n");
+        hasher.update(message);
+        hasher.finalize()
+    };
+
+    if verifying_key.verify(message, &signature).is_ok()
+        || verifying_key.verify(&sep53_digest, &signature).is_ok()
+    {
+        Ok(())
+    } else {
+        Err(anyhow!("Challenge signature does not match the account"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn account_and_key(seed: u8) -> (String, ed25519_dalek::SigningKey) {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[seed; 32]);
+        let account = stellar_strkey::ed25519::PublicKey(key.verifying_key().to_bytes())
+            .to_string()
+            .to_string();
+        (account, key)
+    }
+
+    fn sign(key: &ed25519_dalek::SigningKey, message: &[u8]) -> String {
+        use ed25519_dalek::Signer;
+        BASE64.encode(key.sign(message).to_bytes())
+    }
+
+    #[test]
+    fn accepts_the_accounts_own_signature() {
+        let (account, key) = account_and_key(7);
+        let challenge = b"challenge-bytes";
+        let signature = sign(&key, challenge);
+
+        assert!(verify_account_signature(&account, challenge, Some(&signature)).is_ok());
+    }
+
+    #[test]
+    fn accepts_a_sep53_signed_message() {
+        use sha2::Digest;
+        let (account, key) = account_and_key(7);
+        let challenge = b"challenge-bytes";
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"Stellar Signed Message:\n");
+        hasher.update(challenge);
+        let signature = sign(&key, &hasher.finalize());
+
+        assert!(verify_account_signature(&account, challenge, Some(&signature)).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_missing_signature() {
+        let (account, _) = account_and_key(7);
+        assert!(verify_account_signature(&account, b"challenge", None).is_err());
+    }
+
+    #[test]
+    fn rejects_a_signature_from_another_account() {
+        let (account, _) = account_and_key(7);
+        let (_, attacker) = account_and_key(9);
+        let challenge = b"challenge-bytes";
+        let forged = sign(&attacker, challenge);
+
+        assert!(verify_account_signature(&account, challenge, Some(&forged)).is_err());
+    }
+
+    #[test]
+    fn rejects_a_signature_over_a_different_challenge() {
+        let (account, key) = account_and_key(7);
+        let signature = sign(&key, b"an older challenge");
+
+        assert!(verify_account_signature(&account, b"this challenge", Some(&signature)).is_err());
+    }
+
+    #[test]
+    fn rejects_malformed_input() {
+        let (account, _) = account_and_key(7);
+        assert!(verify_account_signature(&account, b"c", Some("not base64!")).is_err());
+        assert!(verify_account_signature(&account, b"c", Some(&BASE64.encode([0u8; 10]))).is_err());
+        assert!(
+            verify_account_signature("GNOTAKEY", b"c", Some(&BASE64.encode([0u8; 64]))).is_err()
+        );
+    }
 
     #[tokio::test]
     async fn test_generate_challenge() {
