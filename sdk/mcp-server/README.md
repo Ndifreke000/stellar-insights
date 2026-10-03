@@ -24,7 +24,7 @@ USD, and returns one decision:
 | `unknown` | No recent payments on this corridor, so no recommendation |
 
 with the checks that produced it (success rate, liquidity headroom for the
-amount, p95 latency, sample size, health score) and healthier alternative
+amount, sample size, health score) and healthier alternative
 corridors to the same destination asset.
 
 It works **without an API key**. The backend's anonymous rate-limit tier

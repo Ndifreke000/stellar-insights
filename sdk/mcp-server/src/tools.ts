@@ -33,8 +33,8 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
     description:
       "Check a payment corridor BEFORE paying out. Returns one decision " +
       "(proceed, caution, hold, or unknown when there is no recent data), the " +
-      "checks behind it (success rate, liquidity headroom for the amount, p95 " +
-      "latency, sample size, health score) and healthier alternative corridors " +
+      "checks behind it (success rate, liquidity headroom for the amount, " +
+      "sample size, health score) and healthier alternative corridors " +
       "to the same destination asset. Works without an API key.",
     schema: {
       source_asset: asset("Asset the payment is sent in"),
@@ -50,11 +50,6 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
         .max(100)
         .optional()
         .describe("Minimum acceptable success rate in percent (default 95)"),
-      max_p95_latency_ms: z
-        .number()
-        .positive()
-        .optional()
-        .describe("Maximum acceptable p95 latency in milliseconds (default 5000)"),
     },
     call: (c, a) =>
       c.preflight.check({
@@ -62,7 +57,6 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
         destination_asset: a.destination_asset as string,
         amount_usd: a.amount_usd as number | undefined,
         min_success_rate: a.min_success_rate as number | undefined,
-        max_p95_latency_ms: a.max_p95_latency_ms as number | undefined,
       }),
   },
   {
