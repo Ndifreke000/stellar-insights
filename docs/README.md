@@ -20,6 +20,7 @@ Welcome to the PayRaider documentation hub. All project documentation has been o
 
 ### 🐛 Issues & Project Management
 - [PLUGIN.md](PLUGIN.md) - Pre-payment check for off-ramp apps: REST, SDK, MCP server and Claude plugin
+- [DEPLOY.md](DEPLOY.md) - Deploying the API, plugin server and web app on Render
 - [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md) - Finding and running pilots with off-ramp design partners
 - [issues/](issues/) - Feature/backlog issue specs organized by phase
 - [ISSUE_MANAGEMENT_GUIDE.md](ISSUE_MANAGEMENT_GUIDE.md)
