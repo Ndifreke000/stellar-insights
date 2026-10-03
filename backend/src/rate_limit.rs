@@ -256,6 +256,12 @@ impl RateLimiter {
                 if client_id_has_premium_env_override(id) {
                     return ClientTier::Premium;
                 }
+                // A key with a paid subscription in force is premium.
+                if let Some(pool) = &self.db_pool {
+                    if matches!(crate::billing::active_limit(pool, id).await, Ok(Some(_))) {
+                        return ClientTier::Premium;
+                    }
+                }
                 // For API keys, we check if the associated user/wallet has a premium subscription
                 // If we have a DB pool, query the user_subscriptions table
                 if let Some(pool) = &self.db_pool {
@@ -440,11 +446,22 @@ impl RateLimiter {
 
     /// Look up per-API-key rate limit from `api_keys_rate_limit_config`, with a safe default.
     pub async fn get_api_key_limit_per_minute(&self, api_key_id: &str) -> u32 {
-        const DEFAULT_LIMIT: u32 = 60;
+        // Matches the authenticated tier's global limit. At 60 this per-key
+        // bucket throttled keyed callers to the anonymous rate even though
+        // the global limiter allowed them 200.
+        const DEFAULT_LIMIT: u32 = 200;
 
         let Some(pool) = &self.db_pool else {
             return DEFAULT_LIMIT;
         };
+
+        // A paid subscription in force takes precedence over any static
+        // per-key configuration.
+        match crate::billing::active_limit(pool, api_key_id).await {
+            Ok(Some(limit)) => return limit.max(1),
+            Ok(None) => {}
+            Err(e) => tracing::error!("Failed to load subscription for {}: {}", api_key_id, e),
+        }
 
         match sqlx::query_scalar::<_, i64>(
             "SELECT limit_per_minute FROM api_keys_rate_limit_config WHERE api_key_id = ?",
@@ -958,7 +975,7 @@ mod tests {
         );
         assert_eq!(
             limiter.get_api_key_limit_per_minute("missing-key").await,
-            60
+            200
         );
     }
 }
