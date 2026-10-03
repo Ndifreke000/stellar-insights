@@ -171,15 +171,13 @@ export interface PreflightRequest {
   amount_usd?: number;
   /** Minimum acceptable success rate in percent (default 95). */
   min_success_rate?: number;
-  /** Maximum acceptable p95 latency in milliseconds (default 5000). */
-  max_p95_latency_ms?: number;
 }
 
 export type PreflightDecision = "proceed" | "caution" | "hold" | "unknown";
 export type PreflightCheckStatus = "pass" | "warn" | "fail";
 
 export interface PreflightCheck {
-  name: "success_rate" | "liquidity" | "latency" | "sample_size" | "health_score";
+  name: "success_rate" | "liquidity" | "sample_size" | "health_score";
   status: PreflightCheckStatus;
   detail: string;
 }
