@@ -34119,20 +34119,18 @@ var asset = (role) => external_exports.string().min(1).describe(`${role}: an ass
 var READ_ONLY_TOOLS = [
   {
     name: "preflight_payment",
-    description: "Check a payment corridor BEFORE paying out. Returns one decision (proceed, caution, hold, or unknown when there is no recent data), the checks behind it (success rate, liquidity headroom for the amount, p95 latency, sample size, health score) and healthier alternative corridors to the same destination asset. Works without an API key.",
+    description: "Check a payment corridor BEFORE paying out. Returns one decision (proceed, caution, hold, or unknown when there is no recent data), the checks behind it (success rate, liquidity headroom for the amount, sample size, health score) and healthier alternative corridors to the same destination asset. Works without an API key.",
     schema: {
       source_asset: asset("Asset the payment is sent in"),
       destination_asset: asset("Asset the recipient receives"),
       amount_usd: external_exports.number().positive().optional().describe("Payment size in USD; omit to skip the liquidity check"),
-      min_success_rate: external_exports.number().min(0).max(100).optional().describe("Minimum acceptable success rate in percent (default 95)"),
-      max_p95_latency_ms: external_exports.number().positive().optional().describe("Maximum acceptable p95 latency in milliseconds (default 5000)")
+      min_success_rate: external_exports.number().min(0).max(100).optional().describe("Minimum acceptable success rate in percent (default 95)")
     },
     call: (c, a) => c.preflight.check({
       source_asset: a.source_asset,
       destination_asset: a.destination_asset,
       amount_usd: a.amount_usd,
-      min_success_rate: a.min_success_rate,
-      max_p95_latency_ms: a.max_p95_latency_ms
+      min_success_rate: a.min_success_rate
     })
   },
   {

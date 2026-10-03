@@ -15,8 +15,8 @@ needs no API key.
    user has not given an amount, run the check without one and say that the
    liquidity check was skipped.
 2. Call `preflight_payment` with `source_asset`, `destination_asset` and
-   `amount_usd`. Pass `min_success_rate` or `max_p95_latency_ms` only when the
-   user has stated a stricter or looser requirement.
+   `amount_usd`. Pass `min_success_rate` only when the user has stated a
+   stricter or looser requirement.
 3. Report the decision first, then the reasons:
    - `proceed`: every check passed. Say so, and give the health score.
    - `caution`: name each check with status `warn` and quote its `detail`.
@@ -34,7 +34,7 @@ needs no API key.
 
 - The decision comes from the tool. Never upgrade a `hold` or `caution`, and
   never invent a decision when the tool returns `unknown` or an error.
-- Quote the numbers the tool returned (success rate, liquidity share, p95
-  latency, sample size); do not round them into vaguer claims.
+- Quote the numbers the tool returned (success rate, liquidity share, sample
+  size); do not round them into vaguer claims.
 - A check is a snapshot. For a payment sent later, run it again first.
 - These tools are read-only. They never move funds or sign anything.
