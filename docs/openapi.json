@@ -1798,6 +1798,191 @@
         }
       }
     },
+    "/api/billing/invoices": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Create an invoice to upgrade one of the wallet's API keys.",
+        "operationId": "create_invoice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Invoice with payment instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No SEP-10 session"
+          },
+          "404": {
+            "description": "Key not found for this wallet"
+          },
+          "503": {
+            "description": "Paid plans are not enabled"
+          }
+        }
+      }
+    },
+    "/api/billing/invoices/{id}": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Read one of the wallet's invoices.",
+        "operationId": "get_invoice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Invoice id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invoice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invoice not found for this wallet"
+          }
+        }
+      }
+    },
+    "/api/billing/invoices/{id}/confirm": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Confirm payment of an invoice by transaction hash.",
+        "operationId": "confirm_invoice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Invoice id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmInvoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Invoice paid; subscription extended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmInvoiceResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invoice already paid, expired, or transaction already used"
+          },
+          "422": {
+            "description": "The transaction does not pay this invoice"
+          },
+          "502": {
+            "description": "Horizon could not be reached"
+          }
+        }
+      }
+    },
+    "/api/billing/plan": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Current paid plan and how to pay for it.",
+        "operationId": "get_plan",
+        "responses": {
+          "200": {
+            "description": "Plan, price and payment destination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Paid plans are not enabled"
+          }
+        }
+      }
+    },
+    "/api/billing/subscriptions/{api_key_id}": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "A key's paid subscription.",
+        "operationId": "get_subscription",
+        "parameters": [
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "description": "API key id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No subscription for this key"
+          }
+        }
+      }
+    },
     "/api/cache/reset": {
       "post": {
         "tags": [
@@ -4864,16 +5049,6 @@
               "type": "number",
               "format": "double"
             }
-          },
-          {
-            "name": "max_p95_latency_ms",
-            "in": "query",
-            "description": "Maximum acceptable p95 latency in milliseconds (default 5000).",
-            "required": false,
-            "schema": {
-              "type": "number",
-              "format": "double"
-            }
           }
         ],
         "responses": {
@@ -5741,6 +5916,33 @@
           "fail"
         ]
       },
+      "ConfirmInvoiceRequest": {
+        "type": "object",
+        "required": [
+          "transaction_hash"
+        ],
+        "properties": {
+          "transaction_hash": {
+            "type": "string",
+            "description": "Hash of the Stellar transaction that paid the invoice."
+          }
+        }
+      },
+      "ConfirmInvoiceResponse": {
+        "type": "object",
+        "required": [
+          "invoice",
+          "subscription"
+        ],
+        "properties": {
+          "invoice": {
+            "$ref": "#/components/schemas/Invoice"
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/Subscription"
+          }
+        }
+      },
       "ContractHealthResponse": {
         "type": "object",
         "required": [
@@ -6231,6 +6433,18 @@
           "dest_asset_issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2",
           "source_asset_code": "USDC",
           "source_asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        }
+      },
+      "CreateInvoiceRequest": {
+        "type": "object",
+        "required": [
+          "api_key_id"
+        ],
+        "properties": {
+          "api_key_id": {
+            "type": "string",
+            "description": "API key to upgrade. It must belong to the signed-in wallet."
+          }
         }
       },
       "CreateProposalRequest": {
@@ -6834,6 +7048,88 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "description": "What a payer needs, and the invoice's state.",
+        "required": [
+          "id",
+          "api_key_id",
+          "wallet_address",
+          "plan",
+          "amount_usdc",
+          "asset_code",
+          "asset_issuer",
+          "destination",
+          "memo",
+          "limit_per_minute",
+          "period_days",
+          "status",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "amount_usdc": {
+            "type": "string",
+            "description": "Amount to send, in USDC."
+          },
+          "api_key_id": {
+            "type": "string"
+          },
+          "asset_code": {
+            "type": "string"
+          },
+          "asset_issuer": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Account to send the payment to."
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "limit_per_minute": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Text memo the payment transaction must carry."
+          },
+          "paid_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `paid` or `expired`."
+          },
+          "transaction_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wallet_address": {
+            "type": "string"
           }
         }
       },
@@ -7811,6 +8107,57 @@
           }
         ]
       },
+      "PlanResponse": {
+        "type": "object",
+        "description": "The paid plan on offer.",
+        "required": [
+          "plan",
+          "price",
+          "asset_code",
+          "asset_issuer",
+          "destination",
+          "period_days",
+          "limit_per_minute",
+          "free_limit_per_minute",
+          "anonymous_limit_per_minute"
+        ],
+        "properties": {
+          "anonymous_limit_per_minute": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "asset_code": {
+            "type": "string"
+          },
+          "asset_issuer": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Account payments are sent to."
+          },
+          "free_limit_per_minute": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests per minute without a paid plan, with and without an API key."
+          },
+          "limit_per_minute": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "period_days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string",
+            "description": "Price per period, in `asset_code`."
+          }
+        }
+      },
       "PoolDetailResponse": {
         "type": "object",
         "required": [
@@ -7878,7 +8225,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Stable identifier: `success_rate`, `liquidity`, `latency`,\n`sample_size` or `health_score`.",
+            "description": "Stable identifier: `success_rate`, `liquidity`, `sample_size` or\n`health_score`.",
             "example": "success_rate"
           },
           "status": {
@@ -7917,15 +8264,6 @@
             "type": "string",
             "description": "Asset the recipient receives: a code (`NGN`) or `CODE:ISSUER`.",
             "example": "NGN"
-          },
-          "max_p95_latency_ms": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum acceptable p95 latency in milliseconds (default 5000).",
-            "example": 5000.0
           },
           "min_success_rate": {
             "type": [
@@ -8390,6 +8728,35 @@
             "minimum": 0
           },
           "transaction_hash": {
+            "type": "string"
+          }
+        }
+      },
+      "Subscription": {
+        "type": "object",
+        "description": "A key's paid tier.",
+        "required": [
+          "api_key_id",
+          "plan",
+          "limit_per_minute",
+          "paid_until",
+          "updated_at"
+        ],
+        "properties": {
+          "api_key_id": {
+            "type": "string"
+          },
+          "limit_per_minute": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "paid_until": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "updated_at": {
             "type": "string"
           }
         }
@@ -9027,6 +9394,10 @@
     {
       "name": "ML",
       "description": "Machine learning prediction endpoints"
+    },
+    {
+      "name": "Billing",
+      "description": "Paid API key plan, settled in USDC on Stellar"
     },
     {
       "name": "Preflight",
