@@ -7,8 +7,24 @@ import {
   Signature,
 } from "@/components/transactions/SignatureCollector";
 import { Hexagon } from "lucide-react";
+import { useWallet } from "@/components/lib/wallet-context";
+import { config } from "@/config";
+
+/** Backend API root, e.g. http://localhost:8080 (without a trailing /api). */
+const API_ROOT = config.apiUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+
+/** Read the server's error message, falling back to the status text. */
+async function errorMessage(res: Response): Promise<string> {
+  const text = await res.text();
+  return text || res.statusText;
+}
 
 export default function TransactionsBuilderPage() {
+  // Every transactions endpoint needs the wallet's SEP-10 session, and the
+  // transaction's source must be that wallet.
+  const { address, authToken } = useWallet();
+  const authHeaders = (): Record<string, string> =>
+    authToken ? { Authorization: `Bearer ${authToken}` } : {};
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [xdr, setXdr] = useState<string | null>(null);
   const [requiredSignatures, setRequiredSignatures] = useState(1);
@@ -19,21 +35,22 @@ export default function TransactionsBuilderPage() {
     requiredSigs: number,
   ) => {
     try {
+      if (!address || !authToken) {
+        throw new Error("Connect and sign in with your wallet first.");
+      }
       setLoading(true);
-      // Call our backend API to create a pending transaction
-      // For this demo, we assume the frontend is served alongside or configured to proxy `/api`
-      const res = await fetch("/api/transactions", {
+      const res = await fetch(`${API_ROOT}/api/transactions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
-          source_account: "DUMMY_ACCOUNT", // Usually parsed from XDR or builder state
+          source_account: address,
           xdr: generatedXdr,
           required_signatures: requiredSigs,
         }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to create pending transaction on backend");
+        throw new Error(await errorMessage(res));
       }
 
       const data = await res.json();
@@ -49,9 +66,9 @@ export default function TransactionsBuilderPage() {
   };
 
   const handleSignatureAdded = async (txId: string, sig: Signature) => {
-    const res = await fetch(`/api/transactions/${txId}/signatures`, {
+    const res = await fetch(`${API_ROOT}/api/transactions/${txId}/signatures`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         signer: sig.signer,
         signature: sig.signature,
@@ -59,19 +76,18 @@ export default function TransactionsBuilderPage() {
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Failed to submit signature");
+      throw new Error(await errorMessage(res));
     }
   };
 
   const handleSubmitTransaction = async (txId: string) => {
-    const res = await fetch(`/api/transactions/${txId}/submit`, {
+    const res = await fetch(`${API_ROOT}/api/transactions/${txId}/submit`, {
       method: "POST",
+      headers: authHeaders(),
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Failed to submit transaction");
+      throw new Error(await errorMessage(res));
     }
   };
 

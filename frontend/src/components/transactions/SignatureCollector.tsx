@@ -22,7 +22,9 @@ export interface SignatureCollectorProps {
  *
  * Flow:
  * 1. Displays the list of collected signatures and how many more are needed.
- * 2. Each signer enters their signature (or signs via wallet).
+ * 2. Each signer, signed in with their own wallet, adds their own signature:
+ *    a base64 signature over the transaction hash or the envelope their wallet
+ *    signed. The backend rejects a signature added on behalf of another wallet.
  * 3. Once requiredSignatures is met, the Submit button becomes active.
  * 4. On submit, calls onSubmitTransaction(txId) to broadcast the fully-signed tx.
  */
