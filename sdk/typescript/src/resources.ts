@@ -20,7 +20,6 @@ import type {
   NetworkInfo,
   PaginatedResponse,
   PaginationParams,
-  PaymentPrediction,
   PreflightRequest,
   PreflightResponse,
   Price,
@@ -244,18 +243,6 @@ export class NetworkResource {
 
   available(): Promise<NetworkInfo[]> {
     return this.http.request("GET", "/api/network/available");
-  }
-}
-
-export class MlResource {
-  constructor(private http: HttpClient) {}
-
-  predict(params: Record<string, unknown>): Promise<PaymentPrediction> {
-    return this.http.request("POST", "/api/ml/predict", { body: params });
-  }
-
-  modelStatus(): Promise<Record<string, unknown>> {
-    return this.http.request("GET", "/api/ml/status");
   }
 }
 

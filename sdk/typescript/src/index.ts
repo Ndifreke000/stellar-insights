@@ -10,7 +10,6 @@ import {
   PreflightResource,
   GovernanceResource,
   LiquidityPoolsResource,
-  MlResource,
   NetworkResource,
   PricesResource,
   TransactionsResource,
@@ -81,7 +80,6 @@ export class PayRaider {
   readonly liquidityPools: LiquidityPoolsResource;
   readonly transactions: TransactionsResource;
   readonly network: NetworkResource;
-  readonly ml: MlResource;
   readonly governance: GovernanceResource;
   readonly assetVerification: AssetVerificationResource;
   readonly apiClient: ApiClient;
@@ -106,7 +104,6 @@ export class PayRaider {
     this.liquidityPools = new LiquidityPoolsResource(this.http);
     this.transactions = new TransactionsResource(this.http);
     this.network = new NetworkResource(this.http);
-    this.ml = new MlResource(this.http);
     this.governance = new GovernanceResource(this.http);
     this.assetVerification = new AssetVerificationResource(this.http);
   }

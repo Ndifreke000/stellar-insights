@@ -14,7 +14,6 @@ from .resources import (
     CostCalculatorResource,
     GovernanceResource,
     LiquidityPoolsResource,
-    MlResource,
     NetworkResource,
     PreflightResource,
     PricesResource,
@@ -62,7 +61,6 @@ class PayRaider:
         self.liquidity_pools = LiquidityPoolsResource(self._http)
         self.transactions = TransactionsResource(self._http)
         self.network = NetworkResource(self._http)
-        self.ml = MlResource(self._http)
         self.governance = GovernanceResource(self._http)
         self.asset_verification = AssetVerificationResource(self._http)
 

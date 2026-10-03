@@ -91,7 +91,6 @@ type-safe wrapper over the REST API:
 | `client.liquidityPools` | AMM liquidity pool data |
 | `client.transactions` | Transaction history and lookups |
 | `client.network` | Network-wide health and trust metrics |
-| `client.ml` | Predictive/ML-derived signals |
 | `client.governance` | Soroban governance proposals and votes |
 | `client.assetVerification` | Asset authenticity verification |
 | `client.auth`, `client.apiKeys` | Authentication and API key management |

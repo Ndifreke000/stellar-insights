@@ -17,7 +17,6 @@ from .types import (
     LiquidityPool,
     NetworkInfo,
     PaginatedResponse,
-    PaymentPrediction,
     PreflightResponse,
     Price,
     PriceCacheStats,
@@ -255,17 +254,6 @@ class NetworkResource:
 
     async def available(self) -> List[NetworkInfo]:
         return await self._http.request("GET", "/api/network/available")
-
-
-class MlResource:
-    def __init__(self, http: HttpClient) -> None:
-        self._http = http
-
-    async def predict(self, **params: Any) -> PaymentPrediction:
-        return await self._http.request("POST", "/api/ml/predict", json=params)
-
-    async def model_status(self) -> Any:
-        return await self._http.request("GET", "/api/ml/status")
 
 
 class GovernanceResource:
