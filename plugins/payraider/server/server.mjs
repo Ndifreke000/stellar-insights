@@ -23474,18 +23474,6 @@ var NetworkResource = class {
     return this.http.request("GET", "/api/network/available");
   }
 };
-var MlResource = class {
-  constructor(http) {
-    this.http = http;
-  }
-  http;
-  predict(params) {
-    return this.http.request("POST", "/api/ml/predict", { body: params });
-  }
-  modelStatus() {
-    return this.http.request("GET", "/api/ml/status");
-  }
-};
 var GovernanceResource = class {
   constructor(http) {
     this.http = http;
@@ -23894,7 +23882,6 @@ var PayRaider = class {
   liquidityPools;
   transactions;
   network;
-  ml;
   governance;
   assetVerification;
   apiClient;
@@ -23917,7 +23904,6 @@ var PayRaider = class {
     this.liquidityPools = new LiquidityPoolsResource(this.http);
     this.transactions = new TransactionsResource(this.http);
     this.network = new NetworkResource(this.http);
-    this.ml = new MlResource(this.http);
     this.governance = new GovernanceResource(this.http);
     this.assetVerification = new AssetVerificationResource(this.http);
   }
