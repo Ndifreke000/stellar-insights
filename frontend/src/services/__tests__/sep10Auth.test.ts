@@ -1,5 +1,11 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { signMessage } from '@stellar/freighter-api';
 import { Sep10AuthService } from '../sep10Auth';
+
+vi.mock('@stellar/freighter-api', () => ({ signMessage: vi.fn() }));
+
+const CLIENT = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+const PASSPHRASE = 'Test SDF Network ; September 2015';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -94,8 +100,9 @@ describe('Sep10AuthService', () => {
   });
 
   describe('verifyChallenge', () => {
-    it('should verify a signed challenge transaction', async () => {
-      const mockSignedXdr = 'signedbase64encodedxdr';
+    it('should send the challenge and its signature', async () => {
+      const challenge = 'base64challenge';
+      const signature = 'base64signature';
       const mockResponse = {
         token: 'jwt-token',
         expires_in: 604800,
@@ -106,7 +113,7 @@ describe('Sep10AuthService', () => {
         json: async () => mockResponse,
       } as Response);
 
-      const result = await service.verifyChallenge(mockSignedXdr);
+      const result = await service.verifyChallenge(challenge, signature);
 
       expect(global.fetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/sep10/verify',
@@ -116,7 +123,8 @@ describe('Sep10AuthService', () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            transaction: mockSignedXdr,
+            transaction: challenge,
+            signature,
           }),
         }
       );
@@ -129,7 +137,7 @@ describe('Sep10AuthService', () => {
         json: async () => ({ error: 'Invalid signature' }),
       } as Response);
 
-      await expect(service.verifyChallenge('invalid')).rejects.toThrow(
+      await expect(service.verifyChallenge('challenge', 'bad-signature')).rejects.toThrow(
         'Invalid signature'
       );
     });
@@ -171,42 +179,54 @@ describe('Sep10AuthService', () => {
   });
 
   describe('signChallenge', () => {
-    it('should sign challenge with Freighter wallet', async () => {
-      const mockWindow = {
-        freighter: {
-          signTransaction: vi.fn().mockResolvedValue('signed-xdr'),
-        },
-      };
+    beforeEach(() => {
+      vi.mocked(signMessage).mockReset();
+    });
 
-      (global as unknown as { window: typeof mockWindow }).window = mockWindow;
+    it('signs the challenge as a message for the requested account', async () => {
+      vi.mocked(signMessage).mockResolvedValue({ signedMessage: 'c2lnbmF0dXJl', signerAddress: CLIENT });
 
-      const result = await service.signChallenge(
-        'challenge-xdr',
-        'Test SDF Network ; September 2015',
-        'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-      );
+      const result = await service.signChallenge('challenge', PASSPHRASE, CLIENT);
 
-      expect(result).toBe('signed-xdr');
-      expect(mockWindow.freighter.signTransaction).toHaveBeenCalledWith(
-        'challenge-xdr',
-        {
-          network: 'Test SDF Network ; September 2015',
-          networkPassphrase: 'Test SDF Network ; September 2015',
-          accountToSign: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-        }
+      expect(result).toBe('c2lnbmF0dXJl');
+      expect(signMessage).toHaveBeenCalledWith('challenge', {
+        networkPassphrase: PASSPHRASE,
+        address: CLIENT,
+      });
+    });
+
+    it('base64-encodes a Buffer signature from older Freighter versions', async () => {
+      vi.mocked(signMessage).mockResolvedValue({
+        signedMessage: Buffer.from('signature'),
+        signerAddress: CLIENT,
+      });
+
+      expect(await service.signChallenge('challenge', PASSPHRASE, CLIENT)).toBe(
+        Buffer.from('signature').toString('base64'),
       );
     });
 
-    it('should throw error when no wallet is available', async () => {
-      (global as unknown as { window: Record<string, unknown> }).window = {};
+    it('throws when the wallet refuses or is unavailable', async () => {
+      vi.mocked(signMessage).mockResolvedValue({
+        signedMessage: null,
+        signerAddress: '',
+        error: { code: -4, message: 'User declined access' },
+      });
 
-      await expect(
-        service.signChallenge(
-          'challenge-xdr',
-          'Test SDF Network ; September 2015',
-          'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-        )
-      ).rejects.toThrow('No compatible Stellar wallet found');
+      await expect(service.signChallenge('challenge', PASSPHRASE, CLIENT)).rejects.toThrow(
+        'User declined access',
+      );
+    });
+
+    it('rejects a signature from a different account', async () => {
+      vi.mocked(signMessage).mockResolvedValue({
+        signedMessage: 'c2lnbmF0dXJl',
+        signerAddress: 'GBOTHERACCOUNTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      });
+
+      await expect(service.signChallenge('challenge', PASSPHRASE, CLIENT)).rejects.toThrow(
+        'different account',
+      );
     });
   });
 
@@ -257,12 +277,7 @@ describe('Sep10AuthService', () => {
       } as Response);
 
       // Mock wallet signing
-      const mockWindow = {
-        freighter: {
-          signTransaction: vi.fn().mockResolvedValue('signed-xdr'),
-        },
-      };
-      (global as unknown as { window: typeof mockWindow }).window = mockWindow;
+      vi.mocked(signMessage).mockResolvedValue({ signedMessage: 'c2lnbmF0dXJl', signerAddress: CLIENT });
 
       // Mock verifyChallenge
       vi.mocked(global.fetch).mockResolvedValueOnce({
@@ -271,7 +286,7 @@ describe('Sep10AuthService', () => {
       } as Response);
 
       const result = await service.authenticate(
-        'GCLIENT',
+        CLIENT,
         {
           homeDomain: 'example.com',
         }
@@ -279,6 +294,11 @@ describe('Sep10AuthService', () => {
 
       expect(result).toEqual(mockVerification);
       expect(global.fetch).toHaveBeenCalledTimes(3);
+      const [, verifyInit] = vi.mocked(global.fetch).mock.calls[2];
+      expect(JSON.parse(String(verifyInit?.body))).toEqual({
+        transaction: 'challenge-xdr',
+        signature: 'c2lnbmF0dXJl',
+      });
     });
   });
 });
