@@ -1221,7 +1221,7 @@
             "description": "List of API keys"
           },
           "401": {
-            "description": "Unauthorized - missing X-Wallet-Address header"
+            "description": "Unauthorized - missing or invalid SEP-10 session"
           },
           "500": {
             "description": "Internal server error"
@@ -1252,7 +1252,7 @@
             "description": "Invalid request"
           },
           "401": {
-            "description": "Unauthorized - missing X-Wallet-Address header"
+            "description": "Unauthorized - missing or invalid SEP-10 session"
           },
           "500": {
             "description": "Internal server error"
@@ -1283,7 +1283,7 @@
             "description": "API key details"
           },
           "401": {
-            "description": "Unauthorized - missing X-Wallet-Address header"
+            "description": "Unauthorized - missing or invalid SEP-10 session"
           },
           "404": {
             "description": "API key not found"
@@ -1315,7 +1315,7 @@
             "description": "API key revoked"
           },
           "401": {
-            "description": "Unauthorized - missing X-Wallet-Address header"
+            "description": "Unauthorized - missing or invalid SEP-10 session"
           },
           "404": {
             "description": "API key not found"
@@ -1349,7 +1349,7 @@
             "description": "API key rotated"
           },
           "401": {
-            "description": "Unauthorized - missing X-Wallet-Address header"
+            "description": "Unauthorized - missing or invalid SEP-10 session"
           },
           "404": {
             "description": "API key not found"
@@ -8727,8 +8727,16 @@
           "transaction"
         ],
         "properties": {
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base64 Ed25519 signature, by the challenged account's key, over the\nUTF-8 bytes of `transaction`. Proves the caller holds that account."
+          },
           "transaction": {
-            "type": "string"
+            "type": "string",
+            "description": "The challenge exactly as `generate_challenge` returned it."
           }
         }
       },
