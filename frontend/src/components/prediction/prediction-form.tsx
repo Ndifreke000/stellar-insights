@@ -274,7 +274,7 @@ const PredictionForm = () => {
       });
       setPrediction(response);
     } catch (err) {
-      setError("Failed to get prediction. Please try again.");
+      setError("Could not reach the PayRaider API to check this corridor. Please try again.");
       logger.error(err as string);
     } finally {
       setLoading(false);
@@ -489,15 +489,6 @@ const PredictionForm = () => {
                   exit={{ opacity: 0 }}
                   className="space-y-6"
                 >
-                  {/* Mock data notice */}
-                  {prediction.is_mock && (
-                    <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span>
-                        Backend unavailable — showing locally generated estimates. Connect to a real backend for live predictions.
-                      </span>
-                    </div>
-                  )}
                   {/* Success Gauge */}
                   <SuccessGauge
                     probability={prediction.success_probability}

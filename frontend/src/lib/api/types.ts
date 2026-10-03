@@ -37,9 +37,8 @@ export interface PredictionResponse {
   risk_level: "low" | "medium" | "high";
   recommendation: string;
   alternative_routes: AlternativeRoute[];
+  /** Where the estimate comes from. */
   model_version: string;
-  /** True when the backend was unreachable and the result is locally generated. */
-  is_mock?: boolean;
 }
 
 // =========================
