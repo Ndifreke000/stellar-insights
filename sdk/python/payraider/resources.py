@@ -115,14 +115,12 @@ class PreflightResource:
         *,
         amount_usd: Optional[float] = None,
         min_success_rate: Optional[float] = None,
-        max_p95_latency_ms: Optional[float] = None,
     ) -> PreflightResponse:
         body = {
             "source_asset": source_asset,
             "destination_asset": destination_asset,
             "amount_usd": amount_usd,
             "min_success_rate": min_success_rate,
-            "max_p95_latency_ms": max_p95_latency_ms,
         }
         return await self._http.request(
             "POST", "/api/v1/preflight",
