@@ -115,3 +115,12 @@ needs contract tests and a testnet deploy to validate, not a one-line edit.
 
 - Frontend: `pnpm audit` — run in CI on every PR
 - Backend: `cargo audit` — run in CI on every PR
+
+## Audit exceptions
+
+`pnpm audit` exceptions live in `frontend/package.json` under
+`pnpm.auditConfig.ignoreGhsas`. Each one needs an entry here.
+
+| Advisory | Package | Why it is ignored | Revisit when |
+|---|---|---|---|
+| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | `braces` <= 3.0.3 (stack exhaustion on deeply nested patterns) | No patched version exists. It is reached only through `@ducanh2912/next-pwa` > `fast-glob` > `micromatch` while the PWA service worker is generated at build time, on glob patterns from our own config. Nothing in the served app passes user input to it. | A fixed `braces`, or a `next-pwa` release that drops `fast-glob` |
