@@ -149,6 +149,31 @@ Clients connect to `POST https://your-host/mcp` with
 Then `/preflight USDC NGN 2500`, or ask in plain language. See the
 [plugin README](../plugins/payraider/README.md).
 
+## Getting an API key
+
+Without a key every caller shares the anonymous per-IP limit. A key gives an
+app its own bucket (200 requests a minute by default; per-key limits live in
+`api_keys_rate_limit_config`). Keys belong to a Stellar wallet:
+
+1. `POST /api/sep10/auth` with `{"account": "G..."}` returns a `transaction`
+   (the challenge).
+2. Sign that string with the wallet's key, either with Freighter's
+   `signMessage` (SEP-53) or as a raw Ed25519 signature, and send
+   `POST /api/sep10/verify` with `{"transaction": "<challenge>", "signature": "<base64>"}`.
+   The response holds a session `token`.
+3. `POST /api/api-keys` with `Authorization: Bearer <token>` and
+   `{"name": "my-offramp"}`. The response's `plain_key` (`si_live_...`) is
+   shown once; store it.
+4. Send `Authorization: Bearer si_live_...` on API calls, or set
+   `PAYRAIDER_API_KEY` for the SDKs and the MCP server.
+
+`GET /api/api-keys`, `POST /api/api-keys/{id}/rotate` and
+`DELETE /api/api-keys/{id}` manage the wallet's keys with the same session
+token. A revoked key stops being honoured within a minute.
+
+Wallet sign-in needs Redis (`REDIS_URL`): challenges and sessions are stored
+there, and without it sign-in is refused rather than allowed.
+
 ## Deploying it yourself
 
 1. **Run the backend.** The plugin reads from a PayRaider backend; see
