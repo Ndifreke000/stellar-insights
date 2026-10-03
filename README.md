@@ -3,17 +3,46 @@
 [![Coverage](https://codecov.io/gh/Ndifreke000/stellar-insights/branch/main/graph/badge.svg)](https://codecov.io/gh/Ndifreke000/stellar-insights)
 [![Coverage CI](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml/badge.svg)](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml)
 
-**Real-time payment analytics for Stellar.**
+**Check a Stellar payment corridor before you pay out.**
 
-A lean, production-grade stack for measuring and improving cross-border payment reliability.
+Off-ramps and payout apps lose money when a payment goes out on a corridor
+that is degraded or too thin for the amount. PayRaider answers one question
+before the money moves: *is this corridor healthy enough to pay on right
+now?*
 
-- Backend: Rust analytics engine (Axum, SQLx)
-- Frontend: Next.js dashboard
-- Mobile: React Native (Expo) — [current status](mobile/README.md#current-status)
-- Contracts: 1 integrated Soroban contract ([`payraider`](#deployed-contracts)), [deployed to testnet](#deployed-contracts)
-- SDKs: TypeScript + Python clients
-- Plugin: a [pre-payment check](#plugin-check-a-corridor-before-you-pay) for off-ramp apps, over REST, SDK, MCP or as a Claude plugin
-- DB: SQLite (WAL mode) — see [Database](#database) below
+```bash
+curl -s "https://<your-payraider-host>/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+```
+
+returns `proceed`, `caution`, `hold` or `unknown`, the checks behind it
+(success rate of recent payments including failed ones, liquidity against the
+amount, sample size, corridor health) and healthier corridors to the same
+currency.
+
+- **Observed, not modelled.** Decisions come from recent payments on the
+  Stellar ledger. No data means `unknown`, never a guess.
+- **Free to try.** No API key needed; keys raise the rate limit.
+- **Paid in USDC on Stellar.** The Pro plan is bought with a USDC payment that
+  the API verifies on the ledger.
+- **Fits any stack.** REST, TypeScript and Python SDKs, an MCP server for AI
+  agents, and a Claude plugin.
+
+Integration guide: [docs/PLUGIN.md](docs/PLUGIN.md).
+
+### What is in this repository
+
+| Path | What it is |
+| --- | --- |
+| `backend/` | Rust API (Axum, SQLite): corridor data, the pre-payment check, wallet sign-in, API keys and USDC billing |
+| `sdk/typescript`, `sdk/python` | Client SDKs |
+| `sdk/mcp-server`, `plugins/payraider` | MCP server and Claude plugin |
+| `frontend/` | Next.js dashboard, corridor explorer and self-serve API keys |
+| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain |
+| `mobile/` | React Native app ([status](mobile/README.md#current-status)) |
+
+The dashboard also carries features from the project's earlier scope
+(governance, quests, GDPR tooling and others). They are kept but are not part
+of the off-ramp product.
 
 ## 🔧 Quick start
 
