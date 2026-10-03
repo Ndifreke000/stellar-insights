@@ -286,6 +286,20 @@ pub fn routes(
         )
     });
 
+    // 5c-iii. Paid plan, settled in USDC on Stellar. Enabled by
+    // PAYRAIDER_TREASURY_ACCOUNT; the plan endpoint reports 503 otherwise.
+    let billing_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
+        let state = crate::api::billing::BillingState {
+            pool: pool.clone(),
+            config: crate::billing::BillingConfig::from_env().map(Arc::new),
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .unwrap_or_default(),
+        };
+        Router::new().nest("/billing", crate::api::billing::routes(state, sep10))
+    });
+
     // 5d. SEP-10 wallet auth (challenge, verify, logout). The module's routes
     // carry absolute /api/sep10 paths, so it is merged at the root below.
     let sep10_routes = sep10_service
@@ -377,6 +391,7 @@ pub fn routes(
         .merge(reference_routes)
         .merge(governance_routes)
         .merge(api_key_routes)
+        .merge(billing_routes)
         .merge(alert_routes)
         .merge(oauth_routes)
         .merge(digest_routes)

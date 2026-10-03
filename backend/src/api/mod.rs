@@ -8,6 +8,7 @@ pub mod api_keys;
 pub mod asset_verification;
 pub mod audit_log;
 pub mod backfill;
+pub mod billing;
 pub mod corridor_alerts;
 pub mod failed_payments;
 pub mod settlement_distribution;
