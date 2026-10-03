@@ -3027,102 +3027,6 @@
         }
       }
     },
-    "/api/ml/predict": {
-      "post": {
-        "tags": [
-          "ML"
-        ],
-        "summary": "POST /api/ml/predict - Get payment success prediction",
-        "operationId": "predict_payment_success",
-        "parameters": [
-          {
-            "name": "corridor",
-            "in": "query",
-            "description": "Corridor identifier (e.g., 'USD:GXXX → EUR:GYYY')",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "amount_usd",
-            "in": "query",
-            "description": "Payment amount in USD",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "format": "double"
-            }
-          },
-          {
-            "name": "timestamp",
-            "in": "query",
-            "description": "Optional timestamp for prediction (defaults to current time)",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Payment prediction result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PredictionResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/ml/retrain": {
-      "post": {
-        "tags": [
-          "ML"
-        ],
-        "summary": "POST /api/ml/retrain - Retrain the ML model",
-        "operationId": "retrain_model",
-        "responses": {
-          "200": {
-            "description": "Model retraining initiated"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/ml/status": {
-      "get": {
-        "tags": [
-          "ML"
-        ],
-        "summary": "GET /api/ml/status - Get ML model status",
-        "operationId": "get_model_status",
-        "responses": {
-          "200": {
-            "description": "ML model status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelStatusResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
     "/api/network/available": {
       "get": {
         "tags": [
@@ -3167,43 +3071,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/network/switch": {
-      "post": {
-        "tags": [
-          "Network"
-        ],
-        "summary": "Switch network (Note: This is a placeholder - actual switching would require server restart)",
-        "operationId": "switch_network",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SwitchNetworkRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Network switch response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SwitchNetworkResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid network"
           },
           "500": {
             "description": "Internal server error"
@@ -3332,69 +3199,6 @@
           },
           "401": {
             "description": "Invalid client credentials"
-          }
-        }
-      }
-    },
-    "/api/predict/success": {
-      "post": {
-        "tags": [
-          "Prediction"
-        ],
-        "summary": "POST /api/predict/success - Predict payment success",
-        "operationId": "predict_success",
-        "parameters": [
-          {
-            "name": "source_asset",
-            "in": "query",
-            "description": "Source asset code (e.g., 'USD')",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "destination_asset",
-            "in": "query",
-            "description": "Destination asset code (e.g., 'EUR')",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "amount",
-            "in": "query",
-            "description": "Payment amount",
-            "required": true,
-            "schema": {
-              "type": "number",
-              "format": "double"
-            }
-          },
-          {
-            "name": "time_of_day",
-            "in": "query",
-            "description": "Time of day for prediction (e.g., 'morning', 'afternoon', 'evening')",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Payment success prediction",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PredictionResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
           }
         }
       }
@@ -4522,7 +4326,7 @@
         }
       }
     },
-    "/api/transactions/": {
+    "/api/transactions": {
       "post": {
         "tags": [
           "Transactions"
@@ -7477,32 +7281,6 @@
           }
         }
       },
-      "ModelStatusResponse": {
-        "type": "object",
-        "required": [
-          "version",
-          "last_trained",
-          "accuracy",
-          "total_predictions"
-        ],
-        "properties": {
-          "accuracy": {
-            "type": "number",
-            "format": "float"
-          },
-          "last_trained": {
-            "type": "string"
-          },
-          "total_predictions": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "version": {
-            "type": "string"
-          }
-        }
-      },
       "NetworkInfo": {
         "type": "object",
         "required": [
@@ -8176,40 +7954,6 @@
           }
         }
       },
-      "PredictionResponse": {
-        "type": "object",
-        "required": [
-          "success_probability",
-          "confidence_interval",
-          "alternative_routes"
-        ],
-        "properties": {
-          "alternative_routes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "confidence_interval": {
-            "type": "array",
-            "items": false,
-            "prefixItems": [
-              {
-                "type": "number",
-                "format": "double"
-              },
-              {
-                "type": "number",
-                "format": "double"
-              }
-            ]
-          },
-          "success_probability": {
-            "type": "number",
-            "format": "double"
-          }
-        }
-      },
       "PreflightCheck": {
         "type": "object",
         "description": "One check that contributed to the decision.",
@@ -8788,36 +8532,6 @@
           }
         }
       },
-      "SwitchNetworkRequest": {
-        "type": "object",
-        "required": [
-          "network"
-        ],
-        "properties": {
-          "network": {
-            "$ref": "#/components/schemas/StellarNetwork"
-          }
-        }
-      },
-      "SwitchNetworkResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "message",
-          "network_info"
-        ],
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "network_info": {
-            "$ref": "#/components/schemas/NetworkInfo"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        }
-      },
       "TokenResponse": {
         "type": "object",
         "description": "OAuth Token Response",
@@ -9392,10 +9106,6 @@
       "description": "System metrics and monitoring"
     },
     {
-      "name": "ML",
-      "description": "Machine learning prediction endpoints"
-    },
-    {
       "name": "Billing",
       "description": "Paid API key plan, settled in USDC on Stellar"
     },
@@ -9406,10 +9116,6 @@
     {
       "name": "Network",
       "description": "Stellar network configuration"
-    },
-    {
-      "name": "Prediction",
-      "description": "Payment prediction endpoints"
     },
     {
       "name": "Prices",

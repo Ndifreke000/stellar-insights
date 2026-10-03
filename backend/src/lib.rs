@@ -38,7 +38,6 @@ pub mod ip_whitelist_middleware;
 pub mod jobs;
 pub mod leader_election;
 pub mod logging;
-pub mod ml;
 pub mod models;
 pub mod muxed;
 pub mod request_signing_middleware;

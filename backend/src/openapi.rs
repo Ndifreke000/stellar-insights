@@ -123,16 +123,9 @@ impl Modify for SecurityAddon {
         crate::api::liquidity_pools::get_pool_snapshots,
         // Metrics
         crate::api::metrics::metrics_overview,
-        // ML
-        crate::api::ml::predict_payment_success,
-        crate::api::ml::get_model_status,
-        crate::api::ml::retrain_model,
         // Network
         crate::api::network::get_network_info,
         crate::api::network::get_available_networks,
-        crate::api::network::switch_network,
-        // Prediction
-        crate::api::prediction::predict_success,
         // RPC
         crate::api::rpc::rpc_health_check,
         crate::api::rpc::get_latest_ledger,
@@ -303,11 +296,9 @@ impl Modify for SecurityAddon {
         (name = "Fee Bumps", description = "Fee bump transaction tracking"),
         (name = "Liquidity Pools", description = "Liquidity pool analytics"),
         (name = "Metrics", description = "System metrics and monitoring"),
-        (name = "ML", description = "Machine learning prediction endpoints"),
         (name = "Billing", description = "Paid API key plan, settled in USDC on Stellar"),
         (name = "Preflight", description = "Pre-payment corridor check for off-ramp and payout apps"),
         (name = "Network", description = "Stellar network configuration"),
-        (name = "Prediction", description = "Payment prediction endpoints"),
         (name = "Prices", description = "Real-time asset price feed endpoints"),
         (name = "Cost Calculator", description = "Cross-border payment cost estimation and route comparison"),
         (name = "RPC", description = "Stellar RPC integration endpoints"),
