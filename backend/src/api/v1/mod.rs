@@ -29,7 +29,9 @@ use tower_http::cors::CorsLayer;
 /// `SEP10_HOME_DOMAIN`, or `None` (with a warning) when they are not usable,
 /// so a missing wallet-auth config disables those routes instead of aborting
 /// startup.
-fn sep10_service_from_env() -> Option<Arc<crate::auth::sep10_simple::Sep10Service>> {
+fn sep10_service_from_env(
+    cache: &CacheManager,
+) -> Option<Arc<crate::auth::sep10_simple::Sep10Service>> {
     let server_public_key = std::env::var("SEP10_SERVER_PUBLIC_KEY").ok()?;
     let home_domain =
         std::env::var("SEP10_HOME_DOMAIN").unwrap_or_else(|_| "localhost".to_string());
@@ -40,7 +42,9 @@ fn sep10_service_from_env() -> Option<Arc<crate::auth::sep10_simple::Sep10Servic
         server_public_key,
         network_passphrase,
         home_domain,
-        Arc::new(tokio::sync::RwLock::new(None)),
+        // Challenges and sessions live in Redis. Without a connection the
+        // service fails closed, so wallet sign-in only works with REDIS_URL.
+        cache.redis_handle(),
     ) {
         Ok(service) => Some(Arc::new(service)),
         Err(error) => {
@@ -260,7 +264,7 @@ pub fn routes(
         );
 
     // 5c. Governance: reads are public, writes need a SEP-10 wallet session.
-    let sep10_service = sep10_service_from_env();
+    let sep10_service = sep10_service_from_env(&cache);
     let governance_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
         let governance_service = Arc::new(crate::services::governance::GovernanceService::new(
             app_state.db.clone(),
@@ -269,6 +273,16 @@ pub fn routes(
         Router::new().nest(
             "/governance",
             crate::api::governance::routes(governance_service, sep10),
+        )
+    });
+
+    // 5c-ii. API key management. Keys belong to the SEP-10 wallet that
+    // created them; a key sent as `Authorization: Bearer si_live_...` puts the
+    // caller on its own rate-limit tier (see rate_limit_middleware).
+    let api_key_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
+        Router::new().nest(
+            "/api-keys",
+            crate::api::api_keys::routes(app_state.db.clone(), sep10),
         )
     });
 
@@ -362,6 +376,7 @@ pub fn routes(
         .merge(service_routes)
         .merge(reference_routes)
         .merge(governance_routes)
+        .merge(api_key_routes)
         .merge(alert_routes)
         .merge(oauth_routes)
         .merge(digest_routes)
