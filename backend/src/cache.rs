@@ -141,6 +141,12 @@ impl CacheManager {
         self.redis_connection.clone()
     }
 
+    /// Synchronous form of [`Self::connection`], for wiring at startup.
+    #[must_use]
+    pub fn redis_handle(&self) -> Arc<RwLock<Option<MultiplexedConnection>>> {
+        self.redis_connection.clone()
+    }
+
     /// Health check for the cache dependency
     pub async fn health_check(&self) -> anyhow::Result<()> {
         self.ping().await
