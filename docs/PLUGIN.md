@@ -37,7 +37,6 @@ is equivalent.
 | `destination_asset` | yes | Asset the recipient receives: a code (`NGN`) or `CODE:ISSUER` |
 | `amount_usd` | no | Payment size in USD. Omit to skip the liquidity check |
 | `min_success_rate` | no | Minimum success rate in percent. Default 95 |
-| `max_p95_latency_ms` | no | Maximum p95 latency in milliseconds. Default 5000 |
 
 Asset codes match case-insensitively. When several issuers serve the same code
 pair and you give only codes, the healthiest corridor is evaluated; give
@@ -53,11 +52,10 @@ liquidity:
   "decision": "hold",
   "summary": "Failed on: liquidity. Do not pay on this corridor right now.",
   "score": 83.0,
-  "corridor": { "id": "USDC:G...->NGN:G...", "success_rate": 100.0, "p95_latency_ms": 1500.0, "liquidity_depth_usd": 166600.0, "...": "..." },
+  "corridor": { "id": "USDC:G...->NGN:G...", "success_rate": 97.0, "liquidity_depth_usd": 166600.0, "...": "..." },
   "checks": [
     { "name": "success_rate", "status": "pass", "detail": "100.0% of recent payments succeeded (minimum 95.0%)" },
     { "name": "liquidity", "status": "fail", "detail": "payment is 60.0% of $166600 observed liquidity" },
-    { "name": "latency", "status": "pass", "detail": "p95 settlement latency 1500 ms (maximum 5000 ms)" },
     { "name": "sample_size", "status": "pass", "detail": "33 recent payments observed (at least 20 for confidence)" },
     { "name": "health_score", "status": "pass", "detail": "corridor health score 83.0 of 100" }
   ],
@@ -79,7 +77,6 @@ range) returns `400`.
 | --- | --- | --- | --- |
 | `success_rate` | at or above the minimum | within 10 points below it | lower |
 | `liquidity` | payment is at most 10% of observed liquidity | at most 50% | more, or no liquidity |
-| `latency` | p95 at or below the maximum | at most twice the maximum | higher |
 | `sample_size` | at least 20 recent payments | fewer | never fails |
 | `health_score` | 80 or above | 60 or above | lower |
 
