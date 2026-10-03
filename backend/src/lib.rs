@@ -9,6 +9,7 @@ pub mod api_v1_middleware;
 pub mod deprecation_middleware;
 pub mod distributed_lock;
 pub mod monitor;
+pub mod multisig;
 
 pub mod auth;
 pub mod auth_middleware;
