@@ -23,9 +23,14 @@ export interface ListApiKeysResponse {
   keys: ApiKeyInfo[];
 }
 
-async function fetchWithWallet<T>(
+/**
+ * Call the API as the signed-in wallet. The backend identifies the key owner
+ * from the SEP-10 session token; it no longer trusts an X-Wallet-Address
+ * header, which any client could set to any wallet.
+ */
+async function fetchWithSession<T>(
   endpoint: string,
-  walletAddress: string,
+  authToken: string,
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -34,7 +39,7 @@ async function fetchWithWallet<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-Wallet-Address": walletAddress,
+      Authorization: `Bearer ${authToken}`,
       ...options.headers,
     },
   });
@@ -46,21 +51,20 @@ async function fetchWithWallet<T>(
     } catch {
       errorData = { error: response.statusText };
     }
-    throw new Error(
-      (errorData as { error?: string })?.error || `API error: ${response.status}`,
-    );
+    const { error, message } = (errorData ?? {}) as { error?: string; message?: string };
+    throw new Error(message || error || `API error: ${response.status}`);
   }
 
   return response.json();
 }
 
 export async function createApiKey(
-  walletAddress: string,
+  authToken: string,
   name: string,
   scopes?: string,
   expiresAt?: string,
 ): Promise<CreateApiKeyResponse> {
-  return fetchWithWallet<CreateApiKeyResponse>("/api/api-keys", walletAddress, {
+  return fetchWithSession<CreateApiKeyResponse>("/api/api-keys", authToken, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -70,39 +74,116 @@ export async function createApiKey(
   });
 }
 
-export async function listApiKeys(
-  walletAddress: string,
-): Promise<ListApiKeysResponse> {
-  return fetchWithWallet<ListApiKeysResponse>("/api/api-keys", walletAddress, {
+export async function listApiKeys(authToken: string): Promise<ListApiKeysResponse> {
+  return fetchWithSession<ListApiKeysResponse>("/api/api-keys", authToken, {
     method: "GET",
   });
 }
 
-export async function getApiKey(
-  walletAddress: string,
-  id: string,
-): Promise<ApiKeyInfo> {
-  return fetchWithWallet<ApiKeyInfo>(`/api/api-keys/${id}`, walletAddress, {
+export async function getApiKey(authToken: string, id: string): Promise<ApiKeyInfo> {
+  return fetchWithSession<ApiKeyInfo>(`/api/api-keys/${encodeURIComponent(id)}`, authToken, {
     method: "GET",
   });
 }
 
 export async function rotateApiKey(
-  walletAddress: string,
+  authToken: string,
   id: string,
 ): Promise<CreateApiKeyResponse> {
-  return fetchWithWallet<CreateApiKeyResponse>(
-    `/api/api-keys/${id}/rotate`,
-    walletAddress,
+  return fetchWithSession<CreateApiKeyResponse>(
+    `/api/api-keys/${encodeURIComponent(id)}/rotate`,
+    authToken,
     { method: "POST" },
   );
 }
 
 export async function revokeApiKey(
-  walletAddress: string,
+  authToken: string,
   id: string,
 ): Promise<{ message: string }> {
-  return fetchWithWallet<{ message: string }>(`/api/api-keys/${id}`, walletAddress, {
-    method: "DELETE",
+  return fetchWithSession<{ message: string }>(
+    `/api/api-keys/${encodeURIComponent(id)}`,
+    authToken,
+    { method: "DELETE" },
+  );
+}
+
+// ─── Paid plan (USDC on Stellar) ─────────────────────────────────────────────
+
+export interface BillingPlan {
+  plan: string;
+  price: string;
+  asset_code: string;
+  asset_issuer: string;
+  destination: string;
+  period_days: number;
+  limit_per_minute: number;
+  free_limit_per_minute: number;
+  anonymous_limit_per_minute: number;
+}
+
+export interface Invoice {
+  id: string;
+  api_key_id: string;
+  amount_usdc: string;
+  asset_code: string;
+  asset_issuer: string;
+  destination: string;
+  memo: string;
+  limit_per_minute: number;
+  period_days: number;
+  status: "pending" | "paid" | "expired";
+  transaction_hash: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface Subscription {
+  api_key_id: string;
+  plan: string;
+  limit_per_minute: number;
+  paid_until: string;
+}
+
+/** The paid plan, or null when this server has paid plans turned off. */
+export async function getBillingPlan(): Promise<BillingPlan | null> {
+  const response = await fetch(`${API_BASE_URL}/api/billing/plan`);
+  if (response.status === 503) return null;
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+}
+
+export async function createInvoice(authToken: string, apiKeyId: string): Promise<Invoice> {
+  return fetchWithSession<Invoice>("/api/billing/invoices", authToken, {
+    method: "POST",
+    body: JSON.stringify({ api_key_id: apiKeyId }),
   });
+}
+
+export async function confirmInvoice(
+  authToken: string,
+  invoiceId: string,
+  transactionHash: string,
+): Promise<{ invoice: Invoice; subscription: Subscription }> {
+  return fetchWithSession(`/api/billing/invoices/${encodeURIComponent(invoiceId)}/confirm`, authToken, {
+    method: "POST",
+    body: JSON.stringify({ transaction_hash: transactionHash.trim() }),
+  });
+}
+
+/** The key's paid plan, or null if it has never been upgraded. */
+export async function getSubscription(
+  authToken: string,
+  apiKeyId: string,
+): Promise<Subscription | null> {
+  try {
+    return await fetchWithSession<Subscription>(
+      `/api/billing/subscriptions/${encodeURIComponent(apiKeyId)}`,
+      authToken,
+      { method: "GET" },
+    );
+  } catch (err) {
+    if (err instanceof Error && /no subscription/i.test(err.message)) return null;
+    throw err;
+  }
 }
