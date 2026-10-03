@@ -207,6 +207,19 @@ pub struct Payment {
     /// should use the `get_*` helper methods which transparently check both.
     #[serde(default)]
     pub asset_balance_changes: Option<Vec<AssetBalanceChange>>,
+    /// Whether the enclosing transaction succeeded. Horizon only returns
+    /// failed operations when asked (`include_failed=true`); `None` means the
+    /// source did not say, which is treated as successful.
+    #[serde(default)]
+    pub transaction_successful: Option<bool>,
+}
+
+impl Payment {
+    /// False only when Horizon reported the transaction as failed.
+    #[must_use]
+    pub fn succeeded(&self) -> bool {
+        self.transaction_successful != Some(false)
+    }
 }
 
 impl Payment {
@@ -917,7 +930,12 @@ impl StellarRpcClient {
         limit: u32,
         cursor: Option<&str>,
     ) -> Result<Vec<Payment>, RpcError> {
-        let mut url = format!("{}/payments?order=desc&limit={}", self.horizon_url, limit);
+        // include_failed: without it Horizon returns only successful payments,
+        // and every corridor's success rate would read 100%.
+        let mut url = format!(
+            "{}/payments?order=desc&limit={}&include_failed=true",
+            self.horizon_url, limit
+        );
         if let Some(c) = cursor {
             let _ = write!(url, "&cursor={c}");
         }
@@ -2136,6 +2154,7 @@ mod tests {
             from: Some("GSRC".into()),
             to: Some("GDEST".into()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         assert_eq!(payment.get_destination(), Some("GDEST".to_string()));
@@ -2147,6 +2166,7 @@ mod tests {
     #[test]
     fn test_new_format_takes_priority_over_legacy() {
         let payment = Payment {
+            transaction_successful: None,
             id: "2".into(),
             paging_token: "pt".into(),
             transaction_hash: "tx".into(),
@@ -2188,9 +2208,26 @@ mod tests {
     }
 
     #[test]
+    fn failed_payments_are_detected_from_horizon_records() {
+        let record = |flag: &str| {
+            serde_json::from_str::<Payment>(&format!(
+                r#"{{"id":"1","paging_token":"1","transaction_hash":"h","source_account":"GA",
+                    "asset_type":"native","amount":"1.0","created_at":"2026-01-01T00:00:00Z"{flag}}}"#
+            ))
+            .expect("payment record")
+        };
+
+        assert!(!record(r#","transaction_successful":false"#).succeeded());
+        assert!(record(r#","transaction_successful":true"#).succeeded());
+        // Records without the flag (sources that only list successes) count as successful.
+        assert!(record("").succeeded());
+    }
+
+    #[test]
     fn test_new_format_overrides_when_both_present() {
         // When BOTH legacy and new fields are present, new format wins.
         let payment = Payment {
+            transaction_successful: None,
             id: "3".into(),
             paging_token: "pt".into(),
             transaction_hash: "tx".into(),
@@ -2229,6 +2266,7 @@ mod tests {
     #[test]
     fn test_native_asset_via_new_format() {
         let payment = Payment {
+            transaction_successful: None,
             id: "4".into(),
             paging_token: "pt".into(),
             transaction_hash: "tx".into(),
@@ -2285,6 +2323,7 @@ mod tests {
             from: Some("GSRC".into()),
             to: Some("GTO_FIELD".into()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         assert_eq!(payment.get_destination(), Some("GTO_FIELD".to_string()));

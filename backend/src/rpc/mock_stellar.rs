@@ -102,6 +102,9 @@ pub fn mock_payments(limit: u32) -> Vec<Payment> {
             let amount_str = format!("{}.0000000", 100 + i * 10);
 
             Payment {
+                // Every seventh mock payment fails, so mock-mode corridors
+                // show a realistic spread of success rates.
+                transaction_successful: Some(i % 7 != 3),
                 id: format!("payment_{i}"),
                 paging_token: format!("paging_{i}"),
                 transaction_hash: format!("txhash_{i}"),
