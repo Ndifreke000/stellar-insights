@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -9,9 +9,26 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    auth::Sep10User,
     models::{PendingTransaction, PendingTransactionWithSignatures, TransactionResult},
+    multisig,
+    network::NetworkConfig,
     state::AppState,
 };
+
+type HandlerError = (StatusCode, String);
+
+/// The caller's wallet, proven by the SEP-10 session the routes require.
+fn wallet(user: Option<Extension<Sep10User>>) -> Result<String, HandlerError> {
+    user.map(|Extension(u)| u.account).ok_or((
+        StatusCode::UNAUTHORIZED,
+        "A SEP-10 wallet session is required".to_string(),
+    ))
+}
+
+fn bad_request(e: impl std::fmt::Display) -> HandlerError {
+    (StatusCode::BAD_REQUEST, e.to_string())
+}
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
 const MAX_PAGE_LIMIT: i64 = 100;
@@ -77,12 +94,23 @@ pub struct ListTransactionsResponse {
 }
 
 // Routes
-pub fn routes() -> Router<AppState> {
+/// Multi-signature coordination. Every route needs a SEP-10 wallet session:
+/// wallets create and submit their own transactions and add only their own,
+/// verified, signatures.
+pub fn routes(
+    state: AppState,
+    sep10_service: std::sync::Arc<crate::auth::sep10_simple::Sep10Service>,
+) -> Router {
     Router::new()
         .route("/", get(list_transactions).post(create_transaction))
         .route("/{id}", get(get_transaction))
         .route("/{id}/signatures", post(add_signature))
         .route("/{id}/submit", post(submit_transaction))
+        .layer(axum::middleware::from_fn_with_state(
+            sep10_service,
+            crate::auth::sep10_auth_middleware,
+        ))
+        .with_state(state)
 }
 
 // Handlers
@@ -95,7 +123,7 @@ pub fn routes() -> Router<AppState> {
 /// using a global `id` cursor with a filtered query skips rows.
 #[utoipa::path(
     get,
-    path = "/api/transactions/",
+    path = "/api/transactions",
     params(
         ("account" = Option<String>, Query, description = "Filter by source account"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor from a previous response"),
@@ -110,8 +138,11 @@ pub fn routes() -> Router<AppState> {
 )]
 pub async fn list_transactions(
     State(state): State<AppState>,
-    Query(query): Query<ListTransactionsQuery>,
+    user: Option<Extension<Sep10User>>,
+    Query(mut query): Query<ListTransactionsQuery>,
 ) -> Result<Json<ListTransactionsResponse>, (StatusCode, String)> {
+    // A wallet lists only the transactions it created.
+    query.account = Some(wallet(user)?);
     let limit = query
         .limit
         .unwrap_or(DEFAULT_PAGE_LIMIT)
@@ -167,7 +198,7 @@ pub async fn list_transactions(
 /// POST /api/transactions - Create a new pending transaction
 #[utoipa::path(
     post,
-    path = "/api/transactions/",
+    path = "/api/transactions",
     request_body = CreateTransactionRequest,
     responses(
         (status = 200, description = "Transaction created", body = PendingTransaction),
@@ -177,8 +208,26 @@ pub async fn list_transactions(
 )]
 pub async fn create_transaction(
     State(state): State<AppState>,
+    user: Option<Extension<Sep10User>>,
     Json(req): Json<CreateTransactionRequest>,
 ) -> Result<Json<PendingTransaction>, (StatusCode, String)> {
+    let wallet = wallet(user)?;
+    if req.source_account != wallet {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "source_account must be the signed-in wallet".to_string(),
+        ));
+    }
+    let tx_source = multisig::source_account(&req.xdr).map_err(bad_request)?;
+    if tx_source != wallet {
+        return Err(bad_request(
+            "the transaction's source account is not the signed-in wallet",
+        ));
+    }
+    if !(1..=20).contains(&req.required_signatures) {
+        return Err(bad_request("required_signatures must be between 1 and 20"));
+    }
+
     let pending_transaction = state
         .db
         .create_pending_transaction(&req.source_account, &req.xdr, req.required_signatures)
@@ -210,8 +259,12 @@ pub async fn create_transaction(
 )]
 pub async fn get_transaction(
     State(state): State<AppState>,
+    user: Option<Extension<Sep10User>>,
     Path(id): Path<String>,
 ) -> Result<Json<PendingTransactionWithSignatures>, (StatusCode, String)> {
+    // Any signed-in wallet may read a transaction so co-signers can review it
+    // before signing; nothing in it is secret once submitted.
+    wallet(user)?;
     let pending_transaction = state.db.get_pending_transaction(&id).await.map_err(|e| {
         tracing::error!("Failed to get transaction: {}", e);
         (
@@ -245,9 +298,17 @@ pub async fn get_transaction(
 )]
 pub async fn add_signature(
     State(state): State<AppState>,
+    user: Option<Extension<Sep10User>>,
     Path(id): Path<String>,
     Json(req): Json<AddSignatureRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let wallet = wallet(user)?;
+    if req.signer != wallet {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "a wallet can only add its own signature".to_string(),
+        ));
+    }
     // Run the duplicate-check, signature insert, and optional status update
     // inside a single transaction to prevent races between concurrent signers.
     let mut tx = state.db.pool().begin().await.map_err(|e| {
@@ -294,6 +355,15 @@ pub async fn add_signature(
         ));
     }
 
+    // Store only a signature that verifies against this transaction on this
+    // network. A raw signature or a wallet-signed envelope is accepted.
+    let network = NetworkConfig::from_env();
+    let hash = multisig::transaction_hash(&pending.xdr, &network.network_passphrase)
+        .map_err(bad_request)?;
+    let verified =
+        multisig::extract_signature(&req.signature, &req.signer, &hash).map_err(bad_request)?;
+    let signature = base64::engine::general_purpose::STANDARD.encode(verified);
+
     let sig_id = Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO transaction_signatures (id, transaction_id, signer, signature) VALUES ($1, $2, $3, $4)",
@@ -301,7 +371,7 @@ pub async fn add_signature(
     .bind(sig_id)
     .bind(&id)
     .bind(&req.signer)
-    .bind(&req.signature)
+    .bind(&signature)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
@@ -352,8 +422,10 @@ pub async fn add_signature(
 )]
 pub async fn submit_transaction(
     State(state): State<AppState>,
+    user: Option<Extension<Sep10User>>,
     Path(id): Path<String>,
 ) -> Result<Json<TransactionResult>, (StatusCode, String)> {
+    let wallet = wallet(user)?;
     let tx_opt = state.db.get_pending_transaction(&id).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -363,31 +435,72 @@ pub async fn submit_transaction(
 
     let tx_with_sigs =
         tx_opt.ok_or((StatusCode::NOT_FOUND, "Transaction not found".to_string()))?;
-
+    if tx_with_sigs.transaction.source_account != wallet {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only the transaction's creator can submit it".to_string(),
+        ));
+    }
+    if tx_with_sigs.transaction.status == "submitted" {
+        return Err((
+            StatusCode::CONFLICT,
+            "Transaction was already submitted".to_string(),
+        ));
+    }
     if (tx_with_sigs.collected_signatures.len() as i32)
         < tx_with_sigs.transaction.required_signatures
     {
         return Err((StatusCode::BAD_REQUEST, "Not enough signatures".to_string()));
     }
 
-    // TODO #2326: Implement real transaction signing and submission
-    // Currently using mock implementation. Production requirements:
-    // 1. Unpack XDR transaction envelope
-    // 2. Attach collected signatures to transaction using stellar-sdk (or validate final XDR from frontend)
-    // 3. Submit to Stellar network using reqwest HTTP calls to rpc_client
-    // Dependencies: stellar-sdk crate for XDR handling, proper error handling for network failures
+    // Signatures were verified when added; attach them and submit for real.
+    // (This used to return a random "success" hash without submitting.)
+    let mut signatures = Vec::with_capacity(tx_with_sigs.collected_signatures.len());
+    for collected in &tx_with_sigs.collected_signatures {
+        let bytes: [u8; 64] = base64::engine::general_purpose::STANDARD
+            .decode(&collected.signature)
+            .ok()
+            .and_then(|raw| raw.try_into().ok())
+            .ok_or_else(|| {
+                bad_request(format!(
+                    "stored signature by {} is malformed",
+                    collected.signer
+                ))
+            })?;
+        signatures.push((collected.signer.clone(), bytes));
+    }
+    let envelope =
+        multisig::assemble(&tx_with_sigs.transaction.xdr, &signatures).map_err(bad_request)?;
 
-    let mock_hash = Uuid::new_v4().to_string().replace('-', "");
-
-    // Update status in DB
-    state
-        .db
-        .update_transaction_status(&id, "submitted")
+    let network = NetworkConfig::from_env();
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    let submission = multisig::submit(&http, &network.horizon_url, &envelope)
         .await
-        .ok();
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
 
+    let status = if submission.successful {
+        "submitted"
+    } else {
+        "failed"
+    };
+    state.db.update_transaction_status(&id, status).await.ok();
+
+    if let Some(error) = submission.error {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Horizon rejected the transaction: {error}"),
+        ));
+    }
     Ok(Json(TransactionResult {
-        hash: mock_hash,
-        status: "success".to_string(),
+        hash: submission.hash,
+        status: if submission.successful {
+            "success"
+        } else {
+            "failed"
+        }
+        .to_string(),
     }))
 }

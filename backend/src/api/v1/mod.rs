@@ -300,6 +300,14 @@ pub fn routes(
         Router::new().nest("/billing", crate::api::billing::routes(state, sep10))
     });
 
+    // 5c-iv. Multi-signature transaction coordination, behind SEP-10.
+    let transaction_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
+        Router::new().nest(
+            "/transactions",
+            crate::api::transactions::routes(app_state.clone(), sep10),
+        )
+    });
+
     // 5d. SEP-10 wallet auth (challenge, verify, logout). The module's routes
     // carry absolute /api/sep10 paths, so it is merged at the root below.
     let sep10_routes = sep10_service
@@ -392,6 +400,7 @@ pub fn routes(
         .merge(governance_routes)
         .merge(api_key_routes)
         .merge(billing_routes)
+        .merge(transaction_routes)
         .merge(alert_routes)
         .merge(oauth_routes)
         .merge(digest_routes)
