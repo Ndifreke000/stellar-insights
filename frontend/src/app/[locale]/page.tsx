@@ -16,12 +16,7 @@ export default function Home() {
   const { isConnected, connectWallet, isConnecting } = useWallet();
   const t = useTranslations("home");
 
-  const mockTickers = [
-    { labelKey: "usdcBrl" as const, value: "0.998", change: "+0.02%" },
-    { labelKey: "xlmEur" as const, value: "3.1s", change: "-120ms" },
-    { labelKey: "networkTvl" as const, value: "$45.2M", change: "+5.5%" },
-    { labelKey: "successRate" as const, value: "99.98%", change: "+0.1%" },
-  ];
+  const steps = ["name", "check", "decide", "pay"] as const;
 
   return (
     <main className="space-y-24 pb-20">
@@ -67,25 +62,13 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Live Intelligence Strip */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {mockTickers.map((ticker, i) => (
-          <div
-            key={i}
-            className="glass-card p-6 rounded-2xl group hover:border-accent/30 transition-colors"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                {t(`tickers.${ticker.labelKey}`)}
-              </span>
-              <div className="w-2 h-2 rounded-full bg-green-500 glow-success" />
-            </div>
-            <div className="flex items-end gap-3">
-              <span className="text-2xl font-mono font-bold">{ticker.value}</span>
-              <span className="text-xs font-mono text-green-400 mb-1">
-                {ticker.change}
-              </span>
-            </div>
+      {/* How it works */}
+      <section aria-label={t("steps.label")} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {steps.map((step, i) => (
+          <div key={step} className="glass-card p-6 rounded-2xl">
+            <div className="text-xs font-mono font-bold text-accent mb-3">0{i + 1}</div>
+            <h3 className="font-bold mb-2">{t(`steps.${step}.title`)}</h3>
+            <p className="text-sm text-muted-foreground">{t(`steps.${step}.body`)}</p>
           </div>
         ))}
       </section>
@@ -139,14 +122,19 @@ export default function Home() {
           <p className="text-lg text-muted-foreground mb-10">{t("cta.subtitle")}</p>
           <div className="flex gap-4">
             <Link
-              href="/dashboard"
+              href="/prediction"
               className="px-8 py-4 bg-accent text-white rounded-xl font-bold hover:scale-105 transition-transform"
             >
               {t("cta.launchTerminal")}
             </Link>
-            <button className="px-8 py-4 glass text-foreground rounded-xl font-bold hover:bg-white/10 transition-all">
+            <a
+              href="https://github.com/Ndifreke000/stellar-insights/blob/main/docs/PLUGIN.md"
+              target="_blank"
+              rel="noreferrer"
+              className="px-8 py-4 glass text-foreground rounded-xl font-bold hover:bg-white/10 transition-all"
+            >
               {t("cta.readSpec")}
-            </button>
+            </a>
           </div>
         </div>
       </section>
@@ -159,15 +147,15 @@ export default function Home() {
           <span className="font-bold tracking-tight">{t("footer.payRaider")}</span>
         </div>
         <div className="flex gap-8 text-sm text-muted-foreground">
-          <a href="#" className="hover:text-foreground transition-colors">
+          <Link href="/corridors" className="hover:text-foreground transition-colors">
             {t("footer.networkStatus")}
-          </a>
-          <a href="#" className="hover:text-foreground transition-colors">
+          </Link>
+          <Link href="/developer/keys" className="hover:text-foreground transition-colors">
             {t("footer.apiKeys")}
-          </a>
-          <a href="#" className="hover:text-foreground transition-colors">
+          </Link>
+          <Link href="/governance" className="hover:text-foreground transition-colors">
             {t("footer.governance")}
-          </a>
+          </Link>
         </div>
         <p className="text-xs text-muted-foreground/50 font-mono">
           {t("footer.copyright")}
