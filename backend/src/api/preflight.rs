@@ -29,8 +29,6 @@ const CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
 
 /// Success rate (percent) below which a corridor is not recommended.
 pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 95.0;
-/// 95th-percentile settlement latency above which a corridor is flagged.
-pub const DEFAULT_MAX_P95_LATENCY_MS: f64 = 5_000.0;
 /// Payments observed below which the metrics are treated as low-confidence.
 pub const MIN_SAMPLE_SIZE: i64 = 20;
 /// Share of observed corridor liquidity a single payment can use comfortably.
@@ -61,9 +59,6 @@ pub struct PreflightRequest {
     /// Minimum acceptable success rate in percent (default 95).
     #[schema(example = 95.0)]
     pub min_success_rate: Option<f64>,
-    /// Maximum acceptable p95 latency in milliseconds (default 5000).
-    #[schema(example = 5000.0)]
-    pub max_p95_latency_ms: Option<f64>,
 }
 
 /// Overall recommendation.
@@ -92,8 +87,8 @@ pub enum CheckStatus {
 /// One check that contributed to the decision.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PreflightCheck {
-    /// Stable identifier: `success_rate`, `liquidity`, `latency`,
-    /// `sample_size` or `health_score`.
+    /// Stable identifier: `success_rate`, `liquidity`, `sample_size` or
+    /// `health_score`.
     #[schema(example = "success_rate")]
     pub name: String,
     pub status: CheckStatus,
@@ -122,14 +117,12 @@ pub struct PreflightResponse {
 #[derive(Debug, Clone, Copy)]
 pub struct Thresholds {
     pub min_success_rate: f64,
-    pub max_p95_latency_ms: f64,
 }
 
 impl Default for Thresholds {
     fn default() -> Self {
         Self {
             min_success_rate: DEFAULT_MIN_SUCCESS_RATE,
-            max_p95_latency_ms: DEFAULT_MAX_P95_LATENCY_MS,
         }
     }
 }
@@ -228,20 +221,8 @@ pub fn run_checks(
         checks.push(check("liquidity", status, detail));
     }
 
-    let p95 = corridor.p95_latency_ms;
-    let max_p95 = thresholds.max_p95_latency_ms;
-    let status = if p95 <= max_p95 {
-        CheckStatus::Pass
-    } else if p95 <= max_p95 * 2.0 {
-        CheckStatus::Warn
-    } else {
-        CheckStatus::Fail
-    };
-    checks.push(check(
-        "latency",
-        status,
-        format!("p95 settlement latency {p95:.0} ms (maximum {max_p95:.0} ms)"),
-    ));
+    // No latency check: corridor latency figures are not measured from
+    // settlement data, so a decision must not rest on them.
 
     let attempts = corridor.total_attempts;
     let status = if attempts >= MIN_SAMPLE_SIZE {
@@ -324,9 +305,6 @@ pub fn evaluate(
     let destination = parse_asset(&request.destination_asset);
     let thresholds = Thresholds {
         min_success_rate: request.min_success_rate.unwrap_or(DEFAULT_MIN_SUCCESS_RATE),
-        max_p95_latency_ms: request
-            .max_p95_latency_ms
-            .unwrap_or(DEFAULT_MAX_P95_LATENCY_MS),
     };
 
     // Several issuers can serve the same code pair; evaluate the healthiest.
@@ -397,14 +375,6 @@ fn validate(request: &PreflightRequest) -> ApiResult<()> {
             return Err(ApiError::bad_request(
                 "INVALID_THRESHOLD",
                 "min_success_rate must be between 0 and 100",
-            ));
-        }
-    }
-    if let Some(latency) = request.max_p95_latency_ms {
-        if !latency.is_finite() || latency <= 0.0 {
-            return Err(ApiError::bad_request(
-                "INVALID_THRESHOLD",
-                "max_p95_latency_ms must be a positive number",
             ));
         }
     }
@@ -517,7 +487,6 @@ mod tests {
             destination_asset: destination.to_string(),
             amount_usd: amount,
             min_success_rate: None,
-            max_p95_latency_ms: None,
         }
     }
 
