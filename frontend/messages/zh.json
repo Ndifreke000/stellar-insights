@@ -65,33 +65,27 @@
   },
   "home": {
     "hero": {
-      "liveBadge": "实时网络智能已启用",
-      "title": "量化",
-      "titleHighlight": "网络信任",
-      "subtitle": "PayRaider 为 Stellar 支付网络提供机构级遥测。超越交易计数；实时分析流动性深度、走廊可靠性和结算终局性。",
-      "enterTerminal": "进入终端",
-      "connectIdentity": "连接身份",
-      "initializing": "初始化中..."
-    },
-    "tickers": {
-      "usdcBrl": "USDC/BRL",
-      "xlmEur": "XLM/EUR",
-      "networkTvl": "网络 TVL",
-      "successRate": "成功率"
+      "liveBadge": "面向 Stellar 出金应用的付款前检查",
+      "title": "付款之前",
+      "titleHighlight": "先检查通道",
+      "subtitle": "当通道状态不佳或流动性不足以支撑付款金额时，付款就会失败。PayRaider 根据该通道最近的付款情况，通过一次 API 调用给出继续、谨慎或暂停的结论，并附上原因和更健康的路线。",
+      "enterTerminal": "检查通道",
+      "connectIdentity": "连接钱包",
+      "initializing": "连接中..."
     },
     "capabilities": {
-      "globalCorridors": "全球走廊",
-      "globalCorridorsDesc": "跨境支付路径的详细健康分析。监控 50+ 法币对的正常运行时间、流动性瓶颈和锚点表现。",
-      "deepTelemetry": "深度遥测",
-      "deepTelemetryDesc": "超越表面级 TPS。我们分析账本级结算数据，为支付操作提供真正的速度到终局性分布。",
-      "predictiveTrust": "预测性信任",
-      "predictiveTrustDesc": "我们的 ML 引擎预测走廊成功概率，帮助您通过最具弹性的网络节点路由高价值支付。"
+      "globalCorridors": "基于观测，而非模型",
+      "globalCorridorsDesc": "结论来自 Stellar 账本上最近的付款，包括失败的付款。没有近期付款的通道会返回未知，而不是猜测。",
+      "deepTelemetry": "适配你的技术栈",
+      "deepTelemetryDesc": "一次 REST 调用、TypeScript 和 Python SDK、面向 AI 代理的 MCP 服务器，以及 Claude 插件。无需 API 密钥即可免费试用。",
+      "predictiveTrust": "在 Stellar 上用 USDC 支付",
+      "predictiveTrustDesc": "更高的调用限额通过 USDC 付款购买，API 会在账本上核实该付款。无需银行卡、账户或额外的计费系统。"
     },
     "cta": {
-      "title": "准备好集成网络智能了吗？",
-      "subtitle": "加入已使用 PayRaider 优化流动性管理和支付可靠性的前瞻性锚点和钱包。",
-      "launchTerminal": "启动终端",
-      "readSpec": "阅读规范"
+      "title": "立即检查通道",
+      "subtitle": "在任意 Stellar 通道上试用检查功能。开始使用无需注册或 API 密钥。",
+      "launchTerminal": "试用检查",
+      "readSpec": "集成指南"
     },
     "footer": {
       "payRaider": "PayRaider",
@@ -99,6 +93,25 @@
       "apiKeys": "API 密钥",
       "governance": "治理",
       "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
+    },
+    "steps": {
+      "label": "工作原理",
+      "name": {
+        "title": "描述付款",
+        "body": "源资产、目标资产以及以美元计的金额。"
+      },
+      "check": {
+        "title": "检查通道",
+        "body": "最近付款的成功率（包括失败的付款）、相对于金额的流动性，以及可用数据量。"
+      },
+      "decide": {
+        "title": "得到一个结论",
+        "body": "继续、谨慎或暂停，并解释每项检查；没有近期数据时返回未知。"
+      },
+      "pay": {
+        "title": "付款或改道",
+        "body": "在健康的通道上付款，或改用通往同一币种的更健康的替代通道。"
+      }
     }
   },
   "contact": {

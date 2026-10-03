@@ -10,8 +10,8 @@
     "refresh": "Refresh"
   },
   "metadata": {
-    "title": "PayRaider - Payment Network Intelligence",
-    "description": "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity."
+    "title": "PayRaider - Check a Stellar corridor before you pay",
+    "description": "Pre-payment check for Stellar off-ramps and payout apps: proceed, caution or hold, from recent on-chain payments."
   },
   "layout": {
     "sidebar": {
@@ -65,33 +65,27 @@
   },
   "home": {
     "hero": {
-      "liveBadge": "Live Network Intelligence Active",
-      "title": "QUANTIFYING",
-      "titleHighlight": "NETWORK TRUST",
-      "subtitle": "PayRaider provides institutional-grade telemetry for the Stellar payment network. Move beyond transaction counting; analyze liquidity depth, corridor reliability, and settlement finality in real-time.",
-      "enterTerminal": "Enter Terminal",
-      "connectIdentity": "Connect Identity",
-      "initializing": "Initializing..."
-    },
-    "tickers": {
-      "usdcBrl": "USDC/BRL",
-      "xlmEur": "XLM/EUR",
-      "networkTvl": "Network TVL",
-      "successRate": "Success Rate"
+      "liveBadge": "Pre-payment check for Stellar off-ramps",
+      "title": "CHECK THE CORRIDOR",
+      "titleHighlight": "BEFORE YOU PAY",
+      "subtitle": "Payouts fail when a corridor is degraded or too thin for the amount. PayRaider looks at recent payments on the corridor and answers proceed, caution or hold, with the reasons and a healthier route, in one API call.",
+      "enterTerminal": "Check a corridor",
+      "connectIdentity": "Connect wallet",
+      "initializing": "Connecting..."
     },
     "capabilities": {
-      "globalCorridors": "Global Corridors",
-      "globalCorridorsDesc": "Detailed health analysis of cross-border payment paths. Monitor uptime, liquidity bottlenecks, and anchor performance across 50+ fiat pairs.",
-      "deepTelemetry": "Deep Telemetry",
-      "deepTelemetryDesc": "Beyond surface-level TPS. We analyze ledger-level settlement data to provide true speed-to-finality distribution for payment operations.",
-      "predictiveTrust": "Predictive Trust",
-      "predictiveTrustDesc": "Our ML engine predicts corridor success probability, helping you route high-value payments through the most resilient network nodes."
+      "globalCorridors": "Observed, not modelled",
+      "globalCorridorsDesc": "Decisions come from recent payments on the Stellar ledger, failures included. A corridor with no recent payments returns unknown instead of a guess.",
+      "deepTelemetry": "Fits your stack",
+      "deepTelemetryDesc": "One REST call, TypeScript and Python SDKs, an MCP server for AI agents, and a Claude plugin. Free to try without an API key.",
+      "predictiveTrust": "Paid in USDC on Stellar",
+      "predictiveTrustDesc": "Higher limits are bought with a USDC payment that the API verifies on the ledger. No card, no account, no billing system to integrate."
     },
     "cta": {
-      "title": "Ready to integrate network intelligence?",
-      "subtitle": "Join the forward-thinking anchors and wallets already using PayRaider to optimize their liquidity management and payment reliability.",
-      "launchTerminal": "Launch Terminal",
-      "readSpec": "Read Specification"
+      "title": "Check a corridor now",
+      "subtitle": "Try the check on any Stellar corridor. No sign-up or API key needed to start.",
+      "launchTerminal": "Try the check",
+      "readSpec": "Integration guide"
     },
     "footer": {
       "payRaider": "PayRaider",
@@ -99,6 +93,25 @@
       "apiKeys": "API Keys",
       "governance": "Governance",
       "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
+    },
+    "steps": {
+      "label": "How it works",
+      "name": {
+        "title": "Name the payment",
+        "body": "Source asset, destination asset and the amount in USD."
+      },
+      "check": {
+        "title": "We check the corridor",
+        "body": "Success rate of recent payments, including failed ones, liquidity against your amount, and how much data there is."
+      },
+      "decide": {
+        "title": "Get one decision",
+        "body": "Proceed, caution or hold, with each check explained, or unknown when there is no recent data."
+      },
+      "pay": {
+        "title": "Pay or reroute",
+        "body": "Send on a healthy corridor, or take one of the healthier alternatives to the same currency."
+      }
     }
   },
   "contact": {

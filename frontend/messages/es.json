@@ -65,33 +65,27 @@
   },
   "home": {
     "hero": {
-      "liveBadge": "Inteligencia de Red en Vivo Activa",
-      "title": "CUANTIFICANDO",
-      "titleHighlight": "LA CONFIANZA DE LA RED",
-      "subtitle": "PayRaider proporciona telemetría de nivel institucional para la red de pagos Stellar. Más allá del conteo de transacciones; analice la profundidad de liquidez, la confiabilidad de los corredores y la finalidad de liquidación en tiempo real.",
-      "enterTerminal": "Entrar al Terminal",
-      "connectIdentity": "Conectar Identidad",
-      "initializing": "Inicializando..."
-    },
-    "tickers": {
-      "usdcBrl": "USDC/BRL",
-      "xlmEur": "XLM/EUR",
-      "networkTvl": "TVL de Red",
-      "successRate": "Tasa de Éxito"
+      "liveBadge": "Verificación previa al pago para off-ramps en Stellar",
+      "title": "VERIFICA EL CORREDOR",
+      "titleHighlight": "ANTES DE PAGAR",
+      "subtitle": "Los pagos fallan cuando un corredor está degradado o no tiene liquidez suficiente para el monto. PayRaider revisa los pagos recientes del corredor y responde continuar, precaución o detener, con los motivos y una ruta más sana, en una sola llamada a la API.",
+      "enterTerminal": "Verificar un corredor",
+      "connectIdentity": "Conectar billetera",
+      "initializing": "Conectando..."
     },
     "capabilities": {
-      "globalCorridors": "Corredores Globales",
-      "globalCorridorsDesc": "Análisis detallado de salud de rutas de pago transfronterizas. Monitoree el tiempo de actividad, cuellos de botella de liquidez y rendimiento de anclas en más de 50 pares fiat.",
-      "deepTelemetry": "Telemetría Profunda",
-      "deepTelemetryDesc": "Más allá del TPS superficial. Analizamos datos de liquidación a nivel de libro mayor para proporcionar la distribución real de velocidad a finalidad para operaciones de pago.",
-      "predictiveTrust": "Confianza Predictiva",
-      "predictiveTrustDesc": "Nuestro motor de ML predice la probabilidad de éxito del corredor, ayudándole a enrutar pagos de alto valor a través de los nodos de red más resilientes."
+      "globalCorridors": "Observado, no modelado",
+      "globalCorridorsDesc": "Las decisiones se basan en pagos recientes del libro mayor de Stellar, incluidos los fallidos. Un corredor sin pagos recientes devuelve desconocido en lugar de una suposición.",
+      "deepTelemetry": "Se adapta a tu stack",
+      "deepTelemetryDesc": "Una llamada REST, SDK de TypeScript y Python, un servidor MCP para agentes de IA y un plugin de Claude. Gratis para probar sin clave de API.",
+      "predictiveTrust": "Pago en USDC sobre Stellar",
+      "predictiveTrustDesc": "Los límites más altos se compran con un pago en USDC que la API verifica en el libro mayor. Sin tarjeta, sin cuenta, sin sistema de facturación que integrar."
     },
     "cta": {
-      "title": "¿Listo para integrar inteligencia de red?",
-      "subtitle": "Únase a las anclas y billeteras que ya usan PayRaider para optimizar su gestión de liquidez y confiabilidad de pagos.",
-      "launchTerminal": "Lanzar Terminal",
-      "readSpec": "Leer Especificación"
+      "title": "Verifica un corredor ahora",
+      "subtitle": "Prueba la verificación en cualquier corredor de Stellar. No necesitas registro ni clave de API para empezar.",
+      "launchTerminal": "Probar la verificación",
+      "readSpec": "Guía de integración"
     },
     "footer": {
       "payRaider": "PayRaider",
@@ -99,6 +93,25 @@
       "apiKeys": "Claves API",
       "governance": "Gobernanza",
       "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
+    },
+    "steps": {
+      "label": "Cómo funciona",
+      "name": {
+        "title": "Describe el pago",
+        "body": "Activo de origen, activo de destino y el monto en USD."
+      },
+      "check": {
+        "title": "Revisamos el corredor",
+        "body": "Tasa de éxito de los pagos recientes, incluidos los fallidos, la liquidez frente a tu monto y cuántos datos hay."
+      },
+      "decide": {
+        "title": "Recibe una decisión",
+        "body": "Continuar, precaución o detener, con cada verificación explicada, o desconocido cuando no hay datos recientes."
+      },
+      "pay": {
+        "title": "Paga o cambia de ruta",
+        "body": "Envía por un corredor sano o usa una de las alternativas más sanas hacia la misma moneda."
+      }
     }
   },
   "contact": {
