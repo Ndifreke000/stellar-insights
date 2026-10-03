@@ -503,10 +503,15 @@ pub(crate) async fn compute_live_corridors(
     for (corridor_key, corridor_payments) in &corridor_map {
         let total_attempts = corridor_payments.len() as i64;
 
-        // In Stellar, payments in the stream are successful
-        let successful_payments = total_attempts;
-        let failed_payments = 0;
-        let success_rate = if total_attempts > 0 { 100.0 } else { 0.0 };
+        // Horizon is queried with include_failed=true, so failed payments are
+        // in the stream and marked as such.
+        let successful_payments = corridor_payments.iter().filter(|p| p.succeeded()).count() as i64;
+        let failed_payments = total_attempts - successful_payments;
+        let success_rate = if total_attempts > 0 {
+            successful_payments as f64 / total_attempts as f64 * 100.0
+        } else {
+            0.0
+        };
 
         // Parse corridor key to get assets
         let parts: Vec<&str> = corridor_key.split("->").collect();
@@ -527,7 +532,8 @@ pub(crate) async fn compute_live_corridors(
 
         // Get price for source asset from the batch fetched above
         if let Some(&price) = prices.get(source_asset_key) {
-            for payment in corridor_payments {
+            // Only payments that settled moved value through the corridor.
+            for payment in corridor_payments.iter().filter(|p| p.succeeded()) {
                 if let Ok(amount) = payment.get_amount().parse::<f64>() {
                     volume_usd += amount * price;
                 }
@@ -540,6 +546,7 @@ pub(crate) async fn compute_live_corridors(
             );
             volume_usd = corridor_payments
                 .iter()
+                .filter(|p| p.succeeded())
                 .filter_map(|p| p.get_amount().parse::<f64>().ok())
                 .sum();
         }
@@ -1090,6 +1097,36 @@ pub async fn update_corridor_metrics_from_transactions(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn live_corridors_count_failed_payments() {
+        use crate::services::price_feed::{default_asset_mapping, PriceFeedConfig};
+
+        // Mock mode marks every seventh payment as failed.
+        let rpc_client = StellarRpcClient::new_with_defaults(true);
+        let price_feed = PriceFeedClient::new(PriceFeedConfig::default(), default_asset_mapping());
+
+        let corridors = compute_live_corridors(&rpc_client, &price_feed)
+            .await
+            .expect("mock corridors");
+
+        assert!(!corridors.is_empty());
+        for corridor in &corridors {
+            assert_eq!(
+                corridor.successful_payments + corridor.failed_payments,
+                corridor.total_attempts
+            );
+            let expected =
+                corridor.successful_payments as f64 / corridor.total_attempts as f64 * 100.0;
+            assert!((corridor.success_rate - expected).abs() < 1e-9);
+        }
+        assert!(
+            corridors
+                .iter()
+                .any(|c| c.failed_payments > 0 && c.success_rate < 100.0),
+            "failed payments must lower a corridor's success rate"
+        );
+    }
+
     #[test]
     fn test_health_score_calculation() {
         let score = calculate_health_score(95.0, 1000, 1_000_000.0);
@@ -1124,6 +1161,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1154,6 +1192,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1184,6 +1223,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1214,6 +1254,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1244,6 +1285,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1275,6 +1317,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let pair = extract_asset_pair_from_payment(&payment)
@@ -1311,6 +1354,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let payments = vec![&payment];
@@ -1343,6 +1387,7 @@ mod tests {
             from: Some("GTEST".to_string()),
             to: Some("GDEST".to_string()),
             asset_balance_changes: None,
+            transaction_successful: None,
         };
 
         let payments = vec![&payment; 100];
