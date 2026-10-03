@@ -171,6 +171,31 @@ token. A revoked key stops being honoured within a minute.
 Wallet sign-in needs Redis (`REDIS_URL`): challenges and sessions are stored
 there, and without it sign-in is refused rather than allowed.
 
+## Paying for a higher limit
+
+A key gets 200 requests a minute free. The paid plan raises it (1,000 a
+minute by default) and is paid in USDC on Stellar, from any wallet:
+
+1. `GET /api/billing/plan` shows the price, period, limit and the treasury
+   account payments go to.
+2. With the wallet's session token, `POST /api/billing/invoices` with
+   `{"api_key_id": "<key id>"}`. The invoice gives `destination`,
+   `asset_code`/`asset_issuer`, `amount_usdc` and a `memo`, and stays payable
+   for 24 hours.
+3. Send that USDC amount to `destination` with `memo` as a text memo.
+4. `POST /api/billing/invoices/{id}/confirm` with
+   `{"transaction_hash": "<hash>"}`. The server reads the transaction from
+   Horizon, checks memo, asset, issuer, amount and destination, marks the
+   invoice paid and extends the key's plan by one period. Each transaction can
+   pay only one invoice.
+
+`GET /api/billing/subscriptions/{api_key_id}` shows when the plan runs out.
+Renewing early adds a period to the current end date.
+
+Server operators turn this on by setting `PAYRAIDER_TREASURY_ACCOUNT` (see
+`backend/.env.example`). The server only reads the public ledger; it holds no
+keys and moves no funds.
+
 ## Deploying it yourself
 
 1. **Run the backend.** The plugin reads from a PayRaider backend; see
