@@ -1,0 +1,66 @@
+# Fly.io deploy config for the PayRaider API — alternative to the Render
+# Blueprint (render.yaml). See docs/DEPLOY.md for setup steps and
+# docs/backup-system.md for how this persistent volume fits into the
+# broader backup story (Litestream replication + periodic local snapshots).
+#
+# `fly launch` would normally generate this file; it's checked in so a
+# fresh deploy is reproducible from the repo instead of from whatever
+# `fly launch` happens to detect.
+
+app = "payraider-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  # SQLite lives on the mounted volume below. `?mode=rwc` creates the file on
+  # first boot; WAL mode is enabled by the app itself (see
+  # backend/src/database.rs) regardless of host, so concurrent reads aren't
+  # blocked by the periodic local backup/litestream reading the file.
+  DATABASE_URL = "sqlite:///data/payraider.db?mode=rwc"
+  STELLAR_NETWORK = "mainnet"
+  STELLAR_HORIZON_URL_MAINNET = "https://horizon.stellar.org"
+  STELLAR_HORIZON_URL_TESTNET = "https://horizon-testnet.stellar.org"
+  STELLAR_RPC_URL_TESTNET = "https://soroban-testnet.stellar.org"
+  LOGSTASH_ENABLED = "false"
+  # Local daily snapshot backups (backend/src/backup.rs) — on by default here
+  # since, unlike Render, Fly has no built-in disk snapshotting. See
+  # docs/backup-system.md for how this relates to Litestream/S3 replication.
+  BACKUP_ENABLED = "true"
+  BACKUP_DIR = "/data/backups"
+
+# Secrets (set once, not stored here):
+#   fly secrets set STELLAR_RPC_URL_MAINNET=... ENCRYPTION_KEY=$(openssl rand -hex 32) \
+#     JWT_SECRET=$(openssl rand -hex 32) SEP10_SERVER_PUBLIC_KEY=G... \
+#     SEP10_HOME_DOMAIN=payraider-web.example.com \
+#     CORS_ALLOWED_ORIGINS=https://payraider-web.example.com \
+#     REDIS_URL=redis://...  (Fly Redis, Upstash, or any reachable instance)
+
+[[mounts]]
+  # A persistent volume for the SQLite database and its local backups —
+  # the Fly equivalent of render.yaml's `disk:` block. Create it once per
+  # app/region before the first deploy:
+  #   fly volumes create payraider_data --region fra --size 1
+  source = "payraider_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  # SQLite permits exactly one writer — do not scale this past one machine
+  # (see docs/adr/0001-sqlite-vs-postgres.md).
+  size = "shared-cpu-1x"
+  memory = "512mb"

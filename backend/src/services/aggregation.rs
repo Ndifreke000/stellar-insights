@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::database::Database;
 use crate::models::corridor::{CorridorMetrics, HourlyCorridorMetrics, VolumeTrend};
-use crate::services::analytics::compute_metrics_from_payments;
+use crate::services::analytics::{compute_metrics_from_payments, filter_merged_accounts};
 
 const MAX_RETRIES: i32 = 3;
 const RETRY_DELAY_SECS: u64 = 60;
@@ -67,6 +67,26 @@ impl AggregationService {
                 // Continue running despite errors
             }
         }
+    }
+
+    /// Fetches every account that has ever appeared as a `source_account` or
+    /// `destination_account` on an `account_merges` row, so aggregation can
+    /// exclude payments touching those accounts (#2664). Queried directly
+    /// against the pool rather than via `AccountMergeDetector` to avoid
+    /// threading another dependency through `AggregationService::new`.
+    async fn fetch_merged_accounts(&self) -> Result<std::collections::HashSet<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r"
+            SELECT source_account FROM account_merges
+            UNION
+            SELECT destination_account FROM account_merges
+            ",
+        )
+        .fetch_all(self.db.pool())
+        .await
+        .context("Failed to fetch merged account set")?;
+
+        Ok(rows.into_iter().map(|(account,)| account).collect())
     }
 
     /// Process jobs marked for retry
@@ -130,6 +150,29 @@ impl AggregationService {
         }
 
         info!("Processing {} payments", payments.len());
+
+        // Exclude payments touching a merged account before aggregating —
+        // otherwise a one-off balance dump into/out of a merged account can
+        // distort a corridor's success rate and volume (#2664).
+        let merged_accounts = self.fetch_merged_accounts().await.unwrap_or_else(|e| {
+            warn!(
+                "Failed to load merged-account set, proceeding without filtering: {}",
+                e
+            );
+            std::collections::HashSet::new()
+        });
+        let (payments, excluded) = filter_merged_accounts(&payments, &merged_accounts);
+        if excluded > 0 {
+            info!(
+                "Excluded {} payment(s) touching a merged account from this aggregation window",
+                excluded
+            );
+        }
+
+        if payments.is_empty() {
+            info!("No payments remaining after merged-account filtering");
+            return Ok(0);
+        }
 
         // Compute metrics for each corridor
         let corridor_metrics = compute_metrics_from_payments(&payments);

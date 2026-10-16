@@ -146,6 +146,8 @@ mod tests {
             timestamp: Utc::now(),
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
         }
     }
 

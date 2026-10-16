@@ -3,10 +3,44 @@
 //! This module provides utilities for handling shutdown signals (SIGTERM, SIGINT)
 //! and coordinating graceful shutdown of server components.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
 use tracing::{info, warn};
+
+/// Cheaply-clonable, level-triggered shutdown signal.
+///
+/// Unlike `broadcast::Receiver` (edge-triggered — a receiver that subscribes
+/// after `trigger_shutdown()` has already fired will never see it), this can
+/// be polled at any time from any loop to ask "has shutdown started yet?".
+///
+/// Long-running ingestion loops (e.g. `ingestion::ledger::LedgerIngestionService`,
+/// which fetches and persists ledgers one at a time) hold a clone and check
+/// `is_set()` between units of work — specifically *before* starting the next
+/// ledger, never mid-ledger — so a SIGTERM stops ingestion at a ledger
+/// boundary instead of leaving a partially-written ledger behind (#2655).
+#[derive(Clone, Default)]
+pub struct ShutdownFlag(Arc<AtomicBool>);
+
+impl ShutdownFlag {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    /// Marks shutdown as started. Idempotent.
+    pub fn set(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether shutdown has been requested.
+    #[must_use]
+    pub fn is_set(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
 
 /// Configuration for graceful shutdown behavior
 #[derive(Debug, Clone)]
@@ -59,6 +93,7 @@ impl ShutdownConfig {
 pub struct ShutdownCoordinator {
     config: ShutdownConfig,
     shutdown_tx: broadcast::Sender<()>,
+    shutdown_flag: ShutdownFlag,
 }
 
 impl ShutdownCoordinator {
@@ -69,6 +104,7 @@ impl ShutdownCoordinator {
         Self {
             config,
             shutdown_tx,
+            shutdown_flag: ShutdownFlag::new(),
         }
     }
 
@@ -78,9 +114,19 @@ impl ShutdownCoordinator {
         self.shutdown_tx.subscribe()
     }
 
+    /// Get a cheaply-clonable, level-triggered handle for the shutdown
+    /// state. Hand a clone to any long-running loop (e.g. ledger ingestion)
+    /// that needs to check "has shutdown started?" between units of work
+    /// rather than reacting to a one-shot broadcast.
+    #[must_use]
+    pub fn shutdown_flag(&self) -> ShutdownFlag {
+        self.shutdown_flag.clone()
+    }
+
     /// Trigger shutdown and notify all subscribers
     pub fn trigger_shutdown(&self) {
         info!("Triggering graceful shutdown");
+        self.shutdown_flag.set();
         let _ = self.shutdown_tx.send(());
     }
 
@@ -335,6 +381,36 @@ mod tests {
 
         // Should be able to get timeouts
         assert_eq!(coordinator.graceful_timeout(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_shutdown_flag_starts_unset() {
+        let flag = ShutdownFlag::new();
+        assert!(!flag.is_set());
+        flag.set();
+        assert!(flag.is_set());
+    }
+
+    #[test]
+    fn test_shutdown_flag_clone_shares_state() {
+        let flag = ShutdownFlag::new();
+        let clone = flag.clone();
+        assert!(!clone.is_set());
+        flag.set();
+        // A clone taken before `set()` still observes it — this is what
+        // lets an ingestion loop poll the same handle a coordinator holds.
+        assert!(clone.is_set());
+    }
+
+    #[test]
+    fn test_coordinator_shutdown_flag_reflects_trigger() {
+        let coordinator = ShutdownCoordinator::new(ShutdownConfig::default());
+        let flag = coordinator.shutdown_flag();
+        assert!(!flag.is_set());
+
+        coordinator.trigger_shutdown();
+
+        assert!(flag.is_set());
     }
 
     #[tokio::test]

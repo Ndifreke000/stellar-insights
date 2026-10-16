@@ -17,6 +17,7 @@ fn retry_strategy() -> impl Iterator<Item = Duration> {
 use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
 use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
+use crate::shutdown::ShutdownFlag;
 
 /// Ledger ingestion service that fetches and persists ledgers sequentially
 pub struct LedgerIngestionService {
@@ -25,6 +26,22 @@ pub struct LedgerIngestionService {
     account_merge_detector: Arc<AccountMergeDetector>,
     pool: SqlitePool,
     webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
+    /// Checked between ledgers (never mid-ledger) so a SIGTERM stops
+    /// ingestion at a ledger boundary instead of leaving a ledger's payments
+    /// half-persisted (#2655). `None` when the caller hasn't wired one up —
+    /// ingestion then always runs to the end of the fetched batch.
+    shutdown: Option<ShutdownFlag>,
+}
+
+/// Outcome of processing one fetched batch of ledgers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProcessLedgersOutcome {
+    /// How many ledgers in the batch were fully persisted.
+    processed: u64,
+    /// `true` if ingestion stopped before the end of the batch because
+    /// shutdown was requested (see `ShutdownFlag`), rather than finishing
+    /// every fetched ledger.
+    stopped_early: bool,
 }
 
 /// Represents a payment operation extracted from a ledger
@@ -54,6 +71,7 @@ impl LedgerIngestionService {
             account_merge_detector,
             pool,
             webhook_event_service: None,
+            shutdown: None,
         }
     }
 
@@ -71,7 +89,17 @@ impl LedgerIngestionService {
             account_merge_detector,
             pool,
             webhook_event_service: Some(webhook_event_service),
+            shutdown: None,
         }
+    }
+
+    /// Attaches a shutdown flag so `run_ingestion` stops at a ledger
+    /// boundary once shutdown has been triggered, instead of running to the
+    /// end of the fetched batch regardless. See `ShutdownFlag` (#2655).
+    #[must_use]
+    pub fn with_shutdown_flag(mut self, flag: ShutdownFlag) -> Self {
+        self.shutdown = Some(flag);
+        self
     }
 
     /// I'm running the main ingestion loop - fetches ledgers and persists them
@@ -108,22 +136,49 @@ impl LedgerIngestionService {
         .await
         .context("Failed to fetch ledgers")?;
 
-        let count = self.process_ledgers(&result).await?;
+        let outcome = self.process_ledgers(&result).await?;
 
-        // I'm saving cursor for restart safety
-        if let Some(new_cursor) = &result.cursor {
+        // I'm saving cursor for restart safety — but only when the whole
+        // fetched batch was processed. If shutdown cut ingestion short
+        // (`stopped_early`), advancing the cursor/last-ledger checkpoint to
+        // `result`'s end would make the next run start *after* ledgers we
+        // never actually touched, silently dropping them. Leaving the
+        // checkpoint where it was means the next run just re-fetches this
+        // same batch from the start — safe, since `persist_ledger` upserts
+        // ledgers/transactions with `ON CONFLICT (..) DO NOTHING` (#2655).
+        if outcome.stopped_early {
+            info!(
+                "Ingestion stopped at a ledger boundary after {} ledger(s) due to shutdown; \
+                 checkpoint left unchanged so the next run resumes this batch",
+                outcome.processed
+            );
+        } else if let Some(new_cursor) = &result.cursor {
             self.save_cursor(new_cursor, result.ledgers.last().map(|l| l.sequence))
                 .await?;
         }
 
-        Ok(count)
+        Ok(outcome.processed)
     }
 
     /// I'm processing and persisting fetched ledgers
-    async fn process_ledgers(&self, result: &GetLedgersResult) -> Result<u64> {
+    async fn process_ledgers(&self, result: &GetLedgersResult) -> Result<ProcessLedgersOutcome> {
         let mut count = 0u64;
 
         for ledger in &result.ledgers {
+            // Checked *between* ledgers only — never mid-ledger — so a
+            // shutdown always lands on a clean ledger boundary (#2655).
+            if self.shutdown.as_ref().is_some_and(ShutdownFlag::is_set) {
+                info!(
+                    "Shutdown requested; stopping ledger ingestion before ledger {} \
+                     ({} ledger(s) already persisted this batch)",
+                    ledger.sequence, count
+                );
+                return Ok(ProcessLedgersOutcome {
+                    processed: count,
+                    stopped_early: true,
+                });
+            }
+
             if let Err(e) = self.persist_ledger(ledger).await {
                 warn!("Failed to persist ledger {}: {}", ledger.sequence, e);
                 continue;
@@ -210,7 +265,10 @@ impl LedgerIngestionService {
         }
 
         info!("Processed {} ledgers", count);
-        Ok(count)
+        Ok(ProcessLedgersOutcome {
+            processed: count,
+            stopped_early: false,
+        })
     }
 
     /// I'm persisting a single ledger to the database
