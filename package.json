@@ -5,12 +5,14 @@
   "description": "Repo-root tooling for payraider: E2E acceptance tests (Playwright) and commit linting.",
   "scripts": {
     "test:acceptance": "playwright test",
+    "test:e2e": "playwright test --project=backend-e2e",
     "check:folder-size": "bash scripts/check_folder_size.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
-    "@playwright/test": "^1.48.0"
+    "@playwright/test": "^1.48.0",
+    "@stellar/stellar-sdk": "17.2.1"
   }
 }

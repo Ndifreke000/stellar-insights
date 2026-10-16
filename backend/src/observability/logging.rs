@@ -5,6 +5,8 @@
 //! (`elk/logstash/pipeline/logstash.conf`):
 //!
 //! - `request_id`, `correlation_id` (from `request_id_middleware`)
+//! - `key_id` (SHA-256 hash of the API key's DB id, `"none"` if the request
+//!   wasn't authenticated via an API key — see #2657; never the raw key)
 //! - `http_method`, `http_path`, `http_query` (sensitive params redacted)
 //! - `http_status`, `response_time_ms`, `request_bytes`, `response_bytes`
 //! - `client_ip` (redacted), `user_agent`, `instance_id` (which replica served it)
@@ -153,6 +155,14 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
     let latency_ms = start.elapsed().as_millis();
     let status = response.status();
     let response_bytes = response.body().size_hint().exact();
+    // #2657 — hashed API key ID, set by `api_key_rate_limit_middleware` for
+    // API-key-authenticated requests (see `logging::ApiKeyLogId`). Absent for
+    // requests not authenticated via an API key.
+    let key_id = response
+        .extensions()
+        .get::<crate::logging::ApiKeyLogId>()
+        .map_or("none", |k| k.0.as_str())
+        .to_string();
 
     // Errors and slow requests are always logged; the rest can be sampled.
     let always_log =
@@ -174,6 +184,7 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
                 target: "api_access",
                 request_id = %request_id,
                 correlation_id = %correlation_id,
+                key_id = %key_id,
                 http_method = %method,
                 http_path = %path,
                 http_query = %query,

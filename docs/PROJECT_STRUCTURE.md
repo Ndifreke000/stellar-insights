@@ -15,8 +15,8 @@ payraider/
 ├── 📚 docs/             # All documentation
 ├── 🔧 scripts/          # Build, deployment, and maintenance scripts
 ├── ☁️  k8s/              # Kubernetes configs
-├── 🐳 terraform/        # Infrastructure as code
-├── 📊 elk/              # ELK stack configs (centralized logging)
+├── 🐳 terraform/        # Infrastructure as code — not used by the actual deployment (Render + SQLite, see docs/DEPLOY.md); reference only, see issue #2650
+├── 📊 elk/              # ELK stack configs (centralized logging) — not used by the actual deployment; reference only, see issue #2650
 ├── 📈 monitoring/       # Prometheus alert rules, Alertmanager config
 ├── 🧪 tests/            # Repo-root acceptance, chaos, and e2e tests (Playwright)
 ├── 📋 README.md         # Main project documentation

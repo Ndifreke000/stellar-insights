@@ -56,6 +56,10 @@ pub mod session;
 pub mod shutdown;
 pub mod snapshot;
 pub mod state;
+/// Optional Telegram notification bot. Excluded from the default build to
+/// keep the default binary smaller and its attack surface reduced; enable
+/// with `--features telegram-bot`.
+#[cfg(feature = "telegram-bot")]
 pub mod telegram;
 pub mod twofa;
 pub mod validation;

@@ -1,15 +1,11 @@
 name: Terraform Validate & Format
 
+# NOT part of the actual deployment (see docs/DEPLOY.md: this project ships
+# as a Render Blueprint, not the AWS architecture this Terraform targets) —
+# see issue #2650. workflow_dispatch-only rather than deleted: kept
+# available to run by hand if this Terraform is ever actually applied.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform-validate.yml'
-  pull_request:
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform-validate.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

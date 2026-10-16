@@ -17,7 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 # Compile-time query checks use the checked-in .sqlx cache (see .cargo/config.toml).
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --locked --bin payraider-backend
+# `full` keeps the hosted deployment's current behavior (GDPR tooling,
+# governance, quests) unchanged — see issue #2659. Those modules are gated
+# behind features and OFF by default (a bare `cargo build`/`cargo test`,
+# as CI's default job and local contributors run, excludes them to shrink
+# the default binary and attack surface); this image opts back in
+# explicitly rather than silently losing the routes on the next deploy.
+RUN cargo build --release --locked --bin payraider-backend --features full
 
 # -------- Runtime stage --------
 FROM debian:bookworm-slim

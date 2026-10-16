@@ -46,6 +46,14 @@ impl FeeBumpTrackerService {
                     let created_at = DateTime::parse_from_rfc3339(&tx.created_at)
                         .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
 
+                    // Per the Horizon API's fee-bump semantics, `source_account` on the
+                    // transaction resource is always the INNER transaction's source
+                    // (the actual originator), while `fee_account` is the outer
+                    // fee-bump wrapper's account (who fronted the fee). Attribution
+                    // for success-rate / corridor analytics must use the inner
+                    // source, not the fee payer, so we persist both distinctly.
+                    let inner_source = tx.source_account.clone();
+
                     let fee_bump_tx = FeeBumpTransaction {
                         transaction_hash: tx.hash.clone(),
                         ledger_sequence: tx.ledger as i64,
@@ -58,6 +66,7 @@ impl FeeBumpTrackerService {
                         inner_transaction_hash: inner.hash.clone(),
                         inner_max_fee,
                         signatures_count: fee_bump.signatures.len() as i32,
+                        inner_source,
                         created_at,
                     };
 
@@ -83,9 +92,9 @@ impl FeeBumpTrackerService {
             r"
             INSERT INTO fee_bump_transactions (
                 transaction_hash, ledger_sequence, fee_source, fee_charged, max_fee,
-                inner_transaction_hash, inner_max_fee, signatures_count, created_at
+                inner_transaction_hash, inner_max_fee, signatures_count, inner_source, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (transaction_hash) DO NOTHING
             ",
         )
@@ -97,6 +106,7 @@ impl FeeBumpTrackerService {
         .bind(&tx.inner_transaction_hash)
         .bind(tx.inner_max_fee)
         .bind(tx.signatures_count)
+        .bind(&tx.inner_source)
         .bind(tx.created_at)
         .execute(&self.pool)
         .await?;
@@ -122,14 +132,15 @@ impl FeeBumpTrackerService {
 
     /// Get fee bump statistics
     pub async fn get_fee_bump_stats(&self) -> Result<FeeBumpStats> {
-        let row: (i64, f64, i64, i64, i64) = sqlx::query_as(
+        let row: (i64, f64, i64, i64, i64, i64) = sqlx::query_as(
             r"
             SELECT
                 COUNT(*) as total_count,
                 COALESCE(AVG(fee_charged), 0.0) as avg_fee,
                 COALESCE(MAX(fee_charged), 0) as max_fee,
                 COALESCE(MIN(fee_charged), 0) as min_fee,
-                COUNT(DISTINCT fee_source) as unique_sources
+                COUNT(DISTINCT fee_source) as unique_sources,
+                COUNT(DISTINCT inner_source) as unique_inner_sources
             FROM fee_bump_transactions
             ",
         )
@@ -142,6 +153,7 @@ impl FeeBumpTrackerService {
             max_fee_charged: row.2,
             min_fee_charged: row.3,
             unique_fee_sources: row.4,
+            unique_inner_sources: row.5,
         })
     }
 }

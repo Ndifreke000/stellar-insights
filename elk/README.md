@@ -1,5 +1,12 @@
 # ELK Stack for PayRaider
 
+> **⚠️ Not used by the actual deployment.** This project currently deploys
+> as a single Render Blueprint (`render.yaml`) with a SQLite database — see
+> [`docs/DEPLOY.md`](../docs/DEPLOY.md). Render's own log stream is what's
+> actually used today; nothing ships logs to this ELK stack in production.
+> Kept, undeleted, as a reference for if/when a dedicated log-aggregation
+> deployment actually happens — see issue #2650.
+
 This directory contains the Elasticsearch, Logstash, and Kibana (ELK) stack configuration for centralized log aggregation.
 
 ## Quick Start (Local Development)

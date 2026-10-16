@@ -43,6 +43,10 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
 
+      # --all-features covers the full feature set, including the
+      # gdpr/governance/quests modules that are off by default (#2659) —
+      # see clippy.yml's "Backend Clippy" step for the default-features
+      # build/compile check.
       - name: Run tests with coverage
         working-directory: backend
         env:
@@ -71,6 +75,14 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # Per-path coverage gate for money/decision code (preflight, billing)
+      # — the crate-wide average above can't catch one under-tested module
+      # hiding behind a well-tested one. See issue #2653 and
+      # backend/scripts/check_coverage_thresholds.py.
+      - name: Enforce per-path coverage thresholds (preflight, billing)
+        working-directory: backend
+        run: python3 scripts/check_coverage_thresholds.py lcov.info
 
   # ── Frontend (Vitest) ─────────────────────────────────────────────────────
   frontend-coverage:
