@@ -755,11 +755,25 @@ pub async fn api_key_rate_limit_middleware(
     let limit = limiter.get_api_key_limit_per_minute(&api_key_id).await;
     let (allowed, info) = limiter.rate_limit_api_key(&api_key_id, limit).await;
 
+    // #2657 — hash the API key's DB id before it ever reaches a log line, so
+    // support can correlate "this caller" across requests (request_id +
+    // key_id) without the logs themselves leaking an identifier that could
+    // be used to look up or act on the live key. Carried via response
+    // extensions since the access-log middleware wrapping this one reads
+    // from the response, not the (already consumed) request.
+    let hashed_key_id = crate::logging::hash_key_id(&api_key_id);
+
     if !allowed {
-        return RateLimitError { info }.into_response();
+        let mut resp = RateLimitError { info }.into_response();
+        resp.extensions_mut()
+            .insert(crate::logging::ApiKeyLogId(hashed_key_id));
+        return resp;
     }
 
-    let response = next.run(req).await;
+    let mut response = next.run(req).await;
+    response
+        .extensions_mut()
+        .insert(crate::logging::ApiKeyLogId(hashed_key_id));
 
     match add_rate_limit_headers(response, &info) {
         Ok(res) => res,

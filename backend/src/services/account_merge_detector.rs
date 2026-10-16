@@ -229,6 +229,27 @@ impl AccountMergeDetector {
         })
     }
 
+    /// Returns every account that has ever appeared as a `source_account` or
+    /// `destination_account` on an `account_merges` row.
+    ///
+    /// Used to exclude payments touching a merged account from corridor
+    /// success-rate/volume stats (#2664) — see
+    /// `crate::services::analytics::filter_merged_accounts`.
+    pub async fn get_merged_account_set(&self) -> Result<std::collections::HashSet<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r"
+            SELECT source_account FROM account_merges
+            UNION
+            SELECT destination_account FROM account_merges
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to fetch merged account set")?;
+
+        Ok(rows.into_iter().map(|(account,)| account).collect())
+    }
+
     pub async fn get_destination_patterns(
         &self,
         limit: i64,

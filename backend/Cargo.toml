@@ -33,13 +33,12 @@ panic = "allow"
 [features]
 sep-integration = []
 testnet-smoke = []
-# Non-product modules (see issue #2659): off by default to keep the default
-# binary smaller and reduce attack surface for deployments that don't need
-# them. The hosted deployment opts back in via `full` (see backend/Dockerfile).
-gdpr = []
-governance = []
-quests = []
-full = ["gdpr", "governance", "quests"]
+# Optional Telegram/Slack notification bots (#2658). Not part of `default`,
+# so the default build excludes `telegram/` and `slack_bot.rs` entirely,
+# shrinking the binary and its attack surface. Enable explicitly with
+# `cargo build --features telegram-bot,slack-bot` (or either alone).
+telegram-bot = []
+slack-bot = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

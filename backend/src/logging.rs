@@ -3,9 +3,20 @@ pub mod redaction;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub use redaction::{
-    redact_account, redact_amount, redact_email, redact_hash, redact_ip, redact_token,
-    redact_user_id, Redacted,
+    hash_key_id, redact_account, redact_amount, redact_email, redact_hash, redact_ip,
+    redact_token, redact_user_id, Redacted,
 };
+
+/// Carries the hashed API key ID (see `redaction::hash_key_id`) that
+/// authenticated a request from `api_key_rate_limit_middleware`, which runs
+/// deep in a nested router, out to `request_response_logging_middleware`,
+/// which wraps the whole app and emits the per-request structured access log
+/// (#2657). It rides on the *response* extensions rather than the request's:
+/// the access logger reads its fields after `next.run(req).await` returns,
+/// by which point `req` has already been consumed, but the `Response` it
+/// gets back is still available to carry this one field upstream.
+#[derive(Clone, Debug)]
+pub struct ApiKeyLogId(pub String);
 
 /// Initializes logging to stdout only. No file output or rotation.
 /// Initialize logging with Logstash integration

@@ -238,6 +238,50 @@ pub fn compute_metrics_by_window(
     compute_metrics_from_payments(&filtered)
 }
 
+/// Excludes payments that touch a merged Stellar account from corridor stats.
+///
+/// Why this matters (#2664): once an account is merged away via
+/// `account_merge`, it no longer represents an independent counterparty —
+/// its source identity has vanished and its destination side received a
+/// one-off balance dump that has nothing to do with normal corridor flow.
+/// Counting those payments in `success_rate`/`volume_usd` distorts the
+/// corridor's real health (e.g. a burst of merges into one destination
+/// account can make a corridor look far busier or more reliable than it
+/// actually is).
+///
+/// `merged_accounts` should contain every account that appears as either
+/// `source_account` or `destination_account` on an `account_merges` row
+/// (see `AccountMergeDetector::get_merged_account_set`). A payment is
+/// dropped if *either* side is in that set.
+///
+/// Returns the retained payments plus how many were excluded, so callers
+/// can log/alert on unexpectedly high exclusion counts.
+#[must_use]
+pub fn filter_merged_accounts(
+    payments: &[PaymentRecord],
+    merged_accounts: &std::collections::HashSet<String>,
+) -> (Vec<PaymentRecord>, usize) {
+    if merged_accounts.is_empty() {
+        return (payments.to_vec(), 0);
+    }
+
+    let mut excluded = 0usize;
+    let retained: Vec<PaymentRecord> = payments
+        .iter()
+        .filter(|p| {
+            let touches_merged = merged_accounts.contains(&p.source_account)
+                || merged_accounts.contains(&p.destination_account);
+            if touches_merged {
+                excluded += 1;
+            }
+            !touches_merged
+        })
+        .cloned()
+        .collect();
+
+    (retained, excluded)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +307,8 @@ mod tests {
             timestamp,
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
         }
     }
 
@@ -286,6 +332,8 @@ mod tests {
             timestamp,
             submission_time: Some(submission),
             confirmation_time: Some(timestamp),
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
         }
     }
 
@@ -470,5 +518,56 @@ mod tests {
         // Only 1000 and 3000 should be considered
         assert_eq!(m.avg_settlement_latency_ms, Some(2000)); // (1000 + 3000) / 2
         assert_eq!(m.median_settlement_latency_ms, Some(2000)); // Median of [1000, 3000]
+    }
+
+    fn payment_with_accounts(source: &str, destination: &str, amount: f64) -> PaymentRecord {
+        let mut p = create_test_payment_record("USDC", "EURC", amount, true, Utc::now());
+        p.source_account = source.to_string();
+        p.destination_account = destination.to_string();
+        p
+    }
+
+    /// Fixture mirroring issue #2664: a corridor has three normal payments
+    /// plus one that landed in an account right before it merged away. The
+    /// merged destination should be excluded so it can't inflate
+    /// `volume_usd`/`success_rate` for the corridor.
+    #[test]
+    fn test_filter_merged_accounts_excludes_merge_fixture() {
+        let normal_a = payment_with_accounts("GALICE", "GBOB", 100.0);
+        let normal_b = payment_with_accounts("GALICE", "GBOB", 200.0);
+        let merged_destination = payment_with_accounts("GALICE", "GMERGEDAWAY", 5_000.0);
+        let merged_source = payment_with_accounts("GMERGEDAWAY", "GCAROL", 10.0);
+
+        let payments = vec![
+            normal_a.clone(),
+            normal_b.clone(),
+            merged_destination,
+            merged_source,
+        ];
+
+        let mut merged_accounts = std::collections::HashSet::new();
+        merged_accounts.insert("GMERGEDAWAY".to_string());
+
+        let (retained, excluded) = filter_merged_accounts(&payments, &merged_accounts);
+
+        assert_eq!(excluded, 2);
+        assert_eq!(retained.len(), 2);
+        assert!(retained.iter().all(|p| p.source_account != "GMERGEDAWAY"
+            && p.destination_account != "GMERGEDAWAY"));
+
+        // Confirms the distortion the issue describes: without filtering, the
+        // 5,000 XLM merge dump would dominate corridor volume.
+        let metrics_unfiltered = compute_metrics_from_payments(&payments);
+        let metrics_filtered = compute_metrics_from_payments(&retained);
+        assert!(metrics_unfiltered[0].volume_usd > metrics_filtered[0].volume_usd);
+        assert!((metrics_filtered[0].volume_usd - 300.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_filter_merged_accounts_noop_when_set_empty() {
+        let payments = vec![payment_with_accounts("GALICE", "GBOB", 100.0)];
+        let (retained, excluded) = filter_merged_accounts(&payments, &std::collections::HashSet::new());
+        assert_eq!(excluded, 0);
+        assert_eq!(retained.len(), 1);
     }
 }
