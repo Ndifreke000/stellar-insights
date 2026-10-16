@@ -17,6 +17,11 @@ jobs:
       with:
         components: clippy
     
+    # Default features (no --all-features): also doubles as this repo's
+    # "builds with the non-product modules excluded" check for issue #2659 —
+    # gdpr/governance/quests are feature-gated and off by default, so this
+    # compiles the lean default build. coverage.yml's `cargo llvm-cov
+    # --all-features` is the other half, covering the full feature set.
     - name: Backend Clippy
       working-directory: ./backend
       run: cargo clippy --lib -- -W clippy::all

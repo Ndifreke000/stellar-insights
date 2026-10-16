@@ -620,7 +620,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(ws_routes)
         .merge(utoipa_swagger_ui::SwaggerUi::new("/api/docs").url(
             "/api/docs/openapi.json",
-            <payraider_backend::openapi::ApiDoc as utoipa::OpenApi>::openapi(),
+            payraider_backend::openapi::full_openapi(),
         ))
         .route(
             "/swagger-ui",

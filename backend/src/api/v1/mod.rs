@@ -190,10 +190,15 @@ pub fn routes(
         .nest("/webhooks", webhooks::routes(pool.clone()))
         .layer(middleware::from_fn(auth_middleware));
 
-    // GDPR endpoints — require auth; mounted at /api/gdpr
+    // GDPR endpoints — require auth; mounted at /api/gdpr. Feature-gated,
+    // off by default (see issue #2659) — falls back to an empty router so
+    // the `.merge(gdpr_routes)` call below doesn't need its own cfg.
+    #[cfg(feature = "gdpr")]
     let gdpr_routes = Router::new()
         .nest("/gdpr", crate::api::gdpr::routes(pool.clone()))
         .layer(middleware::from_fn(auth_middleware));
+    #[cfg(not(feature = "gdpr"))]
+    let gdpr_routes: Router = Router::new();
 
     // 4. RPC routes
     let rpc_routes = Router::new()
@@ -238,6 +243,16 @@ pub fn routes(
         )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
+    // Replay control (start/list/inspect/delete replay sessions, cleanup
+    // checkpoints) — the handlers existed in crate::api::replay_handlers but
+    // nothing mounted them (see #2660: same "handlers exist, never wired"
+    // pattern as the auth/analytics/trustline groups elsewhere in this
+    // file). Gated behind auth_middleware like protected_routes above,
+    // since these start background jobs and delete data.
+    let replay_routes = Router::new()
+        .nest("/replay", crate::api::replay_handlers::routes(app_state.clone()))
+        .layer(middleware::from_fn(auth_middleware));
+
     // 5b. Read-only reference modules. Their handlers and OpenAPI entries
     // existed but nothing mounted them, so the SDKs and the MCP plugin got
     // 404s for documented endpoints.
@@ -245,6 +260,13 @@ pub fn routes(
         pool.clone(),
         Arc::clone(&rpc_client),
     ));
+    // Quests/achievements (gamification) — feature-gated, off by default
+    // (see issue #2659); falls back to an empty router so the `.merge()`
+    // below doesn't need its own cfg.
+    #[cfg(feature = "quests")]
+    let achievements_routes = Router::new().nest("/achievements", crate::api::achievements::routes());
+    #[cfg(not(feature = "quests"))]
+    let achievements_routes: Router = Router::new();
     let reference_routes = Router::new()
         // `POST /network/switch` is a placeholder that changes nothing, so
         // only the two read endpoints are exposed.
@@ -253,7 +275,7 @@ pub fn routes(
             "/network/available",
             get(crate::api::network::get_available_networks),
         )
-        .nest("/achievements", crate::api::achievements::routes())
+        .merge(achievements_routes)
         .nest(
             "/assets",
             crate::api::asset_verification::routes(pool.clone()),
@@ -264,7 +286,11 @@ pub fn routes(
         );
 
     // 5c. Governance: reads are public, writes need a SEP-10 wallet session.
+    // Feature-gated, off by default (see issue #2659) — falls back to an
+    // empty router so the `.merge(governance_routes)` call below doesn't
+    // need its own cfg.
     let sep10_service = sep10_service_from_env(&cache);
+    #[cfg(feature = "governance")]
     let governance_routes = sep10_service.clone().map_or_else(Router::new, |sep10| {
         let governance_service = Arc::new(crate::services::governance::GovernanceService::new(
             app_state.db.clone(),
@@ -275,6 +301,8 @@ pub fn routes(
             crate::api::governance::routes(governance_service, sep10),
         )
     });
+    #[cfg(not(feature = "governance"))]
+    let governance_routes: Router = Router::new();
 
     // 5c-ii. API key management. Keys belong to the SEP-10 wallet that
     // created them; a key sent as `Authorization: Bearer si_live_...` puts the
@@ -408,6 +436,7 @@ pub fn routes(
         .merge(auth_routes)
         .merge(audit_log_routes)
         .merge(twofa_routes)
+        .merge(replay_routes)
         // auth_middleware (layered on protected_routes, protected_webhook_routes,
         // gdpr_routes, digest_routes, admin_ip_whitelist_routes,
         // audit_log_routes, and the protected half of auth_routes, above)

@@ -12,7 +12,9 @@ pub mod corridor_performance_monitor;
 pub mod data_port;
 pub mod event_indexer;
 pub mod fee_bump_tracker;
+#[cfg(feature = "gdpr")]
 pub mod gdpr;
+#[cfg(feature = "governance")]
 pub mod governance;
 pub mod indexing;
 pub mod liquidity_pool_analyzer;

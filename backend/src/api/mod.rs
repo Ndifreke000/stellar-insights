@@ -1,4 +1,6 @@
 pub mod account_merges;
+/// Gamification (quests/achievements) — not core product, see issue #2659.
+#[cfg(feature = "quests")]
 pub mod achievements;
 pub mod admin_ip_whitelist;
 pub mod alerts;
@@ -22,7 +24,13 @@ pub mod cost_calculator;
 pub mod digest;
 pub mod export;
 pub mod fee_bump;
+/// GDPR data-subject tooling (export/erasure requests) — not core product
+/// for every deployment, see issue #2659.
+#[cfg(feature = "gdpr")]
 pub mod gdpr;
+/// On-chain governance proposals/voting — not core product for every
+/// deployment, see issue #2659.
+#[cfg(feature = "governance")]
 pub mod governance;
 pub mod liquidity_pools;
 pub mod metrics;

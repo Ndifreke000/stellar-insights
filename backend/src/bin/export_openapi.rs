@@ -4,9 +4,8 @@
 
 use std::path::PathBuf;
 
-use payraider_backend::openapi::ApiDoc;
+use payraider_backend::openapi::full_openapi;
 use serde_json::{json, Value};
-use utoipa::OpenApi;
 
 fn main() -> anyhow::Result<()> {
     let out_dir = PathBuf::from(
@@ -16,7 +15,7 @@ fn main() -> anyhow::Result<()> {
     );
     std::fs::create_dir_all(&out_dir)?;
 
-    let spec: Value = serde_json::to_value(ApiDoc::openapi())?;
+    let spec: Value = serde_json::to_value(full_openapi())?;
     std::fs::write(
         out_dir.join("openapi.json"),
         serde_json::to_string_pretty(&spec)?,
