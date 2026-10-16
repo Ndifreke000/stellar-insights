@@ -44,17 +44,22 @@ use payraider_backend::{
     rpc::StellarRpcClient,
     services::{
         event_indexer::EventIndexer, service_container::ServiceContainer,
-        slack_bot::SlackBotService, webhook_dispatcher::WebhookDispatcher,
-        webhook_event_service::WebhookEventService,
+        webhook_dispatcher::WebhookDispatcher, webhook_event_service::WebhookEventService,
     },
     shutdown::{
         flush_cache, log_shutdown_summary, shutdown_background_tasks, shutdown_database,
         shutdown_signal, shutdown_websockets, wait_for_signal, ShutdownConfig, ShutdownCoordinator,
     },
     state::AppState,
-    telegram::{SubscriptionService, TelegramBot},
     websocket::WsState,
 };
+// Telegram and Slack notification bots are optional: they're excluded from
+// the default binary (smaller artifact, smaller attack surface) and only
+// compiled in when their feature is explicitly enabled.
+#[cfg(feature = "telegram-bot")]
+use payraider_backend::telegram::{SubscriptionService, TelegramBot};
+#[cfg(feature = "slack-bot")]
+use payraider_backend::services::slack_bot::SlackBotService;
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
@@ -465,8 +470,11 @@ async fn main() -> anyhow::Result<()> {
 
     // #2129 — Telegram notification bot.
     //
-    // Opt-in: without TELEGRAM_BOT_TOKEN the bot is simply not started, so a
-    // deployment that does not want it pays nothing and needs no extra config.
+    // Opt-in twice over: the `telegram-bot` Cargo feature controls whether the
+    // bot is compiled into the binary at all (default build excludes it, per
+    // #2658), and TELEGRAM_BOT_TOKEN controls whether it starts at runtime
+    // when the feature is enabled.
+    #[cfg(feature = "telegram-bot")]
     let telegram_handle: Option<JoinHandle<()>> = match std::env::var("TELEGRAM_BOT_TOKEN") {
         Ok(token) if !token.trim().is_empty() => {
             let subscriptions = Arc::new(SubscriptionService::new(pool.clone()));
@@ -494,8 +502,13 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    #[cfg(not(feature = "telegram-bot"))]
+    let telegram_handle: Option<JoinHandle<()>> = None;
 
-    // Opt-in Slack notifications for corridor and anchor alerts.
+    // Opt-in Slack notifications for corridor and anchor alerts. Same two
+    // layers of opt-in as the Telegram bot above: `slack-bot` feature gates
+    // compilation, SLACK_WEBHOOK_URL gates whether it runs.
+    #[cfg(feature = "slack-bot")]
     let slack_handle: Option<JoinHandle<()>> = match std::env::var("SLACK_WEBHOOK_URL") {
         Ok(webhook_url) if !webhook_url.trim().is_empty() => {
             tracing::info!("Slack notifications enabled");
@@ -508,6 +521,8 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    #[cfg(not(feature = "slack-bot"))]
+    let slack_handle: Option<JoinHandle<()>> = None;
 
     // CORS: allow-list from CORS_ALLOWED_ORIGINS (see `cors` module). A wildcard
     // is only accepted in mock mode; production startup fails on it.

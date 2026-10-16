@@ -20,6 +20,10 @@ pub mod price_feed;
 pub mod realtime_broadcaster;
 pub mod request_signing;
 pub mod service_container;
+/// Optional Slack notification bot. Excluded from the default build to keep
+/// the default binary smaller and its attack surface reduced; enable with
+/// `--features slack-bot`.
+#[cfg(feature = "slack-bot")]
 pub mod slack_bot;
 pub mod snapshot;
 pub mod stellar_toml;
