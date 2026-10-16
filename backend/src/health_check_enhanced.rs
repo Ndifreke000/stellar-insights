@@ -112,6 +112,22 @@ pub struct NetworkHealthStatus {
     pub rpc: DetailedComponentHealth,
 }
 
+/// Data freshness: how far behind real-time the ingested data is.
+///
+/// Liveness (can we reach the DB/RPC) hides the most common real failure
+/// mode, which is ingestion silently stalling while every other component
+/// still reports healthy. This reports the age of the most recently
+/// ingested ledger so clients/ops can detect that directly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataFreshnessStatus {
+    pub healthy: bool,
+    pub lag_seconds: Option<i64>,
+    pub max_lag_seconds: i64,
+    pub last_ledger_close_time: Option<DateTime<Utc>>,
+    pub message: Option<String>,
+}
+
 /// Enhanced health check response for mobile clients
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +138,10 @@ pub struct EnhancedHealthStatus {
     pub uptime_seconds: u64,
     pub network: String,
     pub checks: DetailedComponentHealth,
+    /// Whether the database accepted a real write, not just a `SELECT 1`.
+    pub db_writable: DetailedComponentHealth,
+    /// How stale ingested data is; see [`DataFreshnessStatus`].
+    pub data_freshness: DataFreshnessStatus,
     pub network_checks: Option<Vec<NetworkHealthStatus>>,
     pub client_info: Option<ClientInfo>,
     pub recommendations: Vec<String>,
@@ -168,6 +188,10 @@ impl HealthCheckContext {
     }
 }
 
+/// Default maximum age (in seconds) a ledger can be before ingestion is
+/// considered unhealthy. Configurable via `INGESTION_MAX_LAG_SECONDS`.
+pub const DEFAULT_MAX_INGESTION_LAG_SECONDS: i64 = 120;
+
 /// Enhanced health check functions
 pub struct EnhancedHealthChecker;
 
@@ -191,6 +215,97 @@ impl EnhancedHealthChecker {
                 start.elapsed().as_millis() as u64,
                 "Database health check timeout".to_string(),
             ),
+        }
+    }
+
+    /// Check that the database is actually writable, not just reachable.
+    /// A `SELECT 1` can succeed against a read-only replica, a disk that is
+    /// full, or a database stuck mid-recovery — none of which show up until
+    /// something tries to write. This performs a real upsert against a
+    /// dedicated probe table (migration
+    /// 050_create_health_check_probe.sql) and reads it back.
+    pub async fn check_database_writable_enhanced(db: &Arc<Database>) -> DetailedComponentHealth {
+        let start = Instant::now();
+
+        let probe = async {
+            sqlx::query(
+                r"
+                INSERT INTO health_check_probe (id, checked_at)
+                VALUES (1, $1)
+                ON CONFLICT (id) DO UPDATE SET checked_at = excluded.checked_at
+                ",
+            )
+            .bind(Utc::now())
+            .execute(db.pool())
+            .await?;
+
+            sqlx::query_as::<_, (DateTime<Utc>,)>(
+                "SELECT checked_at FROM health_check_probe WHERE id = 1",
+            )
+            .fetch_one(db.pool())
+            .await
+        };
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), probe).await {
+            Ok(Ok(_)) => DetailedComponentHealth::healthy(start.elapsed().as_millis() as u64),
+            Ok(Err(e)) => DetailedComponentHealth::unhealthy(
+                start.elapsed().as_millis() as u64,
+                format!("Database is not writable: {}", e),
+            ),
+            Err(_) => DetailedComponentHealth::unhealthy(
+                start.elapsed().as_millis() as u64,
+                "Database writability check timed out".to_string(),
+            ),
+        }
+    }
+
+    /// Check ingestion lag: how far behind real-time is the most recently
+    /// ingested ledger for `network`. Unhealthy once the lag exceeds
+    /// `max_lag_seconds`.
+    pub async fn check_ingestion_lag_enhanced(
+        db: &Arc<Database>,
+        network: StellarNetwork,
+        max_lag_seconds: i64,
+    ) -> DataFreshnessStatus {
+        let row = sqlx::query_as::<_, (DateTime<Utc>,)>(
+            "SELECT close_time FROM ledgers WHERE network = $1 ORDER BY sequence DESC LIMIT 1",
+        )
+        .bind(network.to_string())
+        .fetch_optional(db.pool())
+        .await;
+
+        match row {
+            Ok(Some((close_time,))) => {
+                let lag_seconds = (Utc::now() - close_time).num_seconds();
+                let healthy = lag_seconds <= max_lag_seconds;
+                DataFreshnessStatus {
+                    healthy,
+                    lag_seconds: Some(lag_seconds),
+                    max_lag_seconds,
+                    last_ledger_close_time: Some(close_time),
+                    message: if healthy {
+                        None
+                    } else {
+                        Some(format!(
+                            "Ingestion is {lag_seconds}s behind (max allowed {max_lag_seconds}s)"
+                        ))
+                    },
+                }
+            }
+            Ok(None) => DataFreshnessStatus {
+                healthy: false,
+                lag_seconds: None,
+                max_lag_seconds,
+                last_ledger_close_time: None,
+                message: Some(format!("No ledgers ingested yet for network '{network}'")),
+            },
+            Err(e) => DataFreshnessStatus {
+                healthy: false,
+                lag_seconds: None,
+                max_lag_seconds,
+                last_ledger_close_time: None,
+                message: Some(format!("Failed to read ingestion lag: {e}")),
+            },
         }
     }
 
@@ -273,6 +388,39 @@ impl EnhancedHealthChecker {
         recommendations
     }
 
+    /// Generate recommendations that also account for writability and
+    /// ingestion freshness.
+    pub fn generate_recommendations_full(
+        db_health: &DetailedComponentHealth,
+        cache_health: &DetailedComponentHealth,
+        rpc_health: &DetailedComponentHealth,
+        db_writable: &DetailedComponentHealth,
+        freshness: &DataFreshnessStatus,
+    ) -> Vec<String> {
+        let mut recommendations =
+            Self::generate_recommendations(db_health, cache_health, rpc_health);
+
+        if !db_writable.healthy {
+            recommendations.push(
+                "Database rejected a write. It may be read-only, full, or recovering."
+                    .to_string(),
+            );
+        }
+
+        if !freshness.healthy {
+            match freshness.lag_seconds {
+                Some(lag) => recommendations.push(format!(
+                    "Ingestion is {lag}s behind (threshold {}s). Data may be stale.",
+                    freshness.max_lag_seconds
+                )),
+                None => recommendations
+                    .push("No ingested data found; ingestion may not have started.".to_string()),
+            }
+        }
+
+        recommendations
+    }
+
     /// Determine overall status with intelligent degradation
     pub fn determine_status(
         db_health: &DetailedComponentHealth,
@@ -292,6 +440,24 @@ impl EnhancedHealthChecker {
         }
 
         "degraded".to_string()
+    }
+
+    /// Determine overall status including DB writability and ingestion
+    /// freshness. Unhealthy when the DB can't be written to or ingestion
+    /// lag exceeds its threshold — liveness alone (`determine_status`) is
+    /// not enough to catch either failure mode.
+    pub fn determine_status_full(
+        db_health: &DetailedComponentHealth,
+        cache_health: &DetailedComponentHealth,
+        rpc_health: &DetailedComponentHealth,
+        db_writable: &DetailedComponentHealth,
+        freshness: &DataFreshnessStatus,
+    ) -> String {
+        if !db_writable.healthy || !freshness.healthy {
+            return "unhealthy".to_string();
+        }
+
+        Self::determine_status(db_health, cache_health, rpc_health)
     }
 }
 
@@ -358,5 +524,132 @@ mod tests {
             EnhancedHealthChecker::generate_recommendations(&db_health, &cache_health, &rpc_health);
         assert!(!recommendations.is_empty());
         assert!(recommendations.iter().any(|r| r.contains("RPC")));
+    }
+
+    fn fresh_status(lag_seconds: i64, max_lag_seconds: i64) -> DataFreshnessStatus {
+        DataFreshnessStatus {
+            healthy: lag_seconds <= max_lag_seconds,
+            lag_seconds: Some(lag_seconds),
+            max_lag_seconds,
+            last_ledger_close_time: Some(Utc::now()),
+            message: None,
+        }
+    }
+
+    #[test]
+    fn test_determine_status_full_unhealthy_when_lag_exceeds_threshold() {
+        let db_health = DetailedComponentHealth::healthy(10);
+        let cache_health = DetailedComponentHealth::healthy(10);
+        let rpc_health = DetailedComponentHealth::healthy(10);
+        let db_writable = DetailedComponentHealth::healthy(10);
+
+        // Within threshold: everything else healthy -> healthy.
+        let ok_freshness = fresh_status(30, DEFAULT_MAX_INGESTION_LAG_SECONDS);
+        assert_eq!(
+            EnhancedHealthChecker::determine_status_full(
+                &db_health,
+                &cache_health,
+                &rpc_health,
+                &db_writable,
+                &ok_freshness
+            ),
+            "healthy"
+        );
+
+        // Lag exceeds threshold -> unhealthy, even though every other
+        // component reports healthy (this is the exact scenario liveness
+        // checks miss).
+        let stale_freshness = fresh_status(600, DEFAULT_MAX_INGESTION_LAG_SECONDS);
+        assert_eq!(
+            EnhancedHealthChecker::determine_status_full(
+                &db_health,
+                &cache_health,
+                &rpc_health,
+                &db_writable,
+                &stale_freshness
+            ),
+            "unhealthy"
+        );
+    }
+
+    #[test]
+    fn test_determine_status_full_unhealthy_when_db_not_writable() {
+        let db_health = DetailedComponentHealth::healthy(10);
+        let cache_health = DetailedComponentHealth::healthy(10);
+        let rpc_health = DetailedComponentHealth::healthy(10);
+        let not_writable =
+            DetailedComponentHealth::unhealthy(10, "disk full".to_string());
+        let freshness = fresh_status(10, DEFAULT_MAX_INGESTION_LAG_SECONDS);
+
+        assert_eq!(
+            EnhancedHealthChecker::determine_status_full(
+                &db_health,
+                &cache_health,
+                &rpc_health,
+                &not_writable,
+                &freshness
+            ),
+            "unhealthy"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_database_writable_enhanced() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Arc::new(Database::new(pool));
+
+        let health = EnhancedHealthChecker::check_database_writable_enhanced(&db).await;
+        assert!(health.healthy);
+    }
+
+    #[tokio::test]
+    async fn test_check_ingestion_lag_enhanced_no_data() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Arc::new(Database::new(pool));
+
+        let freshness = EnhancedHealthChecker::check_ingestion_lag_enhanced(
+            &db,
+            StellarNetwork::Mainnet,
+            DEFAULT_MAX_INGESTION_LAG_SECONDS,
+        )
+        .await;
+        assert!(!freshness.healthy);
+        assert!(freshness.lag_seconds.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_check_ingestion_lag_enhanced_fresh_ledger() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Arc::new(Database::new(pool));
+
+        sqlx::query(
+            "INSERT INTO ledgers (sequence, hash, close_time, network) VALUES (1, 'h', $1, 'mainnet')",
+        )
+        .bind(Utc::now())
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let freshness = EnhancedHealthChecker::check_ingestion_lag_enhanced(
+            &db,
+            StellarNetwork::Mainnet,
+            DEFAULT_MAX_INGESTION_LAG_SECONDS,
+        )
+        .await;
+        assert!(freshness.healthy);
+        assert_eq!(freshness.lag_seconds.unwrap(), 0);
+
+        // A ledger on a different network must not count toward this
+        // network's freshness.
+        let testnet_freshness = EnhancedHealthChecker::check_ingestion_lag_enhanced(
+            &db,
+            StellarNetwork::Testnet,
+            DEFAULT_MAX_INGESTION_LAG_SECONDS,
+        )
+        .await;
+        assert!(!testnet_freshness.healthy);
     }
 }

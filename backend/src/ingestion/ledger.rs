@@ -14,16 +14,22 @@ fn retry_strategy() -> impl Iterator<Item = Duration> {
         .take(10)
 }
 
+use crate::network::StellarNetwork;
 use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
 use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 
-/// Ledger ingestion service that fetches and persists ledgers sequentially
+/// Ledger ingestion service that fetches and persists ledgers sequentially.
+///
+/// Every row this service writes is tagged with `network` so that mainnet
+/// and testnet ingestion can run against the same database without their
+/// data mixing (see migration 048_add_network_to_ledger_ingestion.sql).
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
     fee_bump_tracker: Arc<FeeBumpTrackerService>,
     account_merge_detector: Arc<AccountMergeDetector>,
     pool: SqlitePool,
+    network: StellarNetwork,
     webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
 }
 
@@ -41,18 +47,24 @@ pub struct ExtractedPayment {
 }
 
 impl LedgerIngestionService {
+    /// Create a new ingestion service for the given network. Callers must
+    /// pass the network explicitly rather than relying on a default, since
+    /// defaulting silently is exactly how mainnet/testnet rows used to end
+    /// up tagged the same way.
     #[must_use]
     pub const fn new(
         rpc_client: Arc<StellarRpcClient>,
         fee_bump_tracker: Arc<FeeBumpTrackerService>,
         account_merge_detector: Arc<AccountMergeDetector>,
         pool: SqlitePool,
+        network: StellarNetwork,
     ) -> Self {
         Self {
             rpc_client,
             fee_bump_tracker,
             account_merge_detector,
             pool,
+            network,
             webhook_event_service: None,
         }
     }
@@ -63,6 +75,7 @@ impl LedgerIngestionService {
         fee_bump_tracker: Arc<FeeBumpTrackerService>,
         account_merge_detector: Arc<AccountMergeDetector>,
         pool: SqlitePool,
+        network: StellarNetwork,
         webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
     ) -> Self {
         Self {
@@ -70,6 +83,7 @@ impl LedgerIngestionService {
             fee_bump_tracker,
             account_merge_detector,
             pool,
+            network,
             webhook_event_service: Some(webhook_event_service),
         }
     }
@@ -217,10 +231,12 @@ impl LedgerIngestionService {
     async fn persist_ledger(&self, ledger: &RpcLedger) -> Result<()> {
         let close_time = self.parse_ledger_time(&ledger.ledger_close_time)?;
 
+        let network = self.network.to_string();
+
         sqlx::query(
             r"
-            INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count, network)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (sequence) DO NOTHING
             ",
         )
@@ -229,15 +245,21 @@ impl LedgerIngestionService {
         .bind(close_time)
         .bind(0i32) // I'd get real counts from XDR parsing
         .bind(0i32)
+        .bind(&network)
         .execute(&self.pool)
         .await?;
 
-        // I'm also storing a placeholder transaction for the ledger
+        // I'm also storing a placeholder transaction for the ledger.
+        // Note: `tx_hash` is derived only from the ledger sequence, so this
+        // placeholder collides across networks at the same sequence number
+        // just like `ledgers.sequence` does (see migration 048's note on
+        // natural-key primary keys) — tagging it with `network` at least
+        // lets reads filter correctly once ingestion no longer no-ops here.
         let tx_hash = format!("tx_{}", ledger.sequence);
         sqlx::query(
             r"
-            INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful, network)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (hash) DO NOTHING
             ",
         )
@@ -247,18 +269,29 @@ impl LedgerIngestionService {
         .bind(100i64)
         .bind(1i32)
         .bind(true)
+        .bind(&network)
         .execute(&self.pool)
         .await?;
 
         Ok(())
     }
 
-    /// I'm persisting an extracted payment to the database
+    /// I'm persisting an extracted payment to the database.
+    ///
+    /// Payments to/from a muxed (M-...) address are resolved to their base
+    /// G-address here via `crate::muxed`, so corridor/anchor attribution can
+    /// key off the underlying account rather than the muxed sub-account
+    /// (which would never match an anchor's known G-address).
     async fn persist_payment(&self, payment: &ExtractedPayment) -> Result<()> {
+        let source_base_account = crate::muxed::parse_muxed_address(&payment.source_account)
+            .and_then(|info| info.base_account);
+        let destination_base_account = crate::muxed::parse_muxed_address(&payment.destination)
+            .and_then(|info| info.base_account);
+
         sqlx::query(
             r"
-            INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount, network, source_base_account, destination_base_account)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ",
         )
         .bind(payment.ledger_sequence as i64)
@@ -269,6 +302,9 @@ impl LedgerIngestionService {
         .bind(&payment.asset_code)
         .bind(&payment.asset_issuer)
         .bind(&payment.amount)
+        .bind(self.network.to_string())
+        .bind(&source_base_account)
+        .bind(&destination_base_account)
         .execute(&self.pool)
         .await?;
 
@@ -310,32 +346,40 @@ impl LedgerIngestionService {
         Ok(())
     }
 
-    /// I'm getting the last ingested ledger sequence for resume
+    /// I'm getting the last ingested ledger sequence for resume, scoped to
+    /// this service's network so mainnet and testnet ingestion each resume
+    /// from their own position instead of sharing (and clobbering) one
+    /// cursor row.
     async fn get_last_ledger(&self) -> Result<Option<u64>> {
-        let row: Option<(i64,)> =
-            sqlx::query_as("SELECT last_ledger_sequence FROM ingestion_cursor WHERE id = 1")
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT last_ledger_sequence FROM ingestion_cursor WHERE network = $1",
+        )
+        .bind(self.network.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.map(|r| r.0 as u64))
     }
 
-    /// I'm getting the saved cursor for pagination
+    /// I'm getting the saved cursor for pagination, scoped to this network.
     async fn get_cursor(&self) -> Result<Option<String>> {
         let row: Option<(Option<String>,)> =
-            sqlx::query_as("SELECT cursor FROM ingestion_cursor WHERE id = 1")
+            sqlx::query_as("SELECT cursor FROM ingestion_cursor WHERE network = $1")
+                .bind(self.network.to_string())
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(row.and_then(|r| r.0))
     }
 
-    /// I'm saving cursor and last ledger for restart safety
+    /// I'm saving cursor and last ledger for restart safety, upserting the
+    /// row for this service's network (unique index on `network` from
+    /// migration 048) rather than the single hardcoded `id = 1` row.
     async fn save_cursor(&self, cursor: &str, last_ledger: Option<u64>) -> Result<()> {
         let seq = last_ledger.unwrap_or(0) as i64;
         sqlx::query(
             r"
-            INSERT INTO ingestion_cursor (id, last_ledger_sequence, cursor, updated_at)
-            VALUES (1, $1, $2, CURRENT_TIMESTAMP)
-            ON CONFLICT (id) DO UPDATE SET
+            INSERT INTO ingestion_cursor (last_ledger_sequence, cursor, network, updated_at)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT (network) DO UPDATE SET
                 last_ledger_sequence = EXCLUDED.last_ledger_sequence,
                 cursor = EXCLUDED.cursor,
                 updated_at = CURRENT_TIMESTAMP
@@ -343,6 +387,7 @@ impl LedgerIngestionService {
         )
         .bind(seq)
         .bind(cursor)
+        .bind(self.network.to_string())
         .execute(&self.pool)
         .await?;
         Ok(())
