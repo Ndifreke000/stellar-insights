@@ -494,7 +494,7 @@ pub async fn preflight_get(
 mod tests {
     use super::*;
 
-    fn corridor(
+    pub(super) fn corridor(
         id: &str,
         success_rate: f64,
         depth: f64,
@@ -752,5 +752,110 @@ mod tests {
         let ranked_again = rank_alternatives(alts, Some(100.0));
         let ids_again: Vec<&str> = ranked_again.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, ids_again);
+    }
+}
+
+/// Property tests for the decision invariants (#2645): adding a failing check
+/// never improves the decision, worse inputs never improve it, and thin data
+/// is never a clean `Proceed`.
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Higher is worse. `Unknown` is not produced by `decide`.
+    fn severity(decision: PreflightDecision) -> u8 {
+        match decision {
+            PreflightDecision::Proceed => 0,
+            PreflightDecision::Caution => 1,
+            PreflightDecision::Hold => 2,
+            PreflightDecision::Unknown => 3,
+        }
+    }
+
+    fn status() -> impl Strategy<Value = CheckStatus> {
+        prop_oneof![
+            Just(CheckStatus::Pass),
+            Just(CheckStatus::Warn),
+            Just(CheckStatus::Fail)
+        ]
+    }
+
+    fn checks() -> impl Strategy<Value = Vec<PreflightCheck>> {
+        prop::collection::vec(status(), 0..8).prop_map(|statuses| {
+            statuses
+                .into_iter()
+                .map(|s| check("generated", s, String::new()))
+                .collect()
+        })
+    }
+
+    fn corridor(rate: f64, depth: f64, attempts: i64, health: f64) -> CorridorResponse {
+        super::tests::corridor("USDC:GA->EURC:GB", rate, depth, attempts, health)
+    }
+
+    proptest! {
+        #[test]
+        fn adding_a_failing_check_always_holds(mut cs in checks()) {
+            cs.push(check("failing", CheckStatus::Fail, String::new()));
+            prop_assert_eq!(decide(&cs), PreflightDecision::Hold);
+        }
+
+        #[test]
+        fn adding_any_check_never_improves_the_decision(cs in checks(), extra in status()) {
+            let before = severity(decide(&cs));
+            let mut more = cs.clone();
+            more.push(check("extra", extra, String::new()));
+            prop_assert!(severity(decide(&more)) >= before);
+        }
+
+        #[test]
+        fn small_sample_is_never_proceed(
+            rate in 0.0f64..=100.0,
+            depth in 0.0f64..1e9,
+            attempts in 0i64..MIN_SAMPLE_SIZE,
+            health in 0.0f64..=100.0,
+            amount in prop::option::of(0.0f64..1e7),
+        ) {
+            let checks = run_checks(&corridor(rate, depth, attempts, health), amount, Thresholds::default());
+            prop_assert_ne!(decide(&checks), PreflightDecision::Proceed);
+        }
+
+        #[test]
+        fn lower_success_rate_never_improves_the_decision(
+            a in 0.0f64..=100.0,
+            b in 0.0f64..=100.0,
+            attempts in 0i64..1_000,
+            health in 0.0f64..=100.0,
+        ) {
+            let (low, high) = if a <= b { (a, b) } else { (b, a) };
+            let decision = |rate| decide(&run_checks(&corridor(rate, 1e6, attempts, health), None, Thresholds::default()));
+            prop_assert!(severity(decision(low)) >= severity(decision(high)));
+        }
+
+        #[test]
+        fn larger_payment_never_improves_the_decision(
+            a in 0.0f64..1e7,
+            b in 0.0f64..1e7,
+            depth in 0.0f64..1e7,
+            rate in 0.0f64..=100.0,
+        ) {
+            let (small, large) = if a <= b { (a, b) } else { (b, a) };
+            let decision = |amount| decide(&run_checks(&corridor(rate, depth, 500, 90.0), Some(amount), Thresholds::default()));
+            prop_assert!(severity(decision(large)) >= severity(decision(small)));
+        }
+
+        #[test]
+        fn no_matching_corridor_is_unknown(rate in 0.0f64..=100.0) {
+            let request = PreflightRequest {
+                source_asset: "XLM".to_string(),
+                destination_asset: "BRL".to_string(),
+                amount_usd: None,
+                min_success_rate: None,
+            };
+            let response = evaluate(&[corridor(rate, 1e6, 500, 90.0)], &request, String::new());
+            prop_assert_eq!(response.decision, PreflightDecision::Unknown);
+            prop_assert!(response.checks.is_empty());
+        }
     }
 }
