@@ -140,8 +140,8 @@ See [`contracts/archive/README.md`](contracts/archive/README.md).
 | `docs/` | Project documentation |
 | `scripts/` | Build, deploy and maintenance scripts |
 | `tests/` | Cross-cutting / end-to-end tests |
-| `k8s/`, `terraform/` | Deployment manifests and infrastructure as code |
-| `elk/`, `monitoring/` | Logging and observability stack configs |
+| `k8s/`, `terraform/` | Deployment manifests and infrastructure as code — **`terraform/` is not used by the actual deployment** (Render Blueprint + SQLite, see `docs/DEPLOY.md`); kept as a reference, see issue #2650 |
+| `elk/`, `monitoring/` | Logging and observability stack configs — **`elk/` is not used by the actual deployment**; kept as a reference, see issue #2650 |
 
 ## 📌 Notes
 

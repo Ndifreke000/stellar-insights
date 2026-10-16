@@ -1,10 +1,13 @@
 name: Deploy with Vault Secrets
 
+# NOT part of the actual deployment (see docs/DEPLOY.md: this project ships
+# as a Render Blueprint, with secrets as plain Render environment variables,
+# not HashiCorp Vault) — see issue #2650. Previously ran on every push/PR to
+# main/develop regardless of relevance, which is why this is now
+# workflow_dispatch-only rather than deleted: kept available to run by hand
+# if Vault-based secrets management is ever actually adopted.
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   id-token: write

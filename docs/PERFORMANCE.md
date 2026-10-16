@@ -2,6 +2,48 @@
 
 Performance budgets and targets for the PayRaider frontend.
 
+> **Note on scope:** this file predates issue #2652 and, despite the name,
+> only covered frontend bundle/Lighthouse budgets — nothing about the
+> backend. The "Backend load test" section below is new; everything above
+> it is the pre-existing frontend content, left as-is.
+
+## Backend load test: preflight at 200 RPS
+
+Preflight (`GET /api/v1/preflight`) is the self-serve funnel's
+highest-traffic read endpoint (see the smoke-test `curl` in
+[`docs/DEPLOY.md`](DEPLOY.md)). `backend/load-tests/preflight-load-test.js`
+is a k6 scenario that sustains a fixed 200 requests/second against it
+(`constant-arrival-rate`, not a VU ramp, so it holds the rate regardless of
+response time) and asserts p50 < 200ms, p95 < 500ms, p99 < 1000ms, error
+rate < 1%.
+
+### Running it
+
+```bash
+# against a locally running backend (cargo run, from backend/)
+BASE_URL=http://localhost:8080 k6 run backend/load-tests/preflight-load-test.js
+
+# or via the suite runner, which also starts the health check and saves JSON:
+backend/load-tests/run-all-tests.sh
+```
+
+Override `TARGET_RPS` and `DURATION` env vars to test at a different rate or
+for longer.
+
+### Results
+
+**Not yet captured.** This PR adds the scenario and the thresholds it should
+be judged against, but does not include a results run — doing so needs a
+backend instance with representative seed data (so corridor checks exercise
+real cache/DB paths rather than the empty-corridor fallback) and is better
+run by whoever owns that environment than invented here. Run the command
+above against a representative environment and replace this section with
+the actual p50/p95/p99 and pass/fail against the thresholds, following the
+format in
+[`backend/load-tests/LOAD_TEST_REPORT.md`](../backend/load-tests/LOAD_TEST_REPORT.md)
+(last-updated date + commit, a results table, and any config changes made
+in response).
+
 ## Budgets
 
 | Metric | Budget | Enforcement |
