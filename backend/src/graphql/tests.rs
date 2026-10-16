@@ -554,4 +554,39 @@ mod tests {
         assert_eq!(snapshot.id, 1);
         assert_eq!(snapshot.total_trustlines, 5000);
     }
+
+    // ── Query Limit Tests (Issue #2642) ────────────────────────────────────────
+
+    fn limited_schema(introspection: bool) -> AppSchema {
+        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let (tx, _rx) = tokio::sync::broadcast::channel(1);
+        build_schema_with_limits(
+            Arc::new(pool),
+            tx,
+            GraphqlLimits { max_depth: 3, max_complexity: 50, introspection },
+        )
+    }
+
+    #[tokio::test]
+    async fn test_deep_query_is_rejected() {
+        let res = limited_schema(true)
+            .execute("{ __schema { types { fields { type { name } } } } }")
+            .await;
+        assert!(!res.errors.is_empty(), "query deeper than max_depth must fail");
+    }
+
+    #[tokio::test]
+    async fn test_introspection_disabled_when_turned_off() {
+        let query = "{ __schema { queryType { name } } }";
+        assert!(limited_schema(true).execute(query).await.errors.is_empty());
+        assert!(!limited_schema(false).execute(query).await.errors.is_empty());
+    }
+
+    #[test]
+    fn test_introspection_defaults_off_in_production() {
+        assert!(introspection_enabled(None, None));
+        assert!(!introspection_enabled(Some("production"), None));
+        assert!(introspection_enabled(Some("production"), Some("true")));
+        assert!(!introspection_enabled(Some("development"), Some("false")));
+    }
 }

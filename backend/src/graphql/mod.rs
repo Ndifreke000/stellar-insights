@@ -7,4 +7,6 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-pub use schema::{build_schema, AppSchema};
+pub use schema::{
+    build_schema, build_schema_with_limits, introspection_enabled, AppSchema, GraphqlLimits,
+};
