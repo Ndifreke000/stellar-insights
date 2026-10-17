@@ -24,6 +24,7 @@
       "apiUsage": "API Usage",
       "failedPayments": "Failed Payments",
       "settlementDistribution": "Settlement Dist.",
+      "status": "System Status",
       "trustlines": "Trustlines",
       "networkHealth": "Network Health",
       "liquidity": "Liquidity",

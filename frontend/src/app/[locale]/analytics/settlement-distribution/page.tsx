@@ -235,16 +235,19 @@ export default function SettlementDistributionPage() {
             label="Network p50"
             value={formatMs(data.network_p50_ms)}
             subLabel="Median settlement time"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Network p95"
             value={formatMs(data.network_p95_ms)}
             subLabel="95th percentile"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Network p99"
             value={formatMs(data.network_p99_ms)}
             subLabel="99th percentile (tail latency)"
+            dataAsOf={lastUpdated}
           />
         </div>
 

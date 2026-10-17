@@ -166,17 +166,20 @@ export default function AnalyticsPage() {
             label="Cumulative Volume"
             value={metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
             subLabel="Total Network Flow"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Success Probability"
             value={metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
             trend={1.2}
             trendDirection="up"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Active Routing Nodes"
             value={metrics ? metrics.active_corridors : "0"}
             subLabel="Online Corridors"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Aggregated Liquidity"
@@ -191,6 +194,7 @@ export default function AnalyticsPage() {
                 : "$0"
             }
             subLabel="Available Capital"
+            dataAsOf={lastUpdated}
           />
         </div>
 

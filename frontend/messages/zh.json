@@ -49,7 +49,8 @@
         "developer": "开发者"
       },
       "failedPayments": "失败的付款",
-      "settlementDistribution": "结算分布"
+      "settlementDistribution": "结算分布",
+      "status": "系统状态"
     }
   },
   "navbar": {

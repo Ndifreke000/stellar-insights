@@ -49,6 +49,7 @@
       },
       "failedPayments": "Pagos Fallidos",
       "settlementDistribution": "Dist. de Liquidación",
+      "status": "Estado del Sistema",
       "corridorAlerts": "Alertas de Corredores"
     }
   },

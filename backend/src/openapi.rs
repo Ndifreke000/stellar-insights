@@ -63,6 +63,7 @@ impl Modify for SecurityAddon {
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
+        crate::api::corridors::get_corridor_failures,
         crate::api::corridors::create_corridor,
         crate::api::corridors::update_corridor_metrics_from_transactions,
         // Export
@@ -237,6 +238,8 @@ impl Modify for SecurityAddon {
             crate::api::preflight::PreflightDecision,
             crate::api::preflight::CheckStatus,
             crate::api::corridors::CorridorDetailResponse,
+            crate::api::corridors::CorridorFailedPayment,
+            crate::api::corridors::PaginatedCorridorFailures,
             crate::api::corridors::SuccessRateDataPoint,
             crate::api::corridors::LatencyDataPoint,
             crate::api::corridors::LiquidityDataPoint,

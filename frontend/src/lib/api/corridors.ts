@@ -45,6 +45,51 @@ export async function getCorridorDetail(
   return api.get<CorridorDetailData>(`/corridors/${corridorId}`);
 }
 
+export interface CorridorFailedPayment {
+  id: string;
+  transaction_hash: string;
+  timestamp: string;
+  source_account: string;
+  destination_account: string;
+  amount: number;
+  result_code: string;
+  category: string;
+  error_message: string;
+}
+
+export interface PaginatedCorridorFailures {
+  corridor_key: string;
+  items: CorridorFailedPayment[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+/**
+ * Fetch recent failures with result codes for a corridor
+ */
+export async function getCorridorFailures(
+  corridorKey: string,
+  page = 1,
+  limit = 10,
+): Promise<PaginatedCorridorFailures> {
+  try {
+    return await api.get<PaginatedCorridorFailures>(
+      `/corridors/${encodeURIComponent(corridorKey)}/failures?page=${page}&limit=${limit}`,
+    );
+  } catch {
+    return {
+      corridor_key: corridorKey,
+      items: [],
+      total: 0,
+      page,
+      page_size: limit,
+      total_pages: 0,
+    };
+  }
+}
+
 export interface CorridorFilters {
   success_rate_min?: number;
   success_rate_max?: number;

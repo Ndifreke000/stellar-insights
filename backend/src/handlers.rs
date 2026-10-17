@@ -24,6 +24,16 @@ pub mod job_monitoring;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct DataFreshnessInfo {
+    pub healthy: bool,
+    pub lag_seconds: Option<i64>,
+    pub max_lag_seconds: i64,
+    pub last_ledger_close_time: Option<DateTime<Utc>>,
+    pub message: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HealthStatus {
     pub status: String,
     pub timestamp: DateTime<Utc>,
@@ -31,6 +41,8 @@ pub struct HealthStatus {
     pub uptime_seconds: u64,
     pub checks: HealthChecks,
     pub network: NetworkInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_freshness: Option<DataFreshnessInfo>,
     pub client_info: Option<ClientInfo>,
 }
 
@@ -124,12 +136,24 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
     let cache_health = check_cache(&app_state.cache).await;
     let rpc_health = check_rpc(&app_state.rpc_client).await;
 
-    let overall_status = if db_health.healthy && cache_health.healthy && rpc_health.healthy {
-        "healthy"
-    } else if db_health.healthy && cache_health.healthy {
+    let freshness_status = crate::health_check_enhanced::EnhancedHealthChecker::check_ingestion_lag_enhanced(
+        &app_state.db,
+        app_state.network_context.network,
+        crate::health_check_enhanced::DEFAULT_MAX_INGESTION_LAG_SECONDS,
+    )
+    .await;
+
+    let is_high_lag = freshness_status
+        .lag_seconds
+        .map(|s| s > freshness_status.max_lag_seconds)
+        .unwrap_or(false);
+
+    let overall_status = if !db_health.healthy || !rpc_health.healthy {
+        "unhealthy"
+    } else if !cache_health.healthy || is_high_lag {
         "degraded"
     } else {
-        "unhealthy"
+        "healthy"
     };
 
     let start_epoch = app_state.server_start_time.load(Ordering::Relaxed);
@@ -140,6 +164,14 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
 
     let network_context = &app_state.network_context;
     let is_primary = network_context.network == app_state.multi_network_config.primary_network;
+
+    let data_freshness = Some(DataFreshnessInfo {
+        healthy: !is_high_lag,
+        lag_seconds: freshness_status.lag_seconds,
+        max_lag_seconds: freshness_status.max_lag_seconds,
+        last_ledger_close_time: freshness_status.last_ledger_close_time,
+        message: freshness_status.message,
+    });
 
     Json(HealthStatus {
         status: overall_status.to_string(),
@@ -156,6 +188,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
             display_name: network_context.display_name().to_string(),
             is_primary,
         },
+        data_freshness,
         client_info: None,
     })
 }

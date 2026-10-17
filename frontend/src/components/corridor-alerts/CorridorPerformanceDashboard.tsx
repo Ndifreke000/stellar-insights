@@ -450,9 +450,71 @@ function CorridorDetail({ corridorKey }: { corridorKey: string }) {
     );
   }
 
+  const [simulating, setSimulating] = useState(false);
+  const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
+
+  const handleSimulateStatus = async (status: string) => {
+    setSimulating(true);
+    setSimulationMessage(null);
+    try {
+      const event = await corridorAlertsApi.simulateStatusChange(corridorKey, status);
+      setSimulationMessage(`Dispatched ${status} alert: "${event.message}"`);
+      setTimeout(() => setSimulationMessage(null), 5000);
+    } catch (err) {
+      logger.error("Failed to simulate status change:", err);
+      setSimulationMessage(err instanceof Error ? err.message : "Failed to simulate alert");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-medium">{corridorKey}</h3>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-muted/40 p-4 rounded-xl border">
+        <div>
+          <h3 className="text-lg font-medium">{corridorKey}</h3>
+          <p className="text-xs text-muted-foreground">Test corridor alert dispatching and notification delivery</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus("warning")}
+            className="text-xs"
+          >
+            Simulate Warning
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus("critical")}
+            className="text-xs"
+          >
+            Simulate Critical
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus("healthy")}
+            className="text-xs"
+          >
+            Simulate Healthy
+          </Button>
+        </div>
+      </div>
+
+      {simulationMessage && (
+        <div className="p-3 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs rounded-lg flex items-center justify-between animate-in fade-in">
+          <span>{simulationMessage}</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSimulationMessage(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">

@@ -129,6 +129,10 @@ pub fn routes(
             "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
+        .route(
+            "/corridors/{corridor_key}/failures",
+            get(corridors::get_corridor_failures),
+        )
         // Pre-payment check for off-ramps: public and read-only so an
         // integrator can try it before taking an API key.
         .route(
