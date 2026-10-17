@@ -187,5 +187,137 @@
     "waitingAsset": "Waiting for Asset Data...",
     "waitingCorridor": "Waiting for Corridor Data...",
     "waitingSettlement": "Waiting for Settlement Data..."
+  },
+  "preflight": {
+    "title": "Corridor Success Rate Predictor",
+    "subtitle": "Predict payment success before you send",
+    "form": {
+      "sourceAsset": "Source Asset",
+      "destinationAsset": "Destination Asset",
+      "amount": "Amount",
+      "timeOfDay": "Time of Day",
+      "submit": "Predict Success Rate",
+      "submitting": "Checking corridor..."
+    },
+    "results": {
+      "title": "Preflight Prediction Results",
+      "successProbability": "Success Probability",
+      "riskLevel": "Risk Level",
+      "lowRisk": "Low Risk",
+      "mediumRisk": "Medium Risk",
+      "highRisk": "High Risk",
+      "estimatedLatency": "Estimated Latency",
+      "liquidityDepth": "Liquidity Depth",
+      "alternativeRoutes": "Alternative Corridors",
+      "recommendedAction": "Recommendation",
+      "routeSummary": "{source} to {destination} with amount {amount}"
+    },
+    "empty": "Select assets and amount to simulate a preflight check.",
+    "error": "Could not reach the PayRaider API to check this corridor. Please try again."
+  },
+  "corridors": {
+    "title": "Payment Corridors",
+    "subtitle": "Monitor real-time health, success rates, and liquidity depth across Stellar payment corridors.",
+    "search": "Search corridors by asset pair...",
+    "views": {
+      "grid": "Grid",
+      "table": "Table",
+      "heatmap": "Heatmap"
+    },
+    "sort": {
+      "label": "Sort by",
+      "health": "Sort: Health",
+      "success": "Sort: Success",
+      "liquidity": "Sort: Liquidity"
+    },
+    "metrics": {
+      "successRate": "Success Rate",
+      "healthScore": "Health Score",
+      "avgLatency": "Avg Latency",
+      "liquidityDepth": "Liquidity Depth",
+      "volume24h": "24h Volume",
+      "avgSlippage": "Avg Slippage"
+    },
+    "comparison": {
+      "title": "Detailed Comparison",
+      "exportCsv": "Export CSV",
+      "corridor": "Corridor",
+      "recordsCount": "Total {count} records",
+      "rowsPerPage": "Rows per page",
+      "jumpTo": "Jump to",
+      "pageOf": "of {total}",
+      "bestPerformance": "Best Performance",
+      "worstPerformance": "Worst Performance"
+    },
+    "empty": "No matching corridors detected",
+    "error": "Failed to load payment corridors"
+  },
+  "keys": {
+    "title": "API Keys",
+    "subtitle": "Manage API keys for programmatic access to PayRaider services.",
+    "authPrompt": "Connect your wallet with SEP-10 authentication to manage API keys.",
+    "connectWallet": "Connect Wallet",
+    "createKey": "Create API Key",
+    "table": {
+      "name": "Key Name",
+      "prefix": "Prefix",
+      "created": "Created",
+      "lastUsed": "Last Used",
+      "status": "Status",
+      "actions": "Actions",
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "actions": {
+      "rotate": "Rotate",
+      "revoke": "Revoke",
+      "copy": "Copy Key"
+    },
+    "modals": {
+      "createTitle": "Generate New API Key",
+      "keyNameLabel": "Key Description / Name",
+      "keyNamePlaceholder": "e.g., Backend Worker Production",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "revealTitle": "Your New API Key",
+      "revealWarning": "Make sure to copy your API key now. You will not be able to see it again!",
+      "done": "Done"
+    },
+    "empty": "No API keys generated yet. Create one to get started.",
+    "loading": "Loading API keys...",
+    "error": "Failed to load API keys"
+  },
+  "billing": {
+    "title": "Subscription & Billing",
+    "subtitle": "Manage your PayRaider service tier and crypto billing invoices.",
+    "currentPlan": "Current Plan",
+    "tier": {
+      "free": "Free Tier",
+      "pro": "Pro Tier",
+      "enterprise": "Enterprise Tier"
+    },
+    "limits": {
+      "rateLimit": "{count} requests per minute",
+      "monthlyRequests": "{count} requests per month"
+    },
+    "upgrade": {
+      "button": "Upgrade Plan",
+      "title": "Upgrade to Pro Tier",
+      "description": "Unlock higher rate limits, priority support, and multi-corridor analytics.",
+      "price": "$99 / month in USDC",
+      "payWithCrypto": "Pay with USDC",
+      "success": "Subscription successfully upgraded!"
+    },
+    "invoices": {
+      "title": "Invoice History",
+      "empty": "No billing invoices yet.",
+      "invoiceId": "Invoice ID",
+      "amount": "Amount",
+      "status": "Status",
+      "paid": "Paid",
+      "pending": "Pending"
+    },
+    "loading": "Loading billing information...",
+    "error": "Failed to load billing plan"
   }
 }

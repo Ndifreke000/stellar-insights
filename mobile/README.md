@@ -187,6 +187,12 @@ Configure Firebase for push notifications:
 2. Add `GoogleService-Info.plist` (iOS) to `ios/`
 3. Set Firebase credentials in `.env`
 
+### Token Lifecycle & Backend Targeting
+
+- **Registration on Setup & Login**: When the user launches the app and grants notification permissions, or signs in (via SEP-10 or auth session), `mobile/src/services/notifications.ts` registers the device FCM token with the backend at `POST /api/v1/notifications/devices`.
+- **Token Refresh**: The `onTokenRefresh` listener automatically re-registers new tokens with the backend when Firebase rotates them.
+- **Deregistration on Logout**: When the user signs out (`clearAuthTokens`), the device token is deregistered via `DELETE /api/v1/notifications/devices/:device_token` to prevent alerts from reaching former sessions.
+
 ## Security
 
 - Tokens stored in platform keychain

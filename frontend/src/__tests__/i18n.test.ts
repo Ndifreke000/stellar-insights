@@ -73,6 +73,17 @@ describe("Translation key coverage", () => {
     const extra = [...zhKeys].filter((k) => !enSet.has(k));
     expect(extra, `Extra keys in zh.json: ${extra.join(", ")}`).toEqual([]);
   });
+
+  it("all supported locales contain required product namespaces: preflight, corridors, keys, billing", () => {
+    const requiredNamespaces = ["preflight", "corridors", "keys", "billing"];
+    for (const locale of SUPPORTED_LOCALES) {
+      const messages = MESSAGES[locale] as Record<string, unknown>;
+      for (const ns of requiredNamespaces) {
+        expect(messages[ns], `Locale ${locale} is missing namespace ${ns}`).toBeDefined();
+        expect(Object.keys(messages[ns] as object).length).toBeGreaterThan(0);
+      }
+    }
+  });
 });
 
 describe("Missing translation detection", () => {

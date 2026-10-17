@@ -1,6 +1,7 @@
 "use client";
 import { logger } from "@/lib/logger";
 import React, { useState } from "react";
+import { useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
@@ -250,6 +251,7 @@ function LoadingSkeleton() {
 }
 
 const PredictionForm = () => {
+  const t = useTranslations("preflight");
   const [sourceAsset, setSourceAsset] = useState("USDC");
   const [destAsset, setDestAsset] = useState("XLM");
   const [amount, setAmount] = useState("100.0");
@@ -274,7 +276,7 @@ const PredictionForm = () => {
       });
       setPrediction(response);
     } catch (err) {
-      setError("Could not reach the PayRaider API to check this corridor. Please try again.");
+      setError(t("error"));
       logger.error(err as string);
     } finally {
       setLoading(false);
@@ -292,10 +294,10 @@ const PredictionForm = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">
-                Corridor Success Rate Predictor
+                {t("title")}
               </h1>
               <p className="text-sm text-gray-400">
-                Predict payment success before you send
+                {t("subtitle")}
               </p>
             </div>
           </div>
@@ -321,7 +323,7 @@ const PredictionForm = () => {
                   htmlFor="source-asset"
                   className="block text-sm font-medium text-gray-300"
                 >
-                  Source Asset
+                  {t("form.sourceAsset")}
                 </label>
                 <select
                   id="source-asset"
@@ -343,7 +345,7 @@ const PredictionForm = () => {
                   htmlFor="dest-asset"
                   className="block text-sm font-medium text-gray-300"
                 >
-                  Destination Asset
+                  {t("form.destinationAsset")}
                 </label>
                 <select
                   id="dest-asset"
@@ -365,7 +367,7 @@ const PredictionForm = () => {
                   htmlFor="amount"
                   className="block text-sm font-medium text-gray-300"
                 >
-                  Amount (USD equivalent)
+                  {t("form.amount")}
                 </label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
@@ -391,7 +393,7 @@ const PredictionForm = () => {
                   className="block text-sm font-medium text-gray-300 flex items-center gap-2"
                 >
                   <Clock className="w-4 h-4 text-gray-400" />
-                  Time of Day (UTC)
+                  {t("form.timeOfDay")}
                 </label>
                 <input
                   type="time"
@@ -422,11 +424,11 @@ const PredictionForm = () => {
                       }}
                       className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
                     />
-                    Analyzing...
+                    {t("form.submitting")}
                   </>
                 ) : (
                   <>
-                    Predict Success
+                    {t("form.submit")}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -437,7 +439,7 @@ const PredictionForm = () => {
           {/* Results Panel */}
           <div className="p-6 bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-2xl">
             <h2 className="text-lg font-semibold text-white mb-6">
-              Prediction Results
+              {t("results.title")}
             </h2>
 
             <AnimatePresence mode="wait">
@@ -474,9 +476,7 @@ const PredictionForm = () => {
                 >
                   <TrendingUp className="w-12 h-12 mb-4 opacity-30" />
                   <p className="text-center">
-                    Enter payment details and click
-                    <br />
-                    &quot;Predict Success&quot; to see results
+                    {t("empty")}
                   </p>
                 </motion.div>
               )}

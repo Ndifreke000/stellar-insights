@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { CheckCircle, Copy, Loader2, Zap } from "lucide-react";
 import {
   confirmInvoice,
@@ -56,6 +57,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
  * on the ledger before raising the key's limit.
  */
 export default function UpgradePanel({ authToken, address, keys }: UpgradePanelProps) {
+  const t = useTranslations("billing");
   const activeKeys = keys.filter((k) => k.status === "active");
   const [plan, setPlan] = useState<BillingPlan | null | undefined>(undefined);
   const [keyId, setKeyId] = useState("");
@@ -174,7 +176,7 @@ export default function UpgradePanel({ authToken, address, keys }: UpgradePanelP
           className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 font-medium text-white disabled:opacity-60"
         >
           {busy === "invoice" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {active ? "Renew" : "Upgrade"} for {plan.price} {plan.asset_code}
+          {active ? "Renew" : t("upgrade.button")} for {plan.price} {plan.asset_code}
         </button>
       )}
 

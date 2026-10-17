@@ -241,6 +241,10 @@ pub fn routes(
             "/corridor-alerts",
             crate::api::corridor_alerts::routes(app_state.clone()),
         )
+        .nest(
+            "/notifications",
+            crate::api::device_tokens::routes(pool.clone()),
+        )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // Replay control (start/list/inspect/delete replay sessions, cleanup

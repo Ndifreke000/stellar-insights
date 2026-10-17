@@ -121,6 +121,13 @@ export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
   };
   await _keychainSet(payload);
   useAuthStore.getState().setTokens(tokens);
+
+  try {
+    const { registerDeviceTokenWithBackend } = await import('./notifications');
+    await registerDeviceTokenWithBackend();
+  } catch (error) {
+    console.warn('Failed to register device token after storing auth tokens:', error);
+  }
 }
 
 /**
@@ -128,6 +135,13 @@ export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
  * Called on logout.
  */
 export async function clearAuthTokens(): Promise<void> {
+  try {
+    const { deregisterDeviceTokenFromBackend } = await import('./notifications');
+    await deregisterDeviceTokenFromBackend();
+  } catch (error) {
+    console.warn('Failed to deregister device token on logout:', error);
+  }
+
   await _keychainDelete();
   storage.delete(STORAGE_KEYS.USER_DATA);
   useAuthStore.getState().logout();

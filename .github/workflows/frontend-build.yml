@@ -51,6 +51,12 @@ jobs:
 
       - name: Build with timing
         id: build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG || 'payraider' }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT || 'payraider-frontend' }}
+          NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN || vars.NEXT_PUBLIC_SENTRY_DSN }}
         run: |
           START=$(date +%s%3N)
           pnpm build
@@ -62,6 +68,16 @@ jobs:
           echo "BUILD_TIME=${MINS}m ${SECS}s" >> "$GITHUB_ENV"
           echo "duration_ms=${MS}" >> "$GITHUB_OUTPUT"
           echo "duration_s=$(echo "scale=1; ${MS}/1000" | bc)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Sentry source maps
+        if: ${{ env.SENTRY_AUTH_TOKEN != '' }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG || 'payraider' }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT || 'payraider-frontend' }}
+          NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
+        run: |
+          ./scripts/upload-sourcemaps.sh
 
       - name: Publish build metrics
         run: |

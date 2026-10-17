@@ -187,5 +187,137 @@
     "waitingAsset": "Esperando datos de activos...",
     "waitingCorridor": "Esperando datos de corredores...",
     "waitingSettlement": "Esperando datos de liquidación..."
+  },
+  "preflight": {
+    "title": "Predictor de Tasa de Éxito de Corredores",
+    "subtitle": "Prediga el éxito del pago antes de enviarlo",
+    "form": {
+      "sourceAsset": "Activo de Origen",
+      "destinationAsset": "Activo de Destino",
+      "amount": "Monto",
+      "timeOfDay": "Hora del Día",
+      "submit": "Predecir Tasa de Éxito",
+      "submitting": "Comprobando corredor..."
+    },
+    "results": {
+      "title": "Resultados de la Predicción Preflight",
+      "successProbability": "Probabilidad de Éxito",
+      "riskLevel": "Nivel de Riesgo",
+      "lowRisk": "Riesgo Bajo",
+      "mediumRisk": "Riesgo Medio",
+      "highRisk": "Riesgo Alto",
+      "estimatedLatency": "Latencia Estimada",
+      "liquidityDepth": "Profundidad de Liquidez",
+      "alternativeRoutes": "Corredores Alternativos",
+      "recommendedAction": "Recomendación",
+      "routeSummary": "{source} a {destination} con monto {amount}"
+    },
+    "empty": "Seleccione activos y monto para simular una verificación preflight.",
+    "error": "No se pudo conectar con la API de PayRaider para verificar este corredor. Inténtelo de nuevo."
+  },
+  "corridors": {
+    "title": "Corredores de Pago",
+    "subtitle": "Supervise la salud en tiempo real, las tasas de éxito y la profundidad de liquidez en los corredores de pago de Stellar.",
+    "search": "Buscar corredores por par de activos...",
+    "views": {
+      "grid": "Cuadrícula",
+      "table": "Tabla",
+      "heatmap": "Mapa de Calor"
+    },
+    "sort": {
+      "label": "Ordenar por",
+      "health": "Orden: Salud",
+      "success": "Orden: Éxito",
+      "liquidity": "Orden: Liquidez"
+    },
+    "metrics": {
+      "successRate": "Tasa de Éxito",
+      "healthScore": "Puntaje de Salud",
+      "avgLatency": "Latencia Promedio",
+      "liquidityDepth": "Profundidad de Liquidez",
+      "volume24h": "Volumen 24h",
+      "avgSlippage": "Deslizamiento Promedio"
+    },
+    "comparison": {
+      "title": "Comparación Detallada",
+      "exportCsv": "Exportar CSV",
+      "corridor": "Corredor",
+      "recordsCount": "Total {count} registros",
+      "rowsPerPage": "Filas por página",
+      "jumpTo": "Ir a",
+      "pageOf": "de {total}",
+      "bestPerformance": "Mejor Rendimiento",
+      "worstPerformance": "Peor Rendimiento"
+    },
+    "empty": "No se detectaron corredores coincidentes",
+    "error": "Error al cargar los corredores de pago"
+  },
+  "keys": {
+    "title": "Claves API",
+    "subtitle": "Administre claves API para el acceso programático a los servicios de PayRaider.",
+    "authPrompt": "Conecte su billetera con autenticación SEP-10 para administrar las claves API.",
+    "connectWallet": "Conectar Billetera",
+    "createKey": "Crear Clave API",
+    "table": {
+      "name": "Nombre de Clave",
+      "prefix": "Prefijo",
+      "created": "Creado",
+      "lastUsed": "Último Uso",
+      "status": "Estado",
+      "actions": "Acciones",
+      "active": "Activo",
+      "revoked": "Revocado"
+    },
+    "actions": {
+      "rotate": "Rotar",
+      "revoke": "Revocar",
+      "copy": "Copiar Clave"
+    },
+    "modals": {
+      "createTitle": "Generar Nueva Clave API",
+      "keyNameLabel": "Descripción / Nombre de la Clave",
+      "keyNamePlaceholder": "p. ej., Trabajador Backend Producción",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "revealTitle": "Su Nueva Clave API",
+      "revealWarning": "Asegúrese de copiar su clave API ahora. ¡No podrá volver a verla!",
+      "done": "Listo"
+    },
+    "empty": "Aún no se han generado claves API. Cree una para comenzar.",
+    "loading": "Cargando claves API...",
+    "error": "Error al cargar las claves API"
+  },
+  "billing": {
+    "title": "Suscripción y Facturación",
+    "subtitle": "Administre su nivel de servicio de PayRaider y las facturas en cripto.",
+    "currentPlan": "Plan Actual",
+    "tier": {
+      "free": "Nivel Gratuito",
+      "pro": "Nivel Pro",
+      "enterprise": "Nivel Empresarial"
+    },
+    "limits": {
+      "rateLimit": "{count} solicitudes por minuto",
+      "monthlyRequests": "{count} solicitudes por mes"
+    },
+    "upgrade": {
+      "button": "Actualizar Plan",
+      "title": "Actualizar al Nivel Pro",
+      "description": "Desbloquee límites de tasa más altos, soporte prioritario y análisis de múltiples corredores.",
+      "price": "$99 / mes en USDC",
+      "payWithCrypto": "Pagar con USDC",
+      "success": "¡Suscripción actualizada con éxito!"
+    },
+    "invoices": {
+      "title": "Historial de Facturas",
+      "empty": "Aún no hay facturas de facturación.",
+      "invoiceId": "ID de Factura",
+      "amount": "Monto",
+      "status": "Estado",
+      "paid": "Pagado",
+      "pending": "Pendiente"
+    },
+    "loading": "Cargando información de facturación...",
+    "error": "Error al cargar el plan de facturación"
   }
 }
