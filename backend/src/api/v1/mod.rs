@@ -291,6 +291,11 @@ pub fn routes(
             get(crate::api::network::get_available_networks),
         )
         .merge(achievements_routes)
+        // Public snapshot integrity checks (#2597): read-only, no auth.
+        .nest(
+            "/snapshots",
+            crate::api::snapshots::verify_routes(pool.clone()),
+        )
         .nest(
             "/assets",
             crate::api::asset_verification::routes(pool.clone()),

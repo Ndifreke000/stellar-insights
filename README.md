@@ -72,10 +72,10 @@ Integration guide: [docs/PLUGIN.md](docs/PLUGIN.md).
 | Path | What it is |
 | --- | --- |
 | `backend/` | Rust API (Axum, SQLite): corridor data, the pre-payment check, wallet sign-in, API keys and USDC billing |
-| `sdk/typescript`, `sdk/python` | Client SDKs |
+| `sdk/typescript`, `sdk/python`, `sdk/react` | Client SDKs and React hooks — releases: [sdk/RELEASING.md](sdk/RELEASING.md), versions: [sdk/COMPATIBILITY.md](sdk/COMPATIBILITY.md) |
 | `sdk/mcp-server`, `plugins/payraider` | MCP server and Claude plugin |
 | `frontend/` | Next.js dashboard, corridor explorer and self-serve API keys |
-| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain |
+| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain — how to verify a snapshot: [docs/SNAPSHOT_ANCHORING.md](docs/SNAPSHOT_ANCHORING.md) |
 | `mobile/` | React Native app ([status](mobile/README.md#current-status)) |
 
 The dashboard also carries features from the project's earlier scope
