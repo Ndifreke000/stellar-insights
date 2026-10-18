@@ -1,6 +1,12 @@
 use crate::cache::{keys, CacheManager};
 use std::sync::Arc;
 
+/// Cache key for the corridor table the preflight check scores against.
+///
+/// Kept in sync with `crate::api::preflight::CORRIDOR_TABLE_CACHE_KEY`; the
+/// preflight handler reads this key, so ingestion must invalidate it.
+pub const PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
+
 /// Service for managing cache invalidation on data updates
 pub struct CacheInvalidationService {
     cache: Arc<CacheManager>,
@@ -51,6 +57,18 @@ impl CacheInvalidationService {
         Ok(())
     }
 
+    /// Invalidate the preflight corridor table cache.
+    ///
+    /// Called after each ingestion batch so preflight never scores against a
+    /// stale corridor table. The TTL on this key is bounded by the ingestion
+    /// interval (see `PREFLIGHT_CORRIDOR_TABLE_TTL_SECS`), so even a missed
+    /// invalidation self-heals within one ingestion cycle.
+    pub async fn invalidate_preflight_corridors(&self) -> anyhow::Result<()> {
+        tracing::info!("Invalidating preflight corridor table cache");
+        self.cache.delete(PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY).await?;
+        Ok(())
+    }
+
     /// Invalidate specific corridor cache
     pub async fn invalidate_corridor(&self, corridor_key: &str) -> anyhow::Result<()> {
         tracing::info!("Invalidating cache for corridor: {}", corridor_key);
@@ -82,6 +100,7 @@ impl CacheInvalidationService {
         tracing::warn!("Performing full cache invalidation");
         self.invalidate_anchors().await?;
         self.invalidate_corridors().await?;
+        self.invalidate_preflight_corridors().await?;
         self.invalidate_dashboard().await?;
         self.invalidate_metrics().await?;
         Ok(())
@@ -103,6 +122,14 @@ mod tests {
         assert_eq!(keys::anchor_pattern(), "anchor:*");
         assert_eq!(keys::corridor_pattern(), "corridor:*");
         assert_eq!(keys::dashboard_pattern(), "dashboard:*");
+    }
+
+    #[test]
+    fn preflight_cache_key_matches_preflight_module() {
+        assert_eq!(
+            PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY,
+            crate::api::preflight::CORRIDOR_TABLE_CACHE_KEY
+        );
     }
 
     #[tokio::test]
@@ -127,6 +154,12 @@ mod tests {
     async fn invalidate_corridors_succeeds() {
         let svc = make_service();
         assert!(svc.invalidate_corridors().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn invalidate_preflight_corridors_succeeds() {
+        let svc = make_service();
+        assert!(svc.invalidate_preflight_corridors().await.is_ok());
     }
 
     #[tokio::test]

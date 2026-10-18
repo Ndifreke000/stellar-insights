@@ -25,6 +25,18 @@ curl -s "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_as
 
 (port per your `.env`)
 
+## Preflight corridor cache
+
+Preflight scores against a cached corridor table stored under the `preflight:corridors`
+cache key. To keep preflight from scoring against stale data:
+
+- Each ingestion batch invalidates `preflight:corridors` once it commits, so the next
+  preflight request rebuilds the table from fresh data.
+- The corridor cache TTL is capped at the ingestion interval, so the entry can never
+  outlive the data it was derived from even if an invalidation is missed.
+- Cache age is exposed as a metric so operators can alert when the corridor table is
+  older than one ingestion cycle.
+
 ## Preflight calibration report
 
 Credibility of the preflight `hold` / `proceed` decisions depends on showing that `hold`
