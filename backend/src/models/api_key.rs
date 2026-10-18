@@ -6,6 +6,22 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
+/// Scope granting read-only access to GET endpoints.
+pub const SCOPE_READ: &str = "read";
+/// Scope granting access to the preflight endpoint.
+pub const SCOPE_PREFLIGHT: &str = "preflight";
+/// Scope granting full read/write access.
+pub const SCOPE_WRITE: &str = "write";
+
+/// All scopes recognised by the system.
+pub const ALL_SCOPES: &[&str] = &[SCOPE_READ, SCOPE_PREFLIGHT, SCOPE_WRITE];
+
+/// Default scopes assigned when a key is created without explicit scopes.
+pub const DEFAULT_SCOPES: &str = SCOPE_READ;
+
+/// Default per-key rate limit (requests per minute) when none is configured.
+pub const DEFAULT_RATE_LIMIT_PER_MINUTE: i64 = 60;
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ApiKey {
     pub id: String,
@@ -14,6 +30,7 @@ pub struct ApiKey {
     pub key_hash: String,
     pub wallet_address: String,
     pub scopes: String,
+    pub rate_limit_per_minute: i64,
     pub status: String,
     pub created_at: String,
     pub last_used_at: Option<String>,
@@ -28,6 +45,7 @@ pub struct ApiKeyInfo {
     pub key_prefix: String,
     pub wallet_address: String,
     pub scopes: String,
+    pub rate_limit_per_minute: i64,
     pub status: String,
     pub created_at: String,
     pub last_used_at: Option<String>,
@@ -43,6 +61,7 @@ impl From<ApiKey> for ApiKeyInfo {
             key_prefix: key.key_prefix,
             wallet_address: key.wallet_address,
             scopes: key.scopes,
+            rate_limit_per_minute: key.rate_limit_per_minute,
             status: key.status,
             created_at: key.created_at,
             last_used_at: key.last_used_at,
@@ -61,6 +80,7 @@ pub struct CreateApiKeyRequest {
     ))]
     pub name: String,
     pub scopes: Option<String>,
+    pub rate_limit_per_minute: Option<i64>,
     pub expires_at: Option<String>,
 }
 
@@ -68,6 +88,61 @@ pub struct CreateApiKeyRequest {
 pub struct CreateApiKeyResponse {
     pub key: ApiKeyInfo,
     pub plain_key: String,
+}
+
+/// Parse a comma-separated scope string into a normalised list of scopes.
+///
+/// Unknown scopes are dropped; if nothing valid remains the default scope is
+/// returned so a key is never created with no permissions at all.
+#[must_use]
+pub fn parse_scopes(raw: &str) -> Vec<String> {
+    let mut scopes: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .filter(|s| ALL_SCOPES.contains(s))
+        .map(ToString::to_string)
+        .collect();
+    scopes.sort();
+    scopes.dedup();
+    if scopes.is_empty() {
+        scopes.push(DEFAULT_SCOPES.to_string());
+    }
+    scopes
+}
+
+/// Normalise a user-supplied scope string for storage.
+#[must_use]
+pub fn normalise_scopes(raw: Option<&str>) -> String {
+    match raw {
+        Some(s) => parse_scopes(s).join(","),
+        None => DEFAULT_SCOPES.to_string(),
+    }
+}
+
+/// Returns true if the stored scope string grants `required`.
+///
+/// The `write` scope implies `read` and `preflight`.
+#[must_use]
+pub fn has_scope(stored_scopes: &str, required: &str) -> bool {
+    let granted = parse_scopes(stored_scopes);
+    if granted.iter().any(|s| s == required) {
+        return true;
+    }
+    if granted.iter().any(|s| s == SCOPE_WRITE) {
+        return matches!(required, SCOPE_READ | SCOPE_PREFLIGHT | SCOPE_WRITE);
+    }
+    false
+}
+
+/// Resolve the effective per-key rate limit, falling back to the default.
+#[must_use]
+pub fn effective_rate_limit(configured: i64) -> i64 {
+    if configured > 0 {
+        configured
+    } else {
+        DEFAULT_RATE_LIMIT_PER_MINUTE
+    }
 }
 
 #[must_use]
@@ -111,4 +186,39 @@ pub fn verify_api_key(plain_key: &str, stored_hash: &str) -> bool {
     Argon2::default()
         .verify_password(plain_key.as_bytes(), &parsed)
         .is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_scopes_drops_unknown_and_dedups() {
+        assert_eq!(parse_scopes("read, bogus, read"), vec!["read".to_string()]);
+    }
+
+    #[test]
+    fn parse_scopes_falls_back_to_default() {
+        assert_eq!(parse_scopes("nonsense"), vec![DEFAULT_SCOPES.to_string()]);
+    }
+
+    #[test]
+    fn write_scope_implies_read_and_preflight() {
+        assert!(has_scope("write", SCOPE_READ));
+        assert!(has_scope("write", SCOPE_PREFLIGHT));
+        assert!(has_scope("write", SCOPE_WRITE));
+    }
+
+    #[test]
+    fn read_only_key_cannot_write() {
+        assert!(has_scope("read", SCOPE_READ));
+        assert!(!has_scope("read", SCOPE_WRITE));
+        assert!(!has_scope("read", SCOPE_PREFLIGHT));
+    }
+
+    #[test]
+    fn effective_rate_limit_falls_back() {
+        assert_eq!(effective_rate_limit(0), DEFAULT_RATE_LIMIT_PER_MINUTE);
+        assert_eq!(effective_rate_limit(120), 120);
+    }
 }
