@@ -33,8 +33,39 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined)
 
 const STORAGE_KEYS = {
   ADDRESS: 'stellar_wallet_address',
-  AUTH_TOKEN: 'stellar_sep10_token',
-  TOKEN_EXPIRY: 'stellar_sep10_token_expiry',
+  // Legacy keys — the auth token now lives in an httpOnly cookie set by the
+  // backend after SEP-10. These are only referenced to purge old values.
+  LEGACY_AUTH_TOKEN: 'stellar_sep10_token',
+  LEGACY_TOKEN_EXPIRY: 'stellar_sep10_token_expiry',
+}
+
+// The SEP-10 home domain is server-authoritative. We fetch it from the config
+// endpoint rather than trusting `window.location.hostname`, which breaks on
+// preview deployments and localhost and lets the client pick the domain.
+const CONFIG_ENDPOINT = '/api/v1/config'
+
+async function fetchHomeDomain(): Promise<string> {
+  const response = await fetch(CONFIG_ENDPOINT, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to load config (status ${response.status})`)
+  }
+
+  const data: unknown = await response.json()
+  const homeDomain =
+    data && typeof data === 'object'
+      ? (data as { home_domain?: unknown }).home_domain
+      : undefined
+
+  if (typeof homeDomain !== 'string' || homeDomain.trim() === '') {
+    throw new Error('Config endpoint did not return a valid home_domain')
+  }
+
+  return homeDomain.trim()
 }
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
@@ -48,28 +79,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkWalletConnection = async () => {
       try {
+        // Migration: purge any legacy token values left in localStorage so an
+        // XSS can no longer read them. The token is now held in an httpOnly
+        // cookie that JS cannot access.
+        localStorage.removeItem(STORAGE_KEYS.LEGACY_AUTH_TOKEN)
+        localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN_EXPIRY)
+
         const savedAddress = localStorage.getItem(STORAGE_KEYS.ADDRESS)
-        const savedToken = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN)
-        const tokenExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY)
 
         if (savedAddress) {
           setAddress(savedAddress)
           setIsConnected(true)
         }
 
-        // Check if token is still valid
-        if (savedToken && tokenExpiry) {
-          const expiryTime = parseInt(tokenExpiry, 10)
-          const now = Date.now()
-
-          if (now < expiryTime) {
-            setAuthToken(savedToken)
-            setIsAuthenticated(true)
-          } else {
-            // Token expired, clear it
-            localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
-            localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY)
-          }
+        // Ask the backend whether the httpOnly session cookie is still valid.
+        const session = await sep10AuthService.getSession()
+        if (session?.authenticated) {
+          setIsAuthenticated(true)
         }
       } catch (error) {
         logger.error('Error checking wallet connection:', error as string)
@@ -146,17 +172,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Perform SEP-10 authentication
-      const result = await sep10AuthService.authenticate(address, {
-        homeDomain: window.location.hostname,
-      })
+      // Resolve the server-configured home domain. If the config endpoint is
+      // unavailable or returns no domain, fail closed rather than falling back
+      // to a client-controlled value.
+      const homeDomain = await fetchHomeDomain()
 
-      // Store token and expiry
-      const expiryTime = Date.now() + result.expires_in * 1000
-      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, result.token)
-      localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString())
+      // Perform SEP-10 authentication. The backend sets an httpOnly session
+      // cookie on success; no token is returned to or stored by the frontend.
+      await sep10AuthService.authenticate(address, { homeDomain })
 
-      setAuthToken(result.token)
+      setAuthToken(null)
       setIsAuthenticated(true)
     } catch (error) {
       logger.error('SEP-10 authentication failed:', error)
@@ -165,20 +190,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [address])
 
   const logout = useCallback(async () => {
-    if (authToken) {
-      try {
-        await sep10AuthService.logout(authToken)
-      } catch (error) {
-        logger.error('Logout failed:', error)
-      }
+    try {
+      // Backend clears the httpOnly cookie.
+      await sep10AuthService.logout()
+    } catch (error) {
+      logger.error('Logout failed:', error)
     }
 
     // Clear authentication state
     setAuthToken(null)
     setIsAuthenticated(false)
-    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
-    localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY)
-  }, [authToken])
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_AUTH_TOKEN)
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN_EXPIRY)
+  }, [])
 
   const disconnectWallet = useCallback(async () => {
     // Logout first if authenticated

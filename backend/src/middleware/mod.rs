@@ -12,6 +12,7 @@ pub mod network_context_middleware;
 pub mod network_status_endpoint;
 pub mod push_notification_registration;
 pub mod push_notification_service;
+pub mod rate_limit_headers;
 pub mod rate_limiting_by_client;
 pub mod response_compression;
 pub mod sep10_for_mobile;
@@ -33,6 +34,9 @@ pub use network_context_middleware::NetworkContextMiddleware;
 pub use network_status_endpoint::NetworkStatusEndpoint;
 pub use push_notification_registration::PushNotificationRegistration;
 pub use push_notification_service::PushNotificationService;
+pub use rate_limit_headers::{
+    apply_rate_limit_headers, RateLimitHeaders, RateLimitHeadersLayer, RateLimitInfo,
+};
 pub use rate_limiting_by_client::RateLimitingByClient;
 pub use response_compression::ResponseCompression;
 pub use sep10_for_mobile::Sep10ForMobile;

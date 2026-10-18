@@ -91,17 +91,26 @@ mod tests {
                 Request::builder()
                     .uri("/api/corridors")
                     .body(Body::empty())
-                    .unwrap(),
+                    .expect("request should build"),
             )
             .await
-            .unwrap();
+            .expect("router should respond");
 
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(res.headers().get("X-API-Version").unwrap(), "v1");
-        assert_eq!(res.headers().get("X-API-Status").unwrap(), "deprecated");
-        assert_eq!(res.headers().get("Deprecation").unwrap(), "true");
         assert_eq!(
-            res.headers().get("Sunset").unwrap(),
+            res.headers().get("X-API-Version").expect("header present"),
+            "v1"
+        );
+        assert_eq!(
+            res.headers().get("X-API-Status").expect("header present"),
+            "deprecated"
+        );
+        assert_eq!(
+            res.headers().get("Deprecation").expect("header present"),
+            "true"
+        );
+        assert_eq!(
+            res.headers().get("Sunset").expect("header present"),
             "Thu, 31 Dec 2026 00:00:00 GMT"
         );
         assert!(res.headers().contains_key("Link"));
@@ -120,14 +129,20 @@ mod tests {
                     .uri("/api/corridors")
                     .header("Accept", "application/vnd.payraider.v2+json")
                     .body(Body::empty())
-                    .unwrap(),
+                    .expect("request should build"),
             )
             .await
-            .unwrap();
+            .expect("router should respond");
 
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(res.headers().get("X-API-Version").unwrap(), "v2");
-        assert_eq!(res.headers().get("X-API-Status").unwrap(), "preview");
+        assert_eq!(
+            res.headers().get("X-API-Version").expect("header present"),
+            "v2"
+        );
+        assert_eq!(
+            res.headers().get("X-API-Status").expect("header present"),
+            "preview"
+        );
         assert!(!res.headers().contains_key("Deprecation"));
     }
 
@@ -143,14 +158,17 @@ mod tests {
                     .uri("/api/corridors")
                     .header("Accept", "application/vnd.payraider.v3+json")
                     .body(Body::empty())
-                    .unwrap(),
+                    .expect("request should build"),
             )
             .await
-            .unwrap();
+            .expect("router should respond");
 
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        let json_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let body = to_bytes(res.into_body(), usize::MAX)
+            .await
+            .expect("body should be readable");
+        let json_body: serde_json::Value =
+            serde_json::from_slice(&body).expect("body should be valid JSON");
         assert_eq!(json_body["error"], "unsupported_api_version");
     }
 }
