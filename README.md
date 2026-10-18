@@ -59,6 +59,11 @@ to the same currency.
 
 - **Observed, not modelled.** Decisions come from recent payments on the
   Stellar ledger. No data means `unknown`, never a guess.
+- **Recent failures weigh more.** The success-rate check compares a short
+  window (last 30 minutes / last 50 payments) against the long window (24h).
+  If the short-window rate falls far below the long-window rate, the decision
+  is downgraded to `caution` or `hold` even when the 24h average still looks
+  healthy — a corridor that just broke is not hidden by a good daily average.
 - **Fresh data only.** The response carries `data_as_of` (the newest
   observation behind the decision). If that observation is older than the
   freshness threshold, the decision is `unknown` with a failing `freshness`
@@ -172,12 +177,6 @@ The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
 |---|---|---|
 | PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
 
-All other contract crates live under `contracts/archive/`, are excluded from the
-Cargo workspace and are not built in CI.
-See [`contracts/archive/README.md`](contracts/archive/README.md).
-Who may anchor snapshots, and how to rotate those keys, is documented in
-[`contracts/payraider/README.md`](contracts/payraider/README.md).
+All other contract crates live under `c
 
-## 🧪 Local safety chec
-
-/* … truncated 1456 chars — edit only what you need near the top … */
+/* … truncated 384 chars — edit only what you need near the top … */
