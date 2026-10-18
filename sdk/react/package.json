@@ -1,6 +1,6 @@
 {
   "name": "@payraider/react",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React hooks and components for the PayRaider API, built on @payraider/sdk",
   "homepage": "https://github.com/Ndifreke000/payraider/tree/main/sdk/react#readme",
   "repository": {
@@ -24,7 +24,9 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --external react",
     "test": "vitest run",

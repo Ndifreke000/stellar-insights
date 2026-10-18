@@ -4,6 +4,17 @@
     {
       "date": "2026-10-18",
       "sdk": "1.0.0",
+      "react": "0.2.0",
+      "mcpServer": "0.2.0",
+      "python": "1.0.0",
+      "contract": "0.1.0",
+      "sorobanSdk": "29.0.1",
+      "api": "v1",
+      "networks": "testnet, mainnet"
+    },
+    {
+      "date": "2026-10-18",
+      "sdk": "1.0.0",
       "react": "0.1.0",
       "mcpServer": "0.2.0",
       "python": "1.0.0",
