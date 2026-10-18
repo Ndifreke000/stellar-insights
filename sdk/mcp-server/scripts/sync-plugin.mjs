@@ -1,7 +1,8 @@
-// Copies the single-file bundle into the Claude plugin, or with --check
-// fails if the committed copy is stale. The plugin ships the bundle so it can
-// be installed straight from this repository without an npm publish.
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+// Copies the single-file bundle into plugins/payraider/server so the plugin
+// can be run locally (`claude --plugin-dir plugins/payraider`). The copy is
+// gitignored: CI builds it and publishes the plugin to the plugin-dist branch,
+// which is what the marketplace installs from.
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,17 +15,6 @@ if (!existsSync(source)) {
   process.exit(1);
 }
 
-if (process.argv.includes("--check")) {
-  const fresh = existsSync(target) && readFileSync(source).equals(readFileSync(target));
-  if (!fresh) {
-    console.error(
-      "plugins/payraider/server/server.mjs is out of date. Run `npm run build:plugin` in sdk/mcp-server and commit the result.",
-    );
-    process.exit(1);
-  }
-  console.log("plugin bundle is up to date");
-} else {
-  mkdirSync(dirname(target), { recursive: true });
-  copyFileSync(source, target);
-  console.log(`wrote ${target}`);
-}
+mkdirSync(dirname(target), { recursive: true });
+copyFileSync(source, target);
+console.log(`wrote ${target}`);

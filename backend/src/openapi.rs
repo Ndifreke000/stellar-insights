@@ -90,6 +90,7 @@ impl Modify for SecurityAddon {
         crate::api::billing::confirm_invoice,
         crate::api::billing::get_subscription,
         crate::api::preflight::preflight_post,
+        crate::api::preflight::preflight_batch,
         // Alerts
         crate::api::alerts::list_rules,
         crate::api::alerts::create_rule,
@@ -237,6 +238,10 @@ impl Modify for SecurityAddon {
             crate::api::preflight::PreflightCheck,
             crate::api::preflight::PreflightDecision,
             crate::api::preflight::CheckStatus,
+            crate::api::preflight::PreflightBatchRequest,
+            crate::api::preflight::PreflightBatchResponse,
+            crate::api::preflight::PreflightBatchItem,
+            crate::api::preflight::PreflightItemError,
             crate::api::corridors::CorridorDetailResponse,
             crate::api::corridors::CorridorFailedPayment,
             crate::api::corridors::PaginatedCorridorFailures,

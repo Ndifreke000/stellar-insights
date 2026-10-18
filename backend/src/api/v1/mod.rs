@@ -17,7 +17,7 @@ use crate::services::price_feed::PriceFeedClient;
 use crate::state::AppState;
 use axum::{
     middleware,
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Serialize;
@@ -138,6 +138,10 @@ pub fn routes(
         .route(
             "/preflight",
             get(crate::api::preflight::preflight_get).post(crate::api::preflight::preflight_post),
+        )
+        .route(
+            "/preflight/batch",
+            post(crate::api::preflight::preflight_batch),
         )
         .with_state(cached_state);
 

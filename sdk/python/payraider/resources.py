@@ -1,7 +1,7 @@
 """Resource classes for each API group."""
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 from urllib.parse import quote
 
 from .http import HttpClient
@@ -17,6 +17,7 @@ from .types import (
     LiquidityPool,
     NetworkInfo,
     PaginatedResponse,
+    PreflightBatchResponse,
     PreflightResponse,
     Price,
     PriceCacheStats,
@@ -125,6 +126,17 @@ class PreflightResource:
             "POST", "/api/v1/preflight",
             json={key: value for key, value in body.items() if value is not None},
         )
+
+    async def check_batch(self, items: List[Dict[str, Any]]) -> PreflightBatchResponse:
+        """Check up to 100 payments in one request.
+
+        Each item takes the same keys as :meth:`check` (``source_asset``,
+        ``destination_asset``, optional ``amount_usd`` and
+        ``min_success_rate``). An invalid item comes back with an ``error``
+        instead of failing the batch.
+        """
+        cleaned = [{key: value for key, value in item.items() if value is not None} for item in items]
+        return await self._http.request("POST", "/api/v1/preflight/batch", json={"items": cleaned})
 
     async def is_safe_to_pay(
         self,

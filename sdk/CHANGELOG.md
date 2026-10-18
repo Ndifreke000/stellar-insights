@@ -8,10 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Backend: `POST /api/v1/preflight/batch` checks up to 100 payments against one corridor snapshot; invalid items are reported per item
+- TypeScript: `client.preflight.checkBatch(items)`; Python: `client.preflight.check_batch(items)`
+- Conformance: shared recorded HTTP cases in `sdk/conformance/cases`, run by both the TypeScript (`src/conformance.test.ts`) and Python (`tests/test_conformance.py`) SDKs
+- MCP server: `preflight_batch` tool (up to 100 payouts, optional caller `id` echoed back)
+- MCP server: every tool returns `structuredContent`; `preflight_payment` and `preflight_batch` declare an `outputSchema` and include `reason_codes` (`ALL_CHECKS_PASSED`, `NO_RECENT_DATA`, `<CHECK>_MARGINAL`, `<CHECK>_FAILED`)
 - TypeScript: Support for custom transaction builders
 - Python: Async client for improved performance in concurrent operations
 
 ### Changed
+- MCP server: `preflight_payment` text output gains `reason_codes` and a second text block with a one-line summary; the first text block is still the JSON result
+- Plugin: `plugins/payraider/server/server.mjs` is no longer committed. CI builds it and publishes the plugin to the `plugin-dist` branch, which the marketplace now installs from. `npm run check:plugin` is removed; `npm run build:plugin` writes a gitignored local copy
 - TypeScript: Updated @stellar/stellar-sdk to 14.6.0
 - Python: Updated stellar-sdk to 10.5.0
 

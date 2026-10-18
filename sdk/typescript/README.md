@@ -57,6 +57,22 @@ if (check.decision === "proceed") {
 that corridor). `client.preflight.isSafeToPay(req)` returns `true` only for
 `proceed`.
 
+To check a payout batch, send up to 100 payments in one call. They are all
+scored against the same corridor snapshot, and an invalid payment comes back
+with an `error` instead of failing the rest:
+
+```ts
+const { results } = await client.preflight.checkBatch([
+  { source_asset: "USDC", destination_asset: "NGN", amount_usd: 2500 },
+  { source_asset: "USDC", destination_asset: "KES", amount_usd: 900 },
+]);
+
+for (const item of results) {
+  if (item.error) console.warn(`payment ${item.index}: ${item.error.code}`);
+  else if (item.result?.decision !== "proceed") console.warn(item.index, item.result?.summary);
+}
+```
+
 ### Authentication
 
 ```ts
@@ -105,6 +121,17 @@ for version history and compatibility guarantees.
 Building a React app? See
 [`@payraider/react`](../react) for hooks and pre-built components on
 top of this SDK.
+
+## Development
+
+```bash
+npm ci
+npm test                  # unit tests, including the shared conformance cases
+npm test -- conformance   # only the cases in ../conformance
+```
+
+The conformance cases are recorded HTTP exchanges both SDKs must handle the
+same way; see [`../conformance`](../conformance/README.md).
 
 ## License
 

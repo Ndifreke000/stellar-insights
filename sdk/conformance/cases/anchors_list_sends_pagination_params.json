@@ -1,0 +1,51 @@
+{
+  "name": "anchors_list_sends_pagination_params",
+  "description": "Pagination parameters the caller sets go in the query string.",
+  "operation": "anchors.list",
+  "input": {
+    "page": 2,
+    "limit": 10
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/anchors",
+    "query": {
+      "page": "2",
+      "limit": "10"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "a1",
+          "name": "Anchor One"
+        }
+      ],
+      "pagination": {
+        "page": 2,
+        "limit": 10,
+        "total": 11,
+        "pages": 2
+      }
+    }
+  },
+  "expect": {
+    "result": {
+      "data": [
+        {
+          "id": "a1",
+          "name": "Anchor One"
+        }
+      ],
+      "pagination": {
+        "page": 2,
+        "limit": 10,
+        "total": 11,
+        "pages": 2
+      }
+    }
+  }
+}

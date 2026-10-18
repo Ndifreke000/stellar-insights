@@ -122,6 +122,27 @@ class PreflightResponse:
 
 
 @dataclass
+class PreflightItemError:
+    code: str  # "INVALID_ASSET" | "INVALID_AMOUNT" | "INVALID_THRESHOLD"
+    message: str
+
+
+@dataclass
+class PreflightBatchItem:
+    """Exactly one of ``result`` and ``error`` is set."""
+
+    index: int
+    result: Optional[PreflightResponse]
+    error: Optional[PreflightItemError]
+
+
+@dataclass
+class PreflightBatchResponse:
+    results: List[PreflightBatchItem]
+    evaluated_at: str
+
+
+@dataclass
 class AlertRule:
     id: str
     name: str

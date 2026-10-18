@@ -117,3 +117,7 @@ PR_ISSUE_*.md
 .cline/
 .continue/# PR templates - NEVER commit
 .github/PR_*.md
+
+# Plugin MCP server bundle: built by `npm run build:plugin` in sdk/mcp-server
+# and published to the plugin-dist branch by .github/workflows/plugin.yml.
+plugins/payraider/server/server.mjs

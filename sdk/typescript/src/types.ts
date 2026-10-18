@@ -214,6 +214,27 @@ export interface PreflightResponse {
   evaluated_at: string;
 }
 
+export interface PreflightItemError {
+  /** "INVALID_ASSET" | "INVALID_AMOUNT" | "INVALID_THRESHOLD" */
+  code: string;
+  message: string;
+}
+
+/** Outcome for one batch item. Exactly one of `result` and `error` is set. */
+export interface PreflightBatchItem {
+  /** Position of the item in the request. */
+  index: number;
+  result: PreflightResponse | null;
+  error: PreflightItemError | null;
+}
+
+export interface PreflightBatchResponse {
+  /** One entry per requested payment, in request order. */
+  results: PreflightBatchItem[];
+  /** Every item is scored against the same corridor snapshot. */
+  evaluated_at: string;
+}
+
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
 export interface AlertRule {

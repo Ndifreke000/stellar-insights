@@ -46,6 +46,21 @@ async with PayRaider() as client:
 `decision` is `proceed`, `caution`, `hold` or `unknown` (no recent data for
 that corridor).
 
+To check a payout batch, send up to 100 payments in one call. An invalid
+payment comes back with an `error` instead of failing the rest:
+
+```python
+batch = await client.preflight.check_batch([
+    {"source_asset": "USDC", "destination_asset": "NGN", "amount_usd": 2500},
+    {"source_asset": "USDC", "destination_asset": "KES", "amount_usd": 900},
+])
+for item in batch["results"]:
+    if item["error"]:
+        print(item["index"], item["error"]["code"])
+    elif item["result"]["decision"] != "proceed":
+        print(item["index"], item["result"]["summary"])
+```
+
 ## Resources
 
 `anchors`, `corridors`, `prices`, `cost_calculator`, `preflight`, `alerts`, `webhooks`,
@@ -59,4 +74,8 @@ the full method list on each.
 pip install -e ".[dev]"
 pytest                        # unit tests
 pytest -m testnet             # integration tests against a real backend (needs credentials)
+pytest tests/test_conformance.py  # shared cases in ../conformance, also run by the TypeScript SDK
 ```
+
+The conformance cases are recorded HTTP exchanges both SDKs must handle the
+same way; see [`../conformance`](../conformance/README.md).
