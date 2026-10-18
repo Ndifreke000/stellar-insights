@@ -146,6 +146,30 @@ that code; when several issuers exist for the same code, use `CODE:ISSUER` to
 select the one you mean. Malformed asset strings are rejected at the boundary
 with the standard error response.
 
+## Pro subscription renewal and grace period
+
+Pro access is time-limited. To avoid silent expiry — where an integrator's
+production traffic suddenly drops to free-tier limits — the backend sends
+renewal reminders and keeps a short grace period after expiry.
+
+- **Reminders.** A scheduler notifies the account owner (email and/or webhook)
+  **7 days** and **1 day** before the Pro subscription expires. Each reminder
+  is sent at most once per window, so restarts do not duplicate notifications.
+- **Grace period.** After the expiry timestamp passes, Pro entitlements remain
+  active for a configurable grace window (default **3 days**) so a late renewal
+  does not interrupt production. Once the grace period ends, the account falls
+  back to free-tier limits.
+
+Both are configured via environment variables:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `SUBSCRIPTION_REMINDER_DAYS` | `7,1` | Comma-separated days-before-expiry at which reminders fire |
+| `SUBSCRIPTION_GRACE_PERIOD_DAYS` | `3` | Days Pro stays active after expiry before falling back to free tier |
+
+Reminders are delivered through the same notification channel used for other
+account events (email when configured, otherwise the account's webhook).
+
 ## Database
 
 **SQLite only.** This is a compile-time property, not a configuration one:
@@ -174,42 +198,6 @@ See [`contracts/archive/README.md`](contracts/archive/README.md).
 Who may anchor snapshots, and how to rotate those keys, is documented in
 [`contracts/payraider/README.md`](contracts/payraider/README.md).
 
-## 🧪 Local safety checks (already built)
+## 🧪 Local safety chec
 
-- `scripts/check_folder_size.sh` (fails if any folder >200MB)
-- [`.github/workflows/enforce-folder-size.yml`](.github/workflows/enforce-folder-size.yml)
-
-## 📁 Structure
-
-| Path | Contents |
-|---|---|
-| `backend/` | Rust analytics engine — REST, GraphQL and WebSocket API |
-| `frontend/` | Next.js dashboard |
-| `mobile/` | React Native (Expo) app — [current status](mobile/README.md#current-status) |
-| `contracts/` | Soroban contracts (Rust, `no_std`) |
-| `sdk/` | TypeScript and Python API clients |
-| `docs/` | Project documentation |
-| `scripts/` | Build, deploy and maintenance scripts |
-| `tests/` | Cross-cutting / end-to-end tests |
-| `k8s/`, `terraform/` | Deployment manifests and infrastructure as code — **`terraform/` is not used by the actual deployment** (Render Blueprint + SQLite, see `docs/DEPLOY.md`); kept as a reference, see issue #2650 |
-| `elk/`, `monitoring/` | Logging and observability stack configs — **`elk/` is not used by the actual deployment**; kept as a reference, see issue #2650 |
-
-## 📌 Notes
-
-- History has been cleaned to reduce clone size.
-- Use `git lfs` for large binaries.
-- For full operational details, see `docs/` and module READMEs.
-
-## SDK status
-
-`sdk/` ships four packages: `typescript`, `python
-
-/* … truncated 1302 chars — edit only what you need near the top … */
-
-## Handsoff notes
-
-<!-- handsoff-issue-2608 -->
-- #2608: Data retention and downsampling for raw payment observations
-
-<!-- handsoff-issue-2566 -->
-- #2566: Invoice expiry and USD→USDC quote locking
+/* … truncated 1537 chars — edit only what you need near the top … */
