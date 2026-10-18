@@ -37,6 +37,27 @@ cache key. To keep preflight from scoring against stale data:
 - Cache age is exposed as a metric so operators can alert when the corridor table is
   older than one ingestion cycle.
 
+## Billing: USDC invoice confirmation
+
+`confirm_invoice` grants the Pro plan only after verifying the on-chain payment on
+Horizon. The check is deny-by-default: any input that does not match the invoice is
+rejected rather than cleaned up. A transaction is accepted only when **all** of the
+following hold:
+
+- The transaction is loaded by hash and has `successful == true` (failed txs are
+  rejected).
+- It contains a payment operation to the configured billing account whose
+  `asset_code == USDC` **and** `asset_issuer == <configured issuer>` (fake USDC or a
+  wrong issuer is rejected).
+- The delivered `amount >= invoice.amount` (underpayments are rejected).
+- The transaction memo equals the invoice memo (memo is bound to the invoice).
+- The transaction hash has not already been consumed by another invoice (reused tx
+  hashes are rejected).
+
+Path payments that deliver USDC to the billing account are accepted when the
+destination asset and amount match. Payments split across multiple operations are
+summed before the amount check.
+
 ## Preflight calibration report
 
 Credibility of the preflight `hold` / `proceed` decisions depends on showing that `hold`
