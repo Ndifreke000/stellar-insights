@@ -39,6 +39,8 @@ pub const MAX_LIQUIDITY_SHARE: f64 = 0.50;
 const WARN_MARGIN_SUCCESS_RATE: f64 = 10.0;
 /// Number of alternative corridors returned.
 const MAX_ALTERNATIVES: usize = 3;
+/// Most payments one batch request may check.
+pub const MAX_BATCH_ITEMS: usize = 100;
 
 /// Pre-payment check request.
 #[derive(Debug, Clone, Deserialize, ToSchema, IntoParams)]
@@ -396,30 +398,101 @@ pub fn evaluate(
     }
 }
 
-fn validate(request: &PreflightRequest) -> ApiResult<()> {
+/// Reject a malformed request with a stable error code and message.
+fn check_request(request: &PreflightRequest) -> Result<(), (&'static str, &'static str)> {
     if request.source_asset.trim().is_empty() || request.destination_asset.trim().is_empty() {
-        return Err(ApiError::bad_request(
+        return Err((
             "INVALID_ASSET",
             "source_asset and destination_asset are required",
         ));
     }
     if let Some(amount) = request.amount_usd {
         if !amount.is_finite() || amount <= 0.0 {
-            return Err(ApiError::bad_request(
-                "INVALID_AMOUNT",
-                "amount_usd must be a positive number",
-            ));
+            return Err(("INVALID_AMOUNT", "amount_usd must be a positive number"));
         }
     }
     if let Some(rate) = request.min_success_rate {
         if !(0.0..=100.0).contains(&rate) {
-            return Err(ApiError::bad_request(
+            return Err((
                 "INVALID_THRESHOLD",
                 "min_success_rate must be between 0 and 100",
             ));
         }
     }
     Ok(())
+}
+
+fn validate(request: &PreflightRequest) -> ApiResult<()> {
+    check_request(request).map_err(|(code, message)| ApiError::bad_request(code, message))
+}
+
+/// Several pre-payment checks in one request.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PreflightBatchRequest {
+    /// Payments to check, 1 to 100.
+    pub items: Vec<PreflightRequest>,
+}
+
+/// Why one item in a batch could not be evaluated.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PreflightItemError {
+    /// Same codes as the single check: `INVALID_ASSET`, `INVALID_AMOUNT`,
+    /// `INVALID_THRESHOLD`.
+    #[schema(example = "INVALID_AMOUNT")]
+    pub code: String,
+    pub message: String,
+}
+
+/// Outcome for one item, in request order. Exactly one of `result` and
+/// `error` is set.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PreflightBatchItem {
+    /// Position of the item in the request.
+    pub index: usize,
+    pub result: Option<PreflightResponse>,
+    pub error: Option<PreflightItemError>,
+}
+
+/// Batch pre-payment check result.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PreflightBatchResponse {
+    pub results: Vec<PreflightBatchItem>,
+    /// RFC 3339 timestamp shared by every item: all are scored against the
+    /// same corridor snapshot.
+    pub evaluated_at: String,
+}
+
+/// Evaluate every item of a batch against one corridor table. An invalid item
+/// is reported in place and does not fail the others. Pure, like `evaluate`.
+#[must_use]
+pub fn evaluate_batch(
+    corridors: &[CorridorResponse],
+    items: &[PreflightRequest],
+    evaluated_at: String,
+) -> PreflightBatchResponse {
+    let results = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| match check_request(item) {
+            Ok(()) => PreflightBatchItem {
+                index,
+                result: Some(evaluate(corridors, item, evaluated_at.clone())),
+                error: None,
+            },
+            Err((code, message)) => PreflightBatchItem {
+                index,
+                result: None,
+                error: Some(PreflightItemError {
+                    code: code.to_string(),
+                    message: message.to_string(),
+                }),
+            },
+        })
+        .collect();
+    PreflightBatchResponse {
+        results,
+        evaluated_at,
+    }
 }
 
 type PreflightState = (
@@ -429,6 +502,20 @@ type PreflightState = (
     Arc<PriceFeedClient>,
 );
 
+async fn load_corridors(
+    cache: &Arc<CacheManager>,
+    rpc_client: &Arc<StellarRpcClient>,
+    price_feed: &Arc<PriceFeedClient>,
+) -> ApiResult<Vec<CorridorResponse>> {
+    Ok(cached_query(
+        cache,
+        CORRIDOR_TABLE_CACHE_KEY,
+        cache.config.get_ttl("corridor"),
+        || async { compute_live_corridors(rpc_client, price_feed).await },
+    )
+    .await?)
+}
+
 async fn run(
     cache: &Arc<CacheManager>,
     rpc_client: &Arc<StellarRpcClient>,
@@ -437,13 +524,7 @@ async fn run(
 ) -> ApiResult<PreflightResponse> {
     validate(request)?;
 
-    let corridors: Vec<CorridorResponse> = cached_query(
-        cache,
-        CORRIDOR_TABLE_CACHE_KEY,
-        cache.config.get_ttl("corridor"),
-        || async { compute_live_corridors(rpc_client, price_feed).await },
-    )
-    .await?;
+    let corridors = load_corridors(cache, rpc_client, price_feed).await?;
 
     Ok(evaluate(
         &corridors,
@@ -488,6 +569,48 @@ pub async fn preflight_get(
     Query(request): Query<PreflightRequest>,
 ) -> ApiResult<Json<PreflightResponse>> {
     Ok(Json(run(&cache, &rpc_client, &price_feed, &request).await?))
+}
+
+/// Check several payments in one request (JSON body).
+///
+/// The corridor table is loaded once and every item is scored against it.
+/// Items are validated individually: a bad item comes back with an `error`
+/// and the rest are still evaluated. Only an empty or oversized batch fails
+/// the whole request.
+#[utoipa::path(
+    post,
+    path = "/api/v1/preflight/batch",
+    request_body = PreflightBatchRequest,
+    responses(
+        (status = 200, description = "One result or error per item, in request order", body = PreflightBatchResponse),
+        (status = 400, description = "Batch is empty or has more than 100 items"),
+        (status = 500, description = "Corridor data could not be loaded")
+    ),
+    tag = "Preflight"
+)]
+pub async fn preflight_batch(
+    State((_db, cache, rpc_client, price_feed)): State<PreflightState>,
+    Json(request): Json<PreflightBatchRequest>,
+) -> ApiResult<Json<PreflightBatchResponse>> {
+    if request.items.is_empty() {
+        return Err(ApiError::bad_request(
+            "EMPTY_BATCH",
+            "items must contain at least one payment",
+        ));
+    }
+    if request.items.len() > MAX_BATCH_ITEMS {
+        return Err(ApiError::bad_request(
+            "BATCH_TOO_LARGE",
+            format!("items may contain at most {MAX_BATCH_ITEMS} payments"),
+        ));
+    }
+
+    let corridors = load_corridors(&cache, &rpc_client, &price_feed).await?;
+    Ok(Json(evaluate_batch(
+        &corridors,
+        &request.items,
+        chrono::Utc::now().to_rfc3339(),
+    )))
 }
 
 #[cfg(test)]

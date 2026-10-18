@@ -1,6 +1,10 @@
 /**
  * API Client for PayRaider
  * Handles all API calls to the backend
+ *
+ * This module is the single canonical HTTP client for the frontend. All
+ * feature `*-api.ts` modules and `lib/api-client.ts` delegate here so auth
+ * header injection and error normalization stay consistent.
  */
 import { monitoring } from "../monitoring";
 import { logger } from "@/lib/logger";
@@ -29,9 +33,23 @@ export class ApiError extends Error {
 }
 
 /**
- * Shared fetch wrapper with consistent error handling and types
+ * Resolve the auth token used for outgoing requests. Kept in one place so
+ * every caller (feature modules, `lib/api-client.ts`) sends the same header.
  */
-async function fetchApi<T>(
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem("auth_token");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Shared fetch wrapper with consistent auth, error handling and types.
+ * This is the single low-level request path for the whole frontend.
+ */
+export async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -39,9 +57,11 @@ async function fetchApi<T>(
     ? endpoint
     : `${API_BASE_URL}${endpoint}`;
 
-  const headers = {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers as Record<string, string> | undefined),
   };
 
   try {

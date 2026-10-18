@@ -18,6 +18,20 @@
  *  - Exposes the full `AuthTokens`-aware helpers previously in this file
  *    (`loadStoredAuth`, `storeAuthTokens`, `clearAuthTokens`,
  *    `refreshAuthTokens`).
+ *
+ * ## Threat model (issue #2628)
+ * **Attacker:** an app on the same physical device (or an automated script
+ * running as the same user on a rooted/jailbroken device) that can enumerate
+ * AsyncStorage or read unprotected file-system paths.
+ * **Before:** on a compromised device AsyncStorage is readable without root;
+ * expo-secure-store on Android before API 23 fell back to SharedPreferences
+ * (cleartext).
+ * **After:** react-native-keychain uses Android Keystore / iOS Keychain
+ * Services, hardware-backed on modern devices, under a service namespace
+ * (`com.payraider.auth.tokens`) isolated from every other keychain entry.
+ *
+ * IMPORTANT: Never log the token value or Stellar secret seeds (S...) here or
+ * in any caller.  Only log opaque, non-sensitive status strings.
  */
 
 import * as Keychain from 'react-native-keychain';
@@ -25,6 +39,7 @@ import { STORAGE_KEYS } from '@config/constants';
 import { useAuthStore } from '@store/authStore';
 import { AuthTokens, User } from '@app-types/index';
 import { storage } from './storage';
+import { logger } from '@utils/logger';
 
 // ---------------------------------------------------------------------------
 // Internal constants
@@ -104,7 +119,7 @@ export async function loadStoredAuth(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Failed to load stored auth:', error);
+    logger.error('[Auth]', 'Failed to load stored auth:', error);
   } finally {
     useAuthStore.getState().setLoading(false);
   }
@@ -121,6 +136,13 @@ export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
   };
   await _keychainSet(payload);
   useAuthStore.getState().setTokens(tokens);
+
+  try {
+    const { registerDeviceTokenWithBackend } = await import('./notifications');
+    await registerDeviceTokenWithBackend();
+  } catch (error) {
+    logger.warn('[Auth]', 'Failed to register device token after storing auth tokens:', error);
+  }
 }
 
 /**
@@ -128,6 +150,13 @@ export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
  * Called on logout.
  */
 export async function clearAuthTokens(): Promise<void> {
+  try {
+    const { deregisterDeviceTokenFromBackend } = await import('./notifications');
+    await deregisterDeviceTokenFromBackend();
+  } catch (error) {
+    logger.warn('[Auth]', 'Failed to deregister device token on logout:', error);
+  }
+
   await _keychainDelete();
   storage.delete(STORAGE_KEYS.USER_DATA);
   useAuthStore.getState().logout();
@@ -143,8 +172,10 @@ export async function refreshAuthTokens(): Promise<AuthTokens | null> {
   if (!tokens?.refreshToken) return null;
 
   try {
-    // Import lazily to avoid circular dependency (api.ts → auth.ts → api.ts).
-    const { apiClient } = await import('./api');
+    // Required lazily to avoid a circular dependency (api.ts → auth.ts → api.ts).
+    // `require` rather than `await import()` so it also resolves under Jest,
+    // which cannot run dynamic imports without --experimental-vm-modules.
+    const { apiClient } = require('./api') as typeof import('./api');
     const newTokens = await apiClient.post<AuthTokens>('/auth/refresh', {
       refreshToken: tokens.refreshToken,
     });
@@ -152,7 +183,7 @@ export async function refreshAuthTokens(): Promise<AuthTokens | null> {
     await storeAuthTokens(newTokens);
     return newTokens;
   } catch (error) {
-    console.error('Failed to refresh tokens:', error);
+    logger.error('[Auth]', 'Failed to refresh tokens:', error);
     return null;
   }
 }

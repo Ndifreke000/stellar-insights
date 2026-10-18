@@ -17,7 +17,7 @@ use crate::services::price_feed::PriceFeedClient;
 use crate::state::AppState;
 use axum::{
     middleware,
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Serialize;
@@ -129,11 +129,19 @@ pub fn routes(
             "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
+        .route(
+            "/corridors/{corridor_key}/failures",
+            get(corridors::get_corridor_failures),
+        )
         // Pre-payment check for off-ramps: public and read-only so an
         // integrator can try it before taking an API key.
         .route(
             "/preflight",
             get(crate::api::preflight::preflight_get).post(crate::api::preflight::preflight_post),
+        )
+        .route(
+            "/preflight/batch",
+            post(crate::api::preflight::preflight_batch),
         )
         .with_state(cached_state);
 
@@ -241,6 +249,10 @@ pub fn routes(
             "/corridor-alerts",
             crate::api::corridor_alerts::routes(app_state.clone()),
         )
+        .nest(
+            "/notifications",
+            crate::api::device_tokens::routes(pool.clone()),
+        )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // Replay control (start/list/inspect/delete replay sessions, cleanup
@@ -283,6 +295,11 @@ pub fn routes(
             get(crate::api::network::get_available_networks),
         )
         .merge(achievements_routes)
+        // Public snapshot integrity checks (#2597): read-only, no auth.
+        .nest(
+            "/snapshots",
+            crate::api::snapshots::verify_routes(pool.clone()),
+        )
         .nest(
             "/assets",
             crate::api::asset_verification::routes(pool.clone()),

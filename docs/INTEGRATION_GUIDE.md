@@ -326,3 +326,6 @@ is safe.
 - [PLUGIN.md](PLUGIN.md) — MCP server, Claude plugin, and USDC billing
 - [OpenAPI spec](openapi.json) — machine-readable schema; also served live at
   `/api-docs` on a running backend
+- [Snapshot anchoring](SNAPSHOT_ANCHORING.md) — verify that published
+  metrics match the hash anchored on Stellar
+  (`GET /api/v1/snapshots/{id}/verify`)

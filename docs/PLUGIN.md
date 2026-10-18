@@ -83,6 +83,32 @@ range) returns `400`.
 Any `fail` gives `hold`. Otherwise any `warn` gives `caution`. Otherwise
 `proceed`.
 
+### Batch
+
+`POST /api/v1/preflight/batch` checks up to 100 payments in one request. Every
+item takes the same fields as the single check and is scored against the same
+corridor snapshot:
+
+```bash
+curl -s -X POST "$PAYRAIDER_BASE_URL/api/v1/preflight/batch" \
+  -H 'content-type: application/json' \
+  -d '{"items":[{"source_asset":"USDC","destination_asset":"NGN","amount_usd":2500},{"source_asset":"USDC","destination_asset":"NGN","amount_usd":-1}]}'
+```
+
+```json
+{
+  "results": [
+    { "index": 0, "result": { "decision": "proceed", "...": "..." }, "error": null },
+    { "index": 1, "result": null, "error": { "code": "INVALID_AMOUNT", "message": "amount_usd must be a positive number" } }
+  ],
+  "evaluated_at": "2026-01-01T00:00:00+00:00"
+}
+```
+
+`results` is in request order and has one entry per item; exactly one of
+`result` and `error` is set. An invalid item does not fail the batch. An empty
+`items` (`EMPTY_BATCH`) or more than 100 (`BATCH_TOO_LARGE`) returns `400`.
+
 ## 2. SDK
 
 TypeScript ([`sdk/typescript`](../sdk/typescript)):
@@ -119,8 +145,10 @@ async with PayRaider(base_url=os.environ["PAYRAIDER_BASE_URL"]) as client:
 ## 3. MCP server (for AI agents and hosted use)
 
 [`sdk/mcp-server`](../sdk/mcp-server) exposes the check as the
-`preflight_payment` tool, alongside read-only corridor, anchor, price and
-asset-verification tools. It runs over stdio for a local client, or over
+`preflight_payment` tool (and `preflight_batch` for up to 100 payouts at
+once), alongside read-only corridor, anchor, price and asset-verification
+tools. Both preflight tools return `structuredContent` with the decision and
+reason codes. It runs over stdio for a local client, or over
 streamable HTTP as a hosted service that several apps can share:
 
 ```bash
@@ -145,6 +173,10 @@ Clients connect to `POST https://your-host/mcp` with
 
 Then `/preflight USDC NGN 2500`, or ask in plain language. See the
 [plugin README](../plugins/payraider/README.md).
+
+The marketplace entry installs from the `plugin-dist` branch, which CI builds
+from `sdk/mcp-server` on every push to `main`. The bundled server is not
+committed to `main`.
 
 ## Getting an API key
 

@@ -9,10 +9,17 @@ import { Button } from '@/components/ui/button';
 /**
  * Example: Full PWA Integration
  * Demonstrates all PWA features in a single component
+ *
+ * Demo-only: gated behind NEXT_PUBLIC_ENABLE_DEMOS so it is not
+ * shipped in production builds.
  */
 export function PWAExample() {
   const [showAllFeatures, setShowAllFeatures] = useState(false);
   const { state, capabilities, updateAvailable } = useProgressiveWebApp();
+
+  if (process.env.NEXT_PUBLIC_ENABLE_DEMOS !== 'true') {
+    return null;
+  }
 
   return (
     <div className="space-y-6 p-6">

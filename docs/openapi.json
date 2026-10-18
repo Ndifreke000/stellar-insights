@@ -8428,6 +8428,14 @@
           }
         }
       },
+      "SortBy": {
+        "type": "string",
+        "enum": [
+          "success_rate",
+          "volume",
+          "health_score"
+        ]
+      },
       "StatusStat": {
         "type": "object",
         "required": [

@@ -63,6 +63,7 @@ impl Modify for SecurityAddon {
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
+        crate::api::corridors::get_corridor_failures,
         crate::api::corridors::create_corridor,
         crate::api::corridors::update_corridor_metrics_from_transactions,
         // Export
@@ -89,6 +90,7 @@ impl Modify for SecurityAddon {
         crate::api::billing::confirm_invoice,
         crate::api::billing::get_subscription,
         crate::api::preflight::preflight_post,
+        crate::api::preflight::preflight_batch,
         // Alerts
         crate::api::alerts::list_rules,
         crate::api::alerts::create_rule,
@@ -219,6 +221,8 @@ impl Modify for SecurityAddon {
         // Snapshots
         crate::api::snapshots::generate_snapshot,
         crate::api::snapshots::contract_health_check,
+        crate::api::snapshots::get_snapshot_data,
+        crate::api::snapshots::verify_snapshot,
     ),
     components(
         schemas(
@@ -236,7 +240,13 @@ impl Modify for SecurityAddon {
             crate::api::preflight::PreflightCheck,
             crate::api::preflight::PreflightDecision,
             crate::api::preflight::CheckStatus,
+            crate::api::preflight::PreflightBatchRequest,
+            crate::api::preflight::PreflightBatchResponse,
+            crate::api::preflight::PreflightBatchItem,
+            crate::api::preflight::PreflightItemError,
             crate::api::corridors::CorridorDetailResponse,
+            crate::api::corridors::CorridorFailedPayment,
+            crate::api::corridors::PaginatedCorridorFailures,
             crate::api::corridors::SuccessRateDataPoint,
             crate::api::corridors::LatencyDataPoint,
             crate::api::corridors::LiquidityDataPoint,
@@ -253,11 +263,16 @@ impl Modify for SecurityAddon {
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::snapshot::verify::VerificationReport,
+            crate::snapshot::verify::VerificationStatus,
+            crate::snapshot::verify::VerificationChecks,
+            crate::snapshot::verify::OnChainRecord,
             crate::api::anchors::UpdateMetricsRequest,
             crate::api::anchors::CreateAssetRequest,
             crate::api::corridors::UpdateCorridorMetricsFromTxns,
             crate::api::corridors::CorridorPaymentDto,
             crate::models::Anchor,
+            crate::models::SortBy,
             crate::models::Asset,
             crate::models::CreateAnchorRequest,
             crate::models::CreateCorridorRequest,

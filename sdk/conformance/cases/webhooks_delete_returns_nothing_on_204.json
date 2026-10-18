@@ -1,0 +1,21 @@
+{
+  "name": "webhooks_delete_returns_nothing_on_204",
+  "description": "A 204 No Content response yields no result (null / None).",
+  "operation": "webhooks.delete",
+  "input": {
+    "id": "wh_1"
+  },
+  "request": {
+    "method": "DELETE",
+    "path": "/api/webhooks/wh_1",
+    "query": {},
+    "body": null
+  },
+  "response": {
+    "status": 204,
+    "body": null
+  },
+  "expect": {
+    "result": null
+  }
+}

@@ -3,6 +3,7 @@ import { createClient } from "./client.js";
 import type { ServerConfig } from "./config.js";
 import { registerResources } from "./resources.js";
 import type { PayRaiderClient } from "./sdk-types.js";
+import { presentDefault } from "./structured.js";
 import { READ_ONLY_TOOLS, type ToolDef } from "./tools.js";
 import { VERSION } from "./version.js";
 
@@ -53,12 +54,25 @@ export function buildServer(
         title: tool.name,
         description: tool.description,
         inputSchema: tool.schema,
+        ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
       async (args) => {
         try {
-          const result = await tool.call(client, args as Record<string, unknown>);
-          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+          const input = args as Record<string, unknown>;
+          const result = await tool.call(client, input);
+          if (!tool.present) {
+            return {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+              structuredContent: presentDefault(result).structured,
+            };
+          }
+          // The JSON block stays first so clients that ignore
+          // structuredContent and parse content[0] keep working.
+          const { structured, summary } = tool.present(result, input);
+          const content = [{ type: "text" as const, text: JSON.stringify(structured, null, 2) }];
+          if (summary) content.push({ type: "text", text: summary });
+          return { content, structuredContent: structured };
         } catch (err) {
           return {
             content: [{ type: "text", text: describeError(err, tool, hasApiKey) }],

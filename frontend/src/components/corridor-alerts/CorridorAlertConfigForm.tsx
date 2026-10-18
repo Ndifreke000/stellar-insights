@@ -26,6 +26,9 @@ import { logger } from "@/lib/logger";
 const configSchema = z.object({
   name: z.string().min(1, "Name is required").max(128),
   corridor_key: z.string().max(256).optional(),
+  alert_on_status_change: z.boolean().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  webhook_url: z.string().url("Invalid webhook URL").optional().or(z.literal("")),
   success_rate_threshold: z.number().min(0).max(1).optional(),
   latency_threshold_ms: z.number().min(0).optional(),
   liquidity_threshold_usd: z.number().min(0).optional(),
@@ -66,6 +69,9 @@ export function CorridorAlertConfigForm({
     defaultValues: {
       name: existingConfig?.name ?? "",
       corridor_key: existingConfig?.corridor_key ?? "",
+      alert_on_status_change: existingConfig?.alert_on_status_change ?? true,
+      email: existingConfig?.email ?? "",
+      webhook_url: existingConfig?.webhook_url ?? "",
       success_rate_threshold: existingConfig?.success_rate_threshold ?? undefined,
       latency_threshold_ms: existingConfig?.latency_threshold_ms ?? undefined,
       liquidity_threshold_usd: existingConfig?.liquidity_threshold_usd ?? undefined,
@@ -86,6 +92,7 @@ export function CorridorAlertConfigForm({
   const notifyInApp = watch("notify_in_app");
   const notifySlack = watch("notify_slack");
   const notifyTelegram = watch("notify_telegram");
+  const alertOnStatusChange = watch("alert_on_status_change");
 
   const onSubmit = async (data: ConfigFormData) => {
     setSaving(true);
@@ -93,6 +100,9 @@ export function CorridorAlertConfigForm({
       const payload: CreateCorridorAlertConfigRequest = {
         name: data.name,
         corridor_key: data.corridor_key || undefined,
+        alert_on_status_change: data.alert_on_status_change,
+        email: data.email || undefined,
+        webhook_url: data.webhook_url || undefined,
         success_rate_threshold: data.success_rate_threshold,
         latency_threshold_ms: data.latency_threshold_ms,
         liquidity_threshold_usd: data.liquidity_threshold_usd,
@@ -227,7 +237,26 @@ export function CorridorAlertConfigForm({
           </div>
 
           <div className="border-t pt-4">
-            <h4 className="text-sm font-medium mb-3">Notification Channels</h4>
+            <h4 className="text-sm font-medium mb-3">Status Change Monitoring</h4>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="alert_on_status_change" className="text-sm font-medium">
+                  Alert on Corridor Status Transitions
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Trigger notifications when this corridor transitions between Healthy, Degraded, or Critical states.
+                </p>
+              </div>
+              <Switch
+                id="alert_on_status_change"
+                checked={alertOnStatusChange}
+                onCheckedChange={(v) => setValue("alert_on_status_change", v)}
+              />
+            </div>
+          </div>
+
+          <div className="border-t pt-4 space-y-4">
+            <h4 className="text-sm font-medium">Notification Channels</h4>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 { key: "notify_in_app" as const, label: "In-App", value: notifyInApp },
@@ -238,13 +267,44 @@ export function CorridorAlertConfigForm({
               ].map((ch) => (
                 <div key={ch.key} className="flex items-center space-x-2">
                   <Switch
+                    id={ch.key}
                     checked={ch.value}
                     onCheckedChange={(v) => setValue(ch.key, v)}
                   />
-                  <Label className="text-sm">{ch.label}</Label>
+                  <Label htmlFor={ch.key} className="text-sm cursor-pointer">{ch.label}</Label>
                 </div>
               ))}
             </div>
+
+            {notifyEmail && (
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="email">Delivery Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="alerts@company.com"
+                  {...register("email")}
+                />
+                {errors.email && (
+                  <p className="text-sm text-red-500">{errors.email.message}</p>
+                )}
+              </div>
+            )}
+
+            {notifyWebhook && (
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="webhook_url">Delivery Webhook URL</Label>
+                <Input
+                  id="webhook_url"
+                  type="url"
+                  placeholder="https://api.yourdomain.com/webhooks/corridor-status"
+                  {...register("webhook_url")}
+                />
+                {errors.webhook_url && (
+                  <p className="text-sm text-red-500">{errors.webhook_url.message}</p>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2">

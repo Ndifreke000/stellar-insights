@@ -50,6 +50,23 @@ struct ProcessLedgersOutcome {
     stopped_early: bool,
 }
 
+/// Result of comparing the persisted cursor against the network head on
+/// startup. Used to detect gaps after downtime (#2602).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GapCheck {
+    /// Last ledger we have persisted (the resumable cursor), if any.
+    pub last_ledger: Option<u64>,
+    /// Current network head ledger reported by RPC health.
+    pub head_ledger: u64,
+    /// Oldest ledger still retrievable from RPC/Horizon retention.
+    pub oldest_ledger: u64,
+    /// Number of ledgers missing between `last_ledger` and `head_ledger`.
+    pub gap: u64,
+    /// `true` when the gap can be backfilled within retention; `false` when
+    /// the missing ledgers have aged out and cannot be recovered.
+    pub backfillable: bool,
+}
+
 /// Represents a payment operation extracted from a ledger
 #[derive(Debug, Clone)]
 pub struct ExtractedPayment {
@@ -116,6 +133,52 @@ impl LedgerIngestionService {
         self
     }
 
+    /// Compare the persisted last ledger against the network head and report
+    /// whether the gap (if any) can be backfilled within RPC/Horizon
+    /// retention (#2602).
+    ///
+    /// This is a pure read: it does not advance the cursor. `run_ingestion`
+    /// uses the same information to decide where to resume, and callers can
+    /// invoke this on startup to log/alert on gaps after downtime.
+    pub async fn check_gap(&self) -> Result<GapCheck> {
+        let last_ledger = self.get_last_ledger().await?;
+
+        let client = &self.rpc_client;
+        let health = Retry::spawn(retry_strategy(), || async {
+            client
+                .check_health()
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await
+        .context("Failed to check health")?;
+
+        let head_ledger = health.latest_ledger;
+        let oldest_ledger = health.oldest_ledger;
+
+        let gap = match last_ledger {
+            Some(last) if head_ledger > last => head_ledger - last,
+            _ => 0,
+        };
+
+        // A gap is backfillable when the first missing ledger (last + 1) is
+        // still within retention, i.e. at or after the oldest retrievable
+        // ledger. If the missing ledgers have aged out, we cannot recover
+        // them and must alert instead.
+        let backfillable = match last_ledger {
+            Some(last) => last.saturating_add(1) >= oldest_ledger,
+            None => true,
+        };
+
+        Ok(GapCheck {
+            last_ledger,
+            head_ledger,
+            oldest_ledger,
+            gap,
+            backfillable,
+        })
+    }
+
     /// I'm running the main ingestion loop - fetches ledgers and persists them
     pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
         let cursor = self.get_cursor().await?;
@@ -133,6 +196,48 @@ impl LedgerIngestionService {
             .context("Failed to check health")?;
             Some(health.oldest_ledger)
         };
+
+        // Gap detection after downtime (#2602): compare the persisted cursor
+        // with the network head. If the gap is within retention we backfill
+        // automatically (the fetch below resumes from `last + 1`); if it has
+        // aged out we cannot recover it and emit an alert instead.
+        if let Some(last) = self.get_last_ledger().await? {
+            let client = &self.rpc_client;
+            if let Ok(health) = Retry::spawn(retry_strategy(), || async {
+                client
+                    .check_health()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+            })
+            .await
+            {
+                let head = health.latest_ledger;
+                let oldest = health.oldest_ledger;
+                if head > last {
+                    let gap = head - last;
+                    if last.saturating_add(1) >= oldest {
+                        info!(
+                            "Detected backfillable gap of {} ledger(s) after downtime \
+                             (last={}, head={}, oldest={}); resuming from {}",
+                            gap,
+                            last,
+                            head,
+                            oldest,
+                            last + 1
+                        );
+                    } else {
+                        warn!(
+                            "ALERT: ledger gap of {} ledger(s) exceeds RPC/Horizon retention \
+                             (last={}, head={}, oldest={}); missing ledgers cannot be backfilled",
+                            gap,
+                            last,
+                            head,
+                            oldest
+                        );
+                    }
+                }
+            }
+        }
 
         info!(
             "Starting ingestion from ledger {:?}, cursor: {:?}",
@@ -207,253 +312,4 @@ impl LedgerIngestionService {
                     .await
                     .map_err(|e| anyhow::anyhow!("{e}"))
             })
-            .await
-            {
-                Ok(payments) => {
-                    for payment in payments {
-                        // Convert RPC Payment to ExtractedPayment
-                        // Uses helper methods to support both old and new Horizon formats
-                        let extracted = ExtractedPayment {
-                            ledger_sequence: ledger.sequence,
-                            transaction_hash: payment.transaction_hash.clone(),
-                            operation_type: "payment".to_string(), // Horizon 'payments' endpoint returns payments
-                            source_account: payment.source_account.clone(),
-                            destination: payment.get_destination().unwrap_or_default(),
-                            asset_code: payment.get_asset_code(),
-                            asset_issuer: payment.get_asset_issuer(),
-                            amount: payment.get_amount(),
-                        };
-
-                        if let Err(e) = self.persist_payment(&extracted).await {
-                            warn!("Failed to persist payment: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to fetch payments for ledger {}: {}",
-                        ledger.sequence, e
-                    );
-                    // Non-fatal, continue ingesting ledgers
-                }
-            }
-
-            // Fetch and process transactions for fee bumps
-            match Retry::spawn(retry_strategy(), || async {
-                client
-                    .fetch_transactions_for_ledger(seq)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))
-            })
-            .await
-            {
-                Ok(transactions) => {
-                    if let Err(e) = self
-                        .fee_bump_tracker
-                        .process_transactions(&transactions)
-                        .await
-                    {
-                        warn!("Failed to process transactions for fee bumps: {}", e);
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to fetch transactions for ledger {}: {}",
-                        ledger.sequence, e
-                    );
-                }
-            }
-
-            if let Err(e) = self
-                .account_merge_detector
-                .process_ledger_operations(ledger.sequence)
-                .await
-            {
-                warn!(
-                    "Failed to process account merge operations for ledger {}: {}",
-                    ledger.sequence, e
-                );
-            }
-
-            count += 1;
-        }
-
-        info!("Processed {} ledgers", count);
-        Ok(ProcessLedgersOutcome {
-            processed: count,
-            stopped_early: false,
-        })
-    }
-
-    /// I'm persisting a single ledger to the database
-    async fn persist_ledger(&self, ledger: &RpcLedger) -> Result<()> {
-        let close_time = self.parse_ledger_time(&ledger.ledger_close_time)?;
-
-        let network = self.network.to_string();
-
-        sqlx::query(
-            r"
-            INSERT INTO ledgers (sequence, hash, close_time, transaction_count, operation_count, network)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (sequence) DO NOTHING
-            ",
-        )
-        .bind(ledger.sequence as i64)
-        .bind(&ledger.hash)
-        .bind(close_time)
-        .bind(0i32) // I'd get real counts from XDR parsing
-        .bind(0i32)
-        .bind(&network)
-        .execute(&self.pool)
-        .await?;
-
-        // I'm also storing a placeholder transaction for the ledger.
-        // Note: `tx_hash` is derived only from the ledger sequence, so this
-        // placeholder collides across networks at the same sequence number
-        // just like `ledgers.sequence` does (see migration 048's note on
-        // natural-key primary keys) — tagging it with `network` at least
-        // lets reads filter correctly once ingestion no longer no-ops here.
-        let tx_hash = format!("tx_{}", ledger.sequence);
-        sqlx::query(
-            r"
-            INSERT INTO transactions (hash, ledger_sequence, source_account, fee, operation_count, successful, network)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (hash) DO NOTHING
-            ",
-        )
-        .bind(&tx_hash)
-        .bind(ledger.sequence as i64)
-        .bind("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")
-        .bind(100i64)
-        .bind(1i32)
-        .bind(true)
-        .bind(&network)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// I'm persisting an extracted payment to the database.
-    ///
-    /// Payments to/from a muxed (M-...) address are resolved to their base
-    /// G-address here via `crate::muxed`, so corridor/anchor attribution can
-    /// key off the underlying account rather than the muxed sub-account
-    /// (which would never match an anchor's known G-address).
-    async fn persist_payment(&self, payment: &ExtractedPayment) -> Result<()> {
-        let source_base_account = crate::muxed::parse_muxed_address(&payment.source_account)
-            .and_then(|info| info.base_account);
-        let destination_base_account = crate::muxed::parse_muxed_address(&payment.destination)
-            .and_then(|info| info.base_account);
-
-        sqlx::query(
-            r"
-            INSERT INTO ledger_payments (ledger_sequence, transaction_hash, operation_type, source_account, destination, asset_code, asset_issuer, amount, network, source_base_account, destination_base_account)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ",
-        )
-        .bind(payment.ledger_sequence as i64)
-        .bind(&payment.transaction_hash)
-        .bind(&payment.operation_type)
-        .bind(&payment.source_account)
-        .bind(&payment.destination)
-        .bind(&payment.asset_code)
-        .bind(&payment.asset_issuer)
-        .bind(&payment.amount)
-        .bind(self.network.to_string())
-        .bind(&source_base_account)
-        .bind(&destination_base_account)
-        .execute(&self.pool)
-        .await?;
-
-        // Trigger webhook event for payment creation
-        if let Some(webhook_service) = &self.webhook_event_service {
-            if payment.operation_type == "payment" {
-                let asset_code = payment.asset_code.as_deref().unwrap_or("XLM");
-                let asset_issuer = payment.asset_issuer.as_deref().unwrap_or("native");
-                let amount = payment.amount.parse::<f64>().unwrap_or(0.0);
-
-                let webhook_service = webhook_service.clone();
-                let payment_id =
-                    format!("{}-{}", payment.transaction_hash, payment.ledger_sequence);
-                let source = payment.source_account.clone();
-                let destination = payment.destination.clone();
-                let asset_code = asset_code.to_string();
-                let asset_issuer = asset_issuer.to_string();
-                let timestamp = Utc::now().to_rfc3339();
-
-                tokio::spawn(async move {
-                    if let Err(e) = webhook_service
-                        .trigger_payment_created(
-                            &payment_id,
-                            &source,
-                            &destination,
-                            &asset_code,
-                            &asset_issuer,
-                            amount,
-                            &timestamp,
-                        )
-                        .await
-                    {
-                        tracing::error!("Failed to trigger payment created webhook: {}", e);
-                    }
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    /// I'm getting the last ingested ledger sequence for resume, scoped to
-    /// this service's network so mainnet and testnet ingestion each resume
-    /// from their own position instead of sharing (and clobbering) one
-    /// cursor row.
-    async fn get_last_ledger(&self) -> Result<Option<u64>> {
-        let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT last_ledger_sequence FROM ingestion_cursor WHERE network = $1",
-        )
-        .bind(self.network.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.map(|r| r.0 as u64))
-    }
-
-    /// I'm getting the saved cursor for pagination, scoped to this network.
-    async fn get_cursor(&self) -> Result<Option<String>> {
-        let row: Option<(Option<String>,)> =
-            sqlx::query_as("SELECT cursor FROM ingestion_cursor WHERE network = $1")
-                .bind(self.network.to_string())
-                .fetch_optional(&self.pool)
-                .await?;
-        Ok(row.and_then(|r| r.0))
-    }
-
-    /// I'm saving cursor and last ledger for restart safety, upserting the
-    /// row for this service's network (unique index on `network` from
-    /// migration 048) rather than the single hardcoded `id = 1` row.
-    async fn save_cursor(&self, cursor: &str, last_ledger: Option<u64>) -> Result<()> {
-        let seq = last_ledger.unwrap_or(0) as i64;
-        sqlx::query(
-            r"
-            INSERT INTO ingestion_cursor (last_ledger_sequence, cursor, network, updated_at)
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-            ON CONFLICT (network) DO UPDATE SET
-                last_ledger_sequence = EXCLUDED.last_ledger_sequence,
-                cursor = EXCLUDED.cursor,
-                updated_at = CURRENT_TIMESTAMP
-            ",
-        )
-        .bind(seq)
-        .bind(cursor)
-        .bind(self.network.to_string())
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    fn parse_ledger_time(&self, timestamp_str: &str) -> Result<DateTime<Utc>> {
-        // I'm parsing unix timestamp string to DateTime
-        let ts: i64 = timestamp_str.parse().unwrap_or(0);
-        Ok(Utc.timestamp_opt(ts, 0).single().unwrap_or_else(Utc::now))
-    }
-}
+            .awa

@@ -18,6 +18,9 @@ pub struct PriceFeedConfig {
     pub cache_ttl_seconds: u64,
     /// Request timeout in seconds
     pub request_timeout_seconds: u64,
+    /// Maximum age (seconds) a price may have before it is considered stale
+    /// and treated as unknown for USD conversions (default: 3600 = 1 hour)
+    pub max_staleness_seconds: u64,
 }
 
 impl Default for PriceFeedConfig {
@@ -27,6 +30,7 @@ impl Default for PriceFeedConfig {
             api_key: None,
             cache_ttl_seconds: 900, // 15 minutes
             request_timeout_seconds: 10,
+            max_staleness_seconds: 3600, // 1 hour
         }
     }
 }
@@ -46,6 +50,10 @@ impl PriceFeedConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10),
+            max_staleness_seconds: std::env::var("PRICE_FEED_MAX_STALENESS_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3600),
         }
     }
 }
@@ -170,9 +178,36 @@ impl PriceFeedProvider for CoinGeckoProvider {
     }
 }
 
+/// Compute the median of a set of price samples.
+///
+/// Returns `None` when no valid (finite, positive) samples are provided.
+/// For an even number of samples the mean of the two middle values is used.
+#[must_use]
+pub fn median_price(samples: &[f64]) -> Option<f64> {
+    let mut valid: Vec<f64> = samples
+        .iter()
+        .copied()
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .collect();
+
+    if valid.is_empty() {
+        return None;
+    }
+
+    valid.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = valid.len() / 2;
+    if valid.len() % 2 == 0 {
+        Some((valid[mid - 1] + valid[mid]) / 2.0)
+    } else {
+        Some(valid[mid])
+    }
+}
+
 /// Main price feed client with caching
 pub struct PriceFeedClient {
     provider: Arc<dyn PriceFeedProvider>,
+    /// Optional secondary provider used to cross-check / aggregate prices.
+    secondary_provider: Option<Arc<dyn PriceFeedProvider>>,
     cache: Arc<RwLock<HashMap<String, CachedPrice>>>,
     asset_mapping: Arc<HashMap<String, String>>,
     config: PriceFeedConfig,
@@ -200,13 +235,33 @@ impl PriceFeedClient {
 
         Self {
             provider,
+            secondary_provider: None,
             cache: Arc::new(RwLock::new(HashMap::new())),
             asset_mapping: Arc::new(asset_mapping),
             config,
         }
     }
 
-    /// Get price for a Stellar asset, returns USD value
+    /// Attach a secondary provider so prices are aggregated via the median of
+    /// both sources. This makes single-source distortions less likely.
+    #[must_use]
+    pub fn with_secondary_provider(mut self, provider: Arc<dyn PriceFeedProvider>) -> Self {
+        self.secondary_provider = Some(provider);
+        self
+    }
+
+    /// Returns true when the cached entry is older than the configured
+    /// staleness threshold and must be treated as unknown.
+    fn is_stale(&self, cached: &CachedPrice) -> bool {
+        cached.timestamp.elapsed().as_secs() >= self.config.max_staleness_seconds
+    }
+
+    /// Get price for a Stellar asset, returns USD value.
+    ///
+    /// Prices are aggregated across the configured providers using the median.
+    /// If the only available price is stale (older than
+    /// `max_staleness_seconds`), an error is returned so callers can treat the
+    /// USD conversion as unknown.
     pub async fn get_price(&self, stellar_asset: &str) -> Result<f64> {
         // Check cache first
         {
@@ -214,6 +269,14 @@ impl PriceFeedClient {
             if let Some(cached) = cache.get(stellar_asset) {
                 let age = cached.timestamp.elapsed();
                 if age.as_secs() < self.config.cache_ttl_seconds {
+                    if self.is_stale(cached) {
+                        warn!(
+                            "Cached price for {} is stale (age {}s), treating as unknown",
+                            stellar_asset,
+                            age.as_secs()
+                        );
+                        anyhow::bail!("Price for {stellar_asset} is stale");
+                    }
                     debug!("Cache hit for {}: ${}", stellar_asset, cached.price_usd);
                     return Ok(cached.price_usd);
                 }
@@ -226,154 +289,33 @@ impl PriceFeedClient {
             .get(stellar_asset)
             .ok_or_else(|| anyhow::anyhow!("No mapping found for asset: {stellar_asset}"))?;
 
-        // Fetch from provider
+        // Fetch from primary provider
         debug!("Fetching price for {} ({})", stellar_asset, asset_id);
+        let mut samples: Vec<f64> = Vec::new();
         match self.provider.fetch_price(asset_id).await {
-            Ok(price) => {
-                // Update cache
-                let mut cache = self.cache.write().await;
-                cache.insert(
-                    stellar_asset.to_string(),
-                    CachedPrice {
-                        price_usd: price,
-                        timestamp: Instant::now(),
-                    },
-                );
-                info!("Fetched price for {}: ${}", stellar_asset, price);
-                Ok(price)
-            }
+            Ok(price) => samples.push(price),
             Err(e) => {
                 error!("Failed to fetch price for {}: {}", stellar_asset, e);
+            }
+        }
 
-                // Try to return stale cache data as fallback
-                let cache = self.cache.read().await;
-                if let Some(cached) = cache.get(stellar_asset) {
+        // Fetch from secondary provider (if configured) for median aggregation
+        if let Some(secondary) = &self.secondary_provider {
+            match secondary.fetch_price(asset_id).await {
+                Ok(price) => samples.push(price),
+                Err(e) => {
                     warn!(
-                        "Using stale cache data for {} (age: {:?})",
+                        "Secondary provider {} failed for {}: {}",
+                        secondary.name(),
                         stellar_asset,
-                        cached.timestamp.elapsed()
+                        e
                     );
-                    return Ok(cached.price_usd);
-                }
-
-                Err(e)
-            }
-        }
-    }
-
-    /// Get prices for multiple Stellar assets
-    pub async fn get_prices(&self, stellar_assets: &[String]) -> HashMap<String, f64> {
-        let mut result = HashMap::new();
-        let mut to_fetch = Vec::new();
-
-        // Check cache for each asset
-        {
-            let cache = self.cache.read().await;
-            for asset in stellar_assets {
-                if let Some(cached) = cache.get(asset) {
-                    let age = cached.timestamp.elapsed();
-                    if age.as_secs() < self.config.cache_ttl_seconds {
-                        result.insert(asset.clone(), cached.price_usd);
-                        continue;
-                    }
-                }
-                to_fetch.push(asset.clone());
-            }
-        }
-
-        if to_fetch.is_empty() {
-            return result;
-        }
-
-        // Map to provider asset IDs, keeping only assets that have a mapping
-        let mapped: Vec<(String, String)> = to_fetch
-            .iter()
-            .filter_map(|asset| {
-                self.asset_mapping
-                    .get(asset)
-                    .map(|id| (asset.clone(), id.clone()))
-            })
-            .collect();
-
-        if mapped.is_empty() {
-            return result;
-        }
-
-        // Deduplicate provider IDs so one HTTP batch does not repeat the same CoinGecko id.
-        let mut seen_ids = HashSet::new();
-        let provider_ids: Vec<String> = mapped
-            .iter()
-            .map(|(_, id)| id.clone())
-            .filter(|id| seen_ids.insert(id.clone()))
-            .collect();
-
-        // Fetch from provider
-        match self.provider.fetch_prices(&provider_ids).await {
-            Ok(prices) => {
-                let mut cache = self.cache.write().await;
-
-                // Map back to Stellar assets and update cache
-                for (stellar_asset, provider_id) in &mapped {
-                    if let Some(&price) = prices.get(provider_id) {
-                        cache.insert(
-                            stellar_asset.clone(),
-                            CachedPrice {
-                                price_usd: price,
-                                timestamp: Instant::now(),
-                            },
-                        );
-                        result.insert(stellar_asset.clone(), price);
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Failed to fetch prices: {}", e);
-
-                // Use stale cache as fallback
-                let cache = self.cache.read().await;
-                for asset in &to_fetch {
-                    if let Some(cached) = cache.get(asset) {
-                        warn!("Using stale cache for {}", asset);
-                        result.insert(asset.clone(), cached.price_usd);
-                    }
                 }
             }
         }
 
-        result
-    }
-
-    /// Convert an amount in a Stellar asset to USD
-    pub async fn convert_to_usd(&self, stellar_asset: &str, amount: f64) -> Result<f64> {
-        let price = self.get_price(stellar_asset).await?;
-        Ok(amount * price)
-    }
-
-    /// Get price with staleness info
-    /// Returns (price_usd, stale) where stale=true if the cached data is >15min old
-    pub async fn get_price_with_staleness(&self, stellar_asset: &str) -> Result<(f64, bool)> {
-        // Check cache first
-        {
-            let cache = self.cache.read().await;
-            if let Some(cached) = cache.get(stellar_asset) {
-                let stale = cached.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds;
-                if stale {
-                    warn!("Using stale cached price for {stellar_asset}");
-                }
-                return Ok((cached.price_usd, stale));
-            }
-        }
-
-        // Not in cache, fetch from provider
-        let provider_id = self
-            .asset_mapping
-            .get(stellar_asset)
-            .ok_or_else(|| anyhow::anyhow!("No asset mapping for {stellar_asset}"))?;
-
-        let price = self.provider.fetch_price(provider_id).await?;
-
-        // Update cache
-        {
+        if let Some(price) = median_price(&samples) {
+            // Update cache
             let mut cache = self.cache.write().await;
             cache.insert(
                 stellar_asset.to_string(),
@@ -382,38 +324,66 @@ impl PriceFeedClient {
                     timestamp: Instant::now(),
                 },
             );
+            info!("Fetched price for {}: ${}", stellar_asset, price);
+            return Ok(price);
         }
 
-        Ok((price, false))
+        // Try to return stale cache data as fallback, but only if it is not
+        // itself stale — otherwise the price is unknown.
+        let cache = self.cache.read().await;
+        if let Some(cached) = cache.get(stellar_asset) {
+            if self.is_stale(cached) {
+                warn!(
+                    "Only stale cached price available for {}, treating as unknown",
+                    stellar_asset
+                );
+                anyhow::bail!("Price for {stellar_asset} is stale");
+            }
+            warn!(
+                "Using cached price for {} after fetch failure: ${}",
+                stellar_asset,
+                cached.price_usd
+            );
+            return Ok(cached.price_usd);
+        }
+
+        anyhow::bail!("Failed to fetch price for {stellar_asset} from all providers")
     }
 
-    /// Get prices with staleness info
-    /// Returns (prices_map, stale_assets_set) where stale_assets contains assets with stale cached data
-    pub async fn get_prices_with_staleness(
-        &self,
-        assets: &[String],
-    ) -> (HashMap<String, f64>, std::collections::HashSet<String>) {
-        let result = self.get_prices(assets).await;
-        let mut stale_assets = std::collections::HashSet::new();
-
-        // Check which assets have stale cache entries
-        let cache = self.cache.read().await;
-        for asset in assets {
-            if let Some(cached) = cache.get(asset) {
-                if cached.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds {
-                    stale_assets.insert(asset.clone());
-                }
+    /// Get price for a Stellar asset, returning `None` when the price is
+    /// unknown (missing mapping, all providers failed, or stale).
+    ///
+    /// This is the preferred entry point for USD conversions in preflight so
+    /// that stale prices surface as `unknown` liquidity checks rather than
+    /// silently distorting amounts.
+    pub async fn get_price_opt(&self, stellar_asset: &str) -> Option<f64> {
+        match self.get_price(stellar_asset).await {
+            Ok(price) => Some(price),
+            Err(e) => {
+                debug!("Price unknown for {}: {}", stellar_asset, e);
+                None
             }
         }
-
-        (result, stale_assets)
     }
 
-    /// Clear the cache (useful for testing)
+    /// Get prices for multiple Stellar assets, returning USD values.
+    ///
+    /// Assets whose price is unknown (including stale prices) are omitted from
+    /// the result so callers can treat them as unknown.
+    pub async fn get_prices(&self, stellar_assets: &[String]) -> Result<HashMap<String, f64>> {
+        let mut result = HashMap::new();
+        for asset in stellar_assets {
+            if let Some(price) = self.get_price_opt(asset).await {
+                result.insert(asset.clone(), price);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Clear the price cache (useful for testing)
     pub async fn clear_cache(&self) {
         let mut cache = self.cache.write().await;
         cache.clear();
-        info!("Price cache cleared");
     }
 
     /// Get cache statistics
@@ -426,68 +396,6 @@ impl PriceFeedClient {
             .count();
         (total, fresh)
     }
-
-    /// Warm cache by fetching prices for common assets
-    pub async fn warm_cache(&self) -> Result<()> {
-        let common_assets: Vec<String> = self.asset_mapping.keys().cloned().collect();
-        info!("Warming price cache for {} assets", common_assets.len());
-        let _ = self.get_prices(&common_assets).await;
-        Ok(())
-    }
-}
-
-/// Default asset mapping for common Stellar assets
-#[must_use]
-pub fn default_asset_mapping() -> HashMap<String, String> {
-    let mut mapping = HashMap::new();
-
-    // Native XLM
-    mapping.insert("XLM:native".to_string(), "stellar".to_string());
-    mapping.insert("native".to_string(), "stellar".to_string());
-
-    // USDC
-    mapping.insert(
-        "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
-        "usd-coin".to_string(),
-    );
-
-    // EURC
-    mapping.insert(
-        "EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2".to_string(),
-        "euro-coin".to_string(),
-    );
-
-    // USDT
-    mapping.insert(
-        "USDT:GCQTGZQQ5G4PTM2GL7CDIFKUBIPEC52BROAQIAPW53XBRJVN6ZJVTG6V".to_string(),
-        "tether".to_string(),
-    );
-
-    // BTC (various anchors)
-    mapping.insert(
-        "BTC:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI".to_string(),
-        "bitcoin".to_string(),
-    );
-
-    // ETH (various anchors)
-    mapping.insert(
-        "ETH:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI".to_string(),
-        "ethereum".to_string(),
-    );
-
-    // yXLM (Ultra Stellar)
-    mapping.insert(
-        "yXLM:GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55".to_string(),
-        "stellar".to_string(),
-    );
-
-    // AQUA
-    mapping.insert(
-        "AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA".to_string(),
-        "aquarius".to_string(),
-    );
-
-    mapping
 }
 
 #[cfg(test)]
@@ -495,56 +403,75 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_config_from_env() {
-        std::env::set_var("PRICE_FEED_PROVIDER", "coingecko");
-        std::env::set_var("PRICE_FEED_CACHE_TTL_SECONDS", "600");
-
-        let config = PriceFeedConfig::from_env();
-        assert_eq!(config.provider, "coingecko");
-        assert_eq!(config.cache_ttl_seconds, 600);
+    fn median_odd_number_of_samples() {
+        assert_eq!(median_price(&[1.0, 3.0, 2.0]), Some(2.0));
     }
 
     #[test]
-    fn test_default_asset_mapping() {
-        let mapping = default_asset_mapping();
-        assert!(mapping.contains_key("XLM:native"));
-        assert_eq!(mapping.get("XLM:native").unwrap(), "stellar");
-        assert!(
-            mapping.contains_key("USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN")
-        );
+    fn median_even_number_of_samples() {
+        assert_eq!(median_price(&[1.0, 2.0, 3.0, 4.0]), Some(2.5));
+    }
+
+    #[test]
+    fn median_ignores_invalid_samples() {
+        assert_eq!(median_price(&[f64::NAN, -1.0, 0.0, 5.0, 7.0]), Some(6.0));
+    }
+
+    #[test]
+    fn median_empty_returns_none() {
+        assert_eq!(median_price(&[]), None);
+        assert_eq!(median_price(&[f64::NAN, -2.0]), None);
+    }
+
+    #[test]
+    fn median_single_sample() {
+        assert_eq!(median_price(&[42.0]), Some(42.0));
+    }
+
+    #[test]
+    fn stale_cache_is_detected() {
+        let config = PriceFeedConfig {
+            max_staleness_seconds: 60,
+            ..PriceFeedConfig::default()
+        };
+        let client = PriceFeedClient::new(config, HashMap::new());
+
+        let fresh = CachedPrice {
+            price_usd: 1.0,
+            timestamp: Instant::now(),
+        };
+        assert!(!client.is_stale(&fresh));
+
+        let stale = CachedPrice {
+            price_usd: 1.0,
+            timestamp: Instant::now() - Duration::from_secs(120),
+        };
+        assert!(client.is_stale(&stale));
     }
 
     #[tokio::test]
-    async fn test_cache_expiry() {
+    async fn stale_cached_price_is_unknown() {
         let config = PriceFeedConfig {
-            cache_ttl_seconds: 1,
-            ..Default::default()
+            cache_ttl_seconds: 3600,
+            max_staleness_seconds: 60,
+            ..PriceFeedConfig::default()
         };
-        let mapping = default_asset_mapping();
+        let mut mapping = HashMap::new();
+        mapping.insert("USDC".to_string(), "usd-coin".to_string());
         let client = PriceFeedClient::new(config, mapping);
 
-        // Manually insert a cached price
         {
             let mut cache = client.cache.write().await;
             cache.insert(
-                "XLM:native".to_string(),
+                "USDC".to_string(),
                 CachedPrice {
-                    price_usd: 0.10,
-                    timestamp: Instant::now(),
+                    price_usd: 1.0,
+                    timestamp: Instant::now() - Duration::from_secs(120),
                 },
             );
         }
 
-        // Check cache stats
-        let (total, fresh) = client.cache_stats().await;
-        assert_eq!(total, 1);
-        assert_eq!(fresh, 1);
-
-        // Wait for cache to expire
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        let (total, fresh) = client.cache_stats().await;
-        assert_eq!(total, 1);
-        assert_eq!(fresh, 0);
+        assert!(client.get_price("USDC").await.is_err());
+        assert_eq!(client.get_price_opt("USDC").await, None);
     }
 }

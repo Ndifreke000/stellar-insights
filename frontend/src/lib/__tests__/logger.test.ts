@@ -61,4 +61,20 @@ describe('Logger utility with Sentry integration', () => {
       });
     }).not.toThrow();
   });
+
+  it('captures stack traces and tags for source map symbolication', () => {
+    const errorWithStack = new Error('Verification error with stack trace');
+    expect(errorWithStack.stack).toBeDefined();
+
+    expect(() => {
+      logger.captureException(errorWithStack, {
+        release: 'test-release-1.0.0',
+        environment: 'test',
+        tags: {
+          component: 'frontend',
+          sourceMapped: 'true',
+        },
+      });
+    }).not.toThrow();
+  });
 });

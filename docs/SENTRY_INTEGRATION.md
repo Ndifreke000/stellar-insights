@@ -40,18 +40,23 @@ brew install getsentry/tools/sentry-cli
 
 ### Source Map Upload
 
-Source maps are automatically uploaded during the build process:
+Source maps are automatically uploaded during the build process when `SENTRY_AUTH_TOKEN` is present:
 
 ```bash
 npm run build
 # Automatically uploads source maps to Sentry
 ```
 
-Or manually:
+In CI (.github/workflows/frontend-build.yml), releases are tagged with the commit SHA (`NEXT_PUBLIC_APP_VERSION=${{ github.sha }}`) and source maps are uploaded using the automated script:
 
 ```bash
 ./frontend/scripts/upload-sourcemaps.sh
 ```
+
+### Verifying Error Tracking
+
+A verification endpoint is available at `/api/sentry-test` to test error reporting and confirm symbolicated stack traces in the Sentry dashboard.
+
 
 ### User Context
 

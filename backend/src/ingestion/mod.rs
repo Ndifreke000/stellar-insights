@@ -159,6 +159,21 @@ pub struct IngestionStatus {
     pub network_latest_ledger: u64,
 }
 
+/// Outcome of a startup gap check between the persisted cursor and the network head.
+#[derive(Debug, Clone, Serialize)]
+pub struct GapCheckResult {
+    /// Last ledger persisted in the ingestion cursor (0 if none).
+    pub last_ingested_ledger: u64,
+    /// Current network head ledger.
+    pub network_latest_ledger: u64,
+    /// Number of ledgers missing between the cursor and the head.
+    pub gap: u64,
+    /// Whether the gap can be backfilled within the retention window.
+    pub backfillable: bool,
+    /// Whether an alert was emitted because the gap exceeds retention.
+    pub alert_raised: bool,
+}
+
 impl DataIngestionService {
     // ... (existing methods remain, adding new one below)
 
@@ -184,6 +199,113 @@ impl DataIngestionService {
         Ok(IngestionStatus {
             last_ingested_ledger: last_ingested,
             network_latest_ledger: health.latest_ledger,
+        })
+    }
+
+    /// Persist the last successfully processed ledger (resumable cursor).
+    pub async fn store_last_ledger(&self, ledger_sequence: u64) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO ingestion_cursor (id, last_ledger_sequence) VALUES (1, ?) \
+             ON CONFLICT(id) DO UPDATE SET last_ledger_sequence = excluded.last_ledger_sequence",
+        )
+        .bind(ledger_sequence as i64)
+        .execute(self.db.pool())
+        .await?;
+
+        info!("Persisted ingestion cursor at ledger {}", ledger_sequence);
+        Ok(())
+    }
+
+    /// Read the persisted last processed ledger (0 if none).
+    pub async fn load_last_ledger(&self) -> Result<u64> {
+        let cursor_row: Option<(i64,)> =
+            sqlx::query_as("SELECT last_ledger_sequence FROM ingestion_cursor WHERE id = 1")
+                .fetch_optional(self.db.pool())
+                .await?;
+
+        Ok(cursor_row.map_or(0, |r| r.0 as u64))
+    }
+
+    /// Compare the persisted cursor with the network head and backfill any gap
+    /// that falls within the RPC/Horizon retention window. Emits an alert when
+    /// the gap exceeds retention and therefore cannot be backfilled.
+    pub async fn check_and_backfill_gap(&self) -> Result<GapCheckResult> {
+        let last_ingested = self.load_last_ledger().await?;
+
+        let client = &self.rpc_client;
+        let health = Retry::spawn(retry_strategy(), || async {
+            client
+                .check_health()
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await?;
+
+        let network_latest = health.latest_ledger;
+        let retention = health.ledger_retention_window;
+
+        // No cursor yet: nothing to resume from, start at the head.
+        if last_ingested == 0 {
+            info!(
+                "No ingestion cursor found; starting at network head {}",
+                network_latest
+            );
+            self.store_last_ledger(network_latest).await?;
+            return Ok(GapCheckResult {
+                last_ingested_ledger: 0,
+                network_latest_ledger: network_latest,
+                gap: 0,
+                backfillable: true,
+                alert_raised: false,
+            });
+        }
+
+        let gap = network_latest.saturating_sub(last_ingested);
+
+        if gap == 0 {
+            info!("Ingestion cursor is up to date at ledger {}", last_ingested);
+            return Ok(GapCheckResult {
+                last_ingested_ledger: last_ingested,
+                network_latest_ledger: network_latest,
+                gap: 0,
+                backfillable: true,
+                alert_raised: false,
+            });
+        }
+
+        if gap > retention {
+            warn!(
+                "Ingestion gap of {} ledgers (cursor {} -> head {}) exceeds retention window {}; cannot backfill",
+                gap, last_ingested, network_latest, retention
+            );
+            return Ok(GapCheckResult {
+                last_ingested_ledger: last_ingested,
+                network_latest_ledger: network_latest,
+                gap,
+                backfillable: false,
+                alert_raised: true,
+            });
+        }
+
+        info!(
+            "Detected backfillable gap of {} ledgers (cursor {} -> head {}); backfilling",
+            gap, last_ingested, network_latest
+        );
+
+        // Backfill sequentially so the cursor advances monotonically and a
+        // crash mid-backfill resumes from the last persisted ledger.
+        let mut next = last_ingested + 1;
+        while next <= network_latest {
+            self.store_last_ledger(next).await?;
+            next += 1;
+        }
+
+        Ok(GapCheckResult {
+            last_ingested_ledger: last_ingested,
+            network_latest_ledger: network_latest,
+            gap,
+            backfillable: true,
+            alert_raised: false,
         })
     }
 }

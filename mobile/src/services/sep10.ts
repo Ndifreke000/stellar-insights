@@ -42,6 +42,7 @@
 import { apiClient } from './api';
 import { storeAuthTokens, clearAuthTokens } from './auth';
 import type { AuthTokens } from '@app-types/index';
+import { logger } from '@utils/logger';
 
 // ---------------------------------------------------------------------------
 // Request / Response shapes (mirror backend/src/auth/sep10_simple.rs)
@@ -208,7 +209,7 @@ export async function logout(): Promise<void> {
     await apiClient.post<void>('/api/sep10/logout', {});
   } catch (error) {
     // Log but do not rethrow — local logout must still proceed.
-    console.warn('SEP-10 server logout failed (local session will still be cleared):', error);
+    logger.warn('[SEP-10]', 'Server logout failed (local session will still be cleared):', error);
   }
 
   // Always clear local tokens and auth store.
