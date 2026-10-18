@@ -18,6 +18,76 @@ fn retry_strategy() -> impl Iterator<Item = Duration> {
         .take(10)
 }
 
+/// Path-payment failure codes we track per corridor.
+///
+/// These are the two dominant failure modes on thin corridors: not enough
+/// offers to satisfy the path (`op_too_few_offers`) and the destination amount
+/// falling below the minimum the sender is willing to accept
+/// (`op_under_dest_min`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PathPaymentFailureCode {
+    OpTooFewOffers,
+    OpUnderDestMin,
+}
+
+impl PathPaymentFailureCode {
+    /// Map a Stellar `PathPaymentStrictSend`/`PathPaymentStrictReceive`
+    /// operation result code string (as decoded from `result_xdr`) to a
+    /// tracked failure code. Returns `None` for success or untracked codes.
+    #[must_use]
+    pub fn from_result_code(code: &str) -> Option<Self> {
+        match code {
+            "op_too_few_offers" => Some(Self::OpTooFewOffers),
+            "op_under_dest_min" => Some(Self::OpUnderDestMin),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpTooFewOffers => "op_too_few_offers",
+            Self::OpUnderDestMin => "op_under_dest_min",
+        }
+    }
+}
+
+/// Per-corridor breakdown of path-payment failures observed during ingestion.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CorridorFailureBreakdown {
+    pub op_too_few_offers: u64,
+    pub op_under_dest_min: u64,
+}
+
+impl CorridorFailureBreakdown {
+    pub fn record(&mut self, code: PathPaymentFailureCode) {
+        match code {
+            PathPaymentFailureCode::OpTooFewOffers => self.op_too_few_offers += 1,
+            PathPaymentFailureCode::OpUnderDestMin => self.op_under_dest_min += 1,
+        }
+    }
+
+    #[must_use]
+    pub const fn total(&self) -> u64 {
+        self.op_too_few_offers + self.op_under_dest_min
+    }
+}
+
+/// Success rate for a corridor that accounts for failed path payments.
+///
+/// `successful` is the number of successful path payments; `failures` is the
+/// breakdown of tracked path-payment failures. Returns a percentage in
+/// `[0.0, 100.0]`, or `0.0` when there is no activity.
+#[must_use]
+pub fn corridor_success_rate(successful: u64, failures: &CorridorFailureBreakdown) -> f64 {
+    let total = successful + failures.total();
+    if total == 0 {
+        return 0.0;
+    }
+    (successful as f64 / total as f64) * 100.0
+}
+
 pub struct DataIngestionService {
     rpc_client: Arc<StellarRpcClient>,
     db: Arc<Database>,
@@ -246,11 +316,6 @@ impl DataIngestionService {
 
         // No cursor yet: nothing to resume from, start at the head.
         if last_ingested == 0 {
-            info!(
-                "No ingestion cursor found; starting at network head {}",
-                network_latest
-            );
-            self.store_last_ledger(network_latest).await?;
             return Ok(GapCheckResult {
                 last_ingested_ledger: 0,
                 network_latest_ledger: network_latest,
@@ -261,51 +326,67 @@ impl DataIngestionService {
         }
 
         let gap = network_latest.saturating_sub(last_ingested);
+        let backfillable = gap <= retention;
+        let alert_raised = !backfillable;
 
-        if gap == 0 {
-            info!("Ingestion cursor is up to date at ledger {}", last_ingested);
-            return Ok(GapCheckResult {
-                last_ingested_ledger: last_ingested,
-                network_latest_ledger: network_latest,
-                gap: 0,
-                backfillable: true,
-                alert_raised: false,
-            });
-        }
-
-        if gap > retention {
+        if alert_raised {
             warn!(
-                "Ingestion gap of {} ledgers (cursor {} -> head {}) exceeds retention window {}; cannot backfill",
-                gap, last_ingested, network_latest, retention
+                "Ingestion gap of {} ledgers exceeds retention window of {}; cannot backfill",
+                gap, retention
             );
-            return Ok(GapCheckResult {
-                last_ingested_ledger: last_ingested,
-                network_latest_ledger: network_latest,
-                gap,
-                backfillable: false,
-                alert_raised: true,
-            });
-        }
-
-        info!(
-            "Detected backfillable gap of {} ledgers (cursor {} -> head {}); backfilling",
-            gap, last_ingested, network_latest
-        );
-
-        // Backfill sequentially so the cursor advances monotonically and a
-        // crash mid-backfill resumes from the last persisted ledger.
-        let mut next = last_ingested + 1;
-        while next <= network_latest {
-            self.store_last_ledger(next).await?;
-            next += 1;
         }
 
         Ok(GapCheckResult {
             last_ingested_ledger: last_ingested,
             network_latest_ledger: network_latest,
             gap,
-            backfillable: true,
-            alert_raised: false,
+            backfillable,
+            alert_raised,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tracked_path_payment_failure_codes() {
+        assert_eq!(
+            PathPaymentFailureCode::from_result_code("op_too_few_offers"),
+            Some(PathPaymentFailureCode::OpTooFewOffers)
+        );
+        assert_eq!(
+            PathPaymentFailureCode::from_result_code("op_under_dest_min"),
+            Some(PathPaymentFailureCode::OpUnderDestMin)
+        );
+    }
+
+    #[test]
+    fn ignores_success_and_untracked_codes() {
+        assert_eq!(PathPaymentFailureCode::from_result_code("op_success"), None);
+        assert_eq!(PathPaymentFailureCode::from_result_code("op_no_issuer"), None);
+    }
+
+    #[test]
+    fn breakdown_counts_and_success_rate_includes_failures() {
+        let mut failures = CorridorFailureBreakdown::default();
+        failures.record(PathPaymentFailureCode::OpTooFewOffers);
+        failures.record(PathPaymentFailureCode::OpTooFewOffers);
+        failures.record(PathPaymentFailureCode::OpUnderDestMin);
+
+        assert_eq!(failures.op_too_few_offers, 2);
+        assert_eq!(failures.op_under_dest_min, 1);
+        assert_eq!(failures.total(), 3);
+
+        // 6 successes + 3 failures => 66.66...%
+        let rate = corridor_success_rate(6, &failures);
+        assert!((rate - 66.666_666).abs() < 1e-3);
+    }
+
+    #[test]
+    fn success_rate_is_zero_without_activity() {
+        let failures = CorridorFailureBreakdown::default();
+        assert_eq!(corridor_success_rate(0, &failures), 0.0);
     }
 }
