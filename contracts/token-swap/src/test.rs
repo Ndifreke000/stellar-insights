@@ -117,7 +117,7 @@ fn test_accept_offer_swaps_tokens() {
     );
 
     let _ = contract_id; // contract_id holds offer_amount of token_a at this point
-    client.accept_offer(&taker, &offer_id);
+    client.accept_offer(&taker, &offer_id, &0i128);
 
     let offer = client.get_offer(&offer_id);
     assert_eq!(offer.state, OfferState::Filled);
@@ -226,8 +226,8 @@ fn test_accept_filled_offer_fails() {
         &0u64,
     );
 
-    client.accept_offer(&taker1, &offer_id);
-    client.accept_offer(&taker2, &offer_id); // already filled — should panic
+    client.accept_offer(&taker1, &offer_id, &0i128);
+    client.accept_offer(&taker2, &offer_id, &0i128); // already filled — should panic
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn test_accept_expired_offer_fails() {
     );
 
     advance_time(&env, 200); // past expiry
-    client.accept_offer(&taker, &offer_id); // should panic
+    client.accept_offer(&taker, &offer_id, &0i128); // should panic
 }
 
 #[test]

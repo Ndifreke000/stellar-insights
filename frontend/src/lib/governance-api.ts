@@ -1,4 +1,5 @@
 import { api } from "./api/api";
+import { appendPageParams } from "./api/pagination";
 import type {
   Proposal,
   ProposalsListResponse,
@@ -12,12 +13,11 @@ import type {
 export async function getProposals(
   status?: ProposalStatus,
   limit?: number,
-  offset?: number,
+  cursor?: string,
 ): Promise<ProposalsListResponse> {
   const params = new URLSearchParams();
   if (status) params.append("status", status);
-  if (limit !== undefined) params.append("limit", limit.toString());
-  if (offset !== undefined) params.append("offset", offset.toString());
+  appendPageParams(params, { limit, cursor });
   const query = params.toString();
   return api.get<ProposalsListResponse>(
     `/governance/proposals${query ? `?${query}` : ""}`,

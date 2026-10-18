@@ -620,3 +620,59 @@ body {
 .print-only {
   display: none;
 }
+
+/* ─── Mobile Responsive Improvements (#2113) ──────────────────────────────── */
+
+/* Prevent horizontal overflow on small screens */
+@media (max-width: 767px) {
+  /* Tables scroll horizontally instead of breaking layout */
+  .overflow-x-auto,
+  [role="table"] {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Charts constrained to viewport width */
+  .recharts-wrapper {
+    max-width: 100vw !important;
+    overflow: hidden;
+  }
+
+  /* Cards: reduce side padding on mobile */
+  .glass-card {
+    border-radius: 1rem;
+  }
+
+  /* Ensure page content doesn't overflow on narrow screens */
+  .space-y-8 > * {
+    min-width: 0;
+  }
+
+  /* Hero headlines scale down gracefully */
+  h1, h2 {
+    word-break: break-word;
+  }
+}
+
+/* Safe area insets for devices with home indicators */
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Larger tap targets on touch devices */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exception: tiny badge-style buttons (export, label chips) */
+  .touch-sm {
+    min-height: unset;
+    min-width: unset;
+  }
+}
+
+/* Smooth scroll for the sidebar overflow list */
+aside {
+  scroll-behavior: smooth;
+}

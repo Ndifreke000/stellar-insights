@@ -30,11 +30,11 @@ export const AdvancedDataVisualization: React.FC<AdvancedDataVisualizationProps>
   xAxisKey = 'name',
   yAxisKey = 'value',
   colors = COLORS,
-  responsive = true,
+  responsive: _responsive = true,
   height = 400,
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<string>(yAxisKey);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, _setIsLoading] = useState(false);
 
   const metrics = useMemo(() => {
     if (data.length === 0) return [];

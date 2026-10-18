@@ -1,23 +1,54 @@
-use utoipa::OpenApi;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi};
+
+/// Registers the authentication schemes referenced by `security(...)` on endpoints.
+pub struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer_auth",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .description(Some(
+                        "JWT access token from `POST /api/auth/login`. \
+                         Example: `Authorization: Bearer eyJhbGciOi...`",
+                    ))
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "api_key",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                "X-API-Key",
+                "API key created via `POST /api/keys`. Example: `X-API-Key: si_live_...`",
+            ))),
+        );
+    }
+}
 
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Stellar Insights API",
+        title = "PayRaider API",
         version = "1.0.0",
         description = "API for Stellar network analytics, anchor monitoring, and payment corridor insights",
         contact(
-            name = "Stellar Insights Team",
-            email = "support@stellarinsights.io"
+            name = "PayRaider Team",
+            email = "support@payraider.io"
         ),
         license(
             name = "MIT",
             url = "https://opensource.org/licenses/MIT"
         )
     ),
+    modifiers(&SecurityAddon),
     servers(
         (url = "http://localhost:8080", description = "Local development server"),
-        (url = "https://api.stellarinsights.io", description = "Production server")
+        (url = "https://api.payraider.io", description = "Production server")
     ),
     paths(
         // Anchors
@@ -25,9 +56,26 @@ use utoipa::OpenApi;
         crate::api::anchors::get_anchor_by_account,
         crate::api::anchors::get_anchors,
         crate::api::anchors::get_muxed_analytics,
+        crate::api::anchors::create_anchor,
+        crate::api::anchors::update_anchor_metrics,
+        crate::api::anchors::get_anchor_assets,
+        crate::api::anchors::create_anchor_asset,
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
+        crate::api::corridors::get_corridor_failures,
+        crate::api::corridors::create_corridor,
+        crate::api::corridors::update_corridor_metrics_from_transactions,
+        // Export
+        crate::api::export::export_corridors,
+        crate::api::export::export_anchors,
+        crate::api::export::export_payments,
+        // Database performance
+        crate::handlers::slow_queries,
+        crate::handlers::index_report,
+        // Frontend RUM
+        crate::observability::frontend_metrics::ingest_frontend_metrics,
+        crate::observability::frontend_metrics::frontend_metrics_summary,
         // Price Feed
         crate::api::price_feed::get_price,
         crate::api::price_feed::get_prices,
@@ -35,6 +83,13 @@ use utoipa::OpenApi;
         crate::api::price_feed::get_cache_stats,
         // Cost Calculator
         crate::api::cost_calculator::estimate_costs,
+        crate::api::preflight::preflight_get,
+        crate::api::billing::get_plan,
+        crate::api::billing::create_invoice,
+        crate::api::billing::get_invoice,
+        crate::api::billing::confirm_invoice,
+        crate::api::billing::get_subscription,
+        crate::api::preflight::preflight_post,
         // Alerts
         crate::api::alerts::list_rules,
         crate::api::alerts::create_rule,
@@ -69,16 +124,9 @@ use utoipa::OpenApi;
         crate::api::liquidity_pools::get_pool_snapshots,
         // Metrics
         crate::api::metrics::metrics_overview,
-        // ML
-        crate::api::ml::predict_payment_success,
-        crate::api::ml::get_model_status,
-        crate::api::ml::retrain_model,
         // Network
         crate::api::network::get_network_info,
         crate::api::network::get_available_networks,
-        crate::api::network::switch_network,
-        // Prediction
-        crate::api::prediction::predict_success,
         // RPC
         crate::api::rpc::rpc_health_check,
         crate::api::rpc::get_latest_ledger,
@@ -114,9 +162,8 @@ use utoipa::OpenApi;
         crate::api::account_merges::get_account_merge_stats,
         crate::api::account_merges::get_recent_account_merges,
         crate::api::account_merges::get_destination_patterns,
-        // Achievements
-        crate::api::achievements::get_quests,
-        crate::api::achievements::get_achievements,
+        // Achievements (quests) — feature-gated; see AchievementsApiDoc below
+        // and `full_openapi()`.
         // Asset Verification
         crate::api::asset_verification::verify_asset,
         crate::api::asset_verification::get_verification,
@@ -124,21 +171,29 @@ use utoipa::OpenApi;
         crate::api::asset_verification::report_suspicious_asset,
         // Auth
         crate::api::auth::login,
+        crate::api::auth::verify_2fa,
         crate::api::auth::refresh,
         crate::api::auth::logout,
+        crate::api::auth::list_sessions,
+        crate::api::auth::revoke_session,
+        crate::api::auth::revoke_other_sessions,
+        // 2FA
+        crate::api::twofa::initiate_enrollment,
+        crate::api::twofa::confirm_enrollment,
+        crate::api::twofa::disable_2fa,
+        crate::api::twofa::regenerate_backup_codes,
+        // Admin
+        crate::api::admin_ip_whitelist::list_whitelist,
+        crate::api::admin_ip_whitelist::add_to_whitelist,
+        crate::api::admin_ip_whitelist::remove_from_whitelist,
+        crate::api::admin_ip_whitelist::check_whitelist,
+        crate::api::audit_log::query_audit_log,
+        crate::api::audit_log::verify_audit_log_integrity,
         // Cache
         crate::api::cache_stats::get_cache_stats,
         crate::api::cache_stats::reset_cache_stats,
-        // Governance
-        crate::api::governance::create_proposal,
-        crate::api::governance::activate_proposal,
-        crate::api::governance::list_proposals,
-        crate::api::governance::get_proposal,
-        crate::api::governance::cast_vote,
-        crate::api::governance::get_votes,
-        crate::api::governance::has_voted,
-        crate::api::governance::add_comment,
-        crate::api::governance::get_comments,
+        // Governance — feature-gated; see GovernanceApiDoc below and
+        // `full_openapi()`.
         // OAuth
         crate::api::oauth::authorize,
         crate::api::oauth::token,
@@ -171,7 +226,20 @@ use utoipa::OpenApi;
             crate::api::anchors::AnchorsResponse,
             crate::api::anchors::AnchorMetricsResponse,
             crate::api::corridors::CorridorResponse,
+            crate::api::preflight::PreflightRequest,
+            crate::api::billing::PlanResponse,
+            crate::api::billing::CreateInvoiceRequest,
+            crate::api::billing::ConfirmInvoiceRequest,
+            crate::api::billing::ConfirmInvoiceResponse,
+            crate::billing::Invoice,
+            crate::billing::Subscription,
+            crate::api::preflight::PreflightResponse,
+            crate::api::preflight::PreflightCheck,
+            crate::api::preflight::PreflightDecision,
+            crate::api::preflight::CheckStatus,
             crate::api::corridors::CorridorDetailResponse,
+            crate::api::corridors::CorridorFailedPayment,
+            crate::api::corridors::PaginatedCorridorFailures,
             crate::api::corridors::SuccessRateDataPoint,
             crate::api::corridors::LatencyDataPoint,
             crate::api::corridors::LiquidityDataPoint,
@@ -184,11 +252,28 @@ use utoipa::OpenApi;
             crate::api::cost_calculator::RouteCostBreakdown,
             crate::api::cost_calculator::RouteEstimate,
             crate::api::cost_calculator::CostCalculationResponse,
-            crate::api::cost_calculator::ErrorResponse,
             crate::api::snapshots::SnapshotResponse,
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::api::anchors::UpdateMetricsRequest,
+            crate::api::anchors::CreateAssetRequest,
+            crate::api::corridors::UpdateCorridorMetricsFromTxns,
+            crate::api::corridors::CorridorPaymentDto,
+            crate::models::Anchor,
+            crate::models::Asset,
+            crate::models::CreateAnchorRequest,
+            crate::models::CreateCorridorRequest,
+            crate::models::corridor::Corridor,
+            crate::observability::frontend_metrics::FrontendMetric,
+            crate::observability::frontend_metrics::FrontendError,
+            crate::observability::frontend_metrics::FrontendMetricsBatch,
+            crate::observability::frontend_metrics::FrontendMetricsSummary,
+            crate::observability::frontend_metrics::FrontendMetricSummary,
+            crate::observability::frontend_metrics::PageSummary,
+            // Pagination envelope (see crate::pagination)
+            crate::pagination::PageMeta,
+            crate::pagination::PageLinks,
         )
     ),
     tags(
@@ -198,12 +283,14 @@ use utoipa::OpenApi;
         (name = "API Keys", description = "API key management endpoints"),
         (name = "Contract Events", description = "Smart contract event tracking"),
         (name = "Corridors", description = "Payment corridor analytics endpoints"),
+        (name = "Database", description = "Database query performance monitoring"),
+        (name = "Export", description = "Data export endpoints (CSV, JSON, Excel)"),
         (name = "Fee Bumps", description = "Fee bump transaction tracking"),
         (name = "Liquidity Pools", description = "Liquidity pool analytics"),
         (name = "Metrics", description = "System metrics and monitoring"),
-        (name = "ML", description = "Machine learning prediction endpoints"),
+        (name = "Billing", description = "Paid API key plan, settled in USDC on Stellar"),
+        (name = "Preflight", description = "Pre-payment corridor check for off-ramp and payout apps"),
         (name = "Network", description = "Stellar network configuration"),
-        (name = "Prediction", description = "Payment prediction endpoints"),
         (name = "Prices", description = "Real-time asset price feed endpoints"),
         (name = "Cost Calculator", description = "Cross-border payment cost estimation and route comparison"),
         (name = "RPC", description = "Stellar RPC integration endpoints"),
@@ -212,11 +299,10 @@ use utoipa::OpenApi;
         (name = "Trustlines", description = "Trustline analytics endpoints"),
         (name = "Webhooks", description = "Webhook management endpoints"),
         (name = "Account Merges", description = "Account merge tracking endpoints"),
-        (name = "Achievements", description = "Quest and achievement definitions"),
         (name = "Asset Verification", description = "Asset verification and reporting"),
-        (name = "Auth", description = "Authentication endpoints"),
+        (name = "Auth", description = "Authentication, session, and 2FA endpoints"),
+        (name = "Admin", description = "Admin-only endpoints (IP whitelist, audit log) -- require an admin account (is_admin)"),
         (name = "Cache", description = "Cache management endpoints"),
-        (name = "Governance", description = "Governance proposal and voting endpoints"),
         (name = "OAuth", description = "OAuth integration endpoints"),
         (name = "SEP-10", description = "SEP-10 authentication endpoints"),
         (name = "SEP-24", description = "SEP-24 hosted deposit/withdrawal endpoints"),
@@ -225,6 +311,64 @@ use utoipa::OpenApi;
     )
 )]
 pub struct ApiDoc;
+
+/// Quests/achievements paths — split out because the `achievements` module
+/// is feature-gated (off by default, see issue #2659). A derive macro's
+/// `paths(...)` list can't reference a function that may not exist, so
+/// these live in their own `OpenApi` doc that only exists when the feature
+/// does, merged into the full spec by `full_openapi()`.
+#[cfg(feature = "quests")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::api::achievements::get_quests,
+        crate::api::achievements::get_achievements,
+    ),
+    tags((name = "Achievements", description = "Quest and achievement definitions"))
+)]
+pub struct AchievementsApiDoc;
+
+/// Governance paths — split out for the same reason as `AchievementsApiDoc`
+/// (the `governance` module is feature-gated, off by default, see #2659).
+#[cfg(feature = "governance")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::api::governance::create_proposal,
+        crate::api::governance::activate_proposal,
+        crate::api::governance::list_proposals,
+        crate::api::governance::get_proposal,
+        crate::api::governance::cast_vote,
+        crate::api::governance::get_votes,
+        crate::api::governance::has_voted,
+        crate::api::governance::add_comment,
+        crate::api::governance::get_comments,
+        crate::api::governance::refresh_tally,
+    ),
+    tags((name = "Governance", description = "Governance proposal and voting endpoints"))
+)]
+pub struct GovernanceApiDoc;
+
+/// The full OpenAPI spec: the always-on `ApiDoc`, plus the feature-gated
+/// quests/governance docs when those features are enabled. Use this
+/// (instead of `ApiDoc::openapi()` directly) wherever the spec is served
+/// or exported, so toggling `--features quests,governance` doesn't drift
+/// the generated docs away from what's actually mounted in
+/// `crate::api::v1::routes`.
+#[must_use]
+pub fn full_openapi() -> utoipa::openapi::OpenApi {
+    #[allow(unused_mut)]
+    let mut spec = ApiDoc::openapi();
+    #[cfg(feature = "quests")]
+    {
+        spec = spec.merge_from(AchievementsApiDoc::openapi());
+    }
+    #[cfg(feature = "governance")]
+    {
+        spec = spec.merge_from(GovernanceApiDoc::openapi());
+    }
+    spec
+}
 
 #[cfg(test)]
 mod tests {
@@ -235,17 +379,18 @@ mod tests {
 
     #[test]
     fn generate_openapi_json() {
-        let json = ApiDoc::openapi()
+        let json = full_openapi()
             .to_pretty_json()
             .expect("Failed to serialize OpenAPI spec");
-        
+
         let path = if Path::new("../docs").exists() {
             "../docs/openapi.json"
         } else {
             "docs/openapi.json"
         };
-        
+
         let mut file = File::create(path).expect("Failed to create docs/openapi.json");
-        file.write_all(json.as_bytes()).expect("Failed to write to docs/openapi.json");
+        file.write_all(json.as_bytes())
+            .expect("Failed to write to docs/openapi.json");
     }
 }

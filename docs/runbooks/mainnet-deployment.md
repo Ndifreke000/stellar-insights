@@ -1,6 +1,6 @@
 # Mainnet Deployment Runbook
 
-This runbook outlines the step-by-step procedure for deploying Stellar Insights smart contracts, backend services, and frontend to the Stellar mainnet environment.
+This runbook outlines the step-by-step procedure for deploying PayRaider smart contracts, backend services, and frontend to the Stellar mainnet environment.
 
 ---
 
@@ -78,7 +78,7 @@ Verify connectivity and simple read operations on the deployed API:
 npm run --prefix mobile test -- --testPathPattern=testnet
 
 # Run mainnet endpoint check
-curl -sf "https://api.stellar-insights.com/health"
+curl -sf "https://api.payraider.com/health"
 ```
 
 ### Step 2: Canary Validation

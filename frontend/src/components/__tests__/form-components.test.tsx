@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { FormProvider, useForm } from "react-hook-form";
@@ -12,7 +12,9 @@ const TestForm = ({ children, schema, defaultValues = {} }) => {
   const methods = useForm({
     resolver: zodResolver(schema),
     defaultValues,
-    mode: "onChange",
+    // The tests blur an untouched field and expect an error; "onChange" never
+    // validates without a change.
+    mode: "onTouched",
   });
 
   return (
@@ -130,7 +132,7 @@ describe("FormSelect Component", () => {
   it("should show validation error", async () => {
     const user = userEvent.setup();
     render(
-      <TestForm schema={testSchema}>
+      <TestForm schema={testSchema} defaultValues={{ testSelect: "" }}>
         <FormSelect name="testSelect" label="Test Select" options={options} />
       </TestForm>
     );

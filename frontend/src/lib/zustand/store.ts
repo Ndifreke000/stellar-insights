@@ -1,6 +1,22 @@
+/**
+ * Global CLIENT state (UI, preferences, ephemeral app state).
+ *
+ * Server data (anything fetched from the API) must NOT live here — use the
+ * React Query hooks in `@/lib/react-query/queries` so it is cached, de-duplicated
+ * and invalidated in one place. See docs/FRONTEND_STATE_MANAGEMENT.md.
+ *
+ * Always read with a selector. Selectors that return objects must be wrapped in
+ * `useShallow` (the exported `use*State` hooks already are), otherwise Zustand v5
+ * sees a new object on every render and loops.
+ */
 import { create } from 'zustand';
-import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { createJSONStorage, devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { useShallow } from 'zustand/react/shallow';
+
+// Arbitrary key/value bag for a single form or filter set; the concrete shape
+// varies per form/filter key, so callers narrow via the key they pass in.
+export type FieldValues = Record<string, unknown>;
 
 // Types for our global state
 export interface AppState {
@@ -14,12 +30,12 @@ export interface AppState {
   breadcrumbs: Array<{ label: string; href: string }>;
   
   // Form State
-  formData: Record<string, any>;
-  formErrors: Record<string, string>;
+  formData: Record<string, FieldValues>;
+  formErrors: Record<string, Record<string, string>>;
   formDirty: Record<string, boolean>;
-  
+
   // Filter State
-  filters: Record<string, any>;
+  filters: FieldValues;
   
   // Notification State
   notifications: Array<{
@@ -41,7 +57,7 @@ export interface AppState {
   websocket: {
     connected: boolean;
     reconnecting: boolean;
-    lastMessage: any;
+    lastMessage: unknown;
   };
 }
 
@@ -59,17 +75,17 @@ export interface AppActions {
   addBreadcrumb: (breadcrumb: { label: string; href: string }) => void;
   
   // Form Actions
-  setFormData: (key: string, data: any) => void;
-  updateFormData: (key: string, updates: Partial<any>) => void;
+  setFormData: (key: string, data: FieldValues) => void;
+  updateFormData: (key: string, updates: Partial<FieldValues>) => void;
   clearFormData: (key?: string) => void;
   setFormErrors: (key: string, errors: Record<string, string>) => void;
   clearFormErrors: (key?: string) => void;
   setFormDirty: (key: string, dirty: boolean) => void;
   clearFormDirty: (key?: string) => void;
-  
+
   // Filter Actions
-  setFilters: (filters: Record<string, any>) => void;
-  updateFilter: (key: string, value: any) => void;
+  setFilters: (filters: FieldValues) => void;
+  updateFilter: (key: string, value: unknown) => void;
   clearFilters: (key?: string) => void;
   
   // Notification Actions
@@ -86,7 +102,7 @@ export interface AppActions {
   // WebSocket Actions
   setWebSocketConnected: (connected: boolean) => void;
   setWebSocketReconnecting: (reconnecting: boolean) => void;
-  setWebSocketLastMessage: (message: any) => void;
+  setWebSocketLastMessage: (message: unknown) => void;
   
   // Reset Actions
   resetState: () => void;
@@ -97,7 +113,7 @@ export const useAppStore = create<AppState & AppActions>()(
   devtools(
     persist(
       subscribeWithSelector(
-        immer((set, get) => ({
+        immer((set, _get) => ({
           // Initial State
           sidebarCollapsed: false,
           activeModal: null,
@@ -352,19 +368,26 @@ export const useAppStore = create<AppState & AppActions>()(
         }))
       ),
       {
-        name: 'stellar-insights-app-store',
-        // Only persist certain parts of the state
+        name: 'payraider-app-store',
+        storage: createJSONStorage(() => localStorage),
+        // Only persist UI preferences. Auth/session state is derived from the
+        // wallet/token at runtime; persisting it let the UI claim the user was
+        // signed in after the token had expired.
         partialize: (state) => ({
           sidebarCollapsed: state.sidebarCollapsed,
           formData: state.formData,
           filters: state.filters,
-          userSession: state.userSession,
         }),
-        version: 1,
+        version: 2,
+        migrate: (persisted) => {
+          const { userSession: _dropped, ...rest } = (persisted ?? {}) as Record<string, unknown>;
+          return rest as Partial<AppState & AppActions>;
+        },
       }
     ),
     {
-      name: 'Stellar Insights App Store',
+      name: 'PayRaider App Store',
+      enabled: process.env.NODE_ENV === 'development',
     }
   )
 );
@@ -372,34 +395,34 @@ export const useAppStore = create<AppState & AppActions>()(
 // Selectors for commonly used state combinations
 export const useAppState = () => useAppStore((state) => state);
 
-export const useUIState = () => useAppStore((state) => ({
+export const useUIState = () => useAppStore(useShallow((state) => ({
   sidebarCollapsed: state.sidebarCollapsed,
   activeModal: state.activeModal,
   loading: state.loading,
-}));
+})));
 
-export const useNavigationState = () => useAppStore((state) => ({
+export const useNavigationState = () => useAppStore(useShallow((state) => ({
   currentPage: state.currentPage,
   breadcrumbs: state.breadcrumbs,
-}));
+})));
 
-export const useFormState = (formKey?: string) => useAppStore((state) => ({
+export const useFormState = (formKey?: string) => useAppStore(useShallow((state) => ({
   data: formKey ? state.formData[formKey] : state.formData,
   errors: formKey ? state.formErrors[formKey] : state.formErrors,
   dirty: formKey ? state.formDirty[formKey] : state.formDirty,
-}));
+})));
 
-export const useNotificationState = () => useAppStore((state) => ({
+export const useNotificationState = () => useAppStore(useShallow((state) => ({
   notifications: state.notifications,
   unreadCount: state.notifications.filter(n => !n.read).length,
-}));
+})));
 
 export const useWebSocketState = () => useAppStore((state) => state.websocket);
 
 export const useUserSession = () => useAppStore((state) => state.userSession);
 
 // Convenience hooks for common actions
-export const useAppActions = () => useAppStore((state) => ({
+export const useAppActions = () => useAppStore(useShallow((state) => ({
   setSidebarCollapsed: state.setSidebarCollapsed,
   setActiveModal: state.setActiveModal,
   setLoading: state.setLoading,
@@ -428,4 +451,4 @@ export const useAppActions = () => useAppStore((state) => ({
   setWebSocketReconnecting: state.setWebSocketReconnecting,
   setWebSocketLastMessage: state.setWebSocketLastMessage,
   resetState: state.resetState,
-}));
+})));

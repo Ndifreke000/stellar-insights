@@ -1,37 +1,34 @@
 /**
  * Centralised auth-token store for PayRaider mobile.
  *
- * ## Security fix (issue #2628)
+ * Previously split across `auth.ts` (expo-secure-store, key "…tokens") and
+ * `tokenStorage.ts` (expo-secure-store, key "…token"), causing the login screen
+ * and the API interceptor/boot restore to read from different keys.  Both files
+ * used expo-secure-store, which requires expo-modules-core and cannot be
+ * auto-linked in a bare React Native project.
  *
- * The previous implementation used `expo-secure-store`, which:
- *  1. Requires the Expo modules native build chain — incompatible with a bare
- *     React Native project without additional setup.
- *  2. Stored tokens under a simple key string with no service-scoping,
- *     making collisions between apps on a shared device keychain possible.
+ * This file is now the **single** token storage module:
+ *  - Uses `react-native-keychain` (already a declared dependency, works in
+ *    bare RN with no Expo toolchain required).
+ *  - Single keychain service name: `com.payraider.auth.tokens`.
+ *  - Re-exports the `tokenStorage.ts` API surface
+ *    (`saveToken`, `getToken`, `getTokenExpiry`, `removeToken`, `clearAll`,
+ *    `hasValidToken`) so existing call sites in `App.tsx` and
+ *    `useLoginScreen.ts` compile without changes.
+ *  - Exposes the full `AuthTokens`-aware helpers previously in this file
+ *    (`loadStoredAuth`, `storeAuthTokens`, `clearAuthTokens`,
+ *    `refreshAuthTokens`).
  *
- * This file now uses `react-native-keychain` (already a declared dependency,
- * works in bare RN with no Expo toolchain required).  The keychain service is
- * namespaced to `com.payraider.auth.tokens` so it is isolated from every other
- * keychain entry on the device.
- *
- * ### Threat model closed by this change
+ * ## Threat model (issue #2628)
  * **Attacker:** an app on the same physical device (or an automated script
  * running as the same user on a rooted/jailbroken device) that can enumerate
  * AsyncStorage or read unprotected file-system paths.
- * **What they could do before:** on a compromised device AsyncStorage is
- * readable without root; expo-secure-store on Android before API 23 fell back
- * to SharedPreferences (cleartext).
- * **What they can do after:** react-native-keychain uses Android Keystore /
- * iOS Keychain Services — hardware-backed on modern devices.  The plaintext
- * secret never leaves the secure enclave.
- *
- * ## API surface
- * Re-exports the `tokenStorage.ts` surface (`saveToken`, `getToken`,
- * `getTokenExpiry`, `removeToken`, `clearAll`, `hasValidToken`) so existing
- * call sites compile without changes.
- *
- * Also exposes the full `AuthTokens`-aware helpers:
- * `loadStoredAuth`, `storeAuthTokens`, `clearAuthTokens`, `refreshAuthTokens`.
+ * **Before:** on a compromised device AsyncStorage is readable without root;
+ * expo-secure-store on Android before API 23 fell back to SharedPreferences
+ * (cleartext).
+ * **After:** react-native-keychain uses Android Keystore / iOS Keychain
+ * Services, hardware-backed on modern devices, under a service namespace
+ * (`com.payraider.auth.tokens`) isolated from every other keychain entry.
  *
  * IMPORTANT: Never log the token value or Stellar secret seeds (S...) here or
  * in any caller.  Only log opaque, non-sensitive status strings.
@@ -40,8 +37,7 @@
 import * as Keychain from 'react-native-keychain';
 import { STORAGE_KEYS } from '@config/constants';
 import { useAuthStore } from '@store/authStore';
-import { AuthTokens, User } from '@types/index';
-import { apiClient } from './api';
+import { AuthTokens, User } from '@app-types/index';
 import { storage } from './storage';
 import { logger } from '@utils/logger';
 
@@ -50,11 +46,11 @@ import { logger } from '@utils/logger';
 // ---------------------------------------------------------------------------
 
 /** Keychain service name — every read and write in this file uses this value. */
-const AUTH_SERVICE = 'com.payraider.auth.tokens';
+const SERVICE = 'com.payraider.auth.tokens';
 
 /**
  * Key within the stored JSON payload that carries the optional token expiry
- * (Unix epoch, ms).
+ * (Unix epoch, ms).  This parallels the old tokenStorage.ts EXPIRY_KEY.
  */
 const EXPIRY_FIELD = 'expiresAt';
 
@@ -65,15 +61,15 @@ const EXPIRY_FIELD = 'expiresAt';
 /** Persist an arbitrary JSON-serialisable value in the keychain. */
 async function _keychainSet(value: unknown): Promise<void> {
   await Keychain.setGenericPassword(
-    AUTH_SERVICE,
+    SERVICE,
     JSON.stringify(value),
-    { service: AUTH_SERVICE },
+    { service: SERVICE },
   );
 }
 
 /** Read and JSON-parse the keychain value, or return `null`. */
 async function _keychainGet<T>(): Promise<T | null> {
-  const result = await Keychain.getGenericPassword({ service: AUTH_SERVICE });
+  const result = await Keychain.getGenericPassword({ service: SERVICE });
   if (!result) return null;
   try {
     return JSON.parse(result.password) as T;
@@ -84,82 +80,194 @@ async function _keychainGet<T>(): Promise<T | null> {
 
 /** Delete the keychain entry entirely. */
 async function _keychainDelete(): Promise<void> {
-  await Keychain.resetGenericPassword({ service: AUTH_SERVICE });
+  await Keychain.resetGenericPassword({ service: SERVICE });
 }
 
 // ---------------------------------------------------------------------------
-// tokenStorage.ts-compatible API (saveToken / getToken / …)
+// Internal shape stored in the keychain
 // ---------------------------------------------------------------------------
 
-/**
- * Shape stored in the keychain for the simple token-only surface.
- * Superset of AuthTokens so both APIs share the same keychain slot.
- */
-interface StoredTokenPayload {
-  token: string;
+interface StoredCredentials {
+  /** Full AuthTokens object (accessToken, refreshToken, …). */
+  tokens: AuthTokens;
+  /**
+   * Unix epoch in milliseconds at which the access token expires.
+   * Stored here so `hasValidToken` / `getTokenExpiry` can avoid a full
+   * AuthTokens parse in the simple-check path.
+   */
   [EXPIRY_FIELD]?: number;
 }
 
+// ---------------------------------------------------------------------------
+// AuthTokens-aware API  (used by initialization.ts, api.ts, sep10.ts)
+// ---------------------------------------------------------------------------
+
 /**
- * Persist an auth token in encrypted Keychain/Keystore storage.
- * Re-implements `tokenStorage.saveToken` without expo-secure-store.
- *
- * @param token    - The auth token to store.  Never log this value.
- * @param expiresAt - Optional expiry as a Unix epoch in milliseconds.
+ * On app boot: read stored tokens from the keychain and rehydrate the auth
+ * store.  Called by `initialization.ts`.
  */
-export async function saveToken(token: string, expiresAt?: number): Promise<void> {
-  const payload: StoredTokenPayload = { token };
-  if (typeof expiresAt === 'number') {
-    payload[EXPIRY_FIELD] = expiresAt;
+export async function loadStoredAuth(): Promise<void> {
+  try {
+    const stored = await _keychainGet<StoredCredentials>();
+    if (stored?.tokens) {
+      useAuthStore.getState().setTokens(stored.tokens);
+
+      const userData = storage.getString(STORAGE_KEYS.USER_DATA);
+      if (userData) {
+        const user: User = JSON.parse(userData);
+        useAuthStore.getState().setUser(user);
+      }
+    }
+  } catch (error) {
+    logger.error('[Auth]', 'Failed to load stored auth:', error);
+  } finally {
+    useAuthStore.getState().setLoading(false);
   }
-  await _keychainSet(payload);
 }
 
 /**
- * Read the stored auth token.
- * Re-implements `tokenStorage.getToken` without expo-secure-store.
+ * Persist a full `AuthTokens` object and sync the auth store.
+ * Called after a successful login or token refresh.
+ */
+export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
+  const payload: StoredCredentials = {
+    tokens,
+    ...(tokens.expiresAt !== undefined && { [EXPIRY_FIELD]: tokens.expiresAt }),
+  };
+  await _keychainSet(payload);
+  useAuthStore.getState().setTokens(tokens);
+
+  try {
+    const { registerDeviceTokenWithBackend } = await import('./notifications');
+    await registerDeviceTokenWithBackend();
+  } catch (error) {
+    logger.warn('[Auth]', 'Failed to register device token after storing auth tokens:', error);
+  }
+}
+
+/**
+ * Delete all stored tokens and clear the auth store.
+ * Called on logout.
+ */
+export async function clearAuthTokens(): Promise<void> {
+  try {
+    const { deregisterDeviceTokenFromBackend } = await import('./notifications');
+    await deregisterDeviceTokenFromBackend();
+  } catch (error) {
+    logger.warn('[Auth]', 'Failed to deregister device token on logout:', error);
+  }
+
+  await _keychainDelete();
+  storage.delete(STORAGE_KEYS.USER_DATA);
+  useAuthStore.getState().logout();
+}
+
+/**
+ * Use the stored refresh token to obtain a new token pair.
+ * On success the new tokens are persisted; on failure the caller must handle
+ * re-authentication.
+ */
+export async function refreshAuthTokens(): Promise<AuthTokens | null> {
+  const { tokens } = useAuthStore.getState();
+  if (!tokens?.refreshToken) return null;
+
+  try {
+    // Required lazily to avoid a circular dependency (api.ts → auth.ts → api.ts).
+    // `require` rather than `await import()` so it also resolves under Jest,
+    // which cannot run dynamic imports without --experimental-vm-modules.
+    const { apiClient } = require('./api') as typeof import('./api');
+    const newTokens = await apiClient.post<AuthTokens>('/auth/refresh', {
+      refreshToken: tokens.refreshToken,
+    });
+
+    await storeAuthTokens(newTokens);
+    return newTokens;
+  } catch (error) {
+    logger.error('[Auth]', 'Failed to refresh tokens:', error);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// tokenStorage.ts-compatible API
+// (App.tsx uses `hasValidToken`; useLoginScreen.ts uses `saveToken`/`getToken`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist an access token string together with an optional expiry timestamp.
  *
- * @returns The token, or `null` when none is stored.
+ * This is the call-site-compatible replacement for `tokenStorage.saveToken`.
+ * Internally it merges the new access token into any existing StoredCredentials
+ * so the full AuthTokens object is not lost.
+ *
+ * @param token      The access token string.
+ * @param expiresAt  Optional Unix epoch in milliseconds.
+ */
+export async function saveToken(
+  token: string,
+  expiresAt?: number,
+): Promise<void> {
+  // Read existing stored credentials so we don't discard the refresh token.
+  const existing = await _keychainGet<StoredCredentials>();
+  const tokens: AuthTokens = {
+    ...(existing?.tokens ?? {}),
+    accessToken: token,
+    ...(expiresAt !== undefined && { expiresAt }),
+  } as AuthTokens;
+
+  await storeAuthTokens(tokens);
+}
+
+/**
+ * Read the stored access token string.
+ *
+ * This is the call-site-compatible replacement for `tokenStorage.getToken`.
+ *
+ * @returns The access token, or `null` when none is stored.
  */
 export async function getToken(): Promise<string | null> {
-  const payload = await _keychainGet<StoredTokenPayload>();
-  return payload?.token ?? null;
+  const stored = await _keychainGet<StoredCredentials>();
+  return stored?.tokens?.accessToken ?? null;
 }
 
 /**
- * Read the stored token expiry timestamp.
- * Re-implements `tokenStorage.getTokenExpiry`.
+ * Read the stored expiry timestamp.
  *
- * @returns Expiry as a Unix epoch in milliseconds, or `null` when unset.
+ * This is the call-site-compatible replacement for `tokenStorage.getTokenExpiry`.
+ *
+ * @returns Unix epoch in milliseconds, or `null` when unset.
  */
 export async function getTokenExpiry(): Promise<number | null> {
-  const payload = await _keychainGet<StoredTokenPayload>();
-  if (!payload) return null;
-  const expiry = payload[EXPIRY_FIELD];
-  return typeof expiry === 'number' && Number.isFinite(expiry) ? expiry : null;
+  const stored = await _keychainGet<StoredCredentials>();
+  const raw = stored?.[EXPIRY_FIELD] ?? stored?.tokens?.expiresAt;
+  if (raw === undefined || raw === null) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
- * Remove the stored auth token and its expiry metadata.
- * Re-implements `tokenStorage.removeToken`.
+ * Remove the stored token (and metadata).
+ *
+ * This is the call-site-compatible replacement for `tokenStorage.removeToken`.
  */
 export async function removeToken(): Promise<void> {
   await _keychainDelete();
 }
 
 /**
- * Clear all auth-related storage (token + metadata).
- * Re-implements `tokenStorage.clearAll`.
+ * Alias for `removeToken` — clears the entire keychain entry.
+ *
+ * This is the call-site-compatible replacement for `tokenStorage.clearAll`.
  */
-export async function clearAll(): Promise<void> {
-  await _keychainDelete();
-}
+export const clearAll = removeToken;
 
 /**
- * Determine whether a usable (present and unexpired) token exists.
- * Re-implements `tokenStorage.hasValidToken`.
+ * Return `true` when a non-expired access token is present.
  *
- * @returns `true` when a non-expired token is stored.
+ * This is the call-site-compatible replacement for `tokenStorage.hasValidToken`,
+ * and is also the function `App.tsx` calls to decide the initial route.
+ *
+ * @returns `true` if a valid (present and unexpired) access token is stored.
  */
 export async function hasValidToken(): Promise<boolean> {
   const token = await getToken();
@@ -169,74 +277,4 @@ export async function hasValidToken(): Promise<boolean> {
   if (expiry !== null && expiry <= Date.now()) return false;
 
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// AuthTokens-aware helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Load previously persisted auth tokens from the keychain and hydrate the
- * Zustand auth store.  Called once at app boot by `initializeApp`.
- */
-export async function loadStoredAuth(): Promise<void> {
-  try {
-    const tokens = await _keychainGet<AuthTokens>();
-    if (tokens) {
-      useAuthStore.getState().setTokens(tokens);
-
-      const userData = storage.getString(STORAGE_KEYS.USER_DATA);
-      if (userData) {
-        const user: User = JSON.parse(userData);
-        useAuthStore.getState().setUser(user);
-      }
-    }
-  } catch (error) {
-    // Log as warn — not critical; the user will simply be asked to log in.
-    logger.warn('[Auth]', 'Failed to load stored auth — user will re-authenticate.');
-  } finally {
-    useAuthStore.getState().setLoading(false);
-  }
-}
-
-/**
- * Persist a complete `AuthTokens` object in the keychain and update the store.
- * The token value itself is NEVER logged.
- */
-export async function storeAuthTokens(tokens: AuthTokens): Promise<void> {
-  await _keychainSet(tokens);
-  useAuthStore.getState().setTokens(tokens);
-}
-
-/**
- * Remove auth tokens from the keychain, clear non-sensitive user data from
- * MMKV, and reset the auth store.
- */
-export async function clearAuthTokens(): Promise<void> {
-  await _keychainDelete();
-  storage.delete(STORAGE_KEYS.USER_DATA);
-  useAuthStore.getState().logout();
-}
-
-/**
- * Attempt a silent token refresh using the stored refresh token.
- * Returns `null` (and calls logout) when the refresh fails.
- * The token value itself is NEVER logged.
- */
-export async function refreshAuthTokens(): Promise<AuthTokens | null> {
-  const { tokens } = useAuthStore.getState();
-  if (!tokens?.refreshToken) return null;
-
-  try {
-    const newTokens = await apiClient.post<AuthTokens>('/auth/refresh', {
-      refreshToken: tokens.refreshToken,
-    });
-
-    await storeAuthTokens(newTokens);
-    return newTokens;
-  } catch (error) {
-    logger.error('[Auth]', 'Token refresh failed — logging out.');
-    await clearAuthTokens();
-    return null;
-  }
 }

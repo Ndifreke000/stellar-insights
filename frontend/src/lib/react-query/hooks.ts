@@ -1,50 +1,22 @@
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import React from 'react';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+  useIsFetching as useRQIsFetching,
+  type QueryKey,
+} from '@tanstack/react-query';
 import { logger } from '@/lib/logger';
 
-// Define query key factory for consistent keys
-export const queryKeys = {
-  // Anchors
-  anchors: ['anchors'] as const,
-  anchor: (id: string) => ['anchors', id] as const,
-  anchorAssets: (id: string) => ['anchors', id, 'assets'] as const,
-  
-  // Corridors
-  corridors: ['corridors'] as const,
-  corridor: (id: string) => ['corridors', id] as const,
-  corridorMetrics: (id: string) => ['corridors', id, 'metrics'] as const,
-  
-  // SEP-24
-  sep24Anchors: ['sep24', 'anchors'] as const,
-  sep24Info: (server: string) => ['sep24', 'info', server] as const,
-  sep24Transactions: (server: string) => ['sep24', 'transactions', server] as const,
-  
-  // SEP-31
-  sep31Anchors: ['sep31', 'anchors'] as const,
-  sep31Info: (server: string) => ['sep31', 'info', server] as const,
-  sep31Transactions: (server: string) => ['sep31', 'transactions', server] as const,
-  
-  // RPC
-  rpcHealth: ['rpc', 'health'] as const,
-  rpcLedger: ['rpc', 'ledger'] as const,
-  rpcPayments: (account?: string) => ['rpc', 'payments', account] as const,
-  rpcTrades: ['rpc', 'trades'] as const,
-  rpcOrderbook: ['rpc', 'orderbook'] as const,
-  
-  // Jobs
-  jobStatus: ['jobs', 'status'] as const,
-  jobHealth: ['jobs', 'health'] as const,
-  jobMetrics: ['jobs', 'metrics'] as const,
-  
-  // Cache stats
-  cacheStats: ['cache', 'stats'] as const,
-  
-  // Price feeds
-  priceFeeds: ['price-feeds'] as const,
-  priceFeed: (id: string) => ['price-feeds', id] as const,
-} as const;
+export { queryKeys } from './keys';
 
 /**
- * Generic query hook with error handling
+ * Generic query hook. Errors are logged centrally by the QueryCache in
+ * `./provider`.
+ *
+ * Prefer the resource-specific hooks in `./queries` in components; use this
+ * only when adding a new resource hook.
  */
 export function useApiQuery<T>(
   queryKey: readonly unknown[],
@@ -53,39 +25,33 @@ export function useApiQuery<T>(
     staleTime?: number;
     refetchInterval?: number;
     enabled?: boolean;
-    retry?: boolean;
+    /** `false` disables retries; a number caps them; omit to use the client default. */
+    retry?: boolean | number;
   }
 ) {
   return useQuery({
     queryKey,
-    queryFn: async () => {
-      try {
-        const result = await queryFn();
-        return result;
-      } catch (error) {
-        logger.error('Query failed', {
-          queryKey,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        throw error;
-      }
-    },
+    queryFn,
     staleTime: options?.staleTime,
     refetchInterval: options?.refetchInterval,
     enabled: options?.enabled,
-    retry: options?.retry !== false,
+    // `retry: true` would mean "retry forever" in React Query, so only forward
+    // explicit values and otherwise defer to the client's status-aware policy.
+    ...(options?.retry !== undefined && options.retry !== true
+      ? { retry: options.retry }
+      : {}),
   });
 }
 
 /**
- * Generic mutation hook with success/error handling
+ * Generic mutation hook with success/error handling and cache invalidation.
  */
 export function useApiMutation<T, V>(
   mutationFn: (variables: V) => Promise<T>,
   options?: {
     onSuccess?: (data: T, variables: V) => void;
     onError?: (error: Error, variables: V) => void;
-    invalidateQueries?: readonly unknown[][];
+    invalidateQueries?: readonly (readonly unknown[])[];
   }
 ) {
   const queryClient = useQueryClient();
@@ -93,28 +59,23 @@ export function useApiMutation<T, V>(
   return useMutation({
     mutationFn: async (variables: V) => {
       try {
-        const result = await mutationFn(variables);
-        logger.info('Mutation successful', {
-          variables,
-        });
-        return result;
+        return await mutationFn(variables);
       } catch (error) {
+        // Variables may contain credentials (JWTs, account keys) — don't log them.
         logger.error('Mutation failed', {
-          variables,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
         throw error;
       }
     },
-    onSuccess: (data, variables) => {
-      // Invalidate related queries
+    onSuccess: async (data, variables) => {
       if (options?.invalidateQueries) {
-        options.invalidateQueries.forEach(queryKey => {
-          queryClient.invalidateQueries({ queryKey });
-        });
+        await Promise.all(
+          options.invalidateQueries.map((queryKey) =>
+            queryClient.invalidateQueries({ queryKey })
+          )
+        );
       }
-      
-      // Call custom success handler
       options?.onSuccess?.(data, variables);
     },
     onError: options?.onError,
@@ -122,96 +83,92 @@ export function useApiMutation<T, V>(
 }
 
 /**
- * Infinite query hook for paginated data
+ * Infinite query hook for cursor-paginated endpoints.
+ * Pair with `getNextCursor` from `@/lib/api/pagination`.
  */
-export function useApiInfiniteQuery<T>(
+export function useApiInfiniteQuery<T, P = string | undefined>(
   queryKey: readonly unknown[],
-  queryFn: ({ pageParam }: { pageParam?: unknown }) => Promise<T>,
-  options?: {
-    initialPageParam?: unknown;
-    getNextPageParam?: (lastPage: T) => unknown;
+  queryFn: ({ pageParam }: { pageParam: P }) => Promise<T>,
+  options: {
+    initialPageParam: P;
+    getNextPageParam: (lastPage: T) => P | undefined | null;
     enabled?: boolean;
   }
 ) {
   return useInfiniteQuery({
     queryKey,
-    queryFn,
-    initialPageParam: options?.initialPageParam,
-    getNextPageParam: options?.getNextPageParam,
-    enabled: options?.enabled,
+    queryFn: ({ pageParam }) => queryFn({ pageParam: pageParam as P }),
+    initialPageParam: options.initialPageParam,
+    getNextPageParam: options.getNextPageParam,
+    enabled: options.enabled,
   });
 }
 
 /**
- * Hook for prefetching data
+ * Returns a stable function that prefetches a query into the cache.
  */
 export function usePrefetchQuery() {
   const queryClient = useQueryClient();
 
   return React.useCallback(
-    <T>(queryKey: readonly unknown[], queryFn: () => Promise<T>) => {
+    <T,>(queryKey: readonly unknown[], queryFn: () => Promise<T>) =>
       queryClient.prefetchQuery({
         queryKey,
         queryFn,
-        staleTime: 5 * 60 * 1000, // 5 minutes
-      });
-    },
+        staleTime: 5 * 60 * 1000,
+      }),
     [queryClient]
   );
 }
 
 /**
- * Hook for invalidating queries
+ * Returns a stable function that invalidates every query under `queryKey`.
  */
 export function useInvalidateQueries() {
   const queryClient = useQueryClient();
 
   return React.useCallback(
-    (queryKey: readonly unknown[]) => {
-      queryClient.invalidateQueries({ queryKey });
-    },
+    (queryKey: readonly unknown[]) => queryClient.invalidateQueries({ queryKey }),
     [queryClient]
   );
 }
 
 /**
- * Hook for resetting queries
+ * Returns a stable function that resets the entire query cache.
  */
 export function useResetQueries() {
   const queryClient = useQueryClient();
 
-  return React.useCallback(() => {
-    queryClient.resetQueries();
-  }, [queryClient]);
+  return React.useCallback(() => queryClient.resetQueries(), [queryClient]);
 }
 
 /**
- * Hook for checking if query is fetching
+ * Number of in-flight fetches, optionally scoped to `queryKey`.
  */
 export function useIsFetching(queryKey?: readonly unknown[]) {
-  return useQuery({
-    queryKey: queryKey || ['fetching'],
-    queryFn: () => false,
-    select: () => {
-      const queryClient = useQueryClient();
-      return queryClient.isFetching(queryKey);
-    },
-    refetchInterval: 1000, // Check every second
-  });
+  return useRQIsFetching(queryKey ? { queryKey: queryKey as QueryKey } : undefined);
 }
 
 /**
- * Hook for checking if query is stale
+ * Whether the cached query under `queryKey` is stale. Re-evaluates whenever the
+ * query cache changes; never fetches or writes to the cache itself.
  */
 export function useIsStale(queryKey: readonly unknown[]) {
-  return useQuery({
-    queryKey,
-    queryFn: () => false,
-    select: () => {
-      const queryClient = useQueryClient();
-      const query = queryClient.getQueryCache().find(queryKey);
-      return query?.isStale() ?? false;
-    },
-    refetchInterval: 5000, // Check every 5 seconds
-  });
+  const queryClient = useQueryClient();
+  const hash = JSON.stringify(queryKey);
+
+  const getSnapshot = React.useCallback(
+    () =>
+      queryClient.getQueryCache().find({ queryKey: queryKey as QueryKey, exact: true })?.isStale() ??
+      false,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, hash]
+  );
+
+  const subscribe = React.useCallback(
+    (onChange: () => void) => queryClient.getQueryCache().subscribe(onChange),
+    [queryClient]
+  );
+
+  return React.useSyncExternalStore(subscribe, getSnapshot, () => false);
 }

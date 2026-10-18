@@ -2,24 +2,24 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
-  namespace: stellar-insights
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis
 spec:
   replicas: 1
   serviceName: redis
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: redis
   template:
     metadata:
       labels:
-        app: stellar-insights
+        app: payraider
         component: redis
     spec:
-      serviceAccountName: stellar-insights-redis
+      serviceAccountName: payraider-redis
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -101,7 +101,7 @@ spec:
   - metadata:
       name: redis-data
       labels:
-        app: stellar-insights
+        app: payraider
         component: redis
     spec:
       accessModes:
@@ -114,8 +114,8 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: stellar-insights-redis
-  namespace: stellar-insights
+  name: payraider-redis
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: redis

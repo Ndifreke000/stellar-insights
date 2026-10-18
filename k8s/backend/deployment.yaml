@@ -1,27 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights
+  name: payraider-backend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: backend
     version: v1
 spec:
-  replicas: 3
+  # Pinned to 1: SQLite (docs/adr/0001-sqlite-vs-postgres.md) permits
+  # exactly one writer and there is no shared storage for multiple
+  # replicas to safely share one database file.
+  replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0  # Zero downtime
+    # Recreate, not RollingUpdate: the backend-data PVC below is
+    # ReadWriteOnce, so a new pod cannot mount it until the old pod
+    # releases it. RollingUpdate's maxSurge would deadlock trying to
+    # schedule a second pod against an already-mounted RWO volume.
+    # This means brief downtime on every deploy -- the real cost of a
+    # single-writer file database, not a bug to route around.
+    type: Recreate
   selector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: backend
   template:
     metadata:
       labels:
-        app: stellar-insights
+        app: payraider
         component: backend
         version: v1
       annotations:
@@ -29,7 +35,7 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: stellar-insights-backend
+      serviceAccountName: payraider-backend
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -40,7 +46,7 @@ spec:
       # Init container for database migrations
       initContainers:
       - name: db-migration
-        image: stellar-insights/backend:latest
+        image: payraider/backend:latest
         imagePullPolicy: IfNotPresent
         command: ["/bin/sh", "-c"]
         args:
@@ -51,7 +57,7 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: database-url
         securityContext:
           allowPrivilegeEscalation: false
@@ -69,7 +75,7 @@ spec:
       
       containers:
       - name: backend
-        image: stellar-insights/backend:latest
+        image: payraider/backend:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -80,32 +86,46 @@ spec:
           protocol: TCP
         
         env:
+        # Instance identity (Downward API) — used in distributed-lock tokens,
+        # leader election and logs to tell replicas apart.
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        # Traffic arrives via the ingress controller: trust exactly one proxy hop
+        # of X-Forwarded-For so per-IP limits and logs see the real client.
+        - name: TRUST_PROXY_HEADERS
+          value: "true"
+        - name: TRUSTED_PROXY_HOPS
+          value: "1"
+
         # Database Configuration
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: database-url
         
         # Redis Configuration
         - name: REDIS_URL
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: redis-url
         
         # JWT Secret
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: jwt-secret
         
         # Encryption Key
         - name: ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
-              name: stellar-insights-secrets
+              name: payraider-secrets
               key: encryption-key
         
         # Server Configuration
@@ -118,56 +138,70 @@ spec:
         - name: STELLAR_NETWORK
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-network
         
         - name: STELLAR_RPC_URL_MAINNET
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-rpc-url-mainnet
         
         - name: STELLAR_HORIZON_URL_MAINNET
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: stellar-horizon-url-mainnet
         
         # Logging
         - name: RUST_LOG
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: rust-log
         
         - name: LOG_FORMAT
           value: "json"
+
+        # API access logging (see docs/API_REQUEST_LOGGING.md)
+        - name: API_LOG_SAMPLE_RATE
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: api-log-sample-rate
+              optional: true
+        - name: API_LOG_SLOW_MS
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: api-log-slow-ms
+              optional: true
         
         # CORS Configuration
         - name: CORS_ALLOWED_ORIGINS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: cors-allowed-origins
         
         # Database Pool Configuration
         - name: DB_POOL_MAX_CONNECTIONS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: db-pool-max-connections
         
         - name: DB_POOL_MIN_CONNECTIONS
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: db-pool-min-connections
         
         # Admin IP Whitelist
         - name: ADMIN_IP_WHITELIST
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: admin-ip-whitelist
         
         - name: ADMIN_IP_TRUST_PROXY
@@ -179,10 +213,17 @@ spec:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           valueFrom:
             configMapKeyRef:
-              name: stellar-insights-config
+              name: payraider-config
               key: otel-endpoint
               optional: true
         
+        # Give the ingress/endpoints time to stop routing new requests (and
+        # WebSocket upgrades) here before the app starts its graceful shutdown.
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "10"]
+
         # Health check endpoints
         # Threshold increased to tolerate GC pauses under mainnet load (was failureThreshold: 2, periodSeconds: 10)
         livenessProbe:
@@ -248,7 +289,70 @@ spec:
           mountPath: /app/cache
         - name: logs
           mountPath: /app/logs
-      
+        - name: data
+          mountPath: /data
+
+      # Litestream sidecar: continuous replication of the SQLite database
+      # to S3 (ADR 0001's durability hardening item), mirroring the ECS
+      # task's litestream sidecar (terraform/modules/compute/ecs/main.tf).
+      # Shares the same PVC as the backend container.
+      - name: litestream
+        image: litestream/litestream:0.3.13
+        imagePullPolicy: IfNotPresent
+        args:
+        - replicate
+        - /data/payraider.db
+        - $(LITESTREAM_REPLICA_URL)
+        env:
+        - name: LITESTREAM_S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: litestream-s3-bucket
+        - name: LITESTREAM_S3_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: litestream-s3-path
+        - name: LITESTREAM_REPLICA_URL
+          value: "s3://$(LITESTREAM_S3_BUCKET)/$(LITESTREAM_S3_PATH)"
+        - name: AWS_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: payraider-config
+              key: aws-region
+        # On EKS, prefer IRSA on the payraider-backend ServiceAccount
+        # instead of these static keys (see secret-template.yaml).
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: payraider-secrets
+              key: litestream-aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payraider-secrets
+              key: litestream-aws-secret-access-key
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: litestream-tmp
+          mountPath: /tmp
+
       # Volumes
       volumes:
       - name: tmp
@@ -257,6 +361,11 @@ spec:
         emptyDir: {}
       - name: logs
         emptyDir: {}
+      - name: litestream-tmp
+        emptyDir: {}
+      - name: data
+        persistentVolumeClaim:
+          claimName: payraider-backend-data
       
       # Pod scheduling
       affinity:
@@ -286,4 +395,5 @@ spec:
       # DNS configuration
       dnsPolicy: ClusterFirst
       restartPolicy: Always
-      terminationGracePeriodSeconds: 30
+      # preStop (10s) + graceful shutdown (WebSocket close, cache flush, DB close)
+      terminationGracePeriodSeconds: 45

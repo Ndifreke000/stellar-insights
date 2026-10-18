@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, FormProvider, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   getSep31Anchors,
   getSep31Info,
@@ -25,7 +26,7 @@ import {
   Banknote,
   Quote,
 } from "lucide-react";
-import { FormField, FormSelect } from "@/components/ui/FormField";
+import { FormField } from "@/components/ui/FormField";
 import { sep31PaymentFlowSchema, type Sep31PaymentFlowForm } from "@/lib/schemas";
 
 interface ComplianceField {
@@ -51,15 +52,7 @@ export function Sep31PaymentFlow() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isValid, isDirty },
-    setValue,
-    watch,
-    trigger,
-    resetField,
-  } = useForm<Sep31PaymentFlowForm>({
+  const methods = useForm<Sep31PaymentFlowForm>({
     resolver: zodResolver(sep31PaymentFlowSchema),
     mode: "onChange",
     defaultValues: {
@@ -71,11 +64,18 @@ export function Sep31PaymentFlow() {
       jwt: "",
     },
   });
+  const {
+    handleSubmit,
+    formState: { isValid, isDirty },
+    setValue,
+    watch,
+    trigger,
+  } = methods;
 
   // Watch form values for real-time updates
   const transferServer = watch("transferServer");
   const amount = watch("amount");
-  const receiverId = watch("receiverId");
+  const _receiverId = watch("receiverId");
   const sourceAsset = watch("sourceAsset");
   const destAsset = watch("destAsset");
   const jwt = watch("jwt");
@@ -206,22 +206,38 @@ export function Sep31PaymentFlow() {
 
   React.useEffect(() => {
     loadAnchors();
-  }, []);
+  }, [loadAnchors]);
 
   React.useEffect(() => {
     if (resolvedTransferServer) loadInfo();
     else setInfo(null);
-  }, [resolvedTransferServer]);
+  }, [resolvedTransferServer, loadInfo]);
 
+  // Anchor compliance fields are discovered at runtime from SEP-31 /info, so
+  // their shape can't be part of the static `sep31PaymentFlowSchema`. We build
+  // an equivalent Zod schema on the fly instead, so error messages stay
+  // consistent with the rest of the form's validation.
   const validateComplianceFields = (): boolean => {
-    const errors: Record<string, string> = {};
+    const shape: Record<string, z.ZodTypeAny> = {};
     for (const field of complianceFields) {
-      if (!field.optional && !complianceValues[field.name]?.trim()) {
-        errors[field.name] = `${field.name} is required`;
-      }
+      shape[field.name] = field.optional
+        ? z.string().optional()
+        : z.string().trim().min(1, `${field.name} is required`);
     }
-    setComplianceErrors(errors);
-    return Object.keys(errors).length === 0;
+
+    const result = z.object(shape).safeParse(complianceValues);
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path[0];
+        if (typeof key === "string") errors[key] = issue.message;
+      }
+      setComplianceErrors(errors);
+      return false;
+    }
+
+    setComplianceErrors({});
+    return true;
   };
 
   const handleSendPayment: SubmitHandler<Sep31PaymentFlowForm> = async (data) => {
@@ -284,6 +300,7 @@ export function Sep31PaymentFlow() {
   };
 
   return (
+    <FormProvider {...methods}>
     <div className="space-y-8">
       {/* Anchor selection */}
       <section className="glass-card rounded-2xl p-6">
@@ -510,24 +527,24 @@ export function Sep31PaymentFlow() {
         </h2>
         {resolvedTransferServer && (
           <button
-            type=”button”
+            type="button"
             onClick={loadTransactions}
             disabled={loadingTx}
-            className=”mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2”
+            className="mb-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-white/5 flex items-center gap-2"
           >
             {loadingTx ? (
-              <Loader2 className=”w-4 h-4 animate-spin” />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <RefreshCw className=”w-4 h-4” />
+              <RefreshCw className="w-4 h-4" />
             )}
             Load history
           </button>
         )}
         {transactions.length === 0 && !loadingTx && (
-          <p className=”text-muted-foreground text-sm”>
+          <p className="text-muted-foreground text-sm">
             {resolvedTransferServer
-              ? “Click “Load history” to fetch payments (JWT may be required).”
-              : “Select an anchor above to load payment history.”}
+              ? "Click 'Load history' to fetch payments (JWT may be required)."
+              : "Select an anchor above to load payment history."}
           </p>
         )}
         {transactions.length > 0 && (
@@ -581,5 +598,6 @@ export function Sep31PaymentFlow() {
         )}
       </section>
     </div>
+    </FormProvider>
   );
 }

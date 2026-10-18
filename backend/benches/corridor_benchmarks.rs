@@ -22,7 +22,7 @@
 //! ```
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use stellar_insights_backend::models::corridor::{compute_median, Corridor, PaymentRecord};
+use payraider_backend::models::corridor::{compute_median, Corridor, PaymentRecord};
 use uuid::Uuid;
 
 /// Benchmark corridor creation with normalization

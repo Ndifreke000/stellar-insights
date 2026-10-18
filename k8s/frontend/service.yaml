@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: stellar-insights-frontend
-  namespace: stellar-insights
+  name: payraider-frontend
+  namespace: payraider
   labels:
-    app: stellar-insights
+    app: payraider
     component: frontend
 spec:
   type: ClusterIP
@@ -15,5 +15,5 @@ spec:
     targetPort: http
     protocol: TCP
   selector:
-    app: stellar-insights
+    app: payraider
     component: frontend

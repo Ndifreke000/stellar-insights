@@ -17,7 +17,7 @@ impl Default for ElasticsearchConfig {
             hosts: vec!["http://localhost:9200".to_string()],
             username: None,
             password: None,
-            index_prefix: "stellar-insights".to_string(),
+            index_prefix: "payraider".to_string(),
             bulk_size: 1000,
             timeout_secs: 30,
         }

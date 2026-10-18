@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::database::Database;
 use crate::models::corridor::{CorridorMetrics, HourlyCorridorMetrics, VolumeTrend};
-use crate::services::analytics::compute_metrics_from_payments;
+use crate::services::analytics::{compute_metrics_from_payments, filter_merged_accounts};
 
 const MAX_RETRIES: i32 = 3;
 const RETRY_DELAY_SECS: u64 = 60;
@@ -67,6 +67,26 @@ impl AggregationService {
                 // Continue running despite errors
             }
         }
+    }
+
+    /// Fetches every account that has ever appeared as a `source_account` or
+    /// `destination_account` on an `account_merges` row, so aggregation can
+    /// exclude payments touching those accounts (#2664). Queried directly
+    /// against the pool rather than via `AccountMergeDetector` to avoid
+    /// threading another dependency through `AggregationService::new`.
+    async fn fetch_merged_accounts(&self) -> Result<std::collections::HashSet<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r"
+            SELECT source_account FROM account_merges
+            UNION
+            SELECT destination_account FROM account_merges
+            ",
+        )
+        .fetch_all(self.db.pool())
+        .await
+        .context("Failed to fetch merged account set")?;
+
+        Ok(rows.into_iter().map(|(account,)| account).collect())
     }
 
     /// Process jobs marked for retry
@@ -130,6 +150,29 @@ impl AggregationService {
         }
 
         info!("Processing {} payments", payments.len());
+
+        // Exclude payments touching a merged account before aggregating —
+        // otherwise a one-off balance dump into/out of a merged account can
+        // distort a corridor's success rate and volume (#2664).
+        let merged_accounts = self.fetch_merged_accounts().await.unwrap_or_else(|e| {
+            warn!(
+                "Failed to load merged-account set, proceeding without filtering: {}",
+                e
+            );
+            std::collections::HashSet::new()
+        });
+        let (payments, excluded) = filter_merged_accounts(&payments, &merged_accounts);
+        if excluded > 0 {
+            info!(
+                "Excluded {} payment(s) touching a merged account from this aggregation window",
+                excluded
+            );
+        }
+
+        if payments.is_empty() {
+            info!("No payments remaining after merged-account filtering");
+            return Ok(0);
+        }
 
         // Compute metrics for each corridor
         let corridor_metrics = compute_metrics_from_payments(&payments);
@@ -468,7 +511,7 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("payments table creation should succeed");
 
         pool.execute(
             r#"
@@ -495,7 +538,7 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("corridor_metrics_hourly table creation should succeed");
 
         pool.execute(
             r#"
@@ -514,17 +557,19 @@ mod tests {
             "#,
         )
         .await
-        .unwrap();
+        .expect("aggregation_jobs table creation should succeed");
     }
 
     async fn setup_test_db() -> (Arc<Database>, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("aggregation-tests.db");
         let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path.display()))
-            .unwrap()
+            .expect("sqlite connect options should parse")
             .create_if_missing(true);
 
-        let pool = SqlitePool::connect_with(options).await.unwrap();
+        let pool = SqlitePool::connect_with(options)
+            .await
+            .expect("sqlite pool should connect");
         setup_aggregation_schema(&pool).await;
 
         (Arc::new(Database::new(pool)), temp_dir)
@@ -563,12 +608,14 @@ mod tests {
         .bind(created_at.to_rfc3339())
         .execute(db.pool())
         .await
-        .unwrap();
+        .expect("test payment insert should succeed");
     }
 
     #[tokio::test]
     async fn test_truncate_to_hour() {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
         setup_aggregation_schema(&pool).await;
         let service =
             AggregationService::new(Arc::new(Database::new(pool)), AggregationConfig::default());
@@ -599,7 +646,7 @@ mod tests {
         let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
             .fetch_one(db.pool())
             .await
-            .unwrap();
+            .expect("metrics count query should succeed");
         assert!(metrics_count > 0);
 
         let metric = sqlx::query(
@@ -611,7 +658,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("metric row query should succeed");
 
         assert_eq!(
             metric.get::<String, _>("corridor_key"),
@@ -631,7 +678,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("aggregation job row query should succeed");
 
         assert_eq!(job.get::<String, _>("status"), "completed");
         assert!(job
@@ -650,7 +697,7 @@ mod tests {
         let metrics_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM corridor_metrics_hourly")
             .fetch_one(db.pool())
             .await
-            .unwrap();
+            .expect("metrics count query should succeed");
         assert_eq!(metrics_count, 0);
 
         let status: String = sqlx::query_scalar(
@@ -658,7 +705,7 @@ mod tests {
         )
         .fetch_one(db.pool())
         .await
-        .unwrap();
+        .expect("aggregation job status query should succeed");
         assert_eq!(status, "completed");
     }
 }

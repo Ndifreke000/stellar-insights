@@ -1,6 +1,5 @@
 "use client";
-import { logger } from "@/lib/logger";
-import { useEffect, useState, use, Suspense } from "react";
+import { use, Suspense } from "react";
 import { getAddressValidationError } from "@/lib/address";
 import { AnchorHeader } from "@/components/anchors/AnchorHeader";
 import { AssetPortfolio } from "@/components/anchors/AssetPortfolio";
@@ -8,8 +7,7 @@ import { ReliabilityTrend } from "@/components/charts/ReliabilityTrend";
 import { AlertCircle, Clock, XCircle } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { BackButton } from "@/components/ui/BackButton";
-import { AnchorDetailData } from "@/lib/api/types";
-import { getAnchorDetail } from "@/lib/api/anchor";
+import { useAnchorDetail } from "@/lib/react-query/queries";
 import { sanitizeText } from "@/lib/sanitize";
 
 function AnchorDetailPageContent({
@@ -19,37 +17,15 @@ function AnchorDetailPageContent({
 }) {
   const unwrappedParams = use(params);
   const { address } = unwrappedParams;
-  const [data, setData] = useState<AnchorDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Validate Stellar address (G-address or M-address / muxed) before fetching.
+  const validationError = address ? getAddressValidationError(address) : null;
+  const query = useAnchorDetail(validationError ? undefined : address);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!address) return;
-
-      // Validate Stellar address (G-address or M-address / muxed)
-      const validationError = getAddressValidationError(address);
-      if (validationError) {
-        setError(validationError);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const result = await getAnchorDetail(address);
-        setData(result);
-        setError(null);
-      } catch (err) {
-        logger.error("Failed to fetch anchor details:", err);
-        setError("Failed to load anchor data. Please try again later.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [address]);
+  const data = query.data ?? null;
+  const loading = !validationError && query.isPending && !!address;
+  const error =
+    validationError ??
+    (query.isError ? "Failed to load anchor data. Please try again later." : null);
 
   if (loading) {
     return (

@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 import { ShortcutCustomizer } from "@/components/keyboard-shortcuts/ShortcutCustomizer";
 import { ProgressiveWebApp } from "@/components/ProgressiveWebApp";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
-import { WifiOff, Wifi } from "lucide-react";
+import { WifiOff, Wifi, ShieldCheck } from "lucide-react";
 
 function OfflineStatusBadge() {
   const { isOnline, offlineSince } = useOfflineStatus();
@@ -57,7 +58,7 @@ export default function SettingsPage() {
           <OfflineStatusBadge />
         </div>
         <p className="text-sm text-muted-foreground">
-          Install Stellar Insights as an app for instant access and offline support.
+          Install PayRaider as an app for instant access and offline support.
           Cached data remains available for up to 24 hours without a connection.
         </p>
         <ProgressiveWebApp
@@ -71,6 +72,25 @@ export default function SettingsPage() {
       {/* Keyboard shortcuts */}
       <div className="glass-card p-6 rounded-2xl">
         <ShortcutCustomizer />
+      </div>
+
+      {/* Privacy & GDPR */}
+      <div className="glass-card p-6 rounded-2xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Privacy &amp; Data</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage your consents, export your data, or request deletion under GDPR.
+            </p>
+          </div>
+          <Link
+            href="settings/gdpr"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
+          >
+            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+            Privacy Settings
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 //!
 //! This module provides a [`PushNotificationRegistration`] service that handles
 //! registering and deregistering mobile/web devices for push notifications on
-//! the Stellar Insights platform.
+//! the PayRaider platform.
 //!
 //! Key capabilities:
 //! - Network-context awareness (testnet / mainnet routing)
@@ -131,11 +131,7 @@ impl PushNotificationRegistration {
     ///
     /// Returns `Ok(true)` when the token was found and removed, `Ok(false)` when
     /// no matching registration existed (idempotent removal).
-    pub async fn deregister(
-        &self,
-        device_token: &str,
-        context: &NetworkContext,
-    ) -> Result<bool> {
+    pub async fn deregister(&self, device_token: &str, context: &NetworkContext) -> Result<bool> {
         if !self.config.enabled {
             bail!("Push notification registration service is disabled");
         }
@@ -182,7 +178,7 @@ mod tests {
         let instance = PushNotificationRegistration::new(Config::default());
         let result = instance.process(&NetworkContext::testnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process/register should succeed in this test fixture");
         assert!(resp.success);
     }
 
@@ -191,7 +187,7 @@ mod tests {
         let instance = PushNotificationRegistration::new(Config::default());
         let result = instance.process(&NetworkContext::mainnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process/register should succeed in this test fixture");
         assert!(resp.success);
         assert!(resp.network.to_lowercase().contains("mainnet"));
     }
@@ -205,7 +201,7 @@ mod tests {
         let instance = PushNotificationRegistration::new(config);
         let result = instance.process(&NetworkContext::testnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process/register should succeed in this test fixture");
         assert!(!resp.success);
         assert!(resp.message.contains("disabled"));
     }
@@ -213,8 +209,14 @@ mod tests {
     #[tokio::test]
     async fn test_registration_count_increments() {
         let instance = PushNotificationRegistration::new(Config::default());
-        instance.process(&NetworkContext::testnet()).await.unwrap();
-        instance.process(&NetworkContext::mainnet()).await.unwrap();
+        instance
+            .process(&NetworkContext::testnet())
+            .await
+            .expect("process(testnet) should succeed");
+        instance
+            .process(&NetworkContext::mainnet())
+            .await
+            .expect("process(mainnet) should succeed");
         let state = instance.state.read().await;
         assert_eq!(state.registrations_processed, 2);
     }
@@ -225,7 +227,7 @@ mod tests {
         let req = valid_request();
         let result = instance.register(&req, &NetworkContext::testnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process/register should succeed in this test fixture");
         assert!(resp.success);
         assert!(resp.registration_id.is_some());
     }
@@ -267,15 +269,13 @@ mod tests {
             .deregister("test-device-token-abc123", &NetworkContext::testnet())
             .await;
         assert!(result.is_ok());
-        assert!(result.unwrap());
+        assert!(result.expect("deregister should succeed for a valid token"));
     }
 
     #[tokio::test]
     async fn test_deregister_empty_token_rejected() {
         let instance = PushNotificationRegistration::new(Config::default());
-        let result = instance
-            .deregister("", &NetworkContext::testnet())
-            .await;
+        let result = instance.deregister("", &NetworkContext::testnet()).await;
         assert!(result.is_err());
     }
 
@@ -288,7 +288,7 @@ mod tests {
         };
         let result = instance.register(&req, &NetworkContext::mainnet()).await;
         assert!(result.is_ok());
-        let resp = result.unwrap();
+        let resp = result.expect("process/register should succeed in this test fixture");
         assert!(resp.message.contains("Apns"));
     }
 }

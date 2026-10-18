@@ -20,7 +20,13 @@ export function MonitoringProvider({
     monitoring.trackMetric(
       `web-vitals-${metric.name.toLowerCase()}`,
       metric.value,
-      { label: metric.label, id: metric.id },
+      {
+        label: metric.label,
+        id: metric.id,
+        rating: "rating" in metric ? metric.rating : undefined,
+        navigationType:
+          "navigationType" in metric ? metric.navigationType : undefined,
+      },
     );
   });
 
@@ -43,6 +49,26 @@ export function MonitoringProvider({
       }
       return originalFetch(input, init);
     };
+
+    // Track full page load time from the Navigation Timing API
+    const reportPageLoad = () => {
+      const [nav] = performance.getEntriesByType(
+        "navigation",
+      ) as PerformanceNavigationTiming[];
+      if (nav && nav.loadEventEnd > 0) {
+        monitoring.trackMetric("page-load-time", nav.loadEventEnd, {
+          domContentLoaded: nav.domContentLoadedEventEnd,
+          transferSize: nav.transferSize,
+        });
+      }
+    };
+    if (document.readyState === "complete") {
+      setTimeout(reportPageLoad, 0);
+    } else {
+      window.addEventListener("load", () => setTimeout(reportPageLoad, 0), {
+        once: true,
+      });
+    }
 
     // Track runtime errors
     const handleError = (event: ErrorEvent) => {

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: alertmanager-config
-  namespace: stellar-insights
+  namespace: payraider
 data:
   alertmanager.yml: |
     global:

@@ -45,7 +45,7 @@ output "task_definition_family" {
 
 output "container_name" {
   description = "Name of the application container"
-  value       = "stellar-insights"
+  value       = "payraider"
 }
 
 output "container_port" {

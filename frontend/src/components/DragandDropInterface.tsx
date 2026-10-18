@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { GripVertical, Trash2, Plus } from 'lucide-react';
 
 interface DraggableItem {
@@ -35,7 +35,7 @@ export const DragandDropInterface: React.FC<DragandDropInterfaceProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
   const dragImageRef = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = (e: React.DragEvent, item: DraggableItem, index: number) => {
+  const handleDragStart = (e: React.DragEvent, item: DraggableItem, _index: number) => {
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.content);

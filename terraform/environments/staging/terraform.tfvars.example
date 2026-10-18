@@ -1,0 +1,61 @@
+# Staging Environment Variables
+# Cost estimate: ~$96/month (see module.compute's cost_estimate output)
+#
+# Breakdown:
+#   - NAT Gateways: ~$30/month (single NAT, can upgrade to per-AZ for HA)
+#   - ALB: ~$20/month
+#   - ECS (t3.small, 1 pinned instance): ~$20/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
+#   - ElastiCache Redis (cache.t3.small, 2-node): ~$20/month
+#   - Data transfer out: ~$10/month
+#
+# ✓ Multi-AZ networking/caching for HA testing (backend is a single
+#   pinned instance -- see ADR 0001)
+# ✓ Redis Multi-AZ with automatic failover
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots
+#   (see docs/backup-system.md)
+# ✓ CloudWatch monitoring and alarms
+# ✓ VPC Flow Logs for security
+# ✗ No auto-scaling: pinned to 1 task (SQLite single-writer constraint)
+#
+# PURPOSE: Mirror production environment for pre-deployment testing
+# - Test infrastructure changes before production
+# - Load test new features
+# - Validate disaster recovery procedures
+# - Train on-call team with realistic setup
+#
+# Setup instructions:
+# 1. Copy this file to terraform.tfvars (git will ignore it)
+# 2. Ensure global infrastructure is deployed: cd ../global && terraform apply
+# 3. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="key=staging/terraform.tfstate" \
+#      -backend-config="region=us-east-1" \
+#      -backend-config="dynamodb_table=terraform-locks"
+# 4. Review plan: terraform plan
+# 5. Apply: terraform apply
+#
+# Pre-deployment Checklist:
+# [ ] Vault secrets configured (same as production)
+# [ ] Litestream replication and restore tested (see docs/backup-system.md)
+# [ ] EFS volume mounts and persists across a task restart
+# [ ] CloudWatch alarms configured and tested
+# [ ] Load testing plan defined against the single pinned instance
+#
+# Post-deployment Validation:
+# [ ] Health check: GET /health returning 200 OK
+# [ ] Database connectivity verified
+# [ ] Vault secrets accessible
+# [ ] CloudWatch logs flowing
+# [ ] Perform at least one test restore from backup
+
+aws_region  = "us-east-1"
+environment = "staging"
+vpc_cidr    = "10.1.0.0/16"
+
+# Vault configuration (same as production)
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Alarm notifications (send to ops team)
+alarm_email = "ops-team@payraider.com"

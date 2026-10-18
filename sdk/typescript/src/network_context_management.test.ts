@@ -15,7 +15,7 @@ describe("NetworkContextManagement", () => {
 
     expect(result.success).toBe(true);
     expect(result.network).toBe("mainnet");
-    expect(result.data.baseUrl).toBe("https://api.stellarinsights.io");
+    expect(result.data.baseUrl).toBe("https://api.payraider.io");
     expect(result.data.headers["X-Stellar-Network"]).toBe("mainnet");
     expect(result.data.clientName).toBe("web-app");
     expect(typeof result.data.configuredAt).toBe("string");
@@ -25,7 +25,7 @@ describe("NetworkContextManagement", () => {
     const result = await manager.execute({ network: "testnet" });
 
     expect(result.network).toBe("testnet");
-    expect(result.data.baseUrl).toBe("https://testnet-api.stellarinsights.io");
+    expect(result.data.baseUrl).toBe("https://testnet-api.payraider.io");
     expect(result.data.headers["X-Stellar-Network"]).toBe("testnet");
   });
 
@@ -38,7 +38,7 @@ describe("NetworkContextManagement", () => {
 
   it("infers testnet from config baseUrl on construction", async () => {
     const testnetManager = new NetworkContextManagement({
-      baseUrl: "https://testnet-api.stellarinsights.io",
+      baseUrl: "https://testnet-api.payraider.io",
     });
 
     expect(testnetManager.getNetwork()).toBe("testnet");
@@ -97,7 +97,7 @@ describe("NetworkContextManagement", () => {
   });
 
   it("getBaseUrl returns network-specific default URL", () => {
-    expect(manager.getBaseUrl("testnet")).toBe("https://testnet-api.stellarinsights.io");
+    expect(manager.getBaseUrl("testnet")).toBe("https://testnet-api.payraider.io");
   });
 
   // ── cache ──────────────────────────────────────────────────────────────────

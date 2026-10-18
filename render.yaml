@@ -1,0 +1,108 @@
+# Render Blueprint for PayRaider: dashboard > New > Blueprint, pick this repo.
+#
+# Creates the API (with a disk for its SQLite database), Redis for wallet
+# sign-in and rate limits, the hosted MCP plugin server, and the web app.
+# Variables marked `sync: false` are asked for when the Blueprint is applied;
+# see docs/DEPLOY.md for values.
+
+services:
+  - type: web
+    name: payraider-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # A persistent disk needs a paid instance; on the free plan the SQLite
+    # database would be wiped on every deploy.
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///data/payraider.db?mode=rwc
+      - key: STELLAR_NETWORK
+        value: mainnet
+      - key: STELLAR_HORIZON_URL_MAINNET
+        value: https://horizon.stellar.org
+      - key: STELLAR_RPC_URL_MAINNET
+        sync: false
+      - key: STELLAR_HORIZON_URL_TESTNET
+        value: https://horizon-testnet.stellar.org
+      - key: STELLAR_RPC_URL_TESTNET
+        value: https://soroban-testnet.stellar.org
+      - key: JWT_SECRET
+        generateValue: true
+      # Must be exactly 64 hex characters: openssl rand -hex 32
+      - key: ENCRYPTION_KEY
+        sync: false
+      # A Stellar public key you control (G...)
+      - key: SEP10_SERVER_PUBLIC_KEY
+        sync: false
+      # The web app's host name, e.g. payraider-web.onrender.com
+      - key: SEP10_HOME_DOMAIN
+        sync: false
+      # The web app's origin, e.g. https://payraider-web.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # Enables the USDC paid plan; leave empty to keep everything free.
+      - key: PAYRAIDER_TREASURY_ACCOUNT
+        sync: false
+      - key: LOGSTASH_ENABLED
+        value: "false"
+      - key: BACKUP_ENABLED
+        value: "false"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: payraider-redis
+          property: connectionString
+
+  - type: keyvalue
+    name: payraider-redis
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  - type: web
+    name: payraider-mcp
+    runtime: docker
+    rootDir: sdk
+    dockerfilePath: ./mcp-server/Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # The API's public URL, e.g. https://payraider-api.onrender.com
+      - key: PAYRAIDER_BASE_URL
+        sync: false
+      - key: PAYRAIDER_NETWORK
+        value: mainnet
+      # Clients send this as "Authorization: Bearer <token>".
+      - key: PAYRAIDER_MCP_AUTH_TOKEN
+        generateValue: true
+
+  - type: web
+    name: payraider-web
+    runtime: node
+    rootDir: frontend
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The API's public URL, e.g. https://payraider-api.onrender.com
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_STELLAR_NETWORK
+        value: mainnet

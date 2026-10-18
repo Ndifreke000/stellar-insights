@@ -31,7 +31,7 @@ describe('useDashboardScreen', () => {
     const mockData = generateMockDashboard();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -50,7 +50,7 @@ describe('useDashboardScreen', () => {
     const mockData = generateMockDashboard();
     (apiClient.get as jest.Mock).mockResolvedValue({ data: mockData });
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -71,7 +71,7 @@ describe('useDashboardScreen', () => {
     await AsyncStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(mockData));
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -88,7 +88,7 @@ describe('useDashboardScreen', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -109,7 +109,7 @@ describe('useDashboardScreen', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -122,7 +122,7 @@ describe('useDashboardScreen', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -137,7 +137,7 @@ describe('useDashboardScreen', () => {
   it('treats a NetInfo failure as offline', async () => {
     (NetInfo.fetch as jest.Mock).mockRejectedValue(new Error('netinfo down'));
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -151,7 +151,7 @@ describe('useDashboardScreen', () => {
     const mockData = generateMockDashboard();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useDashboardScreen());
+    const { result } = await renderHook(() => useDashboardScreen());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

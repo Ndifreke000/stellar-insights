@@ -3,7 +3,7 @@ import { ChevronDown, Check } from "lucide-react";
 
 interface SelectContextProps {
   value?: string;
-  onValueChange?: (value: any) => void;
+  onValueChange?: (value: string) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
 }
@@ -15,7 +15,7 @@ const SelectContext = React.createContext<SelectContextProps | undefined>(
 export const Select: React.FC<{
   children: React.ReactNode;
   value?: string;
-  onValueChange?: (value: any) => void;
+  onValueChange?: (value: string) => void;
 }> = ({ children, value, onValueChange }) => {
   const [open, setOpen] = useState(false);
   return (

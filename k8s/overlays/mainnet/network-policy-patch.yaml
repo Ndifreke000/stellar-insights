@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: stellar-insights-backend
-  namespace: stellar-insights-mainnet
+  name: payraider-backend
+  namespace: payraider-mainnet
 spec:
   podSelector:
     matchLabels:
-      app: stellar-insights
+      app: payraider
       component: backend
   policyTypes:
   - Ingress
@@ -21,7 +21,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: stellar-insights
+          app: payraider
   egress:
   # Allow all egress
   - to:

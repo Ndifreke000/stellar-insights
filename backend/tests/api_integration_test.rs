@@ -15,17 +15,17 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower::util::ServiceExt;
 
-use stellar_insights_backend::api::anchors::get_anchors;
-use stellar_insights_backend::cache::{CacheConfig, CacheManager};
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::handlers::{health_check, pool_metrics};
-use stellar_insights_backend::ingestion::DataIngestionService;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::price_feed::{
+use payraider_backend::api::{anchors::get_anchors, webhooks};
+use payraider_backend::cache::{CacheConfig, CacheManager};
+use payraider_backend::database::Database;
+use payraider_backend::handlers::{health_check, pool_metrics};
+use payraider_backend::ingestion::DataIngestionService;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
-use stellar_insights_backend::state::AppState;
-use stellar_insights_backend::websocket::WsState;
+use payraider_backend::state::AppState;
+use payraider_backend::websocket::WsState;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,15 @@ async fn setup_db() -> Arc<Database> {
 }
 
 async fn make_app_state(db: Arc<Database>) -> AppState {
+    // AppState builds a MultiNetworkConfig covering both mainnet and testnet
+    // regardless of which one is active, so mainnet's required RPC URLs must
+    // be set even in these mock-mode tests.
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
     let ws_state = Arc::new(WsState::new());
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
     let ingestion = Arc::new(DataIngestionService::new(
@@ -190,11 +199,14 @@ async fn test_list_anchors_returns_json_object_with_anchors_array() {
         .unwrap();
 
     let body = json_body(resp).await;
-    // Response should be an object with an `anchors` array and `total` count
-    assert!(body["anchors"].is_array(), "expected anchors array");
-    assert!(body["total"].is_number(), "expected total count");
-    assert_eq!(body["anchors"].as_array().unwrap().len(), 0);
-    assert_eq!(body["total"], 0);
+    // Response is a PaginatedResponse: { data: [...], pagination: { total, ... } }
+    assert!(body["data"].is_array(), "expected data array");
+    assert!(
+        body["pagination"]["total"].is_number(),
+        "expected total count"
+    );
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+    assert_eq!(body["pagination"]["total"], 0);
 }
 
 #[tokio::test]
@@ -232,6 +244,26 @@ async fn test_list_anchors_zero_limit_param() {
         "unexpected status: {}",
         resp.status()
     );
+}
+
+#[tokio::test]
+async fn test_webhook_routes_mount_at_api_v1_webhooks() {
+    let db = setup_db().await;
+    // No AuthUser is attached, as when a request reaches the route without
+    // passing auth_middleware. The handler's extractor must reject it.
+    let app = Router::new().nest("/api/v1/webhooks", webhooks::routes(db.pool().clone()));
+
+    let resolved = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/webhooks")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resolved.status(), StatusCode::UNAUTHORIZED, "expected auth middleware to reject the unauthenticated request to a protected webhook route");
 }
 
 // ── GET /api/pool-metrics ─────────────────────────────────────────────────────

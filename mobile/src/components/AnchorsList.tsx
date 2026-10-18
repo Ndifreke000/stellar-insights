@@ -221,6 +221,7 @@ export const AnchorsList: React.FC<AnchorsListProps> = ({ onAnchorPress }) => {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
+        testID="anchors-list"
         data={anchors}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}

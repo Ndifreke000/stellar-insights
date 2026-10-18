@@ -1,10 +1,8 @@
 import {
-  Keypair,
-  Networks,
   Transaction,
-  TransactionBuilder,
   Operation,
 } from '@stellar/stellar-sdk';
+import { signMessage } from '@stellar/freighter-api';
 import { logger } from '@/lib/logger';
 
 import { config } from '@/config';
@@ -19,12 +17,16 @@ export interface ChallengeRequest {
 }
 
 export interface ChallengeResponse {
-  transaction: string; // Base64-encoded XDR
+  /** Opaque challenge string to sign, exactly as received. */
+  transaction: string;
   network_passphrase: string;
 }
 
 export interface VerificationRequest {
-  transaction: string; // Base64-encoded signed XDR
+  /** The challenge, unchanged. */
+  transaction: string;
+  /** Base64 Ed25519 signature over the challenge by the account's key. */
+  signature: string;
 }
 
 export interface VerificationResponse {
@@ -37,6 +39,45 @@ export interface Sep10Info {
   network_passphrase: string;
   signing_key: string;
   version: string;
+}
+
+interface FreighterApi {
+  getPublicKey(): Promise<string>;
+  signTransaction(
+    xdr: string,
+    opts: { network: string; networkPassphrase: string; accountToSign: string },
+  ): Promise<string>;
+}
+
+interface AlbedoApi {
+  publicKey(opts: Record<string, unknown>): Promise<{ pubkey: string }>;
+  tx(opts: {
+    xdr: string;
+    network: string;
+    pubkey: string;
+  }): Promise<{ signed_envelope_xdr: string }>;
+}
+
+interface XBullSDKApi {
+  signTransaction(opts: {
+    xdr: string;
+    network: string;
+    publicKey: string;
+  }): Promise<string>;
+}
+
+interface RabetApi {
+  connect(): Promise<{ publicKey: string }>;
+  sign(xdr: string, network: string): Promise<{ xdr: string }>;
+}
+
+declare global {
+  interface Window {
+    freighter?: FreighterApi;
+    albedo?: AlbedoApi;
+    xBullSDK?: XBullSDKApi;
+    rabet?: RabetApi;
+  }
 }
 
 /**
@@ -84,83 +125,48 @@ export class Sep10AuthService {
   }
 
   /**
-   * Sign a challenge transaction using a wallet
-   * This method attempts to use various Stellar wallet integrations
+   * Sign the challenge with the account's key and return the base64
+   * signature.
+   *
+   * The backend's challenge is a signed message, not a Stellar transaction,
+   * so it is signed with Freighter's SEP-53 signMessage; the server verifies
+   * that signature against the account. (Asking wallets to sign it as a
+   * transaction XDR, as this used to, could never succeed.)
    */
   async signChallenge(
-    challengeXdr: string,
+    challenge: string,
     networkPassphrase: string,
     publicKey: string,
   ): Promise<string> {
-    // Try Freighter wallet first
-    if (typeof window !== "undefined" && (window as any).freighter) {
-      try {
-        const signedXdr = await (window as any).freighter.signTransaction(
-          challengeXdr,
-          {
-            network: networkPassphrase,
-            networkPassphrase: networkPassphrase,
-            accountToSign: publicKey,
-          },
-        );
-        return signedXdr;
-      } catch (error) {
-        logger.error("Freighter signing failed:", error);
-      }
+    const result = await signMessage(challenge, {
+      networkPassphrase,
+      address: publicKey,
+    });
+
+    if (result.error || !result.signedMessage) {
+      logger.error("Freighter signing failed:", result.error);
+      throw new Error(
+        result.error?.message ||
+          "Could not sign the login challenge. Install or unlock the Freighter wallet and try again.",
+      );
     }
 
-    // Try Albedo wallet
-    if (typeof window !== "undefined" && (window as any).albedo) {
-      try {
-        const result = await (window as any).albedo.tx({
-          xdr: challengeXdr,
-          network: networkPassphrase,
-          pubkey: publicKey,
-        });
-        return result.signed_envelope_xdr;
-      } catch (error) {
-        logger.error("Albedo signing failed:", error);
-      }
+    if (result.signerAddress && result.signerAddress !== publicKey) {
+      throw new Error("The wallet signed with a different account than the one requested.");
     }
 
-    // Try xBull wallet
-    if (typeof window !== "undefined" && (window as any).xBullSDK) {
-      try {
-        const xBullSDK = (window as any).xBullSDK;
-        const result = await xBullSDK.signTransaction({
-          xdr: challengeXdr,
-          network: networkPassphrase,
-          publicKey: publicKey,
-        });
-        return result;
-      } catch (error) {
-        logger.error("xBull signing failed:", error);
-      }
-    }
-
-    // Try Rabet wallet
-    if (typeof window !== "undefined" && (window as any).rabet) {
-      try {
-        const result = await (window as any).rabet.sign(
-          challengeXdr,
-          networkPassphrase,
-        );
-        return result.xdr;
-      } catch (error) {
-        logger.error("Rabet signing failed:", error);
-      }
-    }
-
-    throw new Error(
-      "No compatible Stellar wallet found. Please install Freighter, Albedo, xBull, or Rabet.",
-    );
+    // Freighter v3 returns a Buffer, v4+ a base64 string.
+    return typeof result.signedMessage === "string"
+      ? result.signedMessage
+      : result.signedMessage.toString("base64");
   }
 
   /**
    * Verify the signed challenge transaction with the server
    */
   async verifyChallenge(
-    signedTransactionXdr: string,
+    challenge: string,
+    signature: string,
   ): Promise<VerificationResponse> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/verify`, {
       method: "POST",
@@ -168,8 +174,9 @@ export class Sep10AuthService {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        transaction: signedTransactionXdr,
-      }),
+        transaction: challenge,
+        signature,
+      } satisfies VerificationRequest),
     });
 
     if (!response.ok) {
@@ -193,7 +200,7 @@ export class Sep10AuthService {
     },
   ): Promise<VerificationResponse> {
     // Step 1: Get server info
-    const info = await this.getInfo();
+    const _info = await this.getInfo();
 
     // Step 2: Request challenge
     const challengeRequest: ChallengeRequest = {
@@ -206,14 +213,17 @@ export class Sep10AuthService {
     const challengeResponse = await this.requestChallenge(challengeRequest);
 
     // Step 3: Sign challenge with wallet
-    const signedXdr = await this.signChallenge(
+    const signature = await this.signChallenge(
       challengeResponse.transaction,
       challengeResponse.network_passphrase,
       publicKey,
     );
 
     // Step 4: Verify signed challenge
-    const verificationResponse = await this.verifyChallenge(signedXdr);
+    const verificationResponse = await this.verifyChallenge(
+      challengeResponse.transaction,
+      signature,
+    );
 
     return verificationResponse;
   }

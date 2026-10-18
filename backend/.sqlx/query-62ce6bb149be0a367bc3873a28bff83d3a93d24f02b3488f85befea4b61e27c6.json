@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!\", asset_code, asset_issuer, total_trustlines,\n                authorized_trustlines, unauthorized_trustlines, total_supply,\n                snapshot_at as \"snapshot_at!: _\"\n            FROM trustline_snapshots\n            WHERE asset_code = ? AND asset_issuer = ?\n            ORDER BY snapshot_at DESC\n            LIMIT ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "asset_code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "asset_issuer",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "total_trustlines",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "authorized_trustlines",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "unauthorized_trustlines",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_supply",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "snapshot_at!: _",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "62ce6bb149be0a367bc3873a28bff83d3a93d24f02b3488f85befea4b61e27c6"
+}

@@ -13,25 +13,28 @@
 //! # Quick Start
 //!
 //! ```rust,no_run
-//! use stellar_insights_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
-//! use stellar_insights_backend::database::Database;
+//! use std::sync::Arc;
+//! use payraider_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
+//! use payraider_backend::database::Database;
+//! use sqlx::SqlitePool;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let db = Database::new(pool).await?;
+//!     let pool = SqlitePool::connect("sqlite://payraider.db").await?;
+//!     let db = Arc::new(Database::new(pool));
 //!     let indexer = EventIndexer::new(db);
-//!     
+//!
 //!     // Query events
 //!     let query = EventQuery {
-//!         contract_id: Some("contract_123".to_string()),
+//!         contract_ids: vec!["contract_123".to_string()],
 //!         limit: Some(100),
 //!         order_by: Some(EventOrderBy::CreatedAtDesc),
 //!         ..Default::default()
 //!     };
-//!     
+//!
 //!     let events = indexer.query_events(query).await?;
 //!     println!("Found {} events", events.len());
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -54,8 +57,43 @@ use std::fmt::Write;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-/// Indexed contract event with metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Indexed contract event with full metadata from the Stellar protocol.
+///
+/// Represents a single contract event that has been indexed and stored in the
+/// database for querying and analytics.
+///
+/// # Fields
+///
+/// * `id` - Unique identifier for this indexed event record
+/// * `contract_id` - The Stellar contract that emitted this event
+/// * `event_type` - The event type name (e.g., "SNAP_SUB")
+/// * `epoch` - Optional epoch number for this event
+/// * `hash` - Optional transaction hash containing this event
+/// * `timestamp` - Optional UNIX timestamp of the event
+/// * `ledger` - The ledger sequence number containing this event
+/// * `transaction_hash` - The transaction hash containing this event
+/// * `created_at` - When this event was indexed in the database
+/// * `verification_status` - Optional verification status for this event
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use payraider_backend::services::event_indexer::IndexedEvent;
+///
+/// let event = IndexedEvent {
+///     id: "evt_123".to_string(),
+///     contract_id: "CD234...".to_string(),
+///     event_type: "SNAP_SUB".to_string(),
+///     epoch: Some(123456),
+///     hash: Some("TX_HASH_...".to_string()),
+///     timestamp: Some(1698765432),
+///     ledger: 123456,
+///     transaction_hash: "TX_123...".to_string(),
+///     created_at: chrono::Utc::now(),
+///     verification_status: Some("verified".to_string()),
+/// };
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexedEvent {
     pub id: String,
     pub contract_id: String,
@@ -69,10 +107,41 @@ pub struct IndexedEvent {
     pub verification_status: Option<String>,
 }
 
-/// Event query filters
+/// Event query filters for searching contract events.
+///
+/// Provides flexible filtering and sorting options for querying indexed events.
+/// Can be combined with various filter combinations for precise result sets.
+///
+/// # Fields
+///
+/// * `contract_ids` - Filter by specific contract IDs (empty = all contracts)
+/// * `event_type` - Filter by event type (None = all types)
+/// * `epoch` - Filter by epoch number (None = all epochs)
+/// * `hash` - Filter by event/transaction hash prefix (None = no hash filter)
+/// * `ledger_range` - Filter by ledger range (None = all ledgers)
+/// * `time_range` - Filter by creation time range (None = all times)
+/// * `verification_status` - Filter by verification status (None = all statuses)
+/// * `limit` - Maximum number of results to return (None = default 50)
+/// * `offset` - Number of results to skip for pagination (None = 0)
+/// * `order_by` - Sort order for results (None = default to newest first)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use payraider_backend::services::event_indexer::{EventQuery, EventOrderBy};
+///
+/// // Query events for specific contract, sorted by ledger
+/// let query = EventQuery {
+///     contract_ids: vec!["CD234...".to_string()],
+///     event_type: Some("SNAP_SUB".to_string()),
+///     limit: Some(100),
+///     order_by: Some(EventOrderBy::LedgerDesc),
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct EventQuery {
-    pub contract_id: Option<String>,
+    pub contract_ids: Vec<String>,
     pub event_type: Option<String>,
     pub epoch: Option<u64>,
     pub hash: Option<String>,
@@ -88,6 +157,27 @@ pub struct EventQuery {
 ///
 /// Used in [`EventQuery::order_by`] to specify how results are sorted.
 /// Defaults to [`EventOrderBy::CreatedAtDesc`] (newest first).
+///
+/// # Variants
+///
+/// * `CreatedAtAsc` - Sort by insertion time, oldest first
+/// * `CreatedAtDesc` - Sort by insertion time, newest first (default)
+/// * `LedgerAsc` - Sort by ledger sequence number, ascending
+/// * `LedgerDesc` - Sort by ledger sequence number, descending
+/// * `EpochAsc` - Sort by epoch number, ascending
+/// * `EpochDesc` - Sort by epoch number, descending
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use payraider_backend::services::event_indexer::{EventQuery, EventOrderBy};
+///
+/// // Query with custom sort order
+/// let query = EventQuery {
+///     order_by: Some(EventOrderBy::LedgerAsc),
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub enum EventOrderBy {
     /// Sort by insertion time, oldest first.
@@ -104,8 +194,32 @@ pub enum EventOrderBy {
     EpochDesc,
 }
 
-/// Event statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Aggregate statistics about indexed contract events.
+///
+/// Provides summary metrics about the event data stored in the database,
+/// useful for monitoring and analytics dashboards.
+///
+/// # Fields
+///
+/// * `total_events` - Total number of events in the database
+/// * `verified_snapshots` - Number of events with verified status
+/// * `failed_verifications` - Number of events with failed verification status
+/// * `latest_epoch` - Highest epoch number indexed (None if no events)
+/// * `latest_ledger` - Highest ledger sequence number indexed (None if no events)
+/// * `events_last_24h` - Number of events indexed in the last 24 hours
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use payraider_backend::services::event_indexer::EventIndexer;
+///
+/// let indexer = EventIndexer::new(db);
+/// let stats = indexer.get_event_stats().await?;
+/// println!("Total events: {}", stats.total_events);
+/// println!("Verified: {}", stats.verified_snapshots);
+/// println!("Failed: {}", stats.failed_verifications);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct EventStats {
     pub total_events: i64,
     pub verified_snapshots: i64,
@@ -236,10 +350,23 @@ impl EventIndexer {
     }
 
     /// Index a batch of contract events and record a checkpoint ledger in a single transaction
-    pub async fn index_events_with_checkpoint(&self, events: Vec<IndexedEvent>, checkpoint_ledger: u64) -> Result<()> {
-        debug!("Indexing {} events and setting checkpoint to {}", events.len(), checkpoint_ledger);
+    pub async fn index_events_with_checkpoint(
+        &self,
+        events: Vec<IndexedEvent>,
+        checkpoint_ledger: u64,
+    ) -> Result<()> {
+        debug!(
+            "Indexing {} events and setting checkpoint to {}",
+            events.len(),
+            checkpoint_ledger
+        );
 
-        let mut tx = self.db.pool().begin().await.context("Failed to begin transaction")?;
+        let mut tx = self
+            .db
+            .pool()
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
 
         let event_query = r"
             INSERT OR REPLACE INTO contract_events (
@@ -298,9 +425,15 @@ impl EventIndexer {
         let mut bindings = Vec::new();
 
         // Add filters
-        if let Some(contract_id) = &query.contract_id {
-            sql.push_str(" AND contract_id = ?");
-            bindings.push(contract_id.clone());
+        if !query.contract_ids.is_empty() {
+            let placeholders = query
+                .contract_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = write!(sql, " AND contract_id IN ({placeholders})");
+            bindings.extend(query.contract_ids.iter().cloned());
         }
 
         if let Some(event_type) = &query.event_type {
@@ -803,7 +936,7 @@ impl EventIndexer {
 }
 
 /// Verification summary for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerificationSummary {
     pub epoch: u64,
     pub hash: Option<String>,
@@ -820,27 +953,29 @@ mod tests {
     use crate::db::schema::Schema;
     use std::sync::Arc;
 
-    async fn setup_contract_event_db() -> Arc<Database> {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+    async fn setup_contract_event_db() -> Result<Arc<Database>> {
+        let pool = sqlx::SqlitePool::connect(":memory:")
+            .await
+            .context("failed to create in-memory SQLite pool")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create contract_events table")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS_INDEXES)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create contract_events indexes")?;
         sqlx::query(Schema::CREATE_INDEXER_STATE)
             .execute(&pool)
             .await
-            .unwrap();
+            .context("failed to create indexer_state table")?;
 
-        Arc::new(Database::new(pool))
+        Ok(Arc::new(Database::new(pool)))
     }
 
     #[tokio::test]
-    async fn test_event_indexing() {
-        let db = setup_contract_event_db().await;
+    async fn test_event_indexing() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -857,25 +992,35 @@ mod tests {
         };
 
         // Test indexing
-        indexer.index_event(event.clone()).await.unwrap();
+        indexer
+            .index_event(event.clone())
+            .await
+            .context("failed to index event")?;
 
         // Test retrieval
-        let retrieved = indexer.get_event_by_id("test-event-1").await.unwrap();
+        let retrieved = indexer
+            .get_event_by_id("test-event-1")
+            .await
+            .context("failed to retrieve event")?;
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().epoch, Some(42));
+        assert_eq!(retrieved.expect("event should exist").epoch, Some(42));
 
         // Test query
         let query = EventQuery {
             event_type: Some("SNAP_SUB".to_string()),
             ..Default::default()
         };
-        let results = indexer.query_events(query).await.unwrap();
+        let results = indexer
+            .query_events(query)
+            .await
+            .context("failed to query events")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_verification_status_update() {
-        let db = setup_contract_event_db().await;
+    async fn test_verification_status_update() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let event = IndexedEvent {
@@ -891,26 +1036,33 @@ mod tests {
             verification_status: None,
         };
 
-        indexer.index_event(event).await.unwrap();
+        indexer
+            .index_event(event)
+            .await
+            .context("failed to index event")?;
 
         // Update verification status
         indexer
             .update_verification_status("test-event-2", "verified")
             .await
-            .unwrap();
+            .context("failed to update verification status")?;
 
         // Verify update
-        let retrieved = indexer.get_event_by_id("test-event-2").await.unwrap();
+        let retrieved = indexer
+            .get_event_by_id("test-event-2")
+            .await
+            .context("failed to retrieve event")?;
         assert!(retrieved.is_some());
         assert_eq!(
-            retrieved.unwrap().verification_status,
+            retrieved.expect("event should exist").verification_status,
             Some("verified".to_string())
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_process_events_skips_unknown_types() {
-        let db = setup_contract_event_db().await;
+    async fn test_process_events_skips_unknown_types() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let known = IndexedEvent {
@@ -942,43 +1094,65 @@ mod tests {
         let count = indexer
             .process_events(&[known, unknown], 21)
             .await
-            .unwrap();
+            .context("failed to process events")?;
 
         // Only the known event should be indexed
         assert_eq!(count, 1);
-        assert!(indexer.get_event_by_id("ev-known").await.unwrap().is_some());
+        assert!(indexer
+            .get_event_by_id("ev-known")
+            .await
+            .context("failed to retrieve known event")?
+            .is_some());
         assert!(indexer
             .get_event_by_id("ev-unknown")
             .await
-            .unwrap()
+            .context("failed to retrieve unknown event")?
             .is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_checkpoint_roundtrip() {
-        let db = setup_contract_event_db().await;
+    async fn test_checkpoint_roundtrip() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         // No checkpoint yet
-        assert!(indexer.get_last_processed_ledger().await.unwrap().is_none());
+        assert!(indexer
+            .get_last_processed_ledger()
+            .await
+            .context("failed to get last processed ledger")?
+            .is_none());
 
-        indexer.persist_checkpoint(42_000).await.unwrap();
+        indexer
+            .persist_checkpoint(42_000)
+            .await
+            .context("failed to persist checkpoint (first)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(42_000)
         );
 
         // Overwrite moves it forward
-        indexer.persist_checkpoint(42_001).await.unwrap();
+        indexer
+            .persist_checkpoint(42_001)
+            .await
+            .context("failed to persist checkpoint (second)")?;
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(42_001)
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_process_events_persists_checkpoint() {
-        let db = setup_contract_event_db().await;
+    async fn test_process_events_persists_checkpoint() -> Result<()> {
+        let db = setup_contract_event_db().await?;
         let indexer = EventIndexer::new(db);
 
         let events: Vec<IndexedEvent> = (0..3)
@@ -996,11 +1170,18 @@ mod tests {
             })
             .collect();
 
-        indexer.process_events(&events, 21).await.unwrap();
+        indexer
+            .process_events(&events, 21)
+            .await
+            .context("failed to process events")?;
 
         assert_eq!(
-            indexer.get_last_processed_ledger().await.unwrap(),
+            indexer
+                .get_last_processed_ledger()
+                .await
+                .context("failed to get last processed ledger")?,
             Some(202)
         );
+        Ok(())
     }
 }

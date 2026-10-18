@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::cache::CacheManager;
 use crate::database::Database;
-use crate::rpc::{StellarRpcClient, circuit_breaker::rpc_circuit_breaker};
+use crate::rpc::{circuit_breaker::rpc_circuit_breaker, StellarRpcClient};
 use crate::telegram::formatter;
 use crate::telegram::subscription::SubscriptionService;
 use failsafe::futures::CircuitBreaker as _;
@@ -66,10 +66,15 @@ impl CommandHandler {
         let anchor_count = anchors.len();
 
         let circuit_breaker = rpc_circuit_breaker();
-        let corridor_count = match circuit_breaker.call(async {
-            self.rpc_client.fetch_payments(200, None).await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-        }).await {
+        let corridor_count = match circuit_breaker
+            .call(async {
+                self.rpc_client
+                    .fetch_payments(200, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .await
+        {
             Ok(payments) => {
                 let mut corridors = std::collections::HashSet::new();
                 for p in &payments {
@@ -86,13 +91,20 @@ impl CommandHandler {
 
     async fn handle_corridors(&self) -> String {
         let circuit_breaker = rpc_circuit_breaker();
-        let payments = match circuit_breaker.call(async {
-            self.rpc_client.fetch_payments(200, None).await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-        }).await {
+        let payments = match circuit_breaker
+            .call(async {
+                self.rpc_client
+                    .fetch_payments(200, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .await
+        {
             Ok(p) => p,
             Err(e) => {
-                return formatter::escape_markdown(&format!("Failed to fetch corridor data (Service Unavailable): {e}"));
+                return formatter::escape_markdown(&format!(
+                    "Failed to fetch corridor data (Service Unavailable): {e}"
+                ));
             }
         };
 
@@ -135,13 +147,20 @@ impl CommandHandler {
         }
 
         let circuit_breaker = rpc_circuit_breaker();
-        let payments = match circuit_breaker.call(async {
-            self.rpc_client.fetch_payments(200, None).await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-        }).await {
+        let payments = match circuit_breaker
+            .call(async {
+                self.rpc_client
+                    .fetch_payments(200, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .await
+        {
             Ok(p) => p,
             Err(e) => {
-                return formatter::escape_markdown(&format!("Failed to fetch corridor data (Service Unavailable): {e}"));
+                return formatter::escape_markdown(&format!(
+                    "Failed to fetch corridor data (Service Unavailable): {e}"
+                ));
             }
         };
 

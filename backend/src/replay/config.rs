@@ -258,7 +258,10 @@ mod tests {
     fn test_replay_config_validation() {
         let config = ReplayConfig::default();
         assert!(config.validate().is_ok());
-        assert_eq!(config.protocol_version, 0, "default should be 0 (auto-infer)");
+        assert_eq!(
+            config.protocol_version, 0,
+            "default should be 0 (auto-infer)"
+        );
 
         let invalid_config = ReplayConfig {
             batch_size: 0,

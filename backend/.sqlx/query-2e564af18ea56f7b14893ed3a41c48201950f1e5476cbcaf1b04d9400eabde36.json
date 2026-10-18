@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                COUNT(*) as \"total_pools: _\",\n                COALESCE(SUM(total_value_usd), 0.0) as \"total_liquidity_usd: _\",\n                COALESCE(AVG(total_value_usd), 0.0) as \"avg_pool_size_usd: _\",\n                COALESCE(SUM(total_value_usd), 0.0) as \"total_value_locked_usd: _\",\n                COALESCE(SUM(volume_24h_usd), 0.0) as \"total_volume_24h_usd: _\",\n                COALESCE(SUM(fees_earned_24h_usd), 0.0) as \"total_fees_24h_usd: _\",\n                COALESCE(AVG(apy), 0.0) as \"avg_apy: _\",\n                COALESCE(AVG(impermanent_loss_pct), 0.0) as \"avg_impermanent_loss: _\"\n            FROM liquidity_pools\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "total_pools: _",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_liquidity_usd: _",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "avg_pool_size_usd: _",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "total_value_locked_usd: _",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "total_volume_24h_usd: _",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "total_fees_24h_usd: _",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "avg_apy: _",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "avg_impermanent_loss: _",
+        "ordinal": 7,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2e564af18ea56f7b14893ed3a41c48201950f1e5476cbcaf1b04d9400eabde36"
+}

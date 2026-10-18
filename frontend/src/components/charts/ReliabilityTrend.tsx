@@ -8,7 +8,8 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip, ResponsiveContainer
+  Tooltip, ResponsiveContainer,
+  TooltipContentProps
 } from "recharts";
 
 interface ReliabilityTrendProps {
@@ -17,14 +18,16 @@ interface ReliabilityTrendProps {
 
 type TimeWindow = "7d" | "30d" | "90d";
 
-const CustomTooltip = (props: any) => {
+const CustomTooltip = (props: TooltipContentProps) => {
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
+    const value = payload[0].value;
+    const score = typeof value === "number" ? value.toFixed(1) : "N/A";
     return (
       <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl">
         <p className="text-slate-400 text-xs mb-1">{label}</p>
         <p className="text-emerald-400 font-bold text-sm">
-          Score: {payload[0].value?.toFixed(1) ?? "N/A"}
+          Score: {score}
         </p>
       </div>
     );

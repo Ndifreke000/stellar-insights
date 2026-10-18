@@ -1,0 +1,13 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0235", # rkyv 0.7.46: locked by rust_decimal's `rkyv = "^0.7.46"` dep spec, but
+                          # the `rkyv` feature is not enabled anywhere in this workspace --
+                          # confirmed unreachable via `cargo tree -i rkyv` (empty). No compiled
+                          # code path exercises it. Upstream fix requires rust_decimal to bump
+                          # its rkyv constraint to >=0.8.17.
+    "RUSTSEC-2023-0071", # rsa 0.9.10 (Marvin Attack timing side-channel): was pulled in only via
+                          # jsonwebtoken's `rust_crypto` feature, which we no longer enable (we
+                          # use `aws_lc_rs` instead -- see Cargo.toml). Confirmed unreachable via
+                          # `cargo tree -i rsa` (empty); remains only as a stale Cargo.lock entry.
+                          # No fixed version exists upstream for the direct advisory either way.
+]

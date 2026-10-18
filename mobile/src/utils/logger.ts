@@ -38,7 +38,6 @@
  * passing them here.
  */
 
-/* eslint-disable no-console */
 
 export interface Logger {
   /**

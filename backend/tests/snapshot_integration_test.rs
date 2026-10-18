@@ -8,12 +8,12 @@
 //! 5. Submit to smart contract ✅ (mocked)
 //! 6. Verify submission success ✅ (mocked)
 
+use payraider_backend::database::Database;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::snapshot::SnapshotService;
+use payraider_backend::snapshot::schema::AnalyticsSnapshot;
 use sqlx::Row;
 use std::sync::Arc;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::snapshot::SnapshotService;
-use stellar_insights_backend::snapshot::schema::AnalyticsSnapshot;
 
 async fn setup_test_database() -> Arc<Database> {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();

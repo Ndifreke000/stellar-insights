@@ -2,24 +2,31 @@
 
 import React, { useState } from 'react';
 import { ProgressiveWebApp } from '@/components/ProgressiveWebApp';
-import { useProgressiveWebApp, PWAInstallState } from '@/hooks/useProgressiveWebApp';
+import { useProgressiveWebApp } from '@/hooks/useProgressiveWebApp';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 /**
  * Example: Full PWA Integration
  * Demonstrates all PWA features in a single component
+ *
+ * Demo-only: gated behind NEXT_PUBLIC_ENABLE_DEMOS so it is not
+ * shipped in production builds.
  */
 export function PWAExample() {
   const [showAllFeatures, setShowAllFeatures] = useState(false);
   const { state, capabilities, updateAvailable } = useProgressiveWebApp();
+
+  if (process.env.NEXT_PUBLIC_ENABLE_DEMOS !== 'true') {
+    return null;
+  }
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Progressive Web App</h1>
         <p className="text-muted-foreground">
-          Install Stellar Insights for offline access and faster loading
+          Install PayRaider for offline access and faster loading
         </p>
       </div>
 
@@ -163,7 +170,7 @@ export function PWAExample() {
             <h3 className="font-medium mb-2">Mobile (iOS)</h3>
             <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
               <li>Tap the Share button</li>
-              <li>Select "Add to Home Screen"</li>
+              <li>Select &quot;Add to Home Screen&quot;</li>
               <li>Confirm the name</li>
               <li>App will appear on your home screen</li>
             </ol>
@@ -172,7 +179,7 @@ export function PWAExample() {
             <h3 className="font-medium mb-2">Mobile (Android)</h3>
             <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
               <li>Tap the menu button (three dots)</li>
-              <li>Select "Install app"</li>
+              <li>Select &quot;Install app&quot;</li>
               <li>Confirm the installation</li>
               <li>App will appear in your app drawer</li>
             </ol>

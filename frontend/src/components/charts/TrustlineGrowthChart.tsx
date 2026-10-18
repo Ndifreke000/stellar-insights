@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,

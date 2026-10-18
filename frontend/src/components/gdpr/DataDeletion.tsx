@@ -25,10 +25,6 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
   const [deleteAllData, setDeleteAllData] = useState(true);
   const [activeTab, setActiveTab] = useState<"new" | "history">("new");
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
@@ -43,6 +39,10 @@ export function DataDeletion({ onClose }: DataDeletionProps) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const handleCreateDeletion = async () => {
     try {

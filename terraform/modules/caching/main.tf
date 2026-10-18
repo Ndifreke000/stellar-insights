@@ -7,7 +7,7 @@ resource "aws_elasticache_subnet_group" "cache" {
   subnet_ids = var.cache_subnet_ids
 
   tags = {
-    Name = "stellar-insights-cache-subnet-${var.environment}"
+    Name = "payraider-cache-subnet-${var.environment}"
   }
 }
 
@@ -16,7 +16,7 @@ resource "aws_elasticache_subnet_group" "cache" {
 # ============================================================================
 
 resource "aws_elasticache_parameter_group" "redis" {
-  name   = "stellar-insights-redis-${var.environment}"
+  name   = "payraider-redis-${var.environment}"
   family = var.parameter_group_family
 
   # Memory management
@@ -39,7 +39,7 @@ resource "aws_elasticache_parameter_group" "redis" {
   }
 
   tags = {
-    Name = "stellar-insights-redis-${var.environment}"
+    Name = "payraider-redis-${var.environment}"
   }
 }
 
@@ -65,9 +65,9 @@ resource "aws_elasticache_cluster" "redis" {
   auto_minor_version_upgrade = var.auto_minor_version_upgrade
   maintenance_window         = var.environment == "dev" ? "sun:04:00-sun:05:00" : "sun:04:00-sun:05:00"
 
-  # Snapshots
-  snapshot_retention_limit = var.snapshot_retention_limit
-  snapshot_window          = var.snapshot_window > 0 ? var.snapshot_window : null
+  # Snapshots — disabled for dev/staging (ephemeral cache), enabled for production
+  snapshot_retention_limit = var.snapshot_retention_limit != null ? var.snapshot_retention_limit : (var.environment == "production" ? 7 : 0)
+  snapshot_window          = (var.snapshot_retention_limit != null ? var.snapshot_retention_limit : (var.environment == "production" ? 7 : 0)) > 0 ? var.snapshot_window : null
 
   # Encryption
   at_rest_encryption_enabled = true
@@ -88,7 +88,7 @@ resource "aws_elasticache_cluster" "redis" {
   }
 
   tags = {
-    Name = "stellar-insights-redis-${var.environment}"
+    Name = "payraider-redis-${var.environment}"
   }
 
   depends_on = [
@@ -115,10 +115,10 @@ resource "random_password" "redis_auth_token" {
 
 resource "aws_sns_topic" "cache_notifications" {
   count = var.environment == "production" ? 1 : 0
-  name  = "stellar-insights-cache-notifications-${var.environment}"
+  name  = "payraider-cache-notifications-${var.environment}"
 
   tags = {
-    Name = "stellar-insights-cache-notifications-${var.environment}"
+    Name = "payraider-cache-notifications-${var.environment}"
   }
 }
 
@@ -128,10 +128,10 @@ resource "aws_sns_topic" "cache_notifications" {
 
 resource "aws_cloudwatch_log_group" "redis_slow_log" {
   name              = "/aws/elasticache/redis/${var.environment}/slow-log"
-  retention_in_days = var.environment == "production" ? 14 : (var.environment == "staging" ? 7 : 3)
+  retention_in_days = var.log_retention_days
 
   tags = {
-    Name = "stellar-insights-redis-logs-${var.environment}"
+    Name = "payraider-redis-logs-${var.environment}"
   }
 }
 
@@ -140,7 +140,7 @@ resource "aws_cloudwatch_log_group" "redis_slow_log" {
 # ============================================================================
 
 resource "aws_cloudwatch_metric_alarm" "redis_cpu" {
-  alarm_name          = "stellar-insights-redis-cpu-${var.environment}"
+  alarm_name          = "payraider-redis-cpu-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "EngineCPUUtilization"
@@ -157,7 +157,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_cpu" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "redis_memory" {
-  alarm_name          = "stellar-insights-redis-memory-${var.environment}"
+  alarm_name          = "payraider-redis-memory-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "DatabaseMemoryUsagePercentage"
@@ -174,7 +174,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_memory" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "redis_evictions" {
-  alarm_name          = "stellar-insights-redis-evictions-${var.environment}"
+  alarm_name          = "payraider-redis-evictions-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "Evictions"
@@ -191,7 +191,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_evictions" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "redis_swap_usage" {
-  alarm_name          = "stellar-insights-redis-swap-${var.environment}"
+  alarm_name          = "payraider-redis-swap-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "SwapUsage"

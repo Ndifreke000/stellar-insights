@@ -10,7 +10,7 @@ describe.skipIf(skipTestnet)("Testnet: WebSocket Integration Tests", () => {
 
   beforeAll(() => {
     // Default to standard testnet WebSocket endpoint if not provided
-    wsUrl = TESTNET_WS_URL || "wss://testnet-ws.stellarinsights.io";
+    wsUrl = TESTNET_WS_URL || "wss://testnet-ws.payraider.io";
   });
 
   it("WebSocket endpoint is configured", () => {

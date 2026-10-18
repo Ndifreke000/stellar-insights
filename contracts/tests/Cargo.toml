@@ -1,0 +1,21 @@
+[package]
+name = "contract-integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[test]]
+name = "integration"
+path = "integration/mod.rs"
+required-features = ["testnet-integration"]
+
+[[test]]
+name = "fuzz"
+path = "fuzz/mod.rs"
+
+[features]
+testnet-integration = []
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+payraider = { path = "../payraider" }

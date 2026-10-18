@@ -8,10 +8,8 @@
  *  - error always calls console.error (both dev and release)
  */
 
-/* eslint-disable no-console */
-
-// We need to control __DEV__ — Jest globals don't set it by default.
-declare const __DEV__: boolean;
+// We control __DEV__ through the global object below (its type is already
+// declared by React Native's global typings).
 
 const mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
 const mockWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -22,7 +20,6 @@ function loadLogger(isDev: boolean) {
   jest.resetModules();
   // Set global before require so the module-level check picks it up
   (global as unknown as Record<string, unknown>).__DEV__ = isDev;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require('@utils/logger').logger as import('@utils/logger').Logger;
 }
 

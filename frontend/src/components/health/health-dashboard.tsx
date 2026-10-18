@@ -1,6 +1,5 @@
 "use client";
-import { logger } from "@/lib/logger";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ResponsiveContainer, Tooltip,
   AreaChart,
@@ -12,7 +11,7 @@ import {
   Activity,
   ShieldCheck
 } from "lucide-react";
-import { getAnchors } from "../../lib/api/api";
+import { useAnchors } from "@/lib/react-query/queries";
 import { Badge } from "@/components/ui/badge";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { AnchorMetrics } from "@/lib/api/types";
@@ -52,7 +51,7 @@ const generateRecentFailures = (): FailureRecord[] => {
   ];
   const corridors = ["USDC-PHP", "EURC-NGN", "USDT-KES", "XLM-USD"];
 
-  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, i) => ({
+  return Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, _i) => ({
     timestamp: new Date(
       Date.now() - Math.random() * 24 * 60 * 60 * 1000,
     ).toISOString(),
@@ -64,31 +63,16 @@ const generateRecentFailures = (): FailureRecord[] => {
 };
 
 const HealthDashboard = () => {
-  const [anchors, setAnchors] = useState<AnchorMetrics[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Shares its cache entry with any other view of the default anchor list.
+  const anchorsQuery = useAnchors();
+  const anchors = useMemo(() => anchorsQuery.data?.data ?? [], [anchorsQuery.data]);
+  const loading = anchorsQuery.isPending;
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold>({
     healthScore: 85,
     uptimePercentage: 95,
     enabled: true,
   });
   const [showSettings, setShowSettings] = useState(false);
-
-  useEffect(() => {
-    const fetchAnchors = async () => {
-      try {
-        const response = await getAnchors();
-        setAnchors(response.anchors);
-      } catch (err) {
-        setError("Failed to fetch anchor data.");
-        logger.error(err as string);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAnchors();
-  }, []);
 
   const calculateUptime = (anchor: AnchorMetrics): number => {
     return anchor.total_transactions > 0

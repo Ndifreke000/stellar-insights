@@ -1,3 +1,4 @@
+import type { PaginatedResponse } from "./pagination";
 
 
 /**
@@ -36,6 +37,7 @@ export interface PredictionResponse {
   risk_level: "low" | "medium" | "high";
   recommendation: string;
   alternative_routes: AlternativeRoute[];
+  /** Where the estimate comes from. */
   model_version: string;
 }
 
@@ -128,10 +130,8 @@ export interface AnchorMetrics {
   status: string;
 }
 
-export interface AnchorsResponse {
-  anchors: AnchorMetrics[];
-  total: number;
-}
+/** Paginated anchor list, as returned by `GET /api/anchors`. */
+export type AnchorsResponse = PaginatedResponse<AnchorMetrics>;
 
 export interface ReliabilityDataPoint {
   timestamp: string;

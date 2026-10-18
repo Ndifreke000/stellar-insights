@@ -45,7 +45,7 @@ variable "vault_addr" {
 variable "alarm_email" {
   description = "Email for critical CloudWatch alarms"
   type        = string
-  default     = "ops-critical@stellar-insights.com"
+  default     = "ops-critical@payraider.com"
 
   validation {
     condition     = can(regex("^[\\w.+-]+@[\\w.-]+\\.\\w+$", var.alarm_email))

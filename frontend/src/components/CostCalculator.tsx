@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, FormProvider, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Calculator, Loader2, Route, TrendingUp } from "lucide-react";
+import {  Calculator, Loader2, Route, TrendingUp } from "lucide-react";
 import { FormField, FormSelect, FormCheckboxGroup } from "@/components/ui/FormField";
 import { costCalculatorSchema, type CostCalculatorForm } from "@/lib/schemas";
 
@@ -80,14 +80,7 @@ export function CostCalculator() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CostCalculationResponse | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isValid, isDirty },
-    setValue,
-    watch,
-    trigger,
-  } = useForm<CostCalculatorForm>({
+  const methods = useForm<CostCalculatorForm>({
     resolver: zodResolver(costCalculatorSchema),
     mode: "onChange",
     defaultValues: {
@@ -98,6 +91,10 @@ export function CostCalculator() {
       routes: ["stellar_dex", "anchor_direct", "liquidity_pool"],
     },
   });
+  const {
+    handleSubmit,
+    watch,
+  } = methods;
 
   // Watch form values for real-time updates
   const sourceCurrency = watch("sourceCurrency");
@@ -109,16 +106,17 @@ export function CostCalculator() {
   const canSubmit = useMemo(() => {
     const parsed = Number(sourceAmount);
     const destParsed = destinationAmount ? Number(destinationAmount) : null;
+    // Not gated on isDirty or isValid: the form opens with usable defaults,
+    // and gating on them left Calculate disabled until the user edited a
+    // field. handleSubmit still runs the full schema before anything is sent.
     return (
-      isValid &&
-      isDirty &&
       Number.isFinite(parsed) &&
       parsed > 0 &&
       selectedRoutes.length > 0 &&
       sourceCurrency !== destinationCurrency &&
       (destParsed === null || (Number.isFinite(destParsed) && destParsed > 0))
     );
-  }, [isValid, isDirty, sourceAmount, destinationAmount, selectedRoutes, sourceCurrency, destinationCurrency]);
+  }, [sourceAmount, destinationAmount, selectedRoutes, sourceCurrency, destinationCurrency]);
 
   const handleCalculate: SubmitHandler<CostCalculatorForm> = async (data) => {
     setLoading(true);
@@ -161,16 +159,8 @@ export function CostCalculator() {
     }
   };
 
-  function toggleRoute(route: RouteKey) {
-    const currentRoutes = selectedRoutes || [];
-    if (currentRoutes.includes(route)) {
-      setValue("routes", currentRoutes.filter((value) => value !== route), { shouldValidate: true });
-    } else {
-      setValue("routes", [...currentRoutes, route], { shouldValidate: true });
-    }
-  }
-
   return (
+    <FormProvider {...methods}>
     <div className="space-y-6">
       <form
         onSubmit={handleSubmit(handleCalculate)}
@@ -334,5 +324,6 @@ export function CostCalculator() {
         </div>
       ) : null}
     </div>
+    </FormProvider>
   );
 }

@@ -1,4 +1,4 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type {
   RequestDeduplicationMetrics,
   RequestDeduplicationParams,
@@ -7,12 +7,12 @@ import type {
 import { SDKError } from "./sdk_error.js";
 
 export class RequestDeduplication {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private totalRequests = 0;
   private deduplicationHits = 0;
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 

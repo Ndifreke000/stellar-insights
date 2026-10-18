@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
-import { logger } from "@/lib/logger";
 import {
   TrendingUp,
   Search,
@@ -12,10 +12,16 @@ import {
   ArrowRight,
   Download,
 } from "lucide-react";
+import {
+  AdvancedFilterPanel,
+  applyFilters,
+  type AdvancedFilterState,
+} from "@/components/AdvancedFilterPanel";
 import { Badge } from "@/components/ui/badge";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
-import { getCorridors, CorridorMetrics } from "@/lib/api/corridors";
+import type { CorridorFilters, CorridorMetrics } from "@/lib/api/corridors";
+import { useCorridors } from "@/lib/react-query/queries";
 import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
@@ -25,6 +31,7 @@ import {
   type CorridorsTimePeriod,
 } from "@/contexts/UserPreferencesContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { BookmarkButton } from "@/components/BookmarkButton";
 
 // Lazy-load the heatmap — only rendered when the user switches to heatmap view.
 const CorridorHeatmap = dynamic(
@@ -33,9 +40,9 @@ const CorridorHeatmap = dynamic(
 );
 
 function CorridorsPageContent() {
+  const t = useTranslations("corridors");
   const { prefs, setPrefs } = useUserPreferences();
 
-  const [corridors, setCorridors] = useState<CorridorMetrics[]>([]);
   const [isExportOpen, setIsExportOpen] = useState(false);
 
   const viewMode = prefs.corridorsViewMode;
@@ -47,32 +54,44 @@ function CorridorsPageContent() {
   const setTimePeriod = (v: typeof timePeriod) =>
     setPrefs({ corridorsTimePeriod: v });
 
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const [filterState, setFilterState] = useState<AdvancedFilterState>({ query: "", filters: [] });
+
+  // Derive searchTerm from the filter state for backward compatibility
+  const searchTerm = filterState.query;
+  const setSearchTerm = (q: string) => setFilterState((prev) => ({ ...prev, query: q }));
+
+  // The page filters/paginates client-side, so request one large page.
+  const corridorQuery = useCorridors({
+    time_period: timePeriod || undefined,
+    sort_by: sortBy,
+    limit: 200,
+  } satisfies CorridorFilters);
+  // Fall back to demo data when the backend is unreachable.
+  const corridors = useMemo(
+    () => corridorQuery.data?.data ?? (corridorQuery.isError ? mockCorridors : []),
+    [corridorQuery.data, corridorQuery.isError],
+  );
+  const loading = corridorQuery.isPending && !corridorQuery.isError;
 
   const filteredCorridors = useMemo(() => {
-    return corridors
-      .filter(
-        (c) =>
-          c.source_asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.destination_asset
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          c.id.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-      .sort((a, b) => {
-        switch (sortBy) {
-          case "success_rate":
-            return b.success_rate - a.success_rate;
-          case "liquidity":
-            return b.liquidity_depth_usd - a.liquidity_depth_usd;
-          case "health_score":
-          default:
-            return b.health_score - a.health_score;
-        }
-      });
-  }, [corridors, searchTerm, sortBy]);
+    // Apply advanced filters then sort
+    const filtered = applyFilters(
+      corridors as unknown as Record<string, unknown>[],
+      filterState
+    ) as unknown as CorridorMetrics[];
+
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "success_rate":
+          return b.success_rate - a.success_rate;
+        case "liquidity":
+          return b.liquidity_depth_usd - a.liquidity_depth_usd;
+        case "health_score":
+        default:
+          return b.health_score - a.health_score;
+      }
+    });
+  }, [corridors, filterState, sortBy]);
 
   const {
     currentPage,
@@ -82,30 +101,6 @@ function CorridorsPageContent() {
     startIndex,
     endIndex,
   } = usePagination(filteredCorridors.length);
-
-  useEffect(() => {
-    async function fetchCorridors() {
-      try {
-        setLoading(true);
-        try {
-          const filters: Record<string, string | number> = {};
-          if (timePeriod) filters.time_period = timePeriod;
-          filters.sort_by = sortBy;
-
-          const result = await getCorridors(filters);
-          setCorridors(result);
-        } catch {
-          setCorridors(mockCorridors);
-        }
-      } catch (err) {
-        logger.error("Error fetching corridors:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchCorridors();
-  }, [timePeriod, sortBy]);
 
   const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
@@ -118,7 +113,7 @@ function CorridorsPageContent() {
           </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             <TrendingUp className="w-8 h-8 text-accent" />
-            Payment Corridors
+            {t("title")}
           </h2>
         </div>
         <div className="flex items-center gap-3">
@@ -128,12 +123,18 @@ function CorridorsPageContent() {
           >
             {filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
+          <Link
+            href="/corridors/forecasting"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:bg-blue-500 hover:text-white transition-all"
+          >
+            Forecast
+          </Link>
           <button
             onClick={() => setIsExportOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-white transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)] hover:shadow-accent/30"
           >
             <Download className="w-3 h-3" />
-            Export Data
+            {t("comparison.exportCsv")}
           </button>
         </div>
       </div>
@@ -142,18 +143,32 @@ function CorridorsPageContent() {
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         type="corridors"
-        title="Payment Corridors"
+        title={t("title")}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-8 relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-accent transition-colors" />
-          <input
-            type="text"
-            placeholder="Search Intelligence Database..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900/50 border border-border/50 rounded-xl pl-11 pr-4 py-3 text-sm font-mono tracking-tight focus:outline-none focus:ring-2 focus:ring-accent/50 group-hover:border-accent/30 transition-all"
+        {/* Advanced Filter Panel (#2110) */}
+        <div className="lg:col-span-8">
+          <AdvancedFilterPanel
+            fields={[
+              { key: "source_asset", label: "Source Asset", type: "text", placeholder: "e.g. USDC" },
+              { key: "destination_asset", label: "Dest Asset", type: "text", placeholder: "e.g. PHP" },
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                options: [
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                  { value: "degraded", label: "Degraded" },
+                ],
+              },
+              { key: "success_rate", label: "Success Rate (%)", type: "number", placeholder: "e.g. 95" },
+              { key: "health_score", label: "Health Score", type: "range", min: 0, max: 100, step: 1 },
+            ]}
+            onChange={setFilterState}
+            storageKey="corridors_advanced_filter"
+            placeholder={t("search")}
           />
         </div>
         <div className="lg:col-span-4 flex gap-2">
@@ -178,16 +193,10 @@ function CorridorsPageContent() {
             }
             className="flex-1 bg-slate-900/50 border border-border/50 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-accent/50 appearance-none cursor-pointer"
           >
-            <option value="health_score">Sort: Health</option>
-            <option value="success_rate">Sort: Success</option>
-            <option value="liquidity">Sort: Liquidity</option>
+            <option value="health_score">{t("sort.health")}</option>
+            <option value="success_rate">{t("sort.success")}</option>
+            <option value="liquidity">{t("sort.liquidity")}</option>
           </select>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-3 border border-border/50 rounded-xl transition-all ${showFilters ? "bg-accent text-white border-accent" : "bg-slate-900/50 text-muted-foreground hover:border-accent/50"}`}
-          >
-            <Filter className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
@@ -200,7 +209,7 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Grid
+          {t("views.grid")}
         </button>
         <button
           onClick={() => setViewMode("heatmap")}
@@ -210,7 +219,7 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Heatmap
+          {t("views.heatmap")}
         </button>
       </div>
 
@@ -224,7 +233,7 @@ function CorridorsPageContent() {
         <div className="py-20 flex flex-col items-center justify-center glass-card rounded-3xl border-dashed">
           <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
           <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">
-            No matching corridors detected
+            {t("empty")}
           </p>
         </div>
       ) : viewMode === "heatmap" ? (
@@ -330,7 +339,14 @@ function CorridorsPageContent() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="mt-6 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                  <BookmarkButton
+                    id={corridor.id}
+                    type="corridor"
+                    label={`${corridor.source_asset} → ${corridor.destination_asset}`}
+                    href={`/corridors/${corridor.id}`}
+                    className="touch-sm"
+                  />
                   <ArrowRight className="w-4 h-4 text-accent animate-bounce-x" />
                 </div>
               </Link>

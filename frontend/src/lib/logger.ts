@@ -31,21 +31,23 @@ interface LogMetadata {
 /**
  * Redact sensitive data from logs
  */
-function redactSensitiveData(data: unknown): unknown {
+function redactSensitiveData<T>(data: T): T {
   if (typeof data === 'string') {
     // Redact Stellar addresses (56 chars starting with G)
-    data = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
-    
+    let redactedString = data.replace(/G[A-Z0-9]{55}/g, 'G****[REDACTED]');
+
     // Redact potential API keys
-    data = data.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
-    
+    redactedString = redactedString.replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[REDACTED_KEY]');
+
     // Redact email addresses
-    data = data.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+    redactedString = redactedString.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '****@[REDACTED]');
+
+    return redactedString as T;
   }
-  
+
   if (typeof data === 'object' && data !== null) {
     const redacted: Record<string, unknown> = {};
-    
+
     for (const [key, value] of Object.entries(data)) {
       // Redact sensitive field names
       if (/password|secret|token|key|auth|credential/i.test(key)) {
@@ -54,10 +56,10 @@ function redactSensitiveData(data: unknown): unknown {
         redacted[key] = redactSensitiveData(value);
       }
     }
-    
-    return redacted;
+
+    return redacted as T;
   }
-  
+
   return data;
 }
 
@@ -88,27 +90,90 @@ function normalizeTrackingError(error: unknown, defaultMessage: string): Error {
   }
 }
 
+export interface UserContext {
+  id?: string;
+  email?: string;
+  username?: string;
+  ip_address?: string;
+  [key: string]: unknown;
+}
+
+export interface Breadcrumb {
+  category: string;
+  message: string;
+  level?: 'debug' | 'info' | 'warn' | 'error';
+  data?: Record<string, unknown>;
+  timestamp?: string;
+}
+
+let currentUserContext: UserContext | null = null;
+const breadcrumbsBuffer: Breadcrumb[] = [];
+const MAX_BREADCRUMBS = 50;
+
+/**
+ * Record a breadcrumb in the in-memory buffer and Sentry if available.
+ */
+function recordBreadcrumb(breadcrumb: Breadcrumb): void {
+  const item: Breadcrumb = {
+    ...breadcrumb,
+    timestamp: breadcrumb.timestamp || new Date().toISOString(),
+    data: breadcrumb.data ? redactSensitiveData(breadcrumb.data) : undefined,
+  };
+
+  breadcrumbsBuffer.push(item);
+  if (breadcrumbsBuffer.length > MAX_BREADCRUMBS) {
+    breadcrumbsBuffer.shift();
+  }
+
+  if (typeof window !== 'undefined') {
+    import("@sentry/nextjs")
+      .then((Sentry) => {
+        Sentry.addBreadcrumb({
+          category: item.category,
+          message: item.message,
+          // Sentry's SeverityLevel spells it 'warning'.
+          level: item.level === 'warn' ? 'warning' : item.level || 'info',
+          data: item.data,
+        });
+      })
+      .catch(() => {
+        // Ignore load failures
+      });
+  }
+}
+
 /**
  * Send error to tracking service (Sentry) and backend fallback.
  */
 function sendToErrorTracking(error: unknown, metadata?: LogMetadata): void {
-  if (isDevelopment || !isLoggingEnabled) {
+  if (!isLoggingEnabled) {
     return;
   }
 
   const normalizedError = normalizeTrackingError(error, 'Unknown frontend error');
   const redactedMetadata = metadata ? redactSensitiveData(metadata) : undefined;
+  const release = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || process.env.VERCEL_GIT_COMMIT_SHA || "0.1.0";
+
+  recordBreadcrumb({
+    category: 'error',
+    message: normalizedError.message,
+    level: 'error',
+    data: redactedMetadata as Record<string, unknown>,
+  });
 
   import("@sentry/nextjs")
     .then((Sentry) => {
-      // Attach user context if available
-      const userId = typeof window !== 'undefined' ? 
-        sessionStorage.getItem('user_id') : null;
-      
-      if (userId) {
-        Sentry.setUser({ id: userId });
+      // Resolve user context
+      const userId = currentUserContext?.id || (typeof window !== 'undefined' ? sessionStorage.getItem('user_id') : null);
+      if (userId || currentUserContext) {
+        Sentry.setUser({
+          id: userId || undefined,
+          email: currentUserContext?.email,
+          username: currentUserContext?.username,
+          ...currentUserContext,
+        });
       }
-      
+
       // Add breadcrumb for error context
       Sentry.addBreadcrumb({
         category: 'error',
@@ -116,13 +181,18 @@ function sendToErrorTracking(error: unknown, metadata?: LogMetadata): void {
         level: 'error',
         data: redactedMetadata,
       });
-      
+
       Sentry.captureException(normalizedError, {
         tags: {
           logger: "frontend",
-          environment: process.env.NODE_ENV,
+          environment: process.env.NODE_ENV || "production",
+          release,
         },
-        extra: redactedMetadata,
+        extra: {
+          ...redactedMetadata,
+          breadcrumbs: breadcrumbsBuffer.slice(-10),
+          userContext: currentUserContext ? redactSensitiveData(currentUserContext) : undefined,
+        },
         level: 'error',
       });
     })
@@ -134,6 +204,8 @@ function sendToErrorTracking(error: unknown, metadata?: LogMetadata): void {
             message: normalizedError.message,
             stack: normalizedError.stack,
             metadata: redactedMetadata,
+            release,
+            userContext: currentUserContext,
             timestamp: new Date().toISOString(),
           });
           sessionStorage.setItem('error_logs', JSON.stringify(errors));
@@ -157,6 +229,9 @@ async function sendErrorToBackend(error: Error, metadata?: LogMetadata): Promise
         message: error.message,
         stack: error.stack,
         metadata,
+        release: process.env.NEXT_PUBLIC_APP_VERSION || "0.1.0",
+        user: currentUserContext,
+        breadcrumbs: breadcrumbsBuffer.slice(-10),
       }),
     });
   } catch {
@@ -265,6 +340,13 @@ export const logger = {
    * Log API requests (only in development)
    */
   api: (method: string, url: string, metadata?: LogMetadata): void => {
+    recordBreadcrumb({
+      category: 'http',
+      message: `${method} ${url}`,
+      level: 'info',
+      data: metadata ? redactSensitiveData(metadata) as Record<string, unknown> : undefined,
+    });
+
     if (!isLoggingEnabled || !isDevelopment) {
       return;
     }
@@ -286,6 +368,71 @@ export const logger = {
       formatMessage('PERF', `${label}: ${duration.toFixed(2)}ms`),
       redactedMetadata
     );
+  },
+
+  /**
+   * Attach user context for error tracking
+   */
+  setUserContext: (user: UserContext): void => {
+    currentUserContext = user;
+    if (typeof window !== 'undefined' && user.id) {
+      sessionStorage.setItem('user_id', user.id);
+    }
+    if (typeof window !== 'undefined') {
+      import("@sentry/nextjs")
+        .then((Sentry) => {
+          Sentry.setUser({
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            ...user,
+          });
+        })
+        .catch(() => {});
+    }
+  },
+
+  /**
+   * Clear active user context
+   */
+  clearUserContext: (): void => {
+    currentUserContext = null;
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('user_id');
+      import("@sentry/nextjs")
+        .then((Sentry) => {
+          Sentry.setUser(null);
+        })
+        .catch(() => {});
+    }
+  },
+
+  /**
+   * Get active user context
+   */
+  getUserContext: (): UserContext | null => {
+    return currentUserContext;
+  },
+
+  /**
+   * Manually record a breadcrumb for debugging
+   */
+  addBreadcrumb: (breadcrumb: Breadcrumb): void => {
+    recordBreadcrumb(breadcrumb);
+  },
+
+  /**
+   * Retrieve recorded breadcrumbs
+   */
+  getBreadcrumbs: (): Breadcrumb[] => {
+    return [...breadcrumbsBuffer];
+  },
+
+  /**
+   * Explicitly capture an exception with Sentry and fallback tracking
+   */
+  captureException: (error: unknown, metadata?: LogMetadata): void => {
+    sendToErrorTracking(error, metadata);
   },
 };
 

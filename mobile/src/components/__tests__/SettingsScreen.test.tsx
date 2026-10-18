@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { SettingsScreen } from '../SettingsScreen';
 import { useSettingsScreen } from '@hooks/useSettingsScreen';
 
@@ -27,29 +26,25 @@ describe('SettingsScreen', () => {
     mockedUseSettingsScreen.mockReturnValue(state);
   });
 
-  it('renders correctly', () => {
-    const tree = renderer.create(<SettingsScreen />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+  it('renders correctly', async () => {
+    const { getByText } = await render(<SettingsScreen />);
 
-    expect(texts).toContain('Settings Screen');
+    expect(getByText('Settings Screen')).toBeTruthy();
   });
 
-  it('shows offline support feedback', () => {
+  it('shows offline support feedback', async () => {
     mockedUseSettingsScreen.mockReturnValue({ ...state, isOnline: false });
 
-    const tree = renderer.create(<SettingsScreen />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+    const { getByText } = await render(<SettingsScreen />);
 
-    expect(texts).toContain('Offline mode active. Changes are saved locally where possible.');
+    expect(getByText('Offline mode active. Changes are saved locally where possible.')).toBeTruthy();
   });
 
-  it('toggles theme from the theme action', () => {
-    const tree = renderer.create(<SettingsScreen />);
-    const themeButton = tree.root.findByProps({ accessibilityLabel: 'Toggle theme. Current theme is light' });
+  it('toggles theme from the theme action', async () => {
+    const { getByLabelText } = await render(<SettingsScreen />);
+    const themeButton = getByLabelText('Toggle theme. Current theme is light');
 
-    act(() => {
-      themeButton.props.onPress();
-    });
+    await fireEvent.press(themeButton);
 
     expect(state.toggleTheme).toHaveBeenCalled();
   });

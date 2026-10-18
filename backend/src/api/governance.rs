@@ -1,6 +1,12 @@
+//! Governance API handlers.
+//!
+//! #1868 N+1 audit: proposal list/detail use JOIN + GROUP BY for vote tallies
+//! in a single query (no per-proposal vote fetch loop). Vote/comment list
+//! endpoints are single-query fetches.
+
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::{OriginalUri, Path, Query, State},
+    http::{HeaderName, HeaderValue, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -12,6 +18,7 @@ use tracing::info;
 
 use crate::auth::sep10_simple::Sep10Service;
 use crate::auth::{sep10_auth_middleware, Sep10User};
+use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::services::governance::{
     AddCommentRequest, CastVoteRequest, CreateProposalRequest, GovernanceService,
 };
@@ -20,33 +27,30 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
     Router::new()
         // Protected routes (require SEP-10 auth)
         .route("/proposals", post(create_proposal))
-        .route("/proposals/:id/vote", post(cast_vote))
-        .route("/proposals/:id/comments", post(add_comment))
-        .route("/proposals/:id/activate", put(activate_proposal))
+        .route("/proposals/{id}/vote", post(cast_vote))
+        .route("/proposals/{id}/comments", post(add_comment))
+        .route("/proposals/{id}/activate", put(activate_proposal))
+        .route("/proposals/{id}/refresh", post(refresh_tally))
         .layer(middleware::from_fn_with_state(
             sep10_service,
             sep10_auth_middleware,
         ))
         // Public routes
         .route("/proposals", get(list_proposals))
-        .route("/proposals/:id", get(get_proposal))
-        .route("/proposals/:id/votes", get(get_votes))
-        .route("/proposals/:id/comments", get(get_comments))
-        .route("/proposals/:id/has-voted/:address", get(has_voted))
+        .route("/proposals/{id}", get(get_proposal))
+        .route("/proposals/{id}/votes", get(get_votes))
+        .route("/proposals/{id}/comments", get(get_comments))
+        .route("/proposals/{id}/has-voted/{address}", get(has_voted))
         .with_state(service)
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListProposalsQuery {
     pub status: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-const fn default_limit() -> i64 {
-    20
+    pub limit: Option<i64>,
+    pub cursor: Option<String>,
+    /// Deprecated: prefer `cursor`.
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,7 +73,7 @@ const fn default_comments_limit() -> i64 {
     50
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ActivateRequest {
     #[serde(default = "default_voting_duration")]
     pub voting_duration_secs: i64,
@@ -84,7 +88,7 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HasVotedResponse {
     pub has_voted: bool,
 }
@@ -157,25 +161,35 @@ async fn activate_proposal(
     params(
         ("status" = Option<String>, Query, description = "Filter by status"),
         ("limit" = Option<i64>, Query, description = "Maximum results (1-100, default 20)"),
-        ("offset" = Option<i64>, Query, description = "Results offset")
+        ("cursor" = Option<String>, Query, description = "Opaque cursor from `pagination.next_cursor` / `prev_cursor`"),
+        ("offset" = Option<i64>, Query, description = "Deprecated: results offset. Prefer `cursor`")
     ),
     responses(
-        (status = 200, description = "List of proposals")
+        (status = 200, description = "Paginated list of proposals (`PaginatedResponse<ProposalResponse>`)"),
+        (status = 400, description = "Invalid pagination cursor")
     ),
     tag = "Governance"
 )]
 async fn list_proposals(
     State(service): State<Arc<GovernanceService>>,
+    OriginalUri(uri): OriginalUri,
     Query(query): Query<ListProposalsQuery>,
 ) -> Result<Response, GovernanceError> {
-    let limit = query.limit.clamp(1, 100);
-    let offset = query.offset.max(0);
+    let page = PaginationParams {
+        limit: query.limit,
+        cursor: query.cursor.clone(),
+        offset: query.offset,
+    }
+    .resolve(20, 100)
+    .map_err(|e| GovernanceError::BadRequest(e.to_string()))?;
 
-    let response = service
-        .list_proposals(query.status.as_deref(), limit, offset)
+    let result = service
+        .list_proposals(query.status.as_deref(), page.limit, page.offset)
         .await
         .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
 
+    let response =
+        PaginatedResponse::from_page(result.proposals, result.total, page).with_links(&uri);
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
@@ -196,12 +210,51 @@ async fn get_proposal(
     State(service): State<Arc<GovernanceService>>,
     Path(id): Path<String>,
 ) -> Result<Response, GovernanceError> {
-    let response = service
-        .get_proposal(&id)
+    let (proposal, cache_age) = service
+        .get_proposal_cached(&id)
         .await
         .map_err(|e| GovernanceError::NotFound(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(response)).into_response())
+    let mut response = (StatusCode::OK, Json(proposal)).into_response();
+    let age_str = cache_age.unwrap_or(0).to_string();
+    if let Ok(val) = HeaderValue::from_str(&age_str) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-cache-age"), val);
+    }
+    Ok(response)
+}
+
+// POST /api/governance/proposals/:id/refresh - Admin: bust cached vote tally
+#[utoipa::path(
+    post,
+    path = "/api/governance/proposals/{id}/refresh",
+    params(
+        ("id" = String, Path, description = "Proposal ID")
+    ),
+    responses(
+        (status = 200, description = "Cache invalidated"),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal error")
+    ),
+    tag = "Governance"
+)]
+async fn refresh_tally(
+    State(service): State<Arc<GovernanceService>>,
+    Path(id): Path<String>,
+    _sep10_user: axum::Extension<Sep10User>,
+) -> Result<Response, GovernanceError> {
+    service
+        .invalidate_proposal_cache(&id)
+        .await
+        .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
+
+    info!("Cache busted for proposal {} by admin request", id);
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "invalidated": true })),
+    )
+        .into_response())
 }
 
 // POST /api/governance/proposals/:id/vote - Cast a vote on a proposal

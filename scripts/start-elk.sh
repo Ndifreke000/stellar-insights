@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting ELK Stack for Stellar Insights..."
+echo "Starting ELK Stack for PayRaider..."
 
 # Start ELK services
 docker-compose -f docker-compose.elk.yml up -d

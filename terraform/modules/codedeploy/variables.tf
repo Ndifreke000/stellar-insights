@@ -62,7 +62,7 @@ variable "environment" {
 variable "project" {
   description = "Project name"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "termination_wait_time" {

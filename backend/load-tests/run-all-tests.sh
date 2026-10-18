@@ -25,7 +25,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 mkdir -p "$RESULTS_DIR"
 
 echo -e "${BLUE}==============================================================================${NC}"
-echo -e "${BLUE}STELLAR INSIGHTS - LOAD TEST SUITE${NC}"
+echo -e "${BLUE}PAYRAIDER - LOAD TEST SUITE${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
 echo ""
 echo -e "${GREEN}Base URL:${NC} $BASE_URL"
@@ -116,6 +116,15 @@ fi
 test_names+=("Full Suite Load Test")
 sleep 5
 
+# 5. Preflight Load Test (200 RPS preflight, see issue #2652)
+if run_test "preflight-load-test" "preflight-load-test.js"; then
+    test_results+=("PASS")
+else
+    test_results+=("FAIL")
+fi
+test_names+=("Preflight Load Test (200 RPS)")
+sleep 5
+
 # Optional: Stress Test (commented out by default - takes ~26 minutes)
 # echo -e "${YELLOW}Stress test is optional and takes ~26 minutes.${NC}"
 # read -p "Run stress test? (y/N): " -n 1 -r
@@ -175,7 +184,7 @@ echo ""
 # Generate summary file
 summary_file="$RESULTS_DIR/summary_${TIMESTAMP}.txt"
 {
-    echo "STELLAR INSIGHTS - LOAD TEST SUMMARY"
+    echo "PAYRAIDER - LOAD TEST SUMMARY"
     echo "===================================="
     echo ""
     echo "Date: $(date)"

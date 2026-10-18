@@ -16,42 +16,55 @@ import dynamic from "next/dynamic";
 const loadingPlaceholder = () => null;
 
 export const DynamicReliabilityTrend = dynamic(
-  () => import("./charts/ReliabilityTrend"),
+  () => import("./charts/ReliabilityTrend").then((m) => ({ default: m.ReliabilityTrend })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicSettlementLatencyChart = dynamic(
-  () => import("./charts/SettlementLatencyChart"),
+  () => import("./charts/SettlementLatencyChart").then((m) => ({ default: m.SettlementLatencyChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicLiquidityChart = dynamic(
-  () => import("./charts/LiquidityChart"),
+  () => import("./charts/LiquidityChart").then((m) => ({ default: m.LiquidityChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicLiquidityHeatmap = dynamic(
-  () => import("./charts/LiquidityHeatmap"),
+  () => import("./charts/LiquidityHeatmap").then((m) => ({ default: m.LiquidityHeatmap })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicTVLChart = dynamic(
-  () => import("./charts/TVLChart"),
+  () => import("./charts/TVLChart").then((m) => ({ default: m.TVLChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicPoolPerformanceChart = dynamic(
-  () => import("./charts/PoolPerformanceChart"),
+  () => import("./charts/PoolPerformanceChart").then((m) => ({ default: m.PoolPerformanceChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
 export const DynamicTrustlineGrowthChart = dynamic(
-  () => import("./charts/TrustlineGrowthChart"),
+  () => import("./charts/TrustlineGrowthChart").then((m) => ({ default: m.TrustlineGrowthChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 
-export const DynamicCorridorCompareCharts = dynamic(
-  () => import("./corridors/CorridorCompareCharts"),
+// CorridorCompareCharts.tsx has three named exports (no single default), so
+// each gets its own dynamic wrapper rather than guessing which one is "the"
+// component.
+export const DynamicSuccessRateCompareChart = dynamic(
+  () => import("./corridors/CorridorCompareCharts").then((m) => ({ default: m.SuccessRateCompareChart })),
+  { ssr: false, loading: loadingPlaceholder }
+);
+
+export const DynamicVolumeCompareChart = dynamic(
+  () => import("./corridors/CorridorCompareCharts").then((m) => ({ default: m.VolumeCompareChart })),
+  { ssr: false, loading: loadingPlaceholder }
+);
+
+export const DynamicSlippageCompareChart = dynamic(
+  () => import("./corridors/CorridorCompareCharts").then((m) => ({ default: m.SlippageCompareChart })),
   { ssr: false, loading: loadingPlaceholder }
 );
 

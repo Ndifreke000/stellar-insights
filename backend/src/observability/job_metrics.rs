@@ -97,6 +97,13 @@ pub struct JobExecution {
 }
 
 impl JobExecution {
+    /// Stamp the completion time and derive the duration from the same instant.
+    fn mark_completed(&mut self) {
+        let now = Instant::now();
+        self.completed_at = Some(now);
+        self.duration = Some(now.duration_since(self.started_at));
+    }
+
     pub fn new(job_name: String) -> Self {
         Self {
             job_name,
@@ -110,23 +117,20 @@ impl JobExecution {
 
     pub fn complete_success(mut self) -> Self {
         self.status = JobStatus::Success;
-        self.completed_at = Some(Instant::now());
-        self.duration = Some(self.completed_at.unwrap() - self.started_at);
+        self.mark_completed();
         self
     }
 
     pub fn complete_failure(mut self, error: String) -> Self {
         self.status = JobStatus::Failed(error.clone());
-        self.completed_at = Some(Instant::now());
-        self.duration = Some(self.completed_at.unwrap() - self.started_at);
+        self.mark_completed();
         self.error = Some(error);
         self
     }
 
     pub fn complete_timeout(mut self) -> Self {
         self.status = JobStatus::Timeout;
-        self.completed_at = Some(Instant::now());
-        self.duration = Some(self.completed_at.unwrap() - self.started_at);
+        self.mark_completed();
         self
     }
 }

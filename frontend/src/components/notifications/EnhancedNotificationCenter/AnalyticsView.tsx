@@ -1,7 +1,6 @@
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -24,7 +23,7 @@ const AnalyticsView = () => {
   const { notifications } = useNotifications();
 
   const analytics: NotificationAnalytics = useMemo(() => {
-    return NotificationService.getInstance().getAnalytics(notifications);
+    return NotificationService.getInstance().generateAnalytics(notifications);
   }, [notifications]);
 
   return (

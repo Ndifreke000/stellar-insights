@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProgressiveWebApp } from '../ProgressiveWebApp';
 import * as useProgressiveWebAppModule from '@/hooks/useProgressiveWebApp';
@@ -27,7 +27,7 @@ describe('ProgressiveWebApp Component', () => {
       serviceWorkerReady: true,
       cacheSize: 1024 * 1024,
     },
-    installPrompt: {} as any,
+    installPrompt: {} as BeforeInstallPromptEvent,
     install: vi.fn(),
     dismiss: vi.fn(),
     clearCache: vi.fn(),
@@ -37,14 +37,27 @@ describe('ProgressiveWebApp Component', () => {
     error: null,
   };
 
+  // The service worker status line only renders for an installed app.
+  const installedHookReturn = {
+    ...mockHookReturn,
+    state: 'installed' as const,
+    capabilities: { ...mockHookReturn.capabilities, canInstall: false, isInstalled: true },
+  };
+
   beforeEach(() => {
     vi.mocked(useProgressiveWebAppModule.useProgressiveWebApp).mockReturnValue(mockHookReturn);
   });
 
   describe('rendering', () => {
-    it('should render without crashing', () => {
+    it('shows the service worker status once the app is installed', () => {
+      vi.mocked(useProgressiveWebAppModule.useProgressiveWebApp).mockReturnValue(installedHookReturn);
       render(<ProgressiveWebApp />);
       expect(screen.getByText(/Service Worker active/i)).toBeInTheDocument();
+    });
+
+    it('hides the service worker status before the app is installed', () => {
+      render(<ProgressiveWebApp />);
+      expect(screen.queryByText(/Service Worker active/i)).not.toBeInTheDocument();
     });
 
     it('should render with custom className', () => {
@@ -56,12 +69,12 @@ describe('ProgressiveWebApp Component', () => {
   describe('installation prompt', () => {
     it('should show installation prompt when canInstall is true', () => {
       render(<ProgressiveWebApp showInstallPrompt={true} />);
-      expect(screen.getByText(/Install Stellar Insights/i)).toBeInTheDocument();
+      expect(screen.getByText(/Install PayRaider/i)).toBeInTheDocument();
     });
 
     it('should not show installation prompt when showInstallPrompt is false', () => {
       render(<ProgressiveWebApp showInstallPrompt={false} />);
-      expect(screen.queryByText(/Install Stellar Insights/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Install PayRaider/i)).not.toBeInTheDocument();
     });
 
     it('should not show installation prompt when already installed', () => {
@@ -71,7 +84,7 @@ describe('ProgressiveWebApp Component', () => {
       });
 
       render(<ProgressiveWebApp showInstallPrompt={true} />);
-      expect(screen.queryByText(/Install Stellar Insights/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Install PayRaider/i)).not.toBeInTheDocument();
     });
 
     it('should call install when Install button is clicked', async () => {
@@ -324,18 +337,18 @@ describe('ProgressiveWebApp Component', () => {
   });
 
   describe('responsive design', () => {
-    it('should render properly on mobile', () => {
-      render(<ProgressiveWebApp />);
-      
-      const container = screen.getByText(/Service Worker active/i).closest('div');
-      expect(container).toHaveClass('space-y-3');
+    it('stacks its sections vertically', () => {
+      const { container } = render(<ProgressiveWebApp />);
+
+      expect(container.firstChild).toHaveClass('space-y-3');
     });
 
-    it('should render properly on desktop', () => {
-      render(<ProgressiveWebApp />);
-      
-      const container = screen.getByText(/Service Worker active/i).closest('div');
-      expect(container).toBeInTheDocument();
+    it('renders the status inside the stacked container when installed', () => {
+      vi.mocked(useProgressiveWebAppModule.useProgressiveWebApp).mockReturnValue(installedHookReturn);
+      const { container } = render(<ProgressiveWebApp />);
+
+      const status = screen.getByText(/Service Worker active/i);
+      expect(container.firstChild).toContainElement(status);
     });
   });
 });

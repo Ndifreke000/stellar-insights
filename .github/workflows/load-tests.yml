@@ -75,7 +75,7 @@ jobs:
         working-directory: backend
         run: |
           cp .env.example .env
-          echo "DATABASE_URL=sqlite:./test_stellar_insights.db" >> .env
+          echo "DATABASE_URL=sqlite:./test_payraider.db" >> .env
           echo "REDIS_URL=redis://localhost:6379" >> .env
           echo "RPC_MOCK_MODE=true" >> .env
       
@@ -88,7 +88,7 @@ jobs:
       - name: Start backend server
         working-directory: backend
         run: |
-          ./target/release/stellar-insights-backend &
+          ./target/release/payraider-backend &
           echo $! > server.pid
           sleep 10
       

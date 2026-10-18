@@ -14,9 +14,9 @@ use axum::{
     routing::get,
     Router,
 };
-use std::time::Duration;
+use payraider_backend::cors::{build_cors_layer, parse_allowed_origins, DEFAULT_ALLOWED_ORIGINS};
 use tower::util::ServiceExt;
-use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,44 +29,12 @@ fn build_router_with_cors(cors: CorsLayer) -> Router {
         .layer(cors)
 }
 
-/// Build a CorsLayer that exactly mirrors the production logic in `main.rs`
-/// for a given `CORS_ALLOWED_ORIGINS` value.
-///
-/// This must be kept in sync with the CORS setup in `backend/src/main.rs`.
+/// Build the production CorsLayer (`payraider_backend::cors`) for a given
+/// `CORS_ALLOWED_ORIGINS` value. Wildcards are permitted here because these
+/// tests exercise the dev/mock-mode behaviour; production rejects them at
+/// startup (see `wildcard_is_rejected_unless_explicitly_allowed` in `cors.rs`).
 fn cors_layer_from_origins(cors_allowed_origins: &str) -> CorsLayer {
-    let methods = [
-        Method::GET,
-        Method::POST,
-        Method::PUT,
-        Method::DELETE,
-        Method::OPTIONS,
-        Method::PATCH,
-    ];
-
-    // Matches main.rs: specific headers only, not Any
-    let allowed_headers = [header::AUTHORIZATION, header::CONTENT_TYPE];
-
-    let base = CorsLayer::new()
-        .allow_methods(methods)
-        .allow_headers(allowed_headers)
-        .allow_credentials(true)
-        .max_age(Duration::from_secs(3600));
-
-    if cors_allowed_origins.trim() == "*" {
-        base.allow_origin(AllowOrigin::mirror_request())
-    } else {
-        let origins: Vec<axum::http::HeaderValue> = cors_allowed_origins
-            .split(',')
-            .filter_map(|o| o.trim().parse::<axum::http::HeaderValue>().ok())
-            .collect();
-
-        if origins.is_empty() {
-            // Mirror main.rs behaviour: empty list rejects all cross-origin requests.
-            base.allow_origin(AllowOrigin::list([]))
-        } else {
-            base.allow_origin(origins)
-        }
-    }
+    build_cors_layer(cors_allowed_origins, true).expect("valid CORS configuration")
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +294,9 @@ async fn test_cors_preflight_allows_credentials() {
 // Tests – Wildcard configuration
 // ---------------------------------------------------------------------------
 
+/// NOTE: Wildcard ("*") CORS in production is blocked by startup validation in main.rs.
+/// This test verifies the CorsLayer behavior IF wildcard were allowed (dev/mock mode only).
+/// Production deployments will fail at startup if CORS_ALLOWED_ORIGINS="*" and RPC_MOCK_MODE=false.
 #[tokio::test]
 async fn test_cors_wildcard_allows_any_origin() {
     let cors = cors_layer_from_origins("*");
@@ -352,7 +323,7 @@ async fn test_cors_wildcard_allows_any_origin() {
 
     assert_eq!(
         acao, "https://some-random-domain.io",
-        "Wildcard config should mirror the request origin when credentials are enabled"
+        "Wildcard config should mirror the request origin"
     );
 }
 
@@ -389,8 +360,7 @@ async fn test_cors_request_without_origin_still_succeeds() {
 
 #[tokio::test]
 async fn test_cors_production_origin_receives_acao_header() {
-    let cors =
-        cors_layer_from_origins("https://stellar-insights.com,https://www.stellar-insights.com");
+    let cors = cors_layer_from_origins("https://payraider.com,https://www.payraider.com");
     let app = build_router_with_cors(cors);
 
     let response = app
@@ -398,7 +368,7 @@ async fn test_cors_production_origin_receives_acao_header() {
             Request::builder()
                 .method(Method::GET)
                 .uri("/health")
-                .header(header::ORIGIN, "https://stellar-insights.com")
+                .header(header::ORIGIN, "https://payraider.com")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -412,7 +382,7 @@ async fn test_cors_production_origin_receives_acao_header() {
         .get("access-control-allow-origin")
         .expect("Production origin should receive ACAO header");
 
-    assert_eq!(acao, "https://stellar-insights.com");
+    assert_eq!(acao, "https://payraider.com");
 }
 
 // ---------------------------------------------------------------------------
@@ -446,4 +416,109 @@ async fn test_cors_empty_origins_rejects_cross_origin() {
         "Empty origins list should not produce an ACAO header, got: {:?}",
         acao
     );
+}
+
+// ---------------------------------------------------------------------------
+// Tests – Origin parsing and production safety (issue #2322)
+// ---------------------------------------------------------------------------
+
+/// Send a preflight request for `GET /health` from `origin`.
+async fn preflight(cors: CorsLayer, origin: &str) -> axum::response::Response {
+    build_router_with_cors(cors)
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/health")
+                .header(header::ORIGIN, origin)
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[test]
+fn test_parse_normalises_and_filters_entries() {
+    let parsed = parse_allowed_origins(
+        " https://app.example.com/ , http://localhost:3000,https://app.example.com,\
+         ftp://files.example.com,https://example.com/path,not a url,",
+    );
+    assert_eq!(
+        parsed.origins,
+        vec!["https://app.example.com", "http://localhost:3000"]
+    );
+    assert_eq!(parsed.rejected.len(), 3, "rejected: {:?}", parsed.rejected);
+    assert!(!parsed.wildcard);
+}
+
+#[test]
+fn test_parse_detects_wildcard() {
+    assert!(parse_allowed_origins("*").wildcard);
+    assert!(parse_allowed_origins("https://a.example.com, *").wildcard);
+    assert!(!parse_allowed_origins("https://a.example.com").wildcard);
+}
+
+#[test]
+fn test_wildcard_is_rejected_unless_explicitly_allowed() {
+    let err = build_cors_layer("*", false).unwrap_err().to_string();
+    assert!(err.contains("CORS_ALLOWED_ORIGINS"), "got: {err}");
+    assert!(build_cors_layer("https://a.example.com,*", false).is_err());
+    assert!(build_cors_layer("*", true).is_ok());
+    assert!(build_cors_layer("https://a.example.com", false).is_ok());
+}
+
+#[tokio::test]
+async fn test_listed_origin_is_allowed_with_credentials() {
+    let cors = build_cors_layer("https://app.example.com", false).unwrap();
+    let response = preflight(cors, "https://app.example.com").await;
+    assert_eq!(
+        response.headers()["access-control-allow-origin"],
+        "https://app.example.com"
+    );
+    assert_eq!(
+        response.headers()["access-control-allow-credentials"],
+        "true"
+    );
+}
+
+#[tokio::test]
+async fn test_unlisted_origin_gets_no_cors_headers() {
+    let cors = build_cors_layer("https://app.example.com", false).unwrap();
+    let response = preflight(cors, "https://evil.example.net").await;
+    assert!(response
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_wildcard_mode_never_enables_credentials() {
+    let cors = build_cors_layer("*", true).unwrap();
+    let response = preflight(cors, "https://anything.example.org").await;
+    assert_eq!(
+        response.headers()["access-control-allow-origin"],
+        "https://anything.example.org"
+    );
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-credentials")
+            .is_none(),
+        "mirroring arbitrary origins together with credentials would defeat CORS"
+    );
+}
+
+#[tokio::test]
+async fn test_only_get_post_put_delete_are_advertised() {
+    let cors = build_cors_layer(DEFAULT_ALLOWED_ORIGINS, false).unwrap();
+    let response = preflight(cors, DEFAULT_ALLOWED_ORIGINS).await;
+    let methods = response.headers()["access-control-allow-methods"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    for allowed in ["GET", "POST", "PUT", "DELETE"] {
+        assert!(methods.contains(allowed), "missing {allowed} in {methods}");
+    }
+    assert!(!methods.contains("PATCH"), "unexpected PATCH in {methods}");
 }

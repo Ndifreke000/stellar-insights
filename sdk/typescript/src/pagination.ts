@@ -40,19 +40,19 @@ export async function* paginate<T>(
 
     yield result;
 
-    // Check if cursor was seen before (wrap-around detection)
-    if (cursor && seenCursors.has(cursor)) {
-      break;
-    }
-
-    if (cursor) {
-      seenCursors.add(cursor);
-    }
-
     // End of results: data length < page size or no cursor in response
     if (result.data.length < pageSize || !result.cursor) {
       break;
     }
+
+    // Wrap-around detection: about to reuse a cursor already fetched.
+    // Checked against result.cursor (the cursor the *next* request would
+    // use), not the cursor just used - otherwise detection lags a full
+    // extra request behind the actual repeat.
+    if (seenCursors.has(result.cursor)) {
+      break;
+    }
+    seenCursors.add(result.cursor);
 
     cursor = result.cursor;
     page++;
@@ -75,7 +75,7 @@ export async function paginateAll<T>(
   options?: { params?: PaginationParams; headers?: Record<string, string> },
 ): Promise<T[]> {
   const all: T[] = [];
-  for await (const result of paginate(httpClient, endpoint, pageSize, options)) {
+  for await (const result of paginate<T>(httpClient, endpoint, pageSize, options)) {
     all.push(...result.data);
   }
   return all;

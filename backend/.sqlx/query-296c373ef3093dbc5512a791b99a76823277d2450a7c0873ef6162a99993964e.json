@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT consent_type, consent_given as \"consent_given: bool\",\n                  consent_version, granted_at, revoked_at\n           FROM user_consents WHERE user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "consent_type",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "consent_given: bool",
+        "ordinal": 1,
+        "type_info": "Bool"
+      },
+      {
+        "name": "consent_version",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "granted_at",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "revoked_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "296c373ef3093dbc5512a791b99a76823277d2450a7c0873ef6162a99993964e"
+}

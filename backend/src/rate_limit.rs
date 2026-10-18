@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::api_key::hash_api_key;
+use crate::models::api_key::{extract_key_prefix, verify_api_key};
 
 /// Rate limit configuration for an endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,9 +88,26 @@ pub enum ClientTier {
     Premium,
 }
 
-/// Comma-separated user/API-key IDs in `STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS` map to premium tier.
+/// Normalize an IP address for use as a rate-limit bucket key.
+///
+/// IPv6 addresses are masked to their /48 prefix so that an attacker rotating
+/// through addresses within a single /64 cannot trivially bypass per-IP limits.
+/// IPv4 addresses are returned unchanged.
+fn normalize_ip_for_rate_limit(ip: &str) -> String {
+    use std::net::IpAddr;
+    match ip.parse::<IpAddr>() {
+        Ok(IpAddr::V6(v6)) => {
+            let s = v6.segments();
+            // Keep the first three 16-bit groups (48 bits), zero the rest.
+            std::net::Ipv6Addr::new(s[0], s[1], s[2], 0, 0, 0, 0, 0).to_string()
+        }
+        _ => ip.to_string(),
+    }
+}
+
+/// Comma-separated user/API-key IDs in `PAYRAIDER_PREMIUM_CLIENT_IDS` map to premium tier.
 fn client_id_has_premium_env_override(client_id: &str) -> bool {
-    std::env::var("STELLAR_INSIGHTS_PREMIUM_CLIENT_IDS")
+    std::env::var("PAYRAIDER_PREMIUM_CLIENT_IDS")
         .ok()
         .is_some_and(|raw| raw.split(',').any(|part| part.trim() == client_id))
 }
@@ -101,7 +118,16 @@ pub struct RateLimiter {
     endpoint_configs: Arc<RwLock<HashMap<String, RateLimitConfig>>>,
     fallback_memory_store: Arc<RwLock<HashMap<String, (u32, i64)>>>,
     db_pool: Option<sqlx::SqlitePool>,
+    /// SHA-256 of a presented key -> (key id, when the entry expires). Keys
+    /// are stored as salted Argon2 hashes, which are deliberately slow to
+    /// check, so a verified key is remembered briefly instead of re-verified
+    /// on every request.
+    verified_keys: Arc<dashmap::DashMap<[u8; 32], (String, std::time::Instant)>>,
 }
+
+/// How long a verified API key is trusted without re-checking its hash. A
+/// revoked key stops working within this window.
+const VERIFIED_KEY_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl RateLimiter {
     pub async fn new() -> anyhow::Result<Self> {
@@ -113,7 +139,7 @@ impl RateLimiter {
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-            match client.get_multiplexed_tokio_connection().await {
+            match client.get_multiplexed_async_connection().await {
                 Ok(conn) => {
                     tracing::info!("Connected to Redis for rate limiting");
                     Some(conn)
@@ -136,7 +162,25 @@ impl RateLimiter {
             endpoint_configs: Arc::new(RwLock::new(HashMap::new())),
             fallback_memory_store: Arc::new(RwLock::new(HashMap::new())),
             db_pool,
+            verified_keys: Arc::new(dashmap::DashMap::new()),
         })
+    }
+
+    /// Construct a rate limiter that never attempts Redis (in-memory path only).
+    /// Used by integration tests to compare Redis vs memory behavior (#1869).
+    pub fn new_memory_only(db_pool: Option<sqlx::SqlitePool>) -> Self {
+        Self {
+            redis_connection: Arc::new(RwLock::new(None)),
+            endpoint_configs: Arc::new(RwLock::new(HashMap::new())),
+            fallback_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            db_pool,
+            verified_keys: Arc::new(dashmap::DashMap::new()),
+        }
+    }
+
+    /// Whether this limiter is currently backed by a live Redis connection.
+    pub async fn is_using_redis(&self) -> bool {
+        self.redis_connection.read().await.is_some()
     }
 
     /// Register a rate limit config for an endpoint
@@ -155,13 +199,8 @@ impl RateLimiter {
         if let Some(token) = bearer_token {
             if token.starts_with("si_live_") || token.starts_with("si_test_") {
                 // Validate API key against database if available
-                if let Some(pool) = &self.db_pool {
-                    let key_hash = hash_api_key(&token);
-                    if let Ok(Some(api_key)) = self.get_api_key_by_hash(pool, &key_hash).await {
-                        // Update last_used_at timestamp
-                        let _ = self.update_api_key_last_used(pool, &api_key.id).await;
-                        return ClientIdentifier::ApiKey(api_key.id);
-                    }
+                if let Some(api_key_id) = self.resolve_api_key_id(&token).await {
+                    return ClientIdentifier::ApiKey(api_key_id);
                 }
             }
         }
@@ -171,22 +210,30 @@ impl RateLimiter {
             return ClientIdentifier::User(user_id);
         }
 
-        // Fall back to IP address
-        ClientIdentifier::IpAddress(ip_address)
+        // Fall back to IP address — normalized to /48 for IPv6 to prevent prefix rotation bypass.
+        ClientIdentifier::IpAddress(normalize_ip_for_rate_limit(&ip_address))
     }
 
-    /// Get API key from database by hash
-    async fn get_api_key_by_hash(
+    /// Find the active key matching a presented plaintext key.
+    ///
+    /// Stored hashes are salted Argon2, so the presented key cannot be
+    /// re-hashed and matched by equality (which is what this used to do, so no
+    /// key was ever recognised). Narrow by the stored prefix, then verify.
+    async fn find_active_api_key(
         &self,
         pool: &sqlx::SqlitePool,
-        key_hash: &str,
+        plain_key: &str,
     ) -> Result<Option<crate::models::api_key::ApiKey>, sqlx::Error> {
-        sqlx::query_as::<_, crate::models::api_key::ApiKey>(
-            "SELECT * FROM api_keys WHERE key_hash = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))"
+        let candidates = sqlx::query_as::<_, crate::models::api_key::ApiKey>(
+            "SELECT * FROM api_keys WHERE key_prefix = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))"
         )
-        .bind(key_hash)
-        .fetch_optional(pool)
-        .await
+        .bind(extract_key_prefix(plain_key))
+        .fetch_all(pool)
+        .await?;
+
+        Ok(candidates
+            .into_iter()
+            .find(|candidate| verify_api_key(plain_key, &candidate.key_hash)))
     }
 
     /// Update API key `last_used_at` timestamp
@@ -208,6 +255,12 @@ impl RateLimiter {
             ClientIdentifier::ApiKey(id) => {
                 if client_id_has_premium_env_override(id) {
                     return ClientTier::Premium;
+                }
+                // A key with a paid subscription in force is premium.
+                if let Some(pool) = &self.db_pool {
+                    if matches!(crate::billing::active_limit(pool, id).await, Ok(Some(_))) {
+                        return ClientTier::Premium;
+                    }
                 }
                 // For API keys, we check if the associated user/wallet has a premium subscription
                 // If we have a DB pool, query the user_subscriptions table
@@ -386,18 +439,29 @@ impl RateLimiter {
 
     /// Check rate limit for an IP/endpoint combination (legacy method)
     pub async fn check_rate_limit(&self, ip: &str, endpoint: &str) -> (bool, RateLimitInfo) {
-        let client = ClientIdentifier::IpAddress(ip.to_string());
+        let client = ClientIdentifier::IpAddress(normalize_ip_for_rate_limit(ip));
         self.check_rate_limit_for_client(&client, endpoint, ip)
             .await
     }
 
     /// Look up per-API-key rate limit from `api_keys_rate_limit_config`, with a safe default.
     pub async fn get_api_key_limit_per_minute(&self, api_key_id: &str) -> u32 {
-        const DEFAULT_LIMIT: u32 = 60;
+        // Matches the authenticated tier's global limit. At 60 this per-key
+        // bucket throttled keyed callers to the anonymous rate even though
+        // the global limiter allowed them 200.
+        const DEFAULT_LIMIT: u32 = 200;
 
         let Some(pool) = &self.db_pool else {
             return DEFAULT_LIMIT;
         };
+
+        // A paid subscription in force takes precedence over any static
+        // per-key configuration.
+        match crate::billing::active_limit(pool, api_key_id).await {
+            Ok(Some(limit)) => return limit.max(1),
+            Ok(None) => {}
+            Err(e) => tracing::error!("Failed to load subscription for {}: {}", api_key_id, e),
+        }
 
         match sqlx::query_scalar::<_, i64>(
             "SELECT limit_per_minute FROM api_keys_rate_limit_config WHERE api_key_id = ?",
@@ -477,13 +541,37 @@ impl RateLimiter {
             return None;
         }
 
+        let fingerprint: [u8; 32] = {
+            use sha2::Digest;
+            sha2::Sha256::digest(bearer_token.as_bytes()).into()
+        };
+        if let Some(entry) = self.verified_keys.get(&fingerprint) {
+            let (key_id, expires) = entry.value();
+            if *expires > std::time::Instant::now() {
+                return Some(key_id.clone());
+            }
+        }
+
         let pool = self.db_pool.as_ref()?;
-        let key_hash = hash_api_key(bearer_token);
-        self.get_api_key_by_hash(pool, &key_hash)
+        let api_key = self
+            .find_active_api_key(pool, bearer_token)
             .await
             .ok()
-            .flatten()
-            .map(|api_key| api_key.id)
+            .flatten();
+        let Some(api_key) = api_key else {
+            self.verified_keys.remove(&fingerprint);
+            return None;
+        };
+
+        let _ = self.update_api_key_last_used(pool, &api_key.id).await;
+        self.verified_keys.insert(
+            fingerprint,
+            (
+                api_key.id.clone(),
+                std::time::Instant::now() + VERIFIED_KEY_TTL,
+            ),
+        );
+        Some(api_key.id)
     }
 
     /// Check rate limit in Redis
@@ -667,11 +755,25 @@ pub async fn api_key_rate_limit_middleware(
     let limit = limiter.get_api_key_limit_per_minute(&api_key_id).await;
     let (allowed, info) = limiter.rate_limit_api_key(&api_key_id, limit).await;
 
+    // #2657 — hash the API key's DB id before it ever reaches a log line, so
+    // support can correlate "this caller" across requests (request_id +
+    // key_id) without the logs themselves leaking an identifier that could
+    // be used to look up or act on the live key. Carried via response
+    // extensions since the access-log middleware wrapping this one reads
+    // from the response, not the (already consumed) request.
+    let hashed_key_id = crate::logging::hash_key_id(&api_key_id);
+
     if !allowed {
-        return RateLimitError { info }.into_response();
+        let mut resp = RateLimitError { info }.into_response();
+        resp.extensions_mut()
+            .insert(crate::logging::ApiKeyLogId(hashed_key_id));
+        return resp;
     }
 
-    let response = next.run(req).await;
+    let mut response = next.run(req).await;
+    response
+        .extensions_mut()
+        .insert(crate::logging::ApiKeyLogId(hashed_key_id));
 
     match add_rate_limit_headers(response, &info) {
         Ok(res) => res,
@@ -746,7 +848,9 @@ mod tests {
     use super::*;
 
     async fn setup_test_db() -> sqlx::SqlitePool {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
 
         sqlx::query(
             "CREATE TABLE user_subscriptions (
@@ -758,7 +862,7 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("user_subscriptions table creation should succeed");
 
         pool
     }
@@ -766,7 +870,9 @@ mod tests {
     #[tokio::test]
     async fn test_premium_user_tier() {
         let db = setup_test_db().await;
-        let rate_limiter = RateLimiter::new_with_db(Some(db.clone())).await.unwrap();
+        let rate_limiter = RateLimiter::new_with_db(Some(db.clone()))
+            .await
+            .expect("rate limiter should initialize");
 
         // Insert premium user correctly using SQLite datetime function
         sqlx::query("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, datetime('now', '+30 days'))")
@@ -774,7 +880,7 @@ mod tests {
             .bind("Premium")
             .execute(&db)
             .await
-            .unwrap();
+            .expect("premium user insert should succeed");
 
         let client = ClientIdentifier::User("user123".to_string());
         let tier = rate_limiter.get_client_tier(&client).await;
@@ -784,7 +890,9 @@ mod tests {
     #[tokio::test]
     async fn test_free_user_tier() {
         let db = setup_test_db().await;
-        let rate_limiter = RateLimiter::new_with_db(Some(db.clone())).await.unwrap();
+        let rate_limiter = RateLimiter::new_with_db(Some(db.clone()))
+            .await
+            .expect("rate limiter should initialize");
 
         let client = ClientIdentifier::User("user456".to_string());
         let tier = rate_limiter.get_client_tier(&client).await;
@@ -792,7 +900,9 @@ mod tests {
     }
 
     async fn setup_api_key_rate_limit_db() -> sqlx::SqlitePool {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite pool should connect");
 
         sqlx::query(
             "CREATE TABLE api_keys (
@@ -811,7 +921,7 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("api_keys table creation should succeed");
 
         sqlx::query(
             "CREATE TABLE api_keys_rate_limit_config (
@@ -823,27 +933,38 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("api_keys_rate_limit_config table creation should succeed");
 
         pool
     }
 
     #[tokio::test]
     async fn test_api_key_rate_limit_is_independent_per_key() {
+        let _guard = crate::lock_env_test();
         let db = setup_api_key_rate_limit_db().await;
-        let limiter = RateLimiter::new_with_db(Some(db)).await.unwrap();
+        let limiter = RateLimiter::new_with_db(Some(db))
+            .await
+            .expect("rate limiter should initialize");
         let limit = 2u32;
 
+        // Unique per run: a real Redis may be reachable at the default
+        // REDIS_URL in dev/CI environments, and its 60s TTL means a fixed
+        // key name like "key-a" can carry a stale count over from the
+        // previous run of this same test, making it flaky.
+        let unique = uuid::Uuid::new_v4();
+        let key_a = format!("key-a-{unique}");
+        let key_b = format!("key-b-{unique}");
+
         for _ in 0..2 {
-            let (allowed, _) = limiter.rate_limit_api_key("key-a", limit).await;
+            let (allowed, _) = limiter.rate_limit_api_key(&key_a, limit).await;
             assert!(allowed);
         }
 
-        let (allowed, info) = limiter.rate_limit_api_key("key-a", limit).await;
+        let (allowed, info) = limiter.rate_limit_api_key(&key_a, limit).await;
         assert!(!allowed);
         assert_eq!(info.remaining, 0);
 
-        let (allowed, _) = limiter.rate_limit_api_key("key-b", limit).await;
+        let (allowed, _) = limiter.rate_limit_api_key(&key_b, limit).await;
         assert!(allowed);
     }
 
@@ -857,13 +978,18 @@ mod tests {
         .bind(15_i64)
         .execute(&db)
         .await
-        .unwrap();
+        .expect("api key rate limit config insert should succeed");
 
-        let limiter = RateLimiter::new_with_db(Some(db)).await.unwrap();
+        let limiter = RateLimiter::new_with_db(Some(db))
+            .await
+            .expect("rate limiter should initialize");
         assert_eq!(
             limiter.get_api_key_limit_per_minute("configured-key").await,
             15
         );
-        assert_eq!(limiter.get_api_key_limit_per_minute("missing-key").await, 60);
+        assert_eq!(
+            limiter.get_api_key_limit_per_minute("missing-key").await,
+            200
+        );
     }
 }

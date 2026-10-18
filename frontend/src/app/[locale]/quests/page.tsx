@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { Trophy, Star, Target, Award, ChevronDown } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -10,29 +10,52 @@ import {
   QUESTS,
   ACHIEVEMENTS,
   getProgress,
-  getTotalXP,
-  getCompletedCount,
-  getUnlockedAchievements,
   getLeaderboard,
   checkPathCompletion,
 } from '@/lib/quests';
+import { isFeatureEnabled } from '@/lib/featureFlags';
 
 export default function QuestsPage() {
   const pathname = usePathname();
-  const [progress, setProgress] = useState(getProgress());
   const [showLeaderboard, setShowLeaderboard] = useState(true);
+  const questsEnabled = isFeatureEnabled('quests');
 
   useEffect(() => {
-    checkPathCompletion(pathname);
-    const newProgress = getProgress();
-    setProgress((prev) => 
-      JSON.stringify(prev) === JSON.stringify(newProgress) ? prev : newProgress
-    );
-  }, [pathname]);
+    if (questsEnabled) {
+      checkPathCompletion(pathname);
+    }
+  }, [pathname, questsEnabled]);
 
-  const completedCount = getCompletedCount();
-  const totalXP = getTotalXP();
-  const achievements = getUnlockedAchievements();
+  const progress = useMemo(() => (questsEnabled ? getProgress() : []), [pathname, questsEnabled]);
+
+  if (!questsEnabled) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <Trophy className="w-10 h-10 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-bold uppercase tracking-tight">Quests unavailable</h2>
+        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-2">
+          This feature is not part of the current product.
+        </p>
+      </div>
+    );
+  }
+
+  const completedCount = progress.length;
+  const totalXP = progress.reduce((sum, p) => {
+    const q = QUESTS.find((x) => x.id === p.questId);
+    return sum + (q?.xp ?? 0);
+  }, 0);
+  const achievements = ACHIEVEMENTS.filter((a) => {
+    if (a.condition === 'quests') return completedCount >= a.threshold;
+    if (a.condition === 'explorer') {
+      const defiQuests = QUESTS.filter((q) => q.category === 'defi');
+      const defiCompleted = progress.filter((p) =>
+        defiQuests.some((q) => q.id === p.questId),
+      ).length;
+      return defiCompleted >= a.threshold;
+    }
+    return false;
+  });
   const leaderboard = getLeaderboard();
 
   return (
@@ -203,7 +226,7 @@ export default function QuestsPage() {
                       {entry.xp}
                     </td>
                     <td className="py-3 text-right text-muted-foreground">
-                      {entry.completed}
+                      {entry.quests}
                     </td>
                   </tr>
                 ))}

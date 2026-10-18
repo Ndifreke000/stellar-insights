@@ -10,11 +10,11 @@
 //! 5. Submit to smart contract
 //! 6. Verify submission success
 
+use payraider_backend::database::Database;
+use payraider_backend::rpc::StellarRpcClient;
+use payraider_backend::services::contract::{ContractConfig, ContractService};
+use payraider_backend::services::snapshot::SnapshotService;
 use std::sync::Arc;
-use stellar_insights_backend::database::Database;
-use stellar_insights_backend::rpc::StellarRpcClient;
-use stellar_insights_backend::services::contract::{ContractConfig, ContractService};
-use stellar_insights_backend::services::snapshot::SnapshotService;
 use tracing::{info, Level};
 use tracing_subscriber;
 
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize database connection
     let database_url =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:stellar_insights.db".to_string());
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:payraider.db".to_string());
 
     info!("Connecting to database: {}", database_url);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -48,7 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize snapshot service
     // Initialize RPC client for ledger verification
     let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(false));
-    let snapshot_service = SnapshotService::new(db.clone(), rpc_client, contract_service.clone(), None);
+    let snapshot_service =
+        SnapshotService::new(db.clone(), rpc_client, contract_service.clone(), None);
 
     // Generate snapshot for current epoch
     let epoch = chrono::Utc::now().timestamp() as u64 / 3600; // Hourly epochs

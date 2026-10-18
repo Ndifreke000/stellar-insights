@@ -6,7 +6,6 @@ import {
   matchesBinding,
   bindingsConflict,
   formatBinding,
-  isInputFocused,
   conflictsWithBrowser,
 } from '@/lib/keyboard-shortcuts/utils';
 import type { KeyBinding } from '@/types/keyboard-shortcuts';

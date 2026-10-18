@@ -21,7 +21,7 @@ variable "environment" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "github_repo_owner" {
@@ -33,7 +33,7 @@ variable "github_repo_owner" {
 variable "github_repo_name" {
   description = "GitHub repository name"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "subnet_ids" {

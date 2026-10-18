@@ -66,7 +66,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
   }, [corridors]);
 
   // Calculate min/max for volume and latency dynamically
-  const { maxVolume, maxLatency, minLatency } = useMemo(() => {
+  const { maxVolume, maxLatency: _maxLatency, minLatency: _minLatency } = useMemo(() => {
     let maxV = 0;
     let maxL = 0;
     let minL = Infinity;
@@ -133,7 +133,7 @@ export const CorridorHeatmap: React.FC<CorridorHeatmapProps> = ({
     }
   };
 
-  const getCellOpacity = (corridor: CorridorMetrics): string => {
+  const getCellOpacity = (_corridor: CorridorMetrics): string => {
     // Opacity can just give a slight variation, we can use the same logic or just return 100 for simplicity now that we have strong colors.
     // For visual distinction, let's keep it simple: fully opaque.
     return "opacity-100";

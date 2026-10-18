@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: stellar-insights
+  name: payraider
   labels:
-    name: stellar-insights
+    name: payraider
     environment: production
-    app: stellar-insights
+    app: payraider
   annotations:
-    description: "Stellar Insights application namespace"
+    description: "PayRaider application namespace"

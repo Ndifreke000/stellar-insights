@@ -1,6 +1,6 @@
 # Chaos Engineering Tests
 
-This directory contains chaos engineering tests that validate Stellar Insights backend resilience under failure scenarios. These tests help identify weaknesses in error handling, circuit breaker implementation, and graceful degradation.
+This directory contains chaos engineering tests that validate PayRaider backend resilience under failure scenarios. These tests help identify weaknesses in error handling, circuit breaker implementation, and graceful degradation.
 
 ## Overview
 
@@ -170,7 +170,7 @@ Watch backend logs during database partition test:
 sudo ./tests/chaos/db_partition_test.sh
 
 # Terminal 2: Monitor logs in real-time
-docker logs -f stellar-insights-backend | grep -iE "pool|connection|timeout"
+docker logs -f payraider-backend | grep -iE "pool|connection|timeout"
 ```
 
 Expected log progression:
@@ -226,7 +226,7 @@ The backend may take time to close stale connections:
 docker-compose restart backend
 
 # Or manually clean up connections
-docker exec stellar-insights-backend bash -c "pkill -f 'connection_pool'"
+docker exec payraider-backend bash -c "pkill -f 'connection_pool'"
 ```
 
 ### Partition Not Taking Effect
@@ -269,14 +269,14 @@ jobs:
       db:
         image: postgres:14
         env:
-          POSTGRES_DB: stellar_insights
+          POSTGRES_DB: payraider
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
       backend:
-        image: stellar-insights:latest
+        image: payraider:latest
     steps:
       - uses: actions/checkout@v2
       - name: Run RPC partition test

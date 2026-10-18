@@ -32,7 +32,7 @@ pub struct AuthorizationCode {
 }
 
 /// OAuth Token Response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,

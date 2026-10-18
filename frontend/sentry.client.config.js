@@ -8,9 +8,10 @@ Sentry.init({
   replaysSessionSampleRate: 0.1,
   
   // Release tracking for source map uploads
-  release: process.env.NEXT_PUBLIC_APP_VERSION || "unknown",
+  release: process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || process.env.VERCEL_GIT_COMMIT_SHA || "0.1.0",
   
   // Error sampling (100% for now, can be adjusted in production)
+  sampleRate: 1.0,
   errorSampleRate: 1.0,
   
   // Attach user context to errors

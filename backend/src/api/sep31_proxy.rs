@@ -108,7 +108,7 @@ pub async fn get_info(
 }
 
 /// POST /api/sep31/quote - get payment quote (SEP-38 style or anchor-specific)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct QuoteBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -162,7 +162,7 @@ pub async fn post_quote(
 }
 
 /// POST /api/sep31/transactions - create cross-border payment
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CreateTransactionBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -414,7 +414,7 @@ pub async fn get_customer(
 }
 
 /// PUT /api/sep31/customer - KYC customer update (e.g. interactive callback)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct PutCustomerBody {
     pub transfer_server: String,
     #[serde(default)]
@@ -530,7 +530,7 @@ pub fn routes() -> axum::Router {
             axum::routing::get(get_transactions).post(post_transaction),
         )
         .route(
-            "/api/sep31/transactions/:id",
+            "/api/sep31/transactions/{id}",
             axum::routing::get(get_transaction),
         )
         .route(

@@ -1,10 +1,10 @@
 # Mainnet Incident Response Runbook
 
-This guide provides a step-by-step procedure for responding to incidents on the Stellar Insights mainnet.
+This guide provides a step-by-step procedure for responding to incidents on the PayRaider mainnet.
 
 ## 1. Alert Triage
 When a PagerDuty alert fires, first:
-- Check Grafana dashboard at `https://grafana.example.com/d/stellar-insights`
+- Check Grafana dashboard at `https://grafana.example.com/d/payraider`
 - Identify which service or metric is in alarm
 - Verify if this is a false positive or real issue
 
@@ -19,18 +19,25 @@ When a PagerDuty alert fires, first:
   4. Notify team of endpoint switch
 
 ### 2.2 Database Pool Exhaustion
-- **Symptoms**: `db_pool_utilization` at 100%, `db_pool_errors_total` increasing
+- **Symptoms**: `db_pool_utilization` at 100%, `db_pool_errors_total` increasing.
+  Check both the read pool and the write pool (`write_pool_metrics()` --
+  write-pool exhaustion is the more likely story given SQLite's
+  single-writer constraint; see ADR 0001)
 - **Steps**:
-  1. Check active connections in Grafana
-  2. Identify long-running queries in PostgreSQL
-  3. Kill slow/blocking queries if necessary
-  4. Consider temporarily increasing pool size
+  1. Check pool metrics in Grafana (read pool vs. write pool separately)
+  2. If it's the write pool: this is expected under sustained write load,
+     not a bug -- see ADR 0001's "Revisit this decision when..." triggers
+  3. If it's the read pool: identify what's holding connections open
+     (slow queries logged via `log_explain_query_plan`, see database.rs)
+  4. Consider temporarily raising DB_POOL_MAX_CONNECTIONS (read) or
+     DB_WRITE_POOL_MAX_CONNECTIONS (write, capped by SQLite's actual
+     single-writer limit -- raising this doesn't add real throughput)
   5. Investigate root cause of high load
 
 ### 2.3 Contract Pause Procedure
-To pause the stellar_insights contract:
+To pause the payraider contract:
 1. Connect to the contract admin account
-2. Execute `stellar_insights.pause()`
+2. Execute `payraider.pause()`
 3. Verify the contract is paused by checking state
 4. Notify stakeholders
 

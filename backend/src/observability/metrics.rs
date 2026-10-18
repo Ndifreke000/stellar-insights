@@ -8,8 +8,8 @@ use axum::{
 };
 use lazy_static::lazy_static;
 use prometheus::{
-    gather, Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
-    Opts, Registry, TextEncoder,
+    Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
+    IntGaugeVec, Opts, Registry, TextEncoder,
 };
 
 lazy_static! {
@@ -25,7 +25,7 @@ lazy_static! {
             "HTTP request duration in seconds with p50/p95/p99 buckets"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ])
     )
     .expect("Failed to register http_request_duration_seconds histogram");
@@ -35,7 +35,7 @@ lazy_static! {
             "HTTP request duration in seconds per endpoint"
         )
         .buckets(vec![
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
         ]),
         &["method", "endpoint"]
     )
@@ -183,6 +183,19 @@ lazy_static! {
         &["result"]
     )
     .expect("Failed to register backup_verifications_total counter");
+    pub static ref AUTH_SECURITY_EVENTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "auth_security_events_total",
+            "Authentication security events (failures, lockouts, brute-force alerts) by endpoint"
+        ),
+        &["endpoint", "event"]
+    )
+    .expect("Failed to register auth_security_events_total counter");
+    pub static ref BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS: IntGauge = IntGauge::new(
+        "backup_last_success_timestamp_seconds",
+        "Unix time of the most recent backup that passed verification"
+    )
+    .expect("Failed to register backup_last_success_timestamp_seconds gauge");
     pub static ref BACKUP_SIZE_BYTES: IntGauge = IntGauge::new(
         "backup_size_bytes",
         "Size of the most recent backup in bytes"
@@ -228,13 +241,62 @@ lazy_static! {
 }
 
 pub fn init_metrics() {
-    // Explicitly initialize lazy_statics by accessing them
-    let _ = &*REGISTRY;
+    // Metrics built via `X::new(...)` aren't auto-registered anywhere (unlike the
+    // `register_x!` macros), so without this, both `/metrics` (below) and
+    // `job_monitoring::get_job_metrics` — which both gather from `REGISTRY` — would
+    // silently return empty output. `register()` errors (e.g. double-registration
+    // when this is called more than once, such as across tests) are ignored, since
+    // registration is idempotent for our purposes.
+    macro_rules! register_all {
+        ($($metric:expr),+ $(,)?) => {
+            $( let _ = REGISTRY.register(Box::new($metric.clone())); )+
+        };
+    }
+    register_all!(
+        HTTP_REQUESTS_TOTAL,
+        HTTP_REQUEST_DURATION_SECONDS,
+        HTTP_REQUEST_DURATION_BY_ENDPOINT,
+        RPC_CALLS_TOTAL,
+        RPC_CALL_DURATION_SECONDS,
+        DB_QUERY_DURATION_SECONDS,
+        CACHE_OPERATIONS_TOTAL,
+        CACHE_HITS_TOTAL,
+        CACHE_MISSES_TOTAL,
+        ERRORS_TOTAL,
+        HTTP_ERRORS_TOTAL,
+        DB_ERRORS_TOTAL,
+        RPC_ERRORS_TOTAL,
+        BACKGROUND_JOBS_TOTAL,
+        ACTIVE_CONNECTIONS,
+        CORRIDORS_TRACKED,
+        HTTP_IN_FLIGHT_REQUESTS,
+        DB_POOL_SIZE,
+        DB_POOL_IDLE,
+        DB_POOL_ACTIVE,
+        DB_POOL_CONNECTIONS_ACTIVE,
+        DB_POOL_CONNECTIONS_IDLE,
+        DB_POOL_UTILIZATION,
+        DB_POOL_WAIT_TIME_SECONDS,
+        DB_POOL_ERRORS_TOTAL,
+        HTTP_REQUEST_SLO_VIOLATIONS,
+        HTTP_RESPONSES_COMPRESSED_TOTAL,
+        DB_SLOW_QUERIES_TOTAL,
+        DB_QUERY_DURATION_BY_OPERATION,
+        BACKUP_VERIFICATIONS_TOTAL,
+        BACKUP_SIZE_BYTES,
+        BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS,
+        AUTH_SECURITY_EVENTS_TOTAL,
+        STELLAR_LEDGER_LAG_SECONDS,
+        STELLAR_TRANSACTION_SUCCESS_RATE,
+        STELLAR_ANCHOR_HEALTH,
+        STELLAR_CORRIDOR_RELIABILITY,
+        PRICE_FEED_STALE_ASSETS,
+    );
 }
 
 pub fn metrics_handler() -> Response {
     let encoder = TextEncoder::new();
-    let metric_families = gather();
+    let metric_families = REGISTRY.gather();
     let mut buffer = vec![];
 
     if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
@@ -265,6 +327,7 @@ pub async fn http_metrics_middleware(req: Request<Body>, next: Next) -> Response
     let response = next.run(req).await;
     let duration = start.elapsed().as_secs_f64();
     HTTP_IN_FLIGHT_REQUESTS.dec();
+    HTTP_REQUESTS_TOTAL.inc();
 
     HTTP_REQUEST_DURATION_SECONDS.observe(duration);
     HTTP_REQUEST_DURATION_BY_ENDPOINT
@@ -386,11 +449,18 @@ pub fn record_backup_verification_success() {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&["success"])
         .inc();
+    BACKUP_LAST_SUCCESS_TIMESTAMP_SECONDS.set(chrono::Utc::now().timestamp());
 }
 
 pub fn record_backup_verification_failure(reason: &str) {
     BACKUP_VERIFICATIONS_TOTAL
         .with_label_values(&[reason])
+        .inc();
+}
+
+pub fn record_auth_security_event(endpoint: &str, event: &str) {
+    AUTH_SECURITY_EVENTS_TOTAL
+        .with_label_values(&[endpoint, event])
         .inc();
 }
 
@@ -453,6 +523,7 @@ pub fn check_slo_violation(endpoint: &str, duration_ms: f64) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use axum::{
@@ -506,8 +577,41 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1.0);
+        assert!(HTTP_REQUESTS_TOTAL.get() >= before + 1);
         assert!(text.contains("http_requests_total"));
+    }
+
+    #[tokio::test]
+    async fn http_middleware_records_latency_histogram_and_slo() {
+        init_metrics();
+
+        let app = Router::new()
+            .route("/api/v1/corridors", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(http_metrics_middleware));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/corridors")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        check_slo_violation("/api/v1/corridors", 650.0);
+
+        let metrics_response = metrics_handler();
+        let body = to_bytes(metrics_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(text.contains("http_request_duration_seconds"));
+        assert!(text.contains("http_request_duration_by_endpoint_seconds"));
+        assert!(text.contains("http_request_slo_violations_total"));
     }
 
     #[tokio::test]
@@ -654,13 +758,13 @@ mod tests {
         init_metrics();
         set_pool_connections(7, 3, 10);
 
-        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7.0);
-        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3.0);
-        assert!((DB_POOL_UTILIZATION.get() - 0.7).abs() < f64::EPSILON);
+        assert_eq!(DB_POOL_CONNECTIONS_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_CONNECTIONS_IDLE.get(), 3);
+        assert_eq!(DB_POOL_UTILIZATION.get(), 70);
         // Legacy gauges kept in sync
-        assert_eq!(DB_POOL_ACTIVE.get(), 7.0);
-        assert_eq!(DB_POOL_IDLE.get(), 3.0);
-        assert_eq!(DB_POOL_SIZE.get(), 10.0);
+        assert_eq!(DB_POOL_ACTIVE.get(), 7);
+        assert_eq!(DB_POOL_IDLE.get(), 3);
+        assert_eq!(DB_POOL_SIZE.get(), 10);
     }
 }
 
@@ -674,9 +778,13 @@ pub fn observe_stellar_transaction_success_rate(rate: f64) {
 }
 
 pub fn set_stellar_anchor_health(anchor: &str, healthy: bool) {
-    STELLAR_ANCHOR_HEALTH.with_label_values(&[anchor]).set(if healthy { 1 } else { 0 });
+    STELLAR_ANCHOR_HEALTH
+        .with_label_values(&[anchor])
+        .set(if healthy { 1 } else { 0 });
 }
 
 pub fn observe_stellar_corridor_reliability(corridor: &str, reliability: f64) {
-    STELLAR_CORRIDOR_RELIABILITY.with_label_values(&[corridor]).observe(reliability);
+    STELLAR_CORRIDOR_RELIABILITY
+        .with_label_values(&[corridor])
+        .observe(reliability);
 }

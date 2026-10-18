@@ -23,29 +23,29 @@ class ApiClient {
   private setupInterceptors() {
     // Request interceptor
     this.client.interceptors.request.use(
-      (config: any) => {
+      (config: AxiosRequestConfig) => {
         const { tokens } = useAuthStore.getState();
         const { network } = useAppStore.getState();
 
         if (tokens?.accessToken) {
-          config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+          config.headers!.Authorization = `Bearer ${tokens.accessToken}`;
         }
 
-        config.headers['X-Stellar-Network'] = network;
+        config.headers!['X-Stellar-Network'] = network;
 
         // Dynamically update base URL based on selected network
         config.baseURL = NETWORKS[network]?.apiBaseUrl || config.baseURL;
 
         return config;
       },
-      (error: any) => Promise.reject(error)
+      (error: AxiosError) => Promise.reject(error)
     );
 
     // Response interceptor
     this.client.interceptors.response.use(
       (response: AxiosResponse) => response,
       async (error: AxiosError) => {
-        const originalRequest = error.config as any;
+        const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
@@ -53,7 +53,7 @@ class ApiClient {
           try {
             const newTokens = await refreshAuthTokens();
             if (newTokens) {
-              originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`;
+              originalRequest.headers!.Authorization = `Bearer ${newTokens.accessToken}`;
               return this.client(originalRequest);
             }
           } catch (refreshError) {

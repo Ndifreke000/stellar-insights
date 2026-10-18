@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Users, Send, Trash2, Copy } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface CollaborativeUser {
   id: string;
@@ -67,11 +68,10 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
   }, [messages]);
 
   const connectWebSocket = useCallback(() => {
-    setConnectionStatus('connecting');
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${sessionId}`;
-      
+
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
@@ -142,7 +142,7 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
               break;
 
             case 'users_list':
-              setActiveUsers(data.users.map((u: any) => ({
+              setActiveUsers(data.users.map((u: { id: string; name: string; color: string; lastActive: string; isOnline: boolean }) => ({
                 id: u.id,
                 name: u.name,
                 color: u.color,
@@ -152,7 +152,7 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
               break;
           }
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          logger.error('Failed to parse WebSocket message:', error);
         }
       };
 
@@ -166,7 +166,7 @@ export const RealtimeCollaboration: React.FC<RealtimeCollaborationProps> = ({
         setIsConnected(false);
       };
     } catch (error) {
-      console.error('WebSocket connection failed:', error);
+      logger.error('WebSocket connection failed:', error);
       setConnectionStatus('disconnected');
     }
   }, [sessionId, userId, userName, onMessageReceived, onUserJoined, onUserLeft, maxMessages]);

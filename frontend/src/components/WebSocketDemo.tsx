@@ -13,6 +13,9 @@ import type { WebSocketNotificationPayload } from "@/types/notifications";
  * 2. Display connection status
  * 3. Listen for different message types
  * 4. Display received messages
+ *
+ * Demo-only: gated behind NEXT_PUBLIC_ENABLE_DEMOS so it is not
+ * reachable in production builds.
  */
 export function WebSocketDemo() {
   const [messages, setMessages] = useState<WebSocketNotificationPayload[]>([]);
@@ -25,6 +28,7 @@ export function WebSocketDemo() {
   const [anchors, setAnchors] = useState<
     Array<{ name: string; title: string; time: string }>
   >([]);
+  const [error, setError] = useState<string | null>(null);
 
   // Get WebSocket URL from environment
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "";
@@ -33,14 +37,12 @@ export function WebSocketDemo() {
   const {
     isConnected,
     isConnecting,
-    error,
-    reconnectCount,
-    connect,
-    disconnect,
-    sendMessage,
-  } = useWebSocket({
-    url: wsUrl,
-    onMessage: (message) => {
+    connectionAttempts: reconnectCount,
+    reconnect,
+    send,
+  } = useWebSocket(wsUrl, {
+    onMessage: (rawMessage) => {
+      const message = rawMessage as unknown as WebSocketNotificationPayload;
       setMessages((prev) => [message, ...prev].slice(0, 10)); // Keep last 10 messages
 
       // Route messages to appropriate handlers based on type
@@ -82,19 +84,21 @@ export function WebSocketDemo() {
         );
       }
     },
-    onConnect: () => {
+    onOpen: () => {
+      setError(null);
       logger.debug("WebSocket connected!");
     },
-    onDisconnect: () => {
+    onClose: () => {
       logger.debug("WebSocket disconnected!");
     },
-    onError: (error) => {
-      logger.error("WebSocket error:", error);
+    onError: (err) => {
+      setError(err instanceof Event ? "WebSocket connection error" : String(err));
+      logger.error("WebSocket error:", { error: err });
     },
   });
 
   const handlePing = () => {
-    sendMessage({ type: "ping" });
+    send({ type: "ping" });
   };
 
   return (
@@ -140,27 +144,19 @@ export function WebSocketDemo() {
           <div className="flex gap-2">
             {!isConnected ? (
               <button
-                onClick={connect}
+                onClick={reconnect}
                 disabled={isConnecting}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
               >
                 {isConnecting ? "Connecting..." : "Connect"}
               </button>
             ) : (
-              <>
-                <button
-                  onClick={handlePing}
-                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                >
-                  Send Ping
-                </button>
-                <button
-                  onClick={disconnect}
-                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                >
-                  Disconnect
-                </button>
-              </>
+              <button
+                onClick={handlePing}
+                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+              >
+                Send Ping
+              </button>
             )}
           </div>
         </div>
@@ -238,21 +234,19 @@ export function WebSocketDemo() {
         {messages.length === 0 ? (
           <p className="text-muted-foreground text-sm">No messages yet</p>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {messages.map((message, i) => (
-              <div
+              <li
                 key={i}
-                className="p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm font-mono"
+                className="text-sm border-l-2 border-gray-400 pl-2"
               >
-                <div className="font-semibold text-blue-600 dark:text-link-primary mb-1">
-                  {message.type}
+                <div className="font-medium">{message.type}</div>
+                <div className="text-muted-foreground dark:text-muted-foreground text-xs">
+                  {message.data?.title ?? ""}
                 </div>
-                <pre className="text-xs overflow-auto">
-                  {JSON.stringify(message, null, 2)}
-                </pre>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </div>

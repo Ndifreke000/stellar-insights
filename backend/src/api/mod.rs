@@ -1,29 +1,45 @@
 pub mod account_merges;
+/// Gamification (quests/achievements) — not core product, see issue #2659.
+#[cfg(feature = "quests")]
 pub mod achievements;
+pub mod admin_ip_whitelist;
 pub mod alerts;
 pub mod analytics_dashboard;
 pub mod anchors;
 pub mod api_keys;
 pub mod asset_verification;
+pub mod audit_log;
 pub mod backfill;
+pub mod billing;
+pub mod corridor_alerts;
+pub mod failed_payments;
+pub mod settlement_distribution;
 
+pub mod api_analytics;
 pub mod auth;
 pub mod cache_stats;
+pub mod contract_events;
 pub mod corridors;
 pub mod cost_calculator;
+pub mod device_tokens;
+pub mod digest;
 pub mod export;
-// pub mod digest;  // Commented out - depends on email module
-pub mod api_analytics;
-pub mod contract_events;
 pub mod fee_bump;
+/// GDPR data-subject tooling (export/erasure requests) — not core product
+/// for every deployment, see issue #2659.
+#[cfg(feature = "gdpr")]
+pub mod gdpr;
+/// On-chain governance proposals/voting — not core product for every
+/// deployment, see issue #2659.
+#[cfg(feature = "governance")]
 pub mod governance;
 pub mod liquidity_pools;
 pub mod metrics;
+pub mod twofa;
 
-pub mod ml;
 pub mod network;
 pub mod oauth;
-pub mod prediction;
+pub mod preflight;
 pub mod price_feed;
 pub mod replay_handlers;
 pub mod rpc;

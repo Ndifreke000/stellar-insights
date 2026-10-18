@@ -12,7 +12,7 @@ import {
   ReliabilityDataPoint,
   UseAnchorDetailOptions,
   UseAnchorDetailReturn,
-} from '@types/anchor';
+} from '@app-types/anchor';
 
 function isStellarAccountAddress(value: string): boolean {
   const trimmed = value.trim();

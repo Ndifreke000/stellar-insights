@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 ENVIRONMENT=${1:-production}
 DRY_RUN=${2:-false}
 
-echo -e "${BLUE}=== Stellar Insights Kubernetes Deployment ===${NC}"
+echo -e "${BLUE}=== PayRaider Kubernetes Deployment ===${NC}"
 echo ""
 echo "Environment: $ENVIRONMENT"
 echo "Dry Run: $DRY_RUN"
@@ -84,8 +84,8 @@ else
         # Wait for rollout
         echo ""
         echo "=== Waiting for Rollout ==="
-        kubectl rollout status deployment/stellar-insights-backend -n stellar-insights --timeout=5m
-        kubectl rollout status deployment/stellar-insights-frontend -n stellar-insights --timeout=5m
+        kubectl rollout status deployment/payraider-backend -n payraider --timeout=5m
+        kubectl rollout status deployment/payraider-frontend -n payraider --timeout=5m
         
         echo ""
         echo -e "${GREEN}=== Deployment Complete! ===${NC}"
@@ -93,15 +93,15 @@ else
         # Show status
         echo ""
         echo "=== Deployment Status ==="
-        kubectl get pods -n stellar-insights
+        kubectl get pods -n payraider
         
         echo ""
         echo "=== Services ==="
-        kubectl get svc -n stellar-insights
+        kubectl get svc -n payraider
         
         echo ""
         echo "=== Ingress ==="
-        kubectl get ingress -n stellar-insights
+        kubectl get ingress -n payraider
     else
         echo "Deployment cancelled"
         exit 0

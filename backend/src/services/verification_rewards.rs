@@ -25,7 +25,7 @@ const FAILED_VERIFICATION_PENALTY: i32 = 0;
 const MAX_VERIFICATIONS_PER_DAY: i32 = 50;
 
 /// Request to verify a snapshot hash
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VerifySnapshotRequest {
     pub snapshot_id: String,
     pub submitted_hash: String,
@@ -395,6 +395,11 @@ impl VerificationRewardsService {
         is_match: bool,
         reward_points: i32,
     ) -> Result<i32> {
+        // Use a single transaction to execute both operations atomically
+        // This reduces round-trips while maintaining compatibility with older SQLite
+        let pool = self.db.pool();
+        let mut txn = pool.begin().await.context("Failed to begin transaction")?;
+
         // Insert or update user rewards
         sqlx::query(
             r"
@@ -419,11 +424,11 @@ impl VerificationRewardsService {
         .bind(i32::from(!is_match))
         .bind(Utc::now().to_rfc3339())
         .bind(Utc::now().to_rfc3339())
-        .execute(self.db.pool())
+        .execute(&mut *txn)
         .await
         .context("Failed to update user rewards")?;
 
-        // Fetch updated total
+        // Fetch updated total within the same transaction
         let total: i32 = sqlx::query_scalar(
             r"
             SELECT total_points
@@ -432,9 +437,11 @@ impl VerificationRewardsService {
             ",
         )
         .bind(user_id)
-        .fetch_one(self.db.pool())
+        .fetch_one(&mut *txn)
         .await
         .context("Failed to fetch updated total")?;
+
+        txn.commit().await.context("Failed to commit transaction")?;
 
         Ok(total)
     }

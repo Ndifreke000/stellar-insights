@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, status, requested_at, scheduled_deletion_at, confirmation_token FROM data_deletion_requests WHERE user_id = ? ORDER BY requested_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "requested_at",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "scheduled_deletion_at",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "confirmation_token",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e576fb2330a0e39e8e584f5541d418eab3ada502a6966c08f1a64a4193fe5bba"
+}

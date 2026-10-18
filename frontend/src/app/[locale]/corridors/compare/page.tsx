@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -15,11 +15,10 @@ import {
 import { Link } from "@/i18n/navigation";
 import { MainLayout } from "@/components/layout";
 import {
-  getCorridorDetail,
   CorridorDetailData,
   generateMockCorridorData,
 } from "@/lib/api/corridors";
-import { logger } from "@/lib/logger";
+import { useCorridorDetails } from "@/lib/react-query/queries";
 import {
   SuccessRateCompareChart,
   VolumeCompareChart,
@@ -38,41 +37,18 @@ function ComparisonContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>(
     idsString ? idsString.split(",").filter(Boolean) : [],
   );
-  const [corridorData, setCorridorData] = useState<CorridorDetailData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCorridorId, setNewCorridorId] = useState("");
 
-  useEffect(() => {
-    async function fetchData() {
-      if (selectedIds.length === 0) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const results = await Promise.all(
-          selectedIds.map(async (id) => {
-            try {
-              const data = await getCorridorDetail(id);
-              return data;
-            } catch (e) {
-              logger.debug(`Failed to fetch ${id}, using mock`);
-              return generateMockCorridorData(id);
-            }
-          }),
-        );
-        setCorridorData(results);
-      } catch (err) {
-        logger.error("Error fetching comparison data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [selectedIds]);
+  // Each corridor is cached individually, so adding one only fetches the new id.
+  const { data: details, isPending: loading } = useCorridorDetails(selectedIds);
+  const corridorData: CorridorDetailData[] = useMemo(
+    () =>
+      // Fall back to demo data for corridors the backend can't serve.
+      details.map((d, i) => d ?? generateMockCorridorData(selectedIds[i])),
+    [details, selectedIds],
+  );
 
   const handleShare = () => {
     const url = window.location.href;

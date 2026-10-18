@@ -1,19 +1,23 @@
 /// Vault secrets management module for secure credential handling
 ///
 /// This module provides integration with `HashiCorp` Vault for:
-/// - Static secrets (API keys, OAuth credentials)
-/// - Dynamic database credentials (`PostgreSQL`)
+/// - Static secrets (API keys, OAuth credentials, the SQLite `DATABASE_URL`)
+/// - Dynamic database credentials (currently unused -- see
+///   `client::VaultClient`'s Postgres-credentials method doc comment)
 /// - Lease lifecycle management and renewal
 /// - Audit logging of secret access
+/// - Application-level secrets service with environment fallback
 pub mod client;
 pub mod config;
 pub mod errors;
 pub mod lease;
+pub mod secrets_service;
 
 pub use client::VaultClient;
 pub use config::VaultConfig;
 pub use errors::VaultError;
 pub use lease::LeaseManager;
+pub use secrets_service::{ApplicationSecrets, SecretsService};
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

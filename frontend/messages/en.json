@@ -10,18 +10,21 @@
     "refresh": "Refresh"
   },
   "metadata": {
-    "title": "Stellar Insights - Payment Network Intelligence",
-    "description": "Institutional-grade insights into Stellar payment network performance. Predict success, optimize routing, and monitor liquidity."
+    "title": "PayRaider - Check a Stellar corridor before you pay",
+    "description": "Pre-payment check for Stellar off-ramps and payout apps: proceed, caution or hold, from recent on-chain payments."
   },
   "layout": {
     "sidebar": {
-      "stellarInsights": "INSIGHTS",
+      "payRaider": "INSIGHTS",
       "home": "Home",
       "terminal": "Terminal",
       "corridors": "Corridors",
       "network": "Network",
       "analytics": "Analytics",
       "apiUsage": "API Usage",
+      "failedPayments": "Failed Payments",
+      "settlementDistribution": "Settlement Dist.",
+      "status": "System Status",
       "trustlines": "Trustlines",
       "networkHealth": "Network Health",
       "liquidity": "Liquidity",
@@ -35,10 +38,19 @@
       "settings": "Settings",
       "collapse": "Collapse",
       "alerts": "Alerts",
+      "corridorAlerts": "Corridor Alerts",
       "performance": "Performance",
       "expandSidebar": "Expand Sidebar",
       "collapseSidebar": "Collapse Sidebar",
-      "systemNominal": "System Nominal"
+      "systemNominal": "System Nominal",
+      "forecasting": "Forecasting",
+      "groups": {
+        "networkData": "Network Data",
+        "analytics": "Analytics",
+        "monitoring": "Monitoring",
+        "developer": "Developer"
+      },
+      "chartExport": "Chart Export"
     }
   },
   "navbar": {
@@ -46,48 +58,61 @@
     "aboutUs": "About Us",
     "howToUse": "How to Use",
     "contactUs": "Contact Us",
-    "learnAbout": "Learn about Stellar Insights",
+    "learnAbout": "Learn about PayRaider",
     "getStarted": "Get started with our platform",
     "reachOut": "Reach out to our team",
-    "stellarInsights": "Stellar Insights",
+    "payRaider": "PayRaider",
     "toggleMenu": "Toggle navigation menu"
   },
   "home": {
     "hero": {
-      "liveBadge": "Live Network Intelligence Active",
-      "title": "QUANTIFYING",
-      "titleHighlight": "NETWORK TRUST",
-      "subtitle": "Stellar Insights provides institutional-grade telemetry for the Stellar payment network. Move beyond transaction counting; analyze liquidity depth, corridor reliability, and settlement finality in real-time.",
-      "enterTerminal": "Enter Terminal",
-      "connectIdentity": "Connect Identity",
-      "initializing": "Initializing..."
-    },
-    "tickers": {
-      "usdcBrl": "USDC/BRL",
-      "xlmEur": "XLM/EUR",
-      "networkTvl": "Network TVL",
-      "successRate": "Success Rate"
+      "liveBadge": "Pre-payment check for Stellar off-ramps",
+      "title": "CHECK THE CORRIDOR",
+      "titleHighlight": "BEFORE YOU PAY",
+      "subtitle": "Payouts fail when a corridor is degraded or too thin for the amount. PayRaider looks at recent payments on the corridor and answers proceed, caution or hold, with the reasons and a healthier route, in one API call.",
+      "enterTerminal": "Check a corridor",
+      "connectIdentity": "Connect wallet",
+      "initializing": "Connecting..."
     },
     "capabilities": {
-      "globalCorridors": "Global Corridors",
-      "globalCorridorsDesc": "Detailed health analysis of cross-border payment paths. Monitor uptime, liquidity bottlenecks, and anchor performance across 50+ fiat pairs.",
-      "deepTelemetry": "Deep Telemetry",
-      "deepTelemetryDesc": "Beyond surface-level TPS. We analyze ledger-level settlement data to provide true speed-to-finality distribution for payment operations.",
-      "predictiveTrust": "Predictive Trust",
-      "predictiveTrustDesc": "Our ML engine predicts corridor success probability, helping you route high-value payments through the most resilient network nodes."
+      "globalCorridors": "Observed, not modelled",
+      "globalCorridorsDesc": "Decisions come from recent payments on the Stellar ledger, failures included. A corridor with no recent payments returns unknown instead of a guess.",
+      "deepTelemetry": "Fits your stack",
+      "deepTelemetryDesc": "One REST call, TypeScript and Python SDKs, an MCP server for AI agents, and a Claude plugin. Free to try without an API key.",
+      "predictiveTrust": "Paid in USDC on Stellar",
+      "predictiveTrustDesc": "Higher limits are bought with a USDC payment that the API verifies on the ledger. No card, no account, no billing system to integrate."
     },
     "cta": {
-      "title": "Ready to integrate network intelligence?",
-      "subtitle": "Join the forward-thinking anchors and wallets already using Stellar Insights to optimize their liquidity management and payment reliability.",
-      "launchTerminal": "Launch Terminal",
-      "readSpec": "Read Specification"
+      "title": "Check a corridor now",
+      "subtitle": "Try the check on any Stellar corridor. No sign-up or API key needed to start.",
+      "launchTerminal": "Try the check",
+      "readSpec": "Integration guide"
     },
     "footer": {
-      "stellarInsights": "Stellar Insights",
+      "payRaider": "PayRaider",
       "networkStatus": "Network Status",
       "apiKeys": "API Keys",
       "governance": "Governance",
-      "copyright": "© 2026 STELLAR_INSIGHTS // v1.4.0-STABLE"
+      "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
+    },
+    "steps": {
+      "label": "How it works",
+      "name": {
+        "title": "Name the payment",
+        "body": "Source asset, destination asset and the amount in USD."
+      },
+      "check": {
+        "title": "We check the corridor",
+        "body": "Success rate of recent payments, including failed ones, liquidity against your amount, and how much data there is."
+      },
+      "decide": {
+        "title": "Get one decision",
+        "body": "Proceed, caution or hold, with each check explained, or unknown when there is no recent data."
+      },
+      "pay": {
+        "title": "Pay or reroute",
+        "body": "Send on a healthy corridor, or take one of the healthier alternatives to the same currency."
+      }
     }
   },
   "contact": {
@@ -163,5 +188,137 @@
     "waitingAsset": "Waiting for Asset Data...",
     "waitingCorridor": "Waiting for Corridor Data...",
     "waitingSettlement": "Waiting for Settlement Data..."
+  },
+  "preflight": {
+    "title": "Corridor Success Rate Predictor",
+    "subtitle": "Predict payment success before you send",
+    "form": {
+      "sourceAsset": "Source Asset",
+      "destinationAsset": "Destination Asset",
+      "amount": "Amount",
+      "timeOfDay": "Time of Day",
+      "submit": "Predict Success Rate",
+      "submitting": "Checking corridor..."
+    },
+    "results": {
+      "title": "Preflight Prediction Results",
+      "successProbability": "Success Probability",
+      "riskLevel": "Risk Level",
+      "lowRisk": "Low Risk",
+      "mediumRisk": "Medium Risk",
+      "highRisk": "High Risk",
+      "estimatedLatency": "Estimated Latency",
+      "liquidityDepth": "Liquidity Depth",
+      "alternativeRoutes": "Alternative Corridors",
+      "recommendedAction": "Recommendation",
+      "routeSummary": "{source} to {destination} with amount {amount}"
+    },
+    "empty": "Select assets and amount to simulate a preflight check.",
+    "error": "Could not reach the PayRaider API to check this corridor. Please try again."
+  },
+  "corridors": {
+    "title": "Payment Corridors",
+    "subtitle": "Monitor real-time health, success rates, and liquidity depth across Stellar payment corridors.",
+    "search": "Search corridors by asset pair...",
+    "views": {
+      "grid": "Grid",
+      "table": "Table",
+      "heatmap": "Heatmap"
+    },
+    "sort": {
+      "label": "Sort by",
+      "health": "Sort: Health",
+      "success": "Sort: Success",
+      "liquidity": "Sort: Liquidity"
+    },
+    "metrics": {
+      "successRate": "Success Rate",
+      "healthScore": "Health Score",
+      "avgLatency": "Avg Latency",
+      "liquidityDepth": "Liquidity Depth",
+      "volume24h": "24h Volume",
+      "avgSlippage": "Avg Slippage"
+    },
+    "comparison": {
+      "title": "Detailed Comparison",
+      "exportCsv": "Export CSV",
+      "corridor": "Corridor",
+      "recordsCount": "Total {count} records",
+      "rowsPerPage": "Rows per page",
+      "jumpTo": "Jump to",
+      "pageOf": "of {total}",
+      "bestPerformance": "Best Performance",
+      "worstPerformance": "Worst Performance"
+    },
+    "empty": "No matching corridors detected",
+    "error": "Failed to load payment corridors"
+  },
+  "keys": {
+    "title": "API Keys",
+    "subtitle": "Manage API keys for programmatic access to PayRaider services.",
+    "authPrompt": "Connect your wallet with SEP-10 authentication to manage API keys.",
+    "connectWallet": "Connect Wallet",
+    "createKey": "Create API Key",
+    "table": {
+      "name": "Key Name",
+      "prefix": "Prefix",
+      "created": "Created",
+      "lastUsed": "Last Used",
+      "status": "Status",
+      "actions": "Actions",
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "actions": {
+      "rotate": "Rotate",
+      "revoke": "Revoke",
+      "copy": "Copy Key"
+    },
+    "modals": {
+      "createTitle": "Generate New API Key",
+      "keyNameLabel": "Key Description / Name",
+      "keyNamePlaceholder": "e.g., Backend Worker Production",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "revealTitle": "Your New API Key",
+      "revealWarning": "Make sure to copy your API key now. You will not be able to see it again!",
+      "done": "Done"
+    },
+    "empty": "No API keys generated yet. Create one to get started.",
+    "loading": "Loading API keys...",
+    "error": "Failed to load API keys"
+  },
+  "billing": {
+    "title": "Subscription & Billing",
+    "subtitle": "Manage your PayRaider service tier and crypto billing invoices.",
+    "currentPlan": "Current Plan",
+    "tier": {
+      "free": "Free Tier",
+      "pro": "Pro Tier",
+      "enterprise": "Enterprise Tier"
+    },
+    "limits": {
+      "rateLimit": "{count} requests per minute",
+      "monthlyRequests": "{count} requests per month"
+    },
+    "upgrade": {
+      "button": "Upgrade Plan",
+      "title": "Upgrade to Pro Tier",
+      "description": "Unlock higher rate limits, priority support, and multi-corridor analytics.",
+      "price": "$99 / month in USDC",
+      "payWithCrypto": "Pay with USDC",
+      "success": "Subscription successfully upgraded!"
+    },
+    "invoices": {
+      "title": "Invoice History",
+      "empty": "No billing invoices yet.",
+      "invoiceId": "Invoice ID",
+      "amount": "Amount",
+      "status": "Status",
+      "paid": "Paid",
+      "pending": "Pending"
+    },
+    "loading": "Loading billing information...",
+    "error": "Failed to load billing plan"
   }
 }

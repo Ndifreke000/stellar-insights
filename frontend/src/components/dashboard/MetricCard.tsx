@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { FreshnessBadge } from '@/components/ui/FreshnessBadge';
 
 interface MetricCardProps {
   label: string;
@@ -8,6 +9,7 @@ interface MetricCardProps {
   trendDirection?: 'up' | 'down';
   subLabel?: string;
   inverse?: boolean; // If true, "down" is good (e.g., latency)
+  dataAsOf?: string | Date | number | null;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -16,7 +18,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   trend,
   trendDirection,
   subLabel,
-  inverse = false
+  inverse = false,
+  dataAsOf
 }) => {
   const isPositive = inverse
     ? trendDirection === 'down'
@@ -49,6 +52,10 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         )}
 
         {subLabel && <p className="text-[10px] font-mono text-muted-foreground/50 mt-2 uppercase tracking-tighter">{subLabel}</p>}
+
+        <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between">
+          <FreshnessBadge timestamp={dataAsOf} />
+        </div>
       </div>
     </div>
   );

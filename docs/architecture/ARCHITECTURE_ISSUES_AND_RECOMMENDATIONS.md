@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Your Stellar Insights project needs significant architectural changes to support:
+Your PayRaider project needs significant architectural changes to support:
 1. **Mobile applications** (iOS/Android)
 2. **Runtime network switching** (testnet/mainnet)
 3. **Multi-platform consistency**
@@ -96,11 +96,11 @@ X-Stellar-Network: testnet
 
 **Solution:**
 ```typescript
-// Create @stellar-insights/sdk package
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+// Create @payraider/sdk package
+import { PayRaiderClient } from '@payraider/sdk';
 
-const client = new StellarInsightsClient({
-  apiUrl: 'https://api.stellar-insights.com',
+const client = new PayRaiderClient({
+  apiUrl: 'https://api.payraider.com',
   network: 'testnet',
   auth: { token: 'xxx' }
 });
@@ -113,7 +113,7 @@ const corridors = await client.corridors.list();
 **Problem:**
 ```rust
 // backend/.env.example
-DATABASE_URL=sqlite:./stellar_insights.db  // ❌ Single database
+DATABASE_URL=sqlite:./payraider.db  // ❌ Single database
 ```
 
 **Impact:**
@@ -125,8 +125,8 @@ DATABASE_URL=sqlite:./stellar_insights.db  // ❌ Single database
 **Solution:**
 ```rust
 // Separate databases per network
-DATABASE_URL_TESTNET=sqlite:./stellar_insights_testnet.db
-DATABASE_URL_MAINNET=sqlite:./stellar_insights_mainnet.db
+DATABASE_URL_TESTNET=sqlite:./payraider_testnet.db
+DATABASE_URL_MAINNET=sqlite:./payraider_mainnet.db
 
 // Or use schema prefixing
 testnet_corridors
@@ -214,7 +214,7 @@ import { create } from 'zustand';
            └──────────┬───────────┘
                       │
            ┌──────────▼──────────────────────┐
-           │   @stellar-insights/sdk         │
+           │   @payraider/sdk         │
            │   - TypeScript                  │
            │   - Platform-agnostic           │
            │   - Type-safe API client        │
@@ -315,7 +315,7 @@ impl DatabaseManager {
 
 **File: `sdk/typescript/src/client.ts` (NEW)**
 ```typescript
-export class StellarInsightsClient {
+export class PayRaiderClient {
   private apiUrl: string;
   private network: 'testnet' | 'mainnet';
   private authToken?: string;
@@ -374,10 +374,10 @@ export class StellarInsightsClient {
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StellarInsightsClient } from '@stellar-insights/sdk';
+import { PayRaiderClient } from '@payraider/sdk';
 
-const client = new StellarInsightsClient({
-  apiUrl: 'https://api.stellar-insights.com',
+const client = new PayRaiderClient({
+  apiUrl: 'https://api.payraider.com',
   network: 'testnet',
 });
 

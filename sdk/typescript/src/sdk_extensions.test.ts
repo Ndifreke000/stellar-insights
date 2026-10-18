@@ -7,6 +7,9 @@ import {
   SDKUnitTests,
   TypeScriptTypes,
 } from "../src/index.js";
+import type { SDKUnitTestsParams } from "../src/types/sdk_unit_tests.js";
+import type { AnalyticsAPIModuleParams } from "../src/types/analytics_api_module.js";
+import type { TypeScriptTypesParams } from "../src/types/typescript_types.js";
 
 describe("SDK extensions", () => {
   beforeEach(() => {
@@ -25,7 +28,7 @@ describe("SDK extensions", () => {
 
     it("throws SDKError when suiteName is missing", async () => {
       const sdk = new SDKUnitTests();
-      await expect(sdk.execute({ suiteName: "" } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(sdk.execute({ suiteName: "" } as SDKUnitTestsParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 
@@ -67,10 +70,10 @@ describe("SDK extensions", () => {
   describe("NPMPublishingSetup", () => {
     it("configures publishing with defaults", async () => {
       const npmSetup = new NPMPublishingSetup();
-      const result = await npmSetup.execute({ packageName: "@stellar-insights/sdk", version: "1.0.0" });
+      const result = await npmSetup.execute({ packageName: "@payraider/sdk", version: "1.0.0" });
       expect(result.success).toBe(true);
       expect(result.data.registryUrl).toBe("https://registry.npmjs.org");
-      expect(result.data.packageName).toBe("@stellar-insights/sdk");
+      expect(result.data.packageName).toBe("@payraider/sdk");
     });
 
     it("throws SDKError for invalid packageName", async () => {
@@ -90,7 +93,7 @@ describe("SDK extensions", () => {
 
     it("throws SDKError if event is invalid", async () => {
       const analytics = new AnalyticsAPIModule();
-      await expect(analytics.execute({ event: "", payload: {} } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(analytics.execute({ event: "", payload: {} } as AnalyticsAPIModuleParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 
@@ -112,12 +115,12 @@ describe("SDK extensions", () => {
 
     it("throws SDKError when typeName is empty", async () => {
       const ts = new TypeScriptTypes();
-      await expect(ts.execute({ typeName: "" } as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(ts.execute({ typeName: "" } as TypeScriptTypesParams)).rejects.toBeInstanceOf(SDKError);
     });
 
     it("throws SDKError when typeName is missing", async () => {
       const ts = new TypeScriptTypes();
-      await expect(ts.execute({} as any)).rejects.toBeInstanceOf(SDKError);
+      await expect(ts.execute({} as TypeScriptTypesParams)).rejects.toBeInstanceOf(SDKError);
     });
   });
 });

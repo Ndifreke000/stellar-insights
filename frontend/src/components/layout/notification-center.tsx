@@ -1,8 +1,40 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Check, Trash2, X, AlertCircle, Info, CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
-import { useNotifications, NotificationType, AppNotification } from "../lib/notification-context";
+import { useNotifications as useAppNotifications } from "@/contexts/NotificationContext";
+import type { NotificationType, AppNotification } from "../lib/notification-context";
+
+/**
+ * Reads from the app-wide NotificationProvider mounted in the locale layout.
+ * This component used to read a second, demo-only context whose provider was
+ * never mounted, so every page with the header threw on the server.
+ */
+function useNotifications() {
+    const context = useAppNotifications();
+    const notifications = useMemo<AppNotification[]>(
+        () =>
+            context.notifications.map((notification) => ({
+                id: notification.id,
+                title: notification.title,
+                message: notification.message,
+                type: notification.type as NotificationType,
+                read: notification.read,
+                createdAt: new Date(notification.timestamp).getTime(),
+            })),
+        [context.notifications],
+    );
+
+    return {
+        notifications,
+        unreadCount: context.unreadCount,
+        markAsRead: context.markAsRead,
+        markAllAsRead: context.markAllAsRead,
+        removeNotification: context.clearNotification,
+        clearAll: context.clearAllNotifications,
+    };
+}
 
 export function NotificationCenter() {
     const {
@@ -14,8 +46,10 @@ export function NotificationCenter() {
         clearAll
     } = useNotifications();
 
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
+    const [now, setNow] = useState(() => Date.now());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown when clicking outside
@@ -29,12 +63,19 @@ export function NotificationCenter() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Track "now" via an effect so relative timestamps refresh without
+    // reading the impure Date.now() clock during render.
+    useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
     const filteredNotifications = notifications.filter(
         (n) => activeTab === "all" || !n.read
     );
 
     const formatDistanceToNow = (timestamp: number) => {
-        const diff = Date.now() - timestamp;
+        const diff = now - timestamp;
         const minutes = Math.floor(diff / 60000);
         const hours = Math.floor(minutes / 60);
         const days = Math.floor(hours / 24);
@@ -79,7 +120,7 @@ export function NotificationCenter() {
             markAsRead(notification.id);
         }
         if (notification.actionLink) {
-            window.location.href = notification.actionLink;
+            router.push(notification.actionLink);
         }
     };
 

@@ -12,10 +12,6 @@ export default function GdprSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSummary();
-  }, []);
-
   const loadSummary = async () => {
     try {
       setLoading(true);
@@ -30,6 +26,10 @@ export default function GdprSettingsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadSummary();
+  }, []);
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -232,7 +232,7 @@ export default function GdprSettingsPage() {
             </svg>
             <span>
               <strong>Right to Erasure:</strong> You can request deletion of
-              your personal data ("right to be forgotten").
+              your personal data (&quot;right to be forgotten&quot;).
             </span>
           </li>
           <li className="flex items-start">

@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO corridors (id, source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)\n            VALUES (?, ?, ?, ?, ?)\n            ON CONFLICT (source_asset_code, source_asset_issuer, destination_asset_code, destination_asset_issuer)\n            DO UPDATE SET updated_at = CURRENT_TIMESTAMP\n            RETURNING\n                id as \"id!\", source_asset_code, source_asset_issuer,\n                destination_asset_code, destination_asset_issuer,\n                reliability_score as \"reliability_score!\", status as \"status!\",\n                created_at as \"created_at!: _\", updated_at as \"updated_at!: _\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_asset_code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_asset_issuer",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_asset_code",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_asset_issuer",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "reliability_score!",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "status!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: _",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: _",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "80ac0c7bc0c454f7f03e20863ff25959b393ffc2aba94fdd45a13a6c968f2041"
+}

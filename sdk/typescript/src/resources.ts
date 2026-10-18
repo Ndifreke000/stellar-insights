@@ -20,7 +20,8 @@ import type {
   NetworkInfo,
   PaginatedResponse,
   PaginationParams,
-  PaymentPrediction,
+  PreflightRequest,
+  PreflightResponse,
   Price,
   Proposal,
   Transaction,
@@ -53,29 +54,32 @@ export class CorridorsResource {
     return this.http.request("GET", "/api/corridors", { params: params as Record<string, unknown> });
   }
 
-  get(source: string, destination: string): Promise<CorridorDetail> {
-    return this.http.request(
-      "GET",
-      `/api/corridors/${encodeURIComponent(source)}/${encodeURIComponent(destination)}`,
-    );
+  /**
+   * Get one corridor. Pass the corridor key from `list()` (its `id`, e.g.
+   * "USDC:G...->NGN:G..."), or the source and destination assets separately.
+   */
+  get(sourceOrKey: string, destination?: string): Promise<CorridorDetail> {
+    const key = destination === undefined ? sourceOrKey : `${sourceOrKey}->${destination}`;
+    return this.http.request("GET", `/api/corridors/${encodeURIComponent(key)}`);
   }
 }
 
 export class PricesResource {
   constructor(private http: HttpClient) {}
 
-  list(): Promise<Price[]> {
-    return this.http.request("GET", "/api/prices");
-  }
-
+  /** USD price of one asset, e.g. "XLM:native" or "USDC:G...". */
   get(asset: string): Promise<Price> {
-    return this.http.request("GET", `/api/prices/${encodeURIComponent(asset)}`);
+    return this.http.request("GET", "/api/prices", { params: { asset } });
   }
 
-  convert(from: string, to: string, amount: number): Promise<ConvertResult> {
-    return this.http.request("POST", "/api/prices/convert", {
-      body: { from_asset: from, to_asset: to, amount },
-    });
+  /** USD prices for several assets in one request. */
+  batch(assets: string[]): Promise<Record<string, unknown>> {
+    return this.http.request("GET", "/api/prices/batch", { params: { assets: assets.join(",") } });
+  }
+
+  /** Convert an amount of an asset to USD. */
+  convertToUsd(asset: string, amount: number): Promise<ConvertResult> {
+    return this.http.request("GET", "/api/prices/convert", { params: { asset, amount } });
   }
 }
 
@@ -85,9 +89,23 @@ export class CostCalculatorResource {
   estimate(req: CostEstimateRequest): Promise<CostEstimateResponse> {
     return this.http.request("POST", "/api/cost-calculator/estimate", { body: req });
   }
+}
 
-  routes(req: CostEstimateRequest): Promise<CostEstimateResponse> {
-    return this.http.request("POST", "/api/cost-calculator/routes", { body: req });
+/**
+ * Pre-payment check for off-ramp and payout apps: ask whether a corridor is
+ * healthy enough to pay on right now. Works without an API key.
+ */
+export class PreflightResource {
+  constructor(private http: HttpClient) {}
+
+  check(req: PreflightRequest): Promise<PreflightResponse> {
+    return this.http.request("POST", "/api/v1/preflight", { body: req });
+  }
+
+  /** True only when every check passed. */
+  async isSafeToPay(req: PreflightRequest): Promise<boolean> {
+    const result = await this.check(req);
+    return result.decision === "proceed";
   }
 }
 
@@ -220,23 +238,11 @@ export class NetworkResource {
   constructor(private http: HttpClient) {}
 
   info(): Promise<NetworkInfo> {
-    return this.http.request("GET", "/api/network");
+    return this.http.request("GET", "/api/network/info");
   }
 
   available(): Promise<NetworkInfo[]> {
     return this.http.request("GET", "/api/network/available");
-  }
-}
-
-export class MlResource {
-  constructor(private http: HttpClient) {}
-
-  predict(params: Record<string, unknown>): Promise<PaymentPrediction> {
-    return this.http.request("POST", "/api/ml/predict", { body: params });
-  }
-
-  modelStatus(): Promise<Record<string, unknown>> {
-    return this.http.request("GET", "/api/ml/status");
   }
 }
 
@@ -265,20 +271,23 @@ export class GovernanceResource {
 export class AssetVerificationResource {
   constructor(private http: HttpClient) {}
 
+  /** Run verification for an asset and return its status. */
   verify(assetCode: string, assetIssuer: string): Promise<VerifiedAsset> {
-    return this.http.request("POST", "/api/asset-verification/verify", {
-      body: { asset_code: assetCode, asset_issuer: assetIssuer },
-    });
+    return this.http.request(
+      "GET",
+      `/api/assets/verify/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}`,
+    );
   }
 
+  /** Read a previously computed verification result. */
   get(assetCode: string, assetIssuer: string): Promise<VerifiedAsset> {
     return this.http.request(
       "GET",
-      `/api/asset-verification/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}`,
+      `/api/assets/${encodeURIComponent(assetCode)}/${encodeURIComponent(assetIssuer)}/verification`,
     );
   }
 
   list(params?: PaginationParams): Promise<PaginatedResponse<VerifiedAsset>> {
-    return this.http.request("GET", "/api/asset-verification", { params: params as Record<string, unknown> });
+    return this.http.request("GET", "/api/assets/verified", { params: params as Record<string, unknown> });
   }
 }

@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NetworkInfo {
     pub network: StellarNetwork,
     pub display_name: String,
@@ -20,12 +20,12 @@ pub struct NetworkInfo {
     pub is_testnet: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct SwitchNetworkRequest {
     pub network: StellarNetwork,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SwitchNetworkResponse {
     pub success: bool,
     pub message: String,
@@ -157,6 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_network_info() {
+        let _guard = crate::lock_env_test();
         let result = get_network_info().await;
         assert!(result.is_ok());
 
@@ -168,6 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_available_networks() {
+        let _guard = crate::lock_env_test();
         let result = get_available_networks().await;
         let networks = result.0;
 

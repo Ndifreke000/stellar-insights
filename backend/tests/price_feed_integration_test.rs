@@ -1,4 +1,4 @@
-use stellar_insights_backend::services::price_feed::{
+use payraider_backend::services::price_feed::{
     default_asset_mapping, PriceFeedClient, PriceFeedConfig,
 };
 

@@ -4,9 +4,9 @@
 //! Ok(()) from all mutating methods), which allows unit-level testing without
 //! a live Redis instance.
 
+use payraider_backend::cache::{keys, CacheConfig, CacheManager, CacheStats};
+use payraider_backend::cache_invalidation::CacheInvalidationService;
 use std::sync::Arc;
-use stellar_insights_backend::cache::{keys, CacheConfig, CacheManager, CacheStats};
-use stellar_insights_backend::cache_invalidation::CacheInvalidationService;
 
 // ── key-builder helpers ───────────────────────────────────────────────────────
 

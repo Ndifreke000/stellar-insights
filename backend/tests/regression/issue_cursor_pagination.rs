@@ -18,10 +18,10 @@
 //! `fetch_payments_page` call inside `fetch_all_payments`.
 //!
 //! # References
-//! - GitHub Issue: stellar-insights#cursor-pagination
+//! - GitHub Issue: payraider#cursor-pagination
 //! - Stellar Horizon pagination docs: https://developers.stellar.org/api/introduction/pagination/
 
-use stellar_insights_backend::rpc::StellarRpcClient;
+use payraider_backend::rpc::StellarRpcClient;
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -30,7 +30,7 @@ use stellar_insights_backend::rpc::StellarRpcClient;
 /// Assert that every payment in the collection has a non-empty `paging_token`.
 /// Horizon guarantees that every payment record carries a unique paging token;
 /// if any are empty the client is discarding or not parsing them correctly.
-fn assert_paging_tokens_present(payments: &[stellar_insights_backend::rpc::Payment]) {
+fn assert_paging_tokens_present(payments: &[payraider_backend::rpc::Payment]) {
     for (i, p) in payments.iter().enumerate() {
         assert!(
             !p.paging_token.is_empty(),
@@ -105,16 +105,26 @@ async fn test_cursor_pagination_token_ordering() {
     assert!(!payments.is_empty(), "expected at least one payment");
 
     // In mock mode tokens are `paging_<N>` where N = index; verify monotonic
-    // growth as a proxy for correct cursor advancement.
-    let tokens: Vec<&str> = payments.iter().map(|p| p.paging_token.as_str()).collect();
+    // growth as a proxy for correct cursor advancement. Tokens must be
+    // compared by their numeric suffix, not lexicographically — a plain
+    // string sort would put "paging_10" before "paging_2".
+    let indices: Vec<u64> = payments
+        .iter()
+        .map(|p| {
+            p.paging_token
+                .strip_prefix("paging_")
+                .and_then(|n| n.parse::<u64>().ok())
+                .expect("paging_token should be in the form paging_<N>")
+        })
+        .collect();
     let sorted = {
-        let mut t = tokens.clone();
-        t.sort_unstable();
-        t
+        let mut n = indices.clone();
+        n.sort_unstable();
+        n
     };
     assert_eq!(
-        tokens, sorted,
-        "paging_tokens are not in ascending order – indicates cursor regression"
+        indices, sorted,
+        "paging_tokens are not in ascending numeric order – indicates cursor regression"
     );
 }
 

@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { Home as AnchorIcon } from "lucide-react";
 import { MainLayout } from "@/components/layout";
 import AnchorsPageContent from "./components/AnchorsPageContent";
 import { ErrorBoundary } from "@/components/ErrorBoundary";

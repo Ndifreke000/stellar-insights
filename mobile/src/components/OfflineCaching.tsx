@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useOfflineCache, UseOfflineCacheResult } from '@hooks/useOfflineCaching';
+import { useOfflineCache } from '@hooks/useOfflineCaching';
 import { useAppStore } from '@store/appStore';
 
 export interface OfflineCachingProps {
@@ -79,7 +79,7 @@ export const OfflineCaching: React.FC<OfflineCachingProps> = ({
             calculateStats();
             Alert.alert('Success', 'Cache cleared successfully');
             onCacheCleared?.();
-          } catch (error) {
+          } catch {
             Alert.alert('Error', 'Failed to clear cache');
           } finally {
             setIsClearing(false);
@@ -107,7 +107,7 @@ export const OfflineCaching: React.FC<OfflineCachingProps> = ({
       {/* Status Card */}
       <View
         style={[styles.statusCard, { backgroundColor: isOnline ? '#E8F5E9' : '#FFF3E0' }]}
-        accessibilityRole="status"
+        accessibilityLiveRegion="polite"
         accessibilityLabel={`${isOnline ? 'Online' : 'Offline'} status`}>
         <View style={styles.statusBadge}>
           <View style={[styles.statusDot, { backgroundColor: isOnline ? '#4CAF50' : '#FF9800' }]} />

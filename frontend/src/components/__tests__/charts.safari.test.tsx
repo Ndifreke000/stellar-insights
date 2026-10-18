@@ -1,5 +1,6 @@
+import type { ReactNode, CSSProperties } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { LiquidityChart } from '@/components/dashboard/LiquidityChart';
 import { SettlementSpeedChart } from '@/components/dashboard/SettlementSpeedChart';
 import { TVLChart } from '@/components/charts/TVLChart';
@@ -13,11 +14,11 @@ vi.mock('recharts', async () => {
   const actual = await vi.importActual('recharts');
   return {
     ...actual,
-    ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-    AreaChart: ({ children }: any) => <div data-testid="area-chart">{children}</div>,
-    LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
-    BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
-    Tooltip: ({ contentStyle }: any) => (
+    ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+    AreaChart: ({ children }: { children: ReactNode }) => <div data-testid="area-chart">{children}</div>,
+    LineChart: ({ children }: { children: ReactNode }) => <div data-testid="line-chart">{children}</div>,
+    BarChart: ({ children }: { children: ReactNode }) => <div data-testid="bar-chart">{children}</div>,
+    Tooltip: ({ contentStyle }: { contentStyle?: CSSProperties }) => (
       <div data-testid="tooltip" data-style={JSON.stringify(contentStyle)} />
     ),
   };

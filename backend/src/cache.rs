@@ -100,7 +100,7 @@ impl CacheManager {
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
         let connection = if let Ok(client) = redis::Client::open(redis_url.as_str()) {
-            match client.get_multiplexed_tokio_connection().await {
+            match client.get_multiplexed_async_connection().await {
                 Ok(conn) => {
                     tracing::info!("Connected to Redis for caching");
                     Some(conn)
@@ -141,6 +141,12 @@ impl CacheManager {
         self.redis_connection.clone()
     }
 
+    /// Synchronous form of [`Self::connection`], for wiring at startup.
+    #[must_use]
+    pub fn redis_handle(&self) -> Arc<RwLock<Option<MultiplexedConnection>>> {
+        self.redis_connection.clone()
+    }
+
     /// Health check for the cache dependency
     pub async fn health_check(&self) -> anyhow::Result<()> {
         self.ping().await
@@ -150,9 +156,7 @@ impl CacheManager {
     pub async fn ping(&self) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            redis::cmd("PING")
-                .query_async::<_, String>(&mut conn)
-                .await?;
+            redis::cmd("PING").query_async::<String>(&mut conn).await?;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Redis connection not available"))
@@ -184,7 +188,7 @@ impl CacheManager {
             let mut conn = conn.clone();
             match redis::cmd("GET")
                 .arg(key)
-                .query_async::<_, Option<String>>(&mut conn)
+                .query_async::<Option<String>>(&mut conn)
                 .await
             {
                 Ok(Some(value)) => {
@@ -250,19 +254,23 @@ impl CacheManager {
             let mut conn = conn.clone();
             match serde_json::to_string(value) {
                 Ok(serialized) => {
-                    match redis::cmd("SETEX")
+                    // SET NX prevents concurrent miss-then-write races: the first writer wins
+                    // and subsequent concurrent writers silently skip rather than overwriting.
+                    match redis::cmd("SET")
                         .arg(key)
-                        .arg(ttl_seconds)
                         .arg(&serialized)
-                        .query_async::<_, ()>(&mut conn)
+                        .arg("NX")
+                        .arg("PX")
+                        .arg(ttl_seconds * 1000)
+                        .query_async::<Option<String>>(&mut conn)
                         .await
                     {
-                        Ok(()) => {
+                        Ok(_) => {
                             tracing::debug!("Cache set for key: {} (TTL: {}s)", key, ttl_seconds);
                             Ok(())
                         }
                         Err(e) => {
-                            tracing::warn!("Redis SETEX error for {}: {}", key, e);
+                            tracing::warn!("Redis SET NX error for {}: {}", key, e);
                             Ok(())
                         }
                     }
@@ -277,22 +285,24 @@ impl CacheManager {
         }
     }
 
-    /// Delete a cache key
+    /// Delete a cache key using an atomic Lua script to avoid TOCTOU races.
     pub async fn delete(&self, key: &str) -> anyhow::Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            match redis::cmd("DEL")
-                .arg(key)
-                .query_async::<_, ()>(&mut conn)
+            // Lua guarantees the check-and-delete is atomic on the Redis server.
+            const LUA_DEL: &str = "return redis.call('DEL', KEYS[1])";
+            match redis::Script::new(LUA_DEL)
+                .key(key)
+                .invoke_async::<i64>(&mut conn)
                 .await
             {
-                Ok(()) => {
+                Ok(_) => {
                     self.invalidations.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!("Cache invalidated for key: {}", key);
                     Ok(())
                 }
                 Err(e) => {
-                    tracing::warn!("Redis DEL error for {}: {}", key, e);
+                    tracing::warn!("Redis Lua DEL error for {}: {}", key, e);
                     Ok(())
                 }
             }
@@ -328,7 +338,7 @@ impl CacheManager {
                         pipe.cmd("UNLINK").arg(key);
                     }
 
-                    pipe.query_async::<_, ()>(&mut conn).await?;
+                    pipe.query_async::<()>(&mut conn).await?;
 
                     self.invalidations
                         .fetch_add(keys.len() as u64, Ordering::Relaxed);
@@ -418,7 +428,7 @@ impl CacheManager {
         let mut conn_guard = self.redis_connection.write().await;
         if let Some(mut conn) = conn_guard.take() {
             // Ensure all pending operations are flushed
-            match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
+            match redis::cmd("PING").query_async::<String>(&mut conn).await {
                 Ok(_) => tracing::debug!("Redis connection verified before close"),
                 Err(e) => tracing::warn!("Redis PING failed before close: {}", e),
             }

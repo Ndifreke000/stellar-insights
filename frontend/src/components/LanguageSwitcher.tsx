@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useTransition } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { useUserPreferences } from "@/contexts/UserPreferencesContext";
 import type { Locale } from "@/contexts/UserPreferencesContext";

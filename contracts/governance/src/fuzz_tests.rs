@@ -11,7 +11,11 @@ use soroban_sdk::{
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn setup_contract(env: &Env, quorum: u64, voting_period: u64) -> (GovernanceContractClient, Address) {
+fn setup_contract(
+    env: &Env,
+    quorum: u64,
+    voting_period: u64,
+) -> (GovernanceContractClient, Address) {
     let contract_id = env.register_contract(None, GovernanceContract);
     let client = GovernanceContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
@@ -23,21 +27,25 @@ fn make_hash(env: &Env, seed: u8) -> BytesN<32> {
     BytesN::from_array(env, &[seed; 32])
 }
 
-// ── 1. Quorum boundary: votes_for must strictly exceed votes_against ──────────
+// ── 1. Quorum boundary (basis-points): votes_for must strictly exceed votes_against ──
 
 #[test]
 fn fuzz_quorum_boundary() {
-    // Test quorum values from 1 to 10 and vote distributions around the boundary
-    for quorum in 1u64..=5 {
-        for votes_for in 0u64..=(quorum + 2) {
-            for votes_against in 0u64..=(quorum + 2) {
+    // total_supply is fixed at 20 so the bps arithmetic stays exact.
+    // quorum_bps values: 1000 (10%), 2000 (20%), 3000 (30%), 4000 (40%), 5000 (50%).
+    // For each pair (votes_for, votes_against) we verify the bps formula directly.
+    let total_supply: u64 = 20;
+    for quorum_bps in [1000u64, 2000, 3000, 4000, 5000] {
+        for votes_for in 0u64..=12 {
+            for votes_against in 0u64..=12 {
                 let env = Env::default();
                 env.mock_all_auths();
-                let (client, admin) = setup_contract(&env, quorum, 1000);
+                let (client, admin) = setup_contract(&env, quorum_bps, 1000);
 
                 let target = Address::generate(&env);
                 let hash = make_hash(&env, 1);
-                let pid = client.create_proposal(&admin, &String::from_str(&env, "P"), &target, &hash);
+                let pid =
+                    client.create_proposal(&admin, &String::from_str(&env, "P"), &target, &hash);
 
                 for _ in 0..votes_for {
                     let voter = Address::generate(&env);
@@ -49,17 +57,18 @@ fn fuzz_quorum_boundary() {
                 }
 
                 env.ledger().with_mut(|li| li.timestamp = 2000);
-                let status = client.finalize(&pid);
+                let status = client.finalize(&pid, &total_supply);
 
                 let total = votes_for + votes_against;
-                let expected = if total >= quorum && votes_for > votes_against {
+                let votes_bps = (total as u128 * 10_000) / total_supply as u128;
+                let expected = if votes_bps >= quorum_bps as u128 && votes_for > votes_against {
                     ProposalStatus::Passed
                 } else {
                     ProposalStatus::Failed
                 };
                 assert_eq!(
                     status, expected,
-                    "quorum={quorum} for={votes_for} against={votes_against}"
+                    "quorum_bps={quorum_bps} for={votes_for} against={votes_against}"
                 );
             }
         }
@@ -136,7 +145,8 @@ fn fuzz_voting_period_boundary() {
             &make_hash(&env2, 3),
         );
         if voting_period > 0 {
-            env2.ledger().with_mut(|li| li.timestamp = voting_period - 1);
+            env2.ledger()
+                .with_mut(|li| li.timestamp = voting_period - 1);
             let voter2 = Address::generate(&env2);
             assert!(
                 client2.try_vote(&voter2, &pid2, &VoteChoice::For).is_ok(),
@@ -209,7 +219,7 @@ fn fuzz_premature_finalize_rejected() {
 
         // Advance to just before deadline
         env.ledger().with_mut(|li| li.timestamp = voting_period - 1);
-        let result = client.try_finalize(&pid);
+        let result = client.try_finalize(&pid, &100u64);
         assert_eq!(
             result,
             Err(Ok(Error::VotingPeriodNotEnded)),
@@ -234,8 +244,14 @@ fn fuzz_tally_invariant() {
         &make_hash(&env, 7),
     );
 
-    let choices = [VoteChoice::For, VoteChoice::Against, VoteChoice::Abstain,
-                   VoteChoice::For, VoteChoice::For, VoteChoice::Against];
+    let choices = [
+        VoteChoice::For,
+        VoteChoice::Against,
+        VoteChoice::Abstain,
+        VoteChoice::For,
+        VoteChoice::For,
+        VoteChoice::Against,
+    ];
 
     for choice in choices {
         let voter = Address::generate(&env);
@@ -274,7 +290,10 @@ fn fuzz_has_voted_consistency() {
         let voter = Address::generate(&env);
         assert!(!client.has_voted(&pid, &voter), "should not have voted yet");
         client.vote(&voter, &pid, &VoteChoice::For);
-        assert!(client.has_voted(&pid, &voter), "should have voted after casting");
+        assert!(
+            client.has_voted(&pid, &voter),
+            "should have voted after casting"
+        );
     }
 }
 
@@ -315,7 +334,7 @@ fn fuzz_zero_quorum_edge_case() {
     client.vote(&voter, &pid, &VoteChoice::For);
 
     env.ledger().with_mut(|li| li.timestamp = 2000);
-    let status = client.finalize(&pid);
-    // quorum=0 means total_voters(1) >= 0 AND votes_for(1) > votes_against(0) → Passed
+    // quorum_bps=0: (1 * 10_000) / 10 = 1000 >= 0 AND votes_for(1) > votes_against(0) → Passed
+    let status = client.finalize(&pid, &10u64);
     assert_eq!(status, ProposalStatus::Passed);
 }

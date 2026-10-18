@@ -2,10 +2,10 @@ use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::helpers::cached_query;
-use crate::cache::{keys, CacheManager};
+use crate::cache::keys;
 use crate::state::AppState;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct NetworkVolumeDataPoint {
     pub time: String,
     pub volume: f64,
@@ -13,7 +13,7 @@ pub struct NetworkVolumeDataPoint {
     pub anchors: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct CorridorPerformanceMetric {
     pub corridor: String,
     pub success_rate: f64,
@@ -21,7 +21,7 @@ pub struct CorridorPerformanceMetric {
     pub health: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct NetworkStats {
     pub volume_24h: f64,
     pub volume_growth: f64,
@@ -31,7 +31,7 @@ pub struct NetworkStats {
     pub corridors_growth: i32,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct AnalyticsDashboardData {
     pub stats: NetworkStats,
     pub time_series_data: Vec<NetworkVolumeDataPoint>,
@@ -84,8 +84,10 @@ pub async fn analytics_dashboard(
 }
 
 fn generate_time_series_data() -> Result<Vec<NetworkVolumeDataPoint>, anyhow::Error> {
-    // For now, return realistic mock data
-    // In production, this would query the database for actual time series data
+    // TODO #2326: Query real network volume data from transaction history
+    // Currently returns hardcoded mock data. Production requirement:
+    // Query transactions aggregated by hour, count active corridors and anchors per time bucket,
+    // sum transaction volumes to create real network activity time series
     Ok(vec![
         NetworkVolumeDataPoint {
             time: "00:00".to_string(),

@@ -1,11 +1,11 @@
 {
-  "title": "Stellar Insights Backend Observability",
+  "title": "PayRaider Backend Observability",
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
   "tags": [
-    "stellar-insights",
+    "payraider",
     "backend",
     "observability"
   ],
@@ -27,12 +27,16 @@
       }
     },
     {
-      "title": "HTTP Avg Latency",
+      "title": "HTTP Latency (Avg & p95)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (endpoint) (rate(http_request_duration_seconds_sum[5m])) / clamp_min(sum by (endpoint) (rate(http_request_duration_seconds_count[5m])), 0.0001)",
-          "legendFormat": "{{endpoint}}"
+          "expr": "sum by (endpoint) (rate(http_request_duration_by_endpoint_seconds_sum[5m])) / clamp_min(sum by (endpoint) (rate(http_request_duration_by_endpoint_seconds_count[5m])), 0.0001)",
+          "legendFormat": "avg {{endpoint}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_by_endpoint_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{endpoint}}"
         }
       ],
       "gridPos": {

@@ -1,5 +1,9 @@
+import type { Dispatch, SetStateAction } from "react";
 import { formatAddressShort } from "@/lib/address";
 import { CheckCircle, AlertCircle, Activity } from "lucide-react";
+
+export type AnchorSortBy = "reliability" | "transactions" | "failure_rate";
+export type AnchorSortOrder = "asc" | "desc";
 import {
   Search,
   TrendingUp,
@@ -64,7 +68,6 @@ const formatNumber = (num: number) => {
   return num.toString();
 };
 
-// TODO: Intended for future use
 const getHealthStatusColor = (status: string) => {
   const s = status.toLowerCase();
   if (s === "green" || s === "healthy") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
@@ -72,7 +75,6 @@ const getHealthStatusColor = (status: string) => {
   return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
 };
 
-// TODO: Intended for future use
 const getHealthStatusIcon = (status: string) => {
   const s = status.toLowerCase();
   if (s === "green" || s === "healthy") return <CheckCircle className="w-3 h-3" />;
@@ -103,6 +105,14 @@ const SearchAndControls = ({
   setSortOrder,
   sortOrder,
   setIsExportOpen,
+}: {
+  searchTerm: string;
+  setSearchTerm: Dispatch<SetStateAction<string>>;
+  sortBy: AnchorSortBy;
+  setSortBy: Dispatch<SetStateAction<AnchorSortBy>>;
+  setSortOrder: Dispatch<SetStateAction<AnchorSortOrder>>;
+  sortOrder: AnchorSortOrder;
+  setIsExportOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
   return (
     <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -127,6 +137,7 @@ const SearchAndControls = ({
                 | "failure_rate",
             )
           }
+          aria-label="Sort anchors by"
           className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="reliability">Reliability Score</option>
@@ -134,13 +145,15 @@ const SearchAndControls = ({
           <option value="failure_rate">Failure Rate</option>
         </select>
         <button
+          type="button"
           onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+          aria-label={sortOrder === "desc" ? "Sorted descending; switch to ascending" : "Sorted ascending; switch to descending"}
           className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {sortOrder === "desc" ? (
-            <TrendingDown className="w-4 h-4" />
+            <TrendingDown className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUp className="w-4 h-4" aria-hidden="true" />
           )}
         </button>
         <button

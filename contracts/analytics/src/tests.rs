@@ -4,8 +4,9 @@
 
 use super::*;
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events as _, Ledger},
-    vec, symbol_short, Address, BytesN, Env, FromVal, Symbol, TryFromVal, Val, Vec,
+    vec, Address, BytesN, Env, FromVal, Symbol, TryFromVal, Val, Vec,
 };
 
 fn create_test_hash(env: &Env, value: u8) -> BytesN<32> {
@@ -591,12 +592,14 @@ fn test_admin_transfer_event() {
         if v0.topics.len() < 2 {
             return false;
         }
-        let t0 = <Symbol as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.topics[0])
-            .ok();
+        let t0 =
+            <Symbol as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.topics[0])
+                .ok();
         if t0 != Some(symbol_short!("admin")) {
             return false;
         }
-        let Ok(val) = <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data)
+        let Ok(val) =
+            <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data)
         else {
             return false;
         };
@@ -605,12 +608,15 @@ fn test_admin_transfer_event() {
             && event.new_admin == admin2
             && event.transferred_by == admin1
     });
-    assert!(transfer_event.is_some(), "AdminTransferEvent should be emitted");
+    assert!(
+        transfer_event.is_some(),
+        "AdminTransferEvent should be emitted"
+    );
 
     if let Some(e) = transfer_event {
         let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body;
-        let val =
-            <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data).unwrap();
+        let val = <Val as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(&env, &v0.data)
+            .unwrap();
         let event: AdminTransferEvent = FromVal::from_val(&env, &val);
         assert_eq!(event.timestamp, 1000);
         assert_eq!(event.ledger_sequence, env.ledger().sequence());
@@ -1551,7 +1557,10 @@ fn test_snapshot_verification() {
     client.submit_snapshot(&1u64, &hash, &admin);
 
     let result = client.verify_snapshot(&1u64, &hash);
-    assert!(result, "verify_snapshot should return true for matching hash");
+    assert!(
+        result,
+        "verify_snapshot should return true for matching hash"
+    );
 }
 
 #[test]
@@ -1571,7 +1580,10 @@ fn test_snapshot_verification_invalid_hash() {
     client.submit_snapshot(&1u64, &hash, &admin);
 
     let result = client.verify_snapshot(&1u64, &wrong_hash);
-    assert!(!result, "verify_snapshot should return false for mismatched hash");
+    assert!(
+        !result,
+        "verify_snapshot should return false for mismatched hash"
+    );
 }
 
 #[test]
@@ -1594,15 +1606,24 @@ fn test_batch_verification() {
     client.submit_snapshot(&2u64, &hash2, &admin);
 
     let mut verifications = Vec::new(&env);
-    verifications.push_back((1u64, hash1.clone()));   // correct
-    verifications.push_back((2u64, wrong_hash));       // wrong
-    verifications.push_back((2u64, hash2.clone()));    // correct
+    verifications.push_back((1u64, hash1.clone())); // correct
+    verifications.push_back((2u64, wrong_hash)); // wrong
+    verifications.push_back((2u64, hash2.clone())); // correct
 
     let results = client.batch_verify_snapshots(&verifications);
     assert_eq!(results.len(), 3);
-    assert!(results.get(0).unwrap(),  "epoch 1 correct hash should verify");
-    assert!(!results.get(1).unwrap(), "epoch 2 wrong hash should not verify");
-    assert!(results.get(2).unwrap(),  "epoch 2 correct hash should verify");
+    assert!(
+        results.get(0).unwrap(),
+        "epoch 1 correct hash should verify"
+    );
+    assert!(
+        !results.get(1).unwrap(),
+        "epoch 2 wrong hash should not verify"
+    );
+    assert!(
+        results.get(2).unwrap(),
+        "epoch 2 correct hash should verify"
+    );
 }
 
 // ============================================================================

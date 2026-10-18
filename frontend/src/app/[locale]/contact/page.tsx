@@ -5,9 +5,9 @@ import { useTranslations } from "next-intl";
 import { Mail, ExternalLink as Github, ExternalLink as Twitter, Send, CheckCircle2, Loader2 } from "lucide-react";
 
 const channelsConfig = [
-  { icon: Mail, key: "email", value: "hello@stellarinsights.io", href: "mailto:hello@stellarinsights.io", hintKey: "emailHint" },
-  { icon: Github, key: "github", value: "github.com/stellar-insights", href: "https://github.com/stellar-insights", hintKey: "githubHint" },
-  { icon: Twitter, key: "twitter", value: "@StellarInsights", href: "https://twitter.com/StellarInsights", hintKey: "twitterHint" },
+  { icon: Mail, key: "email", value: "hello@payraider.io", href: "mailto:hello@payraider.io", hintKey: "emailHint" },
+  { icon: Github, key: "github", value: "github.com/payraider", href: "https://github.com/payraider", hintKey: "githubHint" },
+  { icon: Twitter, key: "twitter", value: "@PayRaider", href: "https://twitter.com/PayRaider", hintKey: "twitterHint" },
 ];
 
 type FormState = "idle" | "sending" | "sent" | "error";

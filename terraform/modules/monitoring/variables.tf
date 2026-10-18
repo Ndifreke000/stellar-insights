@@ -4,7 +4,7 @@ variable "cluster_name" {
 }
 
 variable "log_group_names" {
-  description = "Map of log group names (ecs, rds, alb)"
+  description = "Map of log group names (e.g. ecs, alb)"
   type        = map(string)
   default     = {}
 }
@@ -44,7 +44,7 @@ variable "environment" {
 variable "project" {
   description = "Project name for tagging"
   type        = string
-  default     = "stellar-insights"
+  default     = "payraider"
 }
 
 variable "enable_cost_alerts" {

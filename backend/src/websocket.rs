@@ -12,23 +12,106 @@ use futures::{sink::SinkExt, stream::SplitSink, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
-const MAX_CONNECTIONS_PER_IP: usize = 10;
-const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
-const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
-const MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
-const MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
-const MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
-const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
-const MAX_MESSAGES_PER_WINDOW: u32 = 100;
-const MESSAGE_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+/// Default WebSocket limits — all overridable via environment variables.
+/// See `.env.example` for documentation on each variable.
+const DEFAULT_MAX_CONCURRENT_CONNECTIONS: usize = 10_000;
+const DEFAULT_MAX_CONNECTIONS_PER_IP: usize = 10;
+const DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP: u32 = 20;
+const DEFAULT_IP_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+const DEFAULT_MAX_PENDING_OUTGOING_MESSAGES: usize = 32;
+const DEFAULT_MAX_TEXT_MESSAGE_SIZE: usize = 64 * 1024;
+const DEFAULT_MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
+const DEFAULT_WS_IDLE_TIMEOUT_SECS: u64 = 300;
+const DEFAULT_MAX_MESSAGES_PER_WINDOW: u32 = 100;
+const DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+
+// Keep the old names as runtime values loaded from env (used by WsState).
+fn ws_max_concurrent_connections() -> usize {
+    std::env::var("WS_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONCURRENT_CONNECTIONS)
+}
+fn ws_max_connections_per_ip() -> usize {
+    std::env::var("WS_MAX_CONNECTIONS_PER_IP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP)
+}
+fn ws_max_connect_attempts_per_ip() -> u32 {
+    std::env::var("WS_MAX_CONNECT_ATTEMPTS_PER_IP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP)
+}
+fn ws_ip_rate_limit_window() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_IP_RATE_LIMIT_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_IP_RATE_LIMIT_WINDOW_SECS),
+    )
+}
+fn ws_max_pending_outgoing_messages() -> usize {
+    std::env::var("WS_MAX_PENDING_OUTGOING_MESSAGES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_PENDING_OUTGOING_MESSAGES)
+}
+fn ws_max_text_message_size() -> usize {
+    std::env::var("WS_MAX_TEXT_MESSAGE_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_TEXT_MESSAGE_SIZE)
+}
+fn ws_max_binary_message_size() -> usize {
+    std::env::var("WS_MAX_BINARY_MESSAGE_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_BINARY_MESSAGE_SIZE)
+}
+fn ws_idle_timeout() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_WS_IDLE_TIMEOUT_SECS),
+    )
+}
+fn ws_max_messages_per_window() -> u32 {
+    std::env::var("WS_MAX_MESSAGES_PER_WINDOW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_MESSAGES_PER_WINDOW)
+}
+fn ws_message_rate_limit_window() -> Duration {
+    Duration::from_secs(
+        std::env::var("WS_MESSAGE_RATE_LIMIT_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS),
+    )
+}
+
+// Legacy constant aliases kept for any internal code that still references them.
+const MAX_CONCURRENT_CONNECTIONS: usize = DEFAULT_MAX_CONCURRENT_CONNECTIONS;
+const MAX_CONNECTIONS_PER_IP: usize = DEFAULT_MAX_CONNECTIONS_PER_IP;
+const MAX_CONNECT_ATTEMPTS_PER_IP: u32 = DEFAULT_MAX_CONNECT_ATTEMPTS_PER_IP;
+const IP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(DEFAULT_IP_RATE_LIMIT_WINDOW_SECS);
+const MAX_PENDING_OUTGOING_MESSAGES: usize = DEFAULT_MAX_PENDING_OUTGOING_MESSAGES;
+const MAX_TEXT_MESSAGE_SIZE: usize = DEFAULT_MAX_TEXT_MESSAGE_SIZE;
+const MAX_BINARY_MESSAGE_SIZE: usize = DEFAULT_MAX_BINARY_MESSAGE_SIZE;
+const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(DEFAULT_WS_IDLE_TIMEOUT_SECS);
+const MAX_MESSAGES_PER_WINDOW: u32 = DEFAULT_MAX_MESSAGES_PER_WINDOW;
+const MESSAGE_RATE_LIMIT_WINDOW: Duration =
+    Duration::from_secs(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS);
 
 type SharedWebSocketSender = Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>;
 
@@ -98,12 +181,31 @@ pub struct WsState {
     pub tx: broadcast::Sender<WsMessage>,
     rate_limits: DashMap<String, RateLimitInfo>,
     ip_rate_limits: DashMap<IpAddr, IpRateLimit>,
-    /// Redis client for cross-instance pub/sub. `None` when Redis is unavailable.
+    max_concurrent_connections: usize,
+    max_connections_per_ip: usize,
+    idle_timeout: Duration,
+    /// Redis client for cross-instance pub/sub. `None` when `REDIS_URL` is unset.
     redis_client: Option<redis::Client>,
+    /// Shared, auto-reconnecting connection used to publish (created lazily).
+    redis_publisher: tokio::sync::OnceCell<redis::aio::ConnectionManager>,
+    /// True while this instance is subscribed to the fan-out channel. We only
+    /// publish through Redis when we'll receive our own message back;
+    /// otherwise messages are delivered locally so they are never lost.
+    redis_subscribed: AtomicBool,
 }
 
 /// Redis channel used for cross-instance WebSocket message fan-out.
 const REDIS_WS_CHANNEL: &str = "ws:broadcast";
+
+/// Envelope published on [`REDIS_WS_CHANNEL`].
+#[derive(Debug, Serialize, Deserialize)]
+struct FanoutEnvelope {
+    /// Instance that published the message (for debugging).
+    origin: String,
+    /// `Some` for channel-targeted messages, `None` for broadcasts to everyone.
+    channel: Option<String>,
+    message: WsMessage,
+}
 
 impl Default for WsState {
     fn default() -> Self {
@@ -114,17 +216,23 @@ impl Default for WsState {
 impl WsState {
     #[must_use]
     pub fn new() -> Self {
+        let max_concurrent_connections = ws_max_concurrent_connections();
+        let max_connections_per_ip = ws_max_connections_per_ip();
+        let idle_timeout = ws_idle_timeout();
+
         let (tx, _rx) = broadcast::channel(100);
-        let redis_url =
-            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-        let redis_client = redis::Client::open(redis_url.as_str())
-            .map_err(|e| {
-                warn!(
-                    "WsState: Redis unavailable, cross-instance broadcast disabled: {}",
-                    e
-                )
-            })
-            .ok();
+        // Only fan out through Redis when explicitly configured; defaulting to
+        // localhost made every broadcast vanish when no local Redis was running.
+        let redis_client = std::env::var("REDIS_URL").ok().and_then(|url| {
+            redis::Client::open(url.as_str())
+                .map_err(|e| {
+                    warn!(
+                        "WsState: invalid REDIS_URL, cross-instance broadcast disabled: {}",
+                        e
+                    );
+                })
+                .ok()
+        });
         Self {
             connections: DashMap::new(),
             subscriptions: DashMap::new(),
@@ -133,8 +241,41 @@ impl WsState {
             tx,
             rate_limits: DashMap::new(),
             ip_rate_limits: DashMap::new(),
+            max_concurrent_connections,
+            max_connections_per_ip,
+            idle_timeout,
             redis_client,
+            redis_publisher: tokio::sync::OnceCell::new(),
+            redis_subscribed: AtomicBool::new(false),
         }
+    }
+
+    #[must_use]
+    pub fn with_limits(
+        max_concurrent_connections: usize,
+        max_connections_per_ip: usize,
+        idle_timeout: Duration,
+    ) -> Self {
+        let mut state = Self::new();
+        state.max_concurrent_connections = max_concurrent_connections;
+        state.max_connections_per_ip = max_connections_per_ip;
+        state.idle_timeout = idle_timeout;
+        state
+    }
+
+    #[must_use]
+    pub fn max_connections(&self) -> usize {
+        self.max_concurrent_connections
+    }
+
+    #[must_use]
+    pub fn max_connections_per_ip(&self) -> usize {
+        self.max_connections_per_ip
+    }
+
+    #[must_use]
+    pub fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
     }
 
     /// Spawn the Redis subscriber task that relays cross-instance broadcasts to
@@ -144,7 +285,7 @@ impl WsState {
             info!("WsState: Redis not configured, cross-instance broadcast disabled");
             return;
         };
-        let local_tx = self.tx.clone();
+        let state = Arc::clone(self);
         tokio::spawn(async move {
             loop {
                 match client.get_async_pubsub().await {
@@ -158,6 +299,7 @@ impl WsState {
                             "WsState: subscribed to Redis channel '{}'",
                             REDIS_WS_CHANNEL
                         );
+                        state.redis_subscribed.store(true, Ordering::Release);
                         let mut stream = pubsub.on_message();
                         loop {
                             match stream.next().await {
@@ -169,12 +311,7 @@ impl WsState {
                                             continue;
                                         }
                                     };
-                                    match serde_json::from_str::<WsMessage>(&payload) {
-                                        Ok(ws_msg) => {
-                                            let _ = local_tx.send(ws_msg);
-                                        }
-                                        Err(e) => warn!("WsState Redis deserialize error: {}", e),
-                                    }
+                                    state.deliver_fanout_payload(&payload);
                                 }
                                 None => {
                                     warn!("WsState Redis pub/sub stream ended, reconnecting");
@@ -182,6 +319,7 @@ impl WsState {
                                 }
                             }
                         }
+                        state.redis_subscribed.store(false, Ordering::Release);
                     }
                     Err(e) => {
                         warn!("WsState Redis connection error: {}, retrying in 5s", e);
@@ -195,18 +333,21 @@ impl WsState {
     /// Check whether `client_id` is within its rate limit.
     /// Returns `true` if the message should be processed.
     pub fn check_rate_limit(&self, client_id: &str) -> bool {
+        let max_messages_per_window = ws_max_messages_per_window();
+        let message_rate_limit_window = ws_message_rate_limit_window();
+
         let mut entry = self
             .rate_limits
             .entry(client_id.to_string())
             .or_insert_with(RateLimitInfo::new);
 
         let now = Instant::now();
-        if now.duration_since(entry.window_start) > MESSAGE_RATE_LIMIT_WINDOW {
+        if now.duration_since(entry.window_start) > message_rate_limit_window {
             entry.message_count = 0;
             entry.window_start = now;
         }
 
-        if entry.message_count >= MAX_MESSAGES_PER_WINDOW {
+        if entry.message_count >= max_messages_per_window {
             return false;
         }
 
@@ -221,6 +362,9 @@ impl WsState {
     /// Check per-IP connection limit and connection-attempt rate limit.
     /// Returns `Ok(())` if the connection should be allowed, `Err` with a message otherwise.
     pub fn check_ip_limits(&self, ip: IpAddr) -> Result<(), &'static str> {
+        let max_connect_attempts = ws_max_connect_attempts_per_ip();
+        let ip_rate_limit_window = ws_ip_rate_limit_window();
+
         let mut entry = self
             .ip_rate_limits
             .entry(ip)
@@ -228,17 +372,17 @@ impl WsState {
 
         // Reset attempt window if expired.
         let now = Instant::now();
-        if now.duration_since(entry.window_start) > IP_RATE_LIMIT_WINDOW {
+        if now.duration_since(entry.window_start) > ip_rate_limit_window {
             entry.connect_attempts = 0;
             entry.window_start = now;
         }
 
-        if entry.connect_attempts >= MAX_CONNECT_ATTEMPTS_PER_IP {
+        if entry.connect_attempts >= max_connect_attempts {
             return Err("Too many connection attempts from this IP");
         }
         entry.connect_attempts += 1;
 
-        if entry.active_connections >= MAX_CONNECTIONS_PER_IP {
+        if entry.active_connections >= self.max_connections_per_ip {
             return Err("Too many connections from this IP");
         }
         entry.active_connections += 1;
@@ -252,34 +396,103 @@ impl WsState {
         }
     }
 
-    pub fn broadcast(&self, message: WsMessage) {
-        // Publish to Redis so all instances relay the message to their local connections.
-        if let Some(client) = &self.redis_client {
-            if let Ok(payload) = serde_json::to_string(&message) {
-                let client = client.clone();
-                let payload_clone = payload.clone();
-                tokio::spawn(async move {
-                    match client.get_multiplexed_tokio_connection().await {
-                        Ok(mut conn) => {
-                            let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
-                                .arg(REDIS_WS_CHANNEL)
-                                .arg(payload_clone)
-                                .query_async(&mut conn)
-                                .await;
-                        }
-                        Err(e) => warn!("WsState broadcast: Redis publish failed: {}", e),
-                    }
-                });
-                return; // Redis subscriber will feed local tx
-            }
-        }
-        // Fallback: no Redis, broadcast locally only.
+    /// Broadcast to every client on every instance.
+    pub fn broadcast(self: &Arc<Self>, message: WsMessage) {
+        self.fanout(None, message);
+    }
+
+    /// Send to clients subscribed to `channel`, on every instance.
+    pub fn broadcast_to_channel(self: &Arc<Self>, channel: &str, message: WsMessage) {
+        self.fanout(Some(channel.to_string()), message);
+    }
+
+    /// Broadcast only to clients connected to *this* instance (e.g. to announce
+    /// that this instance is shutting down).
+    pub fn broadcast_local(&self, message: WsMessage) {
         if let Err(e) = self.tx.send(message) {
             warn!("Failed to broadcast message: {}", e);
         }
     }
 
-    pub fn broadcast_to_channel(&self, channel: &str, message: WsMessage) {
+    /// Publish through Redis so every instance (including this one, via its
+    /// subscriber) delivers to its local connections. Falls back to local
+    /// delivery whenever Redis isn't available.
+    fn fanout(self: &Arc<Self>, channel: Option<String>, message: WsMessage) {
+        if self.redis_client.is_none() || !self.redis_subscribed.load(Ordering::Acquire) {
+            self.deliver_local(channel.as_deref(), message);
+            return;
+        }
+
+        let envelope = FanoutEnvelope {
+            origin: crate::distributed_lock::instance_id().to_string(),
+            channel,
+            message,
+        };
+        let payload = match serde_json::to_string(&envelope) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("WsState: failed to serialise broadcast: {}", e);
+                self.deliver_local(envelope.channel.as_deref(), envelope.message);
+                return;
+            }
+        };
+
+        let state = Arc::clone(self);
+        tokio::spawn(async move {
+            let published = match state.publisher().await {
+                Some(mut conn) => redis::cmd("PUBLISH")
+                    .arg(REDIS_WS_CHANNEL)
+                    .arg(&payload)
+                    .query_async::<i64>(&mut conn)
+                    .await
+                    .map_err(|e| warn!("WsState broadcast: Redis publish failed: {}", e))
+                    .is_ok(),
+                None => false,
+            };
+            if !published {
+                // Don't lose the message for this instance's clients.
+                state.deliver_local(envelope.channel.as_deref(), envelope.message);
+            }
+        });
+    }
+
+    async fn publisher(&self) -> Option<redis::aio::ConnectionManager> {
+        let client = self.redis_client.clone()?;
+        self.redis_publisher
+            .get_or_try_init(|| redis::aio::ConnectionManager::new(client))
+            .await
+            .map_err(|e| warn!("WsState: Redis publisher connect failed: {}", e))
+            .ok()
+            .cloned()
+    }
+
+    fn deliver_local(&self, channel: Option<&str>, message: WsMessage) {
+        let network_changed = matches!(message, WsMessage::NetworkChanged { .. });
+        match channel {
+            Some(channel) => self.deliver_to_channel_local(channel, message),
+            None => self.broadcast_local(message),
+        }
+        // Subscriptions are per-instance, so every instance drains its own.
+        if network_changed {
+            self.drain_all_subscriptions();
+        }
+    }
+
+    /// Handle a payload received from the Redis fan-out channel.
+    fn deliver_fanout_payload(&self, payload: &str) {
+        if let Ok(envelope) = serde_json::from_str::<FanoutEnvelope>(payload) {
+            self.deliver_local(envelope.channel.as_deref(), envelope.message);
+            return;
+        }
+        // Instances from before the envelope format publish bare messages;
+        // keep accepting them so rolling deploys don't drop updates.
+        match serde_json::from_str::<WsMessage>(payload) {
+            Ok(message) => self.broadcast_local(message),
+            Err(e) => warn!("WsState Redis deserialize error: {}", e),
+        }
+    }
+
+    fn deliver_to_channel_local(&self, channel: &str, message: WsMessage) {
         let mut target_connections = Vec::new();
         for entry in self.subscriptions.iter() {
             let (connection_id, channels) = entry.pair();
@@ -344,9 +557,10 @@ impl WsState {
     }
 
     fn try_acquire_connection_permit(self: &Arc<Self>, ip: IpAddr) -> Option<ConnectionPermit> {
+        let max = self.max_concurrent_connections;
         let mut current = self.active_connections.load(Ordering::Acquire);
         loop {
-            if current >= MAX_CONCURRENT_CONNECTIONS {
+            if current >= max {
                 return None;
             }
             match self.active_connections.compare_exchange(
@@ -406,12 +620,14 @@ impl WsState {
     /// Broadcast a `NetworkChanged` message to every connected client and drain
     /// all stale subscriptions. Clients that receive `NetworkChanged` should
     /// re-subscribe to channels relevant to the new network.
-    pub fn broadcast_network_change(&self, network: &str) {
+    ///
+    /// Fans out to every instance; each one drains its own subscriptions when
+    /// it delivers the message (see `deliver_local`).
+    pub fn broadcast_network_change(self: &Arc<Self>, network: &str) {
         info!("Broadcasting network change to: {}", network);
         self.broadcast(WsMessage::NetworkChanged {
             network: network.to_string(),
         });
-        self.drain_all_subscriptions();
     }
 
     pub fn close_all_connections(&self) {
@@ -425,8 +641,8 @@ impl WsState {
 
 fn is_oversized_message(message: &Message) -> bool {
     match message {
-        Message::Text(text) => text.len() > MAX_TEXT_MESSAGE_SIZE,
-        Message::Binary(data) => data.len() > MAX_BINARY_MESSAGE_SIZE,
+        Message::Text(text) => text.len() > ws_max_text_message_size(),
+        Message::Binary(data) => data.len() > ws_max_binary_message_size(),
         _ => false,
     }
 }
@@ -535,9 +751,12 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQueryParams>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<WsState>>,
 ) -> Response {
-    let client_ip = addr.ip();
+    // Behind the ingress the TCP peer is the proxy; use the forwarded client IP
+    // so per-IP limits apply per client rather than per ingress pod.
+    let client_ip = crate::client_ip::client_ip(&headers, Some(addr)).unwrap_or_else(|| addr.ip());
 
     // Per-IP rate limit check — connection attempts and concurrent connections per IP.
     if let Err(reason) = state.check_ip_limits(client_ip) {
@@ -556,14 +775,14 @@ pub async fn ws_handler(
         warn!(
             "Connection limit reached ({}/{}), rejecting new WebSocket connection",
             state.connection_count(),
-            MAX_CONCURRENT_CONNECTIONS
+            state.max_connections()
         );
         return (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "error": format!(
                     "Server at capacity. Maximum {} concurrent connections allowed.",
-                    MAX_CONCURRENT_CONNECTIONS
+                    state.max_connections()
                 )
             })),
         )
@@ -604,7 +823,7 @@ async fn handle_socket(
 
     let (sender, receiver) = socket.split();
     let sender = Arc::new(tokio::sync::Mutex::new(sender));
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(MAX_PENDING_OUTGOING_MESSAGES);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(ws_max_pending_outgoing_messages());
 
     state.connections.insert(connection_id, tx);
     crate::observability::metrics::set_active_connections(state.connection_count() as i64);
@@ -624,12 +843,13 @@ async fn handle_socket(
     let state_clone = Arc::clone(&state);
 
     // ── Receive task ───────────────────────────────────────────────────────────
+    let idle_timeout = state.idle_timeout();
     let recv_task = {
         let client_id = client_id.clone();
         tokio::spawn(async move {
             let mut receiver = receiver;
             loop {
-                let next_message = tokio::time::timeout(WS_IDLE_TIMEOUT, receiver.next()).await;
+                let next_message = tokio::time::timeout(idle_timeout, receiver.next()).await;
                 let msg = match next_message {
                     Ok(Some(Ok(msg))) => msg,
                     Ok(Some(Err(err))) => {
@@ -690,7 +910,7 @@ async fn handle_socket(
                                 message: "Rate limit exceeded. Please slow down.".to_string(),
                             }) {
                                 let mut guard = recv_sender.lock().await;
-                                let _ = guard.send(Message::Text(json)).await;
+                                let _ = guard.send(Message::Text(json.into())).await;
                             }
                             continue;
                         }
@@ -769,7 +989,7 @@ async fn handle_socket(
                         let ping = WsMessage::Ping { timestamp: chrono::Utc::now().timestamp() };
                         if let Ok(json) = serde_json::to_string(&ping) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send ping to {}", connection_id);
                                 break;
                             }
@@ -778,7 +998,7 @@ async fn handle_socket(
                     Ok(msg) = broadcast_rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send broadcast to {}", connection_id);
                                 break;
                             }
@@ -787,7 +1007,7 @@ async fn handle_socket(
                     Some(msg) = rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&msg) {
                             let mut guard = send_sender.lock().await;
-                            if guard.send(Message::Text(json)).await.is_err() {
+                            if guard.send(Message::Text(json.into())).await.is_err() {
                                 error!("Failed to send message to {}", connection_id);
                                 break;
                             }
@@ -822,7 +1042,7 @@ async fn send_ws_message(sender: &SharedWebSocketSender, message: &WsMessage) ->
         warn!("Failed to serialize WebSocket message: {}", e);
     })?;
     let mut guard = sender.lock().await;
-    guard.send(Message::Text(json)).await.map_err(|e| {
+    guard.send(Message::Text(json.into())).await.map_err(|e| {
         warn!("Failed to send WebSocket message: {}", e);
     })
 }
@@ -939,20 +1159,29 @@ mod tests {
     }
 
     #[test]
-    fn test_connection_limit_enforced() {
-        let state = Arc::new(WsState::new());
-        let mut permits = Vec::with_capacity(MAX_CONCURRENT_CONNECTIONS);
+    fn test_default_limits_match_spec() {
+        let state = WsState::new();
+        assert_eq!(state.max_connections(), 10_000);
+        assert_eq!(state.max_connections_per_ip(), 10);
+        assert_eq!(state.idle_timeout(), Duration::from_secs(300));
+    }
 
-        for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+    #[test]
+    fn test_connection_limit_enforced() {
+        let state = Arc::new(WsState::with_limits(10, 10, Duration::from_secs(300)));
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let mut permits = Vec::with_capacity(10);
+
+        for _ in 0..10 {
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
 
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert_eq!(state.connection_count(), 10);
+        assert!(state.try_acquire_connection_permit(ip).is_none());
 
         drop(permits.pop());
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS - 1);
-        assert!(state.try_acquire_connection_permit().is_some());
+        assert_eq!(state.connection_count(), 9);
+        assert!(state.try_acquire_connection_permit(ip).is_some());
     }
 
     #[test]
@@ -975,7 +1204,8 @@ mod tests {
     fn test_cleanup_connection_removes_rate_limit_state() {
         let state = Arc::new(WsState::new());
         let connection_id = Uuid::new_v4();
-        let permit = state.try_acquire_connection_permit().unwrap();
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let permit = state.try_acquire_connection_permit(ip).unwrap();
 
         state.check_message_rate_limit(connection_id);
         state.subscribe_connection(connection_id, vec!["corridor:test".to_string()]);
@@ -1047,13 +1277,14 @@ mod tests {
 
     #[test]
     fn test_websocket_connection_limit() {
-        let state = Arc::new(WsState::new());
+        let state = Arc::new(WsState::with_limits(5, 5, Duration::from_secs(300)));
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let mut permits = Vec::new();
-        for _ in 0..MAX_CONCURRENT_CONNECTIONS {
-            permits.push(state.try_acquire_connection_permit().unwrap());
+        for _ in 0..5 {
+            permits.push(state.try_acquire_connection_permit(ip).unwrap());
         }
-        assert_eq!(state.connection_count(), MAX_CONCURRENT_CONNECTIONS);
-        assert!(state.try_acquire_connection_permit().is_none());
+        assert_eq!(state.connection_count(), 5);
+        assert!(state.try_acquire_connection_permit(ip).is_none());
     }
 
     #[test]

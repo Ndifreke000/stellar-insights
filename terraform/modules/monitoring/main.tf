@@ -4,10 +4,10 @@
 
 resource "aws_sns_topic" "alarms" {
   count = var.enable_alarms ? 1 : 0
-  name  = "stellar-insights-alarms-${var.environment}"
+  name  = "payraider-alarms-${var.environment}"
 
   tags = {
-    Name = "stellar-insights-alarms-${var.environment}"
+    Name = "payraider-alarms-${var.environment}"
   }
 }
 
@@ -24,7 +24,7 @@ resource "aws_sns_topic_subscription" "alarm_email" {
 
 resource "aws_cloudwatch_dashboard" "main" {
   count          = var.enable_dashboard ? 1 : 0
-  dashboard_name = "stellar-insights-${var.environment}"
+  dashboard_name = "payraider-${var.environment}"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -39,19 +39,6 @@ resource "aws_cloudwatch_dashboard" "main" {
           stat   = "Average"
           region = data.aws_region.current.name
           title  = "ECS Cluster Health"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/RDS", "CPUUtilization", { stat = "Average" }],
-            [".", "DatabaseConnections", { stat = "Average" }]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "RDS Performance"
         }
       },
       {
@@ -98,7 +85,7 @@ output "sns_topic_arn" {
 output "dashboard_url" {
   description = "CloudWatch dashboard URL"
   value = try(
-    "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=stellar-insights-${var.environment}",
+    "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=payraider-${var.environment}",
     null
   )
 }
@@ -109,7 +96,7 @@ output "dashboard_url" {
 
 resource "aws_budgets_budget" "monthly" {
   count = var.enable_cost_alerts ? 1 : 0
-  name  = "stellar-insights-monthly-${var.environment}"
+  name  = "payraider-monthly-${var.environment}"
 
   budget_type = "COST"
   limit_amount = var.budget_limit
@@ -140,7 +127,7 @@ resource "aws_budgets_budget" "monthly" {
 
 resource "aws_budgets_budget" "annual" {
   count = var.enable_cost_alerts ? 1 : 0
-  name  = "stellar-insights-annual-${var.environment}"
+  name  = "payraider-annual-${var.environment}"
 
   budget_type = "COST"
   limit_amount = var.budget_limit * 12

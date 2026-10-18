@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Key,
   Plus,
@@ -21,6 +22,7 @@ import KeyRow from "../components/KeyRow";
 import CreateKeyModal from "../components/CreateKeyModal";
 import RevealKeyModal from "../components/RevealKeyModal";
 import ConfirmModal from "../components/ConfirmModal";
+import UpgradePanel from "../components/UpgradePanel";
 
 type ModalState =
   | { type: "none" }
@@ -30,7 +32,10 @@ type ModalState =
   | { type: "revoke"; key: ApiKeyInfo };
 
 export default function DeveloperKeysPage() {
-  const { isConnected, address } = useWallet();
+  const t = useTranslations("keys");
+  // Keys belong to the wallet proven by its SEP-10 session.
+  const { isConnected, address, isAuthenticated, authToken, authenticateWithSep10 } = useWallet();
+  const [signingIn, setSigningIn] = useState(false);
   const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,36 +43,36 @@ export default function DeveloperKeysPage() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchKeys = useCallback(async () => {
-    if (!address) return;
+    if (!authToken) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await listApiKeys(address);
+      const response = await listApiKeys(authToken);
       setKeys(response.keys);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load API keys");
     } finally {
       setLoading(false);
     }
-  }, [address]);
+  }, [authToken]);
 
   useEffect(() => {
-    if (isConnected && address) {
+    if (isConnected && authToken) {
       fetchKeys();
     } else {
       setLoading(false);
     }
-  }, [isConnected, address, fetchKeys]);
+  }, [isConnected, authToken, fetchKeys]);
 
   const handleCreate = async (
     name: string,
     scopes: string,
     expiresAt?: string,
   ) => {
-    if (!address) return;
+    if (!authToken) return;
     setActionLoading(true);
     try {
-      const response = await createApiKey(address, name, scopes, expiresAt);
+      const response = await createApiKey(authToken, name, scopes, expiresAt);
       setModal({ type: "reveal", response });
       await fetchKeys();
     } catch (err) {
@@ -80,10 +85,10 @@ export default function DeveloperKeysPage() {
   };
 
   const handleRotate = async (id: string) => {
-    if (!address) return;
+    if (!authToken) return;
     setActionLoading(true);
     try {
-      const response = await rotateApiKey(address, id);
+      const response = await rotateApiKey(authToken, id);
       setModal({ type: "reveal", response });
       await fetchKeys();
     } catch (err) {
@@ -96,10 +101,10 @@ export default function DeveloperKeysPage() {
   };
 
   const handleRevoke = async (id: string) => {
-    if (!address) return;
+    if (!authToken) return;
     setActionLoading(true);
     try {
-      await revokeApiKey(address, id);
+      await revokeApiKey(authToken, id);
       setModal({ type: "none" });
       await fetchKeys();
     } catch (err) {
@@ -111,6 +116,38 @@ export default function DeveloperKeysPage() {
     }
   };
 
+  if (isConnected && !isAuthenticated) {
+    return (
+      <div className="text-center py-20 space-y-4">
+        <Shield className="w-16 h-16 text-muted-foreground mx-auto" />
+        <h3 className="text-xl font-bold text-foreground">Sign in with your wallet</h3>
+        <p className="text-muted-foreground max-w-md mx-auto">
+          API keys belong to a Stellar wallet. Sign a one-time login message to prove you
+          control {address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "it"}.
+        </p>
+        {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+        <button
+          type="button"
+          disabled={signingIn}
+          onClick={async () => {
+            setSigningIn(true);
+            setError(null);
+            try {
+              await authenticateWithSep10();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Sign-in failed");
+            } finally {
+              setSigningIn(false);
+            }
+          }}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:opacity-90 font-medium disabled:opacity-60"
+        >
+          {signingIn ? "Waiting for wallet…" : "Sign in"}
+        </button>
+      </div>
+    );
+  }
+
   if (!isConnected) {
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -121,17 +158,17 @@ export default function DeveloperKeysPage() {
             </div>
             <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
               <Key className="w-8 h-8 text-accent" />
-              API Keys
+              {t("title")}
             </h2>
           </div>
         </div>
         <div className="text-center py-20">
           <Shield className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-xl font-bold text-foreground mb-2">
-            Connect Your Wallet
+            {t("connectWallet")}
           </h3>
           <p className="text-muted-foreground">
-            Connect your Stellar wallet to manage API keys.
+            {t("authPrompt")}
           </p>
         </div>
       </div>
@@ -147,18 +184,18 @@ export default function DeveloperKeysPage() {
           </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             <Key className="w-8 h-8 text-accent" />
-            API Keys
+            {t("title")}
           </h2>
         </div>
         <p className="text-muted-foreground text-sm max-w-xl">
-          Manage API keys for programmatic access to the Stellar Insights API.
+          {t("subtitle")}
         </p>
         <button
           onClick={() => setModal({ type: "create" })}
           className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:opacity-90 transition-opacity font-medium shrink-0"
         >
           <Plus className="w-4 h-4" />
-          Create Key
+          {t("createKey")}
         </button>
       </div>
 
@@ -192,18 +229,17 @@ export default function DeveloperKeysPage() {
         <div className="glass rounded-xl p-12 text-center border border-border">
           <Key className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            No API Keys
+            {t("title")}
           </h3>
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-            Create your first API key to start accessing the Stellar Insights
-            API programmatically.
+            {t("empty")}
           </p>
           <button
             onClick={() => setModal({ type: "create" })}
             className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:opacity-90 transition-opacity font-medium"
           >
             <Plus className="w-4 h-4" />
-            Create Your First Key
+            {t("createKey")}
           </button>
         </div>
       ) : (
@@ -212,26 +248,26 @@ export default function DeveloperKeysPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Name
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.name")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Key
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.prefix")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Scopes
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Status
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.status")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Created
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.created")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Last Used
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.lastUsed")}
                   </th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Actions
+                  <th scope="col" className="text-right px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.actions")}
                   </th>
                 </tr>
               </thead>
@@ -248,6 +284,10 @@ export default function DeveloperKeysPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {authToken && address && (
+        <UpgradePanel authToken={authToken} address={address} keys={keys} />
       )}
 
       {modal.type === "create" && (

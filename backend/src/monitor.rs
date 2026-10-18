@@ -271,6 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_caching() {
+        let _guard = crate::lock_env_test();
         FETCH_CORRIDOR_METRICS_CALLS.store(0, Ordering::Relaxed);
 
         let (alert_manager, _rx) = AlertManager::new();

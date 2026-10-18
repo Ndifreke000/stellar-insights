@@ -1,3 +1,4 @@
+use crate::cache::CacheManager;
 use crate::database::Database;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -7,7 +8,7 @@ use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CreateProposalRequest {
     pub title: String,
     pub description: Option<String>,
@@ -16,7 +17,7 @@ pub struct CreateProposalRequest {
     pub new_wasm_hash: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProposalResponse {
     pub id: String,
     pub title: String,
@@ -37,13 +38,13 @@ pub struct ProposalResponse {
     pub votes_abstain: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProposalsListResponse {
     pub proposals: Vec<ProposalResponse>,
     pub total: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CastVoteRequest {
     pub choice: String,
     pub tx_hash: Option<String>,
@@ -59,7 +60,7 @@ pub struct VoteResponse {
     pub voted_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct AddCommentRequest {
     pub content: String,
 }
@@ -73,14 +74,67 @@ pub struct CommentResponse {
     pub created_at: String,
 }
 
+/// Cached proposal tally stored in Redis/in-memory, including the timestamp
+/// so callers can compute X-Cache-Age.
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedProposal {
+    data: ProposalResponse,
+    cached_at_unix: i64,
+}
+
+const TALLY_TTL_ACTIVE_SECS: usize = 30;
+const TALLY_TTL_DEFAULT_SECS: usize = 300;
+
 pub struct GovernanceService {
     db: Arc<Database>,
+    cache: Arc<CacheManager>,
 }
 
 impl GovernanceService {
     #[must_use]
-    pub const fn new(db: Arc<Database>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<Database>, cache: Arc<CacheManager>) -> Self {
+        Self { db, cache }
+    }
+
+    fn tally_cache_key(proposal_id: &str) -> String {
+        format!("governance:tally:{proposal_id}")
+    }
+
+    fn tally_ttl(status: &str) -> usize {
+        if status == "active" {
+            TALLY_TTL_ACTIVE_SECS
+        } else {
+            TALLY_TTL_DEFAULT_SECS
+        }
+    }
+
+    /// Returns `(proposal, cache_age_secs)`. `cache_age_secs` is `None` on a
+    /// cache miss (the value was just fetched from the DB).
+    pub async fn get_proposal_cached(&self, id: &str) -> Result<(ProposalResponse, Option<u64>)> {
+        let key = Self::tally_cache_key(id);
+
+        if let Ok(Some(cached)) = self.cache.get::<CachedProposal>(&key).await {
+            let age = (Utc::now().timestamp() - cached.cached_at_unix).max(0) as u64;
+            return Ok((cached.data, Some(age)));
+        }
+
+        let proposal = self.get_proposal(id).await?;
+        let ttl = Self::tally_ttl(&proposal.status);
+        let entry = CachedProposal {
+            cached_at_unix: Utc::now().timestamp(),
+            data: proposal,
+        };
+        let _ = self.cache.set(&key, &entry, ttl).await;
+        Ok((entry.data, None))
+    }
+
+    /// Delete the cached tally for a proposal so the next request re-fetches
+    /// from the database.
+    pub async fn invalidate_proposal_cache(&self, proposal_id: &str) -> Result<()> {
+        let key = Self::tally_cache_key(proposal_id);
+        self.cache.delete(&key).await?;
+        info!("Invalidated tally cache for proposal {}", proposal_id);
+        Ok(())
     }
 
     pub async fn create_proposal(
@@ -186,7 +240,7 @@ impl GovernanceService {
                 LEFT JOIN governance_votes v ON p.id = v.proposal_id
                 WHERE p.status = ?
                 GROUP BY p.id
-                ORDER BY p.created_at DESC
+                ORDER BY p.created_at DESC, p.id ASC
                 LIMIT ? OFFSET ?
                 ",
             )
@@ -215,7 +269,7 @@ impl GovernanceService {
                 FROM governance_proposals p
                 LEFT JOIN governance_votes v ON p.id = v.proposal_id
                 GROUP BY p.id
-                ORDER BY p.created_at DESC
+                ORDER BY p.created_at DESC, p.id ASC
                 LIMIT ? OFFSET ?
                 ",
             )

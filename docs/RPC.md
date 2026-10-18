@@ -1,9 +1,15 @@
-# 🌐 Stellar Insights RPC API Documentation
+# 🌐 PayRaider RPC API Documentation
 
 **Version:** v0.1.0  
 **Last Updated:** February 26, 2026
 
 Complete API reference for accessing real-time Stellar blockchain data and analytics.
+
+> **Interactive docs:** the generated OpenAPI 3 reference is served by the backend at
+> [`/api/docs`](http://localhost:8080/api/docs) (raw spec: `/api/docs/openapi.json`).
+> To export the spec and a Postman collection to `docs/api/`, run
+> `cargo run --bin export_openapi` from `backend/`. The spec is generated from code and
+> takes precedence over this file where the two disagree.
 
 ---
 
@@ -33,14 +39,17 @@ http://localhost:8080
 https://your-domain.com
 ```
 
-### API Versioning
+### API Versioning & Strategy
 
-- **Current API version:** `v1`
+- **Current API version:** `v1` (with standard 6-month deprecation policy in effect)
 - **Supported versions:** `v1`, `v2`
+- **Version Negotiation:** Supports URL path (`/api/v1/`, `/api/v2/`) and content negotiation via `Accept: application/vnd.payraider.v2+json` (or `v1+json`).
 - **Status endpoint:** `GET /api/version`
 - **Versioned base paths:**
   - `v1`: `GET /api/v1/...`
-  - `v2`: `GET /api/v2/status` (reserved, not implemented yet)
+  - `v2`: `GET /api/v2/...`
+- **Deprecation Policy:** Deprecation notices provide a minimum 6-month migration period. `v1` returns RFC 8594 `Deprecation`, `Sunset`, and `Link` headers.
+- **Detailed Specification:** See [docs/API_VERSIONING.md](API_VERSIONING.md) for the full versioning strategy, deprecation schedule, and v1 → v2 migration guide.
 - Unversioned `GET /api/...` routes are preserved for backward compatibility with existing clients.
 
 ### Start the Backend
@@ -87,7 +96,7 @@ Create `.env` file in backend directory:
 
 ```env
 # Database
-DATABASE_URL=sqlite:stellar_insights.db
+DATABASE_URL=sqlite:payraider.db
 
 # Server
 SERVER_HOST=127.0.0.1

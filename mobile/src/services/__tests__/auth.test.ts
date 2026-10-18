@@ -31,7 +31,6 @@ jest.mock('@utils/logger', () => ({
 jest.mock('@services/storage', () => ({
   storage: { getString: jest.fn(() => null), delete: jest.fn() },
 }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const _storageMock = require('@services/storage').storage as {
   getString: jest.Mock;
   delete: jest.Mock;
@@ -110,7 +109,7 @@ describe('secure storage — keychain (not AsyncStorage)', () => {
   });
 
   it('getToken reads from Keychain', async () => {
-    const stored = JSON.stringify({ token: 'tk_test' });
+    const stored = JSON.stringify({ tokens: { accessToken: 'tk_test' } });
     mockGetGenericPassword.mockResolvedValue({ password: stored, username: AUTH_SERVICE });
 
     const result = await getToken();
@@ -129,19 +128,19 @@ describe('hasValidToken', () => {
   });
 
   it('returns false when the token is expired', async () => {
-    const stored = JSON.stringify({ token: 'tk', expiresAt: Date.now() - 1000 });
+    const stored = JSON.stringify({ tokens: { accessToken: 'tk' }, expiresAt: Date.now() - 1000 });
     mockGetGenericPassword.mockResolvedValue({ password: stored });
     expect(await hasValidToken()).toBe(false);
   });
 
   it('returns true when the token is present and not expired', async () => {
-    const stored = JSON.stringify({ token: 'tk', expiresAt: Date.now() + 60_000 });
+    const stored = JSON.stringify({ tokens: { accessToken: 'tk' }, expiresAt: Date.now() + 60_000 });
     mockGetGenericPassword.mockResolvedValue({ password: stored });
     expect(await hasValidToken()).toBe(true);
   });
 
   it('returns true when the token has no expiry (never-expires)', async () => {
-    const stored = JSON.stringify({ token: 'tk' });
+    const stored = JSON.stringify({ tokens: { accessToken: 'tk' } });
     mockGetGenericPassword.mockResolvedValue({ password: stored });
     expect(await hasValidToken()).toBe(true);
   });
@@ -157,7 +156,32 @@ describe('clearAuthTokens', () => {
     await clearAuthTokens();
 
     expect(mockResetGenericPassword).toHaveBeenCalledWith({ service: AUTH_SERVICE });
+    expect(mockStorageDelete).toHaveBeenCalled(); // cached user profile is wiped too
     expect(mockLogout).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getTokenExpiry / removeToken
+// ---------------------------------------------------------------------------
+describe('getTokenExpiry and removeToken', () => {
+  it('returns the stored expiry, or null when none is set', async () => {
+    const expiresAt = Date.now() + 60_000;
+    mockGetGenericPassword.mockResolvedValueOnce({
+      password: JSON.stringify({ tokens: { accessToken: 'tk' }, expiresAt }),
+    });
+    expect(await getTokenExpiry()).toBe(expiresAt);
+
+    mockGetGenericPassword.mockResolvedValueOnce({
+      password: JSON.stringify({ tokens: { accessToken: 'tk' } }),
+    });
+    expect(await getTokenExpiry()).toBeNull();
+  });
+
+  it('removeToken resets the keychain entry', async () => {
+    mockResetGenericPassword.mockResolvedValue(true);
+    await removeToken();
+    expect(mockResetGenericPassword).toHaveBeenCalledWith({ service: AUTH_SERVICE });
   });
 });
 
@@ -166,20 +190,22 @@ describe('clearAuthTokens', () => {
 // ---------------------------------------------------------------------------
 describe('storeAuthTokens', () => {
   it('writes the full AuthTokens object to keychain', async () => {
-    const tokens = { accessToken: 'at_abc', refreshToken: 'rt_abc' };
+    const tokens = { accessToken: 'at_abc', refreshToken: 'rt_abc', expiresAt: 1_900_000_000_000 };
     mockSetGenericPassword.mockResolvedValue(true);
 
     await storeAuthTokens(tokens);
 
+    // auth.ts wraps tokens as { tokens, expiresAt? } so the refresh token is
+    // never lost when only the access token is updated via saveToken().
     expect(mockSetGenericPassword).toHaveBeenCalledWith(
       AUTH_SERVICE,
-      JSON.stringify(tokens),
+      JSON.stringify({ tokens, expiresAt: tokens.expiresAt }),
       { service: AUTH_SERVICE },
     );
   });
 
   it('hydrates the auth store via setTokens', async () => {
-    const tokens = { accessToken: 'at_xyz', refreshToken: 'rt_xyz' };
+    const tokens = { accessToken: 'at_xyz', refreshToken: 'rt_xyz', expiresAt: 1_900_000_000_000 };
     mockSetGenericPassword.mockResolvedValue(true);
 
     await storeAuthTokens(tokens);
@@ -194,7 +220,7 @@ describe('storeAuthTokens', () => {
 describe('loadStoredAuth', () => {
   it('sets tokens in store when keychain has tokens', async () => {
     const tokens = { accessToken: 'at_stored', refreshToken: 'rt_stored' };
-    mockGetGenericPassword.mockResolvedValue({ password: JSON.stringify(tokens), username: AUTH_SERVICE });
+    mockGetGenericPassword.mockResolvedValue({ password: JSON.stringify({ tokens }), username: AUTH_SERVICE });
 
     await loadStoredAuth();
 
@@ -204,7 +230,7 @@ describe('loadStoredAuth', () => {
   it('also sets user in store when MMKV has user data', async () => {
     const tokens = { accessToken: 'at_stored', refreshToken: 'rt_stored' };
     const user = { id: 'u1', email: 'alice@example.com' };
-    mockGetGenericPassword.mockResolvedValue({ password: JSON.stringify(tokens), username: AUTH_SERVICE });
+    mockGetGenericPassword.mockResolvedValue({ password: JSON.stringify({ tokens }), username: AUTH_SERVICE });
     mockStorageGetString.mockReturnValue(JSON.stringify(user));
 
     await loadStoredAuth();
@@ -230,16 +256,17 @@ describe('loadStoredAuth', () => {
     expect(mockSetLoading).toHaveBeenCalledWith(false);
   });
 
-  it('calls setLoading(false) and logs a warning when keychain throws', async () => {
+  it('calls setLoading(false) and logs an error when keychain throws', async () => {
     mockGetGenericPassword.mockRejectedValue(new Error('Keychain unavailable'));
 
     await loadStoredAuth();
 
     expect(mockSetLoading).toHaveBeenCalledWith(false);
     expect(mockSetTokens).not.toHaveBeenCalled();
-    expect((logger.warn as jest.Mock)).toHaveBeenCalledWith(
+    expect((logger.error as jest.Mock)).toHaveBeenCalledWith(
       '[Auth]',
-      'Failed to load stored auth — user will re-authenticate.',
+      'Failed to load stored auth:',
+      expect.any(Error),
     );
   });
 });
@@ -259,19 +286,24 @@ describe('refreshAuthTokens', () => {
     expect(mockPost).toHaveBeenCalledWith('/auth/refresh', { refreshToken: 'rt_mock' });
     expect(mockSetGenericPassword).toHaveBeenCalledWith(
       AUTH_SERVICE,
-      JSON.stringify(newTokens),
+      JSON.stringify({ tokens: newTokens }),
       { service: AUTH_SERVICE },
     );
   });
 
-  it('calls clearAuthTokens and returns null when refresh fails', async () => {
+  it('returns null without touching stored tokens when refresh fails', async () => {
+    // Contract: the caller (api.ts response interceptor) decides whether to
+    // re-authenticate; a failed refresh must not throw or silently persist.
     mockPost.mockRejectedValue(new Error('401 Unauthorized'));
-    mockResetGenericPassword.mockResolvedValue(true);
 
     const result = await refreshAuthTokens();
 
     expect(result).toBeNull();
-    expect(mockResetGenericPassword).toHaveBeenCalled(); // clearAuthTokens
-    expect(mockLogout).toHaveBeenCalled();
+    expect(mockSetGenericPassword).not.toHaveBeenCalled();
+    expect((logger.error as jest.Mock)).toHaveBeenCalledWith(
+      '[Auth]',
+      'Failed to refresh tokens:',
+      expect.any(Error),
+    );
   });
 });

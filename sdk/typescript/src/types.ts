@@ -1,11 +1,11 @@
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-export interface StellarInsightsConfig {
+export interface PayRaiderConfig {
   /** API key for Bearer token auth */
   apiKey?: string;
   /** OAuth2 access token */
   accessToken?: string;
-  /** Override base URL (default: https://api.stellarinsights.io) */
+  /** Override base URL (default: https://api.payraider.io) */
   baseUrl?: string;
   /** Max retry attempts on 429/5xx (default: 3) */
   maxRetries?: number;
@@ -17,7 +17,7 @@ export interface StellarInsightsConfig {
 
 // ─── SDK Initialization ────────────────────────────────────────────────────────
 
-export interface SDKInitConfig extends StellarInsightsConfig {
+export interface SDKInitConfig extends PayRaiderConfig {
   /** Enable debug logging */
   debug?: boolean;
   /** Target network: mainnet or testnet */
@@ -53,6 +53,10 @@ export interface PaginationParams {
   limit?: number;
   sort?: string;
   order?: "asc" | "desc";
+  /** Opaque cursor from a previous response's `pagination.next_cursor`. */
+  cursor?: string;
+  /** Deprecated offset pagination; prefer `cursor`. */
+  offset?: number;
 }
 
 export interface PaginatedResponse<T> {
@@ -128,9 +132,14 @@ export interface ConvertResult {
 // ─── Cost Calculator ─────────────────────────────────────────────────────────
 
 export interface CostEstimateRequest {
-  source_asset: string;
-  destination_asset: string;
-  amount: number;
+  /** Currency or asset code the sender pays in, e.g. "USDC". */
+  source_currency: string;
+  /** Currency or asset code the recipient receives, e.g. "NGN". */
+  destination_currency: string;
+  /** Amount in the source currency. */
+  source_amount: number;
+  /** Amount the recipient must receive, to report any shortfall. */
+  destination_amount?: number;
 }
 
 export interface RouteFees {
@@ -149,6 +158,60 @@ export interface PaymentRoute {
 
 export interface CostEstimateResponse {
   routes: PaymentRoute[];
+}
+
+// ─── Preflight (pre-payment check) ───────────────────────────────────────────
+
+export interface PreflightRequest {
+  /** Asset the payment is sent in: a code ("USDC") or "CODE:ISSUER". */
+  source_asset: string;
+  /** Asset the recipient receives: a code ("NGN") or "CODE:ISSUER". */
+  destination_asset: string;
+  /** Payment size in USD. Omit to skip the liquidity check. */
+  amount_usd?: number;
+  /** Minimum acceptable success rate in percent (default 95). */
+  min_success_rate?: number;
+}
+
+export type PreflightDecision = "proceed" | "caution" | "hold" | "unknown";
+export type PreflightCheckStatus = "pass" | "warn" | "fail";
+
+export interface PreflightCheck {
+  name: "success_rate" | "liquidity" | "sample_size" | "health_score";
+  status: PreflightCheckStatus;
+  detail: string;
+}
+
+export interface PreflightCorridor {
+  id: string;
+  source_asset: string;
+  destination_asset: string;
+  success_rate: number;
+  total_attempts: number;
+  successful_payments: number;
+  failed_payments: number;
+  average_latency_ms: number;
+  median_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
+  liquidity_depth_usd: number;
+  liquidity_volume_24h_usd: number;
+  liquidity_trend: string;
+  health_score: number;
+  last_updated: string;
+}
+
+export interface PreflightResponse {
+  decision: PreflightDecision;
+  /** One-line summary suitable for showing to an operator. */
+  summary: string;
+  /** Corridor health score (0-100), or null when the corridor is unknown. */
+  score: number | null;
+  corridor: PreflightCorridor | null;
+  checks: PreflightCheck[];
+  /** Healthier corridors to the same destination asset, best first. */
+  alternatives: PreflightCorridor[];
+  evaluated_at: string;
 }
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────

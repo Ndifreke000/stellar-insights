@@ -21,13 +21,13 @@
 //! sync process.
 //!
 //! # References
-//! - GitHub Issue: stellar-insights#reserve-offbyone
+//! - GitHub Issue: payraider#reserve-offbyone
 //! - Relevant commit: (see git log for defensive guard in sync_pools)
 
+use payraider_backend::rpc::{HorizonLiquidityPool, HorizonPoolReserve, MockStellarRpcClient};
+use payraider_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use stellar_insights_backend::rpc::{HorizonLiquidityPool, HorizonPoolReserve, MockStellarRpcClient};
-use stellar_insights_backend::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
 // ---------------------------------------------------------------------------
 // Shared DB setup (mirrors liquidity_pool_test.rs)
@@ -127,6 +127,12 @@ fn make_pool_with_reserves(id: &str, reserve_count: usize) -> HorizonLiquidityPo
 /// Previously this caused an index-out-of-bounds panic at `hp.reserves[0]`.
 #[tokio::test]
 async fn test_sync_pools_skips_zero_reserve_pool() {
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
     let db = setup_db().await;
 
     // Build a custom mock that returns one pool with 0 reserves.
@@ -141,7 +147,10 @@ async fn test_sync_pools_skips_zero_reserve_pool() {
         .await
         .expect("sync_pools panicked on empty pool list");
 
-    assert_eq!(count, 0, "expected 0 pools synced from mock (which returns empty list)");
+    assert_eq!(
+        count, 0,
+        "expected 0 pools synced from mock (which returns empty list)"
+    );
 }
 
 /// Unit regression: the guard logic itself is correct for every boundary.

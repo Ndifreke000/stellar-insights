@@ -34,4 +34,6 @@ pub enum Error {
     TransferFailed = 14,
     /// Contract is paused
     ContractPaused = 15,
+    /// Reentrant call detected
+    Reentrancy = 16,
 }

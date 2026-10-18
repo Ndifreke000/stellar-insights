@@ -12,7 +12,7 @@ use crate::cache::helpers::cached_query;
 use crate::cache::{keys, CacheManager};
 use crate::observability::metrics as obs_metrics;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct MetricsOverview {
     pub total_volume: f64,
     pub total_transactions: u64,

@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use std::env;
+use std::path::{Path, PathBuf};
 
 /// Required environment variables that must be set
 const REQUIRED_VARS: &[&str] = &["DATABASE_URL", "ENCRYPTION_KEY", "JWT_SECRET"];
@@ -13,18 +14,133 @@ const REQUIRED_VARS: &[&str] = &["DATABASE_URL", "ENCRYPTION_KEY", "JWT_SECRET"]
 /// Environment variables that should be validated if present
 const VALIDATED_VARS: &[(&str, fn(&str) -> bool)] = &[
     ("SERVER_PORT", validate_port),
-    ("DB_POOL_MAX_CONNECTIONS", validate_positive_number),
-    ("DB_POOL_MIN_CONNECTIONS", validate_positive_number),
-    ("RPC_MAX_RECORDS_PER_REQUEST", validate_positive_number),
-    ("RPC_MAX_TOTAL_RECORDS", validate_positive_number),
-    ("RPC_PAGINATION_DELAY_MS", validate_positive_number),
+    ("DB_POOL_MAX_CONNECTIONS", validate_db_pool_max_connections),
+    ("DB_POOL_MIN_CONNECTIONS", validate_db_pool_min_connections),
+    (
+        "DB_POOL_CONNECT_TIMEOUT_SECONDS",
+        validate_db_pool_connect_timeout,
+    ),
+    (
+        "DB_POOL_IDLE_TIMEOUT_SECONDS",
+        validate_db_pool_idle_timeout,
+    ),
+    (
+        "DB_POOL_MAX_LIFETIME_SECONDS",
+        validate_db_pool_max_lifetime,
+    ),
+    ("DB_BUSY_TIMEOUT_MS", validate_db_busy_timeout),
+    (
+        "DB_WRITE_POOL_MAX_CONNECTIONS",
+        validate_db_write_pool_max_connections,
+    ),
+    (
+        "RPC_MAX_RECORDS_PER_REQUEST",
+        validate_rpc_max_records_per_request,
+    ),
+    ("RPC_MAX_TOTAL_RECORDS", validate_rpc_max_total_records),
+    ("RPC_PAGINATION_DELAY_MS", validate_rpc_pagination_delay_ms),
+    (
+        "RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
+        validate_circuit_breaker_failure_threshold,
+    ),
+    (
+        "RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD",
+        validate_circuit_breaker_success_threshold,
+    ),
+    (
+        "RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS",
+        validate_circuit_breaker_timeout_seconds,
+    ),
+    ("RPC_MAX_RETRIES", validate_rpc_max_retries),
+    ("RPC_INITIAL_BACKOFF_MS", validate_rpc_initial_backoff_ms),
+    ("RPC_MAX_BACKOFF_MS", validate_rpc_max_backoff_ms),
     ("REQUEST_TIMEOUT_SECONDS", validate_request_timeout),
     ("SLOW_QUERY_THRESHOLD_MS", validate_slow_query_threshold),
+    ("CACHE_CORRIDOR_METRICS_TTL", validate_cache_ttl),
+    ("CACHE_ANCHOR_DATA_TTL", validate_cache_ttl),
+    ("CACHE_DASHBOARD_STATS_TTL", validate_cache_ttl),
+    ("MAX_IN_FLIGHT_REQUESTS", validate_max_in_flight_requests),
+    ("COMPRESSION_MIN_SIZE", validate_compression_min_size),
+    (
+        "WEBHOOK_DISPATCHER_MAX_RESTARTS",
+        validate_webhook_dispatcher_max_restarts,
+    ),
     ("JWT_SECRET", validate_jwt_secret),
+    ("ENCRYPTION_KEY", validate_encryption_key),
 ];
+
+/// Outcome of trying to load a `.env` file at startup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DotenvStatus {
+    /// A `.env` file was found and every entry was loaded.
+    Loaded(PathBuf),
+    /// No `.env` file exists; configuration comes from the process environment only.
+    NotFound,
+}
+
+impl DotenvStatus {
+    /// Human-readable description, suitable for log lines and error context.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Loaded(path) => format!("loaded environment from {}", path.display()),
+            Self::NotFound => {
+                ".env file not found, using process environment variables only".to_string()
+            }
+        }
+    }
+}
+
+/// Turns the raw `dotenvy` result into a [`DotenvStatus`].
+///
+/// A missing file is a normal deployment mode (containers, CI, secrets injected
+/// by the orchestrator). Anything else - a malformed line, an unreadable file -
+/// means the operator intended to supply configuration and it was not applied,
+/// so it is returned as an error instead of being swallowed.
+fn interpret_dotenv_result(result: Result<PathBuf, dotenvy::Error>) -> Result<DotenvStatus> {
+    match result {
+        Ok(path) => Ok(DotenvStatus::Loaded(path)),
+        Err(dotenvy::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(DotenvStatus::NotFound)
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            ".env file is present but could not be loaded: {e}. \
+             Fix the file or remove it; refusing to start with partial configuration"
+        )),
+    }
+}
+
+/// Loads `.env` from the current directory (or a parent). See [`interpret_dotenv_result`].
+///
+/// This runs before the tracing subscriber exists, so it only reports through
+/// its return value; pass the result to [`log_dotenv_status`] once logging is up.
+pub fn load_dotenv() -> Result<DotenvStatus> {
+    interpret_dotenv_result(dotenvy::dotenv())
+}
+
+/// Loads a specific env file. See [`interpret_dotenv_result`].
+pub fn load_dotenv_from(path: &Path) -> Result<DotenvStatus> {
+    interpret_dotenv_result(dotenvy::from_path(path).map(|()| path.to_path_buf()))
+}
+
+/// Logs the outcome of [`load_dotenv`]. A missing file is a warning, not an error.
+pub fn log_dotenv_status(status: &DotenvStatus) {
+    match status {
+        DotenvStatus::Loaded(_) => tracing::info!("{}", status.describe()),
+        DotenvStatus::NotFound => tracing::warn!("{}", status.describe()),
+    }
+}
 
 /// Validates all required environment variables are set
 pub fn validate_env() -> Result<()> {
+    // STELLAR_NETWORK is a fatal startup guard: a missing or unknown value would
+    // silently route a testnet deployment against mainnet data.
+    match env::var("STELLAR_NETWORK") {
+        Ok(ref n) if n == "mainnet" || n == "testnet" => {}
+        Ok(ref n) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet', got '{n}'"),
+        Err(_) => panic!("STELLAR_NETWORK must be set to 'mainnet' or 'testnet'"),
+    }
+
     let mut errors = Vec::new();
 
     // Check required variables
@@ -47,20 +163,29 @@ pub fn validate_env() -> Result<()> {
 
     // Specific, actionable validation for JWT_SECRET
     if let Ok(jwt_secret) = env::var("JWT_SECRET") {
-        if jwt_secret == "CHANGE_ME_generate_with_openssl_rand_base64_48" {
+        if let Err(e) = validate_jwt_secret_strength(&jwt_secret) {
+            errors.push(e);
+        }
+    }
+
+    // Specific, actionable validation for ENCRYPTION_KEY
+    if let Ok(encryption_key) = env::var("ENCRYPTION_KEY") {
+        if let Err(e) = validate_encryption_key_strength(&encryption_key) {
+            errors.push(e);
+        }
+    }
+
+    // SNAPSHOT_CONTRACT_ID must not be the placeholder value when set.
+    // This is the primary contract ID consumed by ContractService for
+    // snapshot submission; a placeholder silently disables on-chain anchoring.
+    if let Ok(contract_id) = env::var("SNAPSHOT_CONTRACT_ID") {
+        if contract_id == "CHANGE_ME_source_contracts_env_testnet" {
             errors.push(
-                "JWT_SECRET is set to the placeholder value. \
-                This is a critical security risk. \
-                Generate a secure secret with: openssl rand -base64 48"
+                "SNAPSHOT_CONTRACT_ID is set to the placeholder value. \
+                Source contracts/.env.testnet to get the real deployed contract ID: \
+                source contracts/.env.testnet && export SNAPSHOT_CONTRACT_ID=$PAYRAIDER_CONTRACT_ID"
                     .to_string(),
             );
-        } else if jwt_secret.len() < 32 {
-            errors.push(format!(
-                "JWT_SECRET is too short ({} characters). \
-                Must be at least 32 characters. \
-                Generate a secure secret with: openssl rand -base64 48",
-                jwt_secret.len()
-            ));
         }
     }
 
@@ -111,6 +236,13 @@ pub fn log_env_config() {
     // Network
     log_var("STELLAR_NETWORK");
     log_var("RPC_MOCK_MODE");
+
+    // Soroban contract IDs
+    log_var("SOROBAN_RPC_URL");
+    log_var("SNAPSHOT_CONTRACT_ID");
+    if env::var("STELLAR_SOURCE_SECRET_KEY").is_ok() {
+        tracing::info!("  STELLAR_SOURCE_SECRET_KEY: [REDACTED]");
+    }
 
     // Pool config
     log_var("DB_POOL_MAX_CONNECTIONS");
@@ -198,23 +330,114 @@ fn validate_positive_number(value: &str) -> bool {
     value.parse::<u32>().map(|n| n > 0).unwrap_or(false)
 }
 
-/// Validate JWT secret
-/// Must not be the placeholder value and should be at least 32 characters
-fn validate_jwt_secret(value: &str) -> bool {
-    // Check if it's the placeholder value
-    if value == "CHANGE_ME_generate_with_openssl_rand_base64_48" {
-        return false;
-    }
-
-    // Ensure minimum length of 32 characters for security
-    value.len() >= 32
+/// Validate positive number with maximum bound
+fn validate_positive_number_with_max(value: &str, max: u32) -> bool {
+    value
+        .parse::<u32>()
+        .map(|n| n > 0 && n <= max)
+        .unwrap_or(false)
 }
 
-/// Validate REQUEST_TIMEOUT_SECONDS: must be in range [1, 300]
+/// Validate DB pool max connections: [1, 1000]
+fn validate_db_pool_max_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 1000)
+}
+
+/// Validate DB pool min connections: [1, 100]
+fn validate_db_pool_min_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate DB pool connect timeout: [1, 60] seconds
+fn validate_db_pool_connect_timeout(value: &str) -> bool {
+    validate_positive_number_with_max(value, 60)
+}
+
+/// Validate DB pool idle timeout: [60, 3600] seconds
+fn validate_db_pool_idle_timeout(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 60 && n <= 3600)
+        .unwrap_or(false)
+}
+
+/// Validate DB pool max lifetime: [300, 7200] seconds
+fn validate_db_pool_max_lifetime(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 300 && n <= 7200)
+        .unwrap_or(false)
+}
+
+/// Validate DB busy timeout: [100, 30000] ms
+fn validate_db_busy_timeout(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 100 && n <= 30_000)
+        .unwrap_or(false)
+}
+
+/// Validate DB write pool max connections: [1, 10]
+fn validate_db_write_pool_max_connections(value: &str) -> bool {
+    validate_positive_number_with_max(value, 10)
+}
+
+/// Validate RPC max records per request: [1, 1000]
+fn validate_rpc_max_records_per_request(value: &str) -> bool {
+    validate_positive_number_with_max(value, 1000)
+}
+
+/// Validate RPC max total records: [1, 100000]
+fn validate_rpc_max_total_records(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100_000)
+}
+
+/// Validate RPC pagination delay: [0, 1000] ms
+fn validate_rpc_pagination_delay_ms(value: &str) -> bool {
+    value.parse::<u64>().map(|n| n <= 1000).unwrap_or(false)
+}
+
+/// Validate circuit breaker failure threshold: [1, 100]
+fn validate_circuit_breaker_failure_threshold(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate circuit breaker success threshold: [1, 100]
+fn validate_circuit_breaker_success_threshold(value: &str) -> bool {
+    validate_positive_number_with_max(value, 100)
+}
+
+/// Validate circuit breaker timeout: [1, 3600] seconds
+fn validate_circuit_breaker_timeout_seconds(value: &str) -> bool {
+    validate_positive_number_with_max(value, 3600)
+}
+
+/// Validate RPC max retries: [0, 20]
+fn validate_rpc_max_retries(value: &str) -> bool {
+    value.parse::<u32>().map(|n| n <= 20).unwrap_or(false)
+}
+
+/// Validate RPC initial backoff: [10, 10000] ms
+fn validate_rpc_initial_backoff_ms(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 10 && n <= 10_000)
+        .unwrap_or(false)
+}
+
+/// Validate RPC max backoff: [100, 60000] ms
+fn validate_rpc_max_backoff_ms(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 100 && n <= 60_000)
+        .unwrap_or(false)
+}
+
+/// Validate REQUEST_TIMEOUT_SECONDS: must be in range [5, 300]
 fn validate_request_timeout(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| (1..=300).contains(&n))
+        .map(|n| (5..=300).contains(&n))
         .unwrap_or(false)
 }
 
@@ -224,6 +447,117 @@ fn validate_slow_query_threshold(value: &str) -> bool {
         .parse::<u64>()
         .map(|n| (1..=60_000).contains(&n))
         .unwrap_or(false)
+}
+
+/// Validate cache TTL: must be in range [10, 86400] seconds
+fn validate_cache_ttl(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|n| n >= 10 && n <= 86_400)
+        .unwrap_or(false)
+}
+
+/// Validate MAX_IN_FLIGHT_REQUESTS: must be in range [1, 10000]
+fn validate_max_in_flight_requests(value: &str) -> bool {
+    validate_positive_number_with_max(value, 10_000)
+}
+
+/// Validate COMPRESSION_MIN_SIZE: must be in range [100, 65535]
+fn validate_compression_min_size(value: &str) -> bool {
+    value
+        .parse::<u16>()
+        .map(|n| n >= 100 && n <= 65_535)
+        .unwrap_or(false)
+}
+
+/// Validate WEBHOOK_DISPATCHER_MAX_RESTARTS: must be in range [0, 100]
+fn validate_webhook_dispatcher_max_restarts(value: &str) -> bool {
+    value.parse::<u32>().map(|n| n <= 100).unwrap_or(false)
+}
+
+/// Validate JWT secret strength and return a descriptive error if it fails.
+///
+/// Rejects:
+/// - Any value that starts with `"CHANGE_ME"` (placeholder pattern)
+/// - Any value shorter than 32 characters
+///
+/// Called during startup validation before the server binds.
+pub fn validate_jwt_secret_strength(secret: &str) -> std::result::Result<(), String> {
+    if secret.starts_with("CHANGE_ME") {
+        return Err("JWT_SECRET is set to the placeholder value. \
+            This is a critical security risk. \
+            Generate a secure secret with: openssl rand -base64 48"
+            .to_string());
+    }
+    if secret.len() < 32 {
+        return Err(format!(
+            "JWT_SECRET is too short ({} characters). \
+            Must be at least 32 characters. \
+            Generate a secure secret with: openssl rand -base64 48",
+            secret.len()
+        ));
+    }
+    Ok(())
+}
+
+/// Validate JWT secret
+/// Must not be the placeholder value and should be at least 32 characters
+fn validate_jwt_secret(value: &str) -> bool {
+    validate_jwt_secret_strength(value).is_ok()
+}
+
+/// Validate encryption key strength and return a descriptive error if it fails.
+///
+/// Rejects:
+/// - Any value starting with `"CHANGE_ME"` (placeholder pattern)
+/// - Any value that is not exactly 64 characters (must encode exactly 32 bytes as hex)
+/// - Any value that contains non-hex characters
+/// - Any value composed of a single repeated character (e.g. 64 zeros or 64 `a`s)
+///
+/// Called during startup validation before the server binds.
+pub fn validate_encryption_key_strength(key: &str) -> std::result::Result<(), String> {
+    const CMD: &str = "openssl rand -hex 32";
+
+    if key.starts_with("CHANGE_ME") {
+        return Err(format!(
+            "ENCRYPTION_KEY is set to the placeholder value. \
+            This is a critical security risk. \
+            Generate a secure encryption key with: {CMD}"
+        ));
+    }
+
+    if key.len() != 64 {
+        return Err(format!(
+            "ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes), \
+            got {} characters. \
+            Generate a secure encryption key with: {CMD}",
+            key.len()
+        ));
+    }
+
+    if !key.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "ENCRYPTION_KEY must contain only hexadecimal characters (0-9, a-f, A-F). \
+            Generate a secure encryption key with: {CMD}"
+        ));
+    }
+
+    // Reject trivially weak keys: all characters identical (e.g. 64 zeros).
+    let first = key.chars().next().expect("length already checked to be 64");
+    if key.chars().all(|c| c == first) {
+        return Err(format!(
+            "ENCRYPTION_KEY is trivially weak (all characters are identical). \
+            Generate a secure encryption key with: {CMD}"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validate encryption key
+/// Must not be the placeholder value and should be 64 characters (32 bytes as hex)
+fn validate_encryption_key(value: &str) -> bool {
+    validate_encryption_key_strength(value).is_ok()
 }
 
 /// Validate Stellar public key format
@@ -250,7 +584,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_sqlite_url() {
-        let url = "sqlite:./stellar_insights.db";
+        let url = "sqlite:./payraider.db";
         assert_eq!(sanitize_database_url(url), url);
     }
 
@@ -300,6 +634,26 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_encryption_key() {
+        // Valid key: exactly 64 hex characters
+        assert!(validate_encryption_key(
+            "0123456789abcdef".repeat(4).as_str()
+        ));
+
+        // Invalid - placeholder
+        assert!(!validate_encryption_key(
+            "CHANGE_ME_generate_with_openssl_rand_hex_32"
+        ));
+
+        // Invalid - too short
+        assert!(!validate_encryption_key("short"));
+        assert!(!validate_encryption_key("a".repeat(63).as_str()));
+
+        // Invalid - trivially weak (a single repeated character)
+        assert!(!validate_encryption_key("a".repeat(64).as_str()));
+    }
+
+    #[test]
     fn test_validate_positive_number() {
         assert!(validate_positive_number("1"));
         assert!(validate_positive_number("100"));
@@ -310,6 +664,8 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_jwt_placeholder() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var(
@@ -329,6 +685,7 @@ mod tests {
             "Error should include generation command, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -336,6 +693,8 @@ mod tests {
 
     #[test]
     fn test_validate_env_rejects_short_jwt_secret() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
         std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
         std::env::set_var("JWT_SECRET", "tooshort");
@@ -352,6 +711,7 @@ mod tests {
             "Error should mention minimum length, got: {msg}"
         );
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
@@ -359,15 +719,244 @@ mod tests {
 
     #[test]
     fn test_validate_env_accepts_valid_jwt_secret() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "mainnet");
         std::env::set_var("DATABASE_URL", "sqlite://test.db");
-        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f",
+        );
         std::env::set_var("JWT_SECRET", "a".repeat(48));
 
         let result = validate_env();
         assert!(result.is_ok(), "Should accept a valid JWT secret");
 
+        std::env::remove_var("STELLAR_NETWORK");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("ENCRYPTION_KEY");
         std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_when_stellar_network_missing() {
+        let _guard = crate::lock_env_test();
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
+    }
+
+    #[test]
+    #[should_panic(expected = "STELLAR_NETWORK must be set to 'mainnet' or 'testnet'")]
+    fn test_validate_env_panics_on_unknown_network() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "devnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "a".repeat(32));
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+        let _ = validate_env();
+    }
+
+    #[test]
+    fn test_validate_env_rejects_encryption_key_placeholder() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "CHANGE_ME_generate_with_openssl_rand_hex_32",
+        );
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("placeholder"),
+            "Error should mention 'placeholder', got: {msg}"
+        );
+        assert!(
+            msg.contains("openssl rand -hex 32"),
+            "Error should include generation command, got: {msg}"
+        );
+
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_validate_env_rejects_short_encryption_key() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "testnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var("ENCRYPTION_KEY", "tooshort");
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("exactly 64 hex characters"),
+            "Error should mention the required length, got: {msg}"
+        );
+
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_validate_env_accepts_valid_encryption_key() {
+        let _guard = crate::lock_env_test();
+        std::env::set_var("STELLAR_NETWORK", "mainnet");
+        std::env::set_var("DATABASE_URL", "sqlite://test.db");
+        std::env::set_var(
+            "ENCRYPTION_KEY",
+            "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f",
+        );
+        std::env::set_var("JWT_SECRET", "a".repeat(48));
+
+        let result = validate_env();
+        assert!(result.is_ok(), "Should accept a valid ENCRYPTION_KEY");
+
+        std::env::remove_var("STELLAR_NETWORK");
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("ENCRYPTION_KEY");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    // ── validate_jwt_secret_strength unit tests (issue #2319) ────────────────
+
+    #[test]
+    fn test_jwt_secret_strength_rejects_placeholder() {
+        let err = validate_jwt_secret_strength("CHANGE_ME_generate_with_openssl_rand_base64_48")
+            .unwrap_err();
+        assert!(
+            err.contains("placeholder"),
+            "Error should mention 'placeholder', got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -base64 48"),
+            "Error should include generation command, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_jwt_secret_strength_rejects_any_change_me_prefix() {
+        // Any value starting with "CHANGE_ME" must be rejected, not just the
+        // exact placeholder string.
+        let err = validate_jwt_secret_strength("CHANGE_ME_something_else_entirely").unwrap_err();
+        assert!(
+            err.contains("placeholder"),
+            "Error should mention 'placeholder', got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -base64 48"),
+            "Error should include generation command, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_jwt_secret_strength_rejects_short_secret() {
+        let err = validate_jwt_secret_strength("tooshort").unwrap_err();
+        assert!(
+            err.contains("too short"),
+            "Error should mention 'too short', got: {err}"
+        );
+        assert!(
+            err.contains("32 characters"),
+            "Error should mention minimum length, got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -base64 48"),
+            "Error should include generation command, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_jwt_secret_strength_accepts_valid_48_char_secret() {
+        // A realistic openssl rand -base64 48 output is 64 base64 chars; use a
+        // simple 48-char ASCII string to verify the minimum length passes.
+        let secret = "a".repeat(48);
+        assert!(
+            validate_jwt_secret_strength(&secret).is_ok(),
+            "Should accept a 48-character secret"
+        );
+    }
+
+    // ── validate_encryption_key_strength unit tests (issue #2321) ────────────
+
+    #[test]
+    fn test_encryption_key_strength_rejects_all_zeros() {
+        let err = validate_encryption_key_strength(&"0".repeat(64)).unwrap_err();
+        assert!(
+            err.contains("trivially weak"),
+            "Error should mention 'trivially weak', got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -hex 32"),
+            "Error should include generation command, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_encryption_key_strength_rejects_wrong_length() {
+        // Too short
+        let err = validate_encryption_key_strength("deadbeef").unwrap_err();
+        assert!(
+            err.contains("exactly 64 hex characters"),
+            "Error should mention correct length, got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -hex 32"),
+            "Error should include generation command, got: {err}"
+        );
+
+        // Too long (65 chars)
+        let long = format!("{}0", "a".repeat(64));
+        let err = validate_encryption_key_strength(&long).unwrap_err();
+        assert!(
+            err.contains("exactly 64 hex characters"),
+            "Error should mention correct length, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_encryption_key_strength_rejects_non_hex() {
+        // 64 chars but contains non-hex characters ('z', 'x', ' ')
+        let non_hex = format!("{:z<64}", "");
+        let err = validate_encryption_key_strength(&non_hex).unwrap_err();
+        assert!(
+            err.contains("hexadecimal characters"),
+            "Error should mention hex requirement, got: {err}"
+        );
+        assert!(
+            err.contains("openssl rand -hex 32"),
+            "Error should include generation command, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_encryption_key_strength_accepts_valid_hex_key() {
+        // A realistic `openssl rand -hex 32` output (64 lowercase hex chars)
+        let key = "a3f1c2e4b5d607890a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f";
+        assert_eq!(key.len(), 64);
+        assert!(
+            validate_encryption_key_strength(key).is_ok(),
+            "Should accept a valid 64-char lowercase hex key"
+        );
+
+        // Also accept uppercase hex
+        let key_upper = "A3F1C2E4B5D607890A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F";
+        assert_eq!(key_upper.len(), 64);
+        assert!(
+            validate_encryption_key_strength(key_upper).is_ok(),
+            "Should accept a valid 64-char uppercase hex key"
+        );
     }
 }

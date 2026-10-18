@@ -31,7 +31,7 @@ describe('useCorridorsList', () => {
     const mockData = generateMockCorridorsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData.corridors);
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -46,7 +46,7 @@ describe('useCorridorsList', () => {
     const mockData = generateMockCorridorsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData);
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -64,7 +64,7 @@ describe('useCorridorsList', () => {
       pagination: { total: mockData.total },
     });
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -80,7 +80,7 @@ describe('useCorridorsList', () => {
     await AsyncStorage.setItem(CORRIDORS_LIST_CACHE_KEY, JSON.stringify(mockData));
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -96,7 +96,7 @@ describe('useCorridorsList', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -111,7 +111,7 @@ describe('useCorridorsList', () => {
   it('uses mock data with warning when online API fails and no cache exists', async () => {
     (apiClient.get as jest.Mock).mockRejectedValue(new Error('404'));
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -125,7 +125,7 @@ describe('useCorridorsList', () => {
     const mockData = generateMockCorridorsList();
     (apiClient.get as jest.Mock).mockResolvedValue(mockData.corridors);
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -146,7 +146,7 @@ describe('useCorridorsList', () => {
       isInternetReachable: false,
     });
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -166,7 +166,7 @@ describe('useCorridorsList', () => {
       new Error('Storage read failed'),
     );
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -178,7 +178,7 @@ describe('useCorridorsList', () => {
   it('handles NetInfo fetch failures as offline', async () => {
     (NetInfo.fetch as jest.Mock).mockRejectedValue(new Error('NetInfo unavailable'));
 
-    const { result } = renderHook(() => useCorridorsList());
+    const { result } = await renderHook(() => useCorridorsList());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

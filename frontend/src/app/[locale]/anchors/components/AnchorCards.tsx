@@ -3,8 +3,12 @@ import { Line, LineChart, ResponsiveContainer } from "recharts";
 import { Home as AnchorIcon, BarChart3, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { AnchorMetrics } from "@/lib/api/types";
+
 const AnchorCards = ({
   paginatedAnchors
+}: {
+  paginatedAnchors: AnchorMetrics[];
 }) => {
   const router = useRouter()
   return (
@@ -139,7 +143,7 @@ const AnchorCards = ({
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
-          </div>
+          </article>
         );
       })}
     </div>

@@ -57,6 +57,62 @@ pub fn compute_liquidity_depth(order_book: &OrderBookSnapshot, max_slippage_perc
     buy_liquidity + sell_liquidity
 }
 
+/// USD-denominated reserves of one side of a liquidity pool, used to
+/// estimate how much of a payment an AMM pool can absorb before price
+/// impact exceeds a given slippage bound (#2667).
+///
+/// Reserves are expected in the same "simplified: assume both sides
+/// equivalent" USD-ish units `LiquidityPoolAnalyzer::sync_pools` already
+/// stores them in — this mirrors that existing approximation rather than
+/// introducing a new one.
+#[derive(Debug, Clone, Copy)]
+pub struct AmmPoolReserves {
+    pub reserve_a_usd: f64,
+    pub reserve_b_usd: f64,
+}
+
+/// Estimate the USD liquidity a constant-product AMM pool (x*y=k) can
+/// absorb on each side while keeping price impact within
+/// `max_slippage_percent`.
+///
+/// For a constant-product pool, trading `dx` into reserve `x` moves the
+/// price by approximately `dx / (x + dx)` (the standard Uniswap-v2-style
+/// slippage approximation). Solving for `dx` at a target slippage `s`
+/// (fractional) gives `dx = s * x / (1 - s)`. The same is computed for the
+/// other side and summed, mirroring how `compute_liquidity_depth` combines
+/// buy-side and sell-side order book depth.
+#[must_use]
+pub fn compute_amm_pool_depth(pool: &AmmPoolReserves, max_slippage_percent: f64) -> f64 {
+    let s = (max_slippage_percent / 100.0).clamp(0.0, 0.99);
+    if s <= 0.0 || pool.reserve_a_usd <= 0.0 || pool.reserve_b_usd <= 0.0 {
+        return 0.0;
+    }
+
+    let side_a = s * pool.reserve_a_usd / (1.0 - s);
+    let side_b = s * pool.reserve_b_usd / (1.0 - s);
+    side_a + side_b
+}
+
+/// Combine order book depth and AMM pool depth into one liquidity-depth
+/// figure for a corridor (#2667 — AMM pools provide real, on-chain
+/// liquidity that was previously ignored entirely by the preflight
+/// liquidity check; see `compute_live_corridors` in `api/corridors.rs`,
+/// which is where this is actually used for the live preflight path).
+#[must_use]
+pub fn compute_combined_liquidity_depth(
+    order_book: Option<&OrderBookSnapshot>,
+    amm_pools: &[AmmPoolReserves],
+    max_slippage_percent: f64,
+) -> f64 {
+    let order_book_depth =
+        order_book.map_or(0.0, |ob| compute_liquidity_depth(ob, max_slippage_percent));
+    let amm_depth: f64 = amm_pools
+        .iter()
+        .map(|p| compute_amm_pool_depth(p, max_slippage_percent))
+        .sum();
+    order_book_depth + amm_depth
+}
+
 /// Computes corridor metrics from transactions, calculating average and median settlement latency with optional liquidity depth.
 #[must_use]
 pub fn compute_corridor_metrics(
@@ -238,6 +294,50 @@ pub fn compute_metrics_by_window(
     compute_metrics_from_payments(&filtered)
 }
 
+/// Excludes payments that touch a merged Stellar account from corridor stats.
+///
+/// Why this matters (#2664): once an account is merged away via
+/// `account_merge`, it no longer represents an independent counterparty —
+/// its source identity has vanished and its destination side received a
+/// one-off balance dump that has nothing to do with normal corridor flow.
+/// Counting those payments in `success_rate`/`volume_usd` distorts the
+/// corridor's real health (e.g. a burst of merges into one destination
+/// account can make a corridor look far busier or more reliable than it
+/// actually is).
+///
+/// `merged_accounts` should contain every account that appears as either
+/// `source_account` or `destination_account` on an `account_merges` row
+/// (see `AccountMergeDetector::get_merged_account_set`). A payment is
+/// dropped if *either* side is in that set.
+///
+/// Returns the retained payments plus how many were excluded, so callers
+/// can log/alert on unexpectedly high exclusion counts.
+#[must_use]
+pub fn filter_merged_accounts(
+    payments: &[PaymentRecord],
+    merged_accounts: &std::collections::HashSet<String>,
+) -> (Vec<PaymentRecord>, usize) {
+    if merged_accounts.is_empty() {
+        return (payments.to_vec(), 0);
+    }
+
+    let mut excluded = 0usize;
+    let retained: Vec<PaymentRecord> = payments
+        .iter()
+        .filter(|p| {
+            let touches_merged = merged_accounts.contains(&p.source_account)
+                || merged_accounts.contains(&p.destination_account);
+            if touches_merged {
+                excluded += 1;
+            }
+            !touches_merged
+        })
+        .cloned()
+        .collect();
+
+    (retained, excluded)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +363,8 @@ mod tests {
             timestamp,
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
         }
     }
 
@@ -286,6 +388,8 @@ mod tests {
             timestamp,
             submission_time: Some(submission),
             confirmation_time: Some(timestamp),
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
         }
     }
 
@@ -470,5 +574,129 @@ mod tests {
         // Only 1000 and 3000 should be considered
         assert_eq!(m.avg_settlement_latency_ms, Some(2000)); // (1000 + 3000) / 2
         assert_eq!(m.median_settlement_latency_ms, Some(2000)); // Median of [1000, 3000]
+    }
+
+    fn payment_with_accounts(source: &str, destination: &str, amount: f64) -> PaymentRecord {
+        let mut p = create_test_payment_record("USDC", "EURC", amount, true, Utc::now());
+        p.source_account = source.to_string();
+        p.destination_account = destination.to_string();
+        p
+    }
+
+    /// Fixture mirroring issue #2664: a corridor has three normal payments
+    /// plus one that landed in an account right before it merged away. The
+    /// merged destination should be excluded so it can't inflate
+    /// `volume_usd`/`success_rate` for the corridor.
+    #[test]
+    fn test_filter_merged_accounts_excludes_merge_fixture() {
+        let normal_a = payment_with_accounts("GALICE", "GBOB", 100.0);
+        let normal_b = payment_with_accounts("GALICE", "GBOB", 200.0);
+        let merged_destination = payment_with_accounts("GALICE", "GMERGEDAWAY", 5_000.0);
+        let merged_source = payment_with_accounts("GMERGEDAWAY", "GCAROL", 10.0);
+
+        let payments = vec![
+            normal_a.clone(),
+            normal_b.clone(),
+            merged_destination,
+            merged_source,
+        ];
+
+        let mut merged_accounts = std::collections::HashSet::new();
+        merged_accounts.insert("GMERGEDAWAY".to_string());
+
+        let (retained, excluded) = filter_merged_accounts(&payments, &merged_accounts);
+
+        assert_eq!(excluded, 2);
+        assert_eq!(retained.len(), 2);
+        assert!(retained.iter().all(|p| p.source_account != "GMERGEDAWAY"
+            && p.destination_account != "GMERGEDAWAY"));
+
+        // Confirms the distortion the issue describes: without filtering, the
+        // 5,000 XLM merge dump would dominate corridor volume.
+        let metrics_unfiltered = compute_metrics_from_payments(&payments);
+        let metrics_filtered = compute_metrics_from_payments(&retained);
+        assert!(metrics_unfiltered[0].volume_usd > metrics_filtered[0].volume_usd);
+        assert!((metrics_filtered[0].volume_usd - 300.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_filter_merged_accounts_noop_when_set_empty() {
+        let payments = vec![payment_with_accounts("GALICE", "GBOB", 100.0)];
+        let (retained, excluded) = filter_merged_accounts(&payments, &std::collections::HashSet::new());
+        assert_eq!(excluded, 0);
+        assert_eq!(retained.len(), 1);
+    }
+
+    // ── #2667: AMM pool depth combined with order book depth ───────────────
+
+    #[test]
+    fn test_compute_amm_pool_depth_zero_without_liquidity() {
+        let empty_pool = AmmPoolReserves {
+            reserve_a_usd: 0.0,
+            reserve_b_usd: 0.0,
+        };
+        assert_eq!(compute_amm_pool_depth(&empty_pool, 1.0), 0.0);
+    }
+
+    #[test]
+    fn test_compute_amm_pool_depth_scales_with_slippage_tolerance() {
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 100_000.0,
+            reserve_b_usd: 100_000.0,
+        };
+
+        let tight = compute_amm_pool_depth(&pool, 0.1);
+        let loose = compute_amm_pool_depth(&pool, 2.0);
+
+        // A larger slippage tolerance means the trade can move the price
+        // further, so more of the pool's reserves are usable.
+        assert!(loose > tight);
+
+        // At 1% slippage: dx = 0.01 * 100_000 / 0.99 per side, summed over
+        // both sides.
+        let one_pct = compute_amm_pool_depth(&pool, 1.0);
+        let expected_side = 0.01 * 100_000.0 / 0.99;
+        assert!((one_pct - 2.0 * expected_side).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_combined_liquidity_depth_adds_amm_to_order_book() {
+        let order_book = OrderBookSnapshot {
+            bids: vec![OrderBookEntry {
+                price: 99.0,
+                amount_usd: 1_000.0,
+            }],
+            asks: vec![OrderBookEntry {
+                price: 101.0,
+                amount_usd: 1_000.0,
+            }],
+        };
+        let order_book_only = compute_combined_liquidity_depth(Some(&order_book), &[], 5.0);
+        assert!(order_book_only > 0.0);
+
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 50_000.0,
+            reserve_b_usd: 50_000.0,
+        };
+        let combined = compute_combined_liquidity_depth(Some(&order_book), &[pool], 5.0);
+
+        // A pool with real depth must make the combined figure strictly
+        // larger than the order book alone — this is the scenario the issue
+        // asks to be tested ("Test where AMM provides depth").
+        assert!(combined > order_book_only);
+        assert!((combined - (order_book_only + compute_amm_pool_depth(&pool, 5.0))).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_combined_liquidity_depth_amm_only() {
+        // No order book at all (e.g. an asset with no DEX offers) but a
+        // funded AMM pool should still produce a positive liquidity figure
+        // instead of silently reporting zero liquidity.
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 20_000.0,
+            reserve_b_usd: 20_000.0,
+        };
+        let depth = compute_combined_liquidity_depth(None, &[pool], 1.0);
+        assert!(depth > 0.0);
     }
 }

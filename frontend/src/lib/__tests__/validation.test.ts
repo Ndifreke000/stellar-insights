@@ -15,7 +15,7 @@ describe("Validation Schemas", () => {
         transferServer: "https://api.anchor.example/sep24",
         assetCode: "USDC",
         amount: "100.50",
-        account: "GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHI",
+        account: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
         jwt: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test",
       };
 

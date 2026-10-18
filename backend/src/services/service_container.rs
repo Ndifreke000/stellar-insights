@@ -10,11 +10,15 @@ use crate::{
     rpc::StellarRpcClient,
     services::{
         account_merge_detector::AccountMergeDetector,
+        data_port::DataPort,
         fee_bump_tracker::FeeBumpTrackerService,
         liquidity_pool_analyzer::LiquidityPoolAnalyzer,
         price_feed::{default_asset_mapping, PriceFeedClient, PriceFeedConfig},
+        realtime_broadcaster::RealtimeBroadcaster,
         webhook_dispatcher::WebhookDispatcher,
+        webhook_event_service::WebhookEventService,
     },
+    websocket::WsState,
 };
 
 /// Holds all constructed service instances.
@@ -24,11 +28,27 @@ pub struct ServiceContainer {
     pub lp_analyzer: Arc<LiquidityPoolAnalyzer>,
     pub price_feed: Arc<PriceFeedClient>,
     pub webhook_dispatcher: Arc<WebhookDispatcher>,
+    pub webhook_event_service: Arc<WebhookEventService>,
+    pub realtime_broadcaster: RealtimeBroadcaster,
 }
 
 impl ServiceContainer {
     /// Build all services from shared infrastructure dependencies.
-    pub fn build(pool: SqlitePool, rpc_client: Arc<StellarRpcClient>) -> Self {
+    pub fn build(
+        pool: SqlitePool,
+        rpc_client: Arc<StellarRpcClient>,
+        ws_state: Arc<WsState>,
+        db: Arc<crate::database::Database>,
+    ) -> Self {
+        let webhook_event_service = Arc::new(WebhookEventService::new(pool.clone()));
+
+        // RealtimeBroadcaster needs: ws_state, data_port (Database), webhook_events
+        let realtime_broadcaster = RealtimeBroadcaster::new(
+            ws_state,
+            Arc::clone(&db) as Arc<dyn DataPort>,
+            webhook_event_service.clone(),
+        );
+
         Self {
             fee_bump_tracker: Arc::new(FeeBumpTrackerService::new(pool.clone())),
             account_merge_detector: Arc::new(AccountMergeDetector::new(
@@ -41,6 +61,8 @@ impl ServiceContainer {
                 default_asset_mapping(),
             )),
             webhook_dispatcher: Arc::new(WebhookDispatcher::new(pool)),
+            webhook_event_service,
+            realtime_broadcaster,
         }
     }
 }

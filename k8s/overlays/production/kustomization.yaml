@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: stellar-insights
+namespace: payraider
 
 bases:
 - ../../
@@ -10,9 +10,9 @@ commonLabels:
   environment: production
 
 images:
-- name: stellar-insights/backend
+- name: payraider/backend
   newTag: v1.0.0  # Use semantic versioning in production
-- name: stellar-insights/frontend
+- name: payraider/frontend
   newTag: v1.0.0
 
 # Production uses base configuration (3 backend replicas, 2 frontend replicas)

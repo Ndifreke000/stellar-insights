@@ -1,6 +1,6 @@
 import { isStellarAccountAddress } from "../address";
-import { logger } from "../logger";
-import { api, API_BASE_URL } from "./api";
+import { api } from "./api";
+import { appendPageParams, type PageRequest, type PaginatedResponse } from "./pagination";
 import { AnchorDetailData, AnchorMetrics, IssuedAsset, ReliabilityDataPoint } from "./types";
 
 
@@ -90,52 +90,19 @@ export function generateMockAnchorDetail(address: string): AnchorDetailData {
   };
 }
 
-export interface AnchorsResponse {
-  anchors: AnchorMetrics[];
-  total: number;
-}
+/** Paginated anchor list, as returned by `GET /api/anchors`. */
+export type AnchorsResponse = PaginatedResponse<AnchorMetrics>;
 
-export interface ListAnchorsParams {
-  limit?: number;
-  offset?: number;
-}
+export type ListAnchorsParams = PageRequest;
 
 /**
- * Fetch anchors from the backend API
+ * Fetch one page of anchors from the backend API.
  */
 export async function fetchAnchors(
   params?: ListAnchorsParams,
 ): Promise<AnchorsResponse> {
-  const searchParams = new URLSearchParams();
-
-  if (params?.limit) {
-    searchParams.append("limit", params.limit.toString());
-  }
-  if (params?.offset) {
-    searchParams.append("offset", params.offset.toString());
-  }
-
-  const url = `${API_BASE_URL}/anchors${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.error || `HTTP error! status: ${response.status}`,
-      );
-    }
-
-    const data: AnchorsResponse = await response.json();
-    return data;
-  } catch (error) {
-    logger.error("Error fetching anchors:", error);
-    throw error;
-  }
+  const query = appendPageParams(new URLSearchParams(), params).toString();
+  return api.get<AnchorsResponse>(`/anchors${query ? `?${query}` : ""}`, {
+    cache: "no-store",
+  });
 }

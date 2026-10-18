@@ -1,9 +1,324 @@
 {
-  "common": {"loading":"Cargando...","error":"Error","retry":"Reintentar","save":"Guardar","cancel":"Cancelar","close":"Cerrar","search":"Buscar","refresh":"Actualizar"},
-  "metadata": {"title":"Stellar Insights - Inteligencia de Red de Pagos","description":"Información de nivel institucional sobre el rendimiento de la red de pagos Stellar. Prediga el éxito, optimice el enrutamiento y monitoree la liquidez."},
-  "layout": {"sidebar":{"stellarInsights":"INSIGHTS","home":"Inicio","terminal":"Terminal","corridors":"Corredores","network":"Red","analytics":"Análisis","apiUsage":"Uso de API","trustlines":"Líneas de Confianza","networkHealth":"Salud de Red","liquidity":"Liquidez","pools":"Pools","sep6":"SEP-6","calculator":"Calculadora","apiKeys":"Claves API","quests":"Misiones","governance":"Gobernanza","privacy":"Privacidad","settings":"Configuración","collapse":"Colapsar","systemNominal":"Sistema Nominal","alerts":"Alertas","performance":"Rendimiento","expandSidebar":"Expandir barra lateral","collapseSidebar":"Colapsar barra lateral"}},
-  "navbar": {"liveNetwork":"RED EN VIVO","aboutUs":"Sobre Nosotros","howToUse":"Cómo Usar","contactUs":"Contacto","learnAbout":"Conozca Stellar Insights","getStarted":"Comience con nuestra plataforma","reachOut":"Comuníquese con nuestro equipo","stellarInsights":"Stellar Insights","toggleMenu":"Alternar menú de navegación"},
-  "home": {"hero":{"liveBadge":"Inteligencia de Red en Vivo Activa","title":"CUANTIFICANDO","titleHighlight":"LA CONFIANZA DE LA RED","subtitle":"Stellar Insights proporciona telemetría de nivel institucional para la red de pagos Stellar. Más allá del conteo de transacciones; analice la profundidad de liquidez, la confiabilidad de los corredores y la finalidad de liquidación en tiempo real.","enterTerminal":"Entrar al Terminal","connectIdentity":"Conectar Identidad","initializing":"Inicializando..."},"tickers":{"usdcBrl":"USDC/BRL","xlmEur":"XLM/EUR","networkTvl":"TVL de Red","successRate":"Tasa de Éxito"},"capabilities":{"globalCorridors":"Corredores Globales","globalCorridorsDesc":"Análisis detallado de salud de rutas de pago transfronterizas. Monitoree el tiempo de actividad, cuellos de botella de liquidez y rendimiento de anclas en más de 50 pares fiat.","deepTelemetry":"Telemetría Profunda","deepTelemetryDesc":"Más allá del TPS superficial. Analizamos datos de liquidación a nivel de libro mayor para proporcionar la distribución real de velocidad a finalidad para operaciones de pago.","predictiveTrust":"Confianza Predictiva","predictiveTrustDesc":"Nuestro motor de ML predice la probabilidad de éxito del corredor, ayudándole a enrutar pagos de alto valor a través de los nodos de red más resilientes."},"cta":{"title":"¿Listo para integrar inteligencia de red?","subtitle":"Únase a las anclas y billeteras que ya usan Stellar Insights para optimizar su gestión de liquidez y confiabilidad de pagos.","launchTerminal":"Lanzar Terminal","readSpec":"Leer Especificación"},"footer":{"stellarInsights":"Stellar Insights","networkStatus":"Estado de Red","apiKeys":"Claves API","governance":"Gobernanza","copyright":"© 2026 STELLAR_INSIGHTS // v1.4.0-STABLE"}},
-  "contact": {"title":"Contacto","heading":"Nos Encantaría Saber de Usted","headingBefore":"Nos Encantaría ","headingHighlight":"Saber de Usted","subtitle":"¿Tiene una pregunta, encontró un error o desea asociarse con nosotros? Contáctenos a través del formulario o cualquiera de nuestros canales.","otherChannels":"Otros Canales","channels":{"email":"Correo","github":"GitHub","twitter":"Twitter / X"},"emailHint":"Respuesta en 24 horas","githubHint":"Problemas y solicitudes de funciones","twitterHint":"Noticias y soporte rápido","form":{"name":"Nombre","email":"Correo electrónico","subject":"Asunto","message":"Mensaje","send":"Enviar Mensaje","sendAnother":"Enviar otro mensaje","messageSent":"¡Mensaje Enviado!","thanks":"Gracias por contactarnos. Le responderemos en 24 horas.","sending":"Enviando…","sendMessage":"Enviar Mensaje","sectionTitle":"Enviar un Mensaje","selectTopic":"Seleccione un tema…","placeholders":{"name":"Juan Pérez","email":"juan@ejemplo.com","message":"Cuéntenos cómo podemos ayudarle…"},"options":{"support":"Soporte Técnico","bug":"Reporte de Error","feature":"Solicitud de Función","partnership":"Asociación","other":"Otro"}}},
-  "dashboard": {"title":"Terminal","successRate":"Tasa de Éxito","activeCorridors":"Corredores Activos","liquidityDepth":"Profundidad de Liquidez","settlementSpeed":"Velocidad de Liquidación","paymentSuccessRate":"Tasa de Éxito de Pagos","avgSettlementSpeed":"Velocidad Promedio de Liquidación","topAssets":"Principales Activos","topCorridors":"Principales Corredores","networkOverview":"Resumen de Red","intelligenceTerminal":"Terminal de Inteligencia // 01","loading":"Inicializando Terminal... // Handshake del Sistema","error":"Error del Terminal","refresh":"Actualizar","refreshing":"Actualizando","lastUpdated":"Última actualización","lastUpdate":"Última Actualización","nextRefreshIn":"Siguiente actualización en","noDataYet":"Sin datos aún","refreshNow":"Actualizar ahora","reconnect":"Reconectar","connecting":"Conectando","connected":"Conectado","disconnected":"Desconectado","attempts":"intentos","failedToFetch":"Error al obtener datos del panel","waitingLiquidity":"Esperando datos de liquidez...","waitingAsset":"Esperando datos de activos...","waitingCorridor":"Esperando datos de corredores...","waitingSettlement":"Esperando datos de liquidación..."}
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "retry": "Reintentar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "search": "Buscar",
+    "refresh": "Actualizar"
+  },
+  "metadata": {
+    "title": "PayRaider - Inteligencia de Red de Pagos",
+    "description": "Información de nivel institucional sobre el rendimiento de la red de pagos Stellar. Prediga el éxito, optimice el enrutamiento y monitoree la liquidez."
+  },
+  "layout": {
+    "sidebar": {
+      "payRaider": "INSIGHTS",
+      "home": "Inicio",
+      "terminal": "Terminal",
+      "corridors": "Corredores",
+      "network": "Red",
+      "analytics": "Análisis",
+      "apiUsage": "Uso de API",
+      "trustlines": "Líneas de Confianza",
+      "networkHealth": "Salud de Red",
+      "liquidity": "Liquidez",
+      "pools": "Pools",
+      "sep6": "SEP-6",
+      "calculator": "Calculadora",
+      "apiKeys": "Claves API",
+      "quests": "Misiones",
+      "governance": "Gobernanza",
+      "privacy": "Privacidad",
+      "settings": "Configuración",
+      "collapse": "Colapsar",
+      "systemNominal": "Sistema Nominal",
+      "alerts": "Alertas",
+      "performance": "Rendimiento",
+      "expandSidebar": "Expandir barra lateral",
+      "collapseSidebar": "Colapsar barra lateral",
+      "chartExport": "Exportar Gráficos",
+      "forecasting": "Pronóstico",
+      "groups": {
+        "networkData": "Datos de Red",
+        "analytics": "Análisis",
+        "monitoring": "Monitoreo",
+        "developer": "Desarrollador"
+      },
+      "failedPayments": "Pagos Fallidos",
+      "settlementDistribution": "Dist. de Liquidación",
+      "status": "Estado del Sistema",
+      "corridorAlerts": "Alertas de Corredores"
+    }
+  },
+  "navbar": {
+    "liveNetwork": "RED EN VIVO",
+    "aboutUs": "Sobre Nosotros",
+    "howToUse": "Cómo Usar",
+    "contactUs": "Contacto",
+    "learnAbout": "Conozca PayRaider",
+    "getStarted": "Comience con nuestra plataforma",
+    "reachOut": "Comuníquese con nuestro equipo",
+    "payRaider": "PayRaider",
+    "toggleMenu": "Alternar menú de navegación"
+  },
+  "home": {
+    "hero": {
+      "liveBadge": "Verificación previa al pago para off-ramps en Stellar",
+      "title": "VERIFICA EL CORREDOR",
+      "titleHighlight": "ANTES DE PAGAR",
+      "subtitle": "Los pagos fallan cuando un corredor está degradado o no tiene liquidez suficiente para el monto. PayRaider revisa los pagos recientes del corredor y responde continuar, precaución o detener, con los motivos y una ruta más sana, en una sola llamada a la API.",
+      "enterTerminal": "Verificar un corredor",
+      "connectIdentity": "Conectar billetera",
+      "initializing": "Conectando..."
+    },
+    "capabilities": {
+      "globalCorridors": "Observado, no modelado",
+      "globalCorridorsDesc": "Las decisiones se basan en pagos recientes del libro mayor de Stellar, incluidos los fallidos. Un corredor sin pagos recientes devuelve desconocido en lugar de una suposición.",
+      "deepTelemetry": "Se adapta a tu stack",
+      "deepTelemetryDesc": "Una llamada REST, SDK de TypeScript y Python, un servidor MCP para agentes de IA y un plugin de Claude. Gratis para probar sin clave de API.",
+      "predictiveTrust": "Pago en USDC sobre Stellar",
+      "predictiveTrustDesc": "Los límites más altos se compran con un pago en USDC que la API verifica en el libro mayor. Sin tarjeta, sin cuenta, sin sistema de facturación que integrar."
+    },
+    "cta": {
+      "title": "Verifica un corredor ahora",
+      "subtitle": "Prueba la verificación en cualquier corredor de Stellar. No necesitas registro ni clave de API para empezar.",
+      "launchTerminal": "Probar la verificación",
+      "readSpec": "Guía de integración"
+    },
+    "footer": {
+      "payRaider": "PayRaider",
+      "networkStatus": "Estado de Red",
+      "apiKeys": "Claves API",
+      "governance": "Gobernanza",
+      "copyright": "© 2026 PAYRAIDER // v1.4.0-STABLE"
+    },
+    "steps": {
+      "label": "Cómo funciona",
+      "name": {
+        "title": "Describe el pago",
+        "body": "Activo de origen, activo de destino y el monto en USD."
+      },
+      "check": {
+        "title": "Revisamos el corredor",
+        "body": "Tasa de éxito de los pagos recientes, incluidos los fallidos, la liquidez frente a tu monto y cuántos datos hay."
+      },
+      "decide": {
+        "title": "Recibe una decisión",
+        "body": "Continuar, precaución o detener, con cada verificación explicada, o desconocido cuando no hay datos recientes."
+      },
+      "pay": {
+        "title": "Paga o cambia de ruta",
+        "body": "Envía por un corredor sano o usa una de las alternativas más sanas hacia la misma moneda."
+      }
+    }
+  },
+  "contact": {
+    "title": "Contacto",
+    "heading": "Nos Encantaría Saber de Usted",
+    "headingBefore": "Nos Encantaría ",
+    "headingHighlight": "Saber de Usted",
+    "subtitle": "¿Tiene una pregunta, encontró un error o desea asociarse con nosotros? Contáctenos a través del formulario o cualquiera de nuestros canales.",
+    "otherChannels": "Otros Canales",
+    "channels": {
+      "email": "Correo",
+      "github": "GitHub",
+      "twitter": "Twitter / X"
+    },
+    "emailHint": "Respuesta en 24 horas",
+    "githubHint": "Problemas y solicitudes de funciones",
+    "twitterHint": "Noticias y soporte rápido",
+    "form": {
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "subject": "Asunto",
+      "message": "Mensaje",
+      "send": "Enviar Mensaje",
+      "sendAnother": "Enviar otro mensaje",
+      "messageSent": "¡Mensaje Enviado!",
+      "thanks": "Gracias por contactarnos. Le responderemos en 24 horas.",
+      "sending": "Enviando…",
+      "sendMessage": "Enviar Mensaje",
+      "sectionTitle": "Enviar un Mensaje",
+      "selectTopic": "Seleccione un tema…",
+      "placeholders": {
+        "name": "Juan Pérez",
+        "email": "juan@ejemplo.com",
+        "message": "Cuéntenos cómo podemos ayudarle…"
+      },
+      "options": {
+        "support": "Soporte Técnico",
+        "bug": "Reporte de Error",
+        "feature": "Solicitud de Función",
+        "partnership": "Asociación",
+        "other": "Otro"
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Terminal",
+    "successRate": "Tasa de Éxito",
+    "activeCorridors": "Corredores Activos",
+    "liquidityDepth": "Profundidad de Liquidez",
+    "settlementSpeed": "Velocidad de Liquidación",
+    "paymentSuccessRate": "Tasa de Éxito de Pagos",
+    "avgSettlementSpeed": "Velocidad Promedio de Liquidación",
+    "topAssets": "Principales Activos",
+    "topCorridors": "Principales Corredores",
+    "networkOverview": "Resumen de Red",
+    "intelligenceTerminal": "Terminal de Inteligencia // 01",
+    "loading": "Inicializando Terminal... // Handshake del Sistema",
+    "error": "Error del Terminal",
+    "refresh": "Actualizar",
+    "refreshing": "Actualizando",
+    "lastUpdated": "Última actualización",
+    "lastUpdate": "Última Actualización",
+    "nextRefreshIn": "Siguiente actualización en",
+    "noDataYet": "Sin datos aún",
+    "refreshNow": "Actualizar ahora",
+    "reconnect": "Reconectar",
+    "connecting": "Conectando",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "attempts": "intentos",
+    "failedToFetch": "Error al obtener datos del panel",
+    "waitingLiquidity": "Esperando datos de liquidez...",
+    "waitingAsset": "Esperando datos de activos...",
+    "waitingCorridor": "Esperando datos de corredores...",
+    "waitingSettlement": "Esperando datos de liquidación..."
+  },
+  "preflight": {
+    "title": "Predictor de Tasa de Éxito de Corredores",
+    "subtitle": "Prediga el éxito del pago antes de enviarlo",
+    "form": {
+      "sourceAsset": "Activo de Origen",
+      "destinationAsset": "Activo de Destino",
+      "amount": "Monto",
+      "timeOfDay": "Hora del Día",
+      "submit": "Predecir Tasa de Éxito",
+      "submitting": "Comprobando corredor..."
+    },
+    "results": {
+      "title": "Resultados de la Predicción Preflight",
+      "successProbability": "Probabilidad de Éxito",
+      "riskLevel": "Nivel de Riesgo",
+      "lowRisk": "Riesgo Bajo",
+      "mediumRisk": "Riesgo Medio",
+      "highRisk": "Riesgo Alto",
+      "estimatedLatency": "Latencia Estimada",
+      "liquidityDepth": "Profundidad de Liquidez",
+      "alternativeRoutes": "Corredores Alternativos",
+      "recommendedAction": "Recomendación",
+      "routeSummary": "{source} a {destination} con monto {amount}"
+    },
+    "empty": "Seleccione activos y monto para simular una verificación preflight.",
+    "error": "No se pudo conectar con la API de PayRaider para verificar este corredor. Inténtelo de nuevo."
+  },
+  "corridors": {
+    "title": "Corredores de Pago",
+    "subtitle": "Supervise la salud en tiempo real, las tasas de éxito y la profundidad de liquidez en los corredores de pago de Stellar.",
+    "search": "Buscar corredores por par de activos...",
+    "views": {
+      "grid": "Cuadrícula",
+      "table": "Tabla",
+      "heatmap": "Mapa de Calor"
+    },
+    "sort": {
+      "label": "Ordenar por",
+      "health": "Orden: Salud",
+      "success": "Orden: Éxito",
+      "liquidity": "Orden: Liquidez"
+    },
+    "metrics": {
+      "successRate": "Tasa de Éxito",
+      "healthScore": "Puntaje de Salud",
+      "avgLatency": "Latencia Promedio",
+      "liquidityDepth": "Profundidad de Liquidez",
+      "volume24h": "Volumen 24h",
+      "avgSlippage": "Deslizamiento Promedio"
+    },
+    "comparison": {
+      "title": "Comparación Detallada",
+      "exportCsv": "Exportar CSV",
+      "corridor": "Corredor",
+      "recordsCount": "Total {count} registros",
+      "rowsPerPage": "Filas por página",
+      "jumpTo": "Ir a",
+      "pageOf": "de {total}",
+      "bestPerformance": "Mejor Rendimiento",
+      "worstPerformance": "Peor Rendimiento"
+    },
+    "empty": "No se detectaron corredores coincidentes",
+    "error": "Error al cargar los corredores de pago"
+  },
+  "keys": {
+    "title": "Claves API",
+    "subtitle": "Administre claves API para el acceso programático a los servicios de PayRaider.",
+    "authPrompt": "Conecte su billetera con autenticación SEP-10 para administrar las claves API.",
+    "connectWallet": "Conectar Billetera",
+    "createKey": "Crear Clave API",
+    "table": {
+      "name": "Nombre de Clave",
+      "prefix": "Prefijo",
+      "created": "Creado",
+      "lastUsed": "Último Uso",
+      "status": "Estado",
+      "actions": "Acciones",
+      "active": "Activo",
+      "revoked": "Revocado"
+    },
+    "actions": {
+      "rotate": "Rotar",
+      "revoke": "Revocar",
+      "copy": "Copiar Clave"
+    },
+    "modals": {
+      "createTitle": "Generar Nueva Clave API",
+      "keyNameLabel": "Descripción / Nombre de la Clave",
+      "keyNamePlaceholder": "p. ej., Trabajador Backend Producción",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "revealTitle": "Su Nueva Clave API",
+      "revealWarning": "Asegúrese de copiar su clave API ahora. ¡No podrá volver a verla!",
+      "done": "Listo"
+    },
+    "empty": "Aún no se han generado claves API. Cree una para comenzar.",
+    "loading": "Cargando claves API...",
+    "error": "Error al cargar las claves API"
+  },
+  "billing": {
+    "title": "Suscripción y Facturación",
+    "subtitle": "Administre su nivel de servicio de PayRaider y las facturas en cripto.",
+    "currentPlan": "Plan Actual",
+    "tier": {
+      "free": "Nivel Gratuito",
+      "pro": "Nivel Pro",
+      "enterprise": "Nivel Empresarial"
+    },
+    "limits": {
+      "rateLimit": "{count} solicitudes por minuto",
+      "monthlyRequests": "{count} solicitudes por mes"
+    },
+    "upgrade": {
+      "button": "Actualizar Plan",
+      "title": "Actualizar al Nivel Pro",
+      "description": "Desbloquee límites de tasa más altos, soporte prioritario y análisis de múltiples corredores.",
+      "price": "$99 / mes en USDC",
+      "payWithCrypto": "Pagar con USDC",
+      "success": "¡Suscripción actualizada con éxito!"
+    },
+    "invoices": {
+      "title": "Historial de Facturas",
+      "empty": "Aún no hay facturas de facturación.",
+      "invoiceId": "ID de Factura",
+      "amount": "Monto",
+      "status": "Estado",
+      "paid": "Pagado",
+      "pending": "Pendiente"
+    },
+    "loading": "Cargando información de facturación...",
+    "error": "Error al cargar el plan de facturación"
+  }
 }

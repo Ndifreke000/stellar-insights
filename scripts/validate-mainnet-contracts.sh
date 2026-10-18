@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Post-deployment canary: validate mainnet stellar_insights contract state.
+# Post-deployment canary: validate mainnet payraider contract state.
 #
 # Required env:
-#   STELLAR_INSIGHTS_CONTRACT_ID (or SNAPSHOT_CONTRACT_ID)
+#   PAYRAIDER_CONTRACT_ID (or SNAPSHOT_CONTRACT_ID)
 # Optional env:
 #   STELLAR_NETWORK              (default: mainnet)
-#   EXPECTED_CONTRACT_VERSION    (default: contracts/stellar_insights/Cargo.toml version)
+#   EXPECTED_CONTRACT_VERSION    (default: contracts/payraider/Cargo.toml version)
 #   EXPECTED_CONTRACT_ADMIN      (required for admin check)
 #   EPOCH_BASELINE_FILE          (path to store/compare latest epoch between runs)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-CONTRACT_ID="${STELLAR_INSIGHTS_CONTRACT_ID:-${SNAPSHOT_CONTRACT_ID:-}}"
+CONTRACT_ID="${PAYRAIDER_CONTRACT_ID:-${SNAPSHOT_CONTRACT_ID:-}}"
 NETWORK="${STELLAR_NETWORK:-mainnet}"
 EXPECTED_ADMIN="${EXPECTED_CONTRACT_ADMIN:-}"
 EPOCH_BASELINE_FILE="${EPOCH_BASELINE_FILE:-${REPO_ROOT}/.mainnet-epoch-baseline}"
 
 if [[ -z "${CONTRACT_ID}" ]]; then
-  echo "ERROR: Set STELLAR_INSIGHTS_CONTRACT_ID or SNAPSHOT_CONTRACT_ID" >&2
+  echo "ERROR: Set PAYRAIDER_CONTRACT_ID or SNAPSHOT_CONTRACT_ID" >&2
   exit 1
 fi
 
@@ -31,7 +31,7 @@ fi
 
 if [[ -z "${EXPECTED_CONTRACT_VERSION:-}" ]]; then
   EXPECTED_CONTRACT_VERSION="$(
-    grep '^version' "${REPO_ROOT}/contracts/stellar_insights/Cargo.toml" \
+    grep '^version' "${REPO_ROOT}/contracts/payraider/Cargo.toml" \
       | head -1 \
       | cut -d'"' -f2
   )"

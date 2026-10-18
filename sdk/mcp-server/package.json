@@ -1,0 +1,57 @@
+{
+  "name": "@payraider/mcp-server",
+  "version": "0.2.0",
+  "description": "MCP server for PayRaider: pre-payment corridor checks and Stellar payment analytics for off-ramp apps and AI agents",
+  "type": "module",
+  "bin": {
+    "payraider-mcp-server": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "smoke-test": "node scripts/smoke-test.mjs",
+    "lint": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "build:bundle": "tsup --config tsup.bundle.config.ts",
+    "build:plugin": "npm run build:bundle && node scripts/sync-plugin.mjs",
+    "check:plugin": "npm run build:bundle && node scripts/sync-plugin.mjs --check"
+  },
+  "keywords": [
+    "stellar",
+    "mcp",
+    "model-context-protocol",
+    "off-ramp",
+    "payments",
+    "preflight",
+    "analytics",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@payraider/sdk": "file:../typescript",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "8.5.1",
+    "tsx": "^4.19.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
+    "directory": "sdk/mcp-server"
+  }
+}

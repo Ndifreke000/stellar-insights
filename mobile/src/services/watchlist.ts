@@ -183,7 +183,7 @@ export async function addToWatchlist(
       alertThreshold,
     });
     logger.debug('[Watchlist]', `Synced ${corridorId} add to backend.`);
-  } catch (err) {
+  } catch {
     logger.warn('[Watchlist]', `Backend sync failed for add(${corridorId}) — queued for retry.`);
     await enqueuePendingOp({ type: 'add', corridorId, entry: newEntry });
   }
@@ -211,7 +211,7 @@ export async function removeFromWatchlist(corridorId: string): Promise<void> {
   try {
     await apiClient.delete(`/api/v1/watchlist/${encodeURIComponent(corridorId)}`);
     logger.debug('[Watchlist]', `Synced ${corridorId} remove to backend.`);
-  } catch (err) {
+  } catch {
     logger.warn('[Watchlist]', `Backend sync failed for remove(${corridorId}) — queued for retry.`);
     await enqueuePendingOp({ type: 'remove', corridorId });
   }
@@ -277,7 +277,7 @@ export async function syncWatchlistToBackend(): Promise<void> {
         await apiClient.delete(`/api/v1/watchlist/${encodeURIComponent(op.corridorId)}`);
       }
       logger.debug('[Watchlist]', `Pending op replayed: ${op.type}(${op.corridorId})`);
-    } catch (err) {
+    } catch {
       logger.warn('[Watchlist]', `Retry failed for ${op.type}(${op.corridorId}) — will try again.`);
       remaining.push(op);
     }

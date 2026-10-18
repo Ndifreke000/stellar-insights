@@ -18,7 +18,7 @@ resource "aws_lb" "main" {
   }
 
   tags = {
-    Name = "stellar-insights-alb-${var.environment}"
+    Name = "payraider-alb-${var.environment}"
   }
 }
 
@@ -51,7 +51,7 @@ resource "aws_lb_target_group" "app" {
   deregistration_delay = 30
 
   tags = {
-    Name = "stellar-insights-targets-${var.environment}"
+    Name = "payraider-targets-${var.environment}"
   }
 }
 
@@ -85,7 +85,7 @@ resource "aws_lb_target_group" "green" {
   deregistration_delay = 30
 
   tags = {
-    Name = "stellar-insights-targets-green-${var.environment}"
+    Name = "payraider-targets-green-${var.environment}"
   }
 }
 
@@ -159,7 +159,7 @@ resource "aws_wafv2_web_acl_association" "alb" {
 # ============================================================================
 
 resource "aws_cloudwatch_metric_alarm" "alb_target_response_time" {
-  alarm_name          = "stellar-insights-alb-response-time-${var.environment}"
+  alarm_name          = "payraider-alb-response-time-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "TargetResponseTime"
@@ -176,7 +176,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_target_response_time" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
-  alarm_name          = "stellar-insights-alb-unhealthy-${var.environment}"
+  alarm_name          = "payraider-alb-unhealthy-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "UnHealthyHostCount"
@@ -194,7 +194,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_http_5xx" {
-  alarm_name          = "stellar-insights-alb-5xx-${var.environment}"
+  alarm_name          = "payraider-alb-5xx-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HTTPCode_Target_5XX_Count"

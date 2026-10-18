@@ -73,7 +73,7 @@ impl RateLimitingAdvanced {
         // Check burst limit first
         let burst_count: u32 = redis::cmd("GET")
             .arg(&burst_key)
-            .query_async::<_, Option<u32>>(&mut conn)
+            .query_async::<Option<u32>>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?
             .unwrap_or(0);
@@ -86,7 +86,7 @@ impl RateLimitingAdvanced {
         // Check sliding window rate limit
         let current_count: u32 = redis::cmd("GET")
             .arg(&key)
-            .query_async::<_, Option<u32>>(&mut conn)
+            .query_async::<Option<u32>>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?
             .unwrap_or(0);
@@ -99,27 +99,27 @@ impl RateLimitingAdvanced {
         // Increment counters
         redis::cmd("INCR")
             .arg(&key)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
 
         redis::cmd("EXPIRE")
             .arg(&key)
             .arg(self.config.window_size_seconds)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
 
         redis::cmd("INCR")
             .arg(&burst_key)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
 
         redis::cmd("EXPIRE")
             .arg(&burst_key)
             .arg(1)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
 
@@ -149,7 +149,7 @@ impl RateLimitingAdvanced {
         redis::cmd("DEL")
             .arg(&key)
             .arg(&burst_key)
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
 

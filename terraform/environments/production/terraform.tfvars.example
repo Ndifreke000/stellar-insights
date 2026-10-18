@@ -1,0 +1,86 @@
+# Production Environment Variables
+# Cost estimate: ~$142/month (see module.compute's cost_estimate output)
+#
+# Breakdown:
+#   - NAT Gateways: ~$90/month (3 total, 1 per AZ for HA)
+#   - ALB: ~$20/month
+#   - ECS (t3.small, 1 pinned instance): ~$16/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
+#   - ElastiCache Redis (cache.t3.small, Multi-AZ): ~$40/month
+#   - Data transfer out: ~$20/month
+#   - Backups & monitoring: ~$10/month
+#
+# ✓ Full high availability for networking/Redis (3 AZs)
+# ✓ Multi-AZ Redis with automatic failover
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots
+#   (see docs/backup-system.md)
+# ✓ Enhanced CloudWatch monitoring
+# ✓ VPC Flow Logs for security and troubleshooting
+# ✗ No auto-scaling, no backend HA: pinned to 1 task. SQLite permits
+#   exactly one writer -- see ADR 0001.
+# ✓ Blue-green deployments with automatic rollback (though note: still
+#   briefly runs old+new tasks concurrently during cutover, a known
+#   unresolved edge case against the single-writer constraint)
+#
+# CRITICAL: This is a PRODUCTION environment
+# - ALL changes require code review and approval
+# - ALL deployments via GitHub Actions CI/CD only
+# - NO manual `terraform apply` on production
+# - ALL database changes must be tested in staging first
+# - ALL infrastructure changes require disaster recovery validation
+#
+# Setup instructions (first-time deployment):
+# 1. Copy this file to terraform.tfvars (git will ignore it)
+# 2. Review and customize all values (especially alarm_email)
+# 3. Ensure global infrastructure is deployed: cd ../global && terraform apply
+# 4. Initialize backend:
+#    terraform init \
+#      -backend-config="bucket=payraider-terraform-state-$(aws sts get-caller-identity --query Account --output text)" \
+#      -backend-config="key=production/terraform.tfstate" \
+#      -backend-config="region=us-east-1" \
+#      -backend-config="dynamodb_table=terraform-locks"
+# 5. Review plan: terraform plan -out=tfplan
+# 6. STAGE FOR REVIEW: commit tfplan and open PR for team review
+# 7. After approval: terraform apply tfplan
+#
+# Pre-deployment Checklist:
+# [ ] All Vault secrets configured (DATABASE_URL, JWT_SECRET, OAuth credentials, etc)
+# [ ] SSL/TLS certificates in ACM for domain
+# [ ] Route53 DNS records configured and tested
+# [ ] Litestream replication and restore tested in staging (see docs/backup-system.md)
+# [ ] CloudWatch alarms configured and tested
+# [ ] GitHub Actions deployment variables and secrets in place
+# [ ] Load test completed: minimum 100 req/sec
+# [ ] Spike test completed: 10x traffic surge handling
+# [ ] Disaster recovery drill completed (backup restore validated)
+# [ ] On-call team trained and runbooks reviewed
+#
+# Post-deployment Validation:
+# [ ] Health check: GET /health returning 200 OK
+# [ ] Database connectivity verified
+# [ ] Vault secrets accessible and working
+# [ ] CloudWatch logs flowing to centralized monitoring
+# [ ] Alarms configured and notifications tested (send test alert)
+# [ ] Logging and monitoring dashboards active
+# [ ] Performance baseline established (latency, throughput)
+# [ ] On-call runbook reviewed by all team members
+# [ ] Disaster recovery procedure tested with team
+#
+# Ongoing Operations:
+# - Weekly: Monitor CloudWatch dashboards and alarms
+# - Weekly: Review Litestream replication status and backup.rs snapshot retention
+# - Monthly: Test restore procedure from backup
+# - Monthly: Review scaling metrics and adjust if needed
+# - Quarterly: Run disaster recovery drill with team
+
+aws_region  = "us-east-1"
+environment = "production"
+vpc_cidr    = "10.2.0.0/16"
+
+# Vault configuration (HCP or self-hosted)
+# MUST be HTTPS and accessible from ECS tasks
+vault_addr = "https://vault-cluster.vault.11eb.aws.hashicorp.cloud:8200"
+
+# Critical alerts go to ops team oncall
+# MUST be a valid email that receives notifications
+alarm_email = "ops-critical@payraider.com"

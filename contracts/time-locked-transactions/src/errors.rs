@@ -14,9 +14,9 @@ pub enum Error {
     TransferNotFound = 4,
     /// Amount must be greater than zero
     InvalidAmount = 5,
-    /// Unlock time must be in the future
+    /// Unlock ledger must be in the future
     InvalidUnlockTime = 6,
-    /// Unlock time has not been reached yet
+    /// Unlock ledger has not been reached yet
     NotUnlockedYet = 7,
     /// Transfer already executed
     AlreadyExecuted = 8,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
+import {  buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 interface VerificationSummary {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Post-deployment smoke test runner for Stellar Insights
+# Post-deployment smoke test runner for PayRaider
 # Validates that all critical components are operational after deployment
 
 # Configuration defaults (override with environment variables)
@@ -269,7 +269,7 @@ test_database_connectivity() {
 # ============================================================================
 
 main() {
-  echo -e "${GREEN}=== Stellar Insights Post-Deployment Smoke Tests ===${NC}"
+  echo -e "${GREEN}=== PayRaider Post-Deployment Smoke Tests ===${NC}"
   echo "Target backend: $BASE_URL"
   echo "Target frontend: $FRONTEND_URL"
   echo "Target WebSocket: $WS_URL"
@@ -299,7 +299,7 @@ main() {
     echo ""
     echo "Troubleshooting:"
     echo "  1. Check backend is running: docker-compose ps"
-    echo "  2. Review backend logs: docker logs stellar-insights-backend"
+    echo "  2. Review backend logs: docker logs payraider-backend"
     echo "  3. Verify network connectivity: curl -v $BASE_URL/health"
     echo "  4. Check database status: docker-compose logs db"
     return 1

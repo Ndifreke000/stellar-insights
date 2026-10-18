@@ -16,7 +16,7 @@ export const WalletConnectionDemo: React.FC = () => {
   const handleTestConnect = async () => {
     try {
       await connectWallet();
-    } catch (error) {
+    } catch (_error) {
       // Error notification is already handled in the header
     }
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, skipIf } from "vitest";
-import { StellarInsights } from "../../src/index.js";
+import { PayRaider } from "../../src/index.js";
 
 // Skip tests if testnet credentials are not set
 const TESTNET_RPC_URL = process.env.TESTNET_RPC_URL;
@@ -7,12 +7,12 @@ const TESTNET_SECRET_KEY = process.env.TESTNET_SECRET_KEY;
 const skipTestnet = !TESTNET_RPC_URL || !TESTNET_SECRET_KEY;
 
 describe.skipIf(skipTestnet)("Testnet: Client Integration Tests", () => {
-  let client: StellarInsights;
+  let client: PayRaider;
 
   beforeAll(() => {
     // Initialize SDK with testnet configuration
-    client = new StellarInsights({
-      baseUrl: TESTNET_RPC_URL || "https://testnet-api.stellarinsights.io",
+    client = new PayRaider({
+      baseUrl: TESTNET_RPC_URL || "https://testnet-api.payraider.io",
       apiKey: TESTNET_SECRET_KEY,
     });
   });
@@ -40,13 +40,9 @@ describe.skipIf(skipTestnet)("Testnet: Client Integration Tests", () => {
   });
 
   it("retrieves price data", async () => {
-    const prices = await client.prices.list();
-    expect(prices).toBeDefined();
-    expect(prices).toBeInstanceOf(Array);
-    if (prices.length > 0) {
-      expect(prices[0].asset).toBeDefined();
-      expect(prices[0].price_usd).toBeDefined();
-    }
+    const price = await client.prices.get("XLM:native");
+    expect(price).toBeDefined();
+    expect(price.price_usd).toBeDefined();
   });
 
   it("retrieves available networks", async () => {

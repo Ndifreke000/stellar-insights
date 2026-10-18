@@ -35,7 +35,6 @@ import {
   syncWatchlistToBackend,
 } from '@services/watchlist';
 
-const WATCHLIST_KEY = '@watchlist/entries';
 const PENDING_OPS_KEY = '@watchlist/pending_ops';
 
 beforeEach(async () => {

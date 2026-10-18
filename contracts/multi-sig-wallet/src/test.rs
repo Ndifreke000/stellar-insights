@@ -63,7 +63,6 @@ fn test_double_initialize_fails() {
 }
 
 #[test]
-#[should_panic]
 fn test_threshold_exceeds_owners_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -73,7 +72,8 @@ fn test_threshold_exceeds_owners_fails() {
     let client = MultiSigWalletContractClient::new(&env, &contract_id);
     let mut owners = Vec::new(&env);
     owners.push_back(owner1);
-    client.initialize(&owners, &2); // threshold 2 > 1 owner — should panic
+    let result = client.try_initialize(&owners, &2); // threshold 2 > 1 owner
+    assert_eq!(result, Err(Ok(crate::errors::Error::ThresholdExceedsSigCount)));
 }
 
 #[test]

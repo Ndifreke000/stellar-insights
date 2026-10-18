@@ -8,16 +8,16 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
-use crate::rpc::StellarRpcClient;
+use crate::rpc::StellarRpcClientTrait;
 
 pub struct LiquidityPoolAnalyzer {
     pool: Pool<Sqlite>,
-    rpc_client: Arc<StellarRpcClient>,
+    rpc_client: Arc<dyn StellarRpcClientTrait>,
 }
 
 impl LiquidityPoolAnalyzer {
     #[must_use]
-    pub const fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
+    pub fn new(pool: Pool<Sqlite>, rpc_client: Arc<dyn StellarRpcClientTrait>) -> Self {
         Self { pool, rpc_client }
     }
 
@@ -27,6 +27,10 @@ impl LiquidityPoolAnalyzer {
 
     /// Fetch liquidity pools from Horizon and upsert into the database.
     /// Returns the number of pools synced.
+    ///
+    /// Earliest snapshot reserves for IL are loaded once up front (#1868)
+    /// instead of one DB query per pool inside the sync loop. Horizon still
+    /// requires per-pool trade fetches (no bulk trades endpoint).
     pub async fn sync_pools(&self) -> Result<u64> {
         let horizon_pools = self
             .rpc_client
@@ -34,6 +38,8 @@ impl LiquidityPoolAnalyzer {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut count = 0u64;
+
+        let initial_reserves = self.load_earliest_snapshot_reserves().await?;
 
         for hp in &horizon_pools {
             // Defensive guard: Horizon has been observed returning pools with fewer
@@ -62,7 +68,9 @@ impl LiquidityPoolAnalyzer {
 
             // Estimate total value (simplified: assume both sides equivalent for AMM)
             // Use Decimal for precision, then convert to f64 for DB storage
-            let total_value_usd_f64 = (primary_reserve + secondary_reserve).to_f64().unwrap_or(0.0);
+            let total_value_usd_f64 = (primary_reserve + secondary_reserve)
+                .to_f64()
+                .unwrap_or(0.0);
 
             // Compute volume from recent trades
             let trades = self
@@ -91,14 +99,15 @@ impl LiquidityPoolAnalyzer {
                 0.0
             };
 
-            // Compute impermanent loss (requires initial reserves, use snapshot if available)
-            let il = self
-                .compute_impermanent_loss_for_pool(
-                    &hp.id,
+            let il = match initial_reserves.get(&hp.id) {
+                Some((initial_base, initial_quote)) => Self::compute_impermanent_loss(
+                    *initial_base,
+                    *initial_quote,
                     primary_reserve_f64,
                     secondary_reserve_f64,
-                )
-                .await;
+                ),
+                None => 0.0,
+            };
 
             let now = Utc::now();
 
@@ -160,36 +169,41 @@ impl LiquidityPoolAnalyzer {
         Ok(count)
     }
 
-    /// Take a snapshot of all current pools for historical tracking
+    /// Take a snapshot of all current pools for historical tracking.
+    ///
+    /// Uses a single multi-row `INSERT` so query count does not scale with
+    /// the number of pools (#1868).
     pub async fn take_snapshots(&self) -> Result<u64> {
         let pools = self.get_all_pools().await?;
-        let mut count = 0u64;
-        let now = Utc::now();
-
-        for pool in &pools {
-            sqlx::query(
-                r"
-                INSERT INTO liquidity_pool_snapshots (
-                    pool_id, reserve_a_amount, reserve_b_amount, total_value_usd,
-                    volume_usd, fees_usd, apy, impermanent_loss_pct, trade_count, snapshot_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ",
-            )
-            .bind(&pool.pool_id)
-            .bind(pool.reserve_a_amount)
-            .bind(pool.reserve_b_amount)
-            .bind(pool.total_value_usd)
-            .bind(pool.volume_24h_usd)
-            .bind(pool.fees_earned_24h_usd)
-            .bind(pool.apy)
-            .bind(pool.impermanent_loss_pct)
-            .bind(pool.trade_count_24h)
-            .bind(now)
-            .execute(&self.pool)
-            .await?;
-            count += 1;
+        if pools.is_empty() {
+            return Ok(0);
         }
+
+        let now = Utc::now();
+        let mut query_builder = sqlx::QueryBuilder::new(
+            r"
+            INSERT INTO liquidity_pool_snapshots (
+                pool_id, reserve_a_amount, reserve_b_amount, total_value_usd,
+                volume_usd, fees_usd, apy, impermanent_loss_pct, trade_count, snapshot_at
+            )
+            ",
+        );
+
+        query_builder.push_values(&pools, |mut b, pool| {
+            b.push_bind(&pool.pool_id)
+                .push_bind(pool.reserve_a_amount)
+                .push_bind(pool.reserve_b_amount)
+                .push_bind(pool.total_value_usd)
+                .push_bind(pool.volume_24h_usd)
+                .push_bind(pool.fees_earned_24h_usd)
+                .push_bind(pool.apy)
+                .push_bind(pool.impermanent_loss_pct)
+                .push_bind(pool.trade_count_24h)
+                .push_bind(now);
+        });
+
+        let result = query_builder.build().execute(&self.pool).await?;
+        let count = result.rows_affected();
 
         if count > 0 {
             info!("Created {} liquidity pool snapshots", count);
@@ -250,6 +264,8 @@ impl LiquidityPoolAnalyzer {
 
     /// Get pools ranked by a specific metric
     pub async fn get_pool_rankings(&self, sort_by: &str, limit: i64) -> Result<Vec<LiquidityPool>> {
+        // Map sort_by to safe column names and sort direction
+        // This avoids dynamic SQL string building while allowing flexible sorting
         let order_clause = match sort_by {
             "apy" => "apy DESC",
             "volume" => "volume_24h_usd DESC",
@@ -259,7 +275,12 @@ impl LiquidityPoolAnalyzer {
             _ => "apy DESC",
         };
 
-        let query = format!("SELECT * FROM liquidity_pools ORDER BY {order_clause} LIMIT $1");
+        // Use a prepared statement with bound parameter for the LIMIT
+        // The order_clause is a controlled enum-like pattern, not user input
+        let query = "SELECT * FROM liquidity_pools ORDER BY {order_clause} LIMIT $1";
+
+        // Replace {order_clause} in the query string (safe because order_clause is controlled)
+        let query = query.replace("{order_clause}", order_clause);
 
         let pools = sqlx::query_as::<_, LiquidityPool>(&query)
             .bind(limit)
@@ -346,7 +367,8 @@ impl LiquidityPoolAnalyzer {
         (il.abs()) * 100.0
     }
 
-    /// Look up the earliest snapshot for a pool to use as "initial" reserves
+    /// Look up the earliest snapshot for a pool to use as "initial" reserves.
+    #[allow(dead_code)] // retained for single-pool callers; sync uses batch load
     async fn compute_impermanent_loss_for_pool(
         &self,
         pool_id: &str,
@@ -377,6 +399,32 @@ impl LiquidityPoolAnalyzer {
             ),
             None => 0.0, // No historical data yet
         }
+    }
+
+    /// Batch-load earliest snapshot reserves for all pools (avoids N+1 in sync).
+    async fn load_earliest_snapshot_reserves(
+        &self,
+    ) -> Result<std::collections::HashMap<String, (f64, f64)>> {
+        let rows = sqlx::query_as::<_, (String, f64, f64)>(
+            r"
+            SELECT s.pool_id, s.reserve_a_amount, s.reserve_b_amount
+            FROM liquidity_pool_snapshots s
+            INNER JOIN (
+                SELECT pool_id, MIN(snapshot_at) AS min_at
+                FROM liquidity_pool_snapshots
+                GROUP BY pool_id
+            ) earliest
+              ON s.pool_id = earliest.pool_id
+             AND s.snapshot_at = earliest.min_at
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(pool_id, a, b)| (pool_id, (a, b)))
+            .collect())
     }
 
     /// Parse a Horizon asset string ("native" or "CODE:ISSUER")

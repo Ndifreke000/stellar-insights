@@ -1,21 +1,23 @@
 # Production Environment Variables
-# Cost estimate: $400-600/month
+# Cost estimate: ~$142/month (see module.compute's cost_estimate output)
 #
 # Breakdown:
 #   - NAT Gateways: ~$90/month (3 total, 1 per AZ for HA)
 #   - ALB: ~$20/month
-#   - ECS (t3.small, 3 instances): ~$90/month
-#   - RDS PostgreSQL (db.t3.small Multi-AZ, 500GB): ~$150-200/month
+#   - ECS (t3.small, 1 pinned instance): ~$16/month
+#   - EFS (SQLite volume): ~$1/month -- no RDS, see docs/adr/0001-sqlite-vs-postgres.md
 #   - ElastiCache Redis (cache.t3.small, Multi-AZ): ~$40/month
-#   - Data transfer out: ~$30-50/month
+#   - Data transfer out: ~$20/month
 #
-# ✓ Full high availability (3 AZs)
-# ✓ Multi-AZ RDS with automatic failover
+# ✓ Full high availability for networking/Redis (3 AZs)
 # ✓ Multi-AZ Redis with automatic failover
-# ✓ 30-day backup retention for RDS
+# ✓ Litestream continuous S3 replication + backup.rs local snapshots
+#   (see docs/backup-system.md)
 # ✓ CloudWatch monitoring and alarms
 # ✓ VPC Flow Logs for security and troubleshooting
-# ✓ Auto-scaling enabled (ECS scale to 2-4 instances)
+# ✗ No auto-scaling, no backend HA: pinned to 1 task. SQLite permits
+#   exactly one writer and there's no shared storage for multiple
+#   replicas to safely share the database file -- see ADR 0001.
 #
 # IMPORTANT: This is a PRODUCTION environment
 # - All changes require code review and approval
@@ -31,7 +33,7 @@ vpc_cidr    = "10.2.0.0/16"
 # [ ] All Vault secrets configured (DATABASE_URL, JWT_SECRET, OAuth credentials, etc)
 # [ ] SSL/TLS certificates in ACM for domain
 # [ ] Route53 DNS records configured and tested
-# [ ] RDS backup and restore tested in staging
+# [ ] Litestream replication and restore tested in staging (see docs/backup-system.md)
 # [ ] CloudWatch alarms configured and tested
 # [ ] GitHub Actions variable secrets in place
 # [ ] Zapier webhooks registered and tested

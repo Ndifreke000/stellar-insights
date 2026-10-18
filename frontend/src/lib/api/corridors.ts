@@ -1,4 +1,5 @@
-import { api} from "./api";
+import { api } from "./api";
+import type { PaginatedResponse } from "./pagination";
 import {LatencyDataPoint, LiquidityDataPoint, SlippageDataPoint, SuccessRateDataPoint, VolumeDataPoint } from "./types";
 
 
@@ -22,6 +23,9 @@ export interface CorridorMetrics {
   last_updated: string;
 }
 
+// Kept for existing imports; the canonical type lives in ./pagination.
+export type { PaginatedResponse } from "./pagination";
+
 export interface CorridorDetailData {
   corridor: CorridorMetrics;
   historical_success_rate: SuccessRateDataPoint[];
@@ -41,9 +45,51 @@ export async function getCorridorDetail(
   return api.get<CorridorDetailData>(`/corridors/${corridorId}`);
 }
 
+export interface CorridorFailedPayment {
+  id: string;
+  transaction_hash: string;
+  timestamp: string;
+  source_account: string;
+  destination_account: string;
+  amount: number;
+  result_code: string;
+  category: string;
+  error_message: string;
+}
+
+export interface PaginatedCorridorFailures {
+  corridor_key: string;
+  items: CorridorFailedPayment[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 /**
- * Fetch all corridors (for listing and navigation)
+ * Fetch recent failures with result codes for a corridor
  */
+export async function getCorridorFailures(
+  corridorKey: string,
+  page = 1,
+  limit = 10,
+): Promise<PaginatedCorridorFailures> {
+  try {
+    return await api.get<PaginatedCorridorFailures>(
+      `/corridors/${encodeURIComponent(corridorKey)}/failures?page=${page}&limit=${limit}`,
+    );
+  } catch {
+    return {
+      corridor_key: corridorKey,
+      items: [],
+      total: 0,
+      page,
+      page_size: limit,
+      total_pages: 0,
+    };
+  }
+}
+
 export interface CorridorFilters {
   success_rate_min?: number;
   success_rate_max?: number;
@@ -52,34 +98,25 @@ export interface CorridorFilters {
   asset_code?: string;
   time_period?: "7d" | "30d" | "90d" | "";
   limit?: number;
-  offset?: number;
+  /** Opaque cursor from `pagination.next_cursor`. */
+  cursor?: string;
   sort_by?: "success_rate" | "health_score" | "liquidity";
 }
 
+/**
+ * Fetch one page of corridors (for listing and navigation).
+ */
 export async function getCorridors(
-  filters?: CorridorFilters,
-): Promise<CorridorMetrics[]> {
+  filters: CorridorFilters = {},
+): Promise<PaginatedResponse<CorridorMetrics>> {
   const params = new URLSearchParams();
-  if (filters) {
-    if (filters.success_rate_min !== undefined)
-      params.append("success_rate_min", filters.success_rate_min.toString());
-    if (filters.success_rate_max !== undefined)
-      params.append("success_rate_max", filters.success_rate_max.toString());
-    if (filters.volume_min !== undefined)
-      params.append("volume_min", filters.volume_min.toString());
-    if (filters.volume_max !== undefined)
-      params.append("volume_max", filters.volume_max.toString());
-    if (filters.asset_code) params.append("asset_code", filters.asset_code);
-    if (filters.time_period) params.append("time_period", filters.time_period);
-    if (filters.limit !== undefined)
-      params.append("limit", filters.limit.toString());
-    if (filters.offset !== undefined)
-      params.append("offset", filters.offset.toString());
-    if (filters.sort_by) params.append("sort_by", filters.sort_by);
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.append(key, String(value));
   }
   const query = params.toString();
-  const url = query ? `/corridors?${query}` : "/corridors";
-  return api.get<CorridorMetrics[]>(url);
+  return api.get<PaginatedResponse<CorridorMetrics>>(
+    query ? `/corridors?${query}` : "/corridors",
+  );
 }
 
 /**

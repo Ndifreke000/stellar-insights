@@ -12,12 +12,14 @@ expect.extend(toHaveNoViolations);
 // Mock next-intl
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
+  useLocale: () => 'en',
 }));
 
 // Mock navigation
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => <a {...props}>{children}</a>,
   usePathname: () => '/dashboard',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 // Mock user preferences
@@ -46,7 +48,7 @@ describe('Accessibility Tests', () => {
 
     it('should have proper ARIA labels on navigation', () => {
       const { getByLabelText } = render(<Sidebar />);
-      expect(getByLabelText(/main navigation/i)).toBeInTheDocument();
+      expect(getByLabelText(/primary navigation/i)).toBeInTheDocument();
     });
 
     it('should mark icons as decorative', () => {

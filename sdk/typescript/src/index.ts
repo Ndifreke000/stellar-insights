@@ -7,15 +7,15 @@ import {
   AuthResource,
   CorridorsResource,
   CostCalculatorResource,
+  PreflightResource,
   GovernanceResource,
   LiquidityPoolsResource,
-  MlResource,
   NetworkResource,
   PricesResource,
   TransactionsResource,
   WebhooksResource,
 } from "./resources.js";
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import {
   SDKInitializer,
   initializeForMobile,
@@ -44,22 +44,22 @@ export const NETWORKS: Record<"mainnet" | "testnet", NetworkConfig> = {
     rpcUrl: "https://stellar.api.onfinality.io/public",
     horizonUrl: "https://horizon.stellar.org",
     networkPassphrase: "Public Global Stellar Network ; September 2015",
-    apiBaseUrl: "https://api.stellarinsights.io",
+    apiBaseUrl: "https://api.payraider.io",
   },
   testnet: {
     rpcUrl: "https://soroban-testnet.stellar.org",
     horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
-    apiBaseUrl: "https://testnet-api.stellarinsights.io",
+    apiBaseUrl: "https://testnet-api.payraider.io",
   },
 };
 
 export function createClient(
   network: "mainnet" | "testnet",
-  config: Omit<StellarInsightsConfig, "baseUrl"> = {},
-): StellarInsights {
+  config: Omit<PayRaiderConfig, "baseUrl"> = {},
+): PayRaider {
   const networkConfig = NETWORKS[network];
-  const client = new StellarInsights({
+  const client = new PayRaider({
     ...config,
     baseUrl: networkConfig.apiBaseUrl,
   });
@@ -67,11 +67,12 @@ export function createClient(
   return client;
 }
 
-export class StellarInsights {
+export class PayRaider {
   readonly anchors: AnchorsResource;
   readonly corridors: CorridorsResource;
   readonly prices: PricesResource;
   readonly costCalculator: CostCalculatorResource;
+  readonly preflight: PreflightResource;
   readonly alerts: AlertsResource;
   readonly webhooks: WebhooksResource;
   readonly apiKeys: ApiKeysResource;
@@ -79,7 +80,6 @@ export class StellarInsights {
   readonly liquidityPools: LiquidityPoolsResource;
   readonly transactions: TransactionsResource;
   readonly network: NetworkResource;
-  readonly ml: MlResource;
   readonly governance: GovernanceResource;
   readonly assetVerification: AssetVerificationResource;
   readonly apiClient: ApiClient;
@@ -89,13 +89,14 @@ export class StellarInsights {
   /** @internal */
   wsNetwork: "mainnet" | "testnet" = "testnet";
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.http = new HttpClient(config);
     this.apiClient = new ApiClient(config);
     this.anchors = new AnchorsResource(this.http);
     this.corridors = new CorridorsResource(this.http);
     this.prices = new PricesResource(this.http);
     this.costCalculator = new CostCalculatorResource(this.http);
+    this.preflight = new PreflightResource(this.http);
     this.alerts = new AlertsResource(this.http);
     this.webhooks = new WebhooksResource(this.http);
     this.apiKeys = new ApiKeysResource(this.http);
@@ -103,7 +104,6 @@ export class StellarInsights {
     this.liquidityPools = new LiquidityPoolsResource(this.http);
     this.transactions = new TransactionsResource(this.http);
     this.network = new NetworkResource(this.http);
-    this.ml = new MlResource(this.http);
     this.governance = new GovernanceResource(this.http);
     this.assetVerification = new AssetVerificationResource(this.http);
   }
@@ -129,7 +129,7 @@ export class StellarInsights {
   }
 }
 
-export { StellarInsightsError } from "./http.js";
+export { PayRaiderError } from "./http.js";
 export { SDKError } from "./sdk_error.js";
 export { SDKUnitTests } from "./sdk_unit_tests.js";
 export { ReactNativeCompatibility } from "./react_native_compatibility.js";

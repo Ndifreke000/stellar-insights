@@ -1,10 +1,15 @@
 /**
- * API Client for Stellar Insights
+ * API Client for PayRaider
  * Handles all API calls to the backend
+ *
+ * This module is the single canonical HTTP client for the frontend. All
+ * feature `*-api.ts` modules and `lib/api-client.ts` delegate here so auth
+ * header injection and error normalization stay consistent.
  */
 import { monitoring } from "../monitoring";
 import { logger } from "@/lib/logger";
-import { AnchorsResponse, MuxedAccountAnalytics, PredictionRequest, PredictionResponse, AlternativeRoute } from "./types";
+import { appendPageParams, type PaginatedResponse } from "./pagination";
+import { AnchorMetrics, MuxedAccountAnalytics, PredictionRequest, PredictionResponse } from "./types";
 
 import { config } from '@/config';
 export const API_BASE_URL = config.apiUrl;
@@ -15,19 +20,36 @@ export const API_BASE_URL = config.apiUrl;
 export class ApiError extends Error {
   status: number;
   data: unknown;
+  /** Backend `X-Request-ID` — search the API logs for this to find the request. */
+  requestId?: string;
 
-  constructor(status: number, message: string, data?: unknown) {
+  constructor(status: number, message: string, data?: unknown, requestId?: string) {
     super(message);
     this.status = status;
     this.data = data;
+    this.requestId = requestId;
     this.name = "ApiError";
   }
 }
 
 /**
- * Shared fetch wrapper with consistent error handling and types
+ * Resolve the auth token used for outgoing requests. Kept in one place so
+ * every caller (feature modules, `lib/api-client.ts`) sends the same header.
  */
-async function fetchApi<T>(
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem("auth_token");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Shared fetch wrapper with consistent auth, error handling and types.
+ * This is the single low-level request path for the whole frontend.
+ */
+export async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -35,9 +57,11 @@ async function fetchApi<T>(
     ? endpoint
     : `${API_BASE_URL}${endpoint}`;
 
-  const headers = {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers as Record<string, string> | undefined),
   };
 
   try {
@@ -49,11 +73,12 @@ async function fetchApi<T>(
     const duration = performance.now() - startTime;
 
     // Track API performance
-    monitoring.trackMetric("api-response-time", duration, {
+    monitoring.trackApiCall(
       endpoint,
-      status: response.status,
-      method: options.method || "GET",
-    });
+      options.method || "GET",
+      response.status,
+      duration,
+    );
 
     if (!response.ok) {
       let errorData;
@@ -67,6 +92,7 @@ async function fetchApi<T>(
         response.status,
         errorData.message || `API error: ${response.status}`,
         errorData,
+        response.headers.get("x-request-id") ?? errorData.request_id ?? undefined,
       );
     }
 
@@ -130,16 +156,10 @@ export const api = {
  */
 export async function getAnchors(
   limit?: number,
-  offset?: number,
-): Promise<AnchorsResponse> {
-  const params = new URLSearchParams();
-  if (limit !== undefined) params.append("limit", limit.toString());
-  if (offset !== undefined) params.append("offset", offset.toString());
-
-  const queryString = params.toString();
-  const endpoint = `/anchors${queryString ? `?${queryString}` : ""}`;
-
-  return api.get<AnchorsResponse>(endpoint);
+  cursor?: string,
+): Promise<PaginatedResponse<AnchorMetrics>> {
+  const query = appendPageParams(new URLSearchParams(), { limit, cursor }).toString();
+  return api.get<PaginatedResponse<AnchorMetrics>>(`/anchors${query ? `?${query}` : ""}`);
 }
 /**
  * Fetch muxed account usage analytics from the backend
@@ -153,115 +173,80 @@ export async function getMuxedAnalytics(
   return api.get<MuxedAccountAnalytics>(`/analytics/muxed${q ? `?${q}` : ""}`);
 }
 
-/**
- * Generate mock prediction data for development
- */
-function generateMockPrediction(
-  request: PredictionRequest,
-): PredictionResponse {
-  // Generate a base probability based on common corridors
-  const commonCorridors: Record<string, number> = {
-    "USDC-XLM": 0.95,
-    "USDC-EURC": 0.92,
-    "XLM-USDC": 0.94,
-    "USDC-PHP": 0.88,
-    "USDC-NGN": 0.82,
-    "EUR-USD": 0.91,
-  };
+interface PreflightCorridor {
+  id: string;
+  source_asset: string;
+  destination_asset: string;
+  success_rate: number;
+  total_attempts: number;
+  successful_payments: number;
+  health_score: number;
+}
 
-  const corridorKey = `${request.source_asset}-${request.destination_asset}`;
-  const baseProb = commonCorridors[corridorKey] ?? 0.7 + Math.random() * 0.2;
-
-  // Adjust based on amount (higher amounts = slightly lower success)
-  const amountFactor = Math.max(0.85, 1 - (request.amount / 100000) * 0.1);
-
-  // Adjust based on time (peak hours slightly better)
-  const hour = parseInt(request.time_of_day.split(":")[0], 10);
-  const timeFactor = hour >= 9 && hour <= 17 ? 1.02 : 0.98;
-
-  const successProb = Math.min(0.99, baseProb * amountFactor * timeFactor);
-
-  // Calculate confidence interval (narrower for higher probabilities)
-  const spread = (1 - successProb) * 0.3 + 0.02;
-  const lowerBound = Math.max(0, successProb - spread);
-  const upperBound = Math.min(1, successProb + spread / 2);
-
-  // Determine risk level
-  const riskLevel: "low" | "medium" | "high" =
-    successProb >= 0.85 ? "low" : successProb >= 0.65 ? "medium" : "high";
-
-  // Generate recommendation
-  const recommendations: Record<string, string> = {
-    low: "High probability of success. Proceed with payment.",
-    medium:
-      "Moderate success rate. Consider splitting into smaller amounts or adjusting timing.",
-    high: "Risk of failure is elevated. Consider alternative corridors or waiting for better conditions.",
-  };
-
-  // Generate alternative routes
-  const alternativeRoutes: AlternativeRoute[] = [
-    {
-      source_asset: request.source_asset,
-      destination_asset: request.destination_asset,
-      via_asset: "XLM",
-      estimated_success_rate: Math.min(0.99, successProb + 0.03),
-      description: `Route via XLM for better liquidity`,
-    },
-    {
-      source_asset: request.source_asset,
-      destination_asset: "USDC",
-      estimated_success_rate: 0.96,
-      description: `Convert to USDC first, then swap to ${request.destination_asset}`,
-    },
-  ].filter((route) => route.estimated_success_rate > successProb);
-
-  return {
-    success_probability: successProb,
-    confidence_interval: [lowerBound, upperBound],
-    risk_level: riskLevel,
-    recommendation: recommendations[riskLevel],
-    alternative_routes: alternativeRoutes,
-    model_version: "1.0.0",
-  };
+interface PreflightApiResponse {
+  decision: "proceed" | "caution" | "hold" | "unknown";
+  summary: string;
+  corridor: PreflightCorridor | null;
+  alternatives: PreflightCorridor[];
 }
 
 /**
- * Get payment success prediction
+ * 95% Wilson score interval for an observed success proportion. Narrow when
+ * many payments were observed, wide when few were.
+ */
+export function wilsonInterval(successes: number, total: number): [number, number] {
+  if (total <= 0) return [0, 1];
+  const z = 1.96;
+  const p = successes / total;
+  const denominator = 1 + (z * z) / total;
+  const centre = (p + (z * z) / (2 * total)) / denominator;
+  const margin = (z * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total))) / denominator;
+  return [Math.max(0, centre - margin), Math.min(1, centre + margin)];
+}
+
+const RISK_BY_DECISION: Record<PreflightApiResponse["decision"], PredictionResponse["risk_level"]> = {
+  proceed: "low",
+  caution: "medium",
+  hold: "high",
+  // No recent data is not a reason to pay; treat it as high risk.
+  unknown: "high",
+};
+
+/**
+ * Estimate a payment's chance of success from the backend's pre-payment
+ * check: the corridor's observed success rate over recent payments, a Wilson
+ * interval around it, and the check's decision as the risk level.
+ *
+ * This used to call an ML endpoint the backend never served and, when that
+ * failed, silently showed locally generated random numbers.
  */
 export async function getPaymentPrediction(
   request: PredictionRequest,
 ): Promise<PredictionResponse> {
-  try {
-    // Try to call the backend API
-    const corridorId = `${request.source_asset}-${request.destination_asset}`;
-    const response = await api.get<{
-      success_probability: number;
-      confidence: number;
-      risk_level: string;
-      recommendation: string;
-      model_version: string;
-    }>(
-      `/ml/predict?corridor=${encodeURIComponent(corridorId)}&amount_usd=${request.amount}`,
-    );
-
-    // Transform backend response to frontend format
-    const successProb = response.success_probability;
-    const spread = (1 - response.confidence) * 0.2;
-
-    return {
-      success_probability: successProb,
-      confidence_interval: [
-        Math.max(0, successProb - spread),
-        Math.min(1, successProb + spread / 2),
-      ],
-      risk_level: response.risk_level as "low" | "medium" | "high",
-      recommendation: response.recommendation,
-      alternative_routes: [],
-      model_version: response.model_version,
-    };
-  } catch {
-    // Fall back to mock data if backend is unavailable
-    logger.info("Using mock prediction data (backend unavailable)");
-    return generateMockPrediction(request);
+  const params = new URLSearchParams({
+    source_asset: request.source_asset,
+    destination_asset: request.destination_asset,
+  });
+  if (Number.isFinite(request.amount) && request.amount > 0) {
+    params.set("amount_usd", String(request.amount));
   }
+  const response = await api.get<PreflightApiResponse>(`/preflight?${params}`);
+
+  const corridor = response.corridor;
+  const successes = corridor?.successful_payments ?? 0;
+  const total = corridor?.total_attempts ?? 0;
+
+  return {
+    success_probability: corridor ? corridor.success_rate / 100 : 0,
+    confidence_interval: wilsonInterval(successes, total),
+    risk_level: RISK_BY_DECISION[response.decision],
+    recommendation: response.summary,
+    alternative_routes: response.alternatives.map((alt) => ({
+      source_asset: alt.source_asset,
+      destination_asset: alt.destination_asset,
+      estimated_success_rate: alt.success_rate / 100,
+      description: `${alt.id} (health ${alt.health_score.toFixed(0)} of 100)`,
+    })),
+    model_version: `observed success rate over ${total} recent payments`,
+  };
 }

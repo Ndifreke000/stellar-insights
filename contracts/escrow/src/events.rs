@@ -52,3 +52,11 @@ pub fn emit_cancelled(env: &Env, escrow_id: u64, cancelled_by: Address) {
         (escrow_id, cancelled_by),
     );
 }
+
+pub fn emit_paused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("ESC_PAU"),), admin);
+}
+
+pub fn emit_unpaused(env: &Env, admin: Address) {
+    env.events().publish((symbol_short!("ESC_UNP"),), admin);
+}

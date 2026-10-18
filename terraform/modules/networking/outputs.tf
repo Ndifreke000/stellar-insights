@@ -66,11 +66,6 @@ output "backend_security_group_id" {
   value       = aws_security_group.backend.id
 }
 
-output "database_security_group_id" {
-  description = "Security group ID for RDS database"
-  value       = aws_security_group.database.id
-}
-
 output "redis_security_group_id" {
   description = "Security group ID for Redis cache"
   value       = aws_security_group.redis.id

@@ -1,12 +1,12 @@
-import type { StellarInsightsConfig } from "./types.js";
+import type { PayRaiderConfig } from "./types.js";
 import type { CancellableRequestParams, CancellableRequestResult } from "./types/request_cancellation.js";
 import { SDKError } from "./sdk_error.js";
 
 export class RequestCancellation {
-  private readonly config: StellarInsightsConfig;
+  private readonly config: PayRaiderConfig;
   private readonly controllers = new Map<string, AbortController>();
 
-  constructor(config: StellarInsightsConfig = {}) {
+  constructor(config: PayRaiderConfig = {}) {
     this.config = config;
   }
 

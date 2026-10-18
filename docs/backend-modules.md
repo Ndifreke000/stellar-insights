@@ -71,7 +71,7 @@ pub struct EventQuery {
 #### Basic Event Query
 
 ```rust,no_run
-use stellar_insights_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
+use payraider_backend::services::event_indexer::{EventIndexer, EventQuery, EventOrderBy};
 
 let indexer = EventIndexer::new(db);
 
@@ -105,7 +105,7 @@ let events = indexer.query_events(query).await?;
 #### Event Indexing
 
 ```rust,no_run
-use stellar_insights_backend::services::event_indexer::IndexedEvent;
+use payraider_backend::services::event_indexer::IndexedEvent;
 use chrono::Utc;
 
 let event = IndexedEvent {
@@ -169,7 +169,7 @@ pub struct CircuitBreakerConfig {
 #### Basic Usage
 
 ```rust,no_run
-use stellar_insights_backend::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreakerConfig};
+use payraider_backend::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreakerConfig};
 use std::time::Duration;
 
 // Get shared circuit breaker instance
@@ -250,7 +250,7 @@ pub struct VaultConfig {
 #### Initialize Vault Client
 
 ```rust,no_run
-use stellar_insights_backend::vault::{init_vault, VaultClient, VaultConfig};
+use payraider_backend::vault::{init_vault, VaultClient, VaultConfig};
 
 // From environment (recommended for production)
 let vault_client = init_vault().await?;
@@ -277,7 +277,7 @@ let config = client.read_secret("app/config", None).await?;
 #### Database Credentials
 
 ```rust,no_run
-use stellar_insights_backend::vault::DatabaseCredentials;
+use payraider_backend::vault::DatabaseCredentials;
 
 // Generate temporary database credentials
 let creds: DatabaseCredentials = client.get_database_credentials("read-write").await?;
@@ -310,7 +310,7 @@ pub struct DatabaseCredentials {
 The vault module provides comprehensive error types:
 
 ```rust,no_run
-use stellar_insights_backend::vault::VaultError;
+use payraider_backend::vault::VaultError;
 
 match vault_operation {
     Ok(result) => println!("Success: {}", result),
@@ -335,8 +335,8 @@ match vault_operation {
 Combine vault with circuit breaker for resilience:
 
 ```rust,no_run
-use stellar_insights_backend::rpc::circuit_breaker::rpc_circuit_breaker;
-use stellar_insights_backend::vault::init_vault;
+use payraider_backend::rpc::circuit_breaker::rpc_circuit_breaker;
+use payraider_backend::vault::init_vault;
 
 let vault_client = init_vault().await?;
 let breaker = rpc_circuit_breaker();

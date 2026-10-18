@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use stellar_insights_backend::snapshot::{
+    use payraider_backend::snapshot::{
         AnalyticsSnapshot, SnapshotAnchorMetrics, SnapshotCorridorMetrics, SnapshotGenerator,
         SCHEMA_VERSION,
     };

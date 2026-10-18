@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{header::IF_NONE_MATCH, HeaderValue, Request, StatusCode};
-use stellar_insights_backend::services::price_feed::{PriceFeedClient, PriceFeedConfig};
+use payraider_backend::services::price_feed::{PriceFeedClient, PriceFeedConfig};
 use tower::util::ServiceExt;
 
 fn test_app() -> axum::Router {
@@ -11,7 +11,7 @@ fn test_app() -> axum::Router {
         PriceFeedConfig::default(),
         HashMap::new(),
     ));
-    stellar_insights_backend::api::cost_calculator::routes(price_feed)
+    payraider_backend::api::cost_calculator::routes(price_feed)
 }
 
 #[tokio::test]

@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-NAMESPACE=${1:-stellar-insights}
+NAMESPACE=${1:-payraider}
 
 echo -e "${BLUE}=== Testing Kubernetes Deployment ===${NC}"
 echo ""

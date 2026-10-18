@@ -37,14 +37,14 @@ fi
 
 # Send test log
 echo -n "Sending test log to Logstash... "
-echo '{"@timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'","log_level":"info","message":"ELK test log","service":"stellar-insights","target":"test"}' | nc localhost 5000
+echo '{"@timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'","log_level":"info","message":"ELK test log","service":"payraider","target":"test"}' | nc localhost 5000
 sleep 2
 echo -e "${GREEN}✓ SENT${NC}"
 
 # Check if log was indexed
 echo -n "Verifying log in Elasticsearch... "
 sleep 3
-if curl -s "http://localhost:9200/stellar-insights-*/_search?q=message:ELK%20test%20log" | grep -q '"hits":{"total":{"value":[1-9]'; then
+if curl -s "http://localhost:9200/payraider-*/_search?q=message:ELK%20test%20log" | grep -q '"hits":{"total":{"value":[1-9]'; then
     echo -e "${GREEN}✓ FOUND${NC}"
 else
     echo -e "${YELLOW}⚠ NOT FOUND${NC} (may need more time)"
@@ -53,7 +53,7 @@ fi
 # Check index count
 echo ""
 echo "📊 Index Statistics:"
-curl -s "http://localhost:9200/_cat/indices/stellar-insights-*?v&h=index,docs.count,store.size"
+curl -s "http://localhost:9200/_cat/indices/payraider-*?v&h=index,docs.count,store.size"
 
 echo ""
 echo -e "${GREEN}✅ ELK Stack is operational!${NC}"

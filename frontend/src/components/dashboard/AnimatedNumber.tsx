@@ -4,10 +4,6 @@ import { motion, useSpring, useTransform } from "framer-motion";
 import { useEffect } from "react";
 import { useLocale } from "next-intl";
 
-const fontSize = 30;
-const padding = 15;
-const height = fontSize + padding;
-
 interface AnimatedNumberProps {
   value: number;
   format?: "currency" | "percent" | "number" | "time";

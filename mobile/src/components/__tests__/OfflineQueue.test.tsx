@@ -1,6 +1,5 @@
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { OfflineQueue } from '../OfflineQueue';
 import { useOfflineQueue } from '@hooks/useOfflineQueue';
 import { useAppStore } from '@store/appStore';
@@ -33,23 +32,21 @@ describe('OfflineQueue', () => {
     mockedUseAppStore.mockImplementation(selector => selector({ isOnline: true }));
   });
 
-  it('renders correctly', () => {
-    const tree = renderer.create(<OfflineQueue />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+  it('renders correctly', async () => {
+    const { getByText } = await render(<OfflineQueue />);
 
-    expect(texts).toContain('Offline Queue');
+    expect(getByText('Offline Queue')).toBeTruthy();
   });
 
-  it('shows offline feedback when the device is offline', () => {
+  it('shows offline feedback when the device is offline', async () => {
     mockedUseAppStore.mockImplementation(selector => selector({ isOnline: false }));
 
-    const tree = renderer.create(<OfflineQueue />);
-    const texts = tree.root.findAllByType(Text).map(node => node.props.children);
+    const { getByText } = await render(<OfflineQueue />);
 
-    expect(texts).toContain('Offline mode active');
+    expect(getByText('Offline mode active')).toBeTruthy();
   });
 
-  it('renders queued requests and removes an item', () => {
+  it('renders queued requests and removes an item', async () => {
     const remove = jest.fn();
     mockedUseOfflineQueue.mockReturnValue({
       ...queueState,
@@ -69,12 +66,10 @@ describe('OfflineQueue', () => {
       ],
     });
 
-    const tree = renderer.create(<OfflineQueue />);
-    const removeButton = tree.root.findByProps({ accessibilityLabel: 'Remove queued request queued-request' });
+    const { getByLabelText } = await render(<OfflineQueue />);
+    const removeButton = getByLabelText('Remove queued request queued-request');
 
-    act(() => {
-      removeButton.props.onPress();
-    });
+    await fireEvent.press(removeButton);
 
     expect(remove).toHaveBeenCalledWith('queued-request');
   });

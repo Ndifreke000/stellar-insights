@@ -4,7 +4,7 @@ import {
   getToken,
   removeToken as removeStoredToken,
   saveToken as saveStoredToken,
-} from '@services/tokenStorage';
+} from '@services/auth';
 
 /** Public API returned by {@link useSecureTokenStorage}. */
 export interface UseSecureTokenStorageReturn {

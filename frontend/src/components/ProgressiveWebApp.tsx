@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useProgressiveWebApp, PWAInstallState } from '@/hooks/useProgressiveWebApp';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Download, CheckCircle, Wifi, WifiOff, Trash2, RefreshCw } from 'lucide-react';
@@ -48,13 +48,10 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
     error,
   } = useProgressiveWebApp();
 
-  const [showInstallUI, setShowInstallUI] = useState(false);
-  const [showUpdateUI, setShowUpdateUI] = useState(false);
   const [showCacheUI, setShowCacheUI] = useState(false);
-  const [cacheFormatted, setCacheFormatted] = useState('0 B');
 
   // Format cache size
-  useEffect(() => {
+  const cacheFormatted = useMemo(() => {
     const formatBytes = (bytes: number) => {
       if (bytes === 0) return '0 B';
       const k = 1024;
@@ -62,7 +59,7 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
     };
-    setCacheFormatted(formatBytes(capabilities.cacheSize));
+    return formatBytes(capabilities.cacheSize);
   }, [capabilities.cacheSize]);
 
   // Notify state changes
@@ -70,24 +67,16 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
     onStateChange?.(state);
   }, [state, onStateChange]);
 
-  // Show/hide install UI
-  useEffect(() => {
-    setShowInstallUI(showInstallPrompt && capabilities.canInstall && !capabilities.isInstalled);
-  }, [showInstallPrompt, capabilities.canInstall, capabilities.isInstalled]);
-
-  // Show/hide update UI
-  useEffect(() => {
-    setShowUpdateUI(showUpdateNotification && updateAvailable && capabilities.isInstalled);
-  }, [showUpdateNotification, updateAvailable, capabilities.isInstalled]);
+  // Compute visibility based on conditions
+  const showInstallUI = showInstallPrompt && capabilities.canInstall && !capabilities.isInstalled;
+  const showUpdateUI = showUpdateNotification && updateAvailable && capabilities.isInstalled;
 
   const handleInstall = useCallback(async () => {
     await install();
-    setShowInstallUI(false);
   }, [install]);
 
   const handleDismiss = useCallback(() => {
     dismiss();
-    setShowInstallUI(false);
   }, [dismiss]);
 
   const handleClearCache = useCallback(async () => {
@@ -120,7 +109,7 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
           <Download className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-              Install Stellar Insights
+              Install PayRaider
             </p>
             <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
               Get instant access to analytics with offline support and faster loading.
@@ -166,7 +155,7 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
               Update Available
             </p>
             <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-              A new version of Stellar Insights is ready to install.
+              A new version of PayRaider is ready to install.
             </p>
             <div className="flex gap-2 mt-3">
               <Button
@@ -198,10 +187,10 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
           <WifiOff className="w-5 h-5 text-gray-600 dark:text-gray-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-200">
-              You're Offline
+              You&apos;re Offline
             </p>
             <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-              Using cached data. Changes will sync when you're back online.
+              Using cached data. Changes will sync when you&apos;re back online.
             </p>
           </div>
         </div>
@@ -231,7 +220,7 @@ export const ProgressiveWebApp: React.FC<ProgressiveWebAppProps> = ({
               App Installed
             </p>
             <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">
-              Stellar Insights is installed and ready to use offline.
+              PayRaider is installed and ready to use offline.
             </p>
           </div>
         </div>
