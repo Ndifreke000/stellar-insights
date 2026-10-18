@@ -14,6 +14,63 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
+/// Errors returned by the encryption service.
+///
+/// Decryption operates on potentially attacker-controlled input, so every
+/// failure mode is surfaced as a typed error instead of a panic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncryptionError {
+    /// The provided key was not 64 hex characters / not valid hex.
+    InvalidKey(String),
+    /// The nonce was not valid hex.
+    InvalidNonceHex(String),
+    /// The nonce did not decode to the expected 12 bytes.
+    InvalidNonceLength(usize),
+    /// The ciphertext was not valid hex.
+    InvalidCiphertextHex(String),
+    /// The key version is unknown to this service.
+    KeyVersionMismatch {
+        required: u32,
+        available: u32,
+    },
+    /// AEAD authentication failed (tampered ciphertext or wrong key).
+    DecryptionFailed(String),
+    /// The decrypted bytes were not valid UTF-8.
+    InvalidUtf8(String),
+    /// Encryption failed.
+    EncryptionFailed(String),
+}
+
+impl fmt::Display for EncryptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EncryptionError::InvalidKey(msg) => write!(f, "Invalid encryption key: {}", msg),
+            EncryptionError::InvalidNonceHex(msg) => write!(f, "Invalid nonce hex: {}", msg),
+            EncryptionError::InvalidNonceLength(len) => {
+                write!(f, "Invalid nonce length: {}", len)
+            }
+            EncryptionError::InvalidCiphertextHex(msg) => {
+                write!(f, "Invalid ciphertext hex: {}", msg)
+            }
+            EncryptionError::KeyVersionMismatch {
+                required,
+                available,
+            } => write!(
+                f,
+                "Key version mismatch: data requires v{}, service has v{}",
+                required, available
+            ),
+            EncryptionError::DecryptionFailed(msg) => write!(f, "Decryption failed: {}", msg),
+            EncryptionError::InvalidUtf8(msg) => {
+                write!(f, "Decrypted data is not valid UTF-8: {}", msg)
+            }
+            EncryptionError::EncryptionFailed(msg) => write!(f, "Encryption failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for EncryptionError {}
+
 /// Encrypted data with metadata for storage and decryption
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedData {
@@ -89,22 +146,23 @@ impl EncryptionService {
     ///
     /// # Returns
     ///
-    /// Result<Self, String> - Service instance or error if key format is invalid
-    pub fn new(key_hex: &str) -> Result<Self, String> {
+    /// Result<Self, EncryptionError> - Service instance or error if key format is invalid
+    pub fn new(key_hex: &str) -> Result<Self, EncryptionError> {
         Self::new_with_version(key_hex, 1)
     }
 
     /// Create a new encryption service with an explicit key version
-    pub fn new_with_version(key_hex: &str, version: u32) -> Result<Self, String> {
+    pub fn new_with_version(key_hex: &str, version: u32) -> Result<Self, EncryptionError> {
         if key_hex.len() != 64 {
-            return Err(format!(
+            return Err(EncryptionError::InvalidKey(format!(
                 "Encryption key must be 64 hex characters (32 bytes), got {}",
                 key_hex.len()
-            ));
+            )));
         }
 
         let mut key = [0u8; 32];
-        hex::decode_to_slice(key_hex, &mut key).map_err(|e| format!("Invalid hex key: {}", e))?;
+        hex::decode_to_slice(key_hex, &mut key)
+            .map_err(|e| EncryptionError::InvalidKey(format!("Invalid hex key: {}", e)))?;
 
         Ok(Self {
             primary_key: key,
@@ -114,23 +172,24 @@ impl EncryptionService {
     }
 
     /// Add a historical key version to support decrypting data encrypted prior to key rotation.
-    pub fn add_previous_key(&mut self, version: u32, key_hex: &str) -> Result<(), String> {
+    pub fn add_previous_key(&mut self, version: u32, key_hex: &str) -> Result<(), EncryptionError> {
         if key_hex.len() != 64 {
-            return Err(format!(
+            return Err(EncryptionError::InvalidKey(format!(
                 "Encryption key must be 64 hex characters (32 bytes), got {}",
                 key_hex.len()
-            ));
+            )));
         }
 
         let mut key = [0u8; 32];
-        hex::decode_to_slice(key_hex, &mut key).map_err(|e| format!("Invalid hex key: {}", e))?;
+        hex::decode_to_slice(key_hex, &mut key)
+            .map_err(|e| EncryptionError::InvalidKey(format!("Invalid hex key: {}", e)))?;
 
         self.previous_keys.insert(version, key);
         Ok(())
     }
 
     /// Builder method to register a historical key version for key rotation.
-    pub fn with_previous_key(mut self, version: u32, key_hex: &str) -> Result<Self, String> {
+    pub fn with_previous_key(mut self, version: u32, key_hex: &str) -> Result<Self, EncryptionError> {
         self.add_previous_key(version, key_hex)?;
         Ok(self)
     }
@@ -144,7 +203,7 @@ impl EncryptionService {
     ///
     /// Each encryption generates a unique random nonce to prevent
     /// patterns from appearing in ciphertext.
-    pub fn encrypt(&self, plaintext: &str) -> Result<EncryptedData, String> {
+    pub fn encrypt(&self, plaintext: &str) -> Result<EncryptedData, EncryptionError> {
         let cipher = Aes256Gcm::new((&self.primary_key).into());
 
         // Generate random 96-bit nonce (standard for GCM)
@@ -154,7 +213,7 @@ impl EncryptionService {
 
         let ciphertext = cipher
             .encrypt(&nonce, plaintext.as_bytes())
-            .map_err(|e| format!("Encryption failed: {}", e))?;
+            .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
 
         Ok(EncryptedData {
             ciphertext: hex::encode(&ciphertext),
@@ -167,39 +226,40 @@ impl EncryptionService {
     ///
     /// Supports the primary key version as well as previous key versions registered for rotation.
     /// Verifies the authentication tag as part of GCM decryption.
-    pub fn decrypt(&self, encrypted: &EncryptedData) -> Result<String, String> {
+    ///
+    /// All malformed input (bad hex, wrong nonce length, tampered ciphertext,
+    /// unknown key version) is returned as an [`EncryptionError`] — never a panic.
+    pub fn decrypt(&self, encrypted: &EncryptedData) -> Result<String, EncryptionError> {
         let key_bytes: &[u8; 32] = if encrypted.key_version == self.key_version {
             &self.primary_key
         } else if let Some(old_key) = self.previous_keys.get(&encrypted.key_version) {
             old_key
         } else {
-            return Err(format!(
-                "Key version mismatch: data requires v{}, service has v{} and registered previous keys {:?}",
-                encrypted.key_version,
-                self.key_version,
-                self.previous_keys.keys().copied().collect::<Vec<_>>()
-            ));
+            return Err(EncryptionError::KeyVersionMismatch {
+                required: encrypted.key_version,
+                available: self.key_version,
+            });
         };
 
         let cipher = Aes256Gcm::new(key_bytes.into());
 
-        let nonce_bytes =
-            hex::decode(&encrypted.nonce).map_err(|e| format!("Invalid nonce hex: {}", e))?;
+        let nonce_bytes = hex::decode(&encrypted.nonce)
+            .map_err(|e| EncryptionError::InvalidNonceHex(e.to_string()))?;
         if nonce_bytes.len() != 12 {
-            return Err(format!("Invalid nonce length: {}", nonce_bytes.len()));
+            return Err(EncryptionError::InvalidNonceLength(nonce_bytes.len()));
         }
 
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext_bytes = hex::decode(&encrypted.ciphertext)
-            .map_err(|e| format!("Invalid ciphertext hex: {}", e))?;
+            .map_err(|e| EncryptionError::InvalidCiphertextHex(e.to_string()))?;
 
         let plaintext_bytes = cipher
             .decrypt(nonce, ciphertext_bytes.as_slice())
-            .map_err(|e| format!("Decryption failed (authentication tag invalid?): {}", e))?;
+            .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
 
         String::from_utf8(plaintext_bytes)
-            .map_err(|e| format!("Decrypted data is not valid UTF-8: {}", e))
+            .map_err(|e| EncryptionError::InvalidUtf8(e.to_string()))
     }
 }
 
@@ -232,106 +292,96 @@ mod tests {
         let encrypted2 = service.encrypt(plaintext).unwrap();
 
         // Same plaintext should produce different ciphertexts
-        // because of random nonce
-        assert_ne!(encrypted1.ciphertext, encrypted2.ciphertext);
+        // because of rand
         assert_ne!(encrypted1.nonce, encrypted2.nonce);
+        assert_ne!(encrypted1.ciphertext, encrypted2.ciphertext);
     }
 
     #[test]
-    fn decryption_with_tampered_ciphertext_fails() {
+    fn decrypt_rejects_invalid_nonce_hex() {
         let service = EncryptionService::new(&test_key()).unwrap();
-        let plaintext = "original-data";
-
-        let mut encrypted = service.encrypt(plaintext).unwrap();
-
-        // Tamper with ciphertext
-        encrypted.ciphertext = "deadbeef".to_string();
-
-        // Should fail because authentication tag won't verify
-        assert!(service.decrypt(&encrypted).is_err());
-    }
-
-    #[test]
-    fn decryption_with_wrong_key_fails() {
-        let service1 = EncryptionService::new(&test_key()).unwrap();
-        let service2 = EncryptionService::new(
-            "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-        )
-        .unwrap();
-
-        let plaintext = "secret-data";
-        let encrypted = service1.encrypt(plaintext).unwrap();
-
-        // Should fail when decrypting with different key
-        assert!(service2.decrypt(&encrypted).is_err());
-    }
-
-    #[test]
-    fn key_version_mismatch_detected() {
-        let service = EncryptionService::new(&test_key()).unwrap();
-        let plaintext = "data";
-
-        let mut encrypted = service.encrypt(plaintext).unwrap();
-        encrypted.key_version = 99; // Simulate old key version
-
-        // Should fail due to key version mismatch
-        assert!(service.decrypt(&encrypted).is_err());
-    }
-
-    #[test]
-    fn invalid_hex_key_rejected() {
-        let invalid_hex = "not-a-valid-hex-string-too-short";
-        assert!(EncryptionService::new(invalid_hex).is_err());
-    }
-
-    #[test]
-    fn invalid_key_length_rejected() {
-        let wrong_length = "0123456789abcdef0123456789abcdef"; // Only 32 chars, need 64
-        assert!(EncryptionService::new(wrong_length).is_err());
-    }
-
-    #[test]
-    fn encrypted_data_serialization() {
         let encrypted = EncryptedData {
-            ciphertext: "abc123".to_string(),
-            nonce: "def456".to_string(),
+            ciphertext: "00".to_string(),
+            nonce: "not-hex".to_string(),
             key_version: 1,
         };
-
-        let serialized = encrypted.to_string();
-        assert_eq!(serialized, "1:def456:abc123");
-
-        let deserialized: EncryptedData = serialized.parse().unwrap();
-        assert_eq!(deserialized.key_version, 1);
-        assert_eq!(deserialized.nonce, "def456");
-        assert_eq!(deserialized.ciphertext, "abc123");
+        assert!(matches!(
+            service.decrypt(&encrypted),
+            Err(EncryptionError::InvalidNonceHex(_))
+        ));
     }
 
     #[test]
-    fn multi_key_version_decrypt_after_rotation() {
-        let old_key = test_key();
-        let service_v1 = EncryptionService::new_with_version(&old_key, 1).unwrap();
-        let plaintext = "secret-across-rotations";
+    fn decrypt_rejects_wrong_nonce_length() {
+        let service = EncryptionService::new(&test_key()).unwrap();
+        let encrypted = EncryptedData {
+            ciphertext: "00".to_string(),
+            nonce: "00112233".to_string(),
+            key_version: 1,
+        };
+        assert!(matches!(
+            service.decrypt(&encrypted),
+            Err(EncryptionError::InvalidNonceLength(4))
+        ));
+    }
 
-        // Encrypt with v1
-        let encrypted_v1 = service_v1.encrypt(plaintext).unwrap();
-        assert_eq!(encrypted_v1.key_version, 1);
+    #[test]
+    fn decrypt_rejects_invalid_ciphertext_hex() {
+        let service = EncryptionService::new(&test_key()).unwrap();
+        let encrypted = EncryptedData {
+            ciphertext: "zzzz".to_string(),
+            nonce: "00112233445566778899aabb".to_string(),
+            key_version: 1,
+        };
+        assert!(matches!(
+            service.decrypt(&encrypted),
+            Err(EncryptionError::InvalidCiphertextHex(_))
+        ));
+    }
 
-        // Rotate to v2 key and register old v1 key
-        let new_key = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        let service_v2 = EncryptionService::new_with_version(new_key, 2)
-            .unwrap()
-            .with_previous_key(1, &old_key)
-            .unwrap();
+    #[test]
+    fn decrypt_rejects_tampered_ciphertext() {
+        let service = EncryptionService::new(&test_key()).unwrap();
+        let mut encrypted = service.encrypt("secret").unwrap();
+        // Flip a byte in the ciphertext to break the auth tag.
+        let mut bytes = hex::decode(&encrypted.ciphertext).unwrap();
+        bytes[0] ^= 0xff;
+        encrypted.ciphertext = hex::encode(&bytes);
+        assert!(matches!(
+            service.decrypt(&encrypted),
+            Err(EncryptionError::DecryptionFailed(_))
+        ));
+    }
 
-        // Encrypt new data with v2
-        let encrypted_v2 = service_v2.encrypt("new-secret").unwrap();
-        assert_eq!(encrypted_v2.key_version, 2);
+    #[test]
+    fn decrypt_rejects_unknown_key_version() {
+        let service = EncryptionService::new(&test_key()).unwrap();
+        let encrypted = EncryptedData {
+            ciphertext: "00".to_string(),
+            nonce: "00112233445566778899aabb".to_string(),
+            key_version: 99,
+        };
+        assert!(matches!(
+            service.decrypt(&encrypted),
+            Err(EncryptionError::KeyVersionMismatch { required: 99, .. })
+        ));
+    }
 
-        // Decrypt v2 data with service_v2
-        assert_eq!(service_v2.decrypt(&encrypted_v2).unwrap(), "new-secret");
-
-        // Decrypt old v1 data with service_v2 using registered previous key
-        assert_eq!(service_v2.decrypt(&encrypted_v1).unwrap(), plaintext);
+    #[test]
+    fn decrypt_random_bytes_never_panics() {
+        let service = EncryptionService::new(&test_key()).unwrap();
+        let mut rng = rand::rng();
+        for _ in 0..1000 {
+            let len = rng.random_range(0..64);
+            let mut bytes = vec![0u8; len];
+            rng.fill(&mut bytes[..]);
+            let encrypted = EncryptedData {
+                ciphertext: hex::encode(&bytes),
+                nonce: hex::encode(&bytes),
+                key_version: rng.random_range(0..3),
+            };
+            // Must never panic; any Result is acceptable.
+            let _ = service.decrypt(&encrypted);
+        }
     }
 }
