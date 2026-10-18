@@ -1,6 +1,6 @@
-# stellar-insights
+# Stellar Insights
 
-Stellar Insights provides preflight checks and analytics for Stellar payment corridors.
+Stellar Insights is an analytics and preflight API for Stellar assets, with a Rust backend, a Next.js frontend, and TypeScript/Python SDKs.
 
 ## Getting started
 
@@ -17,55 +17,94 @@ cd ../sdk/typescript && npm install && npm test
 cd ../python && pip install -e .[dev] && pytest
 ```
 
-Try the core endpoint:
+Try the core endpoint: `curl -s "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"` (port per your `.env`).
+
+## Rate limiting
+
+All API routes are protected by a single rate limiting middleware. Every response — including successful `200` responses and rate-limited `429` responses — carries the standard IETF `RateLimit-*` headers so SDKs and clients can implement backoff without parsing error bodies:
+
+| Header | Description |
+| --- | --- |
+| `RateLimit-Limit` | Maximum number of requests allowed in the current window. |
+| `RateLimit-Remaining` | Number of requests remaining in the current window. |
+| `RateLimit-Reset` | Seconds until the current window resets. |
+
+When a request is rate limited, the response is a `429 Too Many Requests` with the same `RateLimit-*` headers (with `RateLimit-Remaining: 0`) plus a `Retry-After` header indicating how long the client should wait before retrying.
+
+Example:
 
 ```bash
-curl -s "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+curl -i "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+# HTTP/1.1 200 OK
+# RateLimit-Limit: 60
+# RateLimit-Remaining: 59
+# RateLimit-Reset: 42
 ```
 
-(port per your `.env`)
+A bare `CODE` (e.g. `USDC`) is still accepted and resolves to the corridor for
+that code; when several issuers exist for the same code, use `CODE:ISSUER` to
+select the one you mean. Malformed asset strings are rejected at the boundary
+with the standard error response.
 
-## Preflight corridor cache
+## Pro subscription renewal and grace period
 
-Preflight scores against a cached corridor table stored under the `preflight:corridors`
-cache key. To keep preflight from scoring against stale data:
+Pro access is time-limited. To avoid silent expiry — where an integrator's
+production traffic suddenly drops to free-tier limits — the backend sends
+renewal reminders and keeps a short grace period after expiry.
 
-- Each ingestion batch invalidates `preflight:corridors` once it commits, so the next
-  preflight request rebuilds the table from fresh data.
-- The corridor cache TTL is capped at the ingestion interval, so the entry can never
-  outlive the data it was derived from even if an invalidation is missed.
-- Cache age is exposed as a metric so operators can alert when the corridor table is
-  older than one ingestion cycle.
+- **Reminders.** A scheduler notifies the account owner (email and/or webhook)
+  **7 days** and **1 day** before the Pro subscription expires. Each reminder
+  is sent at most once per window, so restarts do not duplicate notifications.
+- **Grace period.** After the expiry timestamp passes, Pro entitlements remain
+  active for a configurable grace window (default **3 days**) so a late renewal
+  does not interrupt production. Once the grace period ends, the account falls
+  back to free-tier limits.
 
-## Billing: USDC invoice confirmation
+Both are configured via environment variables:
 
-`confirm_invoice` grants the Pro plan only after verifying the on-chain payment on
-Horizon. The check is deny-by-default: any input that does not match the invoice is
-rejected rather than cleaned up. A transaction is accepted only when **all** of the
-following hold:
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `SUBSCRIPTION_REMINDER_DAYS` | `7,1` | Comma-separated days-before-expiry at which reminders fire |
+| `SUBSCRIPTION_GRACE_PERIOD_DAYS` | `3` | Days Pro stays active after expiry before falling back to free tier |
 
-- The transaction is loaded by hash and has `successful == true` (failed txs are
-  rejected).
-- It contains a payment operation to the configured billing account whose
-  `asset_code == USDC` **and** `asset_issuer == <configured issuer>` (fake USDC or a
-  wrong issuer is rejected).
-- The delivered `amount >= invoice.amount` (underpayments are rejected).
-- The transaction memo equals the invoice memo (memo is bound to the invoice).
-- The transaction hash has not already been consumed by another invoice (reused tx
-  hashes are rejected).
+Reminders are delivered through the same notification channel used for other
+account events (email when configured, otherwise the account's webhook).
 
-Path payments that deliver USDC to the billing account are accepted when the
-destination asset and amount match. Payments split across multiple operations are
-summed before the amount check.
+## Wallet sign-in (SEP-10)
 
-## Preflight calibration report
+The dashboard signs wallets in with [SEP-10](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md).
+The **home domain is server-authoritative**: the frontend fetches it from the
+backend config endpoint (`GET /api/v1/auth/config`) and passes it to the SEP-10
+challenge request. The client no longer derives the home domain from
+`window.location.hostname`, so sign-in works on preview deployments and
+localhost, and a client cannot pick the domain that is validated. The backend
+ignores any client-supplied home domain and always uses its configured value
+(`SEP10_HOME_DOMAIN`).
 
-Credibility of the preflight `hold` / `proceed` decisions depends on showing that `hold`
-actually predicts failures. We publish a calibration report that joins each preflight
-decision with the subsequently observed payment outcome on the same corridor and reports
-weekly per-decision failure rates plus precision/recall for the `hold` decision.
+## Database
 
-- Report: [`docs/preflight-calibration.md`](docs/preflight-calibration.md)
-- Generator: `backend/scripts/preflight_calibration.py` (see the report header for usage)
+**SQLite only.** This is a compile-time property, not a configuration one:
+`sqlx` is built with only the `sqlite` feature, `backend/src/database.rs` uses
+`SqlitePool`/`SqliteConnectOptions` directly, and every migration is written in
+SQLite-flavoured SQL.
 
-See the report for the data model, edge cases, and how to regenerate it from real data.
+Setting a `postgresql://` `DATABASE_URL` does **not** switch databases — it
+fails to parse as `SqliteConnectOptions` and the backend refuses to start.
+Adding Postgres support is a code change. Whether to make it is being tracked
+in issue #1876.
+
+## Deployed contracts
+
+The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
+[`contracts/.env.testnet`](contracts/.env.testnet) is generated by
+`deploy-contracts-testnet.sh` — prefer reading it over copying IDs from here.
+
+| Contract | Env var | Testnet ID (historical) |
+|---|---|---|
+| PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
+
+All other contract crates live under `c
+
+## 🧪 Local safety chec
+
+/* … truncated 1537 chars — edit only what you need near the top … */
