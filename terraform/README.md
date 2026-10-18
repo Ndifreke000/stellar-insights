@@ -1,5 +1,16 @@
 # Terraform Infrastructure as Code
 
+> **⚠️ Not used by the actual deployment.** This project currently deploys
+> as a single Render Blueprint (`render.yaml`) with a SQLite database on a
+> persistent disk — see [`docs/DEPLOY.md`](../docs/DEPLOY.md) and
+> [`docs/adr/0001-sqlite-vs-postgres.md`](../docs/adr/0001-sqlite-vs-postgres.md).
+> This directory targets a larger multi-AZ AWS architecture that was never
+> actually provisioned for this project. It's kept, undeleted, as a
+> reference for if/when that scale-out actually happens — see issue #2650.
+> `terraform-validate.yml` was changed to `workflow_dispatch`-only for the
+> same reason (it ran on every push/PR to `terraform/**`, work that nothing
+> here currently depends on).
+
 This directory contains Terraform modules and configurations for provisioning and managing the PayRaider infrastructure on AWS.
 
 ## Overview

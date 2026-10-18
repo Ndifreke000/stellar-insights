@@ -1,8 +1,10 @@
 /**
  * API Client with CSRF Protection
  *
- * Provides type-safe API methods with automatic CSRF token handling
- * for all state-changing operations.
+ * Canonical fetch wrapper for the frontend. All API modules (including
+ * `lib/api/api.ts` and feature `*-api.ts` modules) should delegate to the
+ * helpers exported here so auth header injection and error normalization
+ * stay consistent across callers.
  */
 
 import { getCsrfToken, refreshCsrfToken } from './csrf-client';
@@ -13,6 +15,24 @@ interface ApiOptions extends RequestInit {
 
 interface ApiFetchOptions extends ApiOptions {
   _retried?: boolean;
+}
+
+/**
+ * Normalized error thrown by every API helper. Carries the HTTP status and
+ * any parsed response body so callers can branch on it consistently.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly body: unknown;
+
+  constructor(status: number, statusText: string, body?: unknown) {
+    super(`API error: ${status} ${statusText}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.statusText = statusText;
+    this.body = body;
+  }
 }
 
 /**
@@ -66,16 +86,24 @@ async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Res
 }
 
 /**
+ * Shared response handling: throws a normalized ApiError on non-2xx and
+ * parses JSON otherwise. Used by every verb helper below.
+ */
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => undefined);
+    throw new ApiError(response.status, response.statusText, body);
+  }
+
+  return response.json();
+}
+
+/**
  * GET request
  */
 export async function apiGet<T = unknown>(url: string, options?: ApiOptions): Promise<T> {
   const response = await apiFetch(url, { ...options, method: 'GET' });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse<T>(response);
 }
 
 /**
@@ -87,12 +115,7 @@ export async function apiPost<T = unknown>(url: string, data?: unknown, options?
     method: 'POST',
     body: data ? JSON.stringify(data) : undefined,
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse<T>(response);
 }
 
 /**
@@ -104,12 +127,7 @@ export async function apiPut<T = unknown>(url: string, data?: unknown, options?:
     method: 'PUT',
     body: data ? JSON.stringify(data) : undefined,
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse<T>(response);
 }
 
 /**
@@ -121,12 +139,7 @@ export async function apiPatch<T = unknown>(url: string, data?: unknown, options
     method: 'PATCH',
     body: data ? JSON.stringify(data) : undefined,
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse<T>(response);
 }
 
 /**
@@ -137,12 +150,7 @@ export async function apiDelete<T = unknown>(url: string, options?: ApiOptions):
     ...options,
     method: 'DELETE',
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse<T>(response);
 }
 
 export { refreshCsrfToken } from './csrf-client';

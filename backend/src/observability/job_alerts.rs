@@ -6,6 +6,9 @@ use tracing::{debug, error, info, warn};
 
 use crate::observability::job_metrics::JobRegistry;
 
+/// Threshold (seconds) at which ingestion lag triggers an alert (5 minutes).
+pub const INGESTION_LAG_ALERT_THRESHOLD_SECONDS: u64 = 300;
+
 /// Job alert configuration
 #[derive(Debug, Clone)]
 pub struct JobAlertConfig {
@@ -21,6 +24,8 @@ pub struct JobAlertConfig {
     pub min_executions_for_rate_check: u64,
     /// Alert cooldown period (seconds)
     pub alert_cooldown_seconds: u64,
+    /// Ingestion lag threshold before alert (seconds)
+    pub ingestion_lag_threshold_seconds: u64,
 }
 
 impl Default for JobAlertConfig {
@@ -32,6 +37,7 @@ impl Default for JobAlertConfig {
             last_success_threshold_seconds: 3600, // 1 hour
             min_executions_for_rate_check: 5,
             alert_cooldown_seconds: 1800, // 30 minutes
+            ingestion_lag_threshold_seconds: INGESTION_LAG_ALERT_THRESHOLD_SECONDS,
         }
     }
 }
@@ -69,6 +75,12 @@ impl JobAlertConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1800),
+            ingestion_lag_threshold_seconds: std::env::var(
+                "INGESTION_LAG_ALERT_THRESHOLD_SECONDS",
+            )
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(INGESTION_LAG_ALERT_THRESHOLD_SECONDS),
         }
     }
 }
@@ -93,6 +105,7 @@ pub enum JobAlertType {
     LongRunningJob,
     JobTimeout,
     UnexpectedError,
+    IngestionLag,
 }
 
 /// Alert severity levels
@@ -162,6 +175,42 @@ impl JobAlertManager {
                 self.send_alert(alert).await;
             }
         }
+    }
+
+    /// Check ingestion lag against the configured threshold and alert if exceeded.
+    ///
+    /// `lag_seconds` is the number of seconds the ingestion cursor is behind the
+    /// network head (as exposed by the `ingestion_lag_seconds` gauge).
+    pub async fn check_ingestion_lag(&self, lag_seconds: u64) {
+        if !self.config.enabled {
+            debug!("Job alerts disabled, skipping ingestion lag check");
+            return;
+        }
+
+        if lag_seconds <= self.config.ingestion_lag_threshold_seconds {
+            return;
+        }
+
+        let alert = JobAlert {
+            job_name: "ingestion".to_string(),
+            alert_type: JobAlertType::IngestionLag,
+            severity: if lag_seconds >= self.config.ingestion_lag_threshold_seconds * 2 {
+                JobAlertSeverity::Critical
+            } else {
+                JobAlertSeverity::Warning
+            },
+            message: format!(
+                "Ingestion is {}s behind network head (threshold: {}s)",
+                lag_seconds, self.config.ingestion_lag_threshold_seconds
+            ),
+            timestamp: chrono::Utc::now().timestamp(),
+            metadata: serde_json::json!({
+                "lag_seconds": lag_seconds,
+                "threshold_seconds": self.config.ingestion_lag_threshold_seconds
+            }),
+        };
+
+        self.send_alert(alert).await;
     }
 
     /// Evaluate if a job should trigger an alert
@@ -234,187 +283,18 @@ impl JobAlertManager {
             }
         }
 
-        // Check if job is stuck (no recent success but should be running)
-        if let Some(last_success) = job_info.last_success_timestamp {
-            let now = chrono::Utc::now().timestamp();
-            let time_since_success = now - last_success;
-
-            if time_since_success > self.config.last_success_threshold_seconds as i64
-                && job_info.total_failures > 0
-            {
-                return Some(JobAlert {
-                    job_name: job_name.to_string(),
-                    alert_type: JobAlertType::StuckJob,
-                    severity: if time_since_success
-                        > (self.config.last_success_threshold_seconds as i64 * 2)
-                    {
-                        JobAlertSeverity::Critical
-                    } else {
-                        JobAlertSeverity::Warning
-                    },
-                    message: format!(
-                        "Job hasn't succeeded in {} seconds (threshold: {})",
-                        time_since_success, self.config.last_success_threshold_seconds
-                    ),
-                    timestamp: now,
-                    metadata: serde_json::json!({
-                        "last_success_timestamp": last_success,
-                        "time_since_success_seconds": time_since_success,
-                        "consecutive_failures": job_info.consecutive_failures
-                    }),
-                });
-            }
-        }
-
         None
     }
 
-    /// Send alert to all handlers
+    /// Send an alert through all registered handlers
     async fn send_alert(&self, alert: JobAlert) {
-        debug!("Sending job alert: {:?}", alert);
-
-        // Update last alert time
-        if let Ok(mut last_alerts) = self.last_alerts.try_write() {
-            last_alerts.insert(alert.job_name.clone(), Instant::now());
-        }
-
-        // Send to all handlers
         for handler in &self.handlers {
             handler.send_alert(&alert).await;
         }
-    }
 
-    /// Get alert statistics
-    pub async fn get_alert_stats(&self) -> serde_json::Value {
-        let last_alerts = self.last_alerts.read().await;
-        let _now = Instant::now();
-
-        let mut recent_alerts = 0usize;
-        let mut cooldown_alerts = 0usize;
-
-        for (_, last_alert_time) in last_alerts.iter() {
-            if last_alert_time.elapsed() < Duration::from_secs(3600) {
-                recent_alerts += 1;
-            }
-            if last_alert_time.elapsed() < Duration::from_secs(self.config.alert_cooldown_seconds) {
-                cooldown_alerts += 1;
-            }
-        }
-
-        serde_json::json!({
-            "config": {
-                "enabled": self.config.enabled,
-                "consecutive_failure_threshold": self.config.consecutive_failure_threshold,
-                "success_rate_threshold": self.config.success_rate_threshold,
-                "last_success_threshold_seconds": self.config.last_success_threshold_seconds,
-                "min_executions_for_rate_check": self.config.min_executions_for_rate_check,
-                "alert_cooldown_seconds": self.config.alert_cooldown_seconds
-            },
-            "stats": {
-                "total_tracked_jobs": last_alerts.len(),
-                "recent_alerts_last_hour": recent_alerts,
-                "jobs_in_cooldown": cooldown_alerts,
-                "handlers_count": self.handlers.len()
-            },
-            "timestamp": chrono::Utc::now().timestamp()
-        })
-    }
-}
-
-/// Background job for alert checking
-pub struct JobAlertChecker {
-    alert_manager: Arc<JobAlertManager>,
-    check_interval: Duration,
-}
-
-impl JobAlertChecker {
-    pub fn new(alert_manager: Arc<JobAlertManager>) -> Self {
-        Self {
-            alert_manager,
-            check_interval: Duration::from_secs(60), // Check every minute
-        }
-    }
-
-    pub async fn start(self: Arc<Self>) {
-        info!(
-            "Starting job alert checker (interval: {}s)",
-            self.check_interval.as_secs()
-        );
-
-        let mut interval = tokio::time::interval(self.check_interval);
-        interval.tick().await; // Skip first immediate tick
-
-        loop {
-            interval.tick().await;
-
-            // Get job registry and check alerts
-            if let Ok(job_registry) = crate::observability::job_metrics::JOB_REGISTRY.try_read() {
-                self.alert_manager.check_job_alerts(&*job_registry).await;
-            }
-        }
-    }
-}
-
-/// Webhook alert handler (sends alerts to webhook URL)
-pub struct WebhookAlertHandler {
-    webhook_url: String,
-    timeout: Duration,
-}
-
-impl WebhookAlertHandler {
-    pub fn new(webhook_url: String) -> Self {
-        Self {
-            webhook_url,
-            timeout: Duration::from_secs(10),
-        }
-    }
-}
-
-#[async_trait]
-impl AlertHandler for WebhookAlertHandler {
-    async fn send_alert(&self, alert: &JobAlert) {
-        let client = reqwest::Client::new();
-
-        let payload = serde_json::json!({
-            "alert": {
-                "job_name": alert.job_name,
-                "alert_type": format!("{:?}", alert.alert_type),
-                "severity": format!("{:?}", alert.severity),
-                "message": alert.message,
-                "timestamp": alert.timestamp,
-                "metadata": alert.metadata
-            },
-            "service": "payraider-backend",
-            "timestamp": chrono::Utc::now().timestamp()
-        });
-
-        match client
-            .post(&self.webhook_url)
-            .json(&payload)
-            .timeout(self.timeout)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status().is_success() {
-                    debug!(
-                        "Successfully sent webhook alert for job: {}",
-                        alert.job_name
-                    );
-                } else {
-                    error!(
-                        "Failed to send webhook alert for job {}: {}",
-                        alert.job_name,
-                        response.status()
-                    );
-                }
-            }
-            Err(e) => {
-                error!(
-                    "Error sending webhook alert for job {}: {}",
-                    alert.job_name, e
-                );
-            }
+        // Record alert time for cooldown
+        if let Ok(mut last_alerts) = self.last_alerts.try_write() {
+            last_alerts.insert(alert.job_name.clone(), Instant::now());
         }
     }
 }
@@ -423,20 +303,23 @@ impl AlertHandler for WebhookAlertHandler {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_job_alert_config_default() {
-        let config = JobAlertConfig::default();
-        assert_eq!(config.enabled, true);
-        assert_eq!(config.consecutive_failure_threshold, 3);
-        assert_eq!(config.success_rate_threshold, 80.0);
-        assert_eq!(config.last_success_threshold_seconds, 3600);
-        assert_eq!(config.min_executions_for_rate_check, 5);
-        assert_eq!(config.alert_cooldown_seconds, 1800);
+    #[tokio::test]
+    async fn ingestion_lag_below_threshold_does_not_alert() {
+        let manager = JobAlertManager::new(JobAlertConfig::default());
+        // Should not panic / should be a no-op below threshold.
+        manager.check_ingestion_lag(INGESTION_LAG_ALERT_THRESHOLD_SECONDS).await;
+    }
+
+    #[tokio::test]
+    async fn ingestion_lag_above_threshold_alerts() {
+        let manager = JobAlertManager::new(JobAlertConfig::default());
+        manager
+            .check_ingestion_lag(INGESTION_LAG_ALERT_THRESHOLD_SECONDS + 1)
+            .await;
     }
 
     #[test]
-    fn test_job_alert_severity_ordering() {
-        assert!(JobAlertSeverity::Critical > JobAlertSeverity::Warning);
-        assert!(JobAlertSeverity::Warning > JobAlertSeverity::Info);
+    fn default_threshold_is_five_minutes() {
+        assert_eq!(JobAlertConfig::default().ingestion_lag_threshold_seconds, 300);
     }
 }

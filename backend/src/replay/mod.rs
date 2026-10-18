@@ -12,6 +12,14 @@
 //! - Network and contract filtering
 //! - Shared processing logic with live event handling
 //! - Performance optimized for large datasets
+//!
+//! ## HTTP API
+//! Operators drive this via `crate::api::replay_handlers`, mounted at
+//! `/api/v1/replay` (behind auth — see `crate::api::v1::routes`): start a
+//! replay, check a session's status, list checkpoints, or delete/clean up
+//! old sessions. Those handlers existed unmounted for a while (#2660) — see
+//! that module's doc comment for the two bugs that surfaced in wiring them
+//! up.
 
 pub mod checkpoint;
 pub mod config;

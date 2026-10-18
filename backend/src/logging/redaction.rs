@@ -125,6 +125,26 @@ pub fn redact_token(token: &str) -> String {
     }
 }
 
+/// Hash an API key's database ID for structured logs (#2657).
+///
+/// Support needs to correlate log lines for a single caller (e.g. "which key
+/// is hammering this endpoint") without the logs themselves becoming another
+/// place a key identifier can be read out of and reused to look up or impact
+/// the live key. This takes the already-internal `api_keys.id` (never the
+/// plaintext secret) through SHA-256 and returns a short hex prefix, which is
+/// stable per key (so the same key always yields the same `key_id` in logs,
+/// letting support group by it) but is one-way and not the value an attacker
+/// could present back to the API.
+#[must_use]
+pub fn hash_key_id(api_key_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(api_key_id.as_bytes());
+    // 16 hex chars (64 bits) is plenty of entropy to distinguish keys in logs
+    // without printing the full 32-byte digest on every line.
+    hex::encode(&digest[..8])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +199,24 @@ mod tests {
     fn test_redact_token() {
         assert_eq!(redact_token("abcdef1234567890"), "abcd****");
         assert_eq!(redact_token("abc"), "[REDACTED]");
+    }
+
+    #[test]
+    fn test_hash_key_id_is_stable_and_one_way() {
+        let id = "01234567-89ab-cdef-0123-456789abcdef";
+        let first = hash_key_id(id);
+        let second = hash_key_id(id);
+        // Same key id always hashes the same way, so support can group log
+        // lines by `key_id` for one caller.
+        assert_eq!(first, second);
+        // Never just the raw id re-encoded.
+        assert_ne!(first, id);
+        assert_eq!(first.len(), 16);
+    }
+
+    #[test]
+    fn test_hash_key_id_differs_per_key() {
+        assert_ne!(hash_key_id("key-a"), hash_key_id("key-b"));
     }
 
     #[test]

@@ -63,6 +63,7 @@ impl Modify for SecurityAddon {
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
+        crate::api::corridors::get_corridor_failures,
         crate::api::corridors::create_corridor,
         crate::api::corridors::update_corridor_metrics_from_transactions,
         // Export
@@ -89,6 +90,7 @@ impl Modify for SecurityAddon {
         crate::api::billing::confirm_invoice,
         crate::api::billing::get_subscription,
         crate::api::preflight::preflight_post,
+        crate::api::preflight::preflight_batch,
         // Alerts
         crate::api::alerts::list_rules,
         crate::api::alerts::create_rule,
@@ -161,9 +163,8 @@ impl Modify for SecurityAddon {
         crate::api::account_merges::get_account_merge_stats,
         crate::api::account_merges::get_recent_account_merges,
         crate::api::account_merges::get_destination_patterns,
-        // Achievements
-        crate::api::achievements::get_quests,
-        crate::api::achievements::get_achievements,
+        // Achievements (quests) — feature-gated; see AchievementsApiDoc below
+        // and `full_openapi()`.
         // Asset Verification
         crate::api::asset_verification::verify_asset,
         crate::api::asset_verification::get_verification,
@@ -192,17 +193,8 @@ impl Modify for SecurityAddon {
         // Cache
         crate::api::cache_stats::get_cache_stats,
         crate::api::cache_stats::reset_cache_stats,
-        // Governance
-        crate::api::governance::create_proposal,
-        crate::api::governance::activate_proposal,
-        crate::api::governance::list_proposals,
-        crate::api::governance::get_proposal,
-        crate::api::governance::cast_vote,
-        crate::api::governance::get_votes,
-        crate::api::governance::has_voted,
-        crate::api::governance::add_comment,
-        crate::api::governance::get_comments,
-        crate::api::governance::refresh_tally,
+        // Governance — feature-gated; see GovernanceApiDoc below and
+        // `full_openapi()`.
         // OAuth
         crate::api::oauth::authorize,
         crate::api::oauth::token,
@@ -229,6 +221,8 @@ impl Modify for SecurityAddon {
         // Snapshots
         crate::api::snapshots::generate_snapshot,
         crate::api::snapshots::contract_health_check,
+        crate::api::snapshots::get_snapshot_data,
+        crate::api::snapshots::verify_snapshot,
     ),
     components(
         schemas(
@@ -246,7 +240,13 @@ impl Modify for SecurityAddon {
             crate::api::preflight::PreflightCheck,
             crate::api::preflight::PreflightDecision,
             crate::api::preflight::CheckStatus,
+            crate::api::preflight::PreflightBatchRequest,
+            crate::api::preflight::PreflightBatchResponse,
+            crate::api::preflight::PreflightBatchItem,
+            crate::api::preflight::PreflightItemError,
             crate::api::corridors::CorridorDetailResponse,
+            crate::api::corridors::CorridorFailedPayment,
+            crate::api::corridors::PaginatedCorridorFailures,
             crate::api::corridors::SuccessRateDataPoint,
             crate::api::corridors::LatencyDataPoint,
             crate::api::corridors::LiquidityDataPoint,
@@ -259,16 +259,20 @@ impl Modify for SecurityAddon {
             crate::api::cost_calculator::RouteCostBreakdown,
             crate::api::cost_calculator::RouteEstimate,
             crate::api::cost_calculator::CostCalculationResponse,
-            crate::api::cost_calculator::ErrorResponse,
             crate::api::snapshots::SnapshotResponse,
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::snapshot::verify::VerificationReport,
+            crate::snapshot::verify::VerificationStatus,
+            crate::snapshot::verify::VerificationChecks,
+            crate::snapshot::verify::OnChainRecord,
             crate::api::anchors::UpdateMetricsRequest,
             crate::api::anchors::CreateAssetRequest,
             crate::api::corridors::UpdateCorridorMetricsFromTxns,
             crate::api::corridors::CorridorPaymentDto,
             crate::models::Anchor,
+            crate::models::SortBy,
             crate::models::Asset,
             crate::models::CreateAnchorRequest,
             crate::models::CreateCorridorRequest,
@@ -307,12 +311,10 @@ impl Modify for SecurityAddon {
         (name = "Trustlines", description = "Trustline analytics endpoints"),
         (name = "Webhooks", description = "Webhook management endpoints"),
         (name = "Account Merges", description = "Account merge tracking endpoints"),
-        (name = "Achievements", description = "Quest and achievement definitions"),
         (name = "Asset Verification", description = "Asset verification and reporting"),
         (name = "Auth", description = "Authentication, session, and 2FA endpoints"),
         (name = "Admin", description = "Admin-only endpoints (IP whitelist, audit log) -- require an admin account (is_admin)"),
         (name = "Cache", description = "Cache management endpoints"),
-        (name = "Governance", description = "Governance proposal and voting endpoints"),
         (name = "OAuth", description = "OAuth integration endpoints"),
         (name = "SEP-10", description = "SEP-10 authentication endpoints"),
         (name = "SEP-24", description = "SEP-24 hosted deposit/withdrawal endpoints"),
@@ -321,6 +323,64 @@ impl Modify for SecurityAddon {
     )
 )]
 pub struct ApiDoc;
+
+/// Quests/achievements paths — split out because the `achievements` module
+/// is feature-gated (off by default, see issue #2659). A derive macro's
+/// `paths(...)` list can't reference a function that may not exist, so
+/// these live in their own `OpenApi` doc that only exists when the feature
+/// does, merged into the full spec by `full_openapi()`.
+#[cfg(feature = "quests")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::api::achievements::get_quests,
+        crate::api::achievements::get_achievements,
+    ),
+    tags((name = "Achievements", description = "Quest and achievement definitions"))
+)]
+pub struct AchievementsApiDoc;
+
+/// Governance paths — split out for the same reason as `AchievementsApiDoc`
+/// (the `governance` module is feature-gated, off by default, see #2659).
+#[cfg(feature = "governance")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::api::governance::create_proposal,
+        crate::api::governance::activate_proposal,
+        crate::api::governance::list_proposals,
+        crate::api::governance::get_proposal,
+        crate::api::governance::cast_vote,
+        crate::api::governance::get_votes,
+        crate::api::governance::has_voted,
+        crate::api::governance::add_comment,
+        crate::api::governance::get_comments,
+        crate::api::governance::refresh_tally,
+    ),
+    tags((name = "Governance", description = "Governance proposal and voting endpoints"))
+)]
+pub struct GovernanceApiDoc;
+
+/// The full OpenAPI spec: the always-on `ApiDoc`, plus the feature-gated
+/// quests/governance docs when those features are enabled. Use this
+/// (instead of `ApiDoc::openapi()` directly) wherever the spec is served
+/// or exported, so toggling `--features quests,governance` doesn't drift
+/// the generated docs away from what's actually mounted in
+/// `crate::api::v1::routes`.
+#[must_use]
+pub fn full_openapi() -> utoipa::openapi::OpenApi {
+    #[allow(unused_mut)]
+    let mut spec = ApiDoc::openapi();
+    #[cfg(feature = "quests")]
+    {
+        spec = spec.merge_from(AchievementsApiDoc::openapi());
+    }
+    #[cfg(feature = "governance")]
+    {
+        spec = spec.merge_from(GovernanceApiDoc::openapi());
+    }
+    spec
+}
 
 #[cfg(test)]
 mod tests {
@@ -331,7 +391,7 @@ mod tests {
 
     #[test]
     fn generate_openapi_json() {
-        let json = ApiDoc::openapi()
+        let json = full_openapi()
             .to_pretty_json()
             .expect("Failed to serialize OpenAPI spec");
 

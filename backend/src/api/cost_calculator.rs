@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     routing::post,
     Json, Router,
 };
@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::error::DomainError;
+use crate::error::{ApiError, DomainError};
 use crate::http_cache::cached_json_response;
 use crate::services::price_feed::PriceFeedClient;
 
@@ -97,10 +97,6 @@ pub struct CostCalculationResponse {
     pub routes: Vec<RouteEstimate>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: String,
-}
 
 #[derive(Debug, Clone, Copy)]
 struct RouteFees {
@@ -147,8 +143,8 @@ impl RouteFees {
     responses(
         (status = 200, description = "Cost estimate generated", body = CostCalculationResponse),
         (status = 304, description = "Not modified. Conditional request matched current response."),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Internal server error")
     ),
     tag = "Cost Calculator"
 )]
@@ -157,30 +153,30 @@ pub async fn estimate_costs(
     State(price_feed): State<Arc<PriceFeedClient>>,
     request_headers: HeaderMap,
     Json(request): Json<CostCalculationRequest>,
-) -> Response {
+) -> Result<Response, ApiError> {
     let source_currency = normalize_currency(&request.source_currency);
     let destination_currency = normalize_currency(&request.destination_currency);
 
     if source_currency.is_empty() || destination_currency.is_empty() {
-        return error_response(
-            StatusCode::BAD_REQUEST,
+        return Err(ApiError::bad_request(
+            "MISSING_CURRENCIES",
             "source_currency and destination_currency are required",
-        );
+        ));
     }
 
     if request.source_amount <= 0.0 || !request.source_amount.is_finite() {
-        return error_response(
-            StatusCode::BAD_REQUEST,
+        return Err(ApiError::bad_request(
+            "INVALID_SOURCE_AMOUNT",
             "source_amount must be a positive number",
-        );
+        ));
     }
 
     if let Some(destination_amount) = request.destination_amount {
         if destination_amount <= 0.0 || !destination_amount.is_finite() {
-            return error_response(
-                StatusCode::BAD_REQUEST,
+            return Err(ApiError::bad_request(
+                "INVALID_DESTINATION_AMOUNT",
                 "destination_amount must be a positive number when provided",
-            );
+            ));
         }
     }
 
@@ -192,21 +188,25 @@ pub async fn estimate_costs(
         .collect();
 
     if unique_routes.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "at least one route is required");
+        return Err(ApiError::bad_request(
+            "NO_ROUTES",
+            "at least one route is required",
+        ));
     }
 
-    let source_usd_rate = match resolve_usd_rate(&price_feed, &source_currency).await {
-        Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
-    };
+    let source_usd_rate = resolve_usd_rate(&price_feed, &source_currency)
+        .await
+        .map_err(|e| ApiError::bad_request("UNSUPPORTED_SOURCE_CURRENCY", e.to_string()))?;
 
-    let destination_usd_rate = match resolve_usd_rate(&price_feed, &destination_currency).await {
-        Ok(rate) => rate,
-        Err(error) => return error_response(StatusCode::BAD_REQUEST, &error.to_string()),
-    };
+    let destination_usd_rate = resolve_usd_rate(&price_feed, &destination_currency)
+        .await
+        .map_err(|e| ApiError::bad_request("UNSUPPORTED_DESTINATION_CURRENCY", e.to_string()))?;
 
     if destination_usd_rate <= 0.0 {
-        return error_response(StatusCode::BAD_REQUEST, "destination USD rate is invalid");
+        return Err(ApiError::bad_request(
+            "INVALID_DESTINATION_RATE",
+            "destination USD rate is invalid",
+        ));
     }
 
     let mid_market_rate = source_usd_rate / destination_usd_rate;
@@ -231,10 +231,7 @@ pub async fn estimate_costs(
     });
 
     let Some(best_route) = route_estimates.first().cloned() else {
-        return error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to estimate routes",
-        );
+        return Err(ApiError::internal("ROUTE_ESTIMATION_FAILED", "failed to estimate routes"));
     };
 
     let response = CostCalculationResponse {
@@ -265,18 +262,13 @@ pub async fn estimate_costs(
         request.destination_amount
     );
 
-    match cached_json_response(
+    cached_json_response(
         &request_headers,
         &resource_key,
         &response,
         DEFAULT_CACHE_TTL_SECONDS,
-    ) {
-        Ok(response) => response,
-        Err(error) => error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("failed to serialize response: {error}"),
-        ),
-    }
+    )
+    .map_err(|e| ApiError::internal("SERIALIZATION_FAILED", format!("failed to serialize response: {e}")))
 }
 
 fn estimate_route(
@@ -440,16 +432,6 @@ fn normalize_currency(input: &str) -> String {
     }
 
     value.to_uppercase()
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response {
-    (
-        status,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
-        .into_response()
 }
 
 pub fn routes(price_feed: Arc<PriceFeedClient>) -> Router {

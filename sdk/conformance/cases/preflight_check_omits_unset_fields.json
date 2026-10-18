@@ -1,0 +1,79 @@
+{
+  "name": "preflight_check_omits_unset_fields",
+  "description": "Optional fields the caller did not set are left out of the body, not sent as null.",
+  "operation": "preflight.check",
+  "input": {
+    "source_asset": "USDC",
+    "destination_asset": "KES"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/preflight",
+    "query": {},
+    "body": {
+      "source_asset": "USDC",
+      "destination_asset": "KES"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "decision": "unknown",
+      "summary": "No recent payments observed on this corridor; no recommendation.",
+      "score": null,
+      "corridor": null,
+      "checks": [],
+      "alternatives": [
+        {
+          "id": "USDC:GA->NGN:GB",
+          "source_asset": "USDC",
+          "destination_asset": "NGN",
+          "success_rate": 99.5,
+          "total_attempts": 400,
+          "successful_payments": 398,
+          "failed_payments": 2,
+          "average_latency_ms": 600.0,
+          "median_latency_ms": 450.0,
+          "p95_latency_ms": 1500.0,
+          "p99_latency_ms": 2400.0,
+          "liquidity_depth_usd": 500000.0,
+          "liquidity_volume_24h_usd": 50000.0,
+          "liquidity_trend": "stable",
+          "health_score": 92.0,
+          "last_updated": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "evaluated_at": "2026-01-01T00:00:00+00:00"
+    }
+  },
+  "expect": {
+    "result": {
+      "decision": "unknown",
+      "summary": "No recent payments observed on this corridor; no recommendation.",
+      "score": null,
+      "corridor": null,
+      "checks": [],
+      "alternatives": [
+        {
+          "id": "USDC:GA->NGN:GB",
+          "source_asset": "USDC",
+          "destination_asset": "NGN",
+          "success_rate": 99.5,
+          "total_attempts": 400,
+          "successful_payments": 398,
+          "failed_payments": 2,
+          "average_latency_ms": 600.0,
+          "median_latency_ms": 450.0,
+          "p95_latency_ms": 1500.0,
+          "p99_latency_ms": 2400.0,
+          "liquidity_depth_usd": 500000.0,
+          "liquidity_volume_24h_usd": 50000.0,
+          "liquidity_trend": "stable",
+          "health_score": 92.0,
+          "last_updated": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "evaluated_at": "2026-01-01T00:00:00+00:00"
+    }
+  }
+}

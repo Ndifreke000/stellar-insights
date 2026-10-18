@@ -15,8 +15,8 @@ payraider/
 ├── 📚 docs/             # All documentation
 ├── 🔧 scripts/          # Build, deployment, and maintenance scripts
 ├── ☁️  k8s/              # Kubernetes configs
-├── 🐳 terraform/        # Infrastructure as code
-├── 📊 elk/              # ELK stack configs (centralized logging)
+├── 🐳 terraform/        # Infrastructure as code — not used by the actual deployment (Render + SQLite, see docs/DEPLOY.md); reference only, see issue #2650
+├── 📊 elk/              # ELK stack configs (centralized logging) — not used by the actual deployment; reference only, see issue #2650
 ├── 📈 monitoring/       # Prometheus alert rules, Alertmanager config
 ├── 🧪 tests/            # Repo-root acceptance, chaos, and e2e tests (Playwright)
 ├── 📋 README.md         # Main project documentation
@@ -68,11 +68,11 @@ Rust API server with:
 - Multi-network support
 
 ### 📜 Contracts (`contracts/`)
-Soroban smart contracts for:
-- Asset verification
-- Transaction processing
-- Governance mechanisms
-- Security audits
+Soroban smart contracts. Only [`payraider/`](../contracts/payraider/README.md),
+which anchors analytics snapshot hashes on-chain, is part of the product and
+built in CI. Benchmarks are in `benches/` and fuzz tests in `tests/`. Every
+other contract has been moved to [`archive/`](../contracts/archive/README.md)
+and is excluded from the Cargo workspace.
 
 ### 📦 SDK (`sdk/`)
 Client SDKs providing:

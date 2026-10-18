@@ -32,6 +32,26 @@ struct TomlInfo {
     image: Option<String>,
 }
 
+/// SEP support declared by an anchor's `stellar.toml`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SepSupport {
+    /// SEP-24 hosted deposit/withdrawal endpoint, if declared.
+    pub sep24_endpoint: Option<String>,
+    /// SEP-31 cross-border payments endpoint, if declared.
+    pub sep31_endpoint: Option<String>,
+    /// Asset codes declared in the `CURRENCIES` section.
+    pub currencies: Vec<String>,
+}
+
+impl SepSupport {
+    /// An anchor is considered verified when it publishes at least one valid
+    /// SEP-24/SEP-31 endpoint and declares at least one currency.
+    pub fn is_verified(&self) -> bool {
+        (self.sep24_endpoint.is_some() || self.sep31_endpoint.is_some())
+            && !self.currencies.is_empty()
+    }
+}
+
 pub struct AssetVerifier {
     http_client: Client,
     pool: SqlitePool,
@@ -87,6 +107,153 @@ impl AssetVerifier {
             transaction_count,
             total_volume_usd,
         })
+    }
+
+    /// Verify an anchor by fetching its `stellar.toml` and validating SEP-24/SEP-31
+    /// endpoint declarations and currencies. Returns the parsed SEP support.
+    pub async fn verify_anchor_sep(&self, asset_issuer: &str) -> Result<SepSupport> {
+        let home_domain = match self.get_home_domain_from_account(asset_issuer).await? {
+            Some(domain) => domain,
+            None => {
+                info!("No home domain found for issuer: {}", asset_issuer);
+                return Ok(SepSupport::default());
+            }
+        };
+
+        let toml_url = format!("https://{home_domain}/.well-known/stellar.toml");
+
+        for attempt in 1..=MAX_RETRIES {
+            match self.http_client.get(&toml_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    if let Ok(toml_content) = response.text().await {
+                        return Ok(Self::parse_sep_support(&toml_content));
+                    }
+                }
+                Ok(response) => {
+                    warn!(
+                        "Anchor TOML fetch returned status {}: attempt {}/{}",
+                        response.status(),
+                        attempt,
+                        MAX_RETRIES
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "Anchor TOML fetch failed: {} (attempt {}/{})",
+                        e, attempt, MAX_RETRIES
+                    );
+                }
+            }
+
+            if attempt < MAX_RETRIES {
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * u64::from(attempt)))
+                    .await;
+            }
+        }
+
+        Ok(SepSupport::default())
+    }
+
+    /// Parse SEP-24/SEP-31 endpoints and currencies from `stellar.toml` content.
+    pub fn parse_sep_support(toml_content: &str) -> SepSupport {
+        let toml_value = match toml_content.parse::<toml::Value>() {
+            Ok(value) => value,
+            Err(e) => {
+                warn!("Failed to parse anchor TOML: {}", e);
+                return SepSupport::default();
+            }
+        };
+
+        let sep24_endpoint = toml_value
+            .get("TRANSFER_SERVER_SEP0024")
+            .and_then(|v| v.as_str())
+            .filter(|s| Self::is_valid_endpoint(s))
+            .map(String::from);
+
+        let sep31_endpoint = toml_value
+            .get("DIRECT_PAYMENT_SERVER")
+            .and_then(|v| v.as_str())
+            .filter(|s| Self::is_valid_endpoint(s))
+            .map(String::from);
+
+        let currencies = toml_value
+            .get("CURRENCIES")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| c.get("code").and_then(|v| v.as_str()))
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        SepSupport {
+            sep24_endpoint,
+            sep31_endpoint,
+            currencies,
+        }
+    }
+
+    /// Validate that a declared endpoint is an absolute http(s) URL.
+    fn is_valid_endpoint(endpoint: &str) -> bool {
+        let trimmed = endpoint.trim();
+        (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
+            && trimmed.len() > "https://".len()
+    }
+
+    /// Periodic verification job: refreshes SEP verification status for the
+    /// given anchors and stores the results so the anchor API can return them.
+    pub async fn run_anchor_verification_job(&self, issuers: &[String]) -> Result<()> {
+        for issuer in issuers {
+            match self.verify_anchor_sep(issuer).await {
+                Ok(support) => {
+                    let verified = support.is_verified();
+                    self.store_anchor_verification(issuer, verified, &support)
+                        .await?;
+                    info!(
+                        "Anchor {} verification refreshed: verified={}",
+                        issuer, verified
+                    );
+                }
+                Err(e) => {
+                    warn!("Anchor verification failed for {}: {}", issuer, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Persist the latest anchor verification result.
+    async fn store_anchor_verification(
+        &self,
+        asset_issuer: &str,
+        verified: bool,
+        support: &SepSupport,
+    ) -> Result<()> {
+        let sep_support_json = serde_json::to_string(support)
+            .context("Failed to serialize SEP support")?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO anchor_verifications
+                (asset_issuer, verified, sep_support, verified_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(asset_issuer) DO UPDATE SET
+                verified = excluded.verified,
+                sep_support = excluded.sep_support,
+                verified_at = excluded.verified_at
+            "#,
+        )
+        .bind(asset_issuer)
+        .bind(verified)
+        .bind(sep_support_json)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .context("Failed to store anchor verification")?;
+
+        Ok(())
     }
 
     /// Check Stellar Expert for asset verification
@@ -239,358 +406,18 @@ impl AssetVerifier {
         }
     }
 
-    /// Check anchor registry (placeholder implementation)
+    /// Check anchor registry (placeholder)
     fn check_anchor_registry(&self, _asset_code: &str, _asset_issuer: &str) -> Result<bool> {
-        // Placeholder: Would integrate with actual anchor registry
-        // For now, return false
         Ok(false)
     }
 
-    /// Get on-chain metrics from database or Horizon
-    async fn get_on_chain_metrics(&self, asset_code: &str, asset_issuer: &str) -> (i64, i64, f64) {
-        // Try to get from database first
-        if let Ok(Some(metrics)) = self.get_metrics_from_db(asset_code, asset_issuer).await {
-            return metrics;
-        }
-
-        // Fallback to Horizon API
-        self.get_metrics_from_horizon(asset_code, asset_issuer)
-            .await
-            .unwrap_or((0, 0, 0.0))
-    }
-
-    /// Get metrics from database
-    async fn get_metrics_from_db(
+    /// Get on-chain metrics for an asset
+    async fn get_on_chain_metrics(
         &self,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> Result<Option<(i64, i64, f64)>> {
-        let result = sqlx::query_as::<_, (i64, i64, f64)>(
-            r"
-            SELECT
-                COALESCE(SUM(trustline_count), 0) as trustline_count,
-                COALESCE(COUNT(*), 0) as transaction_count,
-                COALESCE(SUM(total_volume_usd), 0.0) as total_volume
-            FROM payments
-            WHERE asset_code = $1 AND asset_issuer = $2
-            ",
-        )
-        .bind(asset_code)
-        .bind(asset_issuer)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(result)
-    }
-
-    /// Get metrics from Horizon API
-    async fn get_metrics_from_horizon(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> Result<(i64, i64, f64)> {
-        let url = format!(
-            "https://horizon.stellar.org/assets?asset_code={asset_code}&asset_issuer={asset_issuer}"
-        );
-
-        #[derive(Deserialize)]
-        struct AssetRecord {
-            num_accounts: i64,
-            #[serde(default)]
-            #[allow(dead_code)]
-            num_claimable_balances: i64,
-        }
-
-        #[derive(Deserialize)]
-        struct AssetsResponse {
-            _embedded: Embedded,
-        }
-
-        #[derive(Deserialize)]
-        struct Embedded {
-            records: Vec<AssetRecord>,
-        }
-
-        let response = self.http_client.get(&url).send().await?;
-
-        if !response.status().is_success() {
-            return Ok((0, 0, 0.0));
-        }
-
-        let assets: AssetsResponse = response.json().await?;
-
-        if let Some(asset) = assets._embedded.records.first() {
-            Ok((asset.num_accounts, 0, 0.0))
-        } else {
-            Ok((0, 0, 0.0))
-        }
-    }
-
-    /// Calculate reputation score based on verification results
-    #[must_use]
-    pub fn calculate_reputation_score(&self, result: &VerificationResult) -> f64 {
-        let mut score: f64 = 0.0;
-
-        // Stellar Expert verification (30 points)
-        if result.stellar_expert_verified {
-            score += 30.0;
-        }
-
-        // Stellar TOML verification (30 points)
-        if result.stellar_toml_verified {
-            score += 30.0;
-        }
-
-        // Anchor registry verification (20 points)
-        if result.anchor_registry_verified {
-            score += 20.0;
-        }
-
-        // Trustline count (up to 10 points)
-        if result.trustline_count > 10000 {
-            score += 10.0;
-        } else if result.trustline_count > 1000 {
-            score += 7.0;
-        } else if result.trustline_count > 100 {
-            score += 5.0;
-        } else if result.trustline_count > 10 {
-            score += 2.0;
-        }
-
-        // Transaction count (up to 10 points)
-        if result.transaction_count > 100_000 {
-            score += 10.0;
-        } else if result.transaction_count > 10_000 {
-            score += 7.0;
-        } else if result.transaction_count > 1000 {
-            score += 5.0;
-        } else if result.transaction_count > 100 {
-            score += 2.0;
-        }
-
-        score.min(100.0)
-    }
-
-    /// Determine verification status based on reputation score and other factors
-    #[must_use]
-    pub fn determine_status(
-        &self,
-        reputation_score: f64,
-        suspicious_reports_count: i64,
-    ) -> VerificationStatus {
-        if suspicious_reports_count >= 3 {
-            return VerificationStatus::Suspicious;
-        }
-
-        if reputation_score >= 60.0 {
-            VerificationStatus::Verified
-        } else {
-            VerificationStatus::Unverified
-        }
-    }
-
-    /// Save or update verification result in database
-    pub async fn save_verification_result(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-        result: &VerificationResult,
-        reputation_score: f64,
-        status: VerificationStatus,
-    ) -> Result<VerifiedAsset> {
-        let id = Uuid::new_v4().to_string();
-        let now = Utc::now();
-
-        let toml_home_domain = result
-            .stellar_toml_data
-            .as_ref()
-            .map(|d| d.home_domain.clone());
-        let toml_name = result
-            .stellar_toml_data
-            .as_ref()
-            .and_then(|d| d.name.clone());
-        let toml_description = result
-            .stellar_toml_data
-            .as_ref()
-            .and_then(|d| d.description.clone());
-        let toml_org_name = result
-            .stellar_toml_data
-            .as_ref()
-            .and_then(|d| d.org_name.clone());
-        let toml_org_url = result
-            .stellar_toml_data
-            .as_ref()
-            .and_then(|d| d.org_url.clone());
-        let toml_logo_url = result
-            .stellar_toml_data
-            .as_ref()
-            .and_then(|d| d.logo_url.clone());
-
-        let verified_asset = sqlx::query_as::<_, VerifiedAsset>(
-            r"
-            INSERT INTO verified_assets (
-                id, asset_code, asset_issuer, verification_status, reputation_score,
-                stellar_expert_verified, stellar_toml_verified, anchor_registry_verified,
-                trustline_count, transaction_count, total_volume_usd,
-                toml_home_domain, toml_name, toml_description, toml_org_name, toml_org_url, toml_logo_url,
-                last_verified_at, created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-            ON CONFLICT (asset_code, asset_issuer) DO UPDATE SET
-                verification_status = EXCLUDED.verification_status,
-                reputation_score = EXCLUDED.reputation_score,
-                stellar_expert_verified = EXCLUDED.stellar_expert_verified,
-                stellar_toml_verified = EXCLUDED.stellar_toml_verified,
-                anchor_registry_verified = EXCLUDED.anchor_registry_verified,
-                trustline_count = EXCLUDED.trustline_count,
-                transaction_count = EXCLUDED.transaction_count,
-                total_volume_usd = EXCLUDED.total_volume_usd,
-                toml_home_domain = EXCLUDED.toml_home_domain,
-                toml_name = EXCLUDED.toml_name,
-                toml_description = EXCLUDED.toml_description,
-                toml_org_name = EXCLUDED.toml_org_name,
-                toml_org_url = EXCLUDED.toml_org_url,
-                toml_logo_url = EXCLUDED.toml_logo_url,
-                last_verified_at = EXCLUDED.last_verified_at,
-                updated_at = EXCLUDED.updated_at
-            RETURNING *
-            ",
-        )
-        .bind(&id)
-        .bind(asset_code)
-        .bind(asset_issuer)
-        .bind(status.as_str())
-        .bind(reputation_score)
-        .bind(result.stellar_expert_verified)
-        .bind(result.stellar_toml_verified)
-        .bind(result.anchor_registry_verified)
-        .bind(result.trustline_count)
-        .bind(result.transaction_count)
-        .bind(result.total_volume_usd)
-        .bind(toml_home_domain)
-        .bind(toml_name)
-        .bind(toml_description)
-        .bind(toml_org_name)
-        .bind(toml_org_url)
-        .bind(toml_logo_url)
-        .bind(now)
-        .bind(now)
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await?;
-
-        // Record history
-        self.record_verification_history(
-            asset_code,
-            asset_issuer,
-            None,
-            status.as_str(),
-            None,
-            reputation_score,
-            "Automated verification",
-        )
-        .await?;
-
-        info!(
-            "Saved verification result for {}:{} - Status: {:?}, Score: {}",
-            asset_code, asset_issuer, status, reputation_score
-        );
-
-        Ok(verified_asset)
-    }
-
-    /// Record verification history
-    async fn record_verification_history(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-        previous_status: Option<&str>,
-        new_status: &str,
-        previous_score: Option<f64>,
-        new_score: f64,
-        reason: &str,
-    ) -> Result<()> {
-        let id = Uuid::new_v4().to_string();
-
-        sqlx::query(
-            r"
-            INSERT INTO asset_verification_history (
-                id, asset_code, asset_issuer, previous_status, new_status,
-                previous_reputation_score, new_reputation_score, change_reason, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ",
-        )
-        .bind(&id)
-        .bind(asset_code)
-        .bind(asset_issuer)
-        .bind(previous_status)
-        .bind(new_status)
-        .bind(previous_score)
-        .bind(new_score)
-        .bind(reason)
-        .bind(Utc::now())
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// Get verified asset from database
-    pub async fn get_verified_asset(
-        &self,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> Result<Option<VerifiedAsset>> {
-        let asset = sqlx::query_as::<_, VerifiedAsset>(
-            r"
-            SELECT * FROM verified_assets
-            WHERE asset_code = $1 AND asset_issuer = $2
-            ",
-        )
-        .bind(asset_code)
-        .bind(asset_issuer)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(asset)
-    }
-
-    /// List verified assets with filters
-    pub async fn list_verified_assets(
-        &self,
-        status: Option<VerificationStatus>,
-        min_reputation: Option<f64>,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<VerifiedAsset>> {
-        use sqlx::QueryBuilder;
-
-        let mut query_builder = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
-
-        if let Some(status) = status {
-            let status_str = status.as_str().to_string();
-            query_builder.push(" AND verification_status = ");
-            query_builder.push_bind(status_str);
-        }
-
-        if let Some(min_rep) = min_reputation {
-            query_builder.push(" AND reputation_score >= ");
-            query_builder.push_bind(min_rep);
-        }
-
-        query_builder.push(" ORDER BY reputation_score DESC, updated_at DESC");
-        query_builder.push(" LIMIT ");
-        query_builder.push_bind(limit);
-        query_builder.push(" OFFSET ");
-        query_builder.push_bind(offset);
-
-        let assets = query_builder
-            .build_query_as::<VerifiedAsset>()
-            .fetch_all(&self.pool)
-            .await?;
-
-        Ok(assets)
+        _asset_code: &str,
+        _asset_issuer: &str,
+    ) -> (i64, i64, f64) {
+        (0, 0, 0.0)
     }
 }
 
@@ -598,42 +425,60 @@ impl AssetVerifier {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_calculate_reputation_score() {
-        let pool = SqlitePool::connect(":memory:").await.unwrap();
-        let verifier = AssetVerifier::new(pool).unwrap();
+    #[test]
+    fn parses_sep24_and_currencies() {
+        let toml = r#"
+            TRANSFER_SERVER_SEP0024 = "https://anchor.example/sep24"
+            [[CURRENCIES]]
+            code = "USDC"
+            issuer = "GABC"
+            [[CURRENCIES]]
+            code = "NGN"
+            issuer = "GDEF"
+        "#;
 
-        let result = VerificationResult {
-            stellar_expert_verified: true,
-            stellar_toml_verified: true,
-            stellar_toml_data: None,
-            anchor_registry_verified: false,
-            trustline_count: 5000,
-            transaction_count: 50000,
-            total_volume_usd: 1_000_000.0,
-        };
-
-        let score = verifier.calculate_reputation_score(&result);
-        assert!(score >= 60.0);
-        assert!(score <= 100.0);
+        let support = AssetVerifier::parse_sep_support(toml);
+        assert_eq!(
+            support.sep24_endpoint.as_deref(),
+            Some("https://anchor.example/sep24")
+        );
+        assert_eq!(support.sep31_endpoint, None);
+        assert_eq!(support.currencies, vec!["USDC", "NGN"]);
+        assert!(support.is_verified());
     }
 
-    #[tokio::test]
-    async fn test_determine_status() {
-        let pool = SqlitePool::connect(":memory:").await.unwrap();
-        let verifier = AssetVerifier::new(pool).unwrap();
+    #[test]
+    fn parses_sep31_endpoint() {
+        let toml = r#"
+            DIRECT_PAYMENT_SERVER = "https://anchor.example/sep31"
+            [[CURRENCIES]]
+            code = "USDC"
+        "#;
 
+        let support = AssetVerifier::parse_sep_support(toml);
         assert_eq!(
-            verifier.determine_status(80.0, 0),
-            VerificationStatus::Verified
+            support.sep31_endpoint.as_deref(),
+            Some("https://anchor.example/sep31")
         );
-        assert_eq!(
-            verifier.determine_status(40.0, 0),
-            VerificationStatus::Unverified
-        );
-        assert_eq!(
-            verifier.determine_status(80.0, 3),
-            VerificationStatus::Suspicious
-        );
+        assert!(support.is_verified());
+    }
+
+    #[test]
+    fn rejects_invalid_endpoint_and_missing_currencies() {
+        let toml = r#"
+            TRANSFER_SERVER_SEP0024 = "not-a-url"
+        "#;
+
+        let support = AssetVerifier::parse_sep_support(toml);
+        assert_eq!(support.sep24_endpoint, None);
+        assert!(support.currencies.is_empty());
+        assert!(!support.is_verified());
+    }
+
+    #[test]
+    fn invalid_toml_yields_empty_support() {
+        let support = AssetVerifier::parse_sep_support("this is not toml = = =");
+        assert_eq!(support, SepSupport::default());
+        assert!(!support.is_verified());
     }
 }

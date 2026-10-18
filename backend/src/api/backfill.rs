@@ -6,6 +6,7 @@
 //! |--------|-------------------------|--------------------------------------|
 //! | POST   | `/admin/backfill`       | Start a backfill for a ledger range  |
 //! | GET    | `/admin/backfill/status`| Poll current backfill progress       |
+//! | POST   | `/admin/backfill/resume`| Resume from persisted cursor, gap-check vs head |
 
 use crate::jobs::backfill::{BackfillJob, BackfillRequest, BackfillState};
 use axum::{
@@ -15,9 +16,10 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// POST /admin/backfill
 ///
@@ -75,6 +77,127 @@ pub async fn start_backfill(
     ))
 }
 
+/// Request body for `POST /admin/backfill/resume`.
+///
+/// `head_ledger` is the current network head (from RPC/Horizon). `retention`
+/// is the number of ledgers the upstream source can still serve; a gap larger
+/// than this cannot be backfilled and will raise an alert instead.
+#[derive(Debug, Deserialize)]
+pub struct ResumeRequest {
+    /// Current network head ledger.
+    pub head_ledger: u32,
+    /// Number of ledgers the upstream source retains (defaults to 17280 ≈ 24h).
+    #[serde(default = "default_retention")]
+    pub retention: u32,
+    /// Optional contract filter forwarded to the backfill job.
+    pub contract_id: Option<String>,
+    /// Optional per-ledger delay forwarded to the backfill job.
+    #[serde(default)]
+    pub delay_ms: Option<u64>,
+}
+
+fn default_retention() -> u32 {
+    17_280
+}
+
+/// POST /admin/backfill/resume
+///
+/// Resumes ingestion from the persisted cursor (`last_ledger`). Compares the
+/// cursor against the supplied network head and:
+///
+/// - if there is no gap, returns `200 OK` with `gap: 0`;
+/// - if the gap fits within `retention`, starts a backfill for the gap and
+///   returns `202 Accepted`;
+/// - if the gap exceeds `retention`, emits an alert and returns `409 Conflict`
+///   so operators know the gap cannot be automatically recovered.
+///
+/// # Request body
+///
+/// ```json
+/// { "head_ledger": 5000, "retention": 17280 }
+/// ```
+pub async fn resume_backfill(
+    State(job): State<Arc<BackfillJob>>,
+    Json(req): Json<ResumeRequest>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let last = job.last_ledger().await;
+    let from_ledger = last.saturating_add(1);
+
+    if req.head_ledger < from_ledger {
+        return Ok((
+            StatusCode::OK,
+            Json(json!({
+                "message": "No gap detected",
+                "last_ledger": last,
+                "head_ledger": req.head_ledger,
+                "gap": 0,
+            })),
+        ));
+    }
+
+    let gap = req.head_ledger - last;
+    if gap > req.retention {
+        warn!(
+            last_ledger = last,
+            head_ledger = req.head_ledger,
+            gap,
+            retention = req.retention,
+            "Ledger gap exceeds retention; cannot backfill automatically"
+        );
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "gap exceeds retention; manual backfill required",
+                "last_ledger": last,
+                "head_ledger": req.head_ledger,
+                "gap": gap,
+                "retention": req.retention,
+            })),
+        ));
+    }
+
+    info!(
+        last_ledger = last,
+        head_ledger = req.head_ledger,
+        gap,
+        "Backfilling ledger gap from persisted cursor"
+    );
+
+    let backfill_req = BackfillRequest {
+        from_ledger,
+        to_ledger: req.head_ledger,
+        contract_id: req.contract_id,
+        delay_ms: req.delay_ms,
+    };
+
+    job.start(backfill_req).await.map_err(|e| {
+        let msg = e.to_string();
+        error!(error = %msg, "Failed to resume backfill");
+
+        let status = if msg.contains("already in progress")
+            || msg.contains("must be <=")
+            || msg.contains("exceeds maximum")
+        {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
+
+        (status, Json(json!({ "error": msg })))
+    })?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "message": "Gap backfill started",
+            "last_ledger": last,
+            "head_ledger": req.head_ledger,
+            "gap": gap,
+            "status_url": "/admin/backfill/status"
+        })),
+    ))
+}
+
 /// GET /admin/backfill/status
 ///
 /// Returns the current (or last completed) backfill state.
@@ -111,5 +234,6 @@ pub fn routes(job: Arc<BackfillJob>) -> Router {
     Router::new()
         .route("/backfill", post(start_backfill))
         .route("/backfill/status", get(get_backfill_status))
+        .route("/backfill/resume", post(resume_backfill))
         .with_state(job)
 }

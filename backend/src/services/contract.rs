@@ -7,9 +7,13 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use stellar_xdr::curr::{
-    DecoratedSignature, Limits, ReadXdr, Signature, SignatureHint, TransactionEnvelope,
-    TransactionSignaturePayload, TransactionSignaturePayloadTaggedTransaction, WriteXdr,
+    ContractDataDurability, ContractId, DecoratedSignature, Hash, LedgerEntryData, LedgerKey,
+    LedgerKeyContractData, Limits, ReadXdr, ScAddress, ScSymbol, ScVal, ScVec, Signature,
+    SignatureHint, TransactionEnvelope, TransactionSignaturePayload,
+    TransactionSignaturePayloadTaggedTransaction, WriteXdr,
 };
+
+use crate::snapshot::verify::OnChainRecord;
 use tracing::{debug, error, info, warn};
 
 /// Minimal Stellar keypair sufficient for signing transaction hashes.
@@ -144,6 +148,25 @@ impl ContractService {
                 .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string()),
             source_secret_key: std::env::var("STELLAR_SOURCE_SECRET_KEY")
                 .context("STELLAR_SOURCE_SECRET_KEY environment variable not set")?,
+        };
+
+        Ok(Self::new(config))
+    }
+
+    /// Create a read-only client from environment variables.
+    ///
+    /// Reads go through `getLedgerEntries`, which needs no source account, so
+    /// only `SNAPSHOT_CONTRACT_ID` is required. Calling the submit path on a
+    /// read-only client fails when the empty secret key is decoded.
+    pub fn read_only_from_env() -> Result<Self> {
+        let config = ContractConfig {
+            rpc_url: std::env::var("SOROBAN_RPC_URL")
+                .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string()),
+            contract_id: std::env::var("SNAPSHOT_CONTRACT_ID")
+                .context("SNAPSHOT_CONTRACT_ID environment variable not set")?,
+            network_passphrase: std::env::var("STELLAR_NETWORK_PASSPHRASE")
+                .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string()),
+            source_secret_key: std::env::var("STELLAR_SOURCE_SECRET_KEY").unwrap_or_default(),
         };
 
         Ok(Self::new(config))
@@ -492,11 +515,159 @@ impl ContractService {
         Ok(false)
     }
 
-    pub async fn verify_snapshot_exists(&self, _hash: &str, _ledger: u64) -> Result<bool> {
-        Err(anyhow::anyhow!("Contract service is temporarily disabled"))
+    /// Check that `hash` is the hash anchored on-chain for `epoch`.
+    pub async fn verify_snapshot_exists(&self, hash: &str, epoch: u64) -> Result<bool> {
+        Ok(self
+            .get_snapshot_record(epoch)
+            .await?
+            .is_some_and(|record| record.hash.eq_ignore_ascii_case(hash.trim_start_matches("0x"))))
     }
 
-    pub async fn get_snapshot_by_epoch(&self, _epoch: u64) -> Result<Option<String>> {
-        Err(anyhow::anyhow!("Contract service is temporarily disabled"))
+    /// Hex hash anchored on-chain for `epoch`, if any.
+    pub async fn get_snapshot_by_epoch(&self, epoch: u64) -> Result<Option<String>> {
+        Ok(self.get_snapshot_record(epoch).await?.map(|record| record.hash))
     }
+
+    /// Read the snapshot record for `epoch` straight from contract storage.
+    ///
+    /// The `payraider` contract keeps every snapshot in one persistent entry,
+    /// `DataKey::Snapshots -> Map<u64, Snapshot>`, so this fetches that entry
+    /// with `getLedgerEntries` and picks out the epoch. Unlike simulating
+    /// `get_snapshot`, this needs no source account and no fee.
+    pub async fn get_snapshot_record(&self, epoch: u64) -> Result<Option<OnChainRecord>> {
+        let key = snapshots_ledger_key(&self.config.contract_id)?;
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "getLedgerEntries".to_string(),
+            params: json!({ "keys": [key] }),
+        };
+
+        let body: JsonRpcResponse<serde_json::Value> = self
+            .client
+            .post(&self.config.rpc_url)
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send getLedgerEntries RPC request")?
+            .json()
+            .await
+            .context("Failed to parse getLedgerEntries RPC response")?;
+
+        if let Some(error) = body.error {
+            return Err(anyhow::anyhow!(
+                "getLedgerEntries failed: {} (code: {})",
+                error.message,
+                error.code
+            ));
+        }
+
+        let Some(entry) = body
+            .result
+            .as_ref()
+            .and_then(|r| r.get("entries"))
+            .and_then(|e| e.as_array())
+            .and_then(|e| e.first())
+        else {
+            // No entry at all: nothing has ever been submitted (or it was archived).
+            return Ok(None);
+        };
+
+        let entry_xdr = entry
+            .get("xdr")
+            .and_then(|x| x.as_str())
+            .context("getLedgerEntries entry missing xdr")?;
+        let data = LedgerEntryData::from_xdr_base64(entry_xdr, Limits::none())
+            .map_err(|e| anyhow::anyhow!("Failed to decode ledger entry XDR: {e}"))?;
+        let LedgerEntryData::ContractData(contract_data) = data else {
+            return Err(anyhow::anyhow!("Ledger entry is not contract data"));
+        };
+
+        let as_u32 = |field: &str| {
+            entry
+                .get(field)
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| u32::try_from(v).ok())
+        };
+
+        Ok(
+            find_snapshot_in_map(&contract_data.val, epoch)?.map(|(hash, timestamp)| {
+                OnChainRecord {
+                    contract_id: self.config.contract_id.clone(),
+                    epoch,
+                    hash: hex::encode(hash),
+                    timestamp,
+                    last_modified_ledger: as_u32("lastModifiedLedgerSeq"),
+                    live_until_ledger: as_u32("liveUntilLedgerSeq"),
+                }
+            }),
+        )
+    }
+}
+
+/// Base64 `LedgerKey` for the contract's `DataKey::Snapshots` persistent entry.
+///
+/// A `#[contracttype]` unit enum variant is encoded as `ScVec[Symbol(name)]`.
+fn snapshots_ledger_key(contract_id: &str) -> Result<String> {
+    let contract = stellar_strkey::Contract::from_string(contract_id)
+        .map_err(|e| anyhow::anyhow!("Invalid SNAPSHOT_CONTRACT_ID: {e}"))?;
+    let symbol = ScSymbol(
+        "Snapshots"
+            .try_into()
+            .map_err(|e| anyhow::anyhow!("Invalid symbol: {e}"))?,
+    );
+    let key_vec = ScVec(
+        vec![ScVal::Symbol(symbol)]
+            .try_into()
+            .map_err(|e| anyhow::anyhow!("Invalid key vec: {e}"))?,
+    );
+
+    LedgerKey::ContractData(LedgerKeyContractData {
+        contract: ScAddress::Contract(ContractId(Hash(contract.0))),
+        key: ScVal::Vec(Some(key_vec)),
+        durability: ContractDataDurability::Persistent,
+    })
+    .to_xdr_base64(Limits::none())
+    .context("Failed to encode ledger key")
+}
+
+/// Extract `(hash, timestamp)` for `epoch` from the stored `Map<u64, Snapshot>`.
+///
+/// `Snapshot` is a `#[contracttype]` struct, so it arrives as an `ScMap` keyed
+/// by field-name symbols (`epoch`, `hash`, `timestamp`).
+fn find_snapshot_in_map(val: &ScVal, epoch: u64) -> Result<Option<([u8; 32], u64)>> {
+    let ScVal::Map(Some(snapshots)) = val else {
+        return Err(anyhow::anyhow!("Snapshots entry is not a map"));
+    };
+
+    let Some(entry) = snapshots
+        .0
+        .iter()
+        .find(|e| matches!(e.key, ScVal::U64(k) if k == epoch))
+    else {
+        return Ok(None);
+    };
+
+    let ScVal::Map(Some(fields)) = &entry.val else {
+        return Err(anyhow::anyhow!("Snapshot for epoch {epoch} is not a struct"));
+    };
+
+    let field = |name: &str| {
+        fields.0.iter().find_map(|f| match &f.key {
+            ScVal::Symbol(sym) if sym.0.to_utf8_string_lossy() == name => Some(&f.val),
+            _ => None,
+        })
+    };
+
+    let hash = match field("hash") {
+        Some(ScVal::Bytes(bytes)) => <[u8; 32]>::try_from(bytes.0.as_vec().as_slice())
+            .map_err(|_| anyhow::anyhow!("Snapshot hash is not 32 bytes"))?,
+        _ => return Err(anyhow::anyhow!("Snapshot for epoch {epoch} has no hash field")),
+    };
+    let timestamp = match field("timestamp") {
+        Some(ScVal::U64(ts)) => *ts,
+        _ => 0,
+    };
+
+    Ok(Some((hash, timestamp)))
 }

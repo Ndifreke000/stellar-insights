@@ -165,6 +165,16 @@ export type * from "./types/request_deduplication.js";
 export type * from "./types/network_context_management.js";
 export type * from "./types/authentication_module.js";
 export type * from "./types/retry_with_backoff.js";
+
+// Types generated from docs/openapi.json (npm run generate:types). Prefer these
+// for request/response shapes; the hand-written types above are kept for
+// backwards compatibility.
+export type {
+  paths as ApiPaths,
+  components as ApiComponents,
+  operations as ApiOperations,
+} from "./types/generated.js";
+export type ApiSchemas = import("./types/generated.js").components["schemas"];
 export type * from "./types/anchors_api_module.js";
 
 // Soroban contract types

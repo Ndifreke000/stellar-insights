@@ -146,6 +146,15 @@ pub struct PaymentRecord {
     pub submission_time: Option<DateTime<Utc>>,
     /// Time when the transaction was confirmed
     pub confirmation_time: Option<DateTime<Utc>>,
+    /// Stellar account that sent the payment. Used (together with
+    /// `destination_account`) to exclude payments touching a merged account
+    /// from corridor success-rate/volume stats — see
+    /// `services::analytics::filter_merged_accounts` and issue #2664.
+    #[serde(default)]
+    pub source_account: String,
+    /// Stellar account that received the payment. See `source_account`.
+    #[serde(default)]
+    pub destination_account: String,
 }
 
 impl PaymentRecord {

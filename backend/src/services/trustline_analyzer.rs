@@ -18,6 +18,50 @@ impl TrustlineAnalyzer {
         Self { pool, rpc_client }
     }
 
+    /// Spawn the background loop that keeps `trustline_stats` /
+    /// `trustline_snapshots` fresh (#2666).
+    ///
+    /// Before this, nothing in the codebase called `sync_assets` or
+    /// `take_snapshots` — `/api/v1/trustlines/stats`, `/rankings` and
+    /// `/{asset_code}/{asset_issuer}/history` were all wired up and
+    /// correctly implemented, but queried permanently empty tables, so the
+    /// "trustline growth" chart data the issue asks for never had anything
+    /// to show and could never "match Horizon counts" (the acceptance
+    /// criterion) since no Horizon sync ever ran.
+    ///
+    /// Mirrors `CorridorPerformanceMonitor::spawn`'s pattern of two
+    /// independently-ticking intervals in one task.
+    pub fn spawn(
+        self: &Arc<Self>,
+        sync_interval_secs: u64,
+        snapshot_interval_secs: u64,
+    ) -> tokio::task::JoinHandle<()> {
+        let analyzer = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut sync_ticker =
+                tokio::time::interval(tokio::time::Duration::from_secs(sync_interval_secs));
+            let mut snapshot_ticker =
+                tokio::time::interval(tokio::time::Duration::from_secs(snapshot_interval_secs));
+            sync_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            snapshot_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+            loop {
+                tokio::select! {
+                    _ = sync_ticker.tick() => {
+                        if let Err(e) = analyzer.sync_assets().await {
+                            tracing::error!(error = %e, "Trustline sync from Horizon failed");
+                        }
+                    }
+                    _ = snapshot_ticker.tick() => {
+                        if let Err(e) = analyzer.take_snapshots().await {
+                            tracing::error!(error = %e, "Trustline snapshot failed");
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     // ========================================================================
     // Sync from Horizon
     // ========================================================================

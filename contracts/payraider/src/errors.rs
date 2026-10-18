@@ -59,6 +59,12 @@ pub enum Error {
     MigrationRequired = 26,
     /// Stored state is newer than this build understands
     StorageVersionTooNew = 27,
+    /// Address is already in the authorised submitter set
+    SubmitterAlreadyAuthorized = 28,
+    /// Address is not in the authorised submitter set
+    SubmitterNotFound = 29,
+    /// Authorised submitter set is full (see `MAX_SUBMITTERS`)
+    TooManySubmitters = 30,
 }
 
 impl Error {
@@ -99,6 +105,9 @@ impl Error {
             Error::MigrationNotNeeded => "Stored state is already at the current schema version",
             Error::MigrationRequired => "An upgrade is pending migration; run migrate() first",
             Error::StorageVersionTooNew => "Stored state is newer than this build understands",
+            Error::SubmitterAlreadyAuthorized => "Address is already an authorised submitter",
+            Error::SubmitterNotFound => "Address is not an authorised submitter",
+            Error::TooManySubmitters => "Authorised submitter set is full",
         }
     }
 

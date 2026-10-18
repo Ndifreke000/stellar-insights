@@ -181,6 +181,20 @@ jobs:
     needs: [cargo-audit, npm-audit]
     if: failure() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # This job already searches for an existing open tracking issue before
+    # creating a new one (see the script below), but that search-then-act
+    # is not atomic: `push` triggers on both `main` and `develop`, so two
+    # failing runs close together in time (e.g. a quick follow-up push, or
+    # a push landing near the weekly schedule) can each run their
+    # `listForRepo` call before either has created the issue, and each
+    # concludes "no existing issue" — producing duplicates. Concurrency
+    # serializes every execution of this job across workflow runs
+    # (`cancel-in-progress: false` queues them instead of cancelling), so
+    # the second run's search always sees what the first run just created
+    # or commented on. See issue #2648.
+    concurrency:
+      group: security-scan-alert-issue
+      cancel-in-progress: false
     permissions:
       issues: write
     steps:
@@ -225,3 +239,55 @@ jobs:
                 labels: ['security', 'dependencies'],
               });
             }
+
+  resolve:
+    name: Close tracking issue once the scan passes
+    needs: [cargo-audit, npm-audit]
+    if: success() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Same concurrency group as `alert` (mutually exclusive via success()/
+    # failure(), but across *different* runs the two can still race against
+    # the same issue without this) — see issue #2648.
+    concurrency:
+      group: security-scan-alert-issue
+      cancel-in-progress: false
+    permissions:
+      issues: write
+    steps:
+      - name: Close tracking issue if one is open
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Security] Dependency vulnerabilities detected';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+            if (!existing) {
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: [
+                'The dependency vulnerability scan is passing again.',
+                '',
+                `- Workflow run: ${runUrl}`,
+                `- Commit: ${context.sha}`,
+              ].join('\n'),
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });

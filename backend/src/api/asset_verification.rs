@@ -5,11 +5,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::error::{ApiError, ApiResult};
 use crate::models::asset_verification::{
     ListVerifiedAssetsQuery, ReportAssetRequest, VerifiedAssetResponse,
 };
@@ -43,71 +43,51 @@ pub fn routes(pool: SqlitePool) -> Router {
 async fn verify_asset(
     State(pool): State<Arc<SqlitePool>>,
     Path((code, issuer)): Path<(String, String)>,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    // Input validation
+) -> ApiResult<impl IntoResponse> {
     if code.is_empty() || code.len() > 12 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid asset code",
-                "message": "Asset code must be 1-12 characters"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ASSET_CODE",
+            "Asset code must be 1-12 characters",
         ));
     }
 
     if !is_valid_stellar_public_key(&issuer) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid issuer",
-                "message": "Issuer must be a valid Stellar public key"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ISSUER",
+            "Issuer must be a valid Stellar public key",
         ));
     }
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "Internal server error",
-                "message": "Failed to initialize verification service"
-            })),
-        )
+        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
     })?;
 
-    match verifier.verify_asset(&code, &issuer).await {
-        Ok(result) => Ok((
-            StatusCode::OK,
-            Json(json!({
-                "asset_code": code,
-                "asset_issuer": issuer,
-                "verified": result.stellar_expert_verified
-                    || result.stellar_toml_verified
-                    || result.anchor_registry_verified,
-                "trust_indicators": {
-                    "stellar_expert_verified": result.stellar_expert_verified,
-                    "stellar_toml_verified": result.stellar_toml_verified,
-                    "anchor_registry_verified": result.anchor_registry_verified
-                },
-                "metrics": {
-                    "trustline_count": result.trustline_count,
-                    "transaction_count": result.transaction_count,
-                    "total_volume_usd": result.total_volume_usd
-                }
-            })),
-        )),
-        Err(e) => {
-            tracing::error!("Asset verification failed: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Verification failed",
-                    "message": format!("Failed to verify asset: {}", e)
-                })),
-            ))
-        }
-    }
+    let result = verifier.verify_asset(&code, &issuer).await.map_err(|e| {
+        tracing::error!("Asset verification failed: {}", e);
+        ApiError::internal("VERIFICATION_FAILED", "Failed to verify asset")
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "asset_code": code,
+            "asset_issuer": issuer,
+            "verified": result.stellar_expert_verified
+                || result.stellar_toml_verified
+                || result.anchor_registry_verified,
+            "trust_indicators": {
+                "stellar_expert_verified": result.stellar_expert_verified,
+                "stellar_toml_verified": result.stellar_toml_verified,
+                "anchor_registry_verified": result.anchor_registry_verified
+            },
+            "metrics": {
+                "trustline_count": result.trustline_count,
+                "transaction_count": result.transaction_count,
+                "total_volume_usd": result.total_volume_usd
+            }
+        })),
+    ))
 }
 
 /// GET /api/assets/:code/:issuer/verification - Get verification details for an asset
@@ -129,59 +109,40 @@ async fn verify_asset(
 async fn get_verification(
     State(pool): State<Arc<SqlitePool>>,
     Path((code, issuer)): Path<(String, String)>,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    // Input validation
+) -> ApiResult<impl IntoResponse> {
     if code.is_empty() || code.len() > 12 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid asset code",
-                "message": "Asset code must be 1-12 characters"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ASSET_CODE",
+            "Asset code must be 1-12 characters",
         ));
     }
 
     if !is_valid_stellar_public_key(&issuer) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid issuer",
-                "message": "Issuer must be a valid Stellar public key"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ISSUER",
+            "Issuer must be a valid Stellar public key",
         ));
     }
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "Internal server error",
-                "message": "Failed to initialize verification service"
-            })),
-        )
+        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
     })?;
 
     match verifier.get_verified_asset(&code, &issuer).await {
         Ok(Some(asset)) => {
             let response: VerifiedAssetResponse = asset.into();
-            Ok((StatusCode::OK, Json(response)))
+            Ok((StatusCode::OK, Json(response)).into_response())
         }
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "Not found",
-                "message": "Asset verification not found. Use /verify endpoint to verify this asset."
-            })),
+        Ok(None) => Err(ApiError::not_found(
+            "ASSET_VERIFICATION_NOT_FOUND",
+            "Asset verification not found. Use /verify endpoint to verify this asset.",
         )),
         Err(e) => {
             tracing::error!("Failed to get verification: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Internal server error",
-                    "message": format!("Failed to retrieve verification: {}", e)
-                })),
+            Err(ApiError::internal(
+                "VERIFICATION_LOOKUP_FAILED",
+                "Failed to retrieve verification",
             ))
         }
     }
@@ -207,64 +168,45 @@ async fn get_verification(
 async fn list_verified_assets(
     State(pool): State<Arc<SqlitePool>>,
     Query(query): Query<ListVerifiedAssetsQuery>,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    // Validate query parameters
+) -> ApiResult<impl IntoResponse> {
     let limit = query.limit.unwrap_or(50).min(100).max(1);
     let offset = query.offset.unwrap_or(0).max(0);
 
     if let Some(min_rep) = query.min_reputation {
         if !(0.0..=100.0).contains(&min_rep) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Invalid parameter",
-                    "message": "min_reputation must be between 0 and 100"
-                })),
+            return Err(ApiError::bad_request(
+                "INVALID_MIN_REPUTATION",
+                "min_reputation must be between 0 and 100",
             ));
         }
     }
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "Internal server error",
-                "message": "Failed to initialize verification service"
-            })),
-        )
+        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
     })?;
 
-    match verifier
+    let assets = verifier
         .list_verified_assets(query.status.clone(), query.min_reputation, limit, offset)
         .await
-    {
-        Ok(assets) => {
-            let total = assets.len() as i64;
-            let responses: Vec<VerifiedAssetResponse> =
-                assets.into_iter().map(std::convert::Into::into).collect();
-
-            Ok((
-                StatusCode::OK,
-                Json(json!({
-                    "assets": responses,
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset
-                })),
-            ))
-        }
-        Err(e) => {
+        .map_err(|e| {
             tracing::error!("Failed to list verified assets: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Internal server error",
-                    "message": format!("Failed to list assets: {}", e)
-                })),
-            ))
-        }
-    }
+            ApiError::internal("LIST_ASSETS_FAILED", "Failed to list assets")
+        })?;
+
+    let total = assets.len() as i64;
+    let responses: Vec<VerifiedAssetResponse> =
+        assets.into_iter().map(std::convert::Into::into).collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "assets": responses,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        })),
+    ))
 }
 
 /// POST /api/assets/report - Report a suspicious asset
@@ -282,66 +224,49 @@ async fn list_verified_assets(
 async fn report_suspicious_asset(
     State(pool): State<Arc<SqlitePool>>,
     Json(request): Json<ReportAssetRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    // Input validation
+) -> ApiResult<impl IntoResponse> {
     if request.asset_code.is_empty() || request.asset_code.len() > 12 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid asset code",
-                "message": "Asset code must be 1-12 characters"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ASSET_CODE",
+            "Asset code must be 1-12 characters",
         ));
     }
 
     if !is_valid_stellar_public_key(&request.asset_issuer) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid issuer",
-                "message": "Issuer must be a valid Stellar public key"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_ISSUER",
+            "Issuer must be a valid Stellar public key",
         ));
     }
 
     if request.description.is_empty() || request.description.len() > 1000 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Invalid description",
-                "message": "Description must be 1-1000 characters"
-            })),
+        return Err(ApiError::bad_request(
+            "INVALID_DESCRIPTION",
+            "Description must be 1-1000 characters",
         ));
     }
 
     if let Some(ref url) = request.evidence_url {
         if !is_valid_url(url) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Invalid evidence URL",
-                    "message": "Evidence URL must be a valid URL"
-                })),
+            return Err(ApiError::bad_request(
+                "INVALID_EVIDENCE_URL",
+                "Evidence URL must be a valid URL",
             ));
         }
     }
 
     if let Some(ref reporter) = request.reporter_account {
         if !is_valid_stellar_public_key(reporter) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Invalid reporter account",
-                    "message": "Reporter account must be a valid Stellar public key"
-                })),
+            return Err(ApiError::bad_request(
+                "INVALID_REPORTER_ACCOUNT",
+                "Reporter account must be a valid Stellar public key",
             ));
         }
     }
 
     let report_id = Uuid::new_v4().to_string();
 
-    // Insert report into database
-    let result = sqlx::query(
+    sqlx::query(
         r"
         INSERT INTO asset_verification_reports (
             id, asset_code, asset_issuer, reporter_account,
@@ -357,45 +282,35 @@ async fn report_suspicious_asset(
     .bind(&request.description)
     .bind(&request.evidence_url)
     .execute(&*pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create report: {}", e);
+        ApiError::internal("REPORT_CREATION_FAILED", "Failed to submit report")
+    })?;
+
+    // Best-effort: increment suspicious reports count on the asset record.
+    let _ = sqlx::query(
+        r"
+        UPDATE verified_assets
+        SET suspicious_reports_count = suspicious_reports_count + 1,
+            last_suspicious_report_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE asset_code = ? AND asset_issuer = ?
+        ",
+    )
+    .bind(&request.asset_code)
+    .bind(&request.asset_issuer)
+    .execute(&*pool)
     .await;
 
-    match result {
-        Ok(_) => {
-            // Update suspicious reports count
-            let _ = sqlx::query(
-                r"
-                UPDATE verified_assets
-                SET suspicious_reports_count = suspicious_reports_count + 1,
-                    last_suspicious_report_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE asset_code = ? AND asset_issuer = ?
-                ",
-            )
-            .bind(&request.asset_code)
-            .bind(&request.asset_issuer)
-            .execute(&*pool)
-            .await;
-
-            Ok((
-                StatusCode::CREATED,
-                Json(json!({
-                    "id": report_id,
-                    "status": "pending",
-                    "message": "Report submitted successfully"
-                })),
-            ))
-        }
-        Err(e) => {
-            tracing::error!("Failed to create report: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Internal server error",
-                    "message": "Failed to submit report"
-                })),
-            ))
-        }
-    }
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "id": report_id,
+            "status": "pending",
+            "message": "Report submitted successfully"
+        })),
+    ))
 }
 
 /// Validate Stellar public key format
@@ -421,7 +336,7 @@ mod tests {
         assert!(!is_valid_stellar_public_key(""));
         assert!(!is_valid_stellar_public_key(
             "SA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-        )); // Secret key
+        ));
     }
 
     #[test]

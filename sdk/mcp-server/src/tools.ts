@@ -1,5 +1,16 @@
 import { z } from "zod";
+import type { PreflightBatchResponse, PreflightResponse } from "@payraider/sdk";
 import type { PayRaiderClient } from "./sdk-types.js";
+import {
+  PREFLIGHT_BATCH_OUTPUT_SCHEMA,
+  PREFLIGHT_OUTPUT_SCHEMA,
+  presentPreflight,
+  presentPreflightBatch,
+  type Presented,
+} from "./structured.js";
+
+/** Most payments one preflight_batch call may check; matches the backend. */
+export const MAX_PREFLIGHT_BATCH = 100;
 
 const pagination = {
   limit: z.number().int().min(1).max(200).optional().describe("Results per page (default 50)"),
@@ -19,7 +30,37 @@ export interface ToolDef {
   /** True when the backend needs a signed-in user, not just an API key. */
   requiresAuth?: boolean;
   call: (client: PayRaiderClient, args: Record<string, unknown>) => Promise<unknown>;
+  /** Shape of the tool's structuredContent, advertised to clients. */
+  outputSchema?: z.ZodRawShape;
+  /**
+   * Turn the raw result into structuredContent plus a short text summary.
+   * Tools without one return the result object as-is.
+   */
+  present?: (result: unknown, args: Record<string, unknown>) => Presented;
 }
+
+const preflightInput = {
+  source_asset: asset("Asset the payment is sent in"),
+  destination_asset: asset("Asset the recipient receives"),
+  amount_usd: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Payment size in USD; omit to skip the liquidity check"),
+  min_success_rate: z
+    .number()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe("Minimum acceptable success rate in percent (default 95)"),
+};
+
+const toPreflightRequest = (a: Record<string, unknown>) => ({
+  source_asset: a.source_asset as string,
+  destination_asset: a.destination_asset as string,
+  amount_usd: a.amount_usd as number | undefined,
+  min_success_rate: a.min_success_rate as number | undefined,
+});
 
 /**
  * Read-only tool set. Every tool maps onto a @payraider/sdk resource method
@@ -34,30 +75,47 @@ export const READ_ONLY_TOOLS: ToolDef[] = [
       "Check a payment corridor BEFORE paying out. Returns one decision " +
       "(proceed, caution, hold, or unknown when there is no recent data), the " +
       "checks behind it (success rate, liquidity headroom for the amount, " +
-      "sample size, health score) and healthier alternative corridors " +
-      "to the same destination asset. Works without an API key.",
+      "sample size, health score), reason codes such as LIQUIDITY_FAILED, " +
+      "and healthier alternative corridors to the same destination asset. " +
+      "Works without an API key.",
+    schema: preflightInput,
+    outputSchema: PREFLIGHT_OUTPUT_SCHEMA,
+    call: (c, a) => c.preflight.check(toPreflightRequest(a)),
+    present: (r) => presentPreflight(r as PreflightResponse),
+  },
+  {
+    name: "preflight_batch",
+    description:
+      `Run the pre-payment check on up to ${MAX_PREFLIGHT_BATCH} payouts in one call, ` +
+      "e.g. before releasing a payout batch. Every payment is scored against " +
+      "the same corridor snapshot. Returns, per payment and in request order, " +
+      "the decision, reason codes, score, corridor id and alternative corridor " +
+      "ids, plus totals per decision. An invalid payment is reported with an " +
+      "error code and does not fail the rest. Works without an API key.",
     schema: {
-      source_asset: asset("Asset the payment is sent in"),
-      destination_asset: asset("Asset the recipient receives"),
-      amount_usd: z
-        .number()
-        .positive()
-        .optional()
-        .describe("Payment size in USD; omit to skip the liquidity check"),
-      min_success_rate: z
-        .number()
-        .min(0)
-        .max(100)
-        .optional()
-        .describe("Minimum acceptable success rate in percent (default 95)"),
+      payments: z
+        .array(
+          z.object({
+            id: z
+              .string()
+              .max(200)
+              .optional()
+              .describe("Your own reference for this payout; echoed back in the result"),
+            ...preflightInput,
+          }),
+        )
+        .min(1)
+        .max(MAX_PREFLIGHT_BATCH)
+        .describe(`Payments to check, 1 to ${MAX_PREFLIGHT_BATCH}`),
     },
+    outputSchema: PREFLIGHT_BATCH_OUTPUT_SCHEMA,
     call: (c, a) =>
-      c.preflight.check({
-        source_asset: a.source_asset as string,
-        destination_asset: a.destination_asset as string,
-        amount_usd: a.amount_usd as number | undefined,
-        min_success_rate: a.min_success_rate as number | undefined,
-      }),
+      c.preflight.checkBatch((a.payments as Record<string, unknown>[]).map(toPreflightRequest)),
+    present: (r, a) =>
+      presentPreflightBatch(
+        r as PreflightBatchResponse,
+        (a.payments as { id?: string }[]).map((p) => p.id),
+      ),
   },
   {
     name: "list_corridors",

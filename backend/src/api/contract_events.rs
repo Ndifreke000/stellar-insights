@@ -3,11 +3,11 @@
 //! Provides REST API endpoints for querying contract events,
 //! verification status, and on-chain audit trails.
 
+use crate::error::{ApiError, ApiResult};
 use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::services::event_indexer::{EventIndexer, EventOrderBy, EventQuery, VerificationSummary};
 use axum::{
     extract::{OriginalUri, Path, Query, State},
-    http::StatusCode,
     response::Json,
     routing::get,
     Router,
@@ -58,7 +58,7 @@ pub struct EventListQuery {
 )]
 pub async fn get_verification_summary(
     State(event_indexer): State<Arc<EventIndexer>>,
-) -> Result<Json<VerificationSummaryResponse>, (StatusCode, String)> {
+) -> ApiResult<Json<VerificationSummaryResponse>> {
     info!("Fetching verification summary");
 
     let summaries = event_indexer
@@ -66,10 +66,7 @@ pub async fn get_verification_summary(
         .await
         .map_err(|e| {
             error!("Failed to get verification summary: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch verification summary: {e}"),
-            )
+            ApiError::internal("VERIFICATION_SUMMARY_FAILED", "Failed to fetch verification summary")
         })?;
 
     let latest = summaries.first();
@@ -109,10 +106,7 @@ pub async fn list_contract_events(
     State(event_indexer): State<Arc<EventIndexer>>,
     OriginalUri(uri): OriginalUri,
     Query(params): Query<EventListQuery>,
-) -> Result<
-    Json<PaginatedResponse<crate::services::event_indexer::IndexedEvent>>,
-    (StatusCode, String),
-> {
+) -> ApiResult<Json<PaginatedResponse<crate::services::event_indexer::IndexedEvent>>> {
     info!("Listing contract events with params: {:?}", params);
 
     let page = PaginationParams {
@@ -121,7 +115,7 @@ pub async fn list_contract_events(
         offset: params.offset,
     }
     .resolve(50, 200)
-    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    .map_err(|e| ApiError::bad_request("INVALID_PAGINATION", e.to_string()))?;
 
     let query = EventQuery {
         event_type: params.event_type,
@@ -136,10 +130,7 @@ pub async fn list_contract_events(
 
     let events = event_indexer.query_events(query).await.map_err(|e| {
         error!("Failed to query events: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to query events: {e}"),
-        )
+        ApiError::internal("QUERY_EVENTS_FAILED", "Failed to query events")
     })?;
 
     Ok(Json(
@@ -164,7 +155,7 @@ pub async fn list_contract_events(
 pub async fn get_contract_event(
     State(event_indexer): State<Arc<EventIndexer>>,
     Path(id): Path<String>,
-) -> Result<Json<crate::services::event_indexer::IndexedEvent>, (StatusCode, String)> {
+) -> ApiResult<Json<crate::services::event_indexer::IndexedEvent>> {
     info!("Fetching contract event: {}", id);
 
     let event = event_indexer
@@ -172,12 +163,9 @@ pub async fn get_contract_event(
         .await
         .map_err(|e| {
             error!("Failed to get event: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get event: {e}"),
-            )
+            ApiError::internal("GET_EVENT_FAILED", "Failed to get event")
         })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Event not found: {id}")))?;
+        .ok_or_else(|| ApiError::not_found("EVENT_NOT_FOUND", format!("Event not found: {id}")))?;
 
     Ok(Json(event))
 }
@@ -198,7 +186,7 @@ pub async fn get_contract_event(
 pub async fn get_events_for_epoch(
     State(event_indexer): State<Arc<EventIndexer>>,
     Path(epoch): Path<u64>,
-) -> Result<Json<Vec<crate::services::event_indexer::IndexedEvent>>, (StatusCode, String)> {
+) -> ApiResult<Json<Vec<crate::services::event_indexer::IndexedEvent>>> {
     info!("Fetching events for epoch: {}", epoch);
 
     let events = event_indexer
@@ -206,10 +194,7 @@ pub async fn get_events_for_epoch(
         .await
         .map_err(|e| {
             error!("Failed to get events for epoch: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get events for epoch: {e}"),
-            )
+            ApiError::internal("GET_EPOCH_EVENTS_FAILED", "Failed to get events for epoch")
         })?;
 
     Ok(Json(events))
@@ -227,15 +212,12 @@ pub async fn get_events_for_epoch(
 )]
 pub async fn get_event_stats(
     State(event_indexer): State<Arc<EventIndexer>>,
-) -> Result<Json<crate::services::event_indexer::EventStats>, (StatusCode, String)> {
+) -> ApiResult<Json<crate::services::event_indexer::EventStats>> {
     info!("Fetching event statistics");
 
     let stats = event_indexer.get_event_stats().await.map_err(|e| {
         error!("Failed to get event stats: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get event stats: {e}"),
-        )
+        ApiError::internal("GET_EVENT_STATS_FAILED", "Failed to get event stats")
     })?;
 
     Ok(Json(stats))

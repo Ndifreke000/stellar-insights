@@ -72,6 +72,26 @@ jobs:
           export DATABASE_URL="sqlite:./test_migrations.db"
           sqlite3 test_migrations.db ".tables" | grep -q "anchors" && echo "✓ Database tables created"
 
+      # backend/.sqlx/ is what SQLX_OFFLINE=true (see backend/.cargo/config.toml)
+      # checks `query!`/`query_as!` macros against at normal build time —
+      # everyone's build, CI, and Docker (see backend/Dockerfile) skip
+      # needing a live database because of it. If a query or its migration
+      # changed and .sqlx/ wasn't regenerated to match, every one of those
+      # builds would keep compiling fine against the *stale* cache instead
+      # of catching the drift — this is the one place in CI with a database
+      # actually migrated to current `main`, so it's the only place that can
+      # catch it. See issue #2654.
+      - name: Check .sqlx offline query cache is up to date
+        working-directory: backend
+        env:
+          DATABASE_URL: "sqlite:./test_migrations.db"
+          SQLX_OFFLINE: "false"
+        run: |
+          cargo sqlx prepare --check -- --all-targets --all-features || {
+            echo "::error::backend/.sqlx is stale. Run 'DATABASE_URL=sqlite:./test_migrations.db cargo sqlx prepare -- --all-targets --all-features' in backend/ against a freshly migrated database and commit the result."
+            exit 1
+          }
+
       - name: Verify development seed data loads cleanly
         working-directory: backend
         run: |

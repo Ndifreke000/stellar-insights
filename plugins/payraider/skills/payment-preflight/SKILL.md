@@ -30,6 +30,15 @@ needs no API key.
 4. If the user wants the cost as well, call `estimate_transfer_cost` and report
    the fees and the amount the recipient would receive.
 
+## Several payouts at once
+
+For a batch (up to 100 payments), call `preflight_batch` once instead of
+`preflight_payment` per payment. Pass each payout's own reference as `id`.
+Report `counts` first, then every payment whose `decision` is not `proceed`,
+with its `id` and `reason_codes`. A payment with `decision: null` was
+rejected; report its `error`. For the full checks and alternatives of one
+payment, call `preflight_payment` for it.
+
 ## Rules
 
 - The decision comes from the tool. Never upgrade a `hold` or `caution`, and

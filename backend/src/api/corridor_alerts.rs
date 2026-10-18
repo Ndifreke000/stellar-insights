@@ -18,7 +18,7 @@ use crate::{
     models::corridor_alerts::{
         CorridorAlertConfig, CorridorAlertEvent, CorridorPerformanceSnapshot,
         CorridorPerformanceSummary, CorridorPerformanceTimeline, CreateCorridorAlertConfigRequest,
-        UpdateCorridorAlertConfigRequest,
+        SimulateStatusChangeRequest, UpdateCorridorAlertConfigRequest,
     },
     services::corridor_performance_monitor::CorridorPerformanceMonitor,
     state::AppState,
@@ -52,6 +52,7 @@ pub fn router() -> Router<AppState> {
         .route("/events/{corridor_key}", get(list_events_for_corridor))
         .route("/events/{id}/acknowledge", post(acknowledge_event))
         .route("/unread-count", get(get_unread_count))
+        .route("/simulate-status-change", post(simulate_status_change))
 }
 
 // ---- Config Handlers ----
@@ -525,3 +526,60 @@ async fn get_unread_count(
         .await?;
     Ok(Json(serde_json::json!({ "count": count })))
 }
+
+/// POST /api/corridor-alerts/simulate-status-change - Simulate a status change to trigger alert rules
+#[utoipa::path(
+    post,
+    path = "/api/corridor-alerts/simulate-status-change",
+    request_body = SimulateStatusChangeRequest,
+    responses(
+        (status = 200, description = "Status change simulated", body = CorridorAlertEvent),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Corridor Alerts"
+)]
+async fn simulate_status_change(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    ValidatedJson(payload): ValidatedJson<SimulateStatusChangeRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let configs = state
+        .db
+        .get_corridor_alert_configs_for_user(&auth_user.user_id)
+        .await?;
+
+    let config_id = configs
+        .first()
+        .map(|c| c.id.clone())
+        .unwrap_or_else(|| "default-config".to_string());
+
+    let severity = match payload.target_status.as_str() {
+        "critical" => "critical",
+        "warning" => "warning",
+        _ => "info",
+    };
+
+    let message = format!(
+        "Corridor {} status transitioned to {}",
+        payload.corridor_key, payload.target_status
+    );
+
+    let event = state
+        .db
+        .insert_corridor_alert_event(
+            &config_id,
+            &auth_user.user_id,
+            &payload.corridor_key,
+            "status_transition",
+            severity,
+            &message,
+            Some(0.95),
+            Some(if payload.target_status == "critical" { 0.75 } else { 0.88 }),
+            None,
+        )
+        .await?;
+
+    Ok((StatusCode::OK, Json(event)))
+}
+

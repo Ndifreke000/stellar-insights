@@ -1,10 +1,30 @@
 //! API Handlers for Contract Event Replay System
+//!
+//! Mounted at `/api/v1/replay` (see `routes()` below and
+//! `crate::api::v1::routes`) behind the same `auth_middleware` the rest of
+//! the mutating "protected" routes use — starting, deleting or bulk-
+//! cleaning up replay sessions is an operational/debugging action, not a
+//! public read.
+//!
+//! These handlers previously existed but were never mounted into any
+//! router (see issue #2660): the whole module was unreachable dead code.
+//! Wiring them up surfaced two bugs that were presumably why no one had:
+//! 1. Every handler took `State<Arc<AppState>>`, but `AppState` (see
+//!    `crate::state`) is already `Clone` and used bare (`State<AppState>`)
+//!    everywhere else in this codebase — `Arc<AppState>` can't be
+//!    extracted from a router built with `.with_state(app_state)`, so this
+//!    would have failed to compile the moment anyone tried to route to it.
+//! 2. `start_replay` was a plain `fn`, not `async fn`, so it doesn't
+//!    implement `axum::Handler` (which requires the handler to return a
+//!    `Future`) despite being used exactly like the other, genuinely async
+//!    handlers below it.
 
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
+    routing::{delete, get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -63,9 +83,21 @@ pub struct ListReplaysQuery {
     pub limit: Option<usize>,
 }
 
+/// Query parameters for checkpoint cleanup.
+///
+/// `cleanup_checkpoints` used to extract this as a bare `Query<i64>`, which
+/// `serde_urlencoded` (what axum's `Query` extractor uses under the hood)
+/// cannot deserialize a query string like `?days=30` into — it needs a
+/// struct/map target, the same reason `ListReplaysQuery` above exists for
+/// `list_replays` rather than a bare `Query<usize>`.
+#[derive(Debug, Deserialize)]
+pub struct CleanupCheckpointsQuery {
+    pub days: i64,
+}
+
 /// Start a new replay
-pub fn start_replay(
-    State(state): State<Arc<AppState>>,
+pub async fn start_replay(
+    State(state): State<AppState>,
     Json(req): Json<StartReplayRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Starting replay with request: {:?}", req);
@@ -162,7 +194,7 @@ pub fn start_replay(
 
 /// Get replay status
 pub async fn get_replay_status(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Getting replay status for session: {}", session_id);
@@ -180,7 +212,7 @@ pub async fn get_replay_status(
 
 /// List all replay sessions
 pub async fn list_replays(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Query(query): Query<ListReplaysQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Listing replay sessions");
@@ -197,7 +229,7 @@ pub async fn list_replays(
 
 /// Get checkpoints for a session
 pub async fn list_checkpoints(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Listing checkpoints for session: {}", session_id);
@@ -214,7 +246,7 @@ pub async fn list_checkpoints(
 
 /// Delete a replay session
 pub async fn delete_replay(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Deleting replay session: {}", session_id);
@@ -238,15 +270,18 @@ pub async fn delete_replay(
 
 /// Cleanup old checkpoints
 pub async fn cleanup_checkpoints(
-    State(state): State<Arc<AppState>>,
-    Query(days): Query<i64>,
+    State(state): State<AppState>,
+    Query(params): Query<CleanupCheckpointsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    info!("Cleaning up checkpoints older than {} days", days);
+    info!(
+        "Cleaning up checkpoints older than {} days",
+        params.days
+    );
 
     let checkpoint_manager = CheckpointManager::new(state.db.pool().clone());
 
     let deleted = checkpoint_manager
-        .cleanup_old(days)
+        .cleanup_old(params.days)
         .await
         .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
 
@@ -254,4 +289,17 @@ pub async fn cleanup_checkpoints(
         "deleted": deleted,
         "message": format!("Deleted {} old checkpoints", deleted)
     })))
+}
+
+/// Replay control routes, mounted at `/api/v1/replay` by
+/// `crate::api::v1::routes` behind `auth_middleware` (see that call site for
+/// why: these start background jobs and delete data, so they get the same
+/// gate as the rest of the "protected" write routes).
+pub fn routes(app_state: AppState) -> Router {
+    Router::new()
+        .route("/", post(start_replay).get(list_replays))
+        .route("/{session_id}", get(get_replay_status).delete(delete_replay))
+        .route("/{session_id}/checkpoints", get(list_checkpoints))
+        .route("/checkpoints/cleanup", delete(cleanup_checkpoints))
+        .with_state(app_state)
 }

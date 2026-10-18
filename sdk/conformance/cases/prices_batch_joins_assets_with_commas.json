@@ -1,0 +1,36 @@
+{
+  "name": "prices_batch_joins_assets_with_commas",
+  "description": "Several assets are sent as one comma-separated query parameter.",
+  "operation": "prices.batch",
+  "input": {
+    "assets": [
+      "XLM:native",
+      "USDC"
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/prices/batch",
+    "query": {
+      "assets": "XLM:native,USDC"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "prices": {
+        "XLM:native": 0.12,
+        "USDC": 1.0
+      }
+    }
+  },
+  "expect": {
+    "result": {
+      "prices": {
+        "XLM:native": 0.12,
+        "USDC": 1.0
+      }
+    }
+  }
+}

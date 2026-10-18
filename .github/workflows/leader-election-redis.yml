@@ -1,0 +1,62 @@
+name: Leader Election Redis Integration
+
+# Explicitly exercises the Redis-backed leader election path (#2656).
+# Regular unit tests don't spin up two instances against a shared Redis
+# lock, so this job always provides Redis and runs the ignored integration
+# suite that verifies only one replica is ever leader and that failover
+# happens within one lease TTL.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/src/leader_election.rs"
+      - "backend/src/distributed_lock.rs"
+      - "backend/tests/leader_election_redis_integration.rs"
+      - ".github/workflows/leader-election-redis.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/src/leader_election.rs"
+      - "backend/src/distributed_lock.rs"
+      - "backend/tests/leader_election_redis_integration.rs"
+      - ".github/workflows/leader-election-redis.yml"
+  workflow_dispatch:
+
+jobs:
+  redis-leader-election:
+    name: Redis leader election integration
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-leader-election-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-leader-election-
+
+      - name: Run Redis leader election integration tests
+        working-directory: backend
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          DATABASE_URL: "sqlite::memory:"
+        run: cargo test --test leader_election_redis_integration -- --ignored --nocapture

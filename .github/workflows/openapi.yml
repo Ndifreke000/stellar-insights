@@ -4,10 +4,14 @@ name: OpenAPI Check
 # from the committed copy.  This ensures the spec never goes stale relative to
 # the actual route annotations.
 #
-# Decision (closes #1865): docs/openapi.json is committed to the repo so that
-# a fresh checkout always has a readable API spec and /api-docs can serve it
-# without a build step.  This workflow enforces that the committed file is kept
-# in sync with the utoipa-annotated handlers.
+# Decision (closes #1865, #2630): docs/openapi.json is committed to the repo
+# so that a fresh checkout always has a readable API spec and /api-docs can
+# serve it without a build step.  This workflow enforces that the committed
+# file is kept in sync with the utoipa-annotated handlers.
+#
+# How to update manually:
+#   cd backend && cargo run --bin generate_openapi
+#   git add docs/openapi.json && git commit -m "chore: regenerate openapi.json"
 
 on:
   push:
@@ -22,6 +26,8 @@ on:
       - 'backend/src/**'
       - 'backend/Cargo.toml'
       - 'backend/Cargo.lock'
+  # Allow maintainers to trigger a regeneration manually from the Actions tab.
+  workflow_dispatch:
 
 jobs:
   check-openapi:
@@ -47,6 +53,9 @@ jobs:
       - name: Generate OpenAPI spec
         working-directory: ./backend
         run: cargo run --bin generate_openapi
+
+      - name: Validate generated JSON is well-formed
+        run: python3 -c "import json, sys; json.load(open('docs/openapi.json')); print('✅  docs/openapi.json is valid JSON')"
 
       - name: Verify committed openapi.json matches generated
         run: |

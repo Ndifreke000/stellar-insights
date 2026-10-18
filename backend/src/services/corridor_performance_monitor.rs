@@ -254,6 +254,45 @@ impl CorridorPerformanceMonitor {
                         ));
                     }
                 }
+
+                // Status transition detection (e.g. Healthy <-> Warning <-> Critical)
+                let current_status = if current.success_rate < 0.8 {
+                    "critical"
+                } else if current.success_rate < 0.9 {
+                    "warning"
+                } else {
+                    "healthy"
+                };
+
+                let prev_status = if prev.success_rate < 0.8 {
+                    "critical"
+                } else if prev.success_rate < 0.9 {
+                    "warning"
+                } else {
+                    "healthy"
+                };
+
+                if prev_status != current_status {
+                    let severity = if current_status == "critical" {
+                        "critical"
+                    } else if current_status == "warning" {
+                        "warning"
+                    } else {
+                        "info"
+                    };
+
+                    triggered_alerts.push((
+                        "status_transition".to_string(),
+                        severity.to_string(),
+                        format!(
+                            "Corridor {} status transitioned from {} to {}",
+                            corridor_key, prev_status, current_status
+                        ),
+                        Some(prev.success_rate),
+                        Some(current.success_rate),
+                        None,
+                    ));
+                }
             }
 
             // Process triggered alerts
@@ -291,7 +330,7 @@ impl CorridorPerformanceMonitor {
 
                 // Also send through the core alert manager for webhook/email delivery
                 let alert_type_enum = match alert_type.as_str() {
-                    "success_rate_below" | "success_rate_drop" => AlertType::SuccessRateDrop,
+                    "success_rate_below" | "success_rate_drop" | "status_transition" => AlertType::SuccessRateDrop,
                     "latency_above" | "latency_increase" => AlertType::LatencyIncrease,
                     "liquidity_below" | "liquidity_drop" => AlertType::LiquidityDecrease,
                     _ => AlertType::SuccessRateDrop,

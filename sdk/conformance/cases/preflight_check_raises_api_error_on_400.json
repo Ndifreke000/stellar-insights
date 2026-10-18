@@ -1,0 +1,34 @@
+{
+  "name": "preflight_check_raises_api_error_on_400",
+  "description": "A 400 surfaces as the SDK's API error with the backend's status, code and message.",
+  "operation": "preflight.check",
+  "input": {
+    "source_asset": "USDC",
+    "destination_asset": "NGN",
+    "amount_usd": -1
+  },
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/preflight",
+    "query": {},
+    "body": {
+      "source_asset": "USDC",
+      "destination_asset": "NGN",
+      "amount_usd": -1
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "INVALID_AMOUNT",
+      "message": "amount_usd must be a positive number"
+    }
+  },
+  "expect": {
+    "error": {
+      "status": 400,
+      "code": "INVALID_AMOUNT",
+      "message": "amount_usd must be a positive number"
+    }
+  }
+}

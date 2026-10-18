@@ -3,10 +3,12 @@
 # clone have.
 #
 # After changing a `query!` macro or a migration, regenerate the cache:
-#   DATABASE_URL=sqlite://<a migrated database> cargo sqlx prepare -- --all-targets
+#   DATABASE_URL=sqlite://<a migrated database> cargo sqlx prepare -- --all-targets --all-features
 # and commit the updated .sqlx/ directory.
 #
 # To check against a live database instead, run with SQLX_OFFLINE=false and
-# DATABASE_URL set.
+# DATABASE_URL set. CI does this against a freshly migrated database on
+# every PR via `cargo sqlx prepare --check` — see
+# .github/workflows/database-migrations-test.yml (issue #2654).
 [env]
 SQLX_OFFLINE = "true"

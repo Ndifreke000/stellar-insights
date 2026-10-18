@@ -93,6 +93,8 @@ impl AggregationDb {
                     timestamp,
                     submission_time: None,
                     confirmation_time: None,
+                    source_account: row.source_account,
+                    destination_account: row.destination_account,
                 })
             })
             .collect();
@@ -388,9 +390,9 @@ struct PaymentRecordRow {
     id: String,
     #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     transaction_hash: String,
-    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
+    // Used in the PaymentRecord conversion below to let callers exclude
+    // merged accounts from corridor stats (#2664).
     source_account: String,
-    #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     destination_account: String,
     #[allow(dead_code)] // Fetched from DB but not used in conversion to PaymentRecord
     asset_type: String,

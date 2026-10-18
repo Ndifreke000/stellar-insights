@@ -1,0 +1,15 @@
+{
+  "name": "payraider-sdk-releases",
+  "private": true,
+  "description": "Release tooling for the PayRaider SDKs (changesets + compatibility matrix). Not a workspace root: each SDK still installs on its own.",
+  "scripts": {
+    "changeset": "changeset",
+    "status": "changeset status --verbose",
+    "version-packages": "changeset version && node scripts/release/sync-python-version.mjs && node scripts/release/update-compatibility.mjs",
+    "release": "node scripts/release/publish.mjs",
+    "compat:check": "node scripts/release/update-compatibility.mjs --check"
+  },
+  "devDependencies": {
+    "@changesets/cli": "2.31.1"
+  }
+}

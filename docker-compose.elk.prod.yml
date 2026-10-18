@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Not used by the actual deployment (Render Blueprint + SQLite, see
+# docs/DEPLOY.md and elk/README.md) — kept as a reference, see issue #2650.
+#
 # Production ELK stack for PayRaider
 #
 # Key differences from docker-compose.elk.yml (dev):

@@ -13,7 +13,9 @@ import {
   BarChart3,
   ChevronRight,
   Home,
+  Bell,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   generateMockCorridorData,
   CorridorMetrics,
@@ -33,12 +35,15 @@ import { useRealtimeCorridors } from "@/hooks/useRealtimeCorridors";
 import { Link } from "@/i18n/navigation";
 import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/Skeleton";
 import { BackButton } from "@/components/ui/BackButton";
+import { CorridorRecentFailures } from "@/components/corridors/CorridorRecentFailures";
+import { SubscribeCorridorAlertModal } from "@/components/corridors/SubscribeCorridorAlertModal";
 
 export default function CorridorDetailPage() {
   const params = useParams();
   const corridorPair = params.pair as string;
 
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const cacheSync = useRealtimeCacheSync();
 
   const detailQuery = useCorridorDetail(corridorPair);
@@ -172,7 +177,16 @@ export default function CorridorDetailPage() {
                 Pair: {corridorPair}
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAlertModalOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-medium"
+              >
+                <Bell className="w-3.5 h-3.5 text-blue-500" />
+                Subscribe to Alerts
+              </Button>
               <WebSocketStatus
                 isConnected={isConnected}
                 isConnecting={isConnecting}
@@ -342,6 +356,8 @@ export default function CorridorDetailPage() {
           </div>
         </div>
 
+        <CorridorRecentFailures corridorKey={corridorPair} />
+
         {data.related_corridors && data.related_corridors.length > 0 && (
           <div className="mt-8">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
@@ -399,6 +415,12 @@ export default function CorridorDetailPage() {
             updates via WebSocket.
           </p>
         </div>
+
+        <SubscribeCorridorAlertModal
+          corridorKey={corridorPair}
+          isOpen={isAlertModalOpen}
+          onClose={() => setIsAlertModalOpen(false)}
+        />
       </div>
     </MainLayout>
   );

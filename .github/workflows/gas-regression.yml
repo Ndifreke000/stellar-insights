@@ -5,10 +5,16 @@ on:
     branches: [main, develop]
     paths:
       - 'contracts/**'
+      - '!contracts/archive/**'
+      - 'scripts/check_gas_regression.py'
+      - 'docs/GAS_COSTS.md'
   pull_request:
     branches: [main, develop]
     paths:
       - 'contracts/**'
+      - '!contracts/archive/**'
+      - 'scripts/check_gas_regression.py'
+      - 'docs/GAS_COSTS.md'
 
 jobs:
   gas-benchmarks:
@@ -27,32 +33,38 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             contracts/target
-          key: contracts-bench-${{ hashFiles('contracts/Cargo.lock') }}
-          restore-keys: contracts-bench-
+          key: contracts-gas-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: contracts-gas-
 
-      - name: Run benchmarks and save output
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Host-budget CPU instructions / memory bytes per payraider entrypoint.
+      # Deterministic, unlike wall-clock timings, so a tight threshold is safe.
+      - name: Measure gas per entrypoint
         working-directory: ./contracts
+        shell: bash  # enables pipefail so tee doesn't mask a failed build
         run: |
-          cargo bench --package contract-benches 2>&1 | tee bench_output.txt
+          cargo bench -p contract-benches --bench gas_benchmarks | tee gas_output.txt
 
-      # Extract ns/iter values and fail if any benchmark regressed by >20%
-      # compared to the baseline stored in docs/GAS_COSTS.md.
+      # Fails if any entrypoint's CPU or memory cost rose by more than its
+      # threshold in contracts/benches/gas-thresholds.toml (10% by default)
+      # over the baseline in docs/GAS_COSTS.md.
       - name: Check for gas regressions
         working-directory: ./contracts
         run: |
           python3 ../scripts/check_gas_regression.py \
-            bench_output.txt \
+            gas_output.txt \
             ../docs/GAS_COSTS.md \
-            --threshold 0.20
+            --thresholds benches/gas-thresholds.toml
 
-      - name: Upload benchmark results
+      - name: Upload gas results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-results-${{ github.sha }}
-          path: |
-            contracts/bench_output.txt
-            contracts/target/criterion/
+          name: gas-results-${{ github.sha }}
+          path: contracts/gas_output.txt
           retention-days: 30
 
       # On pushes to main, update the baseline in docs/GAS_COSTS.md
@@ -61,8 +73,9 @@ jobs:
         working-directory: ./contracts
         run: |
           python3 ../scripts/check_gas_regression.py \
-            bench_output.txt \
+            gas_output.txt \
             ../docs/GAS_COSTS.md \
+            --thresholds benches/gas-thresholds.toml \
             --update-baseline
 
       - name: Commit updated baseline

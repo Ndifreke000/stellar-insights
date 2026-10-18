@@ -58,6 +58,74 @@ Wallet sign-in sends that host name and the API rejects any other.
    curl https://payraider-mcp.onrender.com/healthz
    ```
 
+## Fly.io (alternative to Render)
+
+`fly.toml` at the repository root is a Fly deploy config for just the API,
+with a persistent volume for its SQLite database — the Fly equivalent of
+the Render Blueprint's `disk:` block. Fly doesn't support the Blueprint's
+multi-service layout, so run `payraider-mcp` and `payraider-web` separately
+(e.g. Fly apps of their own, or elsewhere) if you need them.
+
+1. Create the volume once per app/region (1 GB is enough for a demo; grow it
+   later with `fly volumes extend`):
+
+   ```bash
+   fly apps create payraider-api
+   fly volumes create payraider_data --region fra --size 1 -a payraider-api
+   ```
+
+2. Set the secrets `fly.toml` doesn't hardcode (see the comment block in that
+   file for the full list — same values as the Render table above):
+
+   ```bash
+   fly secrets set -a payraider-api \
+     STELLAR_RPC_URL_MAINNET=... \
+     ENCRYPTION_KEY=$(openssl rand -hex 32) \
+     JWT_SECRET=$(openssl rand -hex 32) \
+     SEP10_SERVER_PUBLIC_KEY=G... \
+     SEP10_HOME_DOMAIN=payraider-web.example.com \
+     CORS_ALLOWED_ORIGINS=https://payraider-web.example.com \
+     REDIS_URL=redis://...
+   ```
+
+3. Deploy and check it:
+
+   ```bash
+   fly deploy
+   curl https://payraider-api.fly.dev/health
+   ```
+
+A fresh volume mounts empty; the database file is created on first boot
+(`?mode=rwc` in `DATABASE_URL`) and the API runs its `sqlx` migrations
+automatically on startup, same as Render.
+
+## Backups
+
+Both the Render and Fly paths above give you a *persistent* disk, which
+survives redeploys and restarts but not volume loss or corruption. Two
+independent layers build on top of that:
+
+- **Periodic local snapshots** (`backend/src/backup.rs`): a daily job that
+  copies and checksums the SQLite file onto the same volume, pruning after
+  `BACKUP_RETENTION_DAYS` (default 30). Controlled by `BACKUP_ENABLED` /
+  `BACKUP_DIR` / `BACKUP_SCHEDULE_HOUR_UTC` — on by default in `fly.toml`,
+  off by default in `render.yaml` (flip it to `"true"` to enable it there
+  too; it's cheap and runs against the same mounted disk).
+- **Continuous off-volume replication** (Litestream → S3): protects against
+  losing the volume itself, not just the process. This is currently wired
+  for the ECS/k8s deployment path only (sidecar container) — see
+  `docs/backup-system.md` for the full picture, and
+  `.github/workflows/backup-database.yml` / `scripts/verify-backup.sh` for
+  how replicas get verified nightly. Neither Render nor Fly run a sidecar
+  container, so a Render/Fly deploy relies on layer 1 (the persistent disk)
+  and the periodic local snapshots above until it's also pointed at a
+  Litestream replica.
+- Because SQLite is in WAL mode (`backend/src/database.rs`), both the local
+  snapshot job and Litestream can read a consistent copy of the database
+  without blocking the server's own writes — see [SQLite WAL
+  mode](https://www.sqlite.org/wal.html) for why a raw file copy outside WAL
+  mode would not be safe to do the same way.
+
 ## Other hosts
 
 The API and MCP server are plain Docker images:

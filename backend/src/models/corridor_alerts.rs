@@ -105,6 +105,9 @@ pub struct CreateCorridorAlertConfigRequest {
     pub notify_in_app: Option<bool>,
     pub notify_slack: Option<bool>,
     pub notify_telegram: Option<bool>,
+    pub email: Option<String>,
+    pub webhook_url: Option<String>,
+    pub alert_on_status_change: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
@@ -122,6 +125,9 @@ pub struct UpdateCorridorAlertConfigRequest {
     pub notify_in_app: Option<bool>,
     pub notify_slack: Option<bool>,
     pub notify_telegram: Option<bool>,
+    pub email: Option<String>,
+    pub webhook_url: Option<String>,
+    pub alert_on_status_change: Option<bool>,
     pub is_active: Option<bool>,
 }
 
@@ -147,3 +153,12 @@ pub struct CorridorPerformanceTimeline {
     pub snapshots: Vec<CorridorPerformanceSnapshot>,
     pub alerts: Vec<CorridorAlertEvent>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
+pub struct SimulateStatusChangeRequest {
+    #[validate(length(min = 1, max = 256, message = "corridor_key must not be empty"))]
+    pub corridor_key: String,
+    #[validate(length(min = 1, max = 64, message = "target_status must not be empty"))]
+    pub target_status: String,
+}
+

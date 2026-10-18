@@ -5,12 +5,14 @@
 )]
 
 use axum::{
+    body::Body,
     extract::{Query, State},
     http::{header, HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
 };
 use chrono::{DateTime, Duration, Utc};
 use csv::Writer;
+use futures::StreamExt;
 use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
@@ -26,6 +28,40 @@ fn sanitize_csv_field(value: String) -> String {
     } else {
         value
     }
+}
+
+/// Largest date range an export may request (#2669). Both export endpoints
+/// previously accepted any `start_date`/`end_date` pair with no upper bound
+/// on the span, so a multi-year request could pull an unbounded number of
+/// rows into memory before any format-specific limit (like `export_payments`'
+/// row `LIMIT`) even applied.
+const MAX_EXPORT_RANGE_DAYS: i64 = 90;
+
+/// Hard cap on rows materialized for a single export response, independent
+/// of the date-range limit above — belt-and-suspenders against a dense
+/// window (e.g. a corridor with very high transaction volume) still
+/// producing an unbounded result set.
+const MAX_EXPORT_ROWS: usize = 5_000;
+
+/// Reject a date range wider than `MAX_EXPORT_RANGE_DAYS`, or one where
+/// `end` precedes `start`.
+fn validate_export_range(start: chrono::NaiveDate, end: chrono::NaiveDate) -> ApiResult<()> {
+    let span_days = end.signed_duration_since(start).num_days();
+    if span_days < 0 {
+        return Err(ApiError::bad_request(
+            "INVALID_RANGE",
+            "end_date must not be before start_date",
+        ));
+    }
+    if span_days > MAX_EXPORT_RANGE_DAYS {
+        return Err(ApiError::bad_request(
+            "RANGE_TOO_WIDE",
+            format!(
+                "Requested range is {span_days} days; exports are limited to {MAX_EXPORT_RANGE_DAYS} days to avoid unbounded result sets"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -60,6 +96,8 @@ pub async fn export_corridors(
         .map_or(today - Duration::days(30), |d| d.date_naive());
     let end_date = params.end_date.map_or(today, |d| d.date_naive());
 
+    validate_export_range(start_date, end_date)?;
+
     let corridors = app_state
         .db
         .corridor_aggregates()
@@ -72,7 +110,7 @@ pub async fn export_corridors(
             )
         })?;
 
-    let filtered_corridors: Vec<_> = if let Some(corridor_id) = &params.corridor_id {
+    let mut filtered_corridors: Vec<_> = if let Some(corridor_id) = &params.corridor_id {
         corridors
             .into_iter()
             .filter(|c| &c.corridor_key == corridor_id)
@@ -80,6 +118,10 @@ pub async fn export_corridors(
     } else {
         corridors
     };
+    // `get_aggregated_corridor_metrics` has no row limit of its own — this
+    // is the backstop against a wide, high-cardinality window still
+    // producing an unbounded result set (#2669).
+    filtered_corridors.truncate(MAX_EXPORT_ROWS);
 
     match params.format.to_lowercase().as_str() {
         "csv" => export_corridors_csv(&filtered_corridors).map(IntoResponse::into_response),
@@ -457,16 +499,29 @@ pub async fn export_payments(
         .unwrap_or_else(|| Utc::now() - Duration::days(30));
     let end_date = params.end_date.unwrap_or_else(Utc::now);
 
+    validate_export_range(start_date.date_naive(), end_date.date_naive())?;
+
+    // CSV is the format most exposed to row-count blow-up (JSON/Excel below
+    // still fetch the bounded `LIMIT MAX_EXPORT_ROWS` set into memory, since
+    // `rust_xlsxwriter` and `serde_json::to_vec` both need the whole value
+    // up front) — stream it straight from the DB cursor instead of
+    // materializing a `Vec<PaymentRow>` and then a second, fully-buffered
+    // CSV byte vector on top of it (#2669).
+    if params.format.to_lowercase() == "csv" {
+        return export_payments_csv_stream(app_state.db.pool().clone(), start_date, end_date).await;
+    }
+
     let payments = sqlx::query_as::<_, PaymentRow>(
         r"
         SELECT * FROM payments
         WHERE created_at BETWEEN $1 AND $2
         ORDER BY created_at DESC
-        LIMIT 5000
+        LIMIT $3
         ",
     )
     .bind(start_date)
     .bind(end_date)
+    .bind(MAX_EXPORT_ROWS as i64)
     .fetch_all(app_state.db.pool())
     .await
     .map_err(|e| {
@@ -477,7 +532,6 @@ pub async fn export_payments(
     })?;
 
     match params.format.to_lowercase().as_str() {
-        "csv" => export_payments_csv(&payments).map(IntoResponse::into_response),
         "json" => export_payments_json(&payments).map(IntoResponse::into_response),
         "excel" | "xlsx" => export_payments_excel(&payments).map(IntoResponse::into_response),
         _ => Err(ApiError::bad_request(
@@ -487,41 +541,97 @@ pub async fn export_payments(
     }
 }
 
-/// Helper to export payments as CSV
-fn export_payments_csv(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> {
+/// Encode one payment row as a single CSV record (same column order as
+/// `export_payments_csv_stream`'s header), reusing the `csv` crate's writer
+/// so each streamed row gets the same quoting/escaping `export_corridors_csv`
+/// relies on for its (non-streamed) sibling export.
+fn payment_csv_row_bytes(p: &PaymentRow) -> ApiResult<Vec<u8>> {
     let mut wtr = Writer::from_writer(vec![]);
-    wtr.write_record([
-        "Transaction Hash",
-        "Source Account",
-        "Destination Account",
-        "Source Asset",
-        "Destination Asset",
-        "Amount",
-        "Successful",
-        "Timestamp",
+    wtr.write_record(&[
+        sanitize_csv_field(p.transaction_hash.clone()),
+        sanitize_csv_field(p.source_account.clone()),
+        sanitize_csv_field(p.destination_account.clone()),
+        sanitize_csv_field(format!("{}:{}", p.source_asset_code, p.source_asset_issuer)),
+        sanitize_csv_field(format!(
+            "{}:{}",
+            p.destination_asset_code, p.destination_asset_issuer
+        )),
+        p.amount.to_string(),
+        p.successful.to_string(),
+        p.created_at.to_rfc3339(),
     ])
     .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+    wtr.into_inner()
+        .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))
+}
 
-    for p in payments {
-        wtr.write_record(&[
-            sanitize_csv_field(p.transaction_hash.clone()),
-            sanitize_csv_field(p.source_account.clone()),
-            sanitize_csv_field(p.destination_account.clone()),
-            sanitize_csv_field(format!("{}:{}", p.source_asset_code, p.source_asset_issuer)),
-            sanitize_csv_field(format!(
-                "{}:{}",
-                p.destination_asset_code, p.destination_asset_issuer
-            )),
-            p.amount.to_string(),
-            p.successful.to_string(),
-            p.created_at.to_rfc3339(),
+/// Stream payments as CSV directly from a DB cursor (`fetch`, not
+/// `fetch_all`): at most one row is held in memory at a time on the way
+/// into the response body, rather than the full result set plus a second,
+/// fully-buffered CSV byte vector built on top of it (#2669).
+async fn export_payments_csv_stream(
+    pool: sqlx::SqlitePool,
+    start_date: DateTime<Utc>,
+    end_date: DateTime<Utc>,
+) -> ApiResult<Response> {
+    let mut header_wtr = Writer::from_writer(vec![]);
+    header_wtr
+        .write_record([
+            "Transaction Hash",
+            "Source Account",
+            "Destination Account",
+            "Source Asset",
+            "Destination Asset",
+            "Amount",
+            "Successful",
+            "Timestamp",
         ])
         .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
-    }
-
-    let data = wtr
+    let header_bytes = header_wtr
         .into_inner()
         .map_err(|e| ApiError::internal("EXPORT_ERROR", e.to_string()))?;
+
+    // `async_stream::stream!` (same mechanism `graphql/subscription.rs`
+    // already uses for its real-time streams) owns `pool` inside the
+    // generator for the life of the stream, so the `&pool` borrow used by
+    // `.fetch(&pool)` below is valid across every `.await` point without
+    // tying this stream's lifetime to anything outside it — required since
+    // `Body::from_stream` needs the stream to be `'static`.
+    let body_stream = async_stream::stream! {
+        yield Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(header_bytes);
+
+        let mut rows = sqlx::query_as::<_, PaymentRow>(
+            r"
+            SELECT * FROM payments
+            WHERE created_at BETWEEN $1 AND $2
+            ORDER BY created_at DESC
+            LIMIT $3
+            ",
+        )
+        .bind(start_date)
+        .bind(end_date)
+        .bind(MAX_EXPORT_ROWS as i64)
+        .fetch(&pool);
+
+        while let Some(row_result) = rows.next().await {
+            match row_result {
+                Ok(row) => match payment_csv_row_bytes(&row) {
+                    Ok(bytes) => yield Ok(bytes),
+                    Err(e) => {
+                        yield Err(Box::new(std::io::Error::other(e.to_string()))
+                            as Box<dyn std::error::Error + Send + Sync>);
+                        return;
+                    }
+                },
+                Err(e) => {
+                    yield Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>);
+                    return;
+                }
+            }
+        }
+    };
+
+    let body = Body::from_stream(body_stream);
 
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
@@ -530,7 +640,7 @@ fn export_payments_csv(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse> 
         HeaderValue::from_static("attachment; filename=\"payments_export.csv\""),
     );
 
-    Ok((headers, data))
+    Ok((headers, body).into_response())
 }
 
 /// Helper to export payments as JSON
@@ -632,4 +742,84 @@ fn export_payments_excel(payments: &[PaymentRow]) -> ApiResult<impl IntoResponse
     );
 
     Ok((headers, data))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_payment(hash: &str, amount: f64) -> PaymentRow {
+        let now = Utc::now();
+        PaymentRow {
+            id: "id-1".to_string(),
+            transaction_hash: hash.to_string(),
+            source_account: "GALICE".to_string(),
+            destination_account: "GBOB".to_string(),
+            asset_type: "credit_alphanum4".to_string(),
+            asset_code: Some("USDC".to_string()),
+            asset_issuer: Some("GISSUER".to_string()),
+            source_asset_code: "USDC".to_string(),
+            source_asset_issuer: "GISSUER".to_string(),
+            destination_asset_code: "USDC".to_string(),
+            destination_asset_issuer: "GISSUER".to_string(),
+            amount,
+            successful: true,
+            timestamp: Some(now),
+            submission_time: Some(now),
+            confirmation_time: Some(now),
+            created_at: now,
+        }
+    }
+
+    #[test]
+    fn validate_export_range_accepts_a_range_within_the_limit() {
+        let start = Utc::now().date_naive() - Duration::days(10);
+        let end = Utc::now().date_naive();
+        assert!(validate_export_range(start, end).is_ok());
+    }
+
+    #[test]
+    fn validate_export_range_rejects_a_range_wider_than_the_limit() {
+        let start = Utc::now().date_naive() - Duration::days(MAX_EXPORT_RANGE_DAYS + 1);
+        let end = Utc::now().date_naive();
+        assert!(validate_export_range(start, end).is_err());
+    }
+
+    #[test]
+    fn validate_export_range_accepts_exactly_the_limit() {
+        let start = Utc::now().date_naive() - Duration::days(MAX_EXPORT_RANGE_DAYS);
+        let end = Utc::now().date_naive();
+        assert!(validate_export_range(start, end).is_ok());
+    }
+
+    #[test]
+    fn validate_export_range_rejects_end_before_start() {
+        let start = Utc::now().date_naive();
+        let end = start - Duration::days(1);
+        assert!(validate_export_range(start, end).is_err());
+    }
+
+    #[test]
+    fn payment_csv_row_bytes_sanitizes_formula_trigger_characters() {
+        // A transaction hash can't start with '=', but this exercises the
+        // same `sanitize_csv_field` path real export data goes through for
+        // any text field that could begin with a formula trigger.
+        let row = test_payment("=cmd|'/c calc'!A0", 42.5);
+        let bytes = payment_csv_row_bytes(&row).expect("row encodes");
+        let text = String::from_utf8(bytes).expect("valid utf8");
+        assert!(text.starts_with("'="), "formula-trigger field must be prefixed: {text}");
+    }
+
+    #[test]
+    fn payment_csv_row_bytes_includes_all_columns() {
+        let row = test_payment("abc123", 100.0);
+        let bytes = payment_csv_row_bytes(&row).expect("row encodes");
+        let text = String::from_utf8(bytes).expect("valid utf8");
+        assert!(text.contains("abc123"));
+        assert!(text.contains("GALICE"));
+        assert!(text.contains("GBOB"));
+        assert!(text.contains("USDC:GISSUER"));
+        assert!(text.contains("100"));
+        assert!(text.contains("true"));
+    }
 }

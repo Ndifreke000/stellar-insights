@@ -1,11 +1,10 @@
-use payraider_backend::openapi::ApiDoc;
+use payraider_backend::openapi::full_openapi;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use utoipa::OpenApi;
 
 fn main() {
-    let json = ApiDoc::openapi()
+    let json = full_openapi()
         .to_pretty_json()
         .expect("Failed to serialize OpenAPI spec");
 

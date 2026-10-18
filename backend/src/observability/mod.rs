@@ -1,6 +1,7 @@
 pub mod apm;
 pub mod db_performance;
 pub mod frontend_metrics;
+pub mod ingestion_lag;
 pub mod job_alerts;
 pub mod job_metrics;
 pub mod logging;

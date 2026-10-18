@@ -328,6 +328,11 @@ pub struct FeeBumpTransaction {
     pub inner_transaction_hash: String,
     pub inner_max_fee: i64,
     pub signatures_count: i32,
+    /// Source account of the inner (wrapped) transaction. This is who actually
+    /// initiated the transaction and is the account success-rate / corridor
+    /// attribution should credit or charge, as opposed to `fee_source`, which
+    /// is only the account that paid the bumped fee.
+    pub inner_source: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -338,6 +343,10 @@ pub struct FeeBumpStats {
     pub max_fee_charged: i64,
     pub min_fee_charged: i64,
     pub unique_fee_sources: i64,
+    /// Distinct inner (originating) sources, i.e. attribution by the account
+    /// that actually submitted the wrapped transaction rather than the one
+    /// that fronted the fee.
+    pub unique_inner_sources: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]

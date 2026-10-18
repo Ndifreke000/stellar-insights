@@ -33,6 +33,12 @@ panic = "allow"
 [features]
 sep-integration = []
 testnet-smoke = []
+# Optional Telegram/Slack notification bots (#2658). Not part of `default`,
+# so the default build excludes `telegram/` and `slack_bot.rs` entirely,
+# shrinking the binary and its attack surface. Enable explicitly with
+# `cargo build --features telegram-bot,slack-bot` (or either alone).
+telegram-bot = []
+slack-bot = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -114,6 +120,8 @@ tempfile = "=3.27.0"
 criterion = { version = "=0.8.2", features = ["async_tokio"] }
 tokio = { version = "=1.52.3", features = ["full", "test-util"] }
 wiremock = "0.6.5"
+# Property tests for preflight decision invariants (#2645).
+proptest = "=1.11.0"
 
 [[bench]]
 name = "corridor_benchmarks"

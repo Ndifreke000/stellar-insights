@@ -20,6 +20,18 @@ from .resources import (
     TransactionsResource,
     WebhooksResource,
 )
+from .types import (
+    ApiErrorBody,
+    CheckStatus,
+    Corridor,
+    CorridorDetail,
+    PageLinks,
+    PageMeta,
+    PaginatedResponse,
+    PreflightCheck,
+    PreflightDecision,
+    PreflightResponse,
+)
 
 
 class PayRaider:
@@ -39,6 +51,7 @@ class PayRaider:
         base_url: str = "https://api.payraider.io",
         max_retries: int = 3,
         retry_delay: float = 0.5,
+        max_retry_delay: float = 30.0,
         timeout: float = 30.0,
     ) -> None:
         self._http = HttpClient(
@@ -47,6 +60,7 @@ class PayRaider:
             base_url=base_url,
             max_retries=max_retries,
             retry_delay=retry_delay,
+            max_retry_delay=max_retry_delay,
             timeout=timeout,
         )
         self.anchors = AnchorsResource(self._http)
@@ -74,4 +88,17 @@ class PayRaider:
         await self.aclose()
 
 
-__all__ = ["PayRaider", "PayRaiderError"]
+__all__ = [
+    "PayRaider",
+    "PayRaiderError",
+    "ApiErrorBody",
+    "CheckStatus",
+    "Corridor",
+    "CorridorDetail",
+    "PageLinks",
+    "PageMeta",
+    "PaginatedResponse",
+    "PreflightCheck",
+    "PreflightDecision",
+    "PreflightResponse",
+]

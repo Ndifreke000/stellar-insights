@@ -46,6 +46,7 @@ async fn get_fee_bump_stats(
         max_fee_charged: 0,
         min_fee_charged: 0,
         unique_fee_sources: 0,
+        unique_inner_sources: 0,
     });
     Json(stats)
 }

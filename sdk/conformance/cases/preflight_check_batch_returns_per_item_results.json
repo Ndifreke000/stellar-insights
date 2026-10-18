@@ -1,0 +1,171 @@
+{
+  "name": "preflight_check_batch_returns_per_item_results",
+  "description": "A batch wraps the payments in items and returns one entry per item, errors in place.",
+  "operation": "preflight.check_batch",
+  "input": {
+    "items": [
+      {
+        "source_asset": "USDC",
+        "destination_asset": "NGN",
+        "amount_usd": 2500
+      },
+      {
+        "source_asset": "USDC",
+        "destination_asset": "NGN",
+        "amount_usd": -1
+      }
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/preflight/batch",
+    "query": {},
+    "body": {
+      "items": [
+        {
+          "source_asset": "USDC",
+          "destination_asset": "NGN",
+          "amount_usd": 2500
+        },
+        {
+          "source_asset": "USDC",
+          "destination_asset": "NGN",
+          "amount_usd": -1
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "index": 0,
+          "result": {
+            "decision": "proceed",
+            "summary": "All checks passed; safe to pay on this corridor.",
+            "score": 92.0,
+            "corridor": {
+              "id": "USDC:GA->NGN:GB",
+              "source_asset": "USDC",
+              "destination_asset": "NGN",
+              "success_rate": 99.5,
+              "total_attempts": 400,
+              "successful_payments": 398,
+              "failed_payments": 2,
+              "average_latency_ms": 600.0,
+              "median_latency_ms": 450.0,
+              "p95_latency_ms": 1500.0,
+              "p99_latency_ms": 2400.0,
+              "liquidity_depth_usd": 500000.0,
+              "liquidity_volume_24h_usd": 50000.0,
+              "liquidity_trend": "stable",
+              "health_score": 92.0,
+              "last_updated": "2026-01-01T00:00:00Z"
+            },
+            "checks": [
+              {
+                "name": "success_rate",
+                "status": "pass",
+                "detail": "99.5% of recent payments succeeded (minimum 95.0%)"
+              },
+              {
+                "name": "liquidity",
+                "status": "pass",
+                "detail": "payment is 0.5% of $500000 observed liquidity"
+              },
+              {
+                "name": "sample_size",
+                "status": "pass",
+                "detail": "400 recent payments observed (at least 20 for confidence)"
+              },
+              {
+                "name": "health_score",
+                "status": "pass",
+                "detail": "corridor health score 92.0 of 100"
+              }
+            ],
+            "alternatives": [],
+            "evaluated_at": "2026-01-01T00:00:00+00:00"
+          },
+          "error": null
+        },
+        {
+          "index": 1,
+          "result": null,
+          "error": {
+            "code": "INVALID_AMOUNT",
+            "message": "amount_usd must be a positive number"
+          }
+        }
+      ],
+      "evaluated_at": "2026-01-01T00:00:00+00:00"
+    }
+  },
+  "expect": {
+    "result": {
+      "results": [
+        {
+          "index": 0,
+          "result": {
+            "decision": "proceed",
+            "summary": "All checks passed; safe to pay on this corridor.",
+            "score": 92.0,
+            "corridor": {
+              "id": "USDC:GA->NGN:GB",
+              "source_asset": "USDC",
+              "destination_asset": "NGN",
+              "success_rate": 99.5,
+              "total_attempts": 400,
+              "successful_payments": 398,
+              "failed_payments": 2,
+              "average_latency_ms": 600.0,
+              "median_latency_ms": 450.0,
+              "p95_latency_ms": 1500.0,
+              "p99_latency_ms": 2400.0,
+              "liquidity_depth_usd": 500000.0,
+              "liquidity_volume_24h_usd": 50000.0,
+              "liquidity_trend": "stable",
+              "health_score": 92.0,
+              "last_updated": "2026-01-01T00:00:00Z"
+            },
+            "checks": [
+              {
+                "name": "success_rate",
+                "status": "pass",
+                "detail": "99.5% of recent payments succeeded (minimum 95.0%)"
+              },
+              {
+                "name": "liquidity",
+                "status": "pass",
+                "detail": "payment is 0.5% of $500000 observed liquidity"
+              },
+              {
+                "name": "sample_size",
+                "status": "pass",
+                "detail": "400 recent payments observed (at least 20 for confidence)"
+              },
+              {
+                "name": "health_score",
+                "status": "pass",
+                "detail": "corridor health score 92.0 of 100"
+              }
+            ],
+            "alternatives": [],
+            "evaluated_at": "2026-01-01T00:00:00+00:00"
+          },
+          "error": null
+        },
+        {
+          "index": 1,
+          "result": null,
+          "error": {
+            "code": "INVALID_AMOUNT",
+            "message": "amount_usd must be a positive number"
+          }
+        }
+      ],
+      "evaluated_at": "2026-01-01T00:00:00+00:00"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+# Per-entrypoint gas regression thresholds (#2601).
+#
+# Each value is the maximum allowed increase, as a fraction, in BOTH CPU
+# instructions and memory bytes over the baseline in docs/GAS_COSTS.md.
+# 0.10 = CI fails if an entrypoint gets more than 10% more expensive.
+#
+# Every entrypoint measured by benches/gas_benchmarks.rs must be listed here,
+# and every entry here must be measured — scripts/check_gas_regression.py fails
+# on either mismatch so a new entrypoint can't slip in unguarded.
+#
+# Tighten an entry rather than loosen it. If a change legitimately costs more,
+# update the baseline (see docs/GAS_COSTS.md) instead of raising the threshold.
+
+[entrypoints]
+"payraider::initialize" = 0.10
+"payraider::submit_snapshot" = 0.10
+"payraider::get_snapshot" = 0.10
+"payraider::latest_snapshot" = 0.10
+"payraider::bump_ttl" = 0.10
+"payraider::add_submitter" = 0.10
+"payraider::rotate_submitter" = 0.10
+"payraider::remove_submitter" = 0.10
+"payraider::grant_role" = 0.10
+"payraider::revoke_role" = 0.10
+"payraider::pause" = 0.10
+"payraider::unpause" = 0.10
+"payraider::set_admin" = 0.10
