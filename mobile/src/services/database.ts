@@ -1,6 +1,8 @@
 // Placeholder for local database initialization
 // In production, use SQLite or Realm for offline data storage
 
+import { logger } from '@utils/logger';
+
 export async function initializeDatabase(): Promise<void> {
   // TODO: Initialize SQLite database
   // Create tables for offline caching:
@@ -8,10 +10,10 @@ export async function initializeDatabase(): Promise<void> {
   // - anchors
   // - assets
   // - sync_queue (for offline mutations)
-  console.log('Database initialized');
+  logger.info('[Database]', 'Database initialized');
 }
 
 export async function clearDatabase(): Promise<void> {
   // TODO: Clear all cached data
-  console.log('Database cleared');
+  logger.info('[Database]', 'Database cleared');
 }
