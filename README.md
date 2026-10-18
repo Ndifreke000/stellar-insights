@@ -210,3 +210,6 @@ Who may anchor snapshots, and how to rotate those keys, is documented in
 
 <!-- handsoff-issue-2608 -->
 - #2608: Data retention and downsampling for raw payment observations
+
+<!-- handsoff-issue-2566 -->
+- #2566: Invoice expiry and USD→USDC quote locking
