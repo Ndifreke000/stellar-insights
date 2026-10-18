@@ -1,5 +1,6 @@
 import type { PayRaiderConfig, ApiError, PaginatedResponse } from "./types.js";
 import { HttpClient, PayRaiderError } from "./http.js";
+import { RETRYABLE_STATUSES } from "./retry_policy.js";
 
 /**
  * Request interceptor type
@@ -26,6 +27,8 @@ export interface RequestOptions {
   body?: unknown;
   params?: Record<string, unknown>;
   headers?: Record<string, string>;
+  /** Allow retries for a non-idempotent method (e.g. a read-only POST) */
+  idempotent?: boolean;
 }
 
 /**
@@ -69,7 +72,7 @@ export class ApiClientError extends Error {
    * Check if error is retryable
    */
   isRetryable(): boolean {
-    return this.retryable || [429, 500, 502, 503, 504].includes(this.status);
+    return this.retryable || RETRYABLE_STATUSES.has(this.status);
   }
 
   /**
@@ -117,15 +120,11 @@ export class ApiClient {
     new Map();
   private cacheTimeout: number;
   private requestTimeout: number;
-  private maxRetries: number;
-  private retryDelay: number;
 
   constructor(config: PayRaiderConfig = {}) {
     this.httpClient = new HttpClient(config);
     this.cacheTimeout = (config as PayRaiderConfig & { cacheTimeout?: number }).cacheTimeout ?? 60;
     this.requestTimeout = config.timeout ?? 30000;
-    this.maxRetries = config.maxRetries ?? 3;
-    this.retryDelay = config.retryDelay ?? 500;
   }
 
   /**
@@ -305,35 +304,18 @@ export class ApiClient {
   }
 
   /**
-   * Execute request with automatic retry
+   * Execute request. Retries (see retry_policy.ts) happen inside HttpClient;
+   * retrying again here would multiply attempts.
    */
   private async requestWithRetry<T>(
     method: string,
     path: string,
-    options: RequestOptions,
-    attempt: number = 0
+    options: RequestOptions
   ): Promise<T> {
     try {
       return await this.httpClient.request<T>(method, path, options);
     } catch (error) {
-      const apiError = this.normalizeError(error);
-
-      if (
-        apiError.isRetryable() &&
-        attempt < this.maxRetries
-      ) {
-        const delay =
-          this.retryDelay * Math.pow(2, attempt) + Math.random() * 100;
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.requestWithRetry<T>(
-          method,
-          path,
-          options,
-          attempt + 1
-        );
-      }
-
-      throw apiError;
+      throw this.normalizeError(error);
     }
   }
 

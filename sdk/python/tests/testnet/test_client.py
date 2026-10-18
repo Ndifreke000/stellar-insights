@@ -99,6 +99,5 @@ async def test_corridors_list(testnet_client: PayRaider | None) -> None:
         pytest.skip("Testnet credentials not available")
 
     result = await testnet_client.corridors.list(limit=5)
-    assert result is not None
-    assert "data" in result
-    assert "pagination" in result
+    assert isinstance(result.data, list)
+    assert result.pagination.limit >= 1

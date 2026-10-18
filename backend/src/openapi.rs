@@ -261,6 +261,7 @@ impl Modify for SecurityAddon {
             crate::api::corridors::UpdateCorridorMetricsFromTxns,
             crate::api::corridors::CorridorPaymentDto,
             crate::models::Anchor,
+            crate::models::SortBy,
             crate::models::Asset,
             crate::models::CreateAnchorRequest,
             crate::models::CreateCorridorRequest,

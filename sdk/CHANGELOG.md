@@ -8,14 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Python: pydantic v2 models for preflight, corridors, pagination and error bodies (`PreflightResponse`, `Corridor`, `CorridorDetail`, `PaginatedResponse[T]`, `ApiErrorBody`); package ships `py.typed` and type-checks under `mypy --strict`
+- Python: `corridors.list(cursor=...)`; `max_retry_delay` option; `PayRaiderError.details` and `.retry_after`
+- TypeScript: types generated from `docs/openapi.json` (`ApiSchemas`, `ApiPaths`, `ApiOperations`) with `npm run generate:types` / `npm run check:types`
+- TypeScript: `maxRetryDelay` option; `PayRaiderError.retryAfterMs`; `idempotent` request option
 - TypeScript: Support for custom transaction builders
 - Python: Async client for improved performance in concurrent operations
 
 ### Changed
+- **Both SDKs — retry semantics aligned (possibly breaking).** Only network errors and 429/502/503/504 are retried; 500 is no longer retried. Non-idempotent calls (POST, PATCH) are no longer retried, except preflight and cost estimates, which are read-only. Backoff is now full jitter. `Retry-After` is honoured as seconds or an HTTP-date; if it is longer than the max retry delay (30s by default) the error is raised instead of waiting.
+- **Python (breaking):** `preflight.check`, `corridors.list` and `corridors.get` return pydantic models instead of dicts. Dict-style access still works with a `DeprecationWarning`. The old `Corridor` dataclass, which never matched the API, is replaced by the model. Methods on other resources are now annotated `Any`, since they always returned raw JSON and never the dataclasses they claimed.
+- TypeScript: `RetryWithBackoff` uses full jitter, honours `PayRaiderError.retryAfterMs`, and only retries the statuses in `retryableStatuses` (any other 5xx is no longer retried)
+- TypeScript: `ApiClient` no longer retries on top of `HttpClient`. Before this, one failing request could be sent up to 16 times.
 - TypeScript: Updated @stellar/stellar-sdk to 14.6.0
 - Python: Updated stellar-sdk to 10.5.0
 
 ### Fixed
+- Both SDKs: error `code`, `message` and `request_id` are now read from the API's nested `{"error": {...}}` body; before, `code` held the whole error object
+- TypeScript: each retry gets its own request timeout instead of sharing one timer across all attempts
+- `docs/openapi.json`: the `SortBy` schema was referenced but missing, which made the spec unresolvable
 - TypeScript: Memory leak in connection pooling
 - Python: Incorrect fee calculation for batch operations
 

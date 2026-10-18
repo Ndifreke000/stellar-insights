@@ -87,7 +87,7 @@ export class CostCalculatorResource {
   constructor(private http: HttpClient) {}
 
   estimate(req: CostEstimateRequest): Promise<CostEstimateResponse> {
-    return this.http.request("POST", "/api/cost-calculator/estimate", { body: req });
+    return this.http.request("POST", "/api/cost-calculator/estimate", { body: req, idempotent: true });
   }
 }
 
@@ -99,7 +99,7 @@ export class PreflightResource {
   constructor(private http: HttpClient) {}
 
   check(req: PreflightRequest): Promise<PreflightResponse> {
-    return this.http.request("POST", "/api/v1/preflight", { body: req });
+    return this.http.request("POST", "/api/v1/preflight", { body: req, idempotent: true });
   }
 
   /** True only when every check passed. */
