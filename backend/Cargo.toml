@@ -103,6 +103,9 @@ tokio-retry = "0.3"
 async-graphql = { version = "7.0", features = ["chrono", "uuid"] }
 async-graphql-axum = { version = "7.0" }
 async-stream = "0.3"
+# Server-sent events parsing for the Horizon payment stream worker that
+# auto-confirms invoices (#2565).
+eventsource-stream = "0.2"
 
 
 
