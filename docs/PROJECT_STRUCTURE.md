@@ -68,11 +68,11 @@ Rust API server with:
 - Multi-network support
 
 ### 📜 Contracts (`contracts/`)
-Soroban smart contracts for:
-- Asset verification
-- Transaction processing
-- Governance mechanisms
-- Security audits
+Soroban smart contracts. Only [`payraider/`](../contracts/payraider/README.md),
+which anchors analytics snapshot hashes on-chain, is part of the product and
+built in CI. Benchmarks are in `benches/` and fuzz tests in `tests/`. Every
+other contract has been moved to [`archive/`](../contracts/archive/README.md)
+and is excluded from the Cargo workspace.
 
 ### 📦 SDK (`sdk/`)
 Client SDKs providing:

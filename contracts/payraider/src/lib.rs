@@ -6,7 +6,8 @@ mod events;
 use errors::Error;
 use events::{
     emit_admin_transferred, emit_contract_initialized, emit_contract_paused,
-    emit_contract_unpaused, emit_snapshot_submitted,
+    emit_contract_unpaused, emit_snapshot_submitted, emit_submitter_added,
+    emit_submitter_removed, emit_submitter_rotated,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
@@ -19,10 +20,80 @@ const LEDGERS_TO_EXTEND: u32 = 518_400;
 const INSTANCE_TTL_THRESHOLD: u32 = 100_000;
 const INSTANCE_TTL_EXTEND: u32 = 518_400;
 
+/// Upper bound on the authorised submitter set. The set lives in instance
+/// storage, which is loaded on every invocation, so it must stay small.
+pub const MAX_SUBMITTERS: u32 = 10;
+
 fn bump_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+/// Extend a persistent entry's TTL if it exists.
+fn bump_persistent(env: &Env, key: &DataKey) {
+    if env.storage().persistent().has(key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(key, LEDGERS_TO_EXTEND, LEDGERS_TO_EXTEND);
+    }
+}
+
+fn load_submitters(env: &Env) -> Vec<Address> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Submitters)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+fn store_submitters(env: &Env, submitters: &Vec<Address>) {
+    env.storage()
+        .instance()
+        .set(&DataKey::Submitters, submitters);
+    bump_instance(env);
+}
+
+fn is_submitter(env: &Env, addr: &Address) -> bool {
+    load_submitters(env).contains(addr)
+}
+
+/// Authenticate `caller` and check it is the stored admin.
+fn require_admin(env: &Env, caller: &Address) -> Result<Address, Error> {
+    caller.require_auth();
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(Error::AdminNotSet)?;
+    if *caller != admin {
+        return Err(Error::Unauthorized);
+    }
+    Ok(admin)
+}
+
+/// Add `submitter` to the set. Errors if already present or the set is full.
+fn insert_submitter(env: &Env, submitter: &Address) -> Result<(), Error> {
+    let mut submitters = load_submitters(env);
+    if submitters.contains(submitter) {
+        return Err(Error::SubmitterAlreadyAuthorized);
+    }
+    if submitters.len() >= MAX_SUBMITTERS {
+        return Err(Error::TooManySubmitters);
+    }
+    submitters.push_back(submitter.clone());
+    store_submitters(env, &submitters);
+    Ok(())
+}
+
+/// Remove `submitter` from the set. Errors if it is not present.
+fn delete_submitter(env: &Env, submitter: &Address) -> Result<(), Error> {
+    let mut submitters = load_submitters(env);
+    let index = submitters
+        .first_index_of(submitter)
+        .ok_or(Error::SubmitterNotFound)?;
+    submitters.remove(index);
+    store_submitters(env, &submitters);
+    Ok(())
 }
 
 /// Role-based access control for contract functions
@@ -60,6 +131,9 @@ pub enum DataKey {
     StorageVersion,
     /// Role list for a given address (#2140)
     Roles(Address),
+    /// Authorised snapshot-submitter set, `Vec<Address>` in instance storage (#2600).
+    /// The only source of truth for `Role::SnapshotSubmitter`.
+    Submitters,
 }
 
 /// Schema version this build reads and writes.
@@ -178,9 +252,10 @@ impl PayRaiderContract {
 
     /// Submit a cryptographic hash of an analytics snapshot on-chain
     ///
-    /// Only the authorized admin can call this function. Each epoch can only
-    /// have one snapshot submitted. Upon successful submission, an event is
-    /// emitted for verification purposes.
+    /// Only the admin or a member of the authorised submitter set (see
+    /// [`Self::add_submitter`]) can call this function; every other address is
+    /// rejected. Each epoch can only have one snapshot submitted. Upon
+    /// successful submission, an event is emitted for verification purposes.
     ///
     /// # Arguments
     /// * `env` - Contract environment
@@ -191,8 +266,8 @@ impl PayRaiderContract {
     /// # Errors
     /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
-    /// * `Error::UnauthorizedCaller` - If caller is not the admin
-    /// * `Error::InvalidEpoch` - If epoch is 0
+    /// * `Error::Unauthorized` - If caller is neither the admin nor in the submitter set
+    /// * `Error::InvalidEpochZero` - If epoch is 0
     /// * `Error::DuplicateEpoch` - If snapshot already exists for this epoch
     /// * `Error::EpochMonotonicityViolated` - If epoch <= latest (out-of-order submission)
     ///
@@ -222,12 +297,13 @@ impl PayRaiderContract {
             return Err(Error::AdminNotSet);
         }
 
-        // Check if caller has Admin or SnapshotSubmitter role
-        let has_admin_role = Self::has_role(env.clone(), caller.clone(), Role::Admin);
-        let has_submitter_role =
-            Self::has_role(env.clone(), caller.clone(), Role::SnapshotSubmitter);
-
-        if !has_admin_role && !has_submitter_role {
+        // Deny by default: only the submitter set or an Admin may anchor.
+        // The set is checked first because it lives in instance storage,
+        // which is already loaded.
+        let in_submitter_set = is_submitter(&env, &caller);
+        let is_admin =
+            !in_submitter_set && Self::has_role(env.clone(), caller.clone(), Role::Admin);
+        if !in_submitter_set && !is_admin {
             return Err(Error::Unauthorized);
         }
 
@@ -295,6 +371,13 @@ impl PayRaiderContract {
         );
 
         env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
+
+        // Keep the contract instance (admin, submitter set, latest epoch)
+        // and the caller's role entry alive alongside the snapshot (#2599).
+        bump_instance(&env);
+        if is_admin {
+            bump_persistent(&env, &DataKey::Roles(caller.clone()));
+        }
 
         // Emit structured event for off-chain indexing
         // Event payload matches stored data exactly:
@@ -807,6 +890,117 @@ impl PayRaiderContract {
     }
 
     // =========================================================================
+    // Authorised Submitter Set (#2600)
+    // =========================================================================
+
+    /// Authorise `submitter` to anchor snapshots. Admin-only.
+    ///
+    /// Allowed while paused so a compromised key can be replaced during an
+    /// incident.
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::SubmitterAlreadyAuthorized` - If `submitter` is already in the set
+    /// * `Error::TooManySubmitters` - If the set already holds `MAX_SUBMITTERS`
+    ///
+    /// # Events
+    /// * `("subm_add", "SUBM_SET")` with data `(admin, submitter)`
+    pub fn add_submitter(env: Env, caller: Address, submitter: Address) -> Result<(), Error> {
+        let admin = require_admin(&env, &caller)?;
+        insert_submitter(&env, &submitter)?;
+        emit_submitter_added(&env, admin, submitter);
+        Ok(())
+    }
+
+    /// Revoke `submitter`'s right to anchor snapshots. Admin-only.
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::SubmitterNotFound` - If `submitter` is not in the set
+    ///
+    /// # Events
+    /// * `("subm_rm", "SUBM_SET")` with data `(admin, submitter)`
+    pub fn remove_submitter(env: Env, caller: Address, submitter: Address) -> Result<(), Error> {
+        let admin = require_admin(&env, &caller)?;
+        delete_submitter(&env, &submitter)?;
+        emit_submitter_removed(&env, admin, submitter);
+        Ok(())
+    }
+
+    /// Atomically replace `old_submitter` with `new_submitter` (key rotation).
+    /// Admin-only, and `new_submitter` must also sign so a typo'd or
+    /// uncontrolled key can never be installed.
+    ///
+    /// The old key loses submission rights in the same transaction the new key
+    /// gains them, so there is no window with both or neither authorised.
+    ///
+    /// # Errors
+    /// * `Error::AdminNotSet` - If admin was not initialized
+    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::SubmitterNotFound` - If `old_submitter` is not in the set
+    /// * `Error::SubmitterAlreadyAuthorized` - If `new_submitter` is already in the set
+    ///
+    /// # Events
+    /// * `("subm_rot", "SUBM_SET")` with data `(admin, old_submitter, new_submitter)`
+    pub fn rotate_submitter(
+        env: Env,
+        caller: Address,
+        old_submitter: Address,
+        new_submitter: Address,
+    ) -> Result<(), Error> {
+        let admin = require_admin(&env, &caller)?;
+
+        let mut submitters = load_submitters(&env);
+        let index = submitters
+            .first_index_of(&old_submitter)
+            .ok_or(Error::SubmitterNotFound)?;
+        if submitters.contains(&new_submitter) {
+            return Err(Error::SubmitterAlreadyAuthorized);
+        }
+
+        new_submitter.require_auth();
+
+        submitters.set(index, new_submitter.clone());
+        store_submitters(&env, &submitters);
+
+        emit_submitter_rotated(&env, admin, old_submitter, new_submitter);
+        Ok(())
+    }
+
+    /// The current authorised submitter set, in insertion order.
+    ///
+    /// The admin can also submit and is not listed here.
+    pub fn get_submitters(env: Env) -> Vec<Address> {
+        load_submitters(&env)
+    }
+
+    // =========================================================================
+    // State archival (#2599)
+    // =========================================================================
+
+    /// Extend the TTL of the contract instance, the snapshot store and the
+    /// admin's role entry so anchored hashes stay verifiable.
+    ///
+    /// Read-only calls (`get_snapshot`, `latest_snapshot`) also extend the
+    /// snapshot store, but only when submitted as a transaction — a simulated
+    /// read changes nothing on-chain. Run this periodically (well within
+    /// `LEDGERS_TO_EXTEND`, ~30 days) in quiet periods with no submissions.
+    ///
+    /// Permissionless: it changes no state other than TTLs and the caller pays
+    /// the fee. No event is emitted.
+    pub fn bump_ttl(env: Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        bump_persistent(&env, &DataKey::Snapshots);
+        if let Some(admin) = env.storage().instance().get::<DataKey, Address>(&DataKey::Admin) {
+            bump_persistent(&env, &DataKey::Roles(admin));
+        }
+    }
+
+    // =========================================================================
     // Role-Based Access Control (#2140)
     // =========================================================================
 
@@ -832,6 +1026,21 @@ impl PayRaiderContract {
 
         if caller != admin {
             return Err(Error::Unauthorized);
+        }
+
+        // Submitter rights live only in the submitter set (#2600). Granting to
+        // an existing member is a no-op, as it is for every other role.
+        if role == Role::SnapshotSubmitter {
+            match insert_submitter(&env, &user) {
+                Ok(()) => emit_submitter_added(&env, caller.clone(), user.clone()),
+                Err(Error::SubmitterAlreadyAuthorized) => {}
+                Err(e) => return Err(e),
+            }
+            env.events().publish(
+                (symbol_short!("role_grnt"), user.clone()),
+                (caller, user, role),
+            );
+            return Ok(());
         }
 
         let mut roles = env
@@ -886,6 +1095,21 @@ impl PayRaiderContract {
             return Err(Error::Unauthorized);
         }
 
+        if role == Role::SnapshotSubmitter {
+            match delete_submitter(&env, &user) {
+                Ok(()) => {
+                    emit_submitter_removed(&env, caller.clone(), user.clone());
+                    env.events().publish(
+                        (symbol_short!("role_rvk"), user.clone()),
+                        (caller, user, role),
+                    );
+                }
+                Err(Error::SubmitterNotFound) => {}
+                Err(e) => return Err(e),
+            }
+            return Ok(());
+        }
+
         if let Some(roles) = env
             .storage()
             .persistent()
@@ -925,7 +1149,13 @@ impl PayRaiderContract {
     ///
     /// # Returns
     /// * `true` if user has the role, `false` otherwise
+    ///
+    /// `Role::SnapshotSubmitter` is answered from the submitter set only;
+    /// legacy per-address role entries for it are ignored (deny by default).
     pub fn has_role(env: Env, user: Address, role: Role) -> bool {
+        if role == Role::SnapshotSubmitter {
+            return is_submitter(&env, &user);
+        }
         if let Some(roles) = env
             .storage()
             .persistent()

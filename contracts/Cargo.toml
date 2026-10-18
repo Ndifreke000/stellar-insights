@@ -6,8 +6,12 @@ members = [
   "tests",
 ]
 # Only payraider is integrated with the backend (SNAPSHOT_CONTRACT_ID).
-# Other contract crates remain in contracts/ for reference but are excluded
-# from the workspace so CI does not build or test dead code. See archive/README.md.
+# Every other contract crate lives under contracts/archive/ and is excluded
+# from the workspace so CI does not build, lint or test dead code.
+# See archive/README.md.
+exclude = [
+  "archive",
+]
 default-members = [
   "payraider",
 ]

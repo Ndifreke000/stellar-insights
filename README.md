@@ -168,8 +168,11 @@ The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
 |---|---|---|
 | PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
 
-Other contract crates under `contracts/` are archived and not built in CI.
+All other contract crates live under `contracts/archive/`, are excluded from the
+Cargo workspace and are not built in CI.
 See [`contracts/archive/README.md`](contracts/archive/README.md).
+Who may anchor snapshots, and how to rotate those keys, is documented in
+[`contracts/payraider/README.md`](contracts/payraider/README.md).
 
 ## 🧪 Local safety checks (already built)
 
