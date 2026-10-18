@@ -1,8 +1,9 @@
 //! Integration tests for the preflight endpoint.
 //!
 //! These tests exercise the HTTP surface of `/api/v1/preflight`, including the
-//! optional threshold overrides introduced for issue #2552 and the short-window
-//! (time-decayed) success-rate check introduced for issue #2554.
+//! optional threshold overrides introduced for issue #2552, the short-window
+//! (time-decayed) success-rate check introduced for issue #2554, and the Wilson
+//! score lower bound introduced for issue #2555.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -124,4 +125,64 @@ async fn preflight_sparse_short_window_does_not_downgrade() {
     let (status, body) = get_preflight(&query).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["verdict"].as_str(), Some("proceed"));
+}
+
+/// Issue #2555: the success-rate check must use the Wilson score lower bound
+/// (95% confidence) rather than the raw point estimate, so small samples are
+/// not treated as confidently as large ones. The bound must be surfaced in the
+/// check detail and never exceed the point estimate.
+#[tokio::test]
+async fn preflight_exposes_wilson_lower_bound() {
+    let (status, body) = get_preflight(BASE_QUERY).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let checks = body["checks"].as_array().expect("checks array");
+    let success_check = checks
+        .iter()
+        .find(|c| c["name"].as_str() == Some("success_rate"))
+        .expect("success_rate check present");
+
+    let detail = &success_check["detail"];
+    let lower = detail["wilson_lower_bound"]
+        .as_f64()
+        .expect("wilson_lower_bound surfaced in detail");
+    let point = detail["success_rate"]
+        .as_f64()
+        .expect("success_rate surfaced in detail");
+
+    assert!(
+        lower <= point + 1e-9,
+        "wilson lower bound {lower} must not exceed point estimate {point}"
+    );
+    assert!((0.0..=100.0).contains(&lower), "bound {lower} out of range");
+}
+
+/// Issue #2555: a small sample (19/20) and a large sample (950/1000) share the
+/// same point estimate (95%), but the Wilson lower bound for the small sample is
+/// materially lower. The small sample must therefore be judged less confidently.
+#[tokio::test]
+async fn preflight_small_sample_is_less_confident_than_large() {
+    let small = format!("{}&fixture=small_sample", BASE_QUERY);
+    let large = format!("{}&fixture=large_sample", BASE_QUERY);
+
+    let (small_status, small_body) = get_preflight(&small).await;
+    let (large_status, large_body) = get_preflight(&large).await;
+    assert_eq!(small_status, StatusCode::OK);
+    assert_eq!(large_status, StatusCode::OK);
+
+    let small_lower = small_body["checks"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["name"].as_str() == Some("success_rate")))
+        .and_then(|c| c["detail"]["wilson_lower_bound"].as_f64())
+        .expect("small sample wilson bound");
+    let large_lower = large_body["checks"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["name"].as_str() == Some("success_rate")))
+        .and_then(|c| c["detail"]["wilson_lower_bound"].as_f64())
+        .expect("large sample wilson bound");
+
+    assert!(
+        small_lower < large_lower,
+        "small sample bound {small_lower} should be below large sample bound {large_lower}"
+    );
 }
