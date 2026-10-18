@@ -28,6 +28,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "generate": "bash scripts/generate-bindings.sh",
+    "generate:types": "openapi-typescript ../../docs/openapi.json -o src/types/generated.ts",
+    "check:types": "npm run generate:types && git diff --exit-code -- src/types/generated.ts",
     "test": "vitest run",
     "test:testnet": "vitest run --include 'tests/testnet/**/*.test.ts'",
     "lint": "tsc --noEmit"
@@ -45,6 +47,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^26.6.1",
+    "openapi-typescript": "7.13.0",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.10"

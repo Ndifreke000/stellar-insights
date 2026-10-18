@@ -1,0 +1,6 @@
+{
+  "name": "payraider-python",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Version mirror for the Python SDK so changesets can bump it. pyproject.toml is synced from this file by sdk/scripts/release/sync-python-version.mjs; publish happens in .github/workflows/sdk-release.yml."
+}

@@ -169,3 +169,41 @@ pub fn emit_admin_transferred(env: &Env, old_admin: Address, new_admin: Address)
     env.events()
         .publish((symbol_short!("admin"), CONTRACT_LIFECYCLE), event);
 }
+
+// ============================================================================
+// Submitter Set Events (#2600)
+// ============================================================================
+
+/// Topic for changes to the authorised snapshot-submitter set
+pub const SUBMITTER_SET: Symbol = symbol_short!("SUBM_SET");
+
+/// Emit an event when an address is added to the submitter set.
+///
+/// Topic: `("subm_add", SUBM_SET)`; data: `(admin, submitter)`.
+pub fn emit_submitter_added(env: &Env, admin: Address, submitter: Address) {
+    env.events()
+        .publish((symbol_short!("subm_add"), SUBMITTER_SET), (admin, submitter));
+}
+
+/// Emit an event when an address is removed from the submitter set.
+///
+/// Topic: `("subm_rm", SUBM_SET)`; data: `(admin, submitter)`.
+pub fn emit_submitter_removed(env: &Env, admin: Address, submitter: Address) {
+    env.events()
+        .publish((symbol_short!("subm_rm"), SUBMITTER_SET), (admin, submitter));
+}
+
+/// Emit an event when one submitter key is atomically swapped for another.
+///
+/// Topic: `("subm_rot", SUBM_SET)`; data: `(admin, old_submitter, new_submitter)`.
+pub fn emit_submitter_rotated(
+    env: &Env,
+    admin: Address,
+    old_submitter: Address,
+    new_submitter: Address,
+) {
+    env.events().publish(
+        (symbol_short!("subm_rot"), SUBMITTER_SET),
+        (admin, old_submitter, new_submitter),
+    );
+}

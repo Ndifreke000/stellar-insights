@@ -57,21 +57,54 @@ if (check.decision === "proceed") {
 that corridor). `client.preflight.isSafeToPay(req)` returns `true` only for
 `proceed`.
 
-To check a payout batch, send up to 100 payments in one call. They are all
-scored against the same corridor snapshot, and an invalid payment comes back
-with an `error` instead of failing the rest:
+### Retries
+
+Requests are retried automatically:
+
+| | |
+| --- | --- |
+| Retried on | network errors, HTTP 429, 502, 503, 504 |
+| Not retried | other 4xx, 500, and any non-idempotent call (POST, PATCH) |
+| Idempotent methods | GET, HEAD, OPTIONS, PUT, DELETE — plus preflight and cost estimates, which are read-only POSTs |
+| Max retries | 3 after the first attempt |
+| Delay | the server's `Retry-After` (seconds or HTTP-date) when sent, otherwise full jitter: random(0, min(cap, base × 2^attempt)) |
+| Long `Retry-After` | longer than the cap: no retry, the error is raised with the value attached |
+
+The TypeScript and Python SDKs behave the same way.
 
 ```ts
-const { results } = await client.preflight.checkBatch([
-  { source_asset: "USDC", destination_asset: "NGN", amount_usd: 2500 },
-  { source_asset: "USDC", destination_asset: "KES", amount_usd: 900 },
-]);
+import { PayRaider, PayRaiderError } from "@payraider/sdk";
 
-for (const item of results) {
-  if (item.error) console.warn(`payment ${item.index}: ${item.error.code}`);
-  else if (item.result?.decision !== "proceed") console.warn(item.index, item.result?.summary);
+const client = new PayRaider({
+  maxRetries: 3,        // set to 0 to turn retries off
+  retryDelay: 500,      // base delay in ms
+  maxRetryDelay: 30_000 // cap on any single wait in ms
+});
+
+try {
+  await client.corridors.list();
+} catch (e) {
+  if (e instanceof PayRaiderError && e.status === 429) {
+    console.log("retry after", e.retryAfterMs, "ms");
+  }
 }
 ```
+
+### Types generated from the API spec
+
+`ApiSchemas`, `ApiPaths` and `ApiOperations` are generated from
+[`docs/openapi.json`](../../docs/openapi.json), so they follow the API exactly:
+
+```ts
+import type { ApiSchemas } from "@payraider/sdk";
+
+type Corridor = ApiSchemas["CorridorResponse"];
+type Preflight = ApiSchemas["PreflightResponse"];
+```
+
+After the spec changes, run `npm run generate:types` and commit
+`src/types/generated.ts`. `npm run check:types` exits non-zero when the
+committed file is out of date.
 
 ### Authentication
 

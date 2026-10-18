@@ -466,6 +466,9 @@ fn test_error_codes_are_unique() {
         Error::ActionAlreadyExecuted as u32,
         Error::UnauthorizedCaller as u32,
         Error::InvalidHashSize as u32,
+        Error::SubmitterAlreadyAuthorized as u32,
+        Error::SubmitterNotFound as u32,
+        Error::TooManySubmitters as u32,
     ];
     codes.sort();
     let unique = codes.windows(2).all(|w| w[0] != w[1]);
@@ -497,6 +500,9 @@ fn test_error_descriptions_are_non_empty() {
         Error::ActionAlreadyExecuted,
         Error::UnauthorizedCaller,
         Error::InvalidHashSize,
+        Error::SubmitterAlreadyAuthorized,
+        Error::SubmitterNotFound,
+        Error::TooManySubmitters,
     ];
     for e in errors {
         assert!(
@@ -531,6 +537,9 @@ fn test_error_code_matches_repr() {
     assert_eq!(Error::ActionAlreadyExecuted.code(), 20);
     assert_eq!(Error::UnauthorizedCaller.code(), 21);
     assert_eq!(Error::InvalidHashSize.code(), 22);
+    assert_eq!(Error::SubmitterAlreadyAuthorized.code(), 28);
+    assert_eq!(Error::SubmitterNotFound.code(), 29);
+    assert_eq!(Error::TooManySubmitters.code(), 30);
 }
 
 #[test]
@@ -1073,4 +1082,345 @@ fn test_rollback_still_refused_after_governance_admin_change() {
     // A new admin installed by a vote inherits the guard, not a clean slate.
     let result = client.try_submit_snapshot(&4u64, &create_test_hash(&env, 2), &new_admin);
     assert_eq!(result, Err(Ok(Error::EpochMonotonicityViolated)));
+}
+
+// ============================================================================
+// Authorised submitter set (#2600)
+// ============================================================================
+
+fn setup_with_submitter(
+    env: &Env,
+) -> (PayRaiderContractClient<'_>, Address, Address, Address) {
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let submitter = Address::generate(env);
+    client.initialize(&admin);
+    client.add_submitter(&admin, &submitter);
+    (client, contract_id, admin, submitter)
+}
+
+#[test]
+fn authorised_submitter_can_anchor_snapshot() {
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+
+    assert_eq!(client.get_latest_epoch(), 1);
+    assert!(client.has_role(&submitter, &Role::SnapshotSubmitter));
+}
+
+#[test]
+fn rejects_snapshot_from_signer_outside_submitter_set() {
+    let env = Env::default();
+    let (client, _, _, _) = setup_with_submitter(&env);
+    let attacker = Address::generate(&env);
+
+    // The attacker signs for themself (mock_all_auths), so this is purely the
+    // set-membership check refusing them.
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &attacker);
+
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert_eq!(client.get_latest_epoch(), 0);
+}
+
+#[test]
+fn rejects_snapshot_from_legacy_role_entry_outside_submitter_set() {
+    let env = Env::default();
+    let (client, contract_id, _, _) = setup_with_submitter(&env);
+    let legacy = Address::generate(&env);
+
+    // A per-address SnapshotSubmitter role written before the set existed
+    // grants nothing: the set is the only source of truth.
+    env.as_contract(&contract_id, || {
+        let mut roles = Vec::new(&env);
+        roles.push_back(Role::SnapshotSubmitter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Roles(legacy.clone()), &roles);
+    });
+
+    assert!(!client.has_role(&legacy, &Role::SnapshotSubmitter));
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &legacy);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn removed_submitter_can_no_longer_anchor() {
+    let env = Env::default();
+    let (client, _, admin, submitter) = setup_with_submitter(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+
+    client.remove_submitter(&admin, &submitter);
+
+    let result = client.try_submit_snapshot(&2u64, &create_test_hash(&env, 2), &submitter);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert_eq!(client.get_submitters().len(), 0);
+}
+
+#[test]
+fn rotation_revokes_old_key_and_authorises_new_key() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &old_key);
+
+    client.rotate_submitter(&admin, &old_key, &new_key);
+
+    let result = client.try_submit_snapshot(&2u64, &create_test_hash(&env, 2), &old_key);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &new_key);
+    assert_eq!(client.get_latest_epoch(), 2);
+
+    let submitters = client.get_submitters();
+    assert_eq!(submitters.len(), 1);
+    assert_eq!(submitters.get(0), Some(new_key));
+}
+
+#[test]
+fn rotation_preserves_other_submitters() {
+    let env = Env::default();
+    let (client, _, admin, first) = setup_with_submitter(&env);
+    let second = Address::generate(&env);
+    let replacement = Address::generate(&env);
+    client.add_submitter(&admin, &second);
+
+    client.rotate_submitter(&admin, &first, &replacement);
+
+    let submitters = client.get_submitters();
+    assert_eq!(submitters.len(), 2);
+    assert!(submitters.contains(&second));
+    assert!(submitters.contains(&replacement));
+    assert!(!submitters.contains(&first));
+}
+
+#[test]
+fn rotation_requires_new_key_signature() {
+    use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+    use soroban_sdk::IntoVal;
+
+    let env = Env::default();
+    let (client, contract_id, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+
+    // Only the admin signs; the incoming key does not.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "rotate_submitter",
+            args: (&admin, &old_key, &new_key).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    assert!(client
+        .try_rotate_submitter(&admin, &old_key, &new_key)
+        .is_err());
+    assert!(client.get_submitters().contains(&old_key));
+    assert!(!client.get_submitters().contains(&new_key));
+}
+
+#[test]
+fn rotation_rejects_unknown_old_key() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let stranger = Address::generate(&env);
+    let new_key = Address::generate(&env);
+
+    let result = client.try_rotate_submitter(&admin, &stranger, &new_key);
+
+    assert_eq!(result, Err(Ok(Error::SubmitterNotFound)));
+}
+
+#[test]
+fn rotation_rejects_new_key_already_in_set() {
+    let env = Env::default();
+    let (client, _, admin, first) = setup_with_submitter(&env);
+    let second = Address::generate(&env);
+    client.add_submitter(&admin, &second);
+
+    let result = client.try_rotate_submitter(&admin, &first, &second);
+
+    assert_eq!(result, Err(Ok(Error::SubmitterAlreadyAuthorized)));
+}
+
+#[test]
+fn non_admin_cannot_change_submitter_set() {
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+    let attacker = Address::generate(&env);
+
+    assert_eq!(
+        client.try_add_submitter(&attacker, &attacker),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert_eq!(
+        client.try_rotate_submitter(&attacker, &submitter, &attacker),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert_eq!(
+        client.try_remove_submitter(&attacker, &submitter),
+        Err(Ok(Error::Unauthorized))
+    );
+    // A submitter cannot manage the set either.
+    assert_eq!(
+        client.try_add_submitter(&submitter, &attacker),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert!(!client.get_submitters().contains(&attacker));
+}
+
+#[test]
+fn rejects_duplicate_submitter() {
+    let env = Env::default();
+    let (client, _, admin, submitter) = setup_with_submitter(&env);
+
+    assert_eq!(
+        client.try_add_submitter(&admin, &submitter),
+        Err(Ok(Error::SubmitterAlreadyAuthorized))
+    );
+}
+
+#[test]
+fn rejects_removing_unknown_submitter() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+
+    assert_eq!(
+        client.try_remove_submitter(&admin, &Address::generate(&env)),
+        Err(Ok(Error::SubmitterNotFound))
+    );
+}
+
+#[test]
+fn rejects_submitter_beyond_set_capacity() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    for _ in 1..MAX_SUBMITTERS {
+        client.add_submitter(&admin, &Address::generate(&env));
+    }
+    assert_eq!(client.get_submitters().len(), MAX_SUBMITTERS);
+
+    assert_eq!(
+        client.try_add_submitter(&admin, &Address::generate(&env)),
+        Err(Ok(Error::TooManySubmitters))
+    );
+}
+
+#[test]
+fn submitter_set_can_be_rotated_while_paused() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+    client.pause(&admin);
+
+    client.rotate_submitter(&admin, &old_key, &new_key);
+
+    assert!(client.get_submitters().contains(&new_key));
+}
+
+#[test]
+fn grant_and_revoke_submitter_role_update_submitter_set() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let user = Address::generate(&env);
+
+    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
+    assert!(client.get_submitters().contains(&user));
+    // Granting twice is a no-op, as for other roles.
+    client.grant_role(&admin, &user, &Role::SnapshotSubmitter);
+    assert_eq!(client.get_submitters().len(), 2);
+
+    client.revoke_role(&admin, &user, &Role::SnapshotSubmitter);
+    assert!(!client.get_submitters().contains(&user));
+    let result = client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &user);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn submitter_set_changes_emit_events() {
+    let env = Env::default();
+    let (client, _, admin, submitter) = setup_with_submitter(&env);
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("subm_add")),
+        1
+    );
+
+    let new_key = Address::generate(&env);
+    client.rotate_submitter(&admin, &submitter, &new_key);
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("subm_rot")),
+        1
+    );
+
+    client.remove_submitter(&admin, &new_key);
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("subm_rm")),
+        1
+    );
+}
+
+// ============================================================================
+// Storage TTL (#2599)
+// ============================================================================
+
+#[test]
+fn submission_extends_snapshot_and_instance_ttl() {
+    use soroban_sdk::testutils::storage::{Instance as _, Persistent as _};
+
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+
+    env.as_contract(&contract_id, || {
+        assert!(
+            env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1
+        );
+        assert!(env.storage().instance().get_ttl() >= INSTANCE_TTL_THRESHOLD);
+    });
+}
+
+#[test]
+fn snapshot_readable_after_ttl_window_when_bumped() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, _, admin, submitter) = setup_with_submitter(&env);
+    let hash = create_test_hash(&env, 7);
+    let start = env.ledger().sequence();
+    client.submit_snapshot(&1u64, &hash, &submitter);
+
+    // Most of the way through the original TTL window, with no submissions,
+    // a keeper calls the permissionless bump.
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND - 50_000);
+    client.bump_ttl();
+
+    // Now well past the point where the original entries would have been
+    // archived.
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND + 100_000);
+
+    assert_eq!(client.get_snapshot(&1u64), hash);
+    assert_eq!(client.latest_snapshot().1, 1);
+    // Instance (submitter set) and the admin's role entry survived too.
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 8), &submitter);
+    client.submit_snapshot(&3u64, &create_test_hash(&env, 9), &admin);
+    assert_eq!(client.get_latest_epoch(), 3);
+}
+
+#[test]
+fn bump_ttl_is_permissionless() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
+    client.initialize(&Address::generate(&env));
+
+    // No auths mocked: bump_ttl must not call require_auth.
+    client.bump_ttl();
 }

@@ -6,10 +6,12 @@ on:
     paths:
       - "contracts/**/*.rs"
       - "contracts/**/Cargo.toml"
+      - "!contracts/archive/**"
   pull_request:
     paths:
       - "contracts/**/*.rs"
       - "contracts/**/Cargo.toml"
+      - "!contracts/archive/**"
 
 jobs:
   generate-typescript-bindings:

@@ -221,6 +221,8 @@ impl Modify for SecurityAddon {
         // Snapshots
         crate::api::snapshots::generate_snapshot,
         crate::api::snapshots::contract_health_check,
+        crate::api::snapshots::get_snapshot_data,
+        crate::api::snapshots::verify_snapshot,
     ),
     components(
         schemas(
@@ -261,11 +263,16 @@ impl Modify for SecurityAddon {
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::snapshot::verify::VerificationReport,
+            crate::snapshot::verify::VerificationStatus,
+            crate::snapshot::verify::VerificationChecks,
+            crate::snapshot::verify::OnChainRecord,
             crate::api::anchors::UpdateMetricsRequest,
             crate::api::anchors::CreateAssetRequest,
             crate::api::corridors::UpdateCorridorMetricsFromTxns,
             crate::api::corridors::CorridorPaymentDto,
             crate::models::Anchor,
+            crate::models::SortBy,
             crate::models::Asset,
             crate::models::CreateAnchorRequest,
             crate::models::CreateCorridorRequest,

@@ -72,10 +72,10 @@ Integration guide: [docs/PLUGIN.md](docs/PLUGIN.md).
 | Path | What it is |
 | --- | --- |
 | `backend/` | Rust API (Axum, SQLite): corridor data, the pre-payment check, wallet sign-in, API keys and USDC billing |
-| `sdk/typescript`, `sdk/python` | Client SDKs |
+| `sdk/typescript`, `sdk/python`, `sdk/react` | Client SDKs and React hooks — releases: [sdk/RELEASING.md](sdk/RELEASING.md), versions: [sdk/COMPATIBILITY.md](sdk/COMPATIBILITY.md) |
 | `sdk/mcp-server`, `plugins/payraider` | MCP server and Claude plugin |
 | `frontend/` | Next.js dashboard, corridor explorer and self-serve API keys |
-| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain |
+| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain — how to verify a snapshot: [docs/SNAPSHOT_ANCHORING.md](docs/SNAPSHOT_ANCHORING.md) |
 | `mobile/` | React Native app ([status](mobile/README.md#current-status)) |
 
 The dashboard also carries features from the project's earlier scope
@@ -168,8 +168,11 @@ The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
 |---|---|---|
 | PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
 
-Other contract crates under `contracts/` are archived and not built in CI.
+All other contract crates live under `contracts/archive/`, are excluded from the
+Cargo workspace and are not built in CI.
 See [`contracts/archive/README.md`](contracts/archive/README.md).
+Who may anchor snapshots, and how to rotate those keys, is documented in
+[`contracts/payraider/README.md`](contracts/payraider/README.md).
 
 ## 🧪 Local safety checks (already built)
 

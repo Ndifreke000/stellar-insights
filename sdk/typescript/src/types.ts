@@ -7,10 +7,12 @@ export interface PayRaiderConfig {
   accessToken?: string;
   /** Override base URL (default: https://api.payraider.io) */
   baseUrl?: string;
-  /** Max retry attempts on 429/5xx (default: 3) */
+  /** Max retries on network errors and 429/502/503/504, idempotent methods only (default: 3) */
   maxRetries?: number;
-  /** Initial retry delay in ms (default: 500) */
+  /** Base delay in ms for full-jitter backoff (default: 500) */
   retryDelay?: number;
+  /** Cap on any single retry delay in ms; a longer Retry-After is not waited out (default: 30000) */
+  maxRetryDelay?: number;
   /** Request timeout in ms (default: 30000) */
   timeout?: number;
 }
