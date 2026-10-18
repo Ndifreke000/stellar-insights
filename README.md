@@ -202,3 +202,8 @@ See [`contracts/archive/README.md`](contracts/archive/README.md).
 `sdk/` ships four packages: `typescript`, `python
 
 /* … truncated 1302 chars — edit only what you need near the top … */
+
+## Handsoff notes
+
+<!-- handsoff-issue-2608 -->
+- #2608: Data retention and downsampling for raw payment observations
