@@ -146,6 +146,17 @@ that code; when several issuers exist for the same code, use `CODE:ISSUER` to
 select the one you mean. Malformed asset strings are rejected at the boundary
 with the standard error response.
 
+## Wallet sign-in (SEP-10)
+
+The dashboard signs wallets in with [SEP-10](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md).
+The **home domain is server-authoritative**: the frontend fetches it from the
+backend config endpoint (`GET /api/v1/auth/config`) and passes it to the SEP-10
+challenge request. The client no longer derives the home domain from
+`window.location.hostname`, so sign-in works on preview deployments and
+localhost, and a client cannot pick the domain that is validated. The backend
+ignores any client-supplied home domain and always uses its configured value
+(`SEP10_HOME_DOMAIN`).
+
 ## Database
 
 **SQLite only.** This is a compile-time property, not a configuration one:
@@ -174,39 +185,6 @@ See [`contracts/archive/README.md`](contracts/archive/README.md).
 Who may anchor snapshots, and how to rotate those keys, is documented in
 [`contracts/payraider/README.md`](contracts/payraider/README.md).
 
-## 🧪 Local safety checks (already built)
+## 🧪 Local safety chec
 
-- `scripts/check_folder_size.sh` (fails if any folder >200MB)
-- [`.github/workflows/enforce-folder-size.yml`](.github/workflows/enforce-folder-size.yml)
-
-## 📁 Structure
-
-| Path | Contents |
-|---|---|
-| `backend/` | Rust analytics engine — REST, GraphQL and WebSocket API |
-| `frontend/` | Next.js dashboard |
-| `mobile/` | React Native (Expo) app — [current status](mobile/README.md#current-status) |
-| `contracts/` | Soroban contracts (Rust, `no_std`) |
-| `sdk/` | TypeScript and Python API clients |
-| `docs/` | Project documentation |
-| `scripts/` | Build, deploy and maintenance scripts |
-| `tests/` | Cross-cutting / end-to-end tests |
-| `k8s/`, `terraform/` | Deployment manifests and infrastructure as code — **`terraform/` is not used by the actual deployment** (Render Blueprint + SQLite, see `docs/DEPLOY.md`); kept as a reference, see issue #2650 |
-| `elk/`, `monitoring/` | Logging and observability stack configs — **`elk/` is not used by the actual deployment**; kept as a reference, see issue #2650 |
-
-## 📌 Notes
-
-- History has been cleaned to reduce clone size.
-- Use `git lfs` for large binaries.
-- For full operational details, see `docs/` and module READMEs.
-
-## SDK status
-
-`sdk/` ships four packages: `typescript`, `python
-
-/* … truncated 1302 chars — edit only what you need near the top … */
-
-## Handsoff notes
-
-<!-- handsoff-issue-2608 -->
-- #2608: Data retention and downsampling for raw payment observations
+/* … truncated 1456 chars — edit only what you need near the top … */
