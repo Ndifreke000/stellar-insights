@@ -7,7 +7,7 @@ import {
   VolumeCompareChart,
   SlippageCompareChart,
 } from "@/components/corridors/CorridorCompareCharts";
-import { mockCorridors } from "@/components/lib/mockCorridorData";
+import { mockCorridors } from "@/__tests__/fixtures/mockCorridorData";
 import { generateMockCorridorData } from "@/lib/api/corridors";
 
 expect.extend(toHaveNoViolations);

@@ -22,7 +22,6 @@ import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
 import type { CorridorFilters, CorridorMetrics } from "@/lib/api/corridors";
 import { useCorridors } from "@/lib/react-query/queries";
-import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -32,6 +31,7 @@ import {
 } from "@/contexts/UserPreferencesContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BookmarkButton } from "@/components/BookmarkButton";
+import { ObservedDataNotice } from "@/components/corridors/ObservedDataError";
 
 // Lazy-load the heatmap — only rendered when the user switches to heatmap view.
 const CorridorHeatmap = dynamic(
@@ -66,12 +66,13 @@ function CorridorsPageContent() {
     sort_by: sortBy,
     limit: 200,
   } satisfies CorridorFilters);
-  // Fall back to demo data when the backend is unreachable.
-  const corridors = useMemo(
-    () => corridorQuery.data?.data ?? (corridorQuery.isError ? mockCorridors : []),
-    [corridorQuery.data, corridorQuery.isError],
-  );
-  const loading = corridorQuery.isPending && !corridorQuery.isError;
+  // A failed fetch must not be filled with demo corridors. Cached rows, if
+  // any, stay visible with a warning; otherwise the page shows an error.
+  const corridors = corridorQuery.data?.data ?? [];
+  const loadFailed = corridorQuery.isError;
+  const showStaleWarning = loadFailed && corridors.length > 0;
+  const showErrorPanel = loadFailed && corridors.length === 0;
+  const loading = corridorQuery.isPending && !loadFailed;
 
   const filteredCorridors = useMemo(() => {
     // Apply advanced filters then sort
@@ -200,6 +201,17 @@ function CorridorsPageContent() {
         </div>
       </div>
 
+      {showStaleWarning && (
+        <ObservedDataNotice
+          variant="warning"
+          message="Some corridor data failed to refresh. Showing the last observed results only."
+          onRetry={() => {
+            void corridorQuery.refetch();
+          }}
+          retrying={corridorQuery.isFetching}
+        />
+      )}
+
       <div className="flex items-center gap-1 p-1 bg-slate-950/50 border border-border/20 rounded-xl w-fit">
         <button
           onClick={() => setViewMode("grid")}
@@ -223,7 +235,15 @@ function CorridorsPageContent() {
         </button>
       </div>
 
-      {loading ? (
+      {showErrorPanel ? (
+        <ObservedDataNotice
+          message="Corridor data is unavailable. Retry the request, or check the status page. Routes stay hidden until observed metrics load."
+          onRetry={() => {
+            void corridorQuery.refetch();
+          }}
+          retrying={corridorQuery.isFetching}
+        />
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <SkeletonCorridorCard key={i} />
