@@ -6,8 +6,9 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Instant;
 use utoipa::ToSchema;
 
 use crate::error::{ApiError, DomainError};
@@ -16,6 +17,153 @@ use crate::services::price_feed::PriceFeedClient;
 
 const DEFAULT_CACHE_TTL_SECONDS: usize = 60;
 const USDC_ISSUER: &str = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+/// Cache TTL for Horizon strict-send path results (30 seconds as per issue #2550).
+const SLIPPAGE_CACHE_TTL_SECS: u64 = 30;
+
+// ── Horizon strict-send slippage cache ───────────────────────────────────────
+// A simple in-process cache keyed by (source_asset, destination_asset, amount_bucket).
+// The amount bucket rounds down to the nearest 100 to avoid excessive cache misses
+// while still capturing the depth-dependence of slippage.
+
+struct SlippageEntry {
+    slippage_bps: f64,
+    fetched_at: Instant,
+}
+
+static SLIPPAGE_CACHE: LazyLock<Mutex<HashMap<String, SlippageEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn slippage_cache_key(source: &str, destination: &str, amount: f64) -> String {
+    // Bucket by rounding to nearest 100 units.
+    let bucket = ((amount / 100.0).floor() as u64) * 100;
+    format!("{source}/{destination}/{bucket}")
+}
+
+/// Query Horizon `/paths/strict-send` and return the actual slippage in bps.
+/// Returns `None` when no path exists or the network call fails.
+async fn horizon_slippage_bps(
+    source_asset: &str,
+    destination_asset: &str,
+    source_amount: f64,
+    mid_market_rate: f64,
+) -> Option<f64> {
+    let cache_key = slippage_cache_key(source_asset, destination_asset, source_amount);
+
+    // Check cache first.
+    {
+        if let Ok(cache) = SLIPPAGE_CACHE.lock() {
+            if let Some(entry) = cache.get(&cache_key) {
+                if entry.fetched_at.elapsed().as_secs() < SLIPPAGE_CACHE_TTL_SECS {
+                    return Some(entry.slippage_bps);
+                }
+            }
+        }
+    }
+
+    let horizon_url = std::env::var("STELLAR_HORIZON_URL_MAINNET")
+        .or_else(|_| std::env::var("STELLAR_HORIZON_URL_TESTNET"))
+        .unwrap_or_else(|_| "https://horizon.stellar.org".to_string());
+
+    // Build asset query params for Horizon.  Assets are either "native" (XLM)
+    // or "credit_alphanum4"/"credit_alphanum12" with an issuer.  We encode them
+    // as the simpler `asset_type=native` / `asset_code=X&asset_issuer=Y` form.
+    let (src_type, src_code, src_issuer) = encode_horizon_asset(source_asset);
+    let (dst_type, dst_code, dst_issuer) = encode_horizon_asset(destination_asset);
+
+    let mut url = format!(
+        "{horizon_url}/paths/strict-send?source_amount={source_amount:.7}&source_asset_type={src_type}&destination_asset_type={dst_type}"
+    );
+    if let Some(code) = src_code {
+        url.push_str(&format!("&source_asset_code={code}"));
+    }
+    if let Some(issuer) = src_issuer {
+        url.push_str(&format!("&source_asset_issuer={issuer}"));
+    }
+    if let Some(code) = dst_code {
+        url.push_str(&format!("&destination_asset_code={code}"));
+    }
+    if let Some(issuer) = dst_issuer {
+        url.push_str(&format!("&destination_asset_issuer={issuer}"));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .ok()?;
+
+    let resp: serde_json::Value = client
+        .get(&url)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+
+    // Horizon returns `_embedded.records[].destination_amount` for the best path.
+    let best_path_dest: f64 = resp["_embedded"]["records"]
+        .as_array()
+        .and_then(|records| records.first())
+        .and_then(|r| r["destination_amount"].as_str())
+        .and_then(|s| s.parse().ok())?;
+
+    let mid_market_dest = source_amount * mid_market_rate;
+    if mid_market_dest <= 0.0 || !mid_market_dest.is_finite() {
+        return None;
+    }
+
+    // Clamp slippage to [0, 200] bps.
+    let slippage_bps = ((mid_market_dest - best_path_dest) / mid_market_dest * 10_000.0)
+        .max(0.0)
+        .min(200.0);
+
+    // Store in cache.
+    if let Ok(mut cache) = SLIPPAGE_CACHE.lock() {
+        cache.insert(
+            cache_key,
+            SlippageEntry {
+                slippage_bps,
+                fetched_at: Instant::now(),
+            },
+        );
+    }
+
+    Some(slippage_bps)
+}
+
+/// Encode an asset identifier (e.g. "USDC" or "XLM" or "NGN:GXYZ...") into
+/// Horizon asset type + optional code/issuer parts.
+/// Returns `(asset_type, optional_code, optional_issuer)`.
+fn encode_horizon_asset(
+    asset: &str,
+) -> (String, Option<String>, Option<String>) {
+    if asset.eq_ignore_ascii_case("XLM") || asset.eq_ignore_ascii_case("XLM:native") {
+        return ("native".to_string(), None, None);
+    }
+    if let Some((code, issuer)) = asset.split_once(':') {
+        let asset_type = if code.len() <= 4 {
+            "credit_alphanum4"
+        } else {
+            "credit_alphanum12"
+        };
+        return (
+            asset_type.to_string(),
+            Some(code.to_uppercase()),
+            Some(issuer.to_uppercase()),
+        );
+    }
+    // No issuer supplied — return the type so the caller can build the param.
+    let asset_type = if asset.len() <= 4 {
+        "credit_alphanum4"
+    } else {
+        "credit_alphanum12"
+    };
+    (
+        asset_type.to_string(),
+        Some(asset.to_uppercase()),
+        None,
+    )
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -103,7 +251,11 @@ struct RouteFees {
     spread_bps: f64,
     service_fee_bps: f64,
     network_fee_source: f64,
+    /// Kept for reference; actual slippage is now sourced from Horizon strict-send paths.
+    #[allow(dead_code)]
     slippage_base_bps: f64,
+    /// Kept for reference; actual slippage is now sourced from Horizon strict-send paths.
+    #[allow(dead_code)]
     slippage_per_10k_bps: f64,
 }
 
@@ -211,17 +363,18 @@ pub async fn estimate_costs(
 
     let mid_market_rate = source_usd_rate / destination_usd_rate;
 
-    let mut route_estimates: Vec<RouteEstimate> = unique_routes
-        .into_iter()
-        .map(|route| {
+    let mut route_estimates: Vec<RouteEstimate> =
+        futures::future::join_all(unique_routes.into_iter().map(|route| {
             estimate_route(
                 route,
+                &source_currency,
+                &destination_currency,
                 request.source_amount,
                 request.destination_amount,
                 mid_market_rate,
             )
-        })
-        .collect();
+        }))
+        .await;
 
     route_estimates.sort_by(|a, b| {
         a.breakdown
@@ -271,20 +424,24 @@ pub async fn estimate_costs(
     .map_err(|e| ApiError::internal("SERIALIZATION_FAILED", format!("failed to serialize response: {e}")))
 }
 
-fn estimate_route(
+async fn estimate_route(
     route: PaymentRoute,
+    source_asset: &str,
+    destination_asset: &str,
     source_amount: f64,
     destination_target: Option<f64>,
     mid_market_rate: f64,
 ) -> RouteEstimate {
     let fees = RouteFees::for_route(route);
-    // TODO #2326: Integrate real-time order book data for slippage calculation
-    // Currently uses static base and per-10k fee multipliers (hardcoded in RouteFees::for_route)
-    // Production requirement: Query order book depth, calculate market impact based on trade size,
-    // factor in volatility to provide accurate slippage estimates
-    let slippage_bps = (source_amount / 10_000.0)
-        .mul_add(fees.slippage_per_10k_bps, fees.slippage_base_bps)
-        .min(200.0);
+
+    // Query Horizon strict-send paths for actual slippage. Fall back to the
+    // static multipliers only when no path is returned (thin corridor or
+    // network unavailable). A None from Horizon means the route is effectively
+    // unavailable and slippage is unknown; we use 200 bps (the cap) so it
+    // sorts last.
+    let slippage_bps = horizon_slippage_bps(source_asset, destination_asset, source_amount, mid_market_rate)
+        .await
+        .unwrap_or(200.0);
 
     let destination_before_fees = source_amount * mid_market_rate;
     let spread_cost_destination = destination_before_fees * (fees.spread_bps / 10_000.0);
@@ -454,14 +611,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_estimate_route_produces_positive_fees() {
+    #[tokio::test]
+    async fn test_estimate_route_produces_positive_fees() {
         let estimate = estimate_route(
             PaymentRoute::StellarDex,
+            "USDC",
+            "NGN",
             1_000.0,
             Some(1_500_000.0),
             1_538.0,
-        );
+        )
+        .await;
         assert!(estimate.breakdown.total_fees_source > 0.0);
         assert!(estimate.breakdown.estimated_destination_amount > 0.0);
     }

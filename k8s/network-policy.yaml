@@ -57,9 +57,14 @@ spec:
     ports:
     - protocol: TCP
       port: 6379
-  # HTTPS to Stellar Horizon/RPC: TODO: restrict to Stellar Foundation IP ranges once confirmed for mainnet
-  - to:
-    - namespaceSelector: {}
+  # HTTPS to Stellar Horizon/RPC: restricted to known Stellar Foundation endpoints.
+  # Uses Cilium toFQDNs to allow only the required hostnames and deny all other
+  # outbound HTTPS traffic (closes the exfiltration path described in issue #2577).
+  - toFQDNs:
+    - matchName: "horizon.stellar.org"
+    - matchName: "horizon-testnet.stellar.org"
+    - matchName: "soroban-testnet.stellar.org"
+    - matchPattern: "*.stellar.org"
     ports:
     - protocol: TCP
       port: 443

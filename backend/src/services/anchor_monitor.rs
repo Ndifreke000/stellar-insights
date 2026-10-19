@@ -154,9 +154,14 @@ impl AnchorMonitor {
             let mut last_metrics = self.last_metrics.write().await;
 
             if let Some(prev_metrics) = last_metrics.get(&anchor.id) {
-                // TODO #2326: Make alert thresholds configurable instead of hardcoded
-                // Alert on significant success rate drop (>10%)
-                if current_metrics.success_rate < prev_metrics.success_rate - 10.0 {
+                // Read threshold from env var; default to 10.0 percentage points.
+                let success_rate_drop_threshold: f64 = std::env::var("ANCHOR_ALERT_SUCCESS_RATE_DROP_THRESHOLD")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(10.0);
+
+                // Alert on significant success rate drop.
+                if current_metrics.success_rate < prev_metrics.success_rate - success_rate_drop_threshold {
                     self.alert_manager.send_anchor_alert(
                         AlertType::AnchorMetricChange,
                         &anchor.id,
