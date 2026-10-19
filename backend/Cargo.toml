@@ -121,7 +121,7 @@ tokio-tungstenite = "0.30"
 urlencoding = "=2.1.3"
 tempfile = "=3.27.0"
 criterion = { version = "=0.8.2", features = ["async_tokio"] }
-tokio = { version = "=1.52.3", features = ["full", "test-util"] }
+tokio = { version = "=1.53.3", features = ["full", "test-util"] }
 wiremock = "0.6.5"
 # Property tests for preflight decision invariants (#2645).
 proptest = "=1.11.0"
