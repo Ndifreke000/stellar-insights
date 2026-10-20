@@ -1,37 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { PrintButton } from "@/components/PrintButton";
-import { fetchAnalyticsMetrics, AnalyticsMetrics } from "@/lib/analytics-api";
+import {
+  getAnalyticsDashboard,
+  type AnalyticsDashboardData,
+} from "@/lib/analytics";
 import { logger } from "@/lib/logger";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-
-const ChartSkeleton = () => (
-  <div className="h-64 w-full rounded-xl bg-white/5 animate-pulse" />
-);
-
-const LiquidityChart = dynamic(
-  () => import("@/components/charts/LiquidityChart").then((m) => ({ default: m.LiquidityChart })),
-  { ssr: false, loading: () => <ChartSkeleton /> }
-);
-const TVLChart = dynamic(
-  () => import("@/components/charts/TVLChart").then((m) => ({ default: m.TVLChart })),
-  { ssr: false, loading: () => <ChartSkeleton /> }
-);
-const SettlementLatencyChart = dynamic(
-  () => import("@/components/charts/SettlementLatencyChart").then((m) => ({ default: m.SettlementLatencyChart })),
-  { ssr: false, loading: () => <ChartSkeleton /> }
-);
-const TopCorridors = dynamic(
-  () => import("@/components/charts/TopCorridors").then((m) => ({ default: m.TopCorridors })),
-  { ssr: false, loading: () => <ChartSkeleton /> }
-);
-const LiquidityHeatmap = dynamic(
-  () => import("@/components/charts/LiquidityHeatmap").then((m) => ({ default: m.LiquidityHeatmap })),
-  { ssr: false, loading: () => <ChartSkeleton /> }
-);
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { SkeletonChart, SkeletonCard } from "@/components/ui/Skeleton";
@@ -47,75 +24,56 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
+const formatUpdated = (value: Date | null) =>
+  value ? value.toLocaleString() : "never";
+
 export default function AnalyticsPage() {
-  const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
+  const [dashboard, setDashboard] = useState<AnalyticsDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    const loadMetrics = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await fetchAnalyticsMetrics();
-        setMetrics(data);
-        setLastUpdated(new Date());
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to load metrics";
-        setError(errorMessage);
-
-        const isNetworkError =
-          err instanceof TypeError &&
-          (err.message.includes("Failed to fetch") ||
-            err.message.includes("fetch is not defined") ||
-            err.message.includes("Network request failed"));
-
-        if (!isNetworkError) {
-          logger.error("Error loading analytics metrics:", err);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMetrics();
-    const interval = setInterval(loadMetrics, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleRefresh = async () => {
+  const loadMetrics = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await fetchAnalyticsMetrics();
-      setMetrics(data);
+      setError(null);
+      const data = await getAnalyticsDashboard();
+      setDashboard(data);
       setLastUpdated(new Date());
     } catch (err) {
-      logger.error("Error refreshing metrics:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load metrics";
+      setError(errorMessage);
+      logger.error("Error loading analytics dashboard:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  if (!metrics && loading) {
+  useEffect(() => {
+    void loadMetrics();
+    const interval = setInterval(() => {
+      void loadMetrics();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadMetrics]);
+
+  if (!dashboard && loading) {
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+          {[1, 2, 3, 4].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 space-y-6">
-            <SkeletonChart height={256} />
-            <SkeletonChart height={256} />
-          </div>
-          <div className="lg:col-span-4 space-y-6">
-            <SkeletonChart height={256} />
-          </div>
-        </div>
+        <SkeletonChart height={256} />
       </div>
     );
   }
+
+  const observed = Boolean(dashboard?.data_available);
+  const series = dashboard?.series ?? dashboard?.time_series_data ?? [];
+  const unavailable = Boolean(error) || !observed;
 
   return (
     <ErrorBoundary>
@@ -131,10 +89,12 @@ export default function AnalyticsPage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="px-4 py-2 glass rounded-lg text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-              Last Sync: {lastUpdated?.toLocaleTimeString()}
+              Last Sync: {lastUpdated?.toLocaleTimeString() ?? "—"}
             </div>
             <button
-              onClick={handleRefresh}
+              onClick={() => {
+                void loadMetrics();
+              }}
               className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
             >
               <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
@@ -144,19 +104,22 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {error && (
-          <div className="glass border-red-500/50 p-4 rounded-xl flex items-center justify-between">
+        {unavailable && (
+          <div
+            role="alert"
+            className="glass border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-3"
+          >
             <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-              <p className="text-[10px] font-mono text-red-500 uppercase tracking-widest">
-                Emergency Shutdown Avoided // Running on Local Cache (Mock Data)
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <p className="text-sm text-red-400">
+                Data temporarily unavailable — last updated {formatUpdated(lastUpdated)}
               </p>
             </div>
             <Badge
               variant="outline"
               className="border-red-500/30 text-red-500 text-[10px]"
             >
-              FIX_REQUIRED
+              OBSERVED_ONLY
             </Badge>
           </div>
         )}
@@ -164,66 +127,81 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <MetricCard
             label="Cumulative Volume"
-            value={metrics ? formatCurrency(metrics.total_volume_usd) : "$0"}
-            subLabel="Total Network Flow"
+            value={observed ? formatCurrency(dashboard?.stats.volume_24h ?? 0) : "—"}
+            subLabel="Observed 24h flow"
             dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Success Probability"
-            value={metrics ? `${metrics.avg_success_rate.toFixed(1)}%` : "0%"}
-            trend={1.2}
-            trendDirection="up"
+            value={
+              observed
+                ? `${(dashboard?.stats.avg_success_rate ?? 0).toFixed(1)}%`
+                : "—"
+            }
             dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Active Routing Nodes"
-            value={metrics ? metrics.active_corridors : "0"}
-            subLabel="Online Corridors"
+            value={observed ? (dashboard?.stats.active_corridors ?? 0) : "—"}
+            subLabel="Corridors with payments"
             dataAsOf={lastUpdated}
           />
           <MetricCard
-            label="Aggregated Liquidity"
+            label="Volume Change"
             value={
-              metrics
-                ? formatCurrency(
-                    metrics.top_corridors.reduce(
-                      (sum, c) => sum + c.liquidity_depth_usd,
-                      0,
-                    ),
-                  )
-                : "$0"
+              observed ? `${(dashboard?.stats.volume_growth ?? 0).toFixed(1)}%` : "—"
             }
-            subLabel="Available Capital"
+            subLabel="Versus the previous day"
             dataAsOf={lastUpdated}
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 space-y-6">
-            <div className="glass-card rounded-2xl p-1">
-              {metrics && <LiquidityChart data={metrics.liquidity_history} />}
-            </div>
-            <div className="glass-card rounded-2xl p-1">
-              {metrics && <TVLChart data={metrics.tvl_history} />}
-            </div>
-            <div className="glass-card rounded-2xl p-1">
-              {metrics && (
-                <SettlementLatencyChart
-                  data={metrics.settlement_latency_history}
-                />
+          <div className="lg:col-span-8">
+            <div className="glass-card rounded-2xl p-6">
+              <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">
+                Observed hourly volume
+              </h3>
+              {series.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Data temporarily unavailable — last updated {formatUpdated(lastUpdated)}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {series.map((point) => (
+                    <li
+                      key={point.time}
+                      className="flex justify-between text-xs font-mono border-b border-border/30 pb-2"
+                    >
+                      <span>{point.time}</span>
+                      <span>
+                        {formatCurrency(point.volume)} · {point.corridors} corridors ·{" "}
+                        {point.anchors} anchors
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </div>
           <div className="lg:col-span-4 space-y-6">
-            <div className="glass-card rounded-2xl p-1">
-              {metrics && <TopCorridors corridors={metrics.top_corridors} />}
-            </div>
-            <div className="glass-card rounded-2xl p-1">
-              {metrics && (
-                <LiquidityHeatmap
-                  corridors={metrics.top_corridors}
-                  onTimePeriodChange={handleRefresh}
-                />
+            <div className="glass-card rounded-2xl p-6">
+              <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">
+                Observed corridors
+              </h3>
+              {(dashboard?.corridor_performance.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground">No observed corridor rows.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {dashboard?.corridor_performance.map((corridor) => (
+                    <li key={corridor.corridor} className="text-xs font-mono">
+                      <p className="text-foreground">{corridor.corridor}</p>
+                      <p className="text-muted-foreground">
+                        {corridor.success_rate.toFixed(1)}% · {formatCurrency(corridor.volume)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
             <MuxedAccountCard />
