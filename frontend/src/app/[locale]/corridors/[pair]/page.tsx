@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import {
   TrendingUp,
@@ -16,10 +16,8 @@ import {
   Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  generateMockCorridorData,
-  CorridorMetrics,
-} from "@/lib/api/corridors";
+import { CorridorMetrics } from "@/lib/api/corridors";
+import { ObservedDataNotice } from "@/components/corridors/ObservedDataError";
 import { useCorridorDetail, useRealtimeCacheSync } from "@/lib/react-query/queries";
 import { logger } from "@/lib/logger";
 import {
@@ -47,15 +45,7 @@ export default function CorridorDetailPage() {
   const cacheSync = useRealtimeCacheSync();
 
   const detailQuery = useCorridorDetail(corridorPair);
-  // Fall back to demo data when the backend is unreachable.
-  const data = useMemo(
-    () =>
-      detailQuery.data ??
-      (detailQuery.isError && corridorPair
-        ? generateMockCorridorData(corridorPair)
-        : null),
-    [detailQuery.data, detailQuery.isError, corridorPair],
-  );
+  const data = detailQuery.data ?? null;
   const loading = detailQuery.isPending && !detailQuery.isError;
 
   const {
@@ -116,10 +106,13 @@ export default function CorridorDetailPage() {
       <MainLayout>
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           <BackButton fallbackHref="/corridors" label="Back to Corridors" className="flex items-center gap-2 text-blue-600 dark:text-link-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors font-medium mb-6 group" />
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-lg p-6 text-red-800 dark:text-red-300">
-            <AlertCircle className="w-6 h-6 inline mr-2" />
-            Failed to load corridor data
-          </div>
+          <ObservedDataNotice
+            message={`Corridor ${corridorPair} is unavailable. Retry the request, or check the status page.`}
+            onRetry={() => {
+              void detailQuery.refetch();
+            }}
+            retrying={detailQuery.isFetching}
+          />
         </div>
       </MainLayout>
     );

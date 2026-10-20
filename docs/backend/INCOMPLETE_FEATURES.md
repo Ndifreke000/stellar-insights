@@ -179,25 +179,16 @@ This document tracks features that are partially implemented or use mock/simplif
 ---
 
 ### 9. Analytics Dashboard - Real Time Series Data
-**File**: `backend/src/api/analytics_dashboard.rs` (lines ~91-115)
-**Status**: Hardcoded mock time series  
-**Impact**: Dashboard displays example data only; network trends not visible to users
+**File**: `backend/src/api/analytics_dashboard.rs`
+**Status**: Hourly series is aggregated from stored `payments`
+**Impact**: The dashboard reports observed volume. An empty window returns `data_available: false` and an empty series.
 
 **Current Implementation**:
-- Returns 7 hardcoded data points (midnight through 23:59)
-- Fixed volumes: 45k to 72k USD
-- Fixed corridor/anchor counts
-- Same data on every request
-
-**Required Implementation**:
-- [ ] Query transactions aggregated by hour
-- [ ] Calculate active corridor count per hour
-- [ ] Calculate active anchor count per hour
-- [ ] Sum transaction volumes per hour
-- [ ] Return data for last 24-48 hours
-- [ ] Cache results with 5-minute TTL
-
-**Dependencies**: Aggregation queries on transaction history
+- Sums `payments.amount` into the 24 clock hours ending now
+- Hours with no payments are zero
+- Counts distinct corridors and anchors joined from those payments
+- Growth fields compare the previous 24-hour window
+- Query failures return HTTP 500 instead of a sample payload
 
 ---
 
