@@ -99,11 +99,16 @@ pub fn sep10_router() -> Router {
     use payraider_backend::auth::sep10_simple::Sep10Service;
     use std::sync::Arc;
 
+    // Deterministic test keypair (raw seed [42; 32]): SEP-10 challenges are
+    // signed transactions, so the service needs both the published G... key
+    // and its matching S... seed (issue #2545).
     let service = Arc::new(
         Sep10Service::new(
-            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+            "GAMX62ZD4FWIKMWGVPEDR6WNL2TYTPQMO2ZJEAZUAON7VCZ5G2GWDF7W".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "testanchor.stellar.org".to_string(),
+            "https://testanchor.stellar.org/api/sep10/auth".to_string(),
+            "SAVCUKRKFIVCUKRKFIVCUKRKFIVCUKRKFIVCUKRKFIVCUKRKFIVCVLG5".to_string(),
             Arc::new(tokio::sync::RwLock::new(None)),
         )
         .expect("sep10 service"),

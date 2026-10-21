@@ -2,7 +2,7 @@ import {
   Transaction,
   Operation,
 } from '@stellar/stellar-sdk';
-import { signMessage } from '@stellar/freighter-api';
+import { signTransaction } from '@stellar/freighter-api';
 import { logger } from '@/lib/logger';
 
 import { config } from '@/config';
@@ -23,10 +23,10 @@ export interface ChallengeResponse {
 }
 
 export interface VerificationRequest {
-  /** The challenge, unchanged. */
+  /** The challenge transaction envelope XDR, signed by the client's wallet.
+   * Signatures travel inside the envelope; SEP-10 takes no separate signature
+   * field. */
   transaction: string;
-  /** Base64 Ed25519 signature over the challenge by the account's key. */
-  signature: string;
 }
 
 export interface VerificationResponse {
@@ -125,48 +125,40 @@ export class Sep10AuthService {
   }
 
   /**
-   * Sign the challenge with the account's key and return the base64
-   * signature.
+   * Sign the challenge transaction envelope with the account's wallet and
+   * return the signed envelope XDR.
    *
-   * The backend's challenge is a signed message, not a Stellar transaction,
-   * so it is signed with Freighter's SEP-53 signMessage; the server verifies
-   * that signature against the account. (Asking wallets to sign it as a
-   * transaction XDR, as this used to, could never succeed.)
+   * The challenge is a server-signed Stellar transaction. The wallet adds the
+   * client's signature to that envelope (preserving the server's signature),
+   * and the signed envelope is posted back to the server. Signatures travel
+   * inside the envelope — SEP-10 takes no separate signature field.
    */
   async signChallenge(
-    challenge: string,
+    challengeTransactionXdr: string,
     networkPassphrase: string,
     publicKey: string,
   ): Promise<string> {
-    const result = await signMessage(challenge, {
+    const signed = await signTransaction(challengeTransactionXdr, {
       networkPassphrase,
       address: publicKey,
     });
 
-    if (result.error || !result.signedMessage) {
-      logger.error("Freighter signing failed:", result.error);
+    if (signed.error || !signed.signedTxXdr) {
+      logger.error("Freighter signing failed:", signed.error);
       throw new Error(
-        result.error?.message ||
+        signed.error?.message ||
           "Could not sign the login challenge. Install or unlock the Freighter wallet and try again.",
       );
     }
 
-    if (result.signerAddress && result.signerAddress !== publicKey) {
-      throw new Error("The wallet signed with a different account than the one requested.");
-    }
-
-    // Freighter v3 returns a Buffer, v4+ a base64 string.
-    return typeof result.signedMessage === "string"
-      ? result.signedMessage
-      : result.signedMessage.toString("base64");
+    return signed.signedTxXdr;
   }
 
   /**
    * Verify the signed challenge transaction with the server
    */
   async verifyChallenge(
-    challenge: string,
-    signature: string,
+    signedTransaction: string,
   ): Promise<VerificationResponse> {
     const response = await fetch(`${this.apiBaseUrl}/api/sep10/verify`, {
       method: "POST",
@@ -174,8 +166,7 @@ export class Sep10AuthService {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        transaction: challenge,
-        signature,
+        transaction: signedTransaction,
       } satisfies VerificationRequest),
     });
 
@@ -212,37 +203,59 @@ export class Sep10AuthService {
 
     const challengeResponse = await this.requestChallenge(challengeRequest);
 
-    // Step 3: Sign challenge with wallet
-    const signature = await this.signChallenge(
+    // Step 3: Sign the challenge transaction envelope with the wallet
+    const signedTransaction = await this.signChallenge(
       challengeResponse.transaction,
       challengeResponse.network_passphrase,
       publicKey,
     );
 
-    // Step 4: Verify signed challenge
-    const verificationResponse = await this.verifyChallenge(
-      challengeResponse.transaction,
-      signature,
-    );
+    // Step 4: Submit the signed envelope back to the server
+    const verificationResponse = await this.verifyChallenge(signedTransaction);
 
     return verificationResponse;
   }
 
   /**
-   * Logout and invalidate session
+   * Ask the backend whether the current session is still valid.
+   *
+   * The session lives in an httpOnly cookie the frontend cannot read, so this
+   * defers to the server. A missing or failing endpoint reports
+   * `authenticated: false` rather than throwing, so a cold load never breaks.
    */
-  async logout(token: string): Promise<void> {
-    const response = await fetch(`${this.apiBaseUrl}/api/sep10/logout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+  async getSession(): Promise<{ authenticated: boolean }> {
+    const response = await fetch(`${this.apiBaseUrl}/api/sep10/session`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to logout");
+      return { authenticated: false };
+    }
+
+    const data = (await response.json().catch(() => null)) as {
+      authenticated?: boolean;
+    } | null;
+
+    return { authenticated: data?.authenticated === true };
+  }
+
+  /**
+   * Logout and invalidate the current session. The backend clears the session;
+   * the frontend keeps no token of its own.
+   */
+  async logout(): Promise<void> {
+    const response = await fetch(`${this.apiBaseUrl}/api/sep10/logout`, {
+      method: "POST",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(error?.error || "Failed to logout");
     }
   }
 

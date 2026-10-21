@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { signMessage } from '@stellar/freighter-api';
+import { signTransaction } from '@stellar/freighter-api';
 import { Sep10AuthService } from '../sep10Auth';
 
-vi.mock('@stellar/freighter-api', () => ({ signMessage: vi.fn() }));
+vi.mock('@stellar/freighter-api', () => ({ signTransaction: vi.fn() }));
 
 const CLIENT = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 const PASSPHRASE = 'Test SDF Network ; September 2015';
@@ -100,9 +100,7 @@ describe('Sep10AuthService', () => {
   });
 
   describe('verifyChallenge', () => {
-    it('should send the challenge and its signature', async () => {
-      const challenge = 'base64challenge';
-      const signature = 'base64signature';
+    it('posts the signed envelope XDR with no separate signature field', async () => {
       const mockResponse = {
         token: 'jwt-token',
         expires_in: 604800,
@@ -113,7 +111,7 @@ describe('Sep10AuthService', () => {
         json: async () => mockResponse,
       } as Response);
 
-      const result = await service.verifyChallenge(challenge, signature);
+      const result = await service.verifyChallenge('signed-envelope-xdr');
 
       expect(global.fetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/sep10/verify',
@@ -122,10 +120,7 @@ describe('Sep10AuthService', () => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            transaction: challenge,
-            signature,
-          }),
+          body: JSON.stringify({ transaction: 'signed-envelope-xdr' }),
         }
       );
       expect(result).toEqual(mockResponse);
@@ -137,96 +132,45 @@ describe('Sep10AuthService', () => {
         json: async () => ({ error: 'Invalid signature' }),
       } as Response);
 
-      await expect(service.verifyChallenge('challenge', 'bad-signature')).rejects.toThrow(
+      await expect(service.verifyChallenge('bad')).rejects.toThrow(
         'Invalid signature'
-      );
-    });
-  });
-
-  describe('logout', () => {
-    it('should logout and invalidate session', async () => {
-      const mockToken = 'jwt-token';
-
-      vi.mocked(global.fetch).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ message: 'Logged out successfully' }),
-      } as Response);
-
-      await service.logout(mockToken);
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/api/sep10/logout',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${mockToken}`,
-          },
-        }
-      );
-    });
-
-    it('should throw error on failed logout', async () => {
-      vi.mocked(global.fetch).mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Session not found' }),
-      } as Response);
-
-      await expect(service.logout('invalid-token')).rejects.toThrow(
-        'Session not found'
       );
     });
   });
 
   describe('signChallenge', () => {
     beforeEach(() => {
-      vi.mocked(signMessage).mockReset();
+      vi.mocked(signTransaction).mockReset();
     });
 
-    it('signs the challenge as a message for the requested account', async () => {
-      vi.mocked(signMessage).mockResolvedValue({ signedMessage: 'c2lnbmF0dXJl', signerAddress: CLIENT });
+    it('signs the challenge transaction envelope and returns the signed XDR', async () => {
+      vi.mocked(signTransaction).mockResolvedValue({
+        signedTxXdr: 'signed-envelope-xdr',
+        signerAddress: CLIENT,
+      } as never);
 
-      const result = await service.signChallenge('challenge', PASSPHRASE, CLIENT);
+      const result = await service.signChallenge(
+        'challenge-xdr',
+        PASSPHRASE,
+        CLIENT
+      );
 
-      expect(result).toBe('c2lnbmF0dXJl');
-      expect(signMessage).toHaveBeenCalledWith('challenge', {
+      expect(result).toBe('signed-envelope-xdr');
+      expect(signTransaction).toHaveBeenCalledWith('challenge-xdr', {
         networkPassphrase: PASSPHRASE,
         address: CLIENT,
       });
     });
 
-    it('base64-encodes a Buffer signature from older Freighter versions', async () => {
-      vi.mocked(signMessage).mockResolvedValue({
-        signedMessage: Buffer.from('signature'),
-        signerAddress: CLIENT,
-      });
-
-      expect(await service.signChallenge('challenge', PASSPHRASE, CLIENT)).toBe(
-        Buffer.from('signature').toString('base64'),
-      );
-    });
-
     it('throws when the wallet refuses or is unavailable', async () => {
-      vi.mocked(signMessage).mockResolvedValue({
-        signedMessage: null,
-        signerAddress: '',
+      vi.mocked(signTransaction).mockResolvedValue({
+        signedTxXdr: '',
         error: { code: -4, message: 'User declined access' },
-      });
+      } as never);
 
-      await expect(service.signChallenge('challenge', PASSPHRASE, CLIENT)).rejects.toThrow(
-        'User declined access',
-      );
-    });
-
-    it('rejects a signature from a different account', async () => {
-      vi.mocked(signMessage).mockResolvedValue({
-        signedMessage: 'c2lnbmF0dXJl',
-        signerAddress: 'GBOTHERACCOUNTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-      });
-
-      await expect(service.signChallenge('challenge', PASSPHRASE, CLIENT)).rejects.toThrow(
-        'different account',
-      );
+      await expect(
+        service.signChallenge('challenge-xdr', PASSPHRASE, CLIENT)
+      ).rejects.toThrow('User declined access');
     });
   });
 
@@ -246,17 +190,17 @@ describe('Sep10AuthService', () => {
   });
 
   describe('authenticate', () => {
-    it('should complete full authentication flow', async () => {
+    it('completes the full XDR flow: challenge -> sign -> verify', async () => {
       const mockInfo = {
         authentication_endpoint: '/api/sep10/auth',
-        network_passphrase: 'Test SDF Network ; September 2015',
+        network_passphrase: PASSPHRASE,
         signing_key: 'GSERVER',
         version: '1.0.0',
       };
 
       const mockChallenge = {
         transaction: 'challenge-xdr',
-        network_passphrase: 'Test SDF Network ; September 2015',
+        network_passphrase: PASSPHRASE,
       };
 
       const mockVerification = {
@@ -276,8 +220,10 @@ describe('Sep10AuthService', () => {
         json: async () => mockChallenge,
       } as Response);
 
-      // Mock wallet signing
-      vi.mocked(signMessage).mockResolvedValue({ signedMessage: 'c2lnbmF0dXJl', signerAddress: CLIENT });
+      // Mock wallet signing of the transaction envelope
+      vi.mocked(signTransaction).mockResolvedValue({
+        signedTxXdr: 'signed-envelope-xdr',
+      } as never);
 
       // Mock verifyChallenge
       vi.mocked(global.fetch).mockResolvedValueOnce({
@@ -285,20 +231,73 @@ describe('Sep10AuthService', () => {
         json: async () => mockVerification,
       } as Response);
 
-      const result = await service.authenticate(
-        CLIENT,
-        {
-          homeDomain: 'example.com',
-        }
-      );
+      const result = await service.authenticate(CLIENT, {
+        homeDomain: 'example.com',
+      });
 
       expect(result).toEqual(mockVerification);
       expect(global.fetch).toHaveBeenCalledTimes(3);
       const [, verifyInit] = vi.mocked(global.fetch).mock.calls[2];
       expect(JSON.parse(String(verifyInit?.body))).toEqual({
-        transaction: 'challenge-xdr',
-        signature: 'c2lnbmF0dXJl',
+        transaction: 'signed-envelope-xdr',
       });
+      expect(signTransaction).toHaveBeenCalledWith('challenge-xdr', {
+        networkPassphrase: PASSPHRASE,
+        address: CLIENT,
+      });
+    });
+  });
+
+  describe('getSession', () => {
+    it('reports authenticated when the server says so', async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ authenticated: true }),
+      } as Response);
+
+      expect(await service.getSession()).toEqual({ authenticated: true });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/sep10/session',
+        {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        }
+      );
+    });
+
+    it('reports unauthenticated when the endpoint is missing', async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({ ok: false } as Response);
+
+      expect(await service.getSession()).toEqual({ authenticated: false });
+    });
+  });
+
+  describe('logout', () => {
+    it('posts a session-authenticated logout with no body', async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: 'Logged out successfully' }),
+      } as Response);
+
+      await service.logout();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/sep10/logout',
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+        }
+      );
+    });
+
+    it('should throw error on failed logout', async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Session not found' }),
+      } as Response);
+
+      await expect(service.logout()).rejects.toThrow('Session not found');
     });
   });
 });
