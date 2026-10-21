@@ -202,6 +202,37 @@ pub fn validate_env() -> Result<()> {
         }
     }
 
+    // SEP10_SIGNING_KEY must be a valid Stellar secret seed when set, and it
+    // must be the secret of SEP10_SERVER_PUBLIC_KEY: SEP-10 challenges are
+    // transactions signed by that key (issue #2545), so a mismatch would
+    // issue challenges no wallet signature could verify.
+    if let Ok(signing_seed) = env::var("SEP10_SIGNING_KEY") {
+        match stellar_strkey::ed25519::PrivateKey::from_string(&signing_seed) {
+            Err(_) => errors.push(
+                "SEP10_SIGNING_KEY is not a valid Stellar secret seed. \
+                It must be an S... key. Generate one with: stellar keys generate"
+                    .to_string(),
+            ),
+            Ok(private_key) => {
+                if let Ok(public_key) = env::var("SEP10_SERVER_PUBLIC_KEY") {
+                    let derived = ed25519_dalek::SigningKey::from_bytes(&private_key.0)
+                        .verifying_key()
+                        .to_bytes();
+                    match stellar_strkey::ed25519::PublicKey::from_string(&public_key) {
+                        Ok(expected) if expected.0 != derived => errors.push(
+                            "SEP10_SIGNING_KEY does not match SEP10_SERVER_PUBLIC_KEY. \
+                            Set the secret key of the published SIGNING_KEY."
+                                .to_string(),
+                        ),
+                        // The public key's own format error is reported above.
+                        Err(_) => {}
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     if !errors.is_empty() {
         anyhow::bail!(
             "Environment configuration errors:\n  - {}",
@@ -242,6 +273,9 @@ pub fn log_env_config() {
     log_var("SNAPSHOT_CONTRACT_ID");
     if env::var("STELLAR_SOURCE_SECRET_KEY").is_ok() {
         tracing::info!("  STELLAR_SOURCE_SECRET_KEY: [REDACTED]");
+    }
+    if env::var("SEP10_SIGNING_KEY").is_ok() {
+        tracing::info!("  SEP10_SIGNING_KEY: [REDACTED]");
     }
 
     // Pool config

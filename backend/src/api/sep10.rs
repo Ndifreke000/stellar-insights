@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -17,7 +16,10 @@ use crate::api::auth::{
     check_rate_limit_for_account, clear_failed_login_state, preflight_login_guards,
     record_failed_login, AuthApiError,
 };
-use crate::auth::sep10_simple::{ChallengeRequest, Sep10Service, VerificationRequest};
+use crate::auth::sep10_simple::{
+    challenge_client_account, challenge_max_time, ChallengeRequest, Sep10Service,
+    VerificationRequest,
+};
 use crate::observability::metrics::record_auth_security_event;
 
 const SEP10_CHALLENGE_LIMIT_PER_MINUTE: usize = 10;
@@ -82,21 +84,6 @@ fn now_unix() -> i64 {
         .as_secs() as i64
 }
 
-/// Decode the base64 challenge transaction and return the `max_time`
-/// (stored as `expires_at` during challenge generation).
-fn extract_max_time(transaction: &str) -> Option<i64> {
-    let bytes = BASE64.decode(transaction).ok()?;
-    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    json["expires_at"].as_i64()
-}
-
-/// Decode the base64 challenge transaction and return the client account it was issued to.
-fn extract_client_account(transaction: &str) -> Option<String> {
-    let bytes = BASE64.decode(transaction).ok()?;
-    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    json["client"].as_str().map(str::to_string)
-}
-
 /// GET /api/sep10/info - Get SEP-10 server information
 #[utoipa::path(
     get,
@@ -113,10 +100,44 @@ pub async fn get_info(
         "authentication_endpoint": "/api/sep10/auth",
         "network_passphrase": sep10_service.network_passphrase,
         "signing_key": sep10_service.server_public_key,
+        "home_domain": sep10_service.home_domain,
+        "web_auth_endpoint": sep10_service.web_auth_endpoint,
         "version": "1.0.0"
     });
 
     Ok((StatusCode::OK, Json(info)).into_response())
+}
+
+/// GET /.well-known/stellar.toml - SEP-1 discovery file publishing the
+/// `SIGNING_KEY` and `WEB_AUTH_ENDPOINT` wallets and the Stellar anchor
+/// validation suite use to find this SEP-10 server.
+#[utoipa::path(
+    get,
+    path = "/.well-known/stellar.toml",
+    responses(
+        (status = 200, description = "SEP-1 stellar.toml")
+    ),
+    tag = "SEP-10"
+)]
+pub async fn stellar_toml(
+    State(sep10_service): State<Arc<Sep10Service>>,
+) -> Result<Response, Sep10ApiError> {
+    let body = format!(
+        "# SEP-1 stellar.toml for this SEP-10 web authentication server.\n\
+         VERSION=\"0.1.0\"\n\
+         SIGNING_KEY=\"{}\"\n\
+         WEB_AUTH_ENDPOINT=\"{}\"\n",
+        sep10_service.server_public_key, sep10_service.web_auth_endpoint
+    );
+    Ok((
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        body,
+    )
+        .into_response())
 }
 
 /// POST /api/sep10/auth - Request SEP-10 challenge transaction
@@ -177,7 +198,7 @@ pub async fn verify_challenge(
     let client_ip = extract_client_ip(&headers);
     let account_key = format!(
         "sep10:{}",
-        extract_client_account(&request.transaction).unwrap_or_else(|| format!("ip:{client_ip}"))
+        challenge_client_account(&request.transaction).unwrap_or_else(|| format!("ip:{client_ip}"))
     );
     if let Some(retry_after_seconds) = check_rate_limit_for_account(&account_key).await {
         tracing::warn!(
@@ -196,7 +217,7 @@ pub async fn verify_challenge(
 
     // Enforce time bounds before any signature work: reject expired challenges
     // immediately with HTTP 401 rather than letting them reach service logic.
-    let max_time = extract_max_time(&request.transaction).ok_or_else(|| {
+    let max_time = challenge_max_time(&request.transaction).ok_or_else(|| {
         Sep10ApiError::VerificationFailed("Missing or unreadable time bounds".to_string())
     })?;
 
@@ -314,5 +335,6 @@ pub fn routes(sep10_service: Arc<Sep10Service>) -> Router {
         .route("/api/sep10/auth", post(request_challenge))
         .route("/api/sep10/verify", post(verify_challenge))
         .route("/api/sep10/logout", post(logout))
+        .route("/.well-known/stellar.toml", get(stellar_toml))
         .with_state(sep10_service)
 }

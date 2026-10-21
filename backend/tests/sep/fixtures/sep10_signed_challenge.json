@@ -1,0 +1,10 @@
+{
+  "description": "SEP-10 challenge built and signed with @stellar/stellar-sdk; must verify in Rust. Regenerate with: cd frontend && node scripts/generate-sep10-fixture.mjs",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "home_domain": "example.com",
+  "web_auth_endpoint": "https://example.com/api/sep10/auth",
+  "server_public_key": "GBTL47RTFR5EKMZSXWOQU735WBK7LRPPDIDK3JTNTCZZ7NUBBRDTVSK2",
+  "server_seed": "SAFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQX44I",
+  "client_account": "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
+  "transaction": "AAAAAgAAAABmvn4zLHpFMzK9nQp/fbBV9cXvGgatpm2Ys5+2gQxHOgAAAMgAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAD0hlcAAAAAAAAAAAIAAAABAAAAAOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsAAAACgAAABBleGFtcGxlLmNvbSBhdXRoAAAAAQAAAEB4MFJuMFo2ZnE4K2VvcDBaS0dmV1VQYjhHRUlXSzF2enpiOHNteTFaNDF5cVpwdjNZK1l6aDVTMzM1OE5mMDAyAAAAAAAAAAoAAAAPd2ViX2F1dGhfZG9tYWluAAAAAAEAAAALZXhhbXBsZS5jb20AAAAAAAAAAAKBDEc6AAAAQGc3dxeJ/bbFMto0lvQ0b9aEGwzSHtCXi7ZH2gvO75Q+RlwYBfmp8qdblmf8XFF7op3A9yYIxxnkZU340DeNOwkURtIsAAAAQNvNzK3KFhCHOS5w/ify5mZIDOX+UITVUvP2UArpekw55qH8c/dzadxk3EjxGxywsIeoGiknLMDV6MfSQAvGOwM="
+}

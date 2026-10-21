@@ -25,16 +25,34 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
-/// SEP-10 service built from `SEP10_SERVER_PUBLIC_KEY` and
-/// `SEP10_HOME_DOMAIN`, or `None` (with a warning) when they are not usable,
-/// so a missing wallet-auth config disables those routes instead of aborting
-/// startup.
+/// SEP-10 service built from `SEP10_SERVER_PUBLIC_KEY`, `SEP10_SIGNING_KEY`
+/// and `SEP10_HOME_DOMAIN`, or `None` (with a warning) when they are not
+/// usable, so a missing wallet-auth config disables those routes instead of
+/// aborting startup.
+///
+/// `SEP10_SIGNING_KEY` is the secret of the published `SIGNING_KEY`: SEP-10
+/// challenges are signed transactions, so without it no challenge can be
+/// issued. `SEP10_WEB_AUTH_ENDPOINT` (optional) is the full URL published as
+/// `WEB_AUTH_ENDPOINT` in `stellar.toml`; it defaults to
+/// `https://{SEP10_HOME_DOMAIN}/api/sep10/auth`.
 fn sep10_service_from_env(
     cache: &CacheManager,
 ) -> Option<Arc<crate::auth::sep10_simple::Sep10Service>> {
     let server_public_key = std::env::var("SEP10_SERVER_PUBLIC_KEY").ok()?;
+    let signing_seed = match std::env::var("SEP10_SIGNING_KEY") {
+        Ok(seed) => seed,
+        Err(_) => {
+            tracing::warn!(
+                "SEP10_SIGNING_KEY is not set — SEP-10 challenges must be signed by the \
+                 server key, so wallet sign-in routes are disabled"
+            );
+            return None;
+        }
+    };
     let home_domain =
         std::env::var("SEP10_HOME_DOMAIN").unwrap_or_else(|_| "localhost".to_string());
+    let web_auth_endpoint = std::env::var("SEP10_WEB_AUTH_ENDPOINT")
+        .unwrap_or_else(|_| format!("https://{home_domain}/api/sep10/auth"));
     let network_passphrase = std::env::var("STELLAR_NETWORK_PASSPHRASE")
         .unwrap_or_else(|_| crate::network::NetworkConfig::from_env().network_passphrase);
 
@@ -42,6 +60,8 @@ fn sep10_service_from_env(
         server_public_key,
         network_passphrase,
         home_domain,
+        web_auth_endpoint,
+        signing_seed,
         // Challenges and sessions live in Redis. Without a connection the
         // service fails closed, so wallet sign-in only works with REDIS_URL.
         cache.redis_handle(),

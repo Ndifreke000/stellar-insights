@@ -27,42 +27,40 @@ This document tracks features that are partially implemented or use mock/simplif
 ---
 
 ### 2. SEP-10 Authentication - Challenge Generation
-**File**: `backend/src/auth/sep10_simple.rs` (lines ~125-170)
-**Status**: Simplified implementation without proper Stellar transactions  
-**Impact**: Authentication does not use cryptographically secure Stellar transaction format
+**File**: `backend/src/auth/sep10_simple.rs`
+**Status**: \u2705 Implemented (issue #2545)
+**Impact**: Resolved \u2014 challenges are now proper, server-signed Stellar transaction envelopes
 
-**Current Implementation**:
-- Creates JSON challenge structure instead of Stellar transaction envelope
-- Base64 encodes JSON instead of XDR transaction
-- Does not sign with server key
+**Was (pre-#2545)**:
+- Returned a base64-encoded JSON blob instead of a Stellar transaction
+- Did not sign with the server key, so wallets could not sign it
 
-**Required Implementation**:
-- [ ] Build proper Stellar transaction envelope using stellar-sdk
-- [ ] Include ManageData operations with challenge nonce
-- [ ] Sign transaction with server keypair
-- [ ] Return base64-encoded XDR (not JSON)
+**Now**:
+- Builds a real `TransactionEnvelope` (source = server, sequence 0, time bounds)
+- First op `ManageData "{home} auth"` (source = client, 48-byte nonce), then `ManageData web_auth_domain`
+- Signs with the server key; returns base64 XDR that Freighter/xBull/LOBSTR can sign
+- Cross-implementation tested against `@stellar/stellar-sdk` (see `interop_fixture` test)
 
-**Dependencies**: `stellar-sdk` crate for transaction construction
+**Verified by**: scratch harness (`repro_2545`, `handler_tests`, `interop_fixture`) and `backend/tests/sep/sep10_integration.rs`
 
 ---
 
 ### 3. SEP-10 Authentication - Signature Verification
-**File**: `backend/src/auth/sep10_simple.rs` (lines ~172-210)
-**Status**: Simplified - only validates nonce, not signatures  
-**Impact**: Security risk - invalid signatures are accepted if nonce is valid
+**File**: `backend/src/auth/sep10_simple.rs`
+**Status**: \u2705 Implemented (issue #2545)
+**Impact**: Resolved \u2014 signatures are verified; invalid signatures and replay are rejected
 
-**Current Implementation**:
-- Only validates challenge nonce and expiration
-- Does not verify Ed25519 signatures
-- Does not validate transaction envelope format
+**Was (pre-#2545)**:
+- Only checked the nonce/expiry, never Ed25519 signatures
+- Accepted the legacy JSON blob
 
-**Required Implementation**:
-- [ ] Decode and validate Stellar transaction envelope format
-- [ ] Verify Ed25519 signature against server public key
-- [ ] Validate ManageData operations contain expected nonce
-- [ ] Ensure transaction structure matches SEP-10 specification
+**Now**:
+- Decodes the envelope and enforces structure (seq 0, time bounds, `web_auth_domain`, ID-memo only)
+- Verifies exactly one server signature and client signatures against the account's signers/threshold (or master key when unfunded)
+- Single-use nonce ledger (Redis `SET NX EX`) rejects replay; fails closed when Redis is down
+- Legacy JSON challenge is rejected
 
-**Dependencies**: `stellar-sdk` crate for signature verification
+**Verified by**: scratch harness and `backend/tests/sep/sep10_integration.rs`
 
 ---
 
