@@ -109,6 +109,273 @@ impl AssetVerifier {
         })
     }
 
+    /// Calculate reputation score based on verification results
+    #[must_use]
+    pub fn calculate_reputation_score(&self, result: &VerificationResult) -> f64 {
+        let mut score: f64 = 0.0;
+
+        // Stellar Expert verification (30 points)
+        if result.stellar_expert_verified {
+            score += 30.0;
+        }
+
+        // Stellar TOML verification (30 points)
+        if result.stellar_toml_verified {
+            score += 30.0;
+        }
+
+        // Anchor registry verification (20 points)
+        if result.anchor_registry_verified {
+            score += 20.0;
+        }
+
+        // Trustline count (up to 10 points)
+        if result.trustline_count > 10000 {
+            score += 10.0;
+        } else if result.trustline_count > 1000 {
+            score += 7.0;
+        } else if result.trustline_count > 100 {
+            score += 5.0;
+        } else if result.trustline_count > 10 {
+            score += 2.0;
+        }
+
+        // Transaction count (up to 10 points)
+        if result.transaction_count > 100_000 {
+            score += 10.0;
+        } else if result.transaction_count > 10_000 {
+            score += 7.0;
+        } else if result.transaction_count > 1000 {
+            score += 5.0;
+        } else if result.transaction_count > 100 {
+            score += 2.0;
+        }
+
+        score.min(100.0)
+    }
+
+    /// Determine verification status based on reputation score and other factors
+    #[must_use]
+    pub fn determine_status(
+        &self,
+        reputation_score: f64,
+        suspicious_reports_count: i64,
+    ) -> VerificationStatus {
+        if suspicious_reports_count >= 3 {
+            return VerificationStatus::Suspicious;
+        }
+
+        if reputation_score >= 60.0 {
+            VerificationStatus::Verified
+        } else {
+            VerificationStatus::Unverified
+        }
+    }
+
+    /// Save or update verification result in database
+    pub async fn save_verification_result(
+        &self,
+        asset_code: &str,
+        asset_issuer: &str,
+        result: &VerificationResult,
+        reputation_score: f64,
+        status: VerificationStatus,
+    ) -> Result<VerifiedAsset> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        let toml_home_domain = result
+            .stellar_toml_data
+            .as_ref()
+            .map(|d| d.home_domain.clone());
+        let toml_name = result
+            .stellar_toml_data
+            .as_ref()
+            .and_then(|d| d.name.clone());
+        let toml_description = result
+            .stellar_toml_data
+            .as_ref()
+            .and_then(|d| d.description.clone());
+        let toml_org_name = result
+            .stellar_toml_data
+            .as_ref()
+            .and_then(|d| d.org_name.clone());
+        let toml_org_url = result
+            .stellar_toml_data
+            .as_ref()
+            .and_then(|d| d.org_url.clone());
+        let toml_logo_url = result
+            .stellar_toml_data
+            .as_ref()
+            .and_then(|d| d.logo_url.clone());
+
+        let verified_asset = sqlx::query_as::<_, VerifiedAsset>(
+            r"
+            INSERT INTO verified_assets (
+                id, asset_code, asset_issuer, verification_status, reputation_score,
+                stellar_expert_verified, stellar_toml_verified, anchor_registry_verified,
+                trustline_count, transaction_count, total_volume_usd,
+                toml_home_domain, toml_name, toml_description, toml_org_name, toml_org_url, toml_logo_url,
+                last_verified_at, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            ON CONFLICT (asset_code, asset_issuer) DO UPDATE SET
+                verification_status = EXCLUDED.verification_status,
+                reputation_score = EXCLUDED.reputation_score,
+                stellar_expert_verified = EXCLUDED.stellar_expert_verified,
+                stellar_toml_verified = EXCLUDED.stellar_toml_verified,
+                anchor_registry_verified = EXCLUDED.anchor_registry_verified,
+                trustline_count = EXCLUDED.trustline_count,
+                transaction_count = EXCLUDED.transaction_count,
+                total_volume_usd = EXCLUDED.total_volume_usd,
+                toml_home_domain = EXCLUDED.toml_home_domain,
+                toml_name = EXCLUDED.toml_name,
+                toml_description = EXCLUDED.toml_description,
+                toml_org_name = EXCLUDED.toml_org_name,
+                toml_org_url = EXCLUDED.toml_org_url,
+                toml_logo_url = EXCLUDED.toml_logo_url,
+                last_verified_at = EXCLUDED.last_verified_at,
+                updated_at = EXCLUDED.updated_at
+            RETURNING *
+            ",
+        )
+        .bind(&id)
+        .bind(asset_code)
+        .bind(asset_issuer)
+        .bind(status.as_str())
+        .bind(reputation_score)
+        .bind(result.stellar_expert_verified)
+        .bind(result.stellar_toml_verified)
+        .bind(result.anchor_registry_verified)
+        .bind(result.trustline_count)
+        .bind(result.transaction_count)
+        .bind(result.total_volume_usd)
+        .bind(toml_home_domain)
+        .bind(toml_name)
+        .bind(toml_description)
+        .bind(toml_org_name)
+        .bind(toml_org_url)
+        .bind(toml_logo_url)
+        .bind(now)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Record history
+        self.record_verification_history(
+            asset_code,
+            asset_issuer,
+            None,
+            status.as_str(),
+            None,
+            reputation_score,
+            "Automated verification",
+        )
+        .await?;
+
+        info!(
+            "Saved verification result for {}:{} - Status: {:?}, Score: {}",
+            asset_code, asset_issuer, status, reputation_score
+        );
+
+        Ok(verified_asset)
+    }
+
+    /// Record verification history
+    async fn record_verification_history(
+        &self,
+        asset_code: &str,
+        asset_issuer: &str,
+        previous_status: Option<&str>,
+        new_status: &str,
+        previous_score: Option<f64>,
+        new_score: f64,
+        reason: &str,
+    ) -> Result<()> {
+        let id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r"
+            INSERT INTO asset_verification_history (
+                id, asset_code, asset_issuer, previous_status, new_status,
+                previous_reputation_score, new_reputation_score, change_reason, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ",
+        )
+        .bind(&id)
+        .bind(asset_code)
+        .bind(asset_issuer)
+        .bind(previous_status)
+        .bind(new_status)
+        .bind(previous_score)
+        .bind(new_score)
+        .bind(reason)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get verified asset from database
+    pub async fn get_verified_asset(
+        &self,
+        asset_code: &str,
+        asset_issuer: &str,
+    ) -> Result<Option<VerifiedAsset>> {
+        let asset = sqlx::query_as::<_, VerifiedAsset>(
+            r"
+            SELECT * FROM verified_assets
+            WHERE asset_code = $1 AND asset_issuer = $2
+            ",
+        )
+        .bind(asset_code)
+        .bind(asset_issuer)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(asset)
+    }
+
+    /// List verified assets with filters
+    pub async fn list_verified_assets(
+        &self,
+        status: Option<VerificationStatus>,
+        min_reputation: Option<f64>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<VerifiedAsset>> {
+        use sqlx::QueryBuilder;
+
+        let mut query_builder = QueryBuilder::new("SELECT * FROM verified_assets WHERE 1=1");
+
+        if let Some(status) = status {
+            let status_str = status.as_str().to_string();
+            query_builder.push(" AND verification_status = ");
+            query_builder.push_bind(status_str);
+        }
+
+        if let Some(min_rep) = min_reputation {
+            query_builder.push(" AND reputation_score >= ");
+            query_builder.push_bind(min_rep);
+        }
+
+        query_builder.push(" ORDER BY reputation_score DESC, updated_at DESC");
+        query_builder.push(" LIMIT ");
+        query_builder.push_bind(limit);
+        query_builder.push(" OFFSET ");
+        query_builder.push_bind(offset);
+
+        let assets = query_builder
+            .build_query_as::<VerifiedAsset>()
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(assets)
+    }
+
     /// Verify an anchor by fetching its `stellar.toml` and validating SEP-24/SEP-31
     /// endpoint declarations and currencies. Returns the parsed SEP support.
     pub async fn verify_anchor_sep(&self, asset_issuer: &str) -> Result<SepSupport> {
@@ -480,5 +747,44 @@ mod tests {
         let support = AssetVerifier::parse_sep_support("this is not toml = = =");
         assert_eq!(support, SepSupport::default());
         assert!(!support.is_verified());
+    }
+
+    #[tokio::test]
+    async fn test_calculate_reputation_score() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        let verifier = AssetVerifier::new(pool).unwrap();
+
+        let result = VerificationResult {
+            stellar_expert_verified: true,
+            stellar_toml_verified: true,
+            stellar_toml_data: None,
+            anchor_registry_verified: false,
+            trustline_count: 5000,
+            transaction_count: 50000,
+            total_volume_usd: 1_000_000.0,
+        };
+
+        let score = verifier.calculate_reputation_score(&result);
+        assert!(score >= 60.0);
+        assert!(score <= 100.0);
+    }
+
+    #[tokio::test]
+    async fn test_determine_status() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        let verifier = AssetVerifier::new(pool).unwrap();
+
+        assert_eq!(
+            verifier.determine_status(80.0, 0),
+            VerificationStatus::Verified
+        );
+        assert_eq!(
+            verifier.determine_status(40.0, 0),
+            VerificationStatus::Unverified
+        );
+        assert_eq!(
+            verifier.determine_status(80.0, 3),
+            VerificationStatus::Suspicious
+        );
     }
 }
