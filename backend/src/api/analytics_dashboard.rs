@@ -134,12 +134,16 @@ async fn load_observed_volume(pool: &sqlx::SqlitePool) -> Result<ObservedVolume,
     let payment_count: i64 = sqlx::query_scalar(CURRENT_PAYMENT_COUNT_SQL)
         .fetch_one(pool)
         .await
-        .map_err(|error| anyhow::anyhow!("Failed to count payments in the current window: {error}"))?;
+        .map_err(|error| {
+            anyhow::anyhow!("Failed to count payments in the current window: {error}")
+        })?;
 
     let previous_volume: f64 = sqlx::query_scalar(PREVIOUS_VOLUME_SQL)
         .fetch_one(pool)
         .await
-        .map_err(|error| anyhow::anyhow!("Failed to aggregate the previous volume window: {error}"))?;
+        .map_err(|error| {
+            anyhow::anyhow!("Failed to aggregate the previous volume window: {error}")
+        })?;
 
     let active_corridors: i64 = sqlx::query_scalar(CURRENT_CORRIDOR_COUNT_SQL)
         .fetch_one(pool)
@@ -149,7 +153,9 @@ async fn load_observed_volume(pool: &sqlx::SqlitePool) -> Result<ObservedVolume,
     let previous_corridors: i64 = sqlx::query_scalar(PREVIOUS_CORRIDOR_COUNT_SQL)
         .fetch_one(pool)
         .await
-        .map_err(|error| anyhow::anyhow!("Failed to count the previous corridor window: {error}"))?;
+        .map_err(|error| {
+            anyhow::anyhow!("Failed to count the previous corridor window: {error}")
+        })?;
 
     let rates = sqlx::query_as::<_, RateWindow>(SUCCESS_RATE_WINDOW_SQL)
         .fetch_one(pool)
@@ -362,7 +368,10 @@ fn generate_network_stats(
 
     Ok(NetworkStats {
         volume_24h: observed.volume_24h,
-        volume_growth: round2(percent_change(observed.volume_24h, observed.previous_volume)),
+        volume_growth: round2(percent_change(
+            observed.volume_24h,
+            observed.previous_volume,
+        )),
         avg_success_rate,
         success_rate_growth: observed.success_rate_growth,
         active_corridors: observed.active_corridors,

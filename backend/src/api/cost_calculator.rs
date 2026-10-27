@@ -1,10 +1,4 @@
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    response::Response,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, http::HeaderMap, response::Response, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -91,14 +85,7 @@ async fn horizon_slippage_bps(
         .build()
         .ok()?;
 
-    let resp: serde_json::Value = client
-        .get(&url)
-        .send()
-        .await
-        .ok()?
-        .json()
-        .await
-        .ok()?;
+    let resp: serde_json::Value = client.get(&url).send().await.ok()?.json().await.ok()?;
 
     // Horizon returns `_embedded.records[].destination_amount` for the best path.
     let best_path_dest: f64 = resp["_embedded"]["records"]
@@ -134,9 +121,7 @@ async fn horizon_slippage_bps(
 /// Encode an asset identifier (e.g. "USDC" or "XLM" or "NGN:GXYZ...") into
 /// Horizon asset type + optional code/issuer parts.
 /// Returns `(asset_type, optional_code, optional_issuer)`.
-fn encode_horizon_asset(
-    asset: &str,
-) -> (String, Option<String>, Option<String>) {
+fn encode_horizon_asset(asset: &str) -> (String, Option<String>, Option<String>) {
     if asset.eq_ignore_ascii_case("XLM") || asset.eq_ignore_ascii_case("XLM:native") {
         return ("native".to_string(), None, None);
     }
@@ -158,11 +143,7 @@ fn encode_horizon_asset(
     } else {
         "credit_alphanum12"
     };
-    (
-        asset_type.to_string(),
-        Some(asset.to_uppercase()),
-        None,
-    )
+    (asset_type.to_string(), Some(asset.to_uppercase()), None)
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ToSchema)]
@@ -244,7 +225,6 @@ pub struct CostCalculationResponse {
     pub best_route: RouteEstimate,
     pub routes: Vec<RouteEstimate>,
 }
-
 
 #[derive(Debug, Clone, Copy)]
 struct RouteFees {
@@ -384,7 +364,10 @@ pub async fn estimate_costs(
     });
 
     let Some(best_route) = route_estimates.first().cloned() else {
-        return Err(ApiError::internal("ROUTE_ESTIMATION_FAILED", "failed to estimate routes"));
+        return Err(ApiError::internal(
+            "ROUTE_ESTIMATION_FAILED",
+            "failed to estimate routes",
+        ));
     };
 
     let response = CostCalculationResponse {
@@ -421,7 +404,12 @@ pub async fn estimate_costs(
         &response,
         DEFAULT_CACHE_TTL_SECONDS,
     )
-    .map_err(|e| ApiError::internal("SERIALIZATION_FAILED", format!("failed to serialize response: {e}")))
+    .map_err(|e| {
+        ApiError::internal(
+            "SERIALIZATION_FAILED",
+            format!("failed to serialize response: {e}"),
+        )
+    })
 }
 
 async fn estimate_route(
@@ -439,9 +427,14 @@ async fn estimate_route(
     // network unavailable). A None from Horizon means the route is effectively
     // unavailable and slippage is unknown; we use 200 bps (the cap) so it
     // sorts last.
-    let slippage_bps = horizon_slippage_bps(source_asset, destination_asset, source_amount, mid_market_rate)
-        .await
-        .unwrap_or(200.0);
+    let slippage_bps = horizon_slippage_bps(
+        source_asset,
+        destination_asset,
+        source_amount,
+        mid_market_rate,
+    )
+    .await
+    .unwrap_or(200.0);
 
     let destination_before_fees = source_amount * mid_market_rate;
     let spread_cost_destination = destination_before_fees * (fees.spread_bps / 10_000.0);

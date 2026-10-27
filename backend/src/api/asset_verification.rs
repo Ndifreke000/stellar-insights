@@ -60,7 +60,10 @@ async fn verify_asset(
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
+        ApiError::internal(
+            "SERVICE_INIT_ERROR",
+            "Failed to initialize verification service",
+        )
     })?;
 
     let result = verifier.verify_asset(&code, &issuer).await.map_err(|e| {
@@ -126,7 +129,10 @@ async fn get_verification(
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
+        ApiError::internal(
+            "SERVICE_INIT_ERROR",
+            "Failed to initialize verification service",
+        )
     })?;
 
     match verifier.get_verified_asset(&code, &issuer).await {
@@ -183,7 +189,10 @@ async fn list_verified_assets(
 
     let verifier = AssetVerifier::new(pool.as_ref().clone()).map_err(|e| {
         tracing::error!("Failed to create asset verifier: {}", e);
-        ApiError::internal("SERVICE_INIT_ERROR", "Failed to initialize verification service")
+        ApiError::internal(
+            "SERVICE_INIT_ERROR",
+            "Failed to initialize verification service",
+        )
     })?;
 
     let assets = verifier

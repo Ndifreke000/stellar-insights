@@ -148,7 +148,12 @@ pub async fn deregister_device(
         .bind(&device_token)
         .execute(&state.pool)
         .await
-        .map_err(|e| ApiError::internal("DB_ERROR", format!("Failed to deregister device token: {e}")))?;
+        .map_err(|e| {
+            ApiError::internal(
+                "DB_ERROR",
+                format!("Failed to deregister device token: {e}"),
+            )
+        })?;
 
     let _ = state
         .service

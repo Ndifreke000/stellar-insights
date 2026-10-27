@@ -575,11 +575,14 @@ async fn simulate_status_change(
             severity,
             &message,
             Some(0.95),
-            Some(if payload.target_status == "critical" { 0.75 } else { 0.88 }),
+            Some(if payload.target_status == "critical" {
+                0.75
+            } else {
+                0.88
+            }),
             None,
         )
         .await?;
 
     Ok((StatusCode::OK, Json(event)))
 }
-

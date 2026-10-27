@@ -66,7 +66,10 @@ pub async fn get_verification_summary(
         .await
         .map_err(|e| {
             error!("Failed to get verification summary: {}", e);
-            ApiError::internal("VERIFICATION_SUMMARY_FAILED", "Failed to fetch verification summary")
+            ApiError::internal(
+                "VERIFICATION_SUMMARY_FAILED",
+                "Failed to fetch verification summary",
+            )
         })?;
 
     let latest = summaries.first();

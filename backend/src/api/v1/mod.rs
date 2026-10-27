@@ -262,7 +262,10 @@ pub fn routes(
     // file). Gated behind auth_middleware like protected_routes above,
     // since these start background jobs and delete data.
     let replay_routes = Router::new()
-        .nest("/replay", crate::api::replay_handlers::routes(app_state.clone()))
+        .nest(
+            "/replay",
+            crate::api::replay_handlers::routes(app_state.clone()),
+        )
         .layer(middleware::from_fn(auth_middleware));
 
     // 5b. Read-only reference modules. Their handlers and OpenAPI entries
@@ -283,7 +286,8 @@ pub fn routes(
     // (see issue #2659); falls back to an empty router so the `.merge()`
     // below doesn't need its own cfg.
     #[cfg(feature = "quests")]
-    let achievements_routes = Router::new().nest("/achievements", crate::api::achievements::routes());
+    let achievements_routes =
+        Router::new().nest("/achievements", crate::api::achievements::routes());
     #[cfg(not(feature = "quests"))]
     let achievements_routes: Router = Router::new();
     let reference_routes = Router::new()

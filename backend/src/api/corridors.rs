@@ -487,7 +487,8 @@ fn pool_matches_pair(
     let r1 = pool.reserves[1].asset.as_str();
 
     (matches_side(r0, source_code, source_issuer) && matches_side(r1, dest_code, dest_issuer))
-        || (matches_side(r0, dest_code, dest_issuer) && matches_side(r1, source_code, source_issuer))
+        || (matches_side(r0, dest_code, dest_issuer)
+            && matches_side(r1, source_code, source_issuer))
 }
 
 /// Convert a pool's raw reserve amounts into the USD-ish units
@@ -495,7 +496,10 @@ fn pool_matches_pair(
 /// (the corridor's source asset price) for both sides — the same
 /// simplification `LiquidityPoolAnalyzer::sync_pools` already documents and
 /// uses ("assume both sides equivalent for AMM").
-fn pool_reserves_usd(pool: &HorizonLiquidityPool, source_price_usd: f64) -> Option<AmmPoolReserves> {
+fn pool_reserves_usd(
+    pool: &HorizonLiquidityPool,
+    source_price_usd: f64,
+) -> Option<AmmPoolReserves> {
     if pool.reserves.len() != 2 {
         return None;
     }
@@ -526,19 +530,20 @@ async fn fetch_combined_liquidity_depth(
 
     let order_book_snapshot = match rpc_client.fetch_order_book(&selling, &buying, 20).await {
         Ok(ob) => {
-            let to_entries = |levels: &[crate::rpc::OrderBookEntry]| -> Vec<AnalyticsOrderBookEntry> {
-                levels
-                    .iter()
-                    .filter_map(|e| {
-                        let price: f64 = e.price.parse().ok()?;
-                        let amount: f64 = e.amount.parse().ok()?;
-                        Some(AnalyticsOrderBookEntry {
-                            price,
-                            amount_usd: amount * source_price_usd,
+            let to_entries =
+                |levels: &[crate::rpc::OrderBookEntry]| -> Vec<AnalyticsOrderBookEntry> {
+                    levels
+                        .iter()
+                        .filter_map(|e| {
+                            let price: f64 = e.price.parse().ok()?;
+                            let amount: f64 = e.amount.parse().ok()?;
+                            Some(AnalyticsOrderBookEntry {
+                                price,
+                                amount_usd: amount * source_price_usd,
+                            })
                         })
-                    })
-                    .collect()
-            };
+                        .collect()
+                };
             Some(OrderBookSnapshot {
                 bids: to_entries(&ob.bids),
                 asks: to_entries(&ob.asks),
@@ -635,7 +640,10 @@ pub(crate) async fn compute_live_corridors(
         .filter_map(|k| k.split("->").next())
         .map(String::from)
         .collect();
-    let prices = price_feed.get_prices(&source_assets).await.unwrap_or_default();
+    let prices = price_feed
+        .get_prices(&source_assets)
+        .await
+        .unwrap_or_default();
 
     for (corridor_key, corridor_payments) in &corridor_map {
         let total_attempts = corridor_payments.len() as i64;
@@ -712,7 +720,11 @@ pub(crate) async fn compute_live_corridors(
                     &amm_pools,
                 )
                 .await;
-                if depth > 0.0 { depth } else { volume_usd }
+                if depth > 0.0 {
+                    depth
+                } else {
+                    volume_usd
+                }
             }
             None => volume_usd,
         };
@@ -1016,7 +1028,10 @@ pub async fn get_corridor_detail(
             .filter_map(|k| k.split("->").next())
             .map(String::from)
             .collect();
-        let related_prices = price_feed.get_prices(&related_source_assets).await.unwrap_or_default();
+        let related_prices = price_feed
+            .get_prices(&related_source_assets)
+            .await
+            .unwrap_or_default();
 
         // Build all corridor responses for related corridors lookup
         for (key, corr_payments) in &corridor_map {
@@ -1235,12 +1250,36 @@ pub async fn get_corridor_failures(
     let recorded_failures = row.map(|r| r.0 as usize).unwrap_or(8);
 
     let failure_templates = [
-        ("op_underfunded", "insufficient_balance", "Insufficient balance in source account"),
-        ("op_no_destination", "account_missing", "Destination account does not exist on-chain"),
-        ("op_no_trust", "no_trustline", "Destination missing trustline for asset"),
-        ("op_cross_failed", "offer_crossing", "Cross-asset order execution failed due to slippage"),
-        ("tx_too_late", "timed_out", "Transaction exceeded maximum time bounds"),
-        ("op_line_full", "no_trustline", "Destination account trust limit exceeded"),
+        (
+            "op_underfunded",
+            "insufficient_balance",
+            "Insufficient balance in source account",
+        ),
+        (
+            "op_no_destination",
+            "account_missing",
+            "Destination account does not exist on-chain",
+        ),
+        (
+            "op_no_trust",
+            "no_trustline",
+            "Destination missing trustline for asset",
+        ),
+        (
+            "op_cross_failed",
+            "offer_crossing",
+            "Cross-asset order execution failed due to slippage",
+        ),
+        (
+            "tx_too_late",
+            "timed_out",
+            "Transaction exceeded maximum time bounds",
+        ),
+        (
+            "op_line_full",
+            "no_trustline",
+            "Destination account trust limit exceeded",
+        ),
     ];
 
     let total_items = recorded_failures;
@@ -1270,7 +1309,11 @@ pub async fn get_corridor_failures(
         }
     }
 
-    let total_pages = if total_items == 0 { 0 } else { (total_items + page_size - 1) / page_size };
+    let total_pages = if total_items == 0 {
+        0
+    } else {
+        (total_items + page_size - 1) / page_size
+    };
 
     Ok(Json(PaginatedCorridorFailures {
         corridor_key,

@@ -807,7 +807,10 @@ mod tests {
         let row = test_payment("=cmd|'/c calc'!A0", 42.5);
         let bytes = payment_csv_row_bytes(&row).expect("row encodes");
         let text = String::from_utf8(bytes).expect("valid utf8");
-        assert!(text.starts_with("'="), "formula-trigger field must be prefixed: {text}");
+        assert!(
+            text.starts_with("'="),
+            "formula-trigger field must be prefixed: {text}"
+        );
     }
 
     #[test]
