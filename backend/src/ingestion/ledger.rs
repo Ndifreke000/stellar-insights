@@ -24,7 +24,7 @@ use crate::shutdown::ShutdownFlag;
 ///
 /// Every row this service writes is tagged with `network` so that mainnet
 /// and testnet ingestion can run against the same database without their
-/// data mixing (see migration 048_add_network_to_ledger_ingestion.sql).
+/// data mixing (see migration 052_add_network_to_ledger_ingestion.sql).
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
     fee_bump_tracker: Arc<FeeBumpTrackerService>,

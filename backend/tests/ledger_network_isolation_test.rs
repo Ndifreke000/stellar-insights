@@ -3,7 +3,7 @@
 //! `ledger_payments` (and the other ledger ingestion tables) used to have no
 //! `network` column at all, so rows ingested from mainnet and testnet were
 //! indistinguishable once in the database. Migration
-//! 048_add_network_to_ledger_ingestion.sql adds the column; this test
+//! 052_add_network_to_ledger_ingestion.sql adds the column; this test
 //! verifies that filtering by network actually isolates the data instead of
 //! silently returning everyone's rows (or everyone's data getting the same
 //! default).
