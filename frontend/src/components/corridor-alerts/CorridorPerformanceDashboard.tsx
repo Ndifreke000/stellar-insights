@@ -414,6 +414,8 @@ function CorridorDetail({ corridorKey }: { corridorKey: string }) {
   const [snapshots, setSnapshots] = useState<CorridorPerformanceSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
 
   const fetchSnapshots = useCallback(() => {
     setLoading(true);
@@ -449,9 +451,6 @@ function CorridorDetail({ corridorKey }: { corridorKey: string }) {
       </div>
     );
   }
-
-  const [simulating, setSimulating] = useState(false);
-  const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
 
   const handleSimulateStatus = async (status: string) => {
     setSimulating(true);
