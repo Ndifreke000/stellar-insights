@@ -128,7 +128,7 @@ impl DataIngestionService {
     /// Process metrics for a single anchor
     async fn process_anchor_metrics(&self, account_id: &str) -> Result<()> {
         let client = &self.rpc_client;
-        let payments = Retry::spawn(retry_strategy(), || async {
+        let payments = Retry::start(retry_strategy(), || async {
             client
                 .fetch_account_payments(account_id, 100)
                 .await
@@ -200,7 +200,7 @@ impl DataIngestionService {
     /// Get current network health status
     pub async fn get_network_health(&self) -> Result<NetworkHealth> {
         let client = &self.rpc_client;
-        let health = Retry::spawn(retry_strategy(), || async {
+        let health = Retry::start(retry_strategy(), || async {
             client
                 .check_health()
                 .await
@@ -258,7 +258,7 @@ impl DataIngestionService {
 
         // We get network state
         let client = &self.rpc_client;
-        let health = Retry::spawn(retry_strategy(), || async {
+        let health = Retry::start(retry_strategy(), || async {
             client
                 .check_health()
                 .await
@@ -303,7 +303,7 @@ impl DataIngestionService {
         let last_ingested = self.load_last_ledger().await?;
 
         let client = &self.rpc_client;
-        let health = Retry::spawn(retry_strategy(), || async {
+        let health = Retry::start(retry_strategy(), || async {
             client
                 .check_health()
                 .await

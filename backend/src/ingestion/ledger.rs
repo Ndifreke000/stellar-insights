@@ -231,7 +231,7 @@ impl LedgerIngestionService {
         let last_ledger = self.get_last_ledger().await?;
 
         let client = &self.rpc_client;
-        let health = Retry::spawn(retry_strategy(), || async {
+        let health = Retry::start(retry_strategy(), || async {
             client
                 .check_health()
                 .await
@@ -273,7 +273,7 @@ impl LedgerIngestionService {
             Some(l + 1)
         } else {
             let client = &self.rpc_client;
-            let health = Retry::spawn(retry_strategy(), || async {
+            let health = Retry::start(retry_strategy(), || async {
                 client
                     .check_health()
                     .await
@@ -290,7 +290,7 @@ impl LedgerIngestionService {
         // aged out we cannot recover it and emit an alert instead.
         if let Some(last) = self.get_last_ledger().await? {
             let client = &self.rpc_client;
-            if let Ok(health) = Retry::spawn(retry_strategy(), || async {
+            if let Ok(health) = Retry::start(retry_strategy(), || async {
                 client
                     .check_health()
                     .await
