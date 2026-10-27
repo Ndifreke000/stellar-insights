@@ -368,6 +368,114 @@ impl From<DomainError> for ApiError {
     }
 }
 
+pub type ApiResult<T> = Result<T, ApiError>;
+
+/// Extract request ID from request extensions and create error response
+pub fn error_response_with_request_id(error: ApiError, req: &Request) -> Response {
+    let status = error.status_code();
+    let request_id = req
+        .extensions()
+        .get::<crate::request_id::RequestId>()
+        .map(|id| id.0.clone());
+    let error_response = error.to_error_response(request_id);
+    (status, Json(error_response)).into_response()
+}
+
+/// Convert from `anyhow::Error`
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::InternalError {
+            code: "INTERNAL_ERROR".to_string(),
+            message: "An internal error occurred".to_string(),
+            details: None,
+            source: Some(err.to_string()),
+        }
+    }
+}
+
+/// Convert from `sqlx::Error`
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        let (code, message, status) = match &err {
+            sqlx::Error::RowNotFound => (
+                "NOT_FOUND".to_string(),
+                "The requested resource was not found".to_string(),
+                None,
+            ),
+            sqlx::Error::PoolTimedOut => (
+                "DB_POOL_EXHAUSTED".to_string(),
+                "Database pool exhausted. Please try again later.".to_string(),
+                Some(StatusCode::SERVICE_UNAVAILABLE),
+            ),
+            sqlx::Error::Database(db_err) => (
+                "DATABASE_ERROR".to_string(),
+                format!("Database error: {}", db_err.message()),
+                None,
+            ),
+            _ => (
+                "INTERNAL_ERROR".to_string(),
+                "An internal error occurred".to_string(),
+                None,
+            ),
+        };
+
+        if let Some(StatusCode::SERVICE_UNAVAILABLE) = status {
+            tracing::error!("Database pool exhausted");
+            crate::observability::metrics::record_pool_error("exhausted");
+            return Self::ServiceUnavailable {
+                code,
+                message,
+                details: None,
+            };
+        }
+
+        Self::InternalError {
+            code,
+            message,
+            details: None,
+            source: Some(err.to_string()),
+        }
+    }
+}
+
+/// Convert RPC errors into API errors so handlers can use `?` consistently.
+impl From<crate::rpc::error::RpcError> for ApiError {
+    fn from(err: crate::rpc::error::RpcError) -> Self {
+        Self::InternalError {
+            code: "RPC_ERROR".to_string(),
+            message: "External service error".to_string(),
+            details: None,
+            source: Some(err.to_string()),
+        }
+    }
+}
+
+/// Typed database error for pool exhaustion and other DB-level failures.
+#[derive(Debug, thiserror::Error)]
+pub enum DatabaseError {
+    #[error("Database pool exhausted. Please try again later.")]
+    PoolExhausted,
+
+    #[error("Database error: {0}")]
+    Other(#[from] sqlx::Error),
+}
+
+impl From<DatabaseError> for ApiError {
+    fn from(err: DatabaseError) -> Self {
+        match err {
+            DatabaseError::PoolExhausted => {
+                tracing::error!("Database pool exhausted");
+                Self::ServiceUnavailable {
+                    code: "DB_POOL_EXHAUSTED".to_string(),
+                    message: "Database pool exhausted. Please try again later.".to_string(),
+                    details: None,
+                }
+            }
+            DatabaseError::Other(e) => ApiError::from(e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,5 +499,92 @@ mod tests {
         let api: ApiError = DomainError::PaymentAlreadyUsed("deadbeef".to_string()).into();
         assert_eq!(api.status_code(), StatusCode::CONFLICT);
         assert_eq!(api.to_error_response(None).error.code, PAYMENT_ALREADY_USED);
+    }
+
+    #[test]
+    fn test_bad_request_error() {
+        let error = ApiError::bad_request("INVALID_INPUT", "Invalid input provided");
+        assert_eq!(error.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_error_response_serialization() {
+        let mut details = HashMap::new();
+        details.insert(
+            "corridor_id".to_string(),
+            serde_json::Value::String("USDC-XLM".to_string()),
+        );
+
+        let error = ApiError::not_found_with_details(
+            "CORRIDOR_NOT_FOUND",
+            "Corridor with ID 'USDC-XLM' not found",
+            details,
+        );
+
+        let response =
+            error.to_error_response(Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+
+        assert_eq!(response.error.code, "CORRIDOR_NOT_FOUND");
+        assert_eq!(
+            response.error.message,
+            "Corridor with ID 'USDC-XLM' not found"
+        );
+        assert_eq!(
+            response.error.request_id,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
+        assert!(response.error.details.is_some());
+    }
+
+    #[test]
+    fn test_error_with_details() {
+        let mut details = HashMap::new();
+        details.insert(
+            "corridor_id".to_string(),
+            serde_json::Value::String("USDC-XLM".to_string()),
+        );
+
+        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found")
+            .with_details(details.clone());
+
+        match error {
+            ApiError::NotFound {
+                details: Some(d), ..
+            } => {
+                assert_eq!(d.get("corridor_id"), details.get("corridor_id"));
+            }
+            _ => panic!("Expected NotFound error with details"),
+        }
+    }
+
+    #[test]
+    fn test_from_anyhow_error() {
+        let anyhow_err = anyhow::anyhow!("Test error");
+        let api_error: ApiError = anyhow_err.into();
+
+        match api_error {
+            ApiError::InternalError { code, .. } => {
+                assert_eq!(code, "INTERNAL_ERROR");
+            }
+            _ => panic!("Expected InternalError"),
+        }
+    }
+
+    #[test]
+    fn test_internal_error() {
+        let error = ApiError::internal("INTERNAL_ERROR", "Something went wrong");
+        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_not_found_error() {
+        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found");
+        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_unauthorized_error() {
+        let error = ApiError::unauthorized("INVALID_TOKEN", "Invalid authentication token");
+        assert_eq!(error.status_code(), StatusCode::UNAUTHORIZED);
     }
 }
