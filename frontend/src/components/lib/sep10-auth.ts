@@ -73,7 +73,7 @@ class Sep10AuthService {
         `${API_BASE_URL}/api/v1/config/home-domain`,
         { timeout: 10000 },
       )
-    } catch (error) {
+    } catch {
       throw new Sep10AuthError(
         'Unable to load the SEP-10 home domain configuration from the server.',
       )
@@ -113,7 +113,7 @@ class Sep10AuthService {
         { account: address, home_domain: homeDomain },
         { timeout: 15000 },
       )
-    } catch (error) {
+    } catch {
       throw new Sep10AuthError('SEP-10 authentication failed.')
     }
 
