@@ -41,6 +41,11 @@ telegram-bot = []
 slack-bot = []
 # GDPR export/erasure service (services::gdpr) and its integration test.
 gdpr = []
+# Non-product features kept out of the default build (#2686): the quests /
+# achievements API and governance. Off by default, matching the frontend's
+# NEXT_PUBLIC_ENABLE_NON_PRODUCT_FEATURES flag.
+quests = []
+governance = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
