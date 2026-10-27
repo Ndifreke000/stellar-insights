@@ -245,71 +245,172 @@ pub async fn create_invoice(
     Ok(invoice)
 }
 
-/// A single payment operation as reported by Horizon.
-#[derive(Debug, Clone, Deserialize)]
-pub struct HorizonPayment {
+/// Fetch an invoice belonging to the wallet.
+pub async fn get_invoice(
+    pool: &SqlitePool,
+    invoice_id: &str,
+    wallet_address: &str,
+) -> Result<Invoice, BillingError> {
+    sqlx::query_as::<_, Invoice>(
+        "SELECT * FROM billing_invoices WHERE id = ? AND wallet_address = ?",
+    )
+    .bind(invoice_id)
+    .bind(wallet_address)
+    .fetch_optional(pool)
+    .await
+    .context("look up invoice")?
+    .ok_or_else(|| BillingError::NotFound("Invoice not found".to_string()))
+}
+
+/// The key's subscription, if the wallet owns the key and one exists.
+pub async fn get_subscription(
+    pool: &SqlitePool,
+    api_key_id: &str,
+    wallet_address: &str,
+) -> Result<Option<Subscription>, BillingError> {
+    Ok(sqlx::query_as::<_, Subscription>(
+        "SELECT s.* FROM api_key_subscriptions s
+         JOIN api_keys k ON k.id = s.api_key_id
+         WHERE s.api_key_id = ? AND k.wallet_address = ?",
+    )
+    .bind(api_key_id)
+    .bind(wallet_address)
+    .fetch_optional(pool)
+    .await
+    .context("look up subscription")?)
+}
+
+/// The per-minute limit a key's active subscription grants, if any.
+pub async fn active_limit(pool: &SqlitePool, api_key_id: &str) -> Result<Option<u32>> {
+    let row: Option<(i64, String)> = sqlx::query_as(
+        "SELECT limit_per_minute, paid_until FROM api_key_subscriptions WHERE api_key_id = ?",
+    )
+    .bind(api_key_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.and_then(|(limit, paid_until)| {
+        let active = parse_timestamp(&paid_until).is_ok_and(|until| until > Utc::now());
+        active.then(|| u32::try_from(limit).unwrap_or(u32::MAX))
+    }))
+}
+
+/// Horizon transaction fields the check needs.
+#[derive(Debug, Deserialize)]
+pub struct HorizonTransaction {
+    pub hash: String,
+    pub successful: bool,
+    #[serde(default)]
+    pub memo_type: String,
+    #[serde(default)]
+    pub memo: Option<String>,
+    pub created_at: String,
+}
+
+/// Horizon operation fields the check needs.
+#[derive(Debug, Deserialize)]
+pub struct HorizonOperation {
     #[serde(rename = "type")]
-    pub op_type: String,
+    pub kind: String,
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub asset_type: Option<String>,
     #[serde(default)]
     pub asset_code: Option<String>,
     #[serde(default)]
     pub asset_issuer: Option<String>,
     #[serde(default)]
     pub amount: Option<String>,
-    #[serde(default)]
-    pub destination: Option<String>,
-    #[serde(default)]
-    pub source_account: Option<String>,
-    /// Present on path payments: the asset actually delivered.
-    #[serde(default)]
-    pub destination_asset_code: Option<String>,
-    #[serde(default)]
-    pub destination_asset_issuer: Option<String>,
-    #[serde(default)]
-    pub destination_amount: Option<String>,
 }
 
-/// A transaction as reported by Horizon, with its operations embedded.
-#[derive(Debug, Clone, Deserialize)]
-pub struct HorizonTransaction {
-    pub hash: String,
-    pub successful: bool,
-    #[serde(default)]
-    pub memo_type: Option<String>,
-    #[serde(default)]
-    pub memo: Option<String>,
-    #[serde(default)]
-    pub operations: Vec<HorizonPayment>,
+/// Does this transaction pay the invoice? Pure, so it is tested without
+/// Horizon.
+pub fn check_payment(
+    invoice: &Invoice,
+    transaction: &HorizonTransaction,
+    operations: &[HorizonOperation],
+) -> Result<(), String> {
+    if !transaction.successful {
+        return Err("The transaction failed on the ledger".to_string());
+    }
+    if transaction.memo_type != "text" || transaction.memo.as_deref() != Some(invoice.memo.as_str())
+    {
+        return Err(format!(
+            "The transaction memo must be the text memo \"{}\"",
+            invoice.memo
+        ));
+    }
+
+    // A payment made before the invoice existed cannot be for it.
+    let issued = parse_timestamp(&invoice.created_at).map_err(|e| e.to_string())?;
+    let made = parse_timestamp(&transaction.created_at).map_err(|e| e.to_string())?;
+    if made < issued - Duration::minutes(1) {
+        return Err("The transaction predates the invoice".to_string());
+    }
+
+    let due = Decimal::from_str(&invoice.amount_usdc).map_err(|e| e.to_string())?;
+    let paid: Decimal = operations
+        .iter()
+        .filter(|op| {
+            matches!(
+                op.kind.as_str(),
+                "payment" | "path_payment_strict_receive" | "path_payment_strict_send"
+            )
+        })
+        .filter(|op| op.to.as_deref() == Some(invoice.destination.as_str()))
+        .filter(|op| op.asset_type.as_deref() != Some("native"))
+        .filter(|op| {
+            op.asset_code.as_deref() == Some(invoice.asset_code.as_str())
+                && op.asset_issuer.as_deref() == Some(invoice.asset_issuer.as_str())
+        })
+        .filter_map(|op| op.amount.as_deref().and_then(|a| Decimal::from_str(a).ok()))
+        .sum();
+
+    if paid < due {
+        return Err(format!(
+            "The transaction sends {paid} {} to {}; {due} is due",
+            invoice.asset_code, invoice.destination
+        ));
+    }
+    Ok(())
 }
 
-/// The amount a payment operation actually delivers to the destination, in
-/// the asset it delivers. Returns `None` when the op is not a payment to the
-/// billing account in the configured asset.
-fn delivered_amount(
-    op: &HorizonPayment,
-    config: &BillingConfig,
-) -> Option<Decimal> {
-    let (code, issuer, amount) = match op.op_type.as_str() {
-        "payment" => (
-            op.asset_code.as_deref()?,
-            op.asset_issuer.as_deref()?,
-            op.amount.as_deref()?,
-        ),
-        "path_payment_strict_send" | "path_payment_strict_receive" => (
-            op.destination_asset_code.as_deref()?,
-            op.destination_asset_issuer.as_deref()?,
-            op.destination_amount.as_deref()?,
-        ),
-        _ => return None,
-    };
+async fn fetch_json<T: serde::de::DeserializeOwned>(
+    http: &reqwest::Client,
+    url: &str,
+) -> Result<T, BillingError> {
+    let response = http
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| BillingError::Upstream(e.to_string()))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(BillingError::Invalid(
+            "Transaction not found on the ledger yet; wait a few seconds and retry".to_string(),
+        ));
+    }
+    if !response.status().is_success() {
+        return Err(BillingError::Upstream(format!(
+            "HTTP {}",
+            response.status()
+        )));
+    }
+    response
+        .json::<T>()
+        .await
+        .map_err(|e| BillingError::Upstream(e.to_string()))
+}
 
-    if op.destination.as_deref() != Some(config.treasury.as_str()) {
-        return None;
-    }
-    if code != config.asset_code || issuer != config.asset_issuer {
-        return None;
-    }
-    Decimal::from_str(amount.trim()).ok()
+#[derive(Deserialize)]
+struct Records<T> {
+    #[serde(rename = "_embedded")]
+    embedded: Embedded<T>,
+}
+
+#[derive(Deserialize)]
+struct Embedded<T> {
+    records: Vec<T>,
 }
 
 /// Verify a payment on the ledger and, if it pays the invoice, mark the
@@ -322,251 +423,243 @@ pub async fn confirm_invoice(
     wallet_address: &str,
     transaction_hash: &str,
 ) -> Result<(Invoice, Subscription), BillingError> {
-    let invoice: Option<Invoice> = sqlx::query_as(
-        "SELECT id, api_key_id, wallet_address, plan, amount_usdc, asset_code, asset_issuer,
-            destination, memo, limit_per_minute, period_days, status, transaction_hash,
-            created_at, expires_at, paid_at
-         FROM billing_invoices WHERE id = ?",
-    )
-    .bind(invoice_id)
-    .fetch_optional(pool)
-    .await
-    .context("load invoice")?;
-    let Some(invoice) = invoice else {
-        return Err(BillingError::NotFound("invoice not found".to_string()));
-    };
-
-    if invoice.wallet_address != wallet_address {
-        return Err(BillingError::NotFound("invoice not found".to_string()));
-    }
-    if invoice.status == "paid" {
-        return Err(BillingError::Conflict("invoice already paid".to_string()));
-    }
-    if invoice.status == "expired" {
-        return Err(BillingError::Invalid("invoice expired".to_string()));
-    }
-    if Utc::now() > parse_timestamp(&invoice.expires_at).context("parse expiry")? {
-        return Err(BillingError::Invalid("invoice expired".to_string()));
-    }
-
-    // Deny-by-default: the transaction hash must not already be bound to any
-    // invoice. A reused hash is a replay attempt.
-    let reused: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM billing_invoices WHERE transaction_hash = ? AND id != ?",
-    )
-    .bind(transaction_hash)
-    .bind(&invoice.id)
-    .fetch_optional(pool)
-    .await
-    .context("check transaction hash reuse")?;
-    if reused.is_some() {
-        return Err(BillingError::Conflict(
-            "transaction already used for another invoice".to_string(),
-        ));
-    }
-
-    let url = format!("{}/transactions/{}", config.horizon_url, transaction_hash);
-    let response = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| BillingError::Upstream(e.to_string()))?;
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err(BillingError::Invalid("transaction not found".to_string()));
-    }
-    if !response.status().is_success() {
-        return Err(BillingError::Upstream(format!(
-            "Horizon returned {}",
-            response.status()
-        )));
-    }
-    let tx: HorizonTransaction = response
-        .json()
-        .await
-        .map_err(|e| BillingError::Upstream(e.to_string()))?;
-
-    if tx.hash != transaction_hash {
-        return Err(BillingError::Invalid("transaction hash mismatch".to_string()));
-    }
-    if !tx.successful {
-        return Err(BillingError::Invalid("transaction failed".to_string()));
-    }
-
-    // The memo must be a text memo equal to the invoice's memo.
-    let memo_matches = tx.memo_type.as_deref() == Some("text")
-        && tx.memo.as_deref() == Some(invoice.memo.as_str());
-    if !memo_matches {
+    let hash = transaction_hash.trim().to_ascii_lowercase();
+    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(BillingError::Invalid(
-            "transaction memo does not match invoice".to_string(),
+            "transaction_hash must be a 64-character hex transaction hash".to_string(),
         ));
     }
 
-    let required = Decimal::from_str(&invoice.amount_usdc).context("parse invoice amount")?;
-    let mut delivered = Decimal::ZERO;
-    for op in &tx.operations {
-        if let Some(amount) = delivered_amount(op, config) {
-            delivered += amount;
+    let invoice = get_invoice(pool, invoice_id, wallet_address).await?;
+    match invoice.status.as_str() {
+        "pending" => {}
+        "paid" => {
+            return Err(BillingError::Conflict(
+                "Invoice is already paid".to_string(),
+            ))
+        }
+        _ => {
+            return Err(BillingError::Conflict(
+                "Invoice is no longer payable".to_string(),
+            ))
         }
     }
-    if delivered < required {
-        return Err(BillingError::Invalid(format!(
-            "payment amount {delivered} is less than invoice amount {required}"
-        )));
-    }
+    let expires = parse_timestamp(&invoice.expires_at)?;
 
-    // Bind the hash to the invoice atomically; a concurrent confirm loses.
+    let transaction: HorizonTransaction =
+        fetch_json(http, &format!("{}/transactions/{hash}", config.horizon_url)).await?;
+    let operations: Records<HorizonOperation> = fetch_json(
+        http,
+        &format!(
+            "{}/transactions/{hash}/operations?limit=200",
+            config.horizon_url
+        ),
+    )
+    .await?;
+
+    // Payments made before expiry still count if confirmed a little late.
+    if parse_timestamp(&transaction.created_at)? > expires {
+        return Err(BillingError::Conflict(
+            "The payment was made after the invoice expired; request a new invoice".to_string(),
+        ));
+    }
+    check_payment(&invoice, &transaction, &operations.embedded.records)
+        .map_err(BillingError::Invalid)?;
+
     let now = Utc::now();
-    let paid_at = timestamp(now);
-    let updated = sqlx::query(
+    let mut tx = pool.begin().await.context("begin")?;
+
+    let settled = sqlx::query(
         "UPDATE billing_invoices SET status = 'paid', transaction_hash = ?, paid_at = ?
          WHERE id = ? AND status = 'pending'",
     )
-    .bind(transaction_hash)
-    .bind(&paid_at)
+    .bind(&transaction.hash)
+    .bind(timestamp(now))
     .bind(&invoice.id)
-    .execute(pool)
-    .await
-    .context("mark invoice paid")?;
-    if updated.rows_affected() == 0 {
-        return Err(BillingError::Conflict("invoice already paid".to_string()));
+    .execute(&mut *tx)
+    .await;
+    match settled {
+        Ok(result) if result.rows_affected() == 1 => {}
+        Ok(_) => {
+            return Err(BillingError::Conflict(
+                "Invoice is already paid".to_string(),
+            ))
+        }
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            return Err(BillingError::Conflict(
+                "This transaction has already paid another invoice".to_string(),
+            ))
+        }
+        Err(e) => return Err(BillingError::Internal(e.into())),
     }
 
-    let paid_until = timestamp(now + Duration::days(invoice.period_days));
+    // Extend from the later of now and the current expiry, so renewing early
+    // does not lose paid time.
+    let current: Option<(String,)> =
+        sqlx::query_as("SELECT paid_until FROM api_key_subscriptions WHERE api_key_id = ?")
+            .bind(&invoice.api_key_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .context("look up subscription")?;
+    let start = current
+        .and_then(|(until,)| parse_timestamp(&until).ok())
+        .filter(|until| *until > now)
+        .unwrap_or(now);
+    let subscription = Subscription {
+        api_key_id: invoice.api_key_id.clone(),
+        plan: invoice.plan.clone(),
+        limit_per_minute: invoice.limit_per_minute,
+        paid_until: timestamp(start + Duration::days(invoice.period_days)),
+        updated_at: timestamp(now),
+    };
     sqlx::query(
-        "INSERT INTO subscriptions (api_key_id, plan, limit_per_minute, paid_until, updated_at)
+        "INSERT INTO api_key_subscriptions (api_key_id, plan, limit_per_minute, paid_until, updated_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(api_key_id) DO UPDATE SET
-            plan = excluded.plan,
+         ON CONFLICT(api_key_id) DO UPDATE SET plan = excluded.plan,
             limit_per_minute = excluded.limit_per_minute,
-            paid_until = excluded.paid_until,
-            updated_at = excluded.updated_at",
+            paid_until = excluded.paid_until, updated_at = excluded.updated_at",
     )
-    .bind(&invoice.api_key_id)
-    .bind(&invoice.plan)
-    .bind(invoice.limit_per_minute)
-    .bind(&paid_until)
-    .bind(&paid_at)
-    .execute(pool)
+    .bind(&subscription.api_key_id)
+    .bind(&subscription.plan)
+    .bind(subscription.limit_per_minute)
+    .bind(&subscription.paid_until)
+    .bind(&subscription.updated_at)
+    .execute(&mut *tx)
     .await
-    .context("extend subscription")?;
+    .context("upsert subscription")?;
 
-    let subscription: Subscription = sqlx::query_as(
-        "SELECT api_key_id, plan, limit_per_minute, paid_until, updated_at
-         FROM subscriptions WHERE api_key_id = ?",
-    )
-    .bind(&invoice.api_key_id)
-    .fetch_one(pool)
-    .await
-    .context("load subscription")?;
+    tx.commit().await.context("commit")?;
 
-    let mut paid_invoice = invoice;
-    paid_invoice.status = "paid".to_string();
-    paid_invoice.transaction_hash = Some(transaction_hash.to_string());
-    paid_invoice.paid_at = Some(paid_at);
-
-    Ok((paid_invoice, subscription))
+    let invoice = get_invoice(pool, invoice_id, wallet_address).await?;
+    Ok((invoice, subscription))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn config() -> BillingConfig {
-        BillingConfig {
-            treasury: "GTREASURYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
-            asset_code: "USDC".to_string(),
-            asset_issuer: MAINNET_USDC_ISSUER.to_string(),
-            price_usdc: Decimal::from_str("50").unwrap(),
+    const TREASURY: &str = "GCJROW3RGUJNOUJZTFSKLWS4YVEROS5A7YBH5JABGW4HK4QN3A37HIKX";
+
+    fn invoice() -> Invoice {
+        Invoice {
+            id: "inv".into(),
+            api_key_id: "key".into(),
+            wallet_address: "GWALLET".into(),
+            plan: "pro".into(),
+            amount_usdc: "50".into(),
+            asset_code: "USDC".into(),
+            asset_issuer: MAINNET_USDC_ISSUER.into(),
+            destination: TREASURY.into(),
+            memo: "payraider-abc123def456".into(),
+            limit_per_minute: 1000,
             period_days: 30,
-            limit_per_minute: 1_000,
-            horizon_url: "https://horizon.stellar.org".to_string(),
+            status: "pending".into(),
+            transaction_hash: None,
+            created_at: "2026-10-01T00:00:00Z".into(),
+            expires_at: "2026-10-02T00:00:00Z".into(),
+            paid_at: None,
         }
     }
 
-    fn payment_op() -> HorizonPayment {
-        HorizonPayment {
-            op_type: "payment".to_string(),
-            asset_code: Some("USDC".to_string()),
-            asset_issuer: Some(MAINNET_USDC_ISSUER.to_string()),
-            amount: Some("50".to_string()),
-            destination: Some("GTREASURYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
-            source_account: None,
-            destination_asset_code: None,
-            destination_asset_issuer: None,
-            destination_amount: None,
+    fn transaction() -> HorizonTransaction {
+        HorizonTransaction {
+            hash: "a".repeat(64),
+            successful: true,
+            memo_type: "text".into(),
+            memo: Some("payraider-abc123def456".into()),
+            created_at: "2026-10-01T00:10:00Z".into(),
+        }
+    }
+
+    fn usdc_payment(to: &str, amount: &str) -> HorizonOperation {
+        HorizonOperation {
+            kind: "payment".into(),
+            to: Some(to.into()),
+            asset_type: Some("credit_alphanum4".into()),
+            asset_code: Some("USDC".into()),
+            asset_issuer: Some(MAINNET_USDC_ISSUER.into()),
+            amount: Some(amount.into()),
         }
     }
 
     #[test]
-    fn accepts_matching_payment() {
-        let cfg = config();
-        let op = payment_op();
-        assert_eq!(delivered_amount(&op, &cfg), Some(Decimal::from_str("50").unwrap()));
+    fn accepts_an_exact_payment() {
+        assert!(check_payment(
+            &invoice(),
+            &transaction(),
+            &[usdc_payment(TREASURY, "50.0000000")]
+        )
+        .is_ok());
     }
 
     #[test]
-    fn rejects_wrong_issuer() {
-        let cfg = config();
-        let mut op = payment_op();
-        op.asset_issuer = Some(TESTNET_USDC_ISSUER.to_string());
-        assert_eq!(delivered_amount(&op, &cfg), None);
+    fn accepts_an_overpayment_split_across_operations() {
+        let ops = [usdc_payment(TREASURY, "30"), usdc_payment(TREASURY, "25")];
+        assert!(check_payment(&invoice(), &transaction(), &ops).is_ok());
     }
 
     #[test]
-    fn rejects_fake_usdc_code() {
-        let cfg = config();
-        let mut op = payment_op();
-        op.asset_code = Some("FAKEUSDC".to_string());
-        assert_eq!(delivered_amount(&op, &cfg), None);
+    fn rejects_an_underpayment() {
+        let err = check_payment(
+            &invoice(),
+            &transaction(),
+            &[usdc_payment(TREASURY, "49.9999999")],
+        );
+        assert!(err.unwrap_err().contains("is due"));
     }
 
     #[test]
-    fn rejects_wrong_destination() {
-        let cfg = config();
-        let mut op = payment_op();
-        op.destination = Some("GOTHERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string());
-        assert_eq!(delivered_amount(&op, &cfg), None);
+    fn rejects_payment_to_another_account() {
+        let other = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+        assert!(check_payment(&invoice(), &transaction(), &[usdc_payment(other, "50")]).is_err());
     }
 
     #[test]
-    fn rejects_non_payment_op() {
-        let cfg = config();
-        let mut op = payment_op();
-        op.op_type = "create_account".to_string();
-        assert_eq!(delivered_amount(&op, &cfg), None);
+    fn rejects_a_counterfeit_usdc_issuer() {
+        let mut op = usdc_payment(TREASURY, "50");
+        op.asset_issuer = Some("GFAKEISSUERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".into());
+        assert!(check_payment(&invoice(), &transaction(), &[op]).is_err());
     }
 
     #[test]
-    fn accepts_path_payment_delivering_usdc() {
-        let cfg = config();
-        let op = HorizonPayment {
-            op_type: "path_payment_strict_send".to_string(),
-            asset_code: Some("XLM".to_string()),
-            asset_issuer: None,
-            amount: Some("100".to_string()),
-            destination: Some("GTREASURYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
-            source_account: None,
-            destination_asset_code: Some("USDC".to_string()),
-            destination_asset_issuer: Some(MAINNET_USDC_ISSUER.to_string()),
-            destination_amount: Some("50".to_string()),
-        };
-        assert_eq!(delivered_amount(&op, &cfg), Some(Decimal::from_str("50").unwrap()));
+    fn rejects_a_native_xlm_payment() {
+        let mut op = usdc_payment(TREASURY, "50");
+        op.asset_type = Some("native".into());
+        op.asset_code = None;
+        op.asset_issuer = None;
+        assert!(check_payment(&invoice(), &transaction(), &[op]).is_err());
     }
 
     #[test]
-    fn rejects_path_payment_with_wrong_destination_asset() {
-        let cfg = config();
-        let op = HorizonPayment {
-            op_type: "path_payment_strict_send".to_string(),
-            asset_code: Some("XLM".to_string()),
-            asset_issuer: None,
-            amount: Some("100".to_string()),
-            destination: Some("GTREASURYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()),
-            source_account: None,
-            destination_asset_code: Some("USDC".to_string()),
-            destination_asset_issuer: Some(TESTNET_USDC_ISSUER.to_string()),
-            destination_amount: Some("50".to_string()),
-        };
-        assert_eq!(delivered_amount(&op, &cfg), None);
+    fn rejects_a_wrong_or_missing_memo() {
+        let mut tx = transaction();
+        tx.memo = Some("payraider-somethingelse".into());
+        assert!(check_payment(&invoice(), &tx, &[usdc_payment(TREASURY, "50")]).is_err());
+
+        let mut tx = transaction();
+        tx.memo_type = "none".into();
+        tx.memo = None;
+        assert!(check_payment(&invoice(), &tx, &[usdc_payment(TREASURY, "50")]).is_err());
+    }
+
+    #[test]
+    fn rejects_a_failed_transaction() {
+        let mut tx = transaction();
+        tx.successful = false;
+        assert!(check_payment(&invoice(), &tx, &[usdc_payment(TREASURY, "50")]).is_err());
+    }
+
+    #[test]
+    fn rejects_a_transaction_older_than_the_invoice() {
+        let mut tx = transaction();
+        tx.created_at = "2026-09-30T23:00:00Z".into();
+        assert!(check_payment(&invoice(), &tx, &[usdc_payment(TREASURY, "50")]).is_err());
+    }
+
+    #[test]
+    fn memos_fit_the_stellar_text_memo_limit() {
+        for _ in 0..50 {
+            assert!(new_memo().len() <= 28);
+        }
     }
 }
