@@ -1,5 +1,5 @@
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier},
+    password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
 };
 use serde::{Deserialize, Serialize};
