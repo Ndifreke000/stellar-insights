@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw, Clock, TrendingUp, AlertOctagon } from "lucide-react";
-import dynamic from "next/dynamic";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { SkeletonCard, SkeletonChart } from "@/components/ui/Skeleton";
 import { ErrorBoundary } from "@/components/ErrorBoundary";

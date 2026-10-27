@@ -5,7 +5,6 @@ import {
   Activity,
   AlertTriangle,
   Bell,
-  CheckCircle,
   Settings,
   TrendingDown,
   TrendingUp,

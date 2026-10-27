@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   RefreshCw,
   XOctagon,
   Copy,

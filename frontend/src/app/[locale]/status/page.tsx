@@ -12,8 +12,6 @@ import {
   Layers,
   Radio,
   Server,
-  TrendingDown,
-  ShieldAlert,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";

@@ -5,8 +5,6 @@ import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import {
   TrendingUp,
-  Search,
-  Filter,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
