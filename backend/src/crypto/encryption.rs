@@ -250,7 +250,8 @@ impl EncryptionService {
             return Err(EncryptionError::InvalidNonceLength(nonce_bytes.len()));
         }
 
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::try_from(nonce_bytes.as_slice())
+            .map_err(|_| EncryptionError::InvalidNonceLength(nonce_bytes.len()))?;
 
         let ciphertext_bytes = hex::decode(&encrypted.ciphertext)
             .map_err(|e| EncryptionError::InvalidCiphertextHex(e.to_string()))?;

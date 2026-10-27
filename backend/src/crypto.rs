@@ -21,14 +21,15 @@ pub fn encrypt_data(plain_text: &str, key_hex: &str) -> Result<String> {
         ));
     }
 
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::<Aes256Gcm>::try_from(key_bytes.as_slice())
+        .map_err(|_| anyhow!("Encryption key must be exactly 32 bytes (64 hex characters)"))?;
+    let cipher = Aes256Gcm::new(&key);
 
     // 96-bit nonce; unique per message. `AeadCore::generate_nonce` was removed
     // upstream, so the nonce is filled manually instead.
     let mut nonce_bytes = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = Nonce::from(nonce_bytes);
 
     let cipher_text = cipher
         .encrypt(&nonce, plain_text.as_bytes())
@@ -65,8 +66,9 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
         ));
     }
 
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::<Aes256Gcm>::try_from(key_bytes.as_slice())
+        .map_err(|_| anyhow!("Encryption key must be exactly 32 bytes (64 hex characters)"))?;
+    let cipher = Aes256Gcm::new(&key);
 
     let nonce_bytes = base64_standard
         .decode(parts[0])
@@ -75,7 +77,10 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
         .decode(parts[1])
         .map_err(|e| anyhow!("Invalid ciphertext base64: {e}"))?;
 
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    // The nonce comes from caller-supplied data; reject a wrong length
+    // instead of panicking.
+    let nonce = Nonce::try_from(nonce_bytes.as_slice())
+        .map_err(|_| anyhow!("Invalid nonce length: expected 12 bytes, got {}", nonce_bytes.len()))?;
 
     let plain_text_bytes = cipher
         .decrypt(nonce, cipher_text_bytes.as_ref())
