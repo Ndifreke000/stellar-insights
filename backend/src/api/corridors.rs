@@ -1312,7 +1312,7 @@ pub async fn get_corridor_failures(
     let total_pages = if total_items == 0 {
         0
     } else {
-        (total_items + page_size - 1) / page_size
+        total_items.div_ceil(page_size)
     };
 
     Ok(Json(PaginatedCorridorFailures {

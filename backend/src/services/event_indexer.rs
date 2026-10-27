@@ -276,7 +276,7 @@ impl EventIndexer {
             self.index_event(event.clone()).await?;
             indexed += 1;
 
-            if last_ledger.map_or(true, |l| event.ledger > l) {
+            if last_ledger.is_none_or(|l| event.ledger > l) {
                 last_ledger = Some(event.ledger);
             }
         }

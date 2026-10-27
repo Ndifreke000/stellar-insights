@@ -196,7 +196,7 @@ pub fn median_price(samples: &[f64]) -> Option<f64> {
 
     valid.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = valid.len() / 2;
-    if valid.len() % 2 == 0 {
+    if valid.len().is_multiple_of(2) {
         Some((valid[mid - 1] + valid[mid]) / 2.0)
     } else {
         Some(valid[mid])

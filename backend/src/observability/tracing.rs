@@ -265,8 +265,8 @@ where
         if let Some(TraceIds { trace_id, span_id }) = ids {
             if !trace_id.is_empty() {
                 // Record onto the current span so the fmt layer picks them up.
-                tracing::Span::current().record("trace_id", &trace_id.as_str());
-                tracing::Span::current().record("span_id", &span_id.as_str());
+                tracing::Span::current().record("trace_id", trace_id.as_str());
+                tracing::Span::current().record("span_id", span_id.as_str());
             }
         }
         let _ = event;

@@ -9,6 +9,12 @@ pub struct NetworkContextMiddleware {
     state: Arc<RwLock<String>>,
 }
 
+impl Default for NetworkContextMiddleware {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkContextMiddleware {
     pub fn new() -> Self {
         Self {

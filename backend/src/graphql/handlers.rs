@@ -16,7 +16,7 @@ pub async fn graphql_handler(
     State(schema): State<AppSchema>,
     req: Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
-    Json(schema.execute(req.0).await.into())
+    Json(schema.execute(req.0).await)
 }
 
 /// GraphQL Playground (GraphiQL) handler.

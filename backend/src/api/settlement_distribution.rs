@@ -257,7 +257,7 @@ fn fallback_data() -> SettlementDistributionResponse {
                 p50_ms: base,
                 p95_ms: base * 2.0,
                 p99_ms: base * 3.0,
-                sample_count: 15 + (h % 10) as i64,
+                sample_count: 15 + (h % 10),
             }
         })
         .collect();

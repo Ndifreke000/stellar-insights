@@ -434,7 +434,7 @@ impl EnhancedHealthChecker {
             return "unhealthy".to_string();
         }
 
-        if cache_health.healthy && !cache_health.message.is_some() {
+        if cache_health.healthy && cache_health.message.is_none() {
             return "healthy".to_string();
         }
 

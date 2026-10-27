@@ -293,9 +293,9 @@ impl QueryRoot {
         }
         if let Some(tr) = &time_range {
             query_builder.push(" AND timestamp >= ");
-            query_builder.push_bind(&tr.start);
+            query_builder.push_bind(tr.start);
             query_builder.push(" AND timestamp <= ");
-            query_builder.push_bind(&tr.end);
+            query_builder.push_bind(tr.end);
         }
 
         query_builder.push(" ORDER BY timestamp DESC LIMIT ");

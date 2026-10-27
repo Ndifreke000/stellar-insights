@@ -365,7 +365,7 @@ fn normalize_endpoint(uri: &str) -> String {
         .iter()
         .map(|part| {
             // Replace UUID-like and numeric IDs with placeholders
-            if part.len() > 20 || (part.len() > 0 && part.chars().all(|c| c.is_numeric())) {
+            if part.len() > 20 || (!part.is_empty() && part.chars().all(|c| c.is_numeric())) {
                 ":id"
             } else {
                 part
