@@ -7,14 +7,7 @@ import { Info, Phone, BookOpen, X, Menu } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./notifications";
 import { NetworkSwitcher } from "./NetworkSwitcher";
-
-/**
- * Non-product features (quests, governance, game) are kept in the codebase but
- * are not part of the off-ramp product. They are hidden from navigation by
- * default and can be re-enabled with NEXT_PUBLIC_ENABLE_NON_PRODUCT_FEATURES=true.
- */
-export const NON_PRODUCT_FEATURES_ENABLED =
-  process.env.NEXT_PUBLIC_ENABLE_NON_PRODUCT_FEATURES === "true";
+import { NON_PRODUCT_FEATURES_ENABLED } from "@/lib/featureFlags";
 
 const navLinkKeys = [
   { key: "aboutUs", href: "/about", icon: Info, descKey: "learnAbout" },
