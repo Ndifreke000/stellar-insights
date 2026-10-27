@@ -22,6 +22,7 @@ fn request(name: &str) -> CreateApiKeyRequest {
     CreateApiKeyRequest {
         name: name.to_string(),
         scopes: None,
+        rate_limit_per_minute: None,
         expires_at: None,
     }
 }
