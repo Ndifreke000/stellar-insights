@@ -79,8 +79,12 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
 
     // The nonce comes from caller-supplied data; reject a wrong length
     // instead of panicking.
-    let nonce = Nonce::try_from(nonce_bytes.as_slice())
-        .map_err(|_| anyhow!("Invalid nonce length: expected 12 bytes, got {}", nonce_bytes.len()))?;
+    let nonce = Nonce::try_from(nonce_bytes.as_slice()).map_err(|_| {
+        anyhow!(
+            "Invalid nonce length: expected 12 bytes, got {}",
+            nonce_bytes.len()
+        )
+    })?;
 
     let plain_text_bytes = cipher
         .decrypt(&nonce, cipher_text_bytes.as_ref())

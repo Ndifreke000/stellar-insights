@@ -124,8 +124,6 @@ impl SecretsService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
 
     #[tokio::test]
     async fn secrets_service_fallback_to_env() {

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::resolvers::*;
+
     use super::super::schema::*;
     use super::super::types::*;
     use async_graphql::*;

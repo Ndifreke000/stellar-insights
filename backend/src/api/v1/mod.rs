@@ -1,7 +1,6 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridors, cost_calculator, digest,
-    fee_bump, liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy,
-    webhooks,
+    account_merges, anchors, cache_stats, corridors, cost_calculator, digest, fee_bump,
+    liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
