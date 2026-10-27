@@ -83,7 +83,7 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
         .map_err(|_| anyhow!("Invalid nonce length: expected 12 bytes, got {}", nonce_bytes.len()))?;
 
     let plain_text_bytes = cipher
-        .decrypt(nonce, cipher_text_bytes.as_ref())
+        .decrypt(&nonce, cipher_text_bytes.as_ref())
         .map_err(|e| anyhow!("Decryption failed: {e}"))?;
 
     String::from_utf8(plain_text_bytes).map_err(|e| anyhow!("Invalid UTF-8 in decrypted data: {e}"))

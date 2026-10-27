@@ -257,7 +257,7 @@ impl EncryptionService {
             .map_err(|e| EncryptionError::InvalidCiphertextHex(e.to_string()))?;
 
         let plaintext_bytes = cipher
-            .decrypt(nonce, ciphertext_bytes.as_slice())
+            .decrypt(&nonce, ciphertext_bytes.as_slice())
             .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
 
         String::from_utf8(plaintext_bytes).map_err(|e| EncryptionError::InvalidUtf8(e.to_string()))
