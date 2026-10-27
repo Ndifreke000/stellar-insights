@@ -92,11 +92,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setIsConnected(true)
         }
 
-        // Ask the backend whether the httpOnly session cookie is still valid.
-        const session = await sep10AuthService.getSession()
-        if (session?.authenticated) {
-          setIsAuthenticated(true)
-        }
+        // The SEP-10 token is held in memory only (never in localStorage), so
+        // a reload starts unauthenticated until the backend offers an
+        // httpOnly session cookie that could be checked here.
       } catch (error) {
         logger.error('Error checking wallet connection:', error as string)
       }
@@ -177,11 +175,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // to a client-controlled value.
       const homeDomain = await fetchHomeDomain()
 
-      // Perform SEP-10 authentication. The backend sets an httpOnly session
-      // cookie on success; no token is returned to or stored by the frontend.
-      await sep10AuthService.authenticate(address, { homeDomain })
+      // Perform SEP-10 authentication and keep the bearer token in memory
+      // only, out of reach of anything that can read localStorage.
+      const { token } = await sep10AuthService.authenticate(address, { homeDomain })
 
-      setAuthToken(null)
+      setAuthToken(token)
       setIsAuthenticated(true)
     } catch (error) {
       logger.error('SEP-10 authentication failed:', error)
@@ -191,8 +189,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      // Backend clears the httpOnly cookie.
-      await sep10AuthService.logout()
+      // Invalidate the session server-side while we still hold the token.
+      if (authToken) {
+        await sep10AuthService.logout(authToken)
+      }
     } catch (error) {
       logger.error('Logout failed:', error)
     }
@@ -202,7 +202,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(false)
     localStorage.removeItem(STORAGE_KEYS.LEGACY_AUTH_TOKEN)
     localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN_EXPIRY)
-  }, [])
+  }, [authToken])
 
   const disconnectWallet = useCallback(async () => {
     // Logout first if authenticated
