@@ -171,5 +171,5 @@ export default withSentryConfig(finalConfig, {
   widenClientFileUpload: true,
   sourcemaps: { deleteSourcemapsAfterUpload: true },
   bundleSizeOptimizations: { excludeDebugStatements: true },
-  automaticVercelMonitors: true,
+  webpack: { automaticVercelMonitors: true },
 });
