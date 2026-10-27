@@ -226,7 +226,7 @@ export default function QuestsPage() {
                       {entry.xp}
                     </td>
                     <td className="py-3 text-right text-muted-foreground">
-                      {entry.quests}
+                      {entry.completed}
                     </td>
                   </tr>
                 ))}
