@@ -203,6 +203,60 @@ pub fn median_price(samples: &[f64]) -> Option<f64> {
     }
 }
 
+/// Default asset mapping for common Stellar assets
+#[must_use]
+pub fn default_asset_mapping() -> HashMap<String, String> {
+    let mut mapping = HashMap::new();
+
+    // Native XLM
+    mapping.insert("XLM:native".to_string(), "stellar".to_string());
+    mapping.insert("native".to_string(), "stellar".to_string());
+
+    // USDC
+    mapping.insert(
+        "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+        "usd-coin".to_string(),
+    );
+
+    // EURC
+    mapping.insert(
+        "EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2".to_string(),
+        "euro-coin".to_string(),
+    );
+
+    // USDT
+    mapping.insert(
+        "USDT:GCQTGZQQ5G4PTM2GL7CDIFKUBIPEC52BROAQIAPW53XBRJVN6ZJVTG6V".to_string(),
+        "tether".to_string(),
+    );
+
+    // BTC (various anchors)
+    mapping.insert(
+        "BTC:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI".to_string(),
+        "bitcoin".to_string(),
+    );
+
+    // ETH (various anchors)
+    mapping.insert(
+        "ETH:GDXTJEK4JZNSTNQAWA53RZNS2GIKTDRPEUWDXELFMKU52XNECNVDVXDI".to_string(),
+        "ethereum".to_string(),
+    );
+
+    // yXLM (Ultra Stellar)
+    mapping.insert(
+        "yXLM:GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55".to_string(),
+        "stellar".to_string(),
+    );
+
+    // AQUA
+    mapping.insert(
+        "AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA".to_string(),
+        "aquarius".to_string(),
+    );
+
+    mapping
+}
+
 /// Main price feed client with caching
 pub struct PriceFeedClient {
     provider: Arc<dyn PriceFeedProvider>,
@@ -378,6 +432,59 @@ impl PriceFeedClient {
             }
         }
         Ok(result)
+    }
+
+    /// Convert an amount in a Stellar asset to USD. Fails when the price is
+    /// unknown (missing mapping, all providers failed, or stale).
+    pub async fn convert_to_usd(&self, stellar_asset: &str, amount: f64) -> Result<f64> {
+        let price = self.get_price(stellar_asset).await?;
+        Ok(amount * price)
+    }
+
+    /// Get a price together with a staleness flag.
+    ///
+    /// Prices older than `max_staleness_seconds` are still treated as unknown
+    /// (an error), as in [`Self::get_price`]. `stale` is true when the value
+    /// served is a cached price past `cache_ttl_seconds`, i.e. a fallback after
+    /// the providers failed to refresh it.
+    pub async fn get_price_with_staleness(&self, stellar_asset: &str) -> Result<(f64, bool)> {
+        let price = self.get_price(stellar_asset).await?;
+        let stale = self
+            .cache
+            .read()
+            .await
+            .get(stellar_asset)
+            .is_some_and(|c| c.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds);
+        Ok((price, stale))
+    }
+
+    /// Get prices for several assets plus the set of assets whose value came
+    /// from a cache entry past `cache_ttl_seconds`. Unknown prices are omitted.
+    pub async fn get_prices_with_staleness(
+        &self,
+        assets: &[String],
+    ) -> (HashMap<String, f64>, std::collections::HashSet<String>) {
+        let result = self.get_prices(assets).await.unwrap_or_default();
+        let mut stale_assets = std::collections::HashSet::new();
+
+        let cache = self.cache.read().await;
+        for asset in result.keys() {
+            if let Some(cached) = cache.get(asset) {
+                if cached.timestamp.elapsed().as_secs() >= self.config.cache_ttl_seconds {
+                    stale_assets.insert(asset.clone());
+                }
+            }
+        }
+
+        (result, stale_assets)
+    }
+
+    /// Warm the cache by fetching prices for every mapped asset.
+    pub async fn warm_cache(&self) -> Result<()> {
+        let common_assets: Vec<String> = self.asset_mapping.keys().cloned().collect();
+        info!("Warming price cache for {} assets", common_assets.len());
+        let _ = self.get_prices(&common_assets).await;
+        Ok(())
     }
 
     /// Clear the price cache (useful for testing)
