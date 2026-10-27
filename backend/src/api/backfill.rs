@@ -164,8 +164,8 @@ pub async fn resume_backfill(
     );
 
     let backfill_req = BackfillRequest {
-        from_ledger,
-        to_ledger: req.head_ledger,
+        from_ledger: u64::from(from_ledger),
+        to_ledger: u64::from(req.head_ledger),
         contract_id: req.contract_id,
         delay_ms: req.delay_ms,
     };

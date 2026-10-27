@@ -136,6 +136,23 @@ impl BackfillJob {
         }
     }
 
+    /// The last ledger the indexer has durably processed (its persisted
+    /// `last_processed_ledger` cursor), or 0 when there is no checkpoint yet.
+    ///
+    /// A read failure is logged and also reported as 0. The resume endpoint
+    /// then sees a gap wider than the retention window and asks for a manual
+    /// backfill instead of guessing a starting point.
+    pub async fn last_ledger(&self) -> u32 {
+        match self.event_indexer.get_last_processed_ledger().await {
+            Ok(Some(ledger)) => u32::try_from(ledger).unwrap_or(u32::MAX),
+            Ok(None) => 0,
+            Err(e) => {
+                warn!(error = %e, "Failed to read the indexer checkpoint");
+                0
+            }
+        }
+    }
+
     /// Validate the request and spawn the backfill worker as a background task.
     ///
     /// Returns immediately; progress can be polled via the shared [`BackfillStateRef`].
