@@ -132,7 +132,7 @@ pub mod redaction {
     /// Redact sensitive patterns from span attributes
     pub fn redact_value(value: &str) -> String {
         let lower = value.to_lowercase();
-        let mut result = value.to_string();
+        let result = value.to_string();
 
         // Check for sensitive keywords and redact the entire value if found
         let sensitive_keywords = [

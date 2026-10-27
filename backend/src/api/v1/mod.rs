@@ -1,5 +1,5 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridor_alerts, corridors, cost_calculator, digest,
+    account_merges, anchors, cache_stats, corridors, cost_calculator, digest,
     fee_bump, liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy,
     webhooks,
 };

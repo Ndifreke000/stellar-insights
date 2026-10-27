@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_lock::RwLock;
 use reqwest::Client;
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};

@@ -4,12 +4,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
-use redis::aio::MultiplexedConnection;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::services::request_signing::RequestSigningService;
 

@@ -6,11 +6,10 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::{get, post, put},
+    response::IntoResponse,
+    routing::{get, post},
     Json, Router,
 };
-use std::sync::Arc;
 
 use crate::{
     auth_middleware::AuthUser,
@@ -20,7 +19,6 @@ use crate::{
         CorridorPerformanceSummary, CorridorPerformanceTimeline, CreateCorridorAlertConfigRequest,
         SimulateStatusChangeRequest, UpdateCorridorAlertConfigRequest,
     },
-    services::corridor_performance_monitor::CorridorPerformanceMonitor,
     state::AppState,
     validation::ValidatedJson,
 };

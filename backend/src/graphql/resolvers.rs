@@ -64,7 +64,7 @@ impl QueryRoot {
     /// Get all anchors with optional filtering and pagination
     async fn anchors(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         filter: Option<AnchorFilter>,
         pagination: Option<PaginationInput>,
     ) -> Result<AnchorsConnection> {
@@ -164,7 +164,7 @@ impl QueryRoot {
     /// Get all corridors with optional filtering and pagination
     async fn corridors(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         filter: Option<CorridorFilter>,
         pagination: Option<PaginationInput>,
     ) -> Result<CorridorsConnection> {

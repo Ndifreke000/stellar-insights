@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
-use tracing::{info, warn};
 
 fn retry_strategy() -> impl Iterator<Item = Duration> {
     ExponentialBackoff::from_millis(200)
@@ -15,7 +13,7 @@ fn retry_strategy() -> impl Iterator<Item = Duration> {
 }
 
 use crate::network::StellarNetwork;
-use crate::rpc::{GetLedgersResult, RpcLedger, StellarRpcClient};
+use crate::rpc::StellarRpcClient;
 use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 use crate::shutdown::ShutdownFlag;
@@ -269,7 +267,7 @@ impl LedgerIngestionService {
     }
 
     /// I'm running the main ingestion loop - fetches ledgers and persists them
-    pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
+    pub async fn run_ingestion(&self, _batch_size: u32) -> Result<u64> {
         let cursor = self.get_cursor().await?;
         let start_ledger = if let Some(l) = self.get_last_ledger().await? {
             Some(l + 1)

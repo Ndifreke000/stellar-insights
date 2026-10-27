@@ -39,7 +39,7 @@ impl TwoFAService {
     }
 
     /// Generate TOTP secret and return otpauth URI for QR code + raw secret
-    pub fn generate_totp_secret(&self, user_id: &str, username: &str) -> Result<(String, String)> {
+    pub fn generate_totp_secret(&self, _user_id: &str, username: &str) -> Result<(String, String)> {
         use base32::{encode, Alphabet};
 
         // 160 bits from the CSPRNG, the secret size RFC 4226 recommends. A

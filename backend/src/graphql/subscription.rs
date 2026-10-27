@@ -1,6 +1,5 @@
 use async_graphql::*;
 use futures::{Stream, StreamExt};
-use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use super::types::*;
@@ -25,7 +24,7 @@ impl SubscriptionRoot {
     /// Optional `corridor_key` filter to receive updates for a specific corridor.
     async fn corridor_updates(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         corridor_key: Option<String>,
     ) -> impl Stream<Item = Result<CorridorUpdateEvent, Error>> {
         let mut rx = self.broadcast_rx.subscribe();
@@ -87,7 +86,7 @@ impl SubscriptionRoot {
     /// Optional `anchor_id` filter to receive updates for a specific anchor.
     async fn anchor_updates(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         anchor_id: Option<String>,
     ) -> impl Stream<Item = Result<AnchorUpdateEvent, Error>> {
         let mut rx = self.broadcast_rx.subscribe();
@@ -135,7 +134,7 @@ impl SubscriptionRoot {
     /// Emits a `SnapshotUpdateEvent` whenever a new on-chain snapshot is generated.
     async fn snapshot_updates(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
     ) -> impl Stream<Item = Result<SnapshotUpdateEvent, Error>> {
         let mut rx = self.broadcast_rx.subscribe();
 
@@ -174,7 +173,7 @@ impl SubscriptionRoot {
     /// Optional `severity` filter (e.g., "critical", "warning").
     async fn health_alerts(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         severity: Option<String>,
     ) -> impl Stream<Item = Result<HealthAlertEvent, Error>> {
         let mut rx = self.broadcast_rx.subscribe();
@@ -224,7 +223,7 @@ impl SubscriptionRoot {
     /// Optional `corridor_id` filter to receive updates for a specific corridor.
     async fn new_payments(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         corridor_id: Option<String>,
     ) -> impl Stream<Item = Result<NewPaymentEvent, Error>> {
         let mut rx = self.broadcast_rx.subscribe();
