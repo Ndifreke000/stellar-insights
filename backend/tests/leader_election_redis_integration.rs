@@ -95,7 +95,10 @@ async fn failover_happens_within_one_lease_ttl() {
         (&election_b, &election_a)
     };
     assert!(leader.is_leader(), "setup: one side must be leader first");
-    assert!(!standby.is_leader(), "setup: the other side must be standby");
+    assert!(
+        !standby.is_leader(),
+        "setup: the other side must be standby"
+    );
 
     // Simulate the leader's process dying ungracefully (crash, OOM-kill,
     // network partition) rather than shutting down cleanly: `stop()` aborts

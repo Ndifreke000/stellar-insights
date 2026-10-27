@@ -17,12 +17,7 @@ async fn get_preflight(query: &str) -> (StatusCode, serde_json::Value) {
     let app = test_app().await;
     let uri = format!("/api/v1/preflight?{}", query);
     let response = app
-        .oneshot(
-            Request::builder()
-                .uri(uri)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
         .await
         .unwrap();
     let status = response.status();
@@ -111,7 +106,10 @@ async fn preflight_recent_outage_downgrades_verdict() {
     let short = body["short_window_success_rate"].as_f64();
     let long = body["long_window_success_rate"].as_f64();
     if let (Some(short), Some(long)) = (short, long) {
-        assert!(short < long, "short window {short} should be below long {long}");
+        assert!(
+            short < long,
+            "short window {short} should be below long {long}"
+        );
     }
 }
 
@@ -182,12 +180,18 @@ async fn preflight_small_sample_is_less_confident_than_large() {
 
     let small_lower = small_body["checks"]
         .as_array()
-        .and_then(|c| c.iter().find(|c| c["name"].as_str() == Some("success_rate")))
+        .and_then(|c| {
+            c.iter()
+                .find(|c| c["name"].as_str() == Some("success_rate"))
+        })
         .and_then(|c| c["detail"]["wilson_lower_bound"].as_f64())
         .expect("small sample wilson bound");
     let large_lower = large_body["checks"]
         .as_array()
-        .and_then(|c| c.iter().find(|c| c["name"].as_str() == Some("success_rate")))
+        .and_then(|c| {
+            c.iter()
+                .find(|c| c["name"].as_str() == Some("success_rate"))
+        })
         .and_then(|c| c["detail"]["wilson_lower_bound"].as_f64())
         .expect("large sample wilson bound");
 

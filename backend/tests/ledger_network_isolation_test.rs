@@ -56,7 +56,12 @@ async fn insert_payment(pool: &SqlitePool, network: &str, destination: &str) {
 async fn cross_network_query_returns_nothing() {
     let pool = setup().await;
 
-    insert_payment(&pool, "testnet", "GBTESTDESTACCOUNT00000000000000000000000000000000000TEST").await;
+    insert_payment(
+        &pool,
+        "testnet",
+        "GBTESTDESTACCOUNT00000000000000000000000000000000000TEST",
+    )
+    .await;
 
     // Querying mainnet for data that was only ever ingested on testnet must
     // come back empty — not fall back to some default, and not return the
@@ -83,8 +88,18 @@ async fn cross_network_query_returns_nothing() {
 async fn mainnet_and_testnet_payments_do_not_mix() {
     let pool = setup().await;
 
-    insert_payment(&pool, "mainnet", "GAMAINNETDEST000000000000000000000000000000000000000A").await;
-    insert_payment(&pool, "testnet", "GATESTNETDEST000000000000000000000000000000000000000B").await;
+    insert_payment(
+        &pool,
+        "mainnet",
+        "GAMAINNETDEST000000000000000000000000000000000000000A",
+    )
+    .await;
+    insert_payment(
+        &pool,
+        "testnet",
+        "GATESTNETDEST000000000000000000000000000000000000000B",
+    )
+    .await;
 
     let mainnet_rows: Vec<(String,)> =
         sqlx::query_as("SELECT destination FROM ledger_payments WHERE network = 'mainnet'")

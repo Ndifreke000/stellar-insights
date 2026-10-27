@@ -53,7 +53,11 @@ async fn test_register_and_list_device_tokens() -> Result<()> {
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_string(&payload)?))?;
 
-    let resp = router.clone().oneshot(req).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let resp = router
+        .clone()
+        .oneshot(req)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     assert_eq!(resp.status(), StatusCode::OK);
 
     // List devices
@@ -62,7 +66,11 @@ async fn test_register_and_list_device_tokens() -> Result<()> {
         .uri(format!("/devices/{account}"))
         .body(Body::empty())?;
 
-    let list_resp = router.clone().oneshot(list_req).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let list_resp = router
+        .clone()
+        .oneshot(list_req)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     assert_eq!(list_resp.status(), StatusCode::OK);
 
     // Deregister device
@@ -71,7 +79,11 @@ async fn test_register_and_list_device_tokens() -> Result<()> {
         .uri(format!("/devices/{token}"))
         .body(Body::empty())?;
 
-    let del_resp = router.clone().oneshot(delete_req).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let del_resp = router
+        .clone()
+        .oneshot(delete_req)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     assert_eq!(del_resp.status(), StatusCode::OK);
 
     Ok(())
