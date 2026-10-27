@@ -7,6 +7,13 @@ use crate::models::api_key::{
     generate_api_key, ApiKey, ApiKeyInfo, CreateApiKeyRequest, CreateApiKeyResponse,
 };
 
+/// Columns of an API key row plus its configured per-minute limit. The limit
+/// lives in `api_keys_rate_limit_config` (the table the rate limiter reads);
+/// keys without a row report the limiter's default.
+const KEY_SELECT: &str = "SELECT k.*, COALESCE(c.limit_per_minute, 200) AS rate_limit_per_minute \
+     FROM api_keys k LEFT JOIN api_keys_rate_limit_config c ON c.api_key_id = k.id";
+
+
 pub struct ApiKeyDb {
     pool: SqlitePool,
 }
@@ -59,7 +66,19 @@ impl ApiKeyDb {
             )
         })?;
 
-        let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+        if let Some(limit) = req.rate_limit_per_minute {
+            anyhow::ensure!(limit > 0, "rate_limit_per_minute must be positive");
+            sqlx::query(
+                "INSERT INTO api_keys_rate_limit_config (api_key_id, limit_per_minute) VALUES ($1, $2)",
+            )
+            .bind(&id)
+            .bind(limit)
+            .execute(&mut *tx)
+            .await
+            .with_context(|| format!("Failed to store rate limit for API key id: {}", id))?;
+        }
+
+        let key = sqlx::query_as::<_, ApiKey>(&format!("{KEY_SELECT} WHERE k.id = $1"))
             .bind(&id)
             .fetch_one(&mut *tx)
             .await
@@ -81,13 +100,9 @@ impl ApiKeyDb {
     /// Lists all API keys for a given wallet address.
     #[tracing::instrument(skip(self), fields(wallet_address = %wallet_address))]
     pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
-        let keys = sqlx::query_as::<_, ApiKey>(
-            r"
-            SELECT * FROM api_keys
-            WHERE wallet_address = $1
-            ORDER BY created_at DESC
-            ",
-        )
+        let keys = sqlx::query_as::<_, ApiKey>(&format!(
+            "{KEY_SELECT} WHERE k.wallet_address = $1 ORDER BY k.created_at DESC"
+        ))
         .bind(wallet_address)
         .fetch_all(&self.pool)
         .await
@@ -102,9 +117,9 @@ impl ApiKeyDb {
         id: &str,
         wallet_address: &str,
     ) -> Result<Option<ApiKeyInfo>> {
-        let key = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE id = $1 AND wallet_address = $2",
-        )
+        let key = sqlx::query_as::<_, ApiKey>(&format!(
+            "{KEY_SELECT} WHERE k.id = $1 AND k.wallet_address = $2"
+        ))
         .bind(id)
         .bind(wallet_address)
         .fetch_optional(&self.pool)
@@ -158,12 +173,9 @@ impl ApiKeyDb {
             )
         })?;
 
-        let existing = sqlx::query_as::<_, ApiKey>(
-            r"
-                SELECT * FROM api_keys
-                WHERE id = $1 AND wallet_address = $2 AND status = 'active'
-                ",
-        )
+        let existing = sqlx::query_as::<_, ApiKey>(&format!(
+            "{KEY_SELECT} WHERE k.id = $1 AND k.wallet_address = $2 AND k.status = 'active'"
+        ))
         .bind(id)
         .bind(wallet_address)
         .fetch_optional(&mut *tx)
@@ -227,7 +239,18 @@ impl ApiKeyDb {
             )
         })?;
 
-        let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+        // Keep a custom per-key limit across rotation.
+        sqlx::query(
+            "INSERT INTO api_keys_rate_limit_config (api_key_id, limit_per_minute)
+             SELECT $1, limit_per_minute FROM api_keys_rate_limit_config WHERE api_key_id = $2",
+        )
+        .bind(&new_id)
+        .bind(&existing.id)
+        .execute(&mut *tx)
+        .await
+        .with_context(|| format!("Failed to copy rate limit to rotated API key id: {}", new_id))?;
+
+        let key = sqlx::query_as::<_, ApiKey>(&format!("{KEY_SELECT} WHERE k.id = $1"))
             .bind(&new_id)
             .fetch_one(&mut *tx)
             .await
@@ -257,9 +280,9 @@ impl ApiKeyDb {
 
         let prefix = extract_key_prefix(plain_key);
 
-        let candidates = sqlx::query_as::<_, ApiKey>(
-            "SELECT * FROM api_keys WHERE key_prefix = $1 AND status = 'active'",
-        )
+        let candidates = sqlx::query_as::<_, ApiKey>(&format!(
+            "{KEY_SELECT} WHERE k.key_prefix = $1 AND k.status = 'active'"
+        ))
         .bind(&prefix)
         .fetch_all(&self.pool)
         .await
