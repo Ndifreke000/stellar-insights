@@ -65,7 +65,9 @@ impl CacheInvalidationService {
     /// invalidation self-heals within one ingestion cycle.
     pub async fn invalidate_preflight_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating preflight corridor table cache");
-        self.cache.delete(PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY).await?;
+        self.cache
+            .delete(PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY)
+            .await?;
         Ok(())
     }
 

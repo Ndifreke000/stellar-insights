@@ -45,7 +45,9 @@ impl SnapshotRef {
         }
         if raw.bytes().all(|b| b.is_ascii_digit()) {
             return match raw.parse::<u64>() {
-                Ok(0) => Err(InvalidSnapshotRef("epoch must be greater than 0".to_string())),
+                Ok(0) => Err(InvalidSnapshotRef(
+                    "epoch must be greater than 0".to_string(),
+                )),
                 Ok(epoch) => Ok(Self::Epoch(epoch)),
                 Err(_) => Err(InvalidSnapshotRef("epoch is out of range".to_string())),
             };
@@ -242,10 +244,12 @@ pub async fn load_stored_snapshot(
                 .await?
         }
         SnapshotRef::Epoch(epoch) => {
-            sqlx::query(&format!("{base} epoch = ? ORDER BY created_at DESC LIMIT 1"))
-                .bind(*epoch as i64)
-                .fetch_optional(pool)
-                .await?
+            sqlx::query(&format!(
+                "{base} epoch = ? ORDER BY created_at DESC LIMIT 1"
+            ))
+            .bind(*epoch as i64)
+            .fetch_optional(pool)
+            .await?
         }
     };
 

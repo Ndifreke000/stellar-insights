@@ -402,8 +402,7 @@ impl EnhancedHealthChecker {
 
         if !db_writable.healthy {
             recommendations.push(
-                "Database rejected a write. It may be read-only, full, or recovering."
-                    .to_string(),
+                "Database rejected a write. It may be read-only, full, or recovering.".to_string(),
             );
         }
 
@@ -577,8 +576,7 @@ mod tests {
         let db_health = DetailedComponentHealth::healthy(10);
         let cache_health = DetailedComponentHealth::healthy(10);
         let rpc_health = DetailedComponentHealth::healthy(10);
-        let not_writable =
-            DetailedComponentHealth::unhealthy(10, "disk full".to_string());
+        let not_writable = DetailedComponentHealth::unhealthy(10, "disk full".to_string());
         let freshness = fresh_status(10, DEFAULT_MAX_INGESTION_LAG_SECONDS);
 
         assert_eq!(

@@ -13,7 +13,6 @@ use crate::models::api_key::{
 const KEY_SELECT: &str = "SELECT k.*, COALESCE(c.limit_per_minute, 200) AS rate_limit_per_minute \
      FROM api_keys k LEFT JOIN api_keys_rate_limit_config c ON c.api_key_id = k.id";
 
-
 pub struct ApiKeyDb {
     pool: SqlitePool,
 }
@@ -248,7 +247,12 @@ impl ApiKeyDb {
         .bind(&existing.id)
         .execute(&mut *tx)
         .await
-        .with_context(|| format!("Failed to copy rate limit to rotated API key id: {}", new_id))?;
+        .with_context(|| {
+            format!(
+                "Failed to copy rate limit to rotated API key id: {}",
+                new_id
+            )
+        })?;
 
         let key = sqlx::query_as::<_, ApiKey>(&format!("{KEY_SELECT} WHERE k.id = $1"))
             .bind(&new_id)

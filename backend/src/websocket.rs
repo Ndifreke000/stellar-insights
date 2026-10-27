@@ -962,11 +962,16 @@ async fn handle_socket(
                                 }
                             }
                         } else {
-                            warn!("Failed to parse WebSocket message from {}: {}", connection_id, text);
+                            warn!(
+                                "Failed to parse WebSocket message from {}: {}",
+                                connection_id, text
+                            );
                             let _ = send_ws_message(
                                 &recv_sender,
                                 &WsMessage::Error {
-                                    message: "Invalid message format. Expected JSON with a 'type' field.".to_string(),
+                                    message:
+                                        "Invalid message format. Expected JSON with a 'type' field."
+                                            .to_string(),
                                 },
                             )
                             .await;

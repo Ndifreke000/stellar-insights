@@ -56,10 +56,10 @@ use payraider_backend::{
 // Telegram and Slack notification bots are optional: they're excluded from
 // the default binary (smaller artifact, smaller attack surface) and only
 // compiled in when their feature is explicitly enabled.
-#[cfg(feature = "telegram-bot")]
-use payraider_backend::telegram::{SubscriptionService, TelegramBot};
 #[cfg(feature = "slack-bot")]
 use payraider_backend::services::slack_bot::SlackBotService;
+#[cfg(feature = "telegram-bot")]
+use payraider_backend::telegram::{SubscriptionService, TelegramBot};
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;

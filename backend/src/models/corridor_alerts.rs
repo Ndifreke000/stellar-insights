@@ -161,4 +161,3 @@ pub struct SimulateStatusChangeRequest {
     #[validate(length(min = 1, max = 64, message = "target_status must not be empty"))]
     pub target_status: String,
 }
-

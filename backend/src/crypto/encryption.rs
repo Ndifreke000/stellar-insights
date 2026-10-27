@@ -29,10 +29,7 @@ pub enum EncryptionError {
     /// The ciphertext was not valid hex.
     InvalidCiphertextHex(String),
     /// The key version is unknown to this service.
-    KeyVersionMismatch {
-        required: u32,
-        available: u32,
-    },
+    KeyVersionMismatch { required: u32, available: u32 },
     /// AEAD authentication failed (tampered ciphertext or wrong key).
     DecryptionFailed(String),
     /// The decrypted bytes were not valid UTF-8.
@@ -189,7 +186,11 @@ impl EncryptionService {
     }
 
     /// Builder method to register a historical key version for key rotation.
-    pub fn with_previous_key(mut self, version: u32, key_hex: &str) -> Result<Self, EncryptionError> {
+    pub fn with_previous_key(
+        mut self,
+        version: u32,
+        key_hex: &str,
+    ) -> Result<Self, EncryptionError> {
         self.add_previous_key(version, key_hex)?;
         Ok(self)
     }
@@ -258,8 +259,7 @@ impl EncryptionService {
             .decrypt(nonce, ciphertext_bytes.as_slice())
             .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
 
-        String::from_utf8(plaintext_bytes)
-            .map_err(|e| EncryptionError::InvalidUtf8(e.to_string()))
+        String::from_utf8(plaintext_bytes).map_err(|e| EncryptionError::InvalidUtf8(e.to_string()))
     }
 }
 

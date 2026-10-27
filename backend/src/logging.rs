@@ -3,8 +3,8 @@ pub mod redaction;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub use redaction::{
-    hash_key_id, redact_account, redact_amount, redact_email, redact_hash, redact_ip,
-    redact_token, redact_user_id, Redacted,
+    hash_key_id, redact_account, redact_amount, redact_email, redact_hash, redact_ip, redact_token,
+    redact_user_id, Redacted,
 };
 
 /// Carries the hashed API key ID (see `redaction::hash_key_id`) that

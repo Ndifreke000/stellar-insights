@@ -136,12 +136,13 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
     let cache_health = check_cache(&app_state.cache).await;
     let rpc_health = check_rpc(&app_state.rpc_client).await;
 
-    let freshness_status = crate::health_check_enhanced::EnhancedHealthChecker::check_ingestion_lag_enhanced(
-        &app_state.db,
-        app_state.network_context.network,
-        crate::health_check_enhanced::DEFAULT_MAX_INGESTION_LAG_SECONDS,
-    )
-    .await;
+    let freshness_status =
+        crate::health_check_enhanced::EnhancedHealthChecker::check_ingestion_lag_enhanced(
+            &app_state.db,
+            app_state.network_context.network,
+            crate::health_check_enhanced::DEFAULT_MAX_INGESTION_LAG_SECONDS,
+        )
+        .await;
 
     let is_high_lag = freshness_status
         .lag_seconds

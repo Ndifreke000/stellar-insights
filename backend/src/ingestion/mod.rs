@@ -365,7 +365,10 @@ mod tests {
     #[test]
     fn ignores_success_and_untracked_codes() {
         assert_eq!(PathPaymentFailureCode::from_result_code("op_success"), None);
-        assert_eq!(PathPaymentFailureCode::from_result_code("op_no_issuer"), None);
+        assert_eq!(
+            PathPaymentFailureCode::from_result_code("op_no_issuer"),
+            None
+        );
     }
 
     #[test]

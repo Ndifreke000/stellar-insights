@@ -75,12 +75,10 @@ impl JobAlertConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1800),
-            ingestion_lag_threshold_seconds: std::env::var(
-                "INGESTION_LAG_ALERT_THRESHOLD_SECONDS",
-            )
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(INGESTION_LAG_ALERT_THRESHOLD_SECONDS),
+            ingestion_lag_threshold_seconds: std::env::var("INGESTION_LAG_ALERT_THRESHOLD_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(INGESTION_LAG_ALERT_THRESHOLD_SECONDS),
         }
     }
 }
@@ -307,7 +305,9 @@ mod tests {
     async fn ingestion_lag_below_threshold_does_not_alert() {
         let manager = JobAlertManager::new(JobAlertConfig::default());
         // Should not panic / should be a no-op below threshold.
-        manager.check_ingestion_lag(INGESTION_LAG_ALERT_THRESHOLD_SECONDS).await;
+        manager
+            .check_ingestion_lag(INGESTION_LAG_ALERT_THRESHOLD_SECONDS)
+            .await;
     }
 
     #[tokio::test]
@@ -320,6 +320,9 @@ mod tests {
 
     #[test]
     fn default_threshold_is_five_minutes() {
-        assert_eq!(JobAlertConfig::default().ingestion_lag_threshold_seconds, 300);
+        assert_eq!(
+            JobAlertConfig::default().ingestion_lag_threshold_seconds,
+            300
+        );
     }
 }

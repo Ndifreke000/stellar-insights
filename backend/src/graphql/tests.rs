@@ -563,7 +563,11 @@ mod tests {
         build_schema_with_limits(
             Arc::new(pool),
             tx,
-            GraphqlLimits { max_depth: 3, max_complexity: 50, introspection },
+            GraphqlLimits {
+                max_depth: 3,
+                max_complexity: 50,
+                introspection,
+            },
         )
     }
 
@@ -572,7 +576,10 @@ mod tests {
         let res = limited_schema(true)
             .execute("{ __schema { types { fields { type { name } } } } }")
             .await;
-        assert!(!res.errors.is_empty(), "query deeper than max_depth must fail");
+        assert!(
+            !res.errors.is_empty(),
+            "query deeper than max_depth must fail"
+        );
     }
 
     #[tokio::test]
