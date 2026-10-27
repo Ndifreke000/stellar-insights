@@ -635,7 +635,7 @@ pub(crate) async fn compute_live_corridors(
         .filter_map(|k| k.split("->").next())
         .map(String::from)
         .collect();
-    let prices = price_feed.get_prices(&source_assets).await;
+    let prices = price_feed.get_prices(&source_assets).await.unwrap_or_default();
 
     for (corridor_key, corridor_payments) in &corridor_map {
         let total_attempts = corridor_payments.len() as i64;
@@ -1016,7 +1016,7 @@ pub async fn get_corridor_detail(
             .filter_map(|k| k.split("->").next())
             .map(String::from)
             .collect();
-        let related_prices = price_feed.get_prices(&related_source_assets).await;
+        let related_prices = price_feed.get_prices(&related_source_assets).await.unwrap_or_default();
 
         // Build all corridor responses for related corridors lookup
         for (key, corr_payments) in &corridor_map {
