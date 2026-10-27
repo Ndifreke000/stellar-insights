@@ -1,4 +1,7 @@
+'use client';
+
 import { useCallback, useMemo, useState } from 'react';
+import { config } from '@/config';
 
 type PreflightResponse = {
   source_asset?: string;
@@ -19,7 +22,7 @@ export type PreflightInputs = {
   amountUsd: string;
 };
 
-const API_BASE = import.meta.env?.VITE_API_BASE_URL ?? 'http://localhost:8080';
+const API_BASE = config.apiUrl;
 
 function buildQuery(inputs: PreflightInputs): string {
   const params = new URLSearchParams();
