@@ -39,6 +39,8 @@ testnet-smoke = []
 # `cargo build --features telegram-bot,slack-bot` (or either alone).
 telegram-bot = []
 slack-bot = []
+# GDPR export/erasure service (services::gdpr) and its integration test.
+gdpr = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -152,6 +154,11 @@ required-features = ["sep-integration"]
 name = "sep31_integration"
 path = "tests/sep/sep31_integration.rs"
 required-features = ["sep-integration"]
+
+[[test]]
+name = "gdpr_integration"
+path = "tests/gdpr_integration.rs"
+required-features = ["gdpr"]
 
 [[test]]
 name = "testnet_smoke"
