@@ -498,8 +498,8 @@ impl AssetVerifier {
         verified: bool,
         support: &SepSupport,
     ) -> Result<()> {
-        let sep_support_json = serde_json::to_string(support)
-            .context("Failed to serialize SEP support")?;
+        let sep_support_json =
+            serde_json::to_string(support).context("Failed to serialize SEP support")?;
 
         sqlx::query(
             r#"

@@ -608,8 +608,9 @@ mod tests {
 
         assert_eq!(excluded, 2);
         assert_eq!(retained.len(), 2);
-        assert!(retained.iter().all(|p| p.source_account != "GMERGEDAWAY"
-            && p.destination_account != "GMERGEDAWAY"));
+        assert!(retained
+            .iter()
+            .all(|p| p.source_account != "GMERGEDAWAY" && p.destination_account != "GMERGEDAWAY"));
 
         // Confirms the distortion the issue describes: without filtering, the
         // 5,000 XLM merge dump would dominate corridor volume.
@@ -622,7 +623,8 @@ mod tests {
     #[test]
     fn test_filter_merged_accounts_noop_when_set_empty() {
         let payments = vec![payment_with_accounts("GALICE", "GBOB", 100.0)];
-        let (retained, excluded) = filter_merged_accounts(&payments, &std::collections::HashSet::new());
+        let (retained, excluded) =
+            filter_merged_accounts(&payments, &std::collections::HashSet::new());
         assert_eq!(excluded, 0);
         assert_eq!(retained.len(), 1);
     }

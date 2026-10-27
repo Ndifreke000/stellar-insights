@@ -520,12 +520,19 @@ impl ContractService {
         Ok(self
             .get_snapshot_record(epoch)
             .await?
-            .is_some_and(|record| record.hash.eq_ignore_ascii_case(hash.trim_start_matches("0x"))))
+            .is_some_and(|record| {
+                record
+                    .hash
+                    .eq_ignore_ascii_case(hash.trim_start_matches("0x"))
+            }))
     }
 
     /// Hex hash anchored on-chain for `epoch`, if any.
     pub async fn get_snapshot_by_epoch(&self, epoch: u64) -> Result<Option<String>> {
-        Ok(self.get_snapshot_record(epoch).await?.map(|record| record.hash))
+        Ok(self
+            .get_snapshot_record(epoch)
+            .await?
+            .map(|record| record.hash))
     }
 
     /// Read the snapshot record for `epoch` straight from contract storage.
@@ -649,7 +656,9 @@ fn find_snapshot_in_map(val: &ScVal, epoch: u64) -> Result<Option<([u8; 32], u64
     };
 
     let ScVal::Map(Some(fields)) = &entry.val else {
-        return Err(anyhow::anyhow!("Snapshot for epoch {epoch} is not a struct"));
+        return Err(anyhow::anyhow!(
+            "Snapshot for epoch {epoch} is not a struct"
+        ));
     };
 
     let field = |name: &str| {
@@ -662,7 +671,11 @@ fn find_snapshot_in_map(val: &ScVal, epoch: u64) -> Result<Option<([u8; 32], u64
     let hash = match field("hash") {
         Some(ScVal::Bytes(bytes)) => <[u8; 32]>::try_from(bytes.0.as_vec().as_slice())
             .map_err(|_| anyhow::anyhow!("Snapshot hash is not 32 bytes"))?,
-        _ => return Err(anyhow::anyhow!("Snapshot for epoch {epoch} has no hash field")),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Snapshot for epoch {epoch} has no hash field"
+            ))
+        }
     };
     let timestamp = match field("timestamp") {
         Some(ScVal::U64(ts)) => *ts,

@@ -395,8 +395,7 @@ impl PriceFeedClient {
             }
             warn!(
                 "Using cached price for {} after fetch failure: ${}",
-                stellar_asset,
-                cached.price_usd
+                stellar_asset, cached.price_usd
             );
             return Ok(cached.price_usd);
         }

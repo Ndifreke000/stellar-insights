@@ -330,7 +330,9 @@ impl CorridorPerformanceMonitor {
 
                 // Also send through the core alert manager for webhook/email delivery
                 let alert_type_enum = match alert_type.as_str() {
-                    "success_rate_below" | "success_rate_drop" | "status_transition" => AlertType::SuccessRateDrop,
+                    "success_rate_below" | "success_rate_drop" | "status_transition" => {
+                        AlertType::SuccessRateDrop
+                    }
                     "latency_above" | "latency_increase" => AlertType::LatencyIncrease,
                     "liquidity_below" | "liquidity_drop" => AlertType::LiquidityDecrease,
                     _ => AlertType::SuccessRateDrop,
