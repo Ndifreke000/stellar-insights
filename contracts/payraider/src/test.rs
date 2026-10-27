@@ -1088,9 +1088,7 @@ fn test_rollback_still_refused_after_governance_admin_change() {
 // Authorised submitter set (#2600)
 // ============================================================================
 
-fn setup_with_submitter(
-    env: &Env,
-) -> (PayRaiderContractClient<'_>, Address, Address, Address) {
+fn setup_with_submitter(env: &Env) -> (PayRaiderContractClient<'_>, Address, Address, Address) {
     env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(env, &contract_id);
@@ -1378,9 +1376,7 @@ fn submission_extends_snapshot_and_instance_ttl() {
     client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
 
     env.as_contract(&contract_id, || {
-        assert!(
-            env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1
-        );
+        assert!(env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1);
         assert!(env.storage().instance().get_ttl() >= INSTANCE_TTL_THRESHOLD);
     });
 }

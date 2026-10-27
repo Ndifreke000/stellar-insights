@@ -99,8 +99,7 @@ fn main() {
         rows.push((
             "payraider::submit_snapshot",
             measure(&f.env, || {
-                client
-                    .submit_snapshot(&next, &hash(&f.env, next), &f.submitter);
+                client.submit_snapshot(&next, &hash(&f.env, next), &f.submitter);
             }),
         ));
         rows.push((
@@ -115,10 +114,7 @@ fn main() {
                 client.latest_snapshot();
             }),
         ));
-        rows.push((
-            "payraider::bump_ttl",
-            measure(&f.env, || client.bump_ttl()),
-        ));
+        rows.push(("payraider::bump_ttl", measure(&f.env, || client.bump_ttl())));
     }
 
     // ── submitter set (#2600) ───────────────────────────────────────────────
@@ -134,8 +130,7 @@ fn main() {
         rows.push((
             "payraider::rotate_submitter",
             measure(&f.env, || {
-                client
-                    .rotate_submitter(&f.admin, &f.submitter, &rotated_in)
+                client.rotate_submitter(&f.admin, &f.submitter, &rotated_in)
             }),
         ));
         rows.push((

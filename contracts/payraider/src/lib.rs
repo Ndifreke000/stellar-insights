@@ -6,8 +6,8 @@ mod events;
 use errors::Error;
 use events::{
     emit_admin_transferred, emit_contract_initialized, emit_contract_paused,
-    emit_contract_unpaused, emit_snapshot_submitted, emit_submitter_added,
-    emit_submitter_removed, emit_submitter_rotated,
+    emit_contract_unpaused, emit_snapshot_submitted, emit_submitter_added, emit_submitter_removed,
+    emit_submitter_rotated,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
@@ -995,7 +995,11 @@ impl PayRaiderContract {
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         bump_persistent(&env, &DataKey::Snapshots);
-        if let Some(admin) = env.storage().instance().get::<DataKey, Address>(&DataKey::Admin) {
+        if let Some(admin) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::Admin)
+        {
             bump_persistent(&env, &DataKey::Roles(admin));
         }
     }
