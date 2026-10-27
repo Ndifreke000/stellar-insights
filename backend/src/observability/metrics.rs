@@ -411,7 +411,7 @@ pub fn record_error(_error_type: &str) {
 
 pub fn record_http_error(status_code: u16, method: &str, path: &str) {
     HTTP_ERRORS_TOTAL
-        .with_label_values(&[&status_code.to_string(), method, path])
+        .with_label_values(&[status_code.to_string().as_str(), method, path])
         .inc();
     ERRORS_TOTAL.inc();
 }
