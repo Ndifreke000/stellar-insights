@@ -25,7 +25,7 @@ use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 
 /// Cache key for the corridor table the check scores against.
-const CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
+pub(crate) const CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
 
 /// Success rate (percent) below which a corridor is not recommended.
 pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 95.0;
