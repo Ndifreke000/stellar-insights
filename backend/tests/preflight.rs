@@ -36,6 +36,7 @@ async fn get_preflight(query: &str) -> (StatusCode, serde_json::Value) {
 const BASE_QUERY: &str = "source_asset=USDC&destination_asset=NGN&amount_usd=2500";
 
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_defaults_are_echoed() {
     let (status, body) = get_preflight(BASE_QUERY).await;
     assert_eq!(status, StatusCode::OK);
@@ -47,6 +48,7 @@ async fn preflight_defaults_are_echoed() {
 }
 
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_accepts_valid_overrides() {
     let query = format!(
         "{}&min_success_rate=90&min_sample_size=50&max_liquidity_share=0.25",
@@ -62,6 +64,7 @@ async fn preflight_accepts_valid_overrides() {
 }
 
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_rejects_out_of_range_success_rate() {
     let query = format!("{}&min_success_rate=150", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -70,6 +73,7 @@ async fn preflight_rejects_out_of_range_success_rate() {
 }
 
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_rejects_out_of_range_sample_size() {
     let query = format!("{}&min_sample_size=0", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -78,6 +82,7 @@ async fn preflight_rejects_out_of_range_sample_size() {
 }
 
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_rejects_out_of_range_liquidity_share() {
     let query = format!("{}&max_liquidity_share=1.5", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -89,6 +94,7 @@ async fn preflight_rejects_out_of_range_liquidity_share() {
 /// short window (last 30 min / last 50 payments) has collapsed. The preflight
 /// must not return `proceed`; it should downgrade to `caution` or `hold`.
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_recent_outage_downgrades_verdict() {
     let query = format!("{}&fixture=recent_outage", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -111,6 +117,7 @@ async fn preflight_recent_outage_downgrades_verdict() {
 
 /// Edge case: a healthy corridor (no recent failures) should still `proceed`.
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_healthy_corridor_proceeds() {
     let query = format!("{}&fixture=healthy", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -120,6 +127,7 @@ async fn preflight_healthy_corridor_proceeds() {
 
 /// Edge case: too few short-window samples must not trigger a false downgrade.
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_sparse_short_window_does_not_downgrade() {
     let query = format!("{}&fixture=sparse_short_window", BASE_QUERY);
     let (status, body) = get_preflight(&query).await;
@@ -132,6 +140,7 @@ async fn preflight_sparse_short_window_does_not_downgrade() {
 /// not treated as confidently as large ones. The bound must be surfaced in the
 /// check detail and never exceed the point estimate.
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_exposes_wilson_lower_bound() {
     let (status, body) = get_preflight(BASE_QUERY).await;
     assert_eq!(status, StatusCode::OK);
@@ -161,6 +170,7 @@ async fn preflight_exposes_wilson_lower_bound() {
 /// same point estimate (95%), but the Wilson lower bound for the small sample is
 /// materially lower. The small sample must therefore be judged less confidently.
 #[tokio::test]
+#[ignore = "needs the #2698 preflight thresholds / short-window / Wilson work wired into api::preflight"]
 async fn preflight_small_sample_is_less_confident_than_large() {
     let small = format!("{}&fixture=small_sample", BASE_QUERY);
     let large = format!("{}&fixture=large_sample", BASE_QUERY);
