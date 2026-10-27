@@ -36,6 +36,8 @@ fn payment(
         timestamp: ts,
         submission_time: None,
         confirmation_time: None,
+        source_account: "GSOURCEACCOUNT".to_string(),
+        destination_account: "GDESTINATIONACCOUNT".to_string(),
     }
 }
 
@@ -59,6 +61,8 @@ fn payment_with_latency(
         timestamp: now,
         submission_time: Some(submission),
         confirmation_time: Some(now),
+        source_account: "GSOURCEACCOUNT".to_string(),
+        destination_account: "GDESTINATIONACCOUNT".to_string(),
     }
 }
 
@@ -150,6 +154,8 @@ fn settlement_latency_returns_zero_for_instant_confirm() {
         timestamp: now,
         submission_time: Some(now),
         confirmation_time: Some(now),
+        source_account: "GSOURCEACCOUNT".to_string(),
+        destination_account: "GDESTINATIONACCOUNT".to_string(),
     };
     assert_eq!(p.settlement_latency_ms(), Some(0));
 }
@@ -317,6 +323,8 @@ fn metrics_by_window_includes_boundary_payments() {
             timestamp: window_start,
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         },
         PaymentRecord {
             id: Uuid::new_v4(),
@@ -329,6 +337,8 @@ fn metrics_by_window_includes_boundary_payments() {
             timestamp: window_end,
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         },
     ];
 

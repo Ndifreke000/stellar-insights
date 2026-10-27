@@ -26,6 +26,8 @@ fn create_test_payment(
         timestamp,
         submission_time: None,
         confirmation_time: None,
+        source_account: "GSOURCEACCOUNT".to_string(),
+        destination_account: "GDESTINATIONACCOUNT".to_string(),
     }
 }
 
