@@ -36,7 +36,7 @@ importers:
         version: 10.2.9(@types/babel__core@7.20.5)(next@16.3.8(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@26.6.5)(react-dom@19.2.8(react@19.3.1))(react@19.3.1))(webpack@5.105.4(esbuild@0.27.7))
       '@hookform/resolvers':
         specifier: 5.9.1
-        version: 5.9.1(@sinclair/typebox@0.27.10)(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(effect@3.20.0)(react-hook-form@7.87.0(react@19.3.1))(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)
+        version: 5.9.1(@sinclair/typebox@0.27.10)(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(effect@3.20.0)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)
       '@prisma/client':
         specifier: 7.10.0
         version: 7.10.0(prisma@7.10.0(@types/node@26.6.5)(@types/react-dom@19.2.3(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.2.8(react@19.3.1))(react@19.3.1)(typescript@5.9.3))(typescript@5.9.3)
@@ -104,8 +104,8 @@ importers:
         specifier: 1.29.2
         version: 1.29.2(react@19.3.1)
       react-hook-form:
-        specifier: 7.87.0
-        version: 7.87.0(react@19.3.1)
+        specifier: 7.90.0
+        version: 7.90.0(@types/react@19.3.0)(react@19.3.1)
       recharts:
         specifier: 3.9.2
         version: 3.9.2(@types/react@19.3.0)(react-dom@19.2.8(react@19.3.1))(react-is@18.3.1)(react@19.3.1)(redux@5.0.1)
@@ -7110,10 +7110,10 @@ snapshots:
     dependencies:
       '@formatjs/fast-memoize': 3.1.7
 
-  '@hookform/resolvers@5.9.1(@sinclair/typebox@0.27.10)(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(effect@3.20.0)(react-hook-form@7.87.0(react@19.3.1))(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)':
+  '@hookform/resolvers@5.9.1(@sinclair/typebox@0.27.10)(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(effect@3.20.0)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)':
     dependencies:
       '@standard-schema/utils': 0.3.0
-      react-hook-form: 7.87.0(react@19.3.1)
+      react-hook-form: 7.90.0(@types/react@19.3.0)(react@19.3.1)
     optionalDependencies:
       '@sinclair/typebox': 0.27.10
       '@standard-schema/spec': 1.1.0
@@ -11081,9 +11081,11 @@ snapshots:
     transitivePeerDependencies:
       - preact-render-to-string
 
-  react-hook-form@7.87.0(react@19.3.1):
+  react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       react: 19.3.1
+    optionalDependencies:
+      '@types/react': 19.3.0
 
   react-is@16.13.1: {}
 
