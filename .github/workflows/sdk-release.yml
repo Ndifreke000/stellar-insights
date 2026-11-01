@@ -78,7 +78,7 @@ jobs:
       - run: npm ci
       - name: Version PR or publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           cwd: sdk
           version: npm run version-packages
