@@ -65,7 +65,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/coverage-v8": "4.1.11",
     "autocannon": "8.0.0",
-    "axe-core": "4.13.0",
+    "axe-core": "4.14.0",
     "eslint": "9.39.3",
     "eslint-config-next": "16.3.8",
     "eslint-plugin-jsx-a11y": "6.10.2",
