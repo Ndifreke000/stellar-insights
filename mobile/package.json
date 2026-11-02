@@ -48,7 +48,7 @@
     "@react-native/metro-config": "^0.88.0",
     "@react-native/typescript-config": "^0.87.1",
     "@testing-library/react-native": "^14.1.0",
-    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
     "eslint-plugin-jest": "^29.17.0",
     "@typescript-eslint/parser": "^8.69.0",
     "@types/jest": "^30.0.0",
