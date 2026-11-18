@@ -64,6 +64,9 @@ pub struct HealthChecks {
     pub database: ComponentHealth,
     pub cache: ComponentHealth,
     pub rpc: ComponentHealth,
+    /// Per-provider breakdown when multi-provider failover is configured (#2776).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rpc_providers: Vec<crate::rpc::provider_pool::ProviderStatus>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -183,6 +186,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
             database: db_health,
             cache: cache_health,
             rpc: rpc_health,
+            rpc_providers: crate::rpc::provider_pool::registered_statuses(),
         },
         network: NetworkInfo {
             network: network_context.network_id(),
