@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::{
-    rpc::StellarRpcClient,
+    rpc::{HorizonApi, SorobanRpc, StellarRpcClient},
     services::{
         account_merge_detector::AccountMergeDetector,
         data_port::DataPort,
@@ -30,6 +30,10 @@ pub struct ServiceContainer {
     pub webhook_dispatcher: Arc<WebhookDispatcher>,
     pub webhook_event_service: Arc<WebhookEventService>,
     pub realtime_broadcaster: RealtimeBroadcaster,
+    /// Narrow Horizon interface (#2775); new call sites should depend on this.
+    pub horizon: Arc<dyn HorizonApi>,
+    /// Narrow Soroban JSON-RPC interface (#2775).
+    pub soroban: Arc<dyn SorobanRpc>,
 }
 
 impl ServiceContainer {
@@ -63,6 +67,8 @@ impl ServiceContainer {
             webhook_dispatcher: Arc::new(WebhookDispatcher::new(pool)),
             webhook_event_service,
             realtime_broadcaster,
+            horizon: rpc_client.clone() as Arc<dyn HorizonApi>,
+            soroban: rpc_client as Arc<dyn SorobanRpc>,
         }
     }
 }
