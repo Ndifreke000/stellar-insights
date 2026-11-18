@@ -2,19 +2,23 @@ use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 
+use crate::rpc::circuit_breaker::{integration_circuit_breaker, SharedCircuitBreaker};
+
 pub struct EmailService {
     smtp_host: String,
     smtp_user: String,
     smtp_pass: String,
+    breaker: SharedCircuitBreaker,
 }
 
 impl EmailService {
     #[must_use]
-    pub const fn new(smtp_host: String, smtp_user: String, smtp_pass: String) -> Self {
+    pub fn new(smtp_host: String, smtp_user: String, smtp_pass: String) -> Self {
         Self {
             smtp_host,
             smtp_user,
             smtp_pass,
+            breaker: integration_circuit_breaker("email_smtp"),
         }
     }
 
@@ -31,7 +35,8 @@ impl EmailService {
             .credentials(creds)
             .build();
 
-        mailer.send(&email)?;
-        Ok(())
+        self.breaker
+            .call_sync(|| mailer.send(&email).map(|_| ()).map_err(anyhow::Error::from))
+            .map_err(crate::rpc::CallError::into_anyhow)
     }
 }

@@ -635,7 +635,6 @@ mod tests {
     use crate::cache::{CacheConfig, CacheManager};
     use crate::rpc::circuit_breaker::rpc_circuit_breaker;
     use crate::rpc::StellarRpcClient;
-    use failsafe::CircuitBreaker as _;
 
     #[tokio::test]
     async fn test_circuit_breaker_opens_on_failures() {
@@ -645,8 +644,9 @@ mod tests {
 
         let circuit_breaker = rpc_circuit_breaker();
         while matches!(
-            circuit_breaker.call(|| Err::<(), anyhow::Error>(anyhow::anyhow!("forced failure"))),
-            Err(failsafe::Error::Inner(_))
+            circuit_breaker
+                .call_sync(|| Err::<(), anyhow::Error>(anyhow::anyhow!("forced failure"))),
+            Err(crate::rpc::CallError::Inner(_))
         ) {}
 
         for _ in 0..5 {

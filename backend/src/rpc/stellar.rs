@@ -96,10 +96,7 @@ pub(in crate::rpc) async fn map_response_error(response: reqwest::Response) -> R
         .get("Retry-After")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
-    let body = response
-        .text()
-        .await
-        .unwrap_or_else(|_| "Unknown error".to_string());
+    let body = read_error_text(response).await;
     status_to_rpc_error(status, body, retry_after)
 }
 
@@ -422,10 +419,7 @@ impl StellarRpcClient {
                     self.rate_limiter.on_rate_limited(&headers).await;
                 }
 
-                let error_text = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Unknown error".to_string());
+                let error_text = read_error_text(response).await;
                 warn!(
                     "Request failed with status {} in {} ms: {}",
                     status, elapsed, error_text

@@ -6,6 +6,7 @@ This document provides comprehensive documentation for key backend modules inclu
 
 - [Event Indexer](#event-indexer)
 - [Circuit Breaker](#circuit-breaker)
+- [RPC Response Size Limits](#rpc-response-size-limits)
 - [Vault Module](#vault-module)
 
 ---
@@ -128,83 +129,83 @@ indexer.index_event(event).await?;
 
 ## Circuit Breaker
 
-The circuit breaker protects against cascading failures by automatically opening when failures exceed a threshold.
+`backend/src/rpc/circuit_breaker.rs` holds the **only** circuit breaker
+implementation. Stellar RPC/Horizon, webhook dispatch (`WebhookDispatcher`,
+`WebhookChannel`), email (`EmailService`) and the Telegram client all use it.
+The old `features/circuit_breaker_pattern.rs` copy and the `failsafe`
+dependency are gone. `rpc/rate_limiter.rs` only limits request rate and has no
+breaker state.
 
-### Overview
+### API
 
-Uses the `failsafe` crate for battle-tested reliability patterns:
-- **Failure Detection**: Consecutive failures trigger circuit opening
-- **Recovery**: Automatic testing and recovery with configurable timeouts
-- **State Management**: Closed → Open → Half-Open → Closed cycle
+```rust,no_run
+use payraider_backend::rpc::circuit_breaker::{CallError, CircuitBreaker, CircuitBreakerConfig};
+
+let breaker = CircuitBreaker::new("my_integration", CircuitBreakerConfig::default());
+// async
+let r: Result<T, CallError<E>> = breaker.call(async { do_request().await }).await;
+// blocking
+let r: Result<T, CallError<E>> = breaker.call_sync(|| do_blocking_request());
+match r {
+    Ok(v) => {}
+    Err(CallError::Rejected) => {}  // circuit open, call not attempted
+    Err(CallError::Inner(e)) => {}  // call ran and failed
+}
+```
+
+`CircuitBreaker::with_clock` takes a `Clock` (`ManualClock` in tests) so
+state-machine tests are deterministic.
 
 ### Configuration
 
-#### CircuitBreakerConfig
+| Field | Default | Description |
+|-------|---------|-------------|
+| `failure_threshold` | 5 | Consecutive failures (Closed) before opening |
+| `success_threshold` | 2 | Successful half-open probes required to close |
+| `timeout_duration` | 30s | Time the circuit stays open before probing |
+| `half_open_max_calls` | 1 | Concurrent probes admitted while half-open |
 
-```rust
-#[derive(Debug, Clone)]
-pub struct CircuitBreakerConfig {
-    /// Consecutive retryable failures required to trip the circuit open
-    pub failure_threshold: u32,
-    /// Retained for config compatibility; not supported by failsafe 1.3
-    pub success_threshold: u32,
-    /// How long the circuit stays open before attempting recovery
-    pub timeout_duration: Duration,
-}
-```
+The RPC breaker reads `RPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD`,
+`RPC_CIRCUIT_BREAKER_SUCCESS_THRESHOLD` and `RPC_CIRCUIT_BREAKER_TIMEOUT_SECONDS`.
 
-**Default Configuration:**
-- `failure_threshold`: 5 consecutive failures
-- `success_threshold`: 2 (legacy, unused in failsafe 1.3)
-- `timeout_duration`: 30 seconds
+### State-transition table
 
-### Circuit States
+| From | Event | To |
+|------|-------|----|
+| Closed | success | Closed (failure count reset) |
+| Closed | failure, consecutive < threshold | Closed |
+| Closed | failure, consecutive == threshold | Open |
+| Open | call before `timeout_duration` | Open (rejected) |
+| Open | call after `timeout_duration` | HalfOpen (admitted as probe) |
+| HalfOpen | probe slots exhausted | HalfOpen (rejected) |
+| HalfOpen | success, successes < `success_threshold` | HalfOpen |
+| HalfOpen | success, successes == `success_threshold` | Closed |
+| HalfOpen | any failure | Open (timer restarted) |
 
-1. **Closed** - Normal operation, requests pass through
-2. **Open** - Failure threshold exceeded, requests are blocked
-3. **Half-Open** - Testing if service has recovered
+### Metrics
 
-### Usage Examples
+- `circuit_breaker_transitions_total{breaker,from,to}`: one count per transition
+- `circuit_breaker_state{endpoint}`: 0=closed, 1=open, 2=half-open
 
-#### Basic Usage
+---
 
-```rust,no_run
-use payraider_backend::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreakerConfig};
-use std::time::Duration;
+## RPC Response Size Limits
 
-// Get shared circuit breaker instance
-let breaker = rpc_circuit_breaker();
+`backend/src/rpc/bounded_body.rs` keeps provider responses from using unbounded
+memory. Responses are not read with `.json()` / `.text()` any more:
 
-// Use with failsafe call wrapper
-let result = breaker.call(|| {
-    // Your RPC call here
-    make_http_request()
-}).await;
+| Limit | Bytes | Used for |
+|-------|-------|----------|
+| `BodyLimit::Single` | 1 MiB | single Horizon resources, small JSON-RPC results |
+| `BodyLimit::Page` | 8 MiB | Horizon collection pages (`_embedded.records`) |
+| `BodyLimit::RpcBatch` | 16 MiB | `getLedgers` and similar large JSON-RPC results |
+| `BodyLimit::ErrorBody` | 64 KiB | error bodies (truncated, only logged) |
 
-match result {
-    Ok(response) => println!("Success: {}", response),
-    Err(e) => println!("Circuit open or failed: {}", e),
-}
-```
-
-#### Custom Configuration
-
-```rust,no_run
-use failsafe::{backoff, failure_policy, Config};
-use std::time::Duration;
-
-let config = CircuitBreakerConfig {
-    failure_threshold: 10,           // Open after 10 consecutive failures
-    timeout_duration: Duration::from_secs(60), // Stay open for 1 minute
-    ..Default::default()
-};
-
-let backoff = backoff::constant(config.timeout_duration);
-let policy = failure_policy::consecutive_failures(config.failure_threshold, backoff);
-let custom_breaker: CircuitBreaker = Config::new()
-    .failure_policy(policy)
-    .build();
-```
+- If `Content-Length` is over the limit, the response is rejected before the body is read. Otherwise the body is read chunk by chunk and the read stops once the total passes the limit.
+- Horizon pages are decoded record by record with a serde visitor (no `Value` tree). A page can hold at most `MAX_RECORDS_PER_PAGE` (1000) records.
+- An oversize response returns `RpcError::ResponseTooLarge` (metric label `response_too_large`). It does not count as a circuit-breaker failure.
+- `fetch_payments`, `fetch_trades` and `fetch_account_payments` halve the page size and retry when a page is too large. They stop at 10 records.
+- Fuzzing: `cd backend && cargo +nightly fuzz run horizon_page`. A proptest in `bounded_body.rs` covers the same decoder in CI.
 
 ---
 
@@ -366,7 +367,7 @@ let secret = breaker.call(|| {
 |---------|---------|-------------|
 | `failure_threshold` | 5 | Consecutive failures before opening |
 | `timeout_duration` | 30s | Time circuit stays open |
-| `success_threshold` | 2 | Legacy, unused in failsafe 1.3 |
+| `success_threshold` | 2 | Successful half-open probes required to close |
 
 ### Event Query Options
 

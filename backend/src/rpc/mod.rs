@@ -1,3 +1,4 @@
+pub mod bounded_body;
 pub mod circuit_breaker;
 pub mod client_trait;
 pub mod config;
@@ -12,7 +13,7 @@ pub mod stellar;
 #[cfg(test)]
 mod stellar_split_tests;
 
-pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+pub use circuit_breaker::{CallError, CircuitBreaker, CircuitBreakerConfig, CircuitState};
 pub use client_trait::{MockStellarRpcClient, StellarRpcClientTrait};
 pub use failsafe::futures::CircuitBreaker as FailsafeCircuitBreaker;
 pub use horizon::HorizonApi;

@@ -5,7 +5,6 @@ use crate::database::Database;
 use crate::rpc::{circuit_breaker::rpc_circuit_breaker, StellarRpcClient};
 use crate::telegram::formatter;
 use crate::telegram::subscription::SubscriptionService;
-use failsafe::futures::CircuitBreaker as _;
 
 pub struct CommandHandler {
     db: Arc<Database>,

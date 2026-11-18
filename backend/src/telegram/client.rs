@@ -2,10 +2,14 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Telegram Bot API client using reqwest directly.
+use crate::rpc::circuit_breaker::{integration_circuit_breaker, SharedCircuitBreaker};
+
+/// Telegram Bot API client using reqwest directly. All outbound calls run
+/// through the shared circuit breaker implementation.
 pub struct TelegramClient {
     client: Client,
     base_url: String,
+    breaker: SharedCircuitBreaker,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,10 +87,11 @@ impl TelegramClient {
         Self {
             client,
             base_url: format!("https://api.telegram.org/bot{token}"),
+            breaker: integration_circuit_breaker("telegram"),
         }
     }
 
-    pub async fn get_updates(&self, offset: Option<i64>) -> anyhow::Result<Vec<Update>> {
+    async fn get_updates_inner(&self, offset: Option<i64>) -> anyhow::Result<Vec<Update>> {
         let body = GetUpdatesRequest {
             offset,
             timeout: 30,
@@ -112,7 +117,7 @@ impl TelegramClient {
         Ok(resp.result.unwrap_or_default())
     }
 
-    pub async fn send_message(&self, chat_id: i64, text: &str) -> anyhow::Result<()> {
+    async fn send_message_inner(&self, chat_id: i64, text: &str) -> anyhow::Result<()> {
         let body = SendMessageRequest {
             chat_id,
             text,
@@ -154,7 +159,7 @@ impl TelegramClient {
         Ok(())
     }
 
-    pub async fn set_my_commands(&self, commands: &[BotCommand]) -> anyhow::Result<()> {
+    async fn set_my_commands_inner(&self, commands: &[BotCommand]) -> anyhow::Result<()> {
         let body = SetMyCommandsRequest { commands };
 
         let resp: TelegramResponse<bool> = self
@@ -174,5 +179,26 @@ impl TelegramClient {
         }
 
         Ok(())
+    }
+
+    pub async fn get_updates(&self, offset: Option<i64>) -> anyhow::Result<Vec<Update>> {
+        self.breaker
+            .call(self.get_updates_inner(offset))
+            .await
+            .map_err(crate::rpc::CallError::into_anyhow)
+    }
+
+    pub async fn send_message(&self, chat_id: i64, text: &str) -> anyhow::Result<()> {
+        self.breaker
+            .call(self.send_message_inner(chat_id, text))
+            .await
+            .map_err(crate::rpc::CallError::into_anyhow)
+    }
+
+    pub async fn set_my_commands(&self, commands: &[BotCommand]) -> anyhow::Result<()> {
+        self.breaker
+            .call(self.set_my_commands_inner(commands))
+            .await
+            .map_err(crate::rpc::CallError::into_anyhow)
     }
 }

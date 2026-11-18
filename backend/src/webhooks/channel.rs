@@ -1,4 +1,5 @@
 use crate::broadcast::{Message, NotificationChannel};
+use crate::rpc::circuit_breaker::{integration_circuit_breaker, SharedCircuitBreaker};
 use crate::webhooks::WebhookSignature;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -26,6 +27,7 @@ impl WebhookEndpoint {
 pub struct WebhookChannel {
     client: Client,
     endpoints: Vec<WebhookEndpoint>,
+    breaker: SharedCircuitBreaker,
 }
 
 impl WebhookChannel {
@@ -35,7 +37,11 @@ impl WebhookChannel {
             .timeout(Duration::from_secs(10))
             .build()
             .unwrap_or_else(|_| Client::new());
-        Self { client, endpoints }
+        Self {
+            client,
+            endpoints,
+            breaker: integration_circuit_breaker("webhook_channel"),
+        }
     }
 }
 
@@ -69,14 +75,18 @@ impl NotificationChannel for WebhookChannel {
                 request = request.header(name, value);
             }
 
-            let response = request.body(payload_str.clone()).send().await?;
-            if !response.status().is_success() {
-                anyhow::bail!(
-                    "webhook endpoint {} returned {}",
-                    endpoint.url,
-                    response.status()
-                );
-            }
+            let url = endpoint.url.clone();
+            let body = payload_str.clone();
+            self.breaker
+                .call(async move {
+                    let response = request.body(body).send().await?;
+                    if !response.status().is_success() {
+                        anyhow::bail!("webhook endpoint {} returned {}", url, response.status());
+                    }
+                    Ok(())
+                })
+                .await
+                .map_err(crate::rpc::CallError::into_anyhow)?;
         }
         Ok(())
     }

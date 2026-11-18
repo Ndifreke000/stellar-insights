@@ -6,12 +6,14 @@ use sqlx::SqlitePool;
 use std::time::Duration;
 use uuid::Uuid;
 
+use crate::rpc::circuit_breaker::{integration_circuit_breaker, SharedCircuitBreaker};
 use crate::webhooks::{WebhookEventEnvelope, WebhookService, WebhookSignature};
 
 /// Webhook dispatcher - sends events to webhooks asynchronously
 pub struct WebhookDispatcher {
     db: SqlitePool,
     http_client: Client,
+    breaker: SharedCircuitBreaker,
 }
 
 impl WebhookDispatcher {
@@ -23,7 +25,11 @@ impl WebhookDispatcher {
             .build()
             .unwrap_or_else(|_| Client::new());
 
-        Self { db, http_client }
+        Self {
+            db,
+            http_client,
+            breaker: integration_circuit_breaker("webhook_dispatcher"),
+        }
     }
 
     /// Run dispatcher loop - processes pending webhook events
@@ -156,7 +162,7 @@ impl WebhookDispatcher {
             &signature[..20]
         );
 
-        let response = self
+        let request = self
             .http_client
             .post(url)
             .header("X-Zapier-Event", event_type)
@@ -164,19 +170,23 @@ impl WebhookDispatcher {
             .header("X-Zapier-Timestamp", timestamp.to_string())
             .header("X-Zapier-Delivery-ID", delivery_id)
             .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await?;
+            .body(body);
 
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            anyhow::bail!(
-                "Webhook failed with status {}: {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
-            )
-        }
+        self.breaker
+            .call(async move {
+                let response = request.send().await?;
+                if response.status().is_success() {
+                    Ok(())
+                } else {
+                    anyhow::bail!(
+                        "Webhook failed with status {}: {}",
+                        response.status(),
+                        response.text().await.unwrap_or_default()
+                    )
+                }
+            })
+            .await
+            .map_err(crate::rpc::CallError::into_anyhow)
     }
 
     /// Get current retry count for an event
