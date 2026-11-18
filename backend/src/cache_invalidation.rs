@@ -1,4 +1,5 @@
 use crate::cache::{keys, CacheManager};
+use crate::network::StellarNetwork;
 use std::sync::Arc;
 
 /// Cache key for the corridor table the preflight check scores against.
@@ -7,21 +8,25 @@ use std::sync::Arc;
 /// preflight handler reads this key, so ingestion must invalidate it.
 pub const PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
 
-/// Service for managing cache invalidation on data updates
+/// Service for managing cache invalidation on data updates.
+///
+/// Scoped to one network (#2772): invalidating testnet caches never
+/// touches mainnet keys.
 pub struct CacheInvalidationService {
     cache: Arc<CacheManager>,
+    network: StellarNetwork,
 }
 
 impl CacheInvalidationService {
     #[must_use]
-    pub const fn new(cache: Arc<CacheManager>) -> Self {
-        Self { cache }
+    pub const fn new(cache: Arc<CacheManager>, network: StellarNetwork) -> Self {
+        Self { cache, network }
     }
 
     /// Invalidate all anchor-related caches
     pub async fn invalidate_anchors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating anchor caches");
-        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
         Ok(())
     }
 
@@ -31,10 +36,10 @@ impl CacheInvalidationService {
             anchor_id = crate::logging::redaction::redact_user_id(anchor_id),
             "Invalidating cache for anchor"
         );
-        self.cache.delete(&keys::anchor_detail(anchor_id)).await?;
-        self.cache.delete(&keys::anchor_assets(anchor_id)).await?;
+        self.cache.delete(&keys::anchor_detail(self.network, anchor_id)).await?;
+        self.cache.delete(&keys::anchor_assets(self.network, anchor_id)).await?;
         // Also invalidate the list caches since they contain this anchor
-        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
         Ok(())
     }
 
@@ -44,16 +49,16 @@ impl CacheInvalidationService {
             account = crate::logging::redaction::redact_account(account),
             "Invalidating cache for anchor account"
         );
-        self.cache.delete(&keys::anchor_by_account(account)).await?;
+        self.cache.delete(&keys::anchor_by_account(self.network, account)).await?;
         // Also invalidate list caches
-        self.cache.delete_pattern(&keys::anchor_pattern()).await?;
+        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
         Ok(())
     }
 
     /// Invalidate all corridor-related caches
     pub async fn invalidate_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating corridor caches");
-        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        self.cache.delete_pattern(&keys::corridor_pattern(self.network)).await?;
         Ok(())
     }
 
@@ -66,7 +71,7 @@ impl CacheInvalidationService {
     pub async fn invalidate_preflight_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating preflight corridor table cache");
         self.cache
-            .delete(PREFLIGHT_CORRIDOR_TABLE_CACHE_KEY)
+            .delete(&keys::preflight_corridors(self.network))
             .await?;
         Ok(())
     }
@@ -75,10 +80,10 @@ impl CacheInvalidationService {
     pub async fn invalidate_corridor(&self, corridor_key: &str) -> anyhow::Result<()> {
         tracing::info!("Invalidating cache for corridor: {}", corridor_key);
         self.cache
-            .delete(&keys::corridor_detail(corridor_key))
+            .delete(&keys::corridor_detail(self.network, corridor_key))
             .await?;
         // Also invalidate the list caches since they contain this corridor
-        self.cache.delete_pattern(&keys::corridor_pattern()).await?;
+        self.cache.delete_pattern(&keys::corridor_pattern(self.network)).await?;
         Ok(())
     }
 
@@ -86,7 +91,7 @@ impl CacheInvalidationService {
     pub async fn invalidate_dashboard(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating dashboard caches");
         self.cache
-            .delete_pattern(&keys::dashboard_pattern())
+            .delete_pattern(&keys::dashboard_pattern(self.network))
             .await?;
         Ok(())
     }
@@ -94,7 +99,7 @@ impl CacheInvalidationService {
     /// Invalidate metrics caches
     pub async fn invalidate_metrics(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating metrics caches");
-        self.cache.delete(&keys::metrics_overview()).await
+        self.cache.delete(&keys::metrics_overview(self.network)).await
     }
 
     /// Full cache invalidation (use sparingly)
@@ -121,9 +126,9 @@ mod tests {
 
     #[test]
     fn test_cache_key_patterns() {
-        assert_eq!(keys::anchor_pattern(), "anchor:*");
-        assert_eq!(keys::corridor_pattern(), "corridor:*");
-        assert_eq!(keys::dashboard_pattern(), "dashboard:*");
+        assert_eq!(keys::anchor_pattern(self.network), "anchor:*");
+        assert_eq!(keys::corridor_pattern(self.network), "corridor:*");
+        assert_eq!(keys::dashboard_pattern(self.network), "dashboard:*");
     }
 
     #[test]

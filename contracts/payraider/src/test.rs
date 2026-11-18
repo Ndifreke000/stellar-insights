@@ -258,6 +258,7 @@ fn test_snapshot_submitted_event() {
         epoch,
         timestamp: _timestamp,
         submitter: admin.clone(),
+        chain_hash: client.get_chain_head().1,
     };
 
     // Check that our event is in the emitted events with proper topic count
@@ -469,6 +470,11 @@ fn test_error_codes_are_unique() {
         Error::SubmitterAlreadyAuthorized as u32,
         Error::SubmitterNotFound as u32,
         Error::TooManySubmitters as u32,
+        Error::ChainBroken as u32,
+        Error::InvalidRange as u32,
+        Error::InvalidRotationTarget as u32,
+        Error::InvalidOverlap as u32,
+        Error::AdminRoleNotGrantable as u32,
     ];
     codes.sort();
     let unique = codes.windows(2).all(|w| w[0] != w[1]);
@@ -503,6 +509,11 @@ fn test_error_descriptions_are_non_empty() {
         Error::SubmitterAlreadyAuthorized,
         Error::SubmitterNotFound,
         Error::TooManySubmitters,
+        Error::ChainBroken,
+        Error::InvalidRange,
+        Error::InvalidRotationTarget,
+        Error::InvalidOverlap,
+        Error::AdminRoleNotGrantable,
     ];
     for e in errors {
         assert!(
@@ -540,6 +551,11 @@ fn test_error_code_matches_repr() {
     assert_eq!(Error::SubmitterAlreadyAuthorized.code(), 28);
     assert_eq!(Error::SubmitterNotFound.code(), 29);
     assert_eq!(Error::TooManySubmitters.code(), 30);
+    assert_eq!(Error::ChainBroken.code(), 31);
+    assert_eq!(Error::InvalidRange.code(), 32);
+    assert_eq!(Error::InvalidRotationTarget.code(), 33);
+    assert_eq!(Error::InvalidOverlap.code(), 34);
+    assert_eq!(Error::AdminRoleNotGrantable.code(), 35);
 }
 
 #[test]
@@ -649,7 +665,7 @@ fn test_error_log_context_returns_self() {
 }
 
 // =============================================================================
-// set_admin tests (Requirements 2.1–2.5)
+// Admin transfer tests (Requirements 2.1–2.5; two-step since #2783)
 // =============================================================================
 
 #[test]
@@ -663,7 +679,8 @@ fn test_set_admin_success_updates_admin() {
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
 
-    client.set_admin(&admin, &new_admin);
+    client.propose_admin(&admin, &new_admin);
+    client.accept_admin(&new_admin);
 
     assert_eq!(client.get_admin(), new_admin);
 }
@@ -679,7 +696,8 @@ fn test_set_admin_emits_admin_transferred_event() {
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
 
-    client.set_admin(&admin, &new_admin);
+    client.propose_admin(&admin, &new_admin);
+    client.accept_admin(&new_admin);
 
     use crate::events::AdminTransferredEvent;
     use soroban_sdk::Symbol;
@@ -729,7 +747,7 @@ fn test_set_admin_unauthorized_caller_returns_error() {
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let result = client.try_set_admin(&attacker, &new_admin);
+    let result = client.try_propose_admin(&attacker, &new_admin);
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
     // Admin should be unchanged
     assert_eq!(client.get_admin(), admin);
@@ -748,7 +766,7 @@ fn test_set_admin_unauthorized_emits_no_event() {
     client.initialize(&admin);
 
     let admin_topic_events_before = count_contract_events_with_topic0(&env, symbol_short!("admin"));
-    let _ = client.try_set_admin(&attacker, &new_admin);
+    let _ = client.try_propose_admin(&attacker, &new_admin);
     let admin_topic_events_after = count_contract_events_with_topic0(&env, symbol_short!("admin"));
 
     // Unauthorized transfer must not emit admin-transfer audit events.
@@ -822,7 +840,7 @@ fn test_non_governance_cannot_transfer_admin() {
     let env = Env::default();
     let (client, admin, _governance) = setup_governed(&env);
 
-    // Even the admin must go through `set_admin`; this entrypoint is the
+    // Even the admin must go through `propose_admin`; this entrypoint is the
     // governance path and accepts nobody else.
     let result = client.try_set_admin_by_governance(&admin, &Address::generate(&env));
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
@@ -1020,12 +1038,16 @@ fn test_upgrade_rejects_a_zero_wasm_hash() {
     env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
-    client.initialize(&Address::generate(&env));
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
 
     // An all-zero hash is not a real Wasm blob; installing it would leave the
     // contract permanently unusable.
     let zero = BytesN::from_array(&env, &[0u8; 32]);
-    assert_eq!(client.try_upgrade(&zero), Err(Ok(Error::InvalidWasmHash)));
+    assert_eq!(
+        client.try_schedule_upgrade(&admin, &zero),
+        Err(Ok(Error::InvalidWasmHash))
+    );
 }
 
 #[test]
@@ -1038,7 +1060,7 @@ fn test_upgrade_rejected_while_paused() {
     client.initialize(&admin);
     client.pause(&admin);
 
-    let result = client.try_upgrade(&create_test_hash(&env, 99));
+    let result = client.try_schedule_upgrade(&admin, &create_test_hash(&env, 99));
     assert_eq!(result, Err(Ok(Error::ContractPaused)));
 }
 
@@ -1376,7 +1398,9 @@ fn submission_extends_snapshot_and_instance_ttl() {
     client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
 
     env.as_contract(&contract_id, || {
-        assert!(env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1);
+        assert!(
+            env.storage().persistent().get_ttl(&DataKey::Snapshot(1)) >= LEDGERS_TO_EXTEND - 1
+        );
         assert!(env.storage().instance().get_ttl() >= INSTANCE_TTL_THRESHOLD);
     });
 }
@@ -1419,4 +1443,407 @@ fn bump_ttl_is_permissionless() {
 
     // No auths mocked: bump_ttl must not call require_auth.
     client.bump_ttl();
+}
+
+// ============================================================================
+// Two-step admin transfer (#2783)
+// ============================================================================
+
+#[test]
+fn propose_admin_does_not_transfer_until_accepted() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let next = Address::generate(&env);
+
+    client.propose_admin(&admin, &next);
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_pending_admin(), Some(next.clone()));
+    assert!(client.has_role(&admin, &Role::Admin));
+    assert!(!client.has_role(&next, &Role::Admin));
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("adm_prop")),
+        1
+    );
+}
+
+#[test]
+fn accept_admin_completes_transfer_and_clears_pending() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let next = Address::generate(&env);
+
+    client.propose_admin(&admin, &next);
+    client.accept_admin(&next);
+
+    assert_eq!(client.get_admin(), next);
+    assert_eq!(client.get_pending_admin(), None);
+    assert!(client.has_role(&next, &Role::Admin));
+    assert!(!client.has_role(&admin, &Role::Admin));
+    assert!(client.get_role_holders().contains(&next));
+    assert!(!client.get_role_holders().contains(&admin));
+}
+
+#[test]
+fn accept_admin_by_wrong_address_fails() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let next = Address::generate(&env);
+    let intruder = Address::generate(&env);
+
+    client.propose_admin(&admin, &next);
+
+    assert_eq!(
+        client.try_accept_admin(&intruder),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_pending_admin(), Some(next));
+}
+
+#[test]
+fn accept_admin_without_proposal_fails() {
+    let env = Env::default();
+    let (client, _, _, _) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_accept_admin(&Address::generate(&env)),
+        Err(Ok(Error::NoPendingAdmin))
+    );
+}
+
+#[test]
+fn accept_admin_requires_the_new_admins_signature() {
+    use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+    use soroban_sdk::IntoVal;
+
+    let env = Env::default();
+    let (client, contract_id, admin, _) = setup_with_submitter(&env);
+    let next = Address::generate(&env);
+    client.propose_admin(&admin, &next);
+
+    // Only the old admin signs the accept: must be rejected.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "accept_admin",
+            args: (next.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    assert!(client.try_accept_admin(&next).is_err());
+    assert_eq!(client.get_admin(), admin);
+}
+
+#[test]
+fn cancel_admin_transfer_withdraws_the_proposal() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let next = Address::generate(&env);
+
+    client.propose_admin(&admin, &next);
+    client.cancel_admin_transfer(&admin);
+
+    assert_eq!(client.get_pending_admin(), None);
+    assert_eq!(
+        client.try_accept_admin(&next),
+        Err(Ok(Error::NoPendingAdmin))
+    );
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("adm_cncl")),
+        1
+    );
+}
+
+#[test]
+fn governance_transfer_clears_a_stale_proposal() {
+    let env = Env::default();
+    let (client, admin, governance) = setup_governed(&env);
+    let proposed = Address::generate(&env);
+    let voted = Address::generate(&env);
+
+    client.propose_admin(&admin, &proposed);
+    client.set_admin_by_governance(&governance, &voted);
+
+    assert_eq!(client.get_admin(), voted);
+    assert_eq!(client.get_pending_admin(), None);
+    assert_eq!(
+        client.try_accept_admin(&proposed),
+        Err(Ok(Error::NoPendingAdmin))
+    );
+}
+
+// ============================================================================
+// Timelocked upgrades (#2783)
+// ============================================================================
+
+fn advance_ledgers(env: &Env, by: u32) {
+    use soroban_sdk::testutils::Ledger as _;
+    env.ledger().with_mut(|li| li.sequence_number += by);
+}
+
+#[test]
+fn schedule_upgrade_records_pending_state_and_emits_event() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let hash = create_test_hash(&env, 42);
+    let now = env.ledger().sequence();
+
+    let pending = client.schedule_upgrade(&admin, &hash);
+
+    assert_eq!(pending.wasm_hash, hash);
+    assert_eq!(pending.proposer, admin);
+    assert_eq!(pending.scheduled_at, now);
+    assert_eq!(pending.executable_at, now + DEFAULT_UPGRADE_DELAY_LEDGERS);
+    assert_eq!(client.get_pending_upgrade(), Some(pending));
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("upg_schd")),
+        1
+    );
+}
+
+#[test]
+fn execute_upgrade_before_delay_fails() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    client.schedule_upgrade(&admin, &create_test_hash(&env, 42));
+
+    advance_ledgers(&env, DEFAULT_UPGRADE_DELAY_LEDGERS - 1);
+
+    assert_eq!(
+        client.try_execute_upgrade(&admin),
+        Err(Ok(Error::TimelockNotExpired))
+    );
+    assert!(client.get_pending_upgrade().is_some());
+}
+
+#[test]
+fn execute_upgrade_after_delay_passes_the_timelock() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    client.schedule_upgrade(&admin, &create_test_hash(&env, 42));
+
+    advance_ledgers(&env, DEFAULT_UPGRADE_DELAY_LEDGERS);
+
+    // The hash isn't an uploaded Wasm in the test host, so the host rejects
+    // the install itself — but the contract's own timelock check has passed.
+    let result = client.try_execute_upgrade(&admin);
+    assert_ne!(result, Err(Ok(Error::TimelockNotExpired)));
+    assert_ne!(result, Err(Ok(Error::NoPendingUpgrade)));
+}
+
+#[test]
+fn execute_upgrade_without_schedule_fails() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_execute_upgrade(&admin),
+        Err(Ok(Error::NoPendingUpgrade))
+    );
+}
+
+#[test]
+fn stranger_cannot_schedule_or_execute_upgrade() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let stranger = Address::generate(&env);
+
+    assert_eq!(
+        client.try_schedule_upgrade(&stranger, &create_test_hash(&env, 1)),
+        Err(Ok(Error::Unauthorized))
+    );
+    client.schedule_upgrade(&admin, &create_test_hash(&env, 1));
+    advance_ledgers(&env, DEFAULT_UPGRADE_DELAY_LEDGERS);
+    assert_eq!(
+        client.try_execute_upgrade(&stranger),
+        Err(Ok(Error::Unauthorized))
+    );
+}
+
+#[test]
+fn admin_can_cancel_a_scheduled_upgrade() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    client.schedule_upgrade(&admin, &create_test_hash(&env, 42));
+
+    client.cancel_upgrade(&admin);
+
+    assert_eq!(client.get_pending_upgrade(), None);
+    advance_ledgers(&env, DEFAULT_UPGRADE_DELAY_LEDGERS);
+    assert_eq!(
+        client.try_execute_upgrade(&admin),
+        Err(Ok(Error::NoPendingUpgrade))
+    );
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("upg_cncl")),
+        1
+    );
+}
+
+#[test]
+fn governance_can_schedule_and_cancel_upgrades() {
+    let env = Env::default();
+    let (client, admin, governance) = setup_governed(&env);
+
+    // Governance can veto an admin-scheduled upgrade…
+    client.schedule_upgrade(&admin, &create_test_hash(&env, 1));
+    client.cancel_upgrade(&governance);
+    assert_eq!(client.get_pending_upgrade(), None);
+
+    // …and schedule its own.
+    let pending = client.schedule_upgrade(&governance, &create_test_hash(&env, 2));
+    assert_eq!(pending.proposer, governance);
+}
+
+#[test]
+fn upgrade_manager_can_schedule_but_not_cancel() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let manager = Address::generate(&env);
+    client.grant_role(&admin, &manager, &Role::UpgradeManager);
+
+    client.schedule_upgrade(&manager, &create_test_hash(&env, 3));
+    assert_eq!(
+        client.try_cancel_upgrade(&manager),
+        Err(Ok(Error::Unauthorized))
+    );
+}
+
+#[test]
+fn upgrade_delay_rules() {
+    let env = Env::default();
+    let (client, admin, governance) = setup_governed(&env);
+
+    assert_eq!(client.get_upgrade_delay(), DEFAULT_UPGRADE_DELAY_LEDGERS);
+    // Admin may lengthen…
+    client.set_upgrade_delay(&admin, &(DEFAULT_UPGRADE_DELAY_LEDGERS * 2));
+    // …but not shorten.
+    assert_eq!(
+        client.try_set_upgrade_delay(&admin, &DEFAULT_UPGRADE_DELAY_LEDGERS),
+        Err(Ok(Error::InvalidUpgradeDelay))
+    );
+    // Governance may shorten, but never below the floor.
+    client.set_upgrade_delay(&governance, &MIN_UPGRADE_DELAY_LEDGERS);
+    assert_eq!(client.get_upgrade_delay(), MIN_UPGRADE_DELAY_LEDGERS);
+    assert_eq!(
+        client.try_set_upgrade_delay(&governance, &(MIN_UPGRADE_DELAY_LEDGERS - 1)),
+        Err(Ok(Error::InvalidUpgradeDelay))
+    );
+
+    let now = env.ledger().sequence();
+    let pending = client.schedule_upgrade(&admin, &create_test_hash(&env, 5));
+    assert_eq!(pending.executable_at, now + MIN_UPGRADE_DELAY_LEDGERS);
+}
+
+// ============================================================================
+// Role entry TTL (#2784)
+// ============================================================================
+
+#[test]
+fn grant_and_revoke_maintain_the_role_holder_index() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let user = Address::generate(&env);
+
+    assert_eq!(client.get_role_holders(), soroban_sdk::vec![&env, admin.clone()]);
+
+    client.grant_role(&admin, &user, &Role::PauseManager);
+    assert!(client.get_role_holders().contains(&user));
+
+    client.revoke_role(&admin, &user, &Role::PauseManager);
+    assert!(!client.get_role_holders().contains(&user));
+    assert!(!client.has_role(&user, &Role::PauseManager));
+}
+
+#[test]
+fn role_holder_index_is_bounded() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+
+    // The admin already occupies one slot.
+    for _ in 1..MAX_ROLE_HOLDERS {
+        client.grant_role(&admin, &Address::generate(&env), &Role::PauseManager);
+    }
+    assert_eq!(
+        client.try_grant_role(&admin, &Address::generate(&env), &Role::PauseManager),
+        Err(Ok(Error::TooManyRoleHolders))
+    );
+}
+
+#[test]
+fn non_admin_roles_survive_past_ttl_when_bumped() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let pauser = Address::generate(&env);
+    client.grant_role(&admin, &pauser, &Role::PauseManager);
+    let start = env.ledger().sequence();
+
+    // Keeper runs near the end of the original window…
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND - 50_000);
+    client.bump_ttl();
+
+    // …and the role is still valid well past where it would have archived.
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND + 100_000);
+    assert!(client.has_role(&pauser, &Role::PauseManager));
+    client.pause(&pauser);
+    assert!(client.is_paused());
+}
+
+#[test]
+fn using_a_role_extends_its_entry() {
+    use soroban_sdk::testutils::storage::Persistent as _;
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, contract_id, admin, _) = setup_with_submitter(&env);
+    let pauser = Address::generate(&env);
+    client.grant_role(&admin, &pauser, &Role::PauseManager);
+    let start = env.ledger().sequence();
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + 100_000);
+    // Authorising via the role (read path) pushes the entry's TTL out again.
+    client.pause(&pauser);
+
+    env.as_contract(&contract_id, || {
+        let ttl = env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Roles(pauser.clone()));
+        assert!(ttl >= LEDGERS_TO_EXTEND - 1);
+    });
+}
+
+/// Documents what happens without a keeper: once a role entry's TTL runs out
+/// it is archived, and reading it fails until it is restored with a
+/// `RestoreFootprint` operation (see contracts/payraider/README.md).
+#[test]
+#[should_panic]
+fn archived_role_entry_cannot_be_read_without_restore() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, contract_id, admin, _) = setup_with_submitter(&env);
+    let pauser = Address::generate(&env);
+    client.grant_role(&admin, &pauser, &Role::PauseManager);
+    let start = env.ledger().sequence();
+
+    // Keep only the instance alive, as an operator who never ran bump_ttl
+    // but kept submitting would.
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND - 50_000);
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+    });
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = start + LEDGERS_TO_EXTEND + 100_000);
+    // The role entry is archived: the host refuses to read it.
+    client.has_role(&pauser, &Role::PauseManager);
 }

@@ -12,6 +12,7 @@ pub mod contract_listener;
 pub mod corridor_performance_monitor;
 pub mod data_port;
 pub mod event_indexer;
+pub mod ledger_coverage;
 pub mod fee_bump_tracker;
 #[cfg(feature = "gdpr")]
 pub mod gdpr;
@@ -29,6 +30,7 @@ pub mod service_container;
 #[cfg(feature = "slack-bot")]
 pub mod slack_bot;
 pub mod snapshot;
+pub mod snapshot_chain;
 pub mod stellar_toml;
 pub mod trustline_analyzer;
 pub mod verification_rewards;

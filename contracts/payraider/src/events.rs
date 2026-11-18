@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
+use crate::RotationReason;
+
 // ============================================================================
 // Event Topics - Short symbols for efficient on-chain storage
 // ============================================================================
@@ -29,6 +31,7 @@ pub const CONTRACT_LIFECYCLE: Symbol = symbol_short!("CTR_LFE");
 /// - `epoch`: The epoch identifier for this snapshot (positive integer)
 /// - `timestamp`: Ledger timestamp when the snapshot was recorded on-chain
 /// - `submitter`: Address of the admin who submitted the snapshot
+/// - `chain_hash`: `sha256(prev_chain_hash || epoch_be || hash)` (#2782)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotSubmitted {
@@ -40,6 +43,8 @@ pub struct SnapshotSubmitted {
     pub timestamp: u64,
     /// Address of the admin who submitted the snapshot
     pub submitter: Address,
+    /// Rolling hash-chain commitment over every epoch up to this one (#2782)
+    pub chain_hash: BytesN<32>,
 }
 
 impl SnapshotSubmitted {
@@ -55,12 +60,20 @@ impl SnapshotSubmitted {
     /// # Event Format
     /// Topic: (SNAPSHOT_SUBMITTED, SNAPSHOT_LIFECYCLE)
     /// Data: SnapshotSubmitted struct containing hash, epoch, timestamp, submitter
-    pub fn publish(env: &Env, hash: BytesN<32>, epoch: u64, timestamp: u64, submitter: Address) {
+    pub fn publish(
+        env: &Env,
+        hash: BytesN<32>,
+        epoch: u64,
+        timestamp: u64,
+        submitter: Address,
+        chain_hash: BytesN<32>,
+    ) {
         let event = SnapshotSubmitted {
             hash,
             epoch,
             timestamp,
             submitter,
+            chain_hash,
         };
 
         // Publish with multiple topics for flexible filtering
@@ -116,14 +129,16 @@ impl AnalyticsSnapshotSubmitted {
 /// * `epoch` - The exact epoch that was stored
 /// * `timestamp` - The exact timestamp that was stored
 /// * `submitter` - The address of the caller who submitted
+/// * `chain_hash` - The chain commitment stored with this epoch
 pub fn emit_snapshot_submitted(
     env: &Env,
     hash: BytesN<32>,
     epoch: u64,
     timestamp: u64,
     submitter: Address,
+    chain_hash: BytesN<32>,
 ) {
-    SnapshotSubmitted::publish(env, hash, epoch, timestamp, submitter);
+    SnapshotSubmitted::publish(env, hash, epoch, timestamp, submitter, chain_hash);
 }
 
 /// Emit an event when the contract is initialized.
@@ -209,5 +224,63 @@ pub fn emit_submitter_rotated(
     env.events().publish(
         (symbol_short!("subm_rot"), SUBMITTER_SET),
         (admin, old_submitter, new_submitter),
+    );
+}
+
+// ============================================================================
+// Two-step admin transfer and timelocked upgrades (#2783)
+// ============================================================================
+
+/// Emit when the admin proposes a new admin. Topic `("adm_prop", CTR_LFE)`,
+/// data `(admin, proposed)`.
+pub fn emit_admin_proposed(env: &Env, admin: Address, proposed: Address) {
+    env.events().publish(
+        (symbol_short!("adm_prop"), CONTRACT_LIFECYCLE),
+        (admin, proposed),
+    );
+}
+
+/// Emit when a pending admin transfer is withdrawn. Topic
+/// `("adm_cncl", CTR_LFE)`, data `(caller, proposed)`.
+pub fn emit_admin_transfer_cancelled(env: &Env, caller: Address, proposed: Address) {
+    env.events().publish(
+        (symbol_short!("adm_cncl"), CONTRACT_LIFECYCLE),
+        (caller, proposed),
+    );
+}
+
+/// Emit when an upgrade is scheduled. Topic `("upg_schd", CTR_LFE)`, data
+/// `(proposer, wasm_hash, executable_at_ledger)`.
+pub fn emit_upgrade_scheduled(env: &Env, proposer: Address, wasm_hash: BytesN<32>, executable_at: u32) {
+    env.events().publish(
+        (symbol_short!("upg_schd"), CONTRACT_LIFECYCLE),
+        (proposer, wasm_hash, executable_at),
+    );
+}
+
+/// Emit when a scheduled upgrade is cancelled. Topic `("upg_cncl", CTR_LFE)`,
+/// data `(caller, wasm_hash)`.
+pub fn emit_upgrade_cancelled(env: &Env, caller: Address, wasm_hash: BytesN<32>) {
+    env.events().publish(
+        (symbol_short!("upg_cncl"), CONTRACT_LIFECYCLE),
+        (caller, wasm_hash),
+    );
+}
+
+/// Emit when a scheduled upgrade is executed. Topic `("upg_exec", CTR_LFE)`,
+/// data `(caller, wasm_hash)`.
+pub fn emit_upgrade_executed(env: &Env, caller: Address, wasm_hash: BytesN<32>) {
+    env.events().publish(
+        (symbol_short!("upg_exec"), CONTRACT_LIFECYCLE),
+        (caller, wasm_hash),
+    );
+}
+
+/// Emit when the upgrade delay changes. Topic `("upg_dely", CTR_LFE)`, data
+/// `(caller, old_delay, new_delay)` in ledgers.
+pub fn emit_upgrade_delay_set(env: &Env, caller: Address, old_delay: u32, new_delay: u32) {
+    env.events().publish(
+        (symbol_short!("upg_dely"), CONTRACT_LIFECYCLE),
+        (caller, old_delay, new_delay),
     );
 }

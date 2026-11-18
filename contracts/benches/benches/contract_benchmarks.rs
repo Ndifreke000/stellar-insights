@@ -65,8 +65,45 @@ fn bench_payraider_latest(c: &mut Criterion) {
     });
 }
 
+/// Submission cost against growing history (#2781). With per-epoch storage
+/// every group should report about the same time; under the old single-map
+/// layout it grew linearly with `history`.
+fn bench_payraider_submit_vs_history(c: &mut Criterion) {
+    let mut group = c.benchmark_group("payraider::submit_snapshot_after_history");
+    for history in [10u64, 1_000, 10_000] {
+        let env = Env::default();
+        let (client, admin) = setup_payraider(&env);
+        for epoch in 1..=history {
+            client.submit_snapshot(&epoch, &make_hash(&env, epoch), &admin);
+        }
+        let mut epoch = history + 1;
+        group.bench_function(format!("history={history}"), |b| {
+            b.iter(|| {
+                let hash = make_hash(&env, epoch);
+                client.submit_snapshot(black_box(&epoch), black_box(&hash), black_box(&admin));
+                epoch += 1;
+            })
+        });
+    }
+    group.finish();
+}
+
+/// `verify_range` over a full `MAX_VERIFY_STEPS` walk (#2782).
+fn bench_payraider_verify_range(c: &mut Criterion) {
+    let env = Env::default();
+    let (client, admin) = setup_payraider(&env);
+    for epoch in 1u64..=99 {
+        client.submit_snapshot(&epoch, &make_hash(&env, epoch), &admin);
+    }
+    c.bench_function("payraider::verify_range_99", |b| {
+        b.iter(|| client.verify_range(black_box(&1u64), black_box(&99u64)))
+    });
+}
+
 criterion_group!(
     payraider_benches,
+    bench_payraider_submit_vs_history,
+    bench_payraider_verify_range,
     bench_payraider_submit,
     bench_payraider_get,
     bench_payraider_latest,

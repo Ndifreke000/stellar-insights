@@ -43,6 +43,9 @@ pub struct HealthStatus {
     pub network: NetworkInfo,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_freshness: Option<DataFreshnessInfo>,
+    /// Ledger scan coverage gaps for this network (#2765).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledger_coverage: Option<crate::services::event_indexer::LedgerGapSummary>,
     pub client_info: Option<ClientInfo>,
 }
 
@@ -64,6 +67,9 @@ pub struct HealthChecks {
     pub database: ComponentHealth,
     pub cache: ComponentHealth,
     pub rpc: ComponentHealth,
+    /// Per-provider breakdown when multi-provider failover is configured (#2776).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rpc_providers: Vec<crate::rpc::provider_pool::ProviderStatus>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -144,6 +150,19 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
         )
         .await;
 
+    // Ledger gaps degrade health: they mean real, unbackfilled data loss
+    // rather than ledgers that simply had no events (#2765).
+    let ledger_coverage = crate::services::event_indexer::EventIndexer::for_network(
+        app_state.db.clone(),
+        app_state.network_context.network,
+    )
+    .coverage_gap_summary()
+    .await
+    .ok();
+    let has_ledger_gaps = ledger_coverage
+        .as_ref()
+        .is_some_and(|c| c.gap_count > 0);
+
     let is_high_lag = freshness_status
         .lag_seconds
         .map(|s| s > freshness_status.max_lag_seconds)
@@ -151,7 +170,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
 
     let overall_status = if !db_health.healthy || !rpc_health.healthy {
         "unhealthy"
-    } else if !cache_health.healthy || is_high_lag {
+    } else if !cache_health.healthy || is_high_lag || has_ledger_gaps {
         "degraded"
     } else {
         "healthy"
@@ -183,6 +202,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
             database: db_health,
             cache: cache_health,
             rpc: rpc_health,
+            rpc_providers: crate::rpc::provider_pool::registered_statuses(),
         },
         network: NetworkInfo {
             network: network_context.network_id(),
@@ -190,6 +210,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
             is_primary,
         },
         data_freshness,
+        ledger_coverage,
         client_info: None,
     })
 }
