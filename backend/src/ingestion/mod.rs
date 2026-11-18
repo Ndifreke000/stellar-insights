@@ -1,3 +1,4 @@
+pub mod adaptive_batch;
 pub mod ledger;
 
 use anyhow::Result;

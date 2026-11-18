@@ -229,6 +229,23 @@ lazy_static! {
         &["corridor"]
     )
     .expect("Failed to register stellar_corridor_reliability histogram");
+    // Ledger ingestion (#2767)
+    pub static ref INGESTION_LAG_LEDGERS: IntGauge = IntGauge::new(
+        "ingestion_lag_ledgers",
+        "Ledgers between the network head and the last committed ingestion cursor"
+    )
+    .expect("Failed to register ingestion_lag_ledgers gauge");
+    pub static ref INGESTION_BATCH_SIZE: IntGauge = IntGauge::new(
+        "ingestion_batch_size",
+        "Current adaptive (AIMD) getLedgers batch size used by ledger ingestion"
+    )
+    .expect("Failed to register ingestion_batch_size gauge");
+    // Unrecoverable backfill ranges outside RPC retention (#2770)
+    pub static ref BACKFILL_UNRECOVERABLE_RANGES_TOTAL: IntCounter = IntCounter::new(
+        "backfill_unrecoverable_ranges_total",
+        "Backfill ranges found outside the RPC event retention window"
+    )
+    .expect("Failed to register backfill_unrecoverable_ranges_total counter");
     // Price feed / oracle staleness metrics
     pub static ref PRICE_FEED_STALE_ASSETS: IntGaugeVec = IntGaugeVec::new(
         Opts::new(
@@ -291,6 +308,9 @@ pub fn init_metrics() {
         STELLAR_ANCHOR_HEALTH,
         STELLAR_CORRIDOR_RELIABILITY,
         PRICE_FEED_STALE_ASSETS,
+        INGESTION_LAG_LEDGERS,
+        INGESTION_BATCH_SIZE,
+        BACKFILL_UNRECOVERABLE_RANGES_TOTAL,
     );
 }
 
@@ -470,6 +490,18 @@ pub fn set_backup_size_bytes(size: u64) {
 
 pub fn record_background_job(_job: &str, _status: &str) {
     BACKGROUND_JOBS_TOTAL.inc();
+}
+
+pub fn set_ingestion_lag_ledgers(lag: u64) {
+    INGESTION_LAG_LEDGERS.set(i64::try_from(lag).unwrap_or(i64::MAX));
+}
+
+pub fn set_ingestion_batch_size(size: u32) {
+    INGESTION_BATCH_SIZE.set(i64::from(size));
+}
+
+pub fn record_backfill_unrecoverable_range() {
+    BACKFILL_UNRECOVERABLE_RANGES_TOTAL.inc();
 }
 
 pub fn set_corridors_tracked(count: i64) {
