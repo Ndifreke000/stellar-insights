@@ -238,15 +238,15 @@ pub async fn load_stored_snapshot(
                 WHERE entity_type = 'analytics_snapshot' AND ";
     let row = match snapshot_ref {
         SnapshotRef::Id(id) => {
-            sqlx::query(&format!("{base} id = ? LIMIT 1"))
+            sqlx::query(sqlx::AssertSqlSafe(format!("{base} id = ? LIMIT 1")))
                 .bind(id)
                 .fetch_optional(pool)
                 .await?
         }
         SnapshotRef::Epoch(epoch) => {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "{base} epoch = ? ORDER BY created_at DESC LIMIT 1"
-            ))
+            )))
             .bind(*epoch as i64)
             .fetch_optional(pool)
             .await?

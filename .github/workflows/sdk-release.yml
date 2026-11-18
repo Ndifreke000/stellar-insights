@@ -62,10 +62,26 @@ jobs:
       # 'false' means no changesets were pending, so the publish step ran.
       has_changesets: ${{ steps.changesets.outputs.hasChangesets }}
     steps:
+      # Publishing needs an npm token (and a "Version Packages" PR needs Actions
+      # to be allowed to open PRs). Until NPM_TOKEN is configured there is
+      # nothing to release, so skip cleanly instead of failing main.
+      - name: Check publishing credentials
+        id: creds
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::NPM_TOKEN is not configured; skipping the SDK release."
+          fi
       - uses: actions/checkout@v4
+        if: steps.creds.outputs.enabled == 'true'
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        if: steps.creds.outputs.enabled == 'true'
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
@@ -76,7 +92,9 @@ jobs:
             sdk/react/package-lock.json
             sdk/mcp-server/package-lock.json
       - run: npm ci
+        if: steps.creds.outputs.enabled == 'true'
       - name: Version PR or publish
+        if: steps.creds.outputs.enabled == 'true'
         id: changesets
         uses: changesets/action@v1
         with:

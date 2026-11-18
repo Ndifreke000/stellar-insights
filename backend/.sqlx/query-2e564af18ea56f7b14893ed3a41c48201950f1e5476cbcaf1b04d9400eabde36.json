@@ -6,42 +6,50 @@
       {
         "name": "total_pools: _",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "total_liquidity_usd: _",
         "ordinal": 1,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "avg_pool_size_usd: _",
         "ordinal": 2,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "total_value_locked_usd: _",
         "ordinal": 3,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "total_volume_24h_usd: _",
         "ordinal": 4,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "total_fees_24h_usd: _",
         "ordinal": 5,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "avg_apy: _",
         "ordinal": 6,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       },
       {
         "name": "avg_impermanent_loss: _",
         "ordinal": 7,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": "Expression"
       }
     ],
     "parameters": {

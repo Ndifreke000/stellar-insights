@@ -91,7 +91,10 @@ async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Res
  */
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = await response.json().catch(() => undefined);
+    // Error bodies are optional and may not be JSON; never let parsing mask the status.
+    const body = await Promise.resolve()
+      .then(() => response.json())
+      .catch(() => undefined);
     throw new ApiError(response.status, response.statusText, body);
   }
 

@@ -1,6 +1,10 @@
-import axios from 'axios'
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+
+async function requestJson<T>(url: string, init: RequestInit, timeoutMs: number): Promise<{ data: T }> {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return { data: (await res.json()) as T }
+}
 
 /**
  * SEP-10 Web Authentication service.
@@ -69,9 +73,10 @@ class Sep10AuthService {
   private async fetchHomeDomain(): Promise<string> {
     let response
     try {
-      response = await axios.get<HomeDomainConfig>(
+      response = await requestJson<HomeDomainConfig>(
         `${API_BASE_URL}/api/v1/config/home-domain`,
-        { timeout: 10000 },
+        { method: 'GET' },
+        10000,
       )
     } catch {
       throw new Sep10AuthError(
@@ -108,10 +113,14 @@ class Sep10AuthService {
 
     let response
     try {
-      response = await axios.post<Sep10AuthResult>(
+      response = await requestJson<Sep10AuthResult>(
         `${API_BASE_URL}/api/v1/auth/sep10`,
-        { account: address, home_domain: homeDomain },
-        { timeout: 15000 },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: address, home_domain: homeDomain }),
+        },
+        15000,
       )
     } catch {
       throw new Sep10AuthError('SEP-10 authentication failed.')

@@ -73,6 +73,7 @@ pub struct InfoQuery {
 #[utoipa::path(
     get,
     path = "/api/sep24/info",
+    operation_id = "sep24_get_info",
     params(
         ("transfer_server" = String, Query, description = "Transfer server URL")
     ),
@@ -298,6 +299,7 @@ pub struct TransactionsQuery {
 #[utoipa::path(
     get,
     path = "/api/sep24/transactions",
+    operation_id = "sep24_get_transactions",
     params(
         ("transfer_server" = String, Query, description = "Transfer server URL"),
         ("jwt" = Option<String>, Query, description = "JWT token"),
@@ -372,6 +374,7 @@ pub struct TransactionQuery {
 #[utoipa::path(
     get,
     path = "/api/sep24/transaction",
+    operation_id = "sep24_get_transaction",
     params(
         ("transfer_server" = String, Query, description = "Transfer server URL"),
         ("id" = String, Query, description = "Transaction ID"),
@@ -433,6 +436,7 @@ pub struct Sep24AnchorInfo {
 #[utoipa::path(
     get,
     path = "/api/sep24/anchors",
+    operation_id = "sep24_list_anchors",
     responses(
         (status = 200, description = "List of SEP-24 anchors")
     ),

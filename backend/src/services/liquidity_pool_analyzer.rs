@@ -282,7 +282,7 @@ impl LiquidityPoolAnalyzer {
         // Replace {order_clause} in the query string (safe because order_clause is controlled)
         let query = query.replace("{order_clause}", order_clause);
 
-        let pools = sqlx::query_as::<_, LiquidityPool>(&query)
+        let pools = sqlx::query_as::<_, LiquidityPool>(sqlx::AssertSqlSafe(query.as_str()))
             .bind(limit)
             .fetch_all(&self.pool)
             .await?;

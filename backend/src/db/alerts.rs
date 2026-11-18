@@ -103,7 +103,7 @@ impl crate::database::Database {
 
         query.push_str(" WHERE id = $1 AND user_id = $2 RETURNING *");
 
-        let mut q = sqlx::query_as::<_, AlertRule>(&query)
+        let mut q = sqlx::query_as::<_, AlertRule>(sqlx::AssertSqlSafe(query.as_str()))
             .bind(id)
             .bind(user_id);
 

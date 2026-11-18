@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderWithProviders } from '@/test-utils/render';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import UpgradePanel from '@/app/[locale]/developer/components/UpgradePanel';
 import * as apiKeys from '@/lib/api-keys';
@@ -51,7 +52,7 @@ const INVOICE: apiKeys.Invoice = {
 const HASH = 'a'.repeat(64);
 
 function renderPanel() {
-  return render(<UpgradePanel authToken="token" address="GWALLET" keys={[KEY]} />);
+  return renderWithProviders(<UpgradePanel authToken="token" address="GWALLET" keys={[KEY]} />);
 }
 
 describe('UpgradePanel', () => {
@@ -80,7 +81,7 @@ describe('UpgradePanel', () => {
 
   it('shows the payment details from the invoice', async () => {
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /Upgrade for 50 USDC/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Upgrade Plan for 50 USDC/ }));
 
     expect(await screen.findByText('payraider-abc123')).toBeInTheDocument();
     expect(screen.getByText('GTREASURY')).toBeInTheDocument();
@@ -89,7 +90,7 @@ describe('UpgradePanel', () => {
 
   it('confirms a payment made from another wallet by its hash', async () => {
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /Upgrade for 50 USDC/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Upgrade Plan for 50 USDC/ }));
     fireEvent.change(await screen.findByLabelText('Transaction hash'), { target: { value: HASH } });
     fireEvent.click(screen.getByRole('button', { name: /Confirm payment/ }));
 
@@ -100,7 +101,7 @@ describe('UpgradePanel', () => {
   it('pays with Freighter and confirms in one step', async () => {
     vi.mocked(payInvoice.payInvoiceWithFreighter).mockResolvedValue(HASH);
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /Upgrade for 50 USDC/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Upgrade Plan for 50 USDC/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Pay with Freighter/ }));
 
     await waitFor(() => expect(apiKeys.confirmInvoice).toHaveBeenCalledWith('token', 'inv-1', HASH));
@@ -110,7 +111,7 @@ describe('UpgradePanel', () => {
   it('shows the server message when a payment does not match', async () => {
     vi.mocked(apiKeys.confirmInvoice).mockRejectedValue(new Error('The transaction memo must be the text memo'));
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /Upgrade for 50 USDC/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Upgrade Plan for 50 USDC/ }));
     fireEvent.change(await screen.findByLabelText('Transaction hash'), { target: { value: HASH } });
     fireEvent.click(screen.getByRole('button', { name: /Confirm payment/ }));
 

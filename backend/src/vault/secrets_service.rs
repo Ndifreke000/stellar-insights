@@ -122,11 +122,13 @@ impl SecretsService {
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn secrets_service_fallback_to_env() {
+        let _env = crate::lock_env_test();
         // Set up environment variables for this test
         std::env::set_var("JWT_SECRET", "test-jwt-secret-1234567890");
         std::env::set_var("ENCRYPTION_KEY", "test-encryption-key-1234567890");
@@ -145,6 +147,7 @@ mod tests {
 
     #[test]
     fn application_secrets_structure() {
+        let _env = crate::lock_env_test();
         let secrets = ApplicationSecrets {
             jwt_secret: "secret".to_string(),
             encryption_key: "key".to_string(),
@@ -158,6 +161,7 @@ mod tests {
 
     #[test]
     fn application_secrets_database_password_optional() {
+        let _env = crate::lock_env_test();
         let secrets = ApplicationSecrets {
             jwt_secret: "secret".to_string(),
             encryption_key: "key".to_string(),
@@ -171,6 +175,7 @@ mod tests {
 
     #[tokio::test]
     async fn secrets_service_get_jwt_secret() {
+        let _env = crate::lock_env_test();
         std::env::set_var("JWT_SECRET", "test-jwt-secret");
         std::env::set_var("ENCRYPTION_KEY", "test-encryption-key");
         std::env::remove_var("VAULT_ADDR");
@@ -187,6 +192,7 @@ mod tests {
 
     #[tokio::test]
     async fn secrets_service_fetch_from_env() {
+        let _env = crate::lock_env_test();
         std::env::set_var("JWT_SECRET", "env-jwt-secret");
         std::env::set_var("ENCRYPTION_KEY", "env-encryption-key");
         std::env::remove_var("VAULT_ADDR");
@@ -204,6 +210,7 @@ mod tests {
 
     #[test]
     fn secrets_service_from_env() {
+        let _env = crate::lock_env_test();
         std::env::set_var("JWT_SECRET", "env-jwt-secret");
         std::env::set_var("ENCRYPTION_KEY", "env-encryption-key");
 
@@ -219,6 +226,7 @@ mod tests {
 
     #[test]
     fn secrets_service_from_env_fails_when_jwt_secret_missing() {
+        let _env = crate::lock_env_test();
         std::env::remove_var("JWT_SECRET");
         std::env::set_var("ENCRYPTION_KEY", "test-key");
 
@@ -234,6 +242,7 @@ mod tests {
 
     #[test]
     fn secrets_service_from_env_fails_when_encryption_key_missing() {
+        let _env = crate::lock_env_test();
         std::env::set_var("JWT_SECRET", "test-secret");
         std::env::remove_var("ENCRYPTION_KEY");
 
@@ -249,6 +258,7 @@ mod tests {
 
     #[test]
     fn application_secrets_is_send_and_sync() {
+        let _env = crate::lock_env_test();
         let secrets = ApplicationSecrets {
             jwt_secret: "secret".to_string(),
             encryption_key: "key".to_string(),
@@ -265,6 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn secrets_service_is_send_and_sync() {
+        let _env = crate::lock_env_test();
         std::env::set_var("JWT_SECRET", "test-secret");
         std::env::set_var("ENCRYPTION_KEY", "test-key");
         std::env::remove_var("VAULT_ADDR");

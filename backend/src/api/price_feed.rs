@@ -254,6 +254,7 @@ pub async fn convert_to_usd(
 #[utoipa::path(
     get,
     path = "/api/prices/cache-stats",
+    operation_id = "get_price_cache_stats",
     responses(
         (status = 200, description = "Cache stats retrieved successfully", body = CacheStatsResponse),
         (status = 500, description = "Internal server error")

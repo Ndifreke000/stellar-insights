@@ -60,14 +60,24 @@ jobs:
         working-directory: backend
         run: |
           cp .env.example .env
-          echo "DATABASE_URL=sqlite:./e2e_test.db" >> .env
-          echo "REDIS_URL=redis://localhost:6379" >> .env
-          echo "RPC_MOCK_MODE=true" >> .env
+          # Drop placeholder values (the server refuses to start with CHANGE_ME secrets)
+          # and override per-test settings in place: dotenv keeps the first value for a
+          # key, so appending duplicates would be silently ignored.
+          sed -i -E '/^[A-Z0-9_]+=["'"'"']?CHANGE_ME/d' .env
+          set_env() { sed -i "/^$1=/d" .env; echo "$1=$2" >> .env; }
+          set_env DATABASE_URL "sqlite:./e2e_test.db"
+          set_env REDIS_URL redis://localhost:6379
+          set_env RPC_MOCK_MODE true
+          set_env JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+          set_env ENCRYPTION_KEY "$(openssl rand -hex 32)"
+          # Public key only (no secret): enables the SEP-10 wallet sign-in routes.
+          set_env SEP10_SERVER_PUBLIC_KEY GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 
       - name: Run database migrations
         working-directory: backend
         run: |
-          cargo install sqlx-cli --no-default-features --features sqlite
+          cargo install sqlx-cli --no-default-features --features sqlite --locked
+          sqlx database create
           sqlx migrate run
 
       - name: Start backend server

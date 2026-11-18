@@ -6,22 +6,46 @@
       {
         "name": "id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_export_requests",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "status",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_export_requests",
+            "name": "status"
+          }
+        }
       },
       {
         "name": "requested_at",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_export_requests",
+            "name": "requested_at"
+          }
+        }
       },
       {
         "name": "expires_at",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_export_requests",
+            "name": "expires_at"
+          }
+        }
       }
     ],
     "parameters": {

@@ -10,4 +10,8 @@ ignore = [
                           # use `aws_lc_rs` instead -- see Cargo.toml). Confirmed unreachable via
                           # `cargo tree -i rsa` (empty); remains only as a stale Cargo.lock entry.
                           # No fixed version exists upstream for the direct advisory either way.
+    "RUSTSEC-2026-0543", # chrono unmaintained: informational "unmaintained" advisory with no
+                          # fixed release and no known vulnerability. chrono is used throughout the
+                          # backend and by sqlx/async-graphql/utoipa; migrating to jiff/time is
+                          # tracked separately and cannot be done by a lockfile bump.
 ]

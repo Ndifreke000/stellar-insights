@@ -33,6 +33,9 @@
 import { test, expect, APIRequestContext } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 
+/** Anonymous (per-IP) tier from `RateLimitConfig::default()` in backend/src/rate_limit.rs. */
+const ANONYMOUS_LIMIT_PER_MINUTE = "60";
+
 interface ChallengeResponse {
   transaction: string;
   network_passphrase: string;
@@ -61,7 +64,10 @@ async function signInWithSep10(request: APIRequestContext): Promise<string> {
 
   // Raw Ed25519 signature over the UTF-8 bytes of the challenge string, as
   // `verify_account_signature` expects — see the module doc comment above.
-  const signature = keypair.sign(Buffer.from(challenge.transaction, "utf-8")).toString("base64");
+  // stellar-sdk >= 17 returns a Uint8Array, so wrap it before base64-encoding.
+  const signature = Buffer.from(
+    keypair.sign(Buffer.from(challenge.transaction, "utf-8"))
+  ).toString("base64");
 
   const verifyRes = await request.post("/api/sep10/verify", {
     data: { transaction: challenge.transaction, signature },
@@ -104,6 +110,8 @@ test.describe("Self-serve funnel: SEP-10 sign-in → API key → preflight", () 
     // test below). This is the signal that the whole funnel actually
     // worked end to end, not just that each step 200'd in isolation.
     expect(preflightRes.headers()["ratelimit-limit"]).toBeTruthy();
+    // ...and it is the key's own bucket, not the anonymous per-IP one.
+    expect(preflightRes.headers()["ratelimit-limit"]).not.toBe(ANONYMOUS_LIMIT_PER_MINUTE);
   });
 
   test("an unsigned preflight call still works, but anonymously", async ({ request }) => {
@@ -117,7 +125,9 @@ test.describe("Self-serve funnel: SEP-10 sign-in → API key → preflight", () 
     );
     expect(res.ok(), await res.text()).toBeTruthy();
     // No bearer token → api_key_rate_limit_middleware is a no-op passthrough,
-    // confirming the header in the test above really is API-key-specific.
-    expect(res.headers()["ratelimit-limit"]).toBeFalsy();
+    // so the only limit applied is the anonymous per-IP tier (if any). The
+    // test above checks an API key gets a different, key-scoped bucket.
+    const limit = res.headers()["ratelimit-limit"];
+    expect(limit === undefined || limit === ANONYMOUS_LIMIT_PER_MINUTE).toBe(true);
   });
 });

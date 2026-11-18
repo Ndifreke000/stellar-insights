@@ -141,40 +141,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/achievements/achievements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** GET /api/achievements/achievements - Get all achievements */
-        get: operations["get_achievements"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/achievements/quests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** GET /api/achievements/quests - Get all available quests */
-        get: operations["get_quests"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/analytics/overview": {
         parameters: {
             query?: never;
@@ -974,6 +940,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/corridors/{corridor_key}/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get recent failed payments for a corridor with result codes */
+        get: operations["get_corridor_failures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/corridors/{id}/metrics-from-transactions": {
         parameters: {
             query?: never;
@@ -1033,134 +1016,6 @@ export interface paths {
         };
         /** GET /api/fee-bumps/stats - Get fee bump transaction statistics */
         get: operations["get_fee_bump_stats"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_proposals"];
-        put?: never;
-        post: operations["create_proposal"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_proposal"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["activate_proposal"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/comments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_comments"];
-        put?: never;
-        post: operations["add_comment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/has-voted/{address}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["has_voted"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["refresh_tally"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/vote": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["cast_vote"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/governance/proposals/{id}/votes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_votes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1446,7 +1301,7 @@ export interface paths {
          * Get cache statistics
          * @description Returns statistics about the price cache.
          */
-        get: operations["get_cache_stats"];
+        get: operations["get_price_cache_stats"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1604,7 +1459,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep10/info - Get SEP-10 server information */
-        get: operations["get_info"];
+        get: operations["sep10_get_info"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1623,7 +1478,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** POST /api/sep10/logout - Invalidate SEP-10 session */
-        post: operations["logout"];
+        post: operations["sep10_logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1655,7 +1510,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep24/anchors - List known SEP-24-enabled anchors */
-        get: operations["list_anchors"];
+        get: operations["sep24_list_anchors"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1688,7 +1543,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_info"];
+        get: operations["sep24_get_info"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1705,7 +1560,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep24/transaction - Get a specific SEP-24 transaction */
-        get: operations["get_transaction"];
+        get: operations["sep24_get_transaction"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1722,7 +1577,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep24/transactions - Get SEP-24 transactions */
-        get: operations["get_transactions"];
+        get: operations["sep24_get_transactions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1756,7 +1611,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep31/anchors - List configured SEP-31 anchors */
-        get: operations["list_anchors"];
+        get: operations["sep31_list_anchors"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1791,7 +1646,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep31/info - Get SEP-31 anchor info */
-        get: operations["get_info"];
+        get: operations["sep31_get_info"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1825,7 +1680,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep31/transactions - List SEP-31 transactions */
-        get: operations["get_transactions"];
+        get: operations["sep31_get_transactions"];
         put?: never;
         /** POST /api/sep31/transactions - Create a SEP-31 transaction */
         post: operations["post_transaction"];
@@ -1843,7 +1698,7 @@ export interface paths {
             cookie?: never;
         };
         /** GET /api/sep31/transactions/{id} - Get a specific SEP-31 transaction */
-        get: operations["get_transaction"];
+        get: operations["sep31_get_transaction"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2114,6 +1969,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/preflight/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check several payments in one request (JSON body).
+         * @description The corridor table is loaded once and every item is scored against it.
+         *     Items are validated individually: a bad item comes back with an `error`
+         *     and the rest are still evaluated. Only an empty or oversized batch fails
+         *     the whole request.
+         */
+        post: operations["preflight_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Canonical JSON of a snapshot, byte-for-byte as it was hashed.
+         * @description GET /api/v1/snapshots/{id}
+         *
+         *     Third parties hash this body themselves (`sha256`) and compare it with the
+         *     on-chain record; see `docs/SNAPSHOT_ANCHORING.md`.
+         */
+        get: operations["get_snapshot_data"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snapshots/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify a stored snapshot against its recomputed hash and on-chain record.
+         * @description GET /api/v1/snapshots/{id}/verify
+         *
+         *     Always `200` once the snapshot exists: the verdict is in `verified` and
+         *     `status`, so a tampered or unanchored snapshot is a result, not an error.
+         */
+        get: operations["verify_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks": {
         parameters: {
             query?: never;
@@ -2245,7 +2169,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** POST /api/verifications/verify - Verify a snapshot hash and earn rewards */
-        post: operations["verify_snapshot"];
+        post: operations["verify_snapshot_for_reward"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2256,13 +2180,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ActivateRequest: {
-            /** Format: int64 */
-            voting_duration_secs?: number;
-        };
-        AddCommentRequest: {
-            content: string;
-        };
         AddSignatureRequest: {
             signature: string;
             signer: string;
@@ -2432,10 +2349,6 @@ export interface components {
             /** Format: int64 */
             total_requests: number;
         };
-        CastVoteRequest: {
-            choice: string;
-            tx_hash?: string | null;
-        };
         /** @description SEP-10 Challenge Request */
         ChallengeRequest: {
             account: string;
@@ -2507,6 +2420,18 @@ export interface components {
             liquidity_trends: components["schemas"]["LiquidityDataPoint"][];
             /** @description Related corridors */
             related_corridors?: components["schemas"]["CorridorResponse"][] | null;
+        };
+        CorridorFailedPayment: {
+            /** Format: double */
+            amount: number;
+            category: string;
+            destination_account: string;
+            error_message: string;
+            id: string;
+            result_code: string;
+            source_account: string;
+            timestamp: string;
+            transaction_hash: string;
         };
         /**
          * @example {
@@ -2673,6 +2598,8 @@ export interface components {
         CreateApiKeyRequest: {
             expires_at?: string | null;
             name: string;
+            /** Format: int64 */
+            rate_limit_per_minute?: number | null;
             scopes?: string | null;
         };
         /**
@@ -2703,13 +2630,6 @@ export interface components {
         CreateInvoiceRequest: {
             /** @description API key to upgrade. It must belong to the signed-in wallet. */
             api_key_id: string;
-        };
-        CreateProposalRequest: {
-            description?: string | null;
-            new_wasm_hash?: string | null;
-            proposal_type?: string | null;
-            target_contract?: string | null;
-            title: string;
         };
         /** @description POST /api/sep31/transactions - create cross-border payment */
         CreateTransactionBody: unknown & {
@@ -2815,6 +2735,13 @@ export interface components {
             total_fee_bumps: number;
             /** Format: int64 */
             unique_fee_sources: number;
+            /**
+             * Format: int64
+             * @description Distinct inner (originating) sources, i.e. attribution by the account
+             *     that actually submitted the wrapped transaction rather than the one
+             *     that fronted the fee.
+             */
+            unique_inner_sources: number;
         };
         FeeBumpTransaction: {
             /** Format: date-time */
@@ -2824,6 +2751,13 @@ export interface components {
             fee_source: string;
             /** Format: int64 */
             inner_max_fee: number;
+            /**
+             * @description Source account of the inner (wrapped) transaction. This is who actually
+             *     initiated the transaction and is the account success-rate / corridor
+             *     attribution should credit or charge, as opposed to `fee_source`, which
+             *     is only the account that paid the bumped fee.
+             */
+            inner_source: string;
             inner_transaction_hash: string;
             /** Format: int64 */
             ledger_sequence: number;
@@ -2900,9 +2834,6 @@ export interface components {
             /** Format: int64 */
             epoch: number;
             submit_to_contract?: boolean;
-        };
-        HasVotedResponse: {
-            has_voted: boolean;
         };
         /**
          * @description Indexed contract event with full metadata from the Stellar protocol.
@@ -3166,6 +3097,29 @@ export interface components {
             redirect_uri?: string | null;
             refresh_token?: string | null;
         };
+        /** @description Snapshot record read from the `payraider` contract's persistent storage. */
+        OnChainRecord: {
+            contract_id: string;
+            /** Format: int64 */
+            epoch: number;
+            /** @description Hex-encoded 32-byte hash stored by `submit_snapshot` */
+            hash: string;
+            /**
+             * Format: int32
+             * @description Last ledger that modified the snapshots map entry
+             */
+            last_modified_ledger?: number | null;
+            /**
+             * Format: int32
+             * @description Ledger until which the entry is live before it must be restored
+             */
+            live_until_ledger?: number | null;
+            /**
+             * Format: int64
+             * @description Ledger close time (unix seconds) when the snapshot was recorded
+             */
+            timestamp: number;
+        };
         /** @description Ready-to-follow links to adjacent pages. */
         PageLinks: {
             /** @example /api/corridors?limit=50&cursor=djE6bzo1MA */
@@ -3235,6 +3189,14 @@ export interface components {
             p75: number;
             path: string;
         };
+        PaginatedCorridorFailures: {
+            corridor_key: string;
+            items: components["schemas"]["CorridorFailedPayment"][];
+            page: number;
+            page_size: number;
+            total: number;
+            total_pages: number;
+        };
         /**
          * @description Standard paginated response envelope used by all list endpoints.
          *
@@ -3301,7 +3263,7 @@ export interface components {
                  */
                 total_transactions: number;
             }[];
-            links?: null | components["schemas"]["PageLinks"];
+            links?: components["schemas"]["PageLinks"] | null;
             /** @description Pagination metadata. */
             pagination: components["schemas"]["PageMeta"];
         };
@@ -3407,7 +3369,7 @@ export interface components {
                  */
                 total_attempts: number;
             }[];
-            links?: null | components["schemas"]["PageLinks"];
+            links?: components["schemas"]["PageLinks"] | null;
             /** @description Pagination metadata. */
             pagination: components["schemas"]["PageMeta"];
         };
@@ -3453,6 +3415,30 @@ export interface components {
             pool: components["schemas"]["LiquidityPool"];
             snapshots: components["schemas"]["LiquidityPoolSnapshot"][];
         };
+        /**
+         * @description Outcome for one item, in request order. Exactly one of `result` and
+         *     `error` is set.
+         */
+        PreflightBatchItem: {
+            error?: components["schemas"]["PreflightItemError"] | null;
+            /** @description Position of the item in the request. */
+            index: number;
+            result?: components["schemas"]["PreflightResponse"] | null;
+        };
+        /** @description Several pre-payment checks in one request. */
+        PreflightBatchRequest: {
+            /** @description Payments to check, 1 to 100. */
+            items: components["schemas"]["PreflightRequest"][];
+        };
+        /** @description Batch pre-payment check result. */
+        PreflightBatchResponse: {
+            /**
+             * @description RFC 3339 timestamp shared by every item: all are scored against the
+             *     same corridor snapshot.
+             */
+            evaluated_at: string;
+            results: components["schemas"]["PreflightBatchItem"][];
+        };
         /** @description One check that contributed to the decision. */
         PreflightCheck: {
             /** @description Human-readable explanation with the observed value and threshold. */
@@ -3470,6 +3456,16 @@ export interface components {
          * @enum {string}
          */
         PreflightDecision: "proceed" | "caution" | "hold" | "unknown";
+        /** @description Why one item in a batch could not be evaluated. */
+        PreflightItemError: {
+            /**
+             * @description Same codes as the single check: `INVALID_ASSET`, `INVALID_AMOUNT`,
+             *     `INVALID_THRESHOLD`.
+             * @example INVALID_AMOUNT
+             */
+            code: string;
+            message: string;
+        };
         /** @description Pre-payment check request. */
         PreflightRequest: {
             /**
@@ -3500,7 +3496,7 @@ export interface components {
             /** @description Healthier corridors to the same destination asset, best first. */
             alternatives: components["schemas"]["CorridorResponse"][];
             checks: components["schemas"]["PreflightCheck"][];
-            corridor?: null | components["schemas"]["CorridorResponse"];
+            corridor?: components["schemas"]["CorridorResponse"] | null;
             decision: components["schemas"]["PreflightDecision"];
             /** @description RFC 3339 timestamp of the evaluation. */
             evaluated_at: string;
@@ -3622,7 +3618,7 @@ export interface components {
             hash: string;
             /** Format: int32 */
             schema_version: number;
-            submission?: null | components["schemas"]["SubmissionInfo"];
+            submission?: components["schemas"]["SubmissionInfo"] | null;
             timestamp: string;
         };
         SnoozeAlertRequest: {
@@ -3765,6 +3761,28 @@ export interface components {
             /** Format: double */
             volume_usd?: number | null;
         };
+        VerificationChecks: {
+            /** @description `SHA-256(data) == on-chain hash`; `null` when no on-chain record was read */
+            on_chain_hash_matches_data?: boolean | null;
+            /** @description `SHA-256(data) == stored hash` */
+            stored_hash_matches_data: boolean;
+        };
+        /** @description Body of `GET /api/v1/snapshots/{id}/verify`. */
+        VerificationReport: {
+            checked_at: string;
+            checks: components["schemas"]["VerificationChecks"];
+            /** Format: int64 */
+            epoch: number;
+            hash_algorithm: string;
+            on_chain?: components["schemas"]["OnChainRecord"] | null;
+            /** @description Human-readable explanation of `status` */
+            reason: string;
+            recomputed_hash: string;
+            snapshot_id: string;
+            status: components["schemas"]["VerificationStatus"];
+            stored_hash: string;
+            verified: boolean;
+        };
         /** @description SEP-10 Verification Request */
         VerificationRequest: {
             /**
@@ -3775,6 +3793,11 @@ export interface components {
             /** @description The challenge exactly as `generate_challenge` returned it. */
             transaction: string;
         };
+        /**
+         * @description Machine-readable verdict. Only `Verified` sets `verified: true`.
+         * @enum {string}
+         */
+        VerificationStatus: "verified" | "tampered" | "on_chain_mismatch" | "not_anchored" | "chain_unavailable";
         /** @description Verification summary for UI display */
         VerificationSummary: {
             /** Format: date-time */
@@ -4100,42 +4123,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Account merge statistics */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_achievements: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of achievement definitions */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_quests: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of quest definitions */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6069,6 +6056,46 @@ export interface operations {
             };
         };
     };
+    get_corridor_failures: {
+        parameters: {
+            query?: {
+                page?: number | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Corridor identifier (e.g., USDC:native->XLM:native) */
+                corridor_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent failures for the corridor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedCorridorFailures"];
+                };
+            };
+            /** @description Invalid corridor format */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     update_corridor_metrics_from_transactions: {
         parameters: {
             query?: never;
@@ -6151,18 +6178,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
             /** @description Internal server error */
             500: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -6216,329 +6239,6 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_proposals: {
-        parameters: {
-            query?: {
-                /** @description Filter by status */
-                status?: string;
-                /** @description Maximum results (1-100, default 20) */
-                limit?: number;
-                /** @description Opaque cursor from `pagination.next_cursor` / `prev_cursor` */
-                cursor?: string;
-                /** @description Deprecated: results offset. Prefer `cursor` */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of proposals (`PaginatedResponse<ProposalResponse>`) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid pagination cursor */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    create_proposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
-            };
-        };
-        responses: {
-            /** @description Proposal created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_proposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Proposal details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Proposal not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    activate_proposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ActivateRequest"];
-            };
-        };
-        responses: {
-            /** @description Proposal activated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_comments: {
-        parameters: {
-            query?: {
-                /** @description Maximum results (1-100, default 50) */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of comments */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    add_comment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddCommentRequest"];
-            };
-        };
-        responses: {
-            /** @description Comment added */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    has_voted: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-                /** @description Stellar address to check */
-                address: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Voting status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HasVotedResponse"];
-                };
-            };
-        };
-    };
-    refresh_tally: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cache invalidated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    cast_vote: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CastVoteRequest"];
-            };
-        };
-        responses: {
-            /** @description Vote cast successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_votes: {
-        parameters: {
-            query?: {
-                /** @description Maximum results (1-100, default 50) */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Proposal ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of votes */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7044,7 +6744,7 @@ export interface operations {
             };
         };
     };
-    get_cache_stats: {
+    get_price_cache_stats: {
         parameters: {
             query?: never;
             header?: never;
@@ -7347,7 +7047,7 @@ export interface operations {
             };
         };
     };
-    get_info: {
+    sep10_get_info: {
         parameters: {
             query?: never;
             header?: never;
@@ -7365,7 +7065,7 @@ export interface operations {
             };
         };
     };
-    logout: {
+    sep10_logout: {
         parameters: {
             query?: never;
             header?: never;
@@ -7419,7 +7119,7 @@ export interface operations {
             };
         };
     };
-    list_anchors: {
+    sep24_list_anchors: {
         parameters: {
             query?: never;
             header?: never;
@@ -7473,7 +7173,7 @@ export interface operations {
             };
         };
     };
-    get_info: {
+    sep24_get_info: {
         parameters: {
             query: {
                 /** @description Transfer server URL */
@@ -7508,7 +7208,7 @@ export interface operations {
             };
         };
     };
-    get_transaction: {
+    sep24_get_transaction: {
         parameters: {
             query: {
                 /** @description Transfer server URL */
@@ -7547,7 +7247,7 @@ export interface operations {
             };
         };
     };
-    get_transactions: {
+    sep24_get_transactions: {
         parameters: {
             query: {
                 /** @description Transfer server URL */
@@ -7628,7 +7328,7 @@ export interface operations {
             };
         };
     };
-    list_anchors: {
+    sep31_list_anchors: {
         parameters: {
             query?: never;
             header?: never;
@@ -7721,7 +7421,7 @@ export interface operations {
             };
         };
     };
-    get_info: {
+    sep31_get_info: {
         parameters: {
             query: {
                 /** @description SEP-31 transfer server URL */
@@ -7792,7 +7492,7 @@ export interface operations {
             };
         };
     };
-    get_transactions: {
+    sep31_get_transactions: {
         parameters: {
             query: {
                 /** @description SEP-31 transfer server URL */
@@ -7871,7 +7571,7 @@ export interface operations {
             };
         };
     };
-    get_transaction: {
+    sep31_get_transaction: {
         parameters: {
             query: {
                 /** @description SEP-31 transfer server URL */
@@ -8480,6 +8180,118 @@ export interface operations {
             };
         };
     };
+    preflight_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreflightBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description One result or error per item, in request order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightBatchResponse"];
+                };
+            };
+            /** @description Batch is empty or has more than 100 items */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Corridor data could not be loaded */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_snapshot_data: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Epoch number or snapshot UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical snapshot JSON */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid snapshot id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    verify_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Epoch number or snapshot UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verification result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationReport"];
+                };
+            };
+            /** @description Invalid snapshot id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_webhooks: {
         parameters: {
             query?: never;
@@ -8792,7 +8604,7 @@ export interface operations {
             };
         };
     };
-    verify_snapshot: {
+    verify_snapshot_for_reward: {
         parameters: {
             query?: never;
             header?: never;

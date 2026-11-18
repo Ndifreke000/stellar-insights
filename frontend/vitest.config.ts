@@ -8,6 +8,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.ts'],
+    // axe-core scans are slow under coverage instrumentation on shared CI runners.
+    testTimeout: 20000,
     // src/config.ts and src/lib/monitoring.ts throw at import time without it.
     env: {
       NEXT_PUBLIC_API_URL: 'http://localhost:8080/api',

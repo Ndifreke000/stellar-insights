@@ -312,7 +312,7 @@ impl AggregationDb {
             time_field.as_str()
         );
 
-        sqlx::query(&query_str)
+        sqlx::query(sqlx::AssertSqlSafe(query_str.as_str()))
             .bind(status)
             .bind(error_message)
             .bind(&now)

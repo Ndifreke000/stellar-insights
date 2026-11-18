@@ -94,7 +94,7 @@ impl AssetDb {
             "SELECT * FROM assets WHERE anchor_id IN ({placeholders}) ORDER BY anchor_id, asset_code ASC"
         );
 
-        let mut query = sqlx::query_as::<_, Asset>(&query_str);
+        let mut query = sqlx::query_as::<_, Asset>(sqlx::AssertSqlSafe(query_str.as_str()));
         for id in &anchor_id_strs {
             query = query.bind(id);
         }

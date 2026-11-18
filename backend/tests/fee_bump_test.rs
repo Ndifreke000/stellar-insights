@@ -33,6 +33,7 @@ async fn setup_fee_bump_pool() -> SqlitePool {
             inner_transaction_hash TEXT NOT NULL,
             inner_max_fee INTEGER NOT NULL,
             signatures_count INTEGER NOT NULL,
+            inner_source TEXT NOT NULL DEFAULT '', -- migration 048
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (ledger_sequence) REFERENCES ledgers(sequence)
         )

@@ -6,27 +6,57 @@
       {
         "name": "consent_type",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_consents",
+            "name": "consent_type"
+          }
+        }
       },
       {
         "name": "consent_given: bool",
         "ordinal": 1,
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "user_consents",
+            "name": "consent_given"
+          }
+        }
       },
       {
         "name": "consent_version",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_consents",
+            "name": "consent_version"
+          }
+        }
       },
       {
         "name": "granted_at",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_consents",
+            "name": "granted_at"
+          }
+        }
       },
       {
         "name": "revoked_at",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_consents",
+            "name": "revoked_at"
+          }
+        }
       }
     ],
     "parameters": {

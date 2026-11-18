@@ -12,15 +12,18 @@ pub type SharedCircuitBreaker = Arc<CircuitBreaker>;
 
 pub fn rpc_circuit_breaker() -> SharedCircuitBreaker {
     static BREAKER: OnceLock<SharedCircuitBreaker> = OnceLock::new();
-    BREAKER
-        .get_or_init(|| {
-            let config = CircuitBreakerConfig::default();
-            let backoff = backoff::constant(config.timeout_duration);
-            let policy = failure_policy::consecutive_failures(config.failure_threshold, backoff);
-            let cb: CircuitBreaker = Config::new().failure_policy(policy).build();
-            Arc::new(cb)
-        })
-        .clone()
+    BREAKER.get_or_init(new_rpc_circuit_breaker).clone()
+}
+
+/// A fresh, unshared breaker with the default configuration. Used by clients
+/// that never touch the network (mock mode), so failures recorded against the
+/// real endpoints cannot block them and vice versa.
+pub fn new_rpc_circuit_breaker() -> SharedCircuitBreaker {
+    let config = CircuitBreakerConfig::default();
+    let backoff = backoff::constant(config.timeout_duration);
+    let policy = failure_policy::consecutive_failures(config.failure_threshold, backoff);
+    let cb: CircuitBreaker = Config::new().failure_policy(policy).build();
+    Arc::new(cb)
 }
 
 /// Configuration for the circuit breaker.

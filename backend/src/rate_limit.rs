@@ -33,11 +33,26 @@ pub struct ClientRateLimits {
     pub anonymous: u32,
 }
 
+/// IPs exempt from per-client rate limits, from the comma-separated
+/// `RATE_LIMIT_WHITELIST_IPS` env var (unset or empty: none). Intended for
+/// trusted callers such as internal health checkers or a local load test.
+fn whitelist_ips_from_env() -> Vec<String> {
+    std::env::var("RATE_LIMIT_WHITELIST_IPS")
+        .map(|raw| {
+            raw.split(',')
+                .map(str::trim)
+                .filter(|ip| !ip.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
             requests_per_minute: 100,
-            whitelist_ips: vec![],
+            whitelist_ips: whitelist_ips_from_env(),
             client_limits: Some(ClientRateLimits {
                 authenticated: 200,
                 premium: 1000,
@@ -224,9 +239,12 @@ impl RateLimiter {
         pool: &sqlx::SqlitePool,
         plain_key: &str,
     ) -> Result<Option<crate::models::api_key::ApiKey>, sqlx::Error> {
-        let candidates = sqlx::query_as::<_, crate::models::api_key::ApiKey>(
-            "SELECT * FROM api_keys WHERE key_prefix = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))"
-        )
+        // Same projection as the API key store so `rate_limit_per_minute` (joined
+        // from the per-key config) is present for `ApiKey`'s FromRow mapping.
+        let candidates = sqlx::query_as::<_, crate::models::api_key::ApiKey>(sqlx::AssertSqlSafe(format!(
+            "{} WHERE k.key_prefix = ? AND k.status = 'active' AND (k.expires_at IS NULL OR k.expires_at > datetime('now'))",
+            crate::db::api_keys::KEY_SELECT
+        )))
         .bind(extract_key_prefix(plain_key))
         .fetch_all(pool)
         .await?;
@@ -556,6 +574,7 @@ impl RateLimiter {
         let api_key = self
             .find_active_api_key(pool, bearer_token)
             .await
+            .map_err(|e| tracing::warn!("API key lookup failed: {e}"))
             .ok()
             .flatten();
         let Some(api_key) = api_key else {

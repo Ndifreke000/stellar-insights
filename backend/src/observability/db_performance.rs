@@ -102,7 +102,9 @@ fn strip_bind_params(sql: &str) -> String {
 /// Run `EXPLAIN QUERY PLAN` for a statement and return the plan detail lines.
 pub async fn explain_query_plan(pool: &SqlitePool, sql: &str) -> anyhow::Result<Vec<String>> {
     let stmt = format!("EXPLAIN QUERY PLAN {}", strip_bind_params(sql.trim()));
-    let rows = sqlx::query(&stmt).fetch_all(pool).await?;
+    let rows = sqlx::query(sqlx::AssertSqlSafe(stmt.as_str()))
+        .fetch_all(pool)
+        .await?;
     Ok(rows
         .iter()
         .filter_map(|r| r.try_get::<String, _>("detail").ok())

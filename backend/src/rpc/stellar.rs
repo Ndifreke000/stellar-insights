@@ -1,6 +1,6 @@
 use crate::network::{NetworkConfig, StellarNetwork};
 use crate::observability::tracing::inject_trace_context;
-use crate::rpc::circuit_breaker::{rpc_circuit_breaker, CircuitBreaker};
+use crate::rpc::circuit_breaker::{new_rpc_circuit_breaker, rpc_circuit_breaker, CircuitBreaker};
 use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::metrics;
@@ -519,7 +519,11 @@ impl StellarRpcClient {
         };
 
         let network_config = NetworkConfig::for_network(network);
-        let circuit_breaker = rpc_circuit_breaker();
+        let circuit_breaker = if mock_mode {
+            new_rpc_circuit_breaker()
+        } else {
+            rpc_circuit_breaker()
+        };
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -613,7 +617,11 @@ impl StellarRpcClient {
 
         let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
         let rate_limiter = RpcRateLimiter::new(RpcRateLimitConfig::from_env());
-        let circuit_breaker = rpc_circuit_breaker();
+        let circuit_breaker = if mock_mode {
+            new_rpc_circuit_breaker()
+        } else {
+            rpc_circuit_breaker()
+        };
 
         // Load pagination config from environment or use defaults with security limits
         let max_records_per_request = std::env::var("RPC_MAX_RECORDS_PER_REQUEST")
@@ -665,6 +673,11 @@ impl StellarRpcClient {
             StellarNetwork::Mainnet
         };
         Self::new_with_network(network, mock_mode)
+    }
+
+    /// The circuit breaker guarding this client's requests.
+    pub fn circuit_breaker(&self) -> Arc<CircuitBreaker> {
+        self.circuit_breaker.clone()
     }
 
     /// Get the current network configuration

@@ -6,42 +6,90 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "anchor_id",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "anchor_id"
+          }
+        }
       },
       {
         "name": "asset_code",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "asset_code"
+          }
+        }
       },
       {
         "name": "asset_issuer",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "asset_issuer"
+          }
+        }
       },
       {
         "name": "total_supply",
         "ordinal": 4,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "total_supply"
+          }
+        }
       },
       {
         "name": "num_holders!",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "num_holders"
+          }
+        }
       },
       {
         "name": "created_at!: _",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "updated_at!: _",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

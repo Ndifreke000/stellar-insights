@@ -10,7 +10,8 @@ use crate::models::api_key::{
 /// Columns of an API key row plus its configured per-minute limit. The limit
 /// lives in `api_keys_rate_limit_config` (the table the rate limiter reads);
 /// keys without a row report the limiter's default.
-const KEY_SELECT: &str = "SELECT k.*, COALESCE(c.limit_per_minute, 200) AS rate_limit_per_minute \
+pub(crate) const KEY_SELECT: &str =
+    "SELECT k.*, COALESCE(c.limit_per_minute, 200) AS rate_limit_per_minute \
      FROM api_keys k LEFT JOIN api_keys_rate_limit_config c ON c.api_key_id = k.id";
 
 pub struct ApiKeyDb {
@@ -77,11 +78,13 @@ impl ApiKeyDb {
             .with_context(|| format!("Failed to store rate limit for API key id: {}", id))?;
         }
 
-        let key = sqlx::query_as::<_, ApiKey>(&format!("{KEY_SELECT} WHERE k.id = $1"))
-            .bind(&id)
-            .fetch_one(&mut *tx)
-            .await
-            .with_context(|| format!("Failed to fetch newly created API key with id: {}", id))?;
+        let key = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
+            "{KEY_SELECT} WHERE k.id = $1"
+        )))
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await
+        .with_context(|| format!("Failed to fetch newly created API key with id: {}", id))?;
 
         tx.commit().await.with_context(|| {
             format!(
@@ -99,9 +102,9 @@ impl ApiKeyDb {
     /// Lists all API keys for a given wallet address.
     #[tracing::instrument(skip(self), fields(wallet_address = %wallet_address))]
     pub async fn list_api_keys(&self, wallet_address: &str) -> Result<Vec<ApiKeyInfo>> {
-        let keys = sqlx::query_as::<_, ApiKey>(&format!(
+        let keys = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
             "{KEY_SELECT} WHERE k.wallet_address = $1 ORDER BY k.created_at DESC"
-        ))
+        )))
         .bind(wallet_address)
         .fetch_all(&self.pool)
         .await
@@ -116,9 +119,9 @@ impl ApiKeyDb {
         id: &str,
         wallet_address: &str,
     ) -> Result<Option<ApiKeyInfo>> {
-        let key = sqlx::query_as::<_, ApiKey>(&format!(
+        let key = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
             "{KEY_SELECT} WHERE k.id = $1 AND k.wallet_address = $2"
-        ))
+        )))
         .bind(id)
         .bind(wallet_address)
         .fetch_optional(&self.pool)
@@ -172,9 +175,9 @@ impl ApiKeyDb {
             )
         })?;
 
-        let existing = sqlx::query_as::<_, ApiKey>(&format!(
+        let existing = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
             "{KEY_SELECT} WHERE k.id = $1 AND k.wallet_address = $2 AND k.status = 'active'"
-        ))
+        )))
         .bind(id)
         .bind(wallet_address)
         .fetch_optional(&mut *tx)
@@ -254,11 +257,13 @@ impl ApiKeyDb {
             )
         })?;
 
-        let key = sqlx::query_as::<_, ApiKey>(&format!("{KEY_SELECT} WHERE k.id = $1"))
-            .bind(&new_id)
-            .fetch_one(&mut *tx)
-            .await
-            .with_context(|| format!("Failed to fetch rotated API key with id: {}", new_id))?;
+        let key = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
+            "{KEY_SELECT} WHERE k.id = $1"
+        )))
+        .bind(&new_id)
+        .fetch_one(&mut *tx)
+        .await
+        .with_context(|| format!("Failed to fetch rotated API key with id: {}", new_id))?;
 
         tx.commit().await.with_context(|| {
             format!(
@@ -284,9 +289,9 @@ impl ApiKeyDb {
 
         let prefix = extract_key_prefix(plain_key);
 
-        let candidates = sqlx::query_as::<_, ApiKey>(&format!(
+        let candidates = sqlx::query_as::<_, ApiKey>(sqlx::AssertSqlSafe(format!(
             "{KEY_SELECT} WHERE k.key_prefix = $1 AND k.status = 'active'"
-        ))
+        )))
         .bind(&prefix)
         .fetch_all(&self.pool)
         .await

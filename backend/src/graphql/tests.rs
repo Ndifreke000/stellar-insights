@@ -585,8 +585,21 @@ mod tests {
     #[tokio::test]
     async fn test_introspection_disabled_when_turned_off() {
         let query = "{ __schema { queryType { name } } }";
-        assert!(limited_schema(true).execute(query).await.errors.is_empty());
-        assert!(!limited_schema(false).execute(query).await.errors.is_empty());
+        let enabled = limited_schema(true).execute(query).await;
+        assert!(enabled.errors.is_empty());
+        assert_ne!(
+            enabled.data.into_json().unwrap()["__schema"],
+            serde_json::Value::Null
+        );
+
+        // async-graphql 7.2 answers a disabled `__schema` with null data rather
+        // than an error; either way the schema must not be exposed.
+        let disabled = limited_schema(false).execute(query).await;
+        let data = disabled.data.into_json().unwrap();
+        assert!(
+            !disabled.errors.is_empty() || data["__schema"].is_null(),
+            "introspection must not expose the schema when disabled: {data}"
+        );
     }
 
     #[test]

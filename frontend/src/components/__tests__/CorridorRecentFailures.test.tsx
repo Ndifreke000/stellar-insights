@@ -15,48 +15,53 @@ describe("CorridorRecentFailures", () => {
 
   it("renders failures table with result codes and details", async () => {
     vi.mocked(corridorApi.getCorridorFailures).mockResolvedValueOnce({
-      failures: [
+      corridor_key: "USDC:TEST->XLM",
+      items: [
         {
           id: "fail-1",
           transaction_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          timestamp: "2026-10-17T12:00:00Z",
           source_account: "GAEXAMPLEACCOUNT1",
           destination_account: "GBEXAMPLEACCOUNT2",
-          amount: "1500.00",
-          asset_code: "USDC",
+          amount: 1500,
           result_code: "op_underfunded",
-          result_message: "Not enough source balance to fulfill payment",
-          failed_at: "2026-10-17T12:00:00Z",
+          category: "insufficient_funds",
+          error_message: "Not enough source balance to fulfill payment",
         },
       ],
       total: 1,
       page: 1,
       page_size: 10,
+      total_pages: 1,
     });
 
     render(<CorridorRecentFailures corridorKey="USDC:TEST->XLM" />);
 
-    expect(screen.getByText(/Recent Failures & Result Codes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recent Failed Payments/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("op_underfunded")).toBeInTheDocument();
-      expect(screen.getByText(/1,500 USDC/i)).toBeInTheDocument();
+      expect(screen.getByText("$1500.00")).toBeInTheDocument();
+      expect(screen.getByText(/insufficient funds/i)).toBeInTheDocument();
       expect(screen.getByText(/Not enough source balance to fulfill payment/i)).toBeInTheDocument();
     });
   });
 
   it("renders empty state when there are zero failures", async () => {
     vi.mocked(corridorApi.getCorridorFailures).mockResolvedValueOnce({
-      failures: [],
+      corridor_key: "USDC:TEST->XLM",
+      items: [],
       total: 0,
       page: 1,
       page_size: 10,
+      total_pages: 0,
     });
 
     render(<CorridorRecentFailures corridorKey="USDC:TEST->XLM" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/No Recent Failures/i)).toBeInTheDocument();
-      expect(screen.getByText(/All recent transactions in this corridor settled successfully/i)).toBeInTheDocument();
+      expect(screen.getByText(/No Recent Payment Failures/i)).toBeInTheDocument();
+      expect(screen.getByText(/All recent payments in this corridor were settled successfully/i)).toBeInTheDocument();
     });
   });
 

@@ -423,7 +423,7 @@ impl AssetVerifier {
 
     /// Parse SEP-24/SEP-31 endpoints and currencies from `stellar.toml` content.
     pub fn parse_sep_support(toml_content: &str) -> SepSupport {
-        let toml_value = match toml_content.parse::<toml::Value>() {
+        let toml_value = match toml_content.parse::<toml::Table>().map(toml::Value::Table) {
             Ok(value) => value,
             Err(e) => {
                 warn!("Failed to parse anchor TOML: {}", e);
@@ -640,7 +640,7 @@ impl AssetVerifier {
         toml_content: &str,
         home_domain: &str,
     ) -> (bool, Option<StellarTomlData>) {
-        match toml_content.parse::<toml::Value>() {
+        match toml_content.parse::<toml::Table>().map(toml::Value::Table) {
             Ok(toml_value) => {
                 let documentation = toml_value.get("DOCUMENTATION");
                 let org_name = documentation

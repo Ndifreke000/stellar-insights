@@ -249,7 +249,7 @@ impl AdminAuditLogger {
                 Option<String>,
                 Option<String>,
             ),
-        >(&query);
+        >(sqlx::AssertSqlSafe(query.as_str()));
 
         if let Some(uid) = user_id {
             q = q.bind(uid);

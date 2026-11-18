@@ -22,7 +22,6 @@ use crate::models::{CreateCorridorRequest, SortBy};
 use crate::pagination::{Page, PaginatedResponse, PaginationParams};
 use crate::request_id::RequestId;
 use crate::rpc::{
-    circuit_breaker::rpc_circuit_breaker,
     error::{with_retry, RetryConfig, RpcError},
     Asset as RpcAsset, HorizonLiquidityPool, StellarRpcClient,
 };
@@ -573,7 +572,7 @@ pub(crate) async fn compute_live_corridors(
     rpc_client: &StellarRpcClient,
     price_feed: &PriceFeedClient,
 ) -> anyhow::Result<Vec<CorridorResponse>> {
-    let circuit_breaker = rpc_circuit_breaker();
+    let circuit_breaker = rpc_client.circuit_breaker();
 
     // **RPC DATA**: Fetch recent payments with pagination to identify active corridors
     let payments = with_retry(
@@ -977,7 +976,7 @@ pub async fn get_corridor_detail(
     let cache_key = keys::corridor_detail(&corridor_key);
     let response = cached_query(&cache, &cache_key, 300, || async {
         // Fetch payments from RPC
-        let circuit_breaker = rpc_circuit_breaker();
+        let circuit_breaker = rpc_client.circuit_breaker();
 
         let payments = with_retry(
             || async {

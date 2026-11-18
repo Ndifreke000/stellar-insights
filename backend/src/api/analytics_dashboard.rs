@@ -421,7 +421,7 @@ mod tests {
         let sql = format!(
             "INSERT INTO payments (id, transaction_hash, source_account, destination_account, asset_type, asset_code, asset_issuer, amount, created_at) VALUES (?, ?, 'GSOURCE', 'GDEST', 'credit_alphanum4', 'USDC', 'GISSUER', ?, {created_at_sql})"
         );
-        sqlx::query(&sql)
+        sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .bind(format!("tx-{id}"))
             .bind(amount)

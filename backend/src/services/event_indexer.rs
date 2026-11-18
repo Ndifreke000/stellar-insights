@@ -490,7 +490,7 @@ impl EventIndexer {
             }
         }
 
-        let mut query_builder = sqlx::query(&sql);
+        let mut query_builder = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
 
         for binding in bindings {
             query_builder = query_builder.bind(binding);

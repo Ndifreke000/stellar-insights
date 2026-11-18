@@ -6,47 +6,101 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "source_asset_code",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "source_asset_code"
+          }
+        }
       },
       {
         "name": "source_asset_issuer",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "source_asset_issuer"
+          }
+        }
       },
       {
         "name": "destination_asset_code",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "destination_asset_code"
+          }
+        }
       },
       {
         "name": "destination_asset_issuer",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "destination_asset_issuer"
+          }
+        }
       },
       {
         "name": "reliability_score!",
         "ordinal": 5,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "reliability_score"
+          }
+        }
       },
       {
         "name": "status!",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "status"
+          }
+        }
       },
       {
         "name": "created_at!: _",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "updated_at!: _",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "corridors",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

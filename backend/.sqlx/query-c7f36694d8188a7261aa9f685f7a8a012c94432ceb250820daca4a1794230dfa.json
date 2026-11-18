@@ -6,17 +6,20 @@
       {
         "name": "total_assets_tracked: _",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "total_trustlines_across_network: _",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "active_assets: _",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {

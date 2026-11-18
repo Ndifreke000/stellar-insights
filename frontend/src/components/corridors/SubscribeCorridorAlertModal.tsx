@@ -40,6 +40,10 @@ export function SubscribeCorridorAlertModal({
       setError("Please provide an email address for email notifications.");
       return;
     }
+    if (notifyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please provide a valid email address.");
+      return;
+    }
     if (notifyWebhook && !webhookUrl.trim()) {
       setError("Please provide a webhook URL for webhook delivery.");
       return;
@@ -103,7 +107,7 @@ export function SubscribeCorridorAlertModal({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
           {success ? (
             <div className="py-6 flex flex-col items-center justify-center text-center space-y-3">
               <CheckCircle2 className="w-12 h-12 text-green-500 animate-bounce" />

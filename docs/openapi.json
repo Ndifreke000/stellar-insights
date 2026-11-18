@@ -296,6 +296,34 @@
         }
       }
     },
+    "/api/achievements/achievements": {
+      "get": {
+        "tags": [
+          "Achievements"
+        ],
+        "summary": "GET /api/achievements/achievements - Get all achievements",
+        "operationId": "get_achievements",
+        "responses": {
+          "200": {
+            "description": "List of achievement definitions"
+          }
+        }
+      }
+    },
+    "/api/achievements/quests": {
+      "get": {
+        "tags": [
+          "Achievements"
+        ],
+        "summary": "GET /api/achievements/quests - Get all available quests",
+        "operationId": "get_quests",
+        "responses": {
+          "200": {
+            "description": "List of quest definitions"
+          }
+        }
+      }
+    },
     "/api/admin/analytics/overview": {
       "get": {
         "tags": [
@@ -2426,6 +2454,372 @@
         }
       }
     },
+    "/api/governance/proposals": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "list_proposals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results (1-100, default 20)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from `pagination.next_cursor` / `prev_cursor`",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Deprecated: results offset. Prefer `cursor`",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of proposals (`PaginatedResponse<ProposalResponse>`)"
+          },
+          "400": {
+            "description": "Invalid pagination cursor"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "create_proposal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Proposal created"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "get_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal details"
+          },
+          "404": {
+            "description": "Proposal not found"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/activate": {
+      "put": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "activate_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Proposal activated"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/comments": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "get_comments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results (1-100, default 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of comments"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "add_comment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Comment added"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/has-voted/{address}": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "has_voted",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "in": "path",
+            "description": "Stellar address to check",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Voting status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HasVotedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/refresh": {
+      "post": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "refresh_tally",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cache invalidated"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/vote": {
+      "post": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "cast_vote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CastVoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Vote cast successfully"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/governance/proposals/{id}/votes": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "operationId": "get_votes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Proposal ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results (1-100, default 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of votes"
+          }
+        }
+      }
+    },
     "/api/liquidity-pools/": {
       "get": {
         "tags": [
@@ -2944,7 +3338,7 @@
         ],
         "summary": "Get cache statistics",
         "description": "Returns statistics about the price cache.",
-        "operationId": "get_cache_stats",
+        "operationId": "get_price_cache_stats",
         "responses": {
           "200": {
             "description": "Cache stats retrieved successfully",
@@ -3333,7 +3727,7 @@
           "SEP-10"
         ],
         "summary": "GET /api/sep10/info - Get SEP-10 server information",
-        "operationId": "get_info",
+        "operationId": "sep10_get_info",
         "responses": {
           "200": {
             "description": "SEP-10 server information"
@@ -3347,7 +3741,7 @@
           "SEP-10"
         ],
         "summary": "POST /api/sep10/logout - Invalidate SEP-10 session",
-        "operationId": "logout",
+        "operationId": "sep10_logout",
         "responses": {
           "200": {
             "description": "Logged out successfully"
@@ -3391,7 +3785,7 @@
           "SEP-24"
         ],
         "summary": "GET /api/sep24/anchors - List known SEP-24-enabled anchors",
-        "operationId": "list_anchors",
+        "operationId": "sep24_list_anchors",
         "responses": {
           "200": {
             "description": "List of SEP-24 anchors"
@@ -3434,7 +3828,7 @@
         "tags": [
           "SEP-24"
         ],
-        "operationId": "get_info",
+        "operationId": "sep24_get_info",
         "parameters": [
           {
             "name": "transfer_server",
@@ -3465,7 +3859,7 @@
           "SEP-24"
         ],
         "summary": "GET /api/sep24/transaction - Get a specific SEP-24 transaction",
-        "operationId": "get_transaction",
+        "operationId": "sep24_get_transaction",
         "parameters": [
           {
             "name": "transfer_server",
@@ -3514,7 +3908,7 @@
           "SEP-24"
         ],
         "summary": "GET /api/sep24/transactions - Get SEP-24 transactions",
-        "operationId": "get_transactions",
+        "operationId": "sep24_get_transactions",
         "parameters": [
           {
             "name": "transfer_server",
@@ -3622,7 +4016,7 @@
           "SEP-31"
         ],
         "summary": "GET /api/sep31/anchors - List configured SEP-31 anchors",
-        "operationId": "list_anchors",
+        "operationId": "sep31_list_anchors",
         "responses": {
           "200": {
             "description": "List of configured SEP-31 anchors"
@@ -3713,7 +4107,7 @@
           "SEP-31"
         ],
         "summary": "GET /api/sep31/info - Get SEP-31 anchor info",
-        "operationId": "get_info",
+        "operationId": "sep31_get_info",
         "parameters": [
           {
             "name": "transfer_server",
@@ -3774,7 +4168,7 @@
           "SEP-31"
         ],
         "summary": "GET /api/sep31/transactions - List SEP-31 transactions",
-        "operationId": "get_transactions",
+        "operationId": "sep31_get_transactions",
         "parameters": [
           {
             "name": "transfer_server",
@@ -3871,7 +4265,7 @@
           "SEP-31"
         ],
         "summary": "GET /api/sep31/transactions/{id} - Get a specific SEP-31 transaction",
-        "operationId": "get_transaction",
+        "operationId": "sep31_get_transaction",
         "parameters": [
           {
             "name": "id",
@@ -4943,7 +5337,7 @@
           "Verification Rewards"
         ],
         "summary": "POST /api/verifications/verify - Verify a snapshot hash and earn rewards",
-        "operationId": "verify_snapshot",
+        "operationId": "verify_snapshot_for_reward",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4970,6 +5364,26 @@
   },
   "components": {
     "schemas": {
+      "ActivateRequest": {
+        "type": "object",
+        "properties": {
+          "voting_duration_secs": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AddCommentRequest": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        }
+      },
       "AddSignatureRequest": {
         "type": "object",
         "required": [
@@ -5407,6 +5821,23 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "CastVoteRequest": {
+        "type": "object",
+        "required": [
+          "choice"
+        ],
+        "properties": {
+          "choice": {
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -6031,6 +6462,41 @@
           }
         }
       },
+      "CreateProposalRequest": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_wasm_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposal_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_contract": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "CreateTransactionBody": {
         "allOf": [
           {},
@@ -6533,6 +6999,17 @@
             "minimum": 0
           },
           "submit_to_contract": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HasVotedResponse": {
+        "type": "object",
+        "required": [
+          "has_voted"
+        ],
+        "properties": {
+          "has_voted": {
             "type": "boolean"
           }
         }
@@ -7492,11 +7969,11 @@
           "links": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PageLinks",
                 "description": "Links to the current, next and previous pages."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -7635,11 +8112,11 @@
           "links": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PageLinks",
                 "description": "Links to the current, next and previous pages."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -7795,10 +8272,10 @@
           "error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PreflightItemError"
               },
               {
-                "$ref": "#/components/schemas/PreflightItemError"
+                "type": "null"
               }
             ]
           },
@@ -7810,10 +8287,10 @@
           "result": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PreflightResponse"
               },
               {
-                "$ref": "#/components/schemas/PreflightResponse"
+                "type": "null"
               }
             ]
           }
@@ -7971,11 +8448,11 @@
           "corridor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CorridorResponse",
                 "description": "The corridor that was evaluated, if recent data exists for it."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -8323,10 +8800,10 @@
           "submission": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SubmissionInfo"
               },
               {
-                "$ref": "#/components/schemas/SubmissionInfo"
+                "type": "null"
               }
             ]
           },
@@ -8780,10 +9257,10 @@
           "on_chain": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/OnChainRecord"
               },
               {
-                "$ref": "#/components/schemas/OnChainRecord"
+                "type": "null"
               }
             ]
           },
@@ -9202,6 +9679,14 @@
     {
       "name": "Snapshots",
       "description": "Snapshot generation and submission endpoints"
+    },
+    {
+      "name": "Achievements",
+      "description": "Quest and achievement definitions"
+    },
+    {
+      "name": "Governance",
+      "description": "Governance proposal and voting endpoints"
     }
   ]
 }

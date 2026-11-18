@@ -71,8 +71,12 @@ pub fn routes(pool: SqlitePool) -> Router {
 
     Router::new()
         .route("/devices", post(register_device))
-        .route("/devices/{device_token}", delete(deregister_device))
-        .route("/devices/{account}", get(list_account_devices))
+        // DELETE takes a device token and GET an account ID; axum needs one
+        // parameter name per path segment, so both share `{id}`.
+        .route(
+            "/devices/{id}",
+            delete(deregister_device).get(list_account_devices),
+        )
         .with_state(state)
 }
 
