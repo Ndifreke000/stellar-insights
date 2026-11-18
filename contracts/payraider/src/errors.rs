@@ -65,19 +65,14 @@ pub enum Error {
     SubmitterNotFound = 29,
     /// Authorised submitter set is full (see `MAX_SUBMITTERS`)
     TooManySubmitters = 30,
-    /// A stored snapshot does not hash-chain to its predecessor (#2782)
-    ChainBroken = 31,
-    /// Range or batch size is zero, inverted, or larger than the per-call cap
-    InvalidRange = 32,
-    /// Rotation target is the outgoing key, an admin, or a key still in its
-    /// overlap window (#2786)
-    InvalidRotationTarget = 33,
-    /// Overlap window exceeds `MAX_ROTATION_OVERLAP`, or was requested for a
-    /// compromise rotation (#2786)
-    InvalidOverlap = 34,
-    /// `Role::Admin` moves only through `set_admin`; it cannot be granted, or
-    /// revoked from the current admin, via `grant_role` / `revoke_role` (#2785)
-    AdminRoleNotGrantable = 35,
+    /// `accept_admin` / `cancel_admin_transfer` with no transfer proposed
+    NoPendingAdmin = 31,
+    /// `execute_upgrade` / `cancel_upgrade` with no upgrade scheduled
+    NoPendingUpgrade = 32,
+    /// Upgrade delay below `MIN_UPGRADE_DELAY_LEDGERS`, or an admin trying to shorten it
+    InvalidUpgradeDelay = 33,
+    /// Role-holder index is full (see `MAX_ROLE_HOLDERS`)
+    TooManyRoleHolders = 34,
 }
 
 impl Error {
@@ -121,11 +116,10 @@ impl Error {
             Error::SubmitterAlreadyAuthorized => "Address is already an authorised submitter",
             Error::SubmitterNotFound => "Address is not an authorised submitter",
             Error::TooManySubmitters => "Authorised submitter set is full",
-            Error::ChainBroken => "Snapshot hash chain is broken",
-            Error::InvalidRange => "Range or batch size is out of bounds",
-            Error::InvalidRotationTarget => "Address cannot be the target of a submitter rotation",
-            Error::InvalidOverlap => "Rotation overlap window is not allowed",
-            Error::AdminRoleNotGrantable => "Admin role only moves through set_admin",
+            Error::NoPendingAdmin => "No admin transfer has been proposed",
+            Error::NoPendingUpgrade => "No upgrade has been scheduled",
+            Error::InvalidUpgradeDelay => "Upgrade delay is too short or may not be shortened",
+            Error::TooManyRoleHolders => "Role-holder index is full",
         }
     }
 

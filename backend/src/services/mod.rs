@@ -11,6 +11,7 @@ pub mod contract_listener;
 pub mod corridor_performance_monitor;
 pub mod data_port;
 pub mod event_indexer;
+pub mod ledger_coverage;
 pub mod fee_bump_tracker;
 #[cfg(feature = "gdpr")]
 pub mod gdpr;
