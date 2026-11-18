@@ -6,8 +6,10 @@
 //!
 //! # Design
 //!
-//! - **Gap detection**: queries the `contract_events` table to find ledger
-//!   ranges that have no indexed events and schedules them for backfill.
+//! - **Gap detection**: queries the `ledger_scan_ranges` coverage table
+//!   (#2765) for ledger ranges that were never scanned and schedules only
+//!   those for backfill. Ledgers that were scanned but emitted no contract
+//!   events are covered and are not re-fetched.
 //! - **Progress tracking**: an in-memory [`BackfillState`] is shared behind an
 //!   `Arc<RwLock<_>>` so the status endpoint can read it without blocking the
 //!   worker.
@@ -198,11 +200,22 @@ impl BackfillJob {
         }
 
         // Detect gaps before starting so we can report them
-        let gaps = self
+        // If coverage cannot be read, fall back to the whole range rather
+        // than silently treating it as fully indexed.
+        let gaps = match self
             .event_indexer
             .detect_ledger_gaps(req.from_ledger, req.to_ledger)
             .await
-            .unwrap_or_default();
+        {
+            Ok(gaps) => gaps,
+            Err(e) => {
+                warn!(error = %e, "Gap detection failed; backfilling the full range");
+                vec![LedgerGap {
+                    start: req.from_ledger,
+                    end: req.to_ledger,
+                }]
+            }
+        };
 
         {
             let mut state = self.state.write().await;
@@ -266,8 +279,8 @@ impl BackfillJob {
 
 // ── Worker ────────────────────────────────────────────────────────────────────
 
-/// A contiguous ledger range with no indexed events.
-#[derive(Debug, Clone)]
+/// A contiguous ledger range that has never been scanned.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LedgerGap {
     pub start: u64,
     pub end: u64,
@@ -283,13 +296,9 @@ async fn run_backfill(
     gaps: Vec<LedgerGap>,
     delay_ms: u64,
 ) -> Result<()> {
-    // If no gaps were detected, still walk the full range to catch any events
-    // that may have been missed (e.g. the table was empty).
-    let ranges_to_process: Vec<(u64, u64)> = if gaps.is_empty() {
-        vec![(req.from_ledger, req.to_ledger)]
-    } else {
-        gaps.iter().map(|g| (g.start, g.end)).collect()
-    };
+    // Only truly missing ranges are requested from RPC (#2765): if gap
+    // detection found nothing, the whole range is already covered.
+    let ranges_to_process = ranges_to_process(&gaps);
 
     for (range_start, range_end) in ranges_to_process {
         let mut cursor: Option<String> = None;
@@ -297,6 +306,9 @@ async fn run_backfill(
 
         let mut events_buffer = Vec::new();
         let mut chunk_ledgers = 0;
+        // First ledger of the not-yet-committed chunk; committed together
+        // with the events as a scanned range.
+        let mut chunk_start: Option<u64> = None;
 
         loop {
             // Fetch a page of ledgers
@@ -312,6 +324,12 @@ async fn run_backfill(
 
             let mut page_events: u64 = 0;
 
+            // Capture each ledger's protocol version for replay (#2768).
+            // Best-effort: a header write failure must not abort the backfill.
+            if let Err(e) = indexer.record_ledger_headers(&result.ledgers).await {
+                warn!(error = %e, "Failed to record ledger headers");
+            }
+
             for ledger in &result.ledgers {
                 if ledger.sequence > range_end {
                     // Past the requested range — stop this gap's loop
@@ -323,11 +341,13 @@ async fn run_backfill(
                 page_events += events.len() as u64;
                 events_buffer.extend(events);
                 chunk_ledgers += 1;
+                let start = *chunk_start.get_or_insert(ledger.sequence);
 
                 if chunk_ledgers >= 1000 {
                     if let Err(e) = indexer
-                        .index_events_with_checkpoint(
+                        .index_events_with_scan_range(
                             std::mem::take(&mut events_buffer),
+                            start,
                             ledger.sequence,
                         )
                         .await
@@ -336,6 +356,7 @@ async fn run_backfill(
                         return Err(e);
                     }
                     chunk_ledgers = 0;
+                    chunk_start = None;
                 }
 
                 // Update progress
@@ -368,13 +389,18 @@ async fn run_backfill(
             }
         }
 
-        // Commit any remaining events in the buffer for this gap.
+        // Commit the remaining chunk for this gap, even when it produced no
+        // events: the scanned range still has to be recorded as covered.
         // `current` has already been advanced past the last processed ledger,
         // so use the state's `current_ledger` as the checkpoint target.
-        if !events_buffer.is_empty() {
+        if let Some(start) = chunk_start {
             let current_ledger = state_ref.read().await.current_ledger;
             if let Err(e) = indexer
-                .index_events_with_checkpoint(std::mem::take(&mut events_buffer), current_ledger)
+                .index_events_with_scan_range(
+                    std::mem::take(&mut events_buffer),
+                    start,
+                    current_ledger,
+                )
                 .await
             {
                 warn!(ledger = current_ledger, error = %e, "Failed to index remaining event chunk — aborting");
@@ -384,6 +410,12 @@ async fn run_backfill(
     }
 
     Ok(())
+}
+
+/// Ranges the worker should fetch: exactly the detected gaps. An empty
+/// list means the requested range is already fully covered.
+fn ranges_to_process(gaps: &[LedgerGap]) -> Vec<(u64, u64)> {
+    gaps.iter().map(|g| (g.start, g.end)).collect()
 }
 
 /// Extract [`IndexedEvent`]s from a single [`crate::rpc::stellar::RpcLedger`].
@@ -432,6 +464,20 @@ mod tests {
         assert_eq!(state.status, BackfillStatus::Idle);
         assert_eq!(state.events_indexed, 0);
         assert!(state.started_at.is_none());
+    }
+
+    #[test]
+    fn no_gaps_means_nothing_to_fetch() {
+        // Regression for #2765: an empty gap list used to trigger a walk of
+        // the full requested range.
+        assert!(ranges_to_process(&[]).is_empty());
+        assert_eq!(
+            ranges_to_process(&[
+                LedgerGap { start: 5, end: 9 },
+                LedgerGap { start: 20, end: 20 }
+            ]),
+            vec![(5, 9), (20, 20)]
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+pub mod failures;
 pub mod ledger;
 
 use anyhow::Result;
@@ -11,82 +12,20 @@ use tracing::{info, warn};
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
 
-fn retry_strategy() -> impl Iterator<Item = Duration> {
+/// Shared RPC retry policy for every ingestion path (#2766: previously
+/// duplicated in `ledger.rs`).
+pub(crate) fn retry_strategy() -> impl Iterator<Item = Duration> {
     ExponentialBackoff::from_millis(200)
         .max_delay(Duration::from_secs(30))
         .map(jitter)
         .take(10)
 }
 
-/// Path-payment failure codes we track per corridor.
-///
-/// These are the two dominant failure modes on thin corridors: not enough
-/// offers to satisfy the path (`op_too_few_offers`) and the destination amount
-/// falling below the minimum the sender is willing to accept
-/// (`op_under_dest_min`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PathPaymentFailureCode {
-    OpTooFewOffers,
-    OpUnderDestMin,
-}
-
-impl PathPaymentFailureCode {
-    /// Map a Stellar `PathPaymentStrictSend`/`PathPaymentStrictReceive`
-    /// operation result code string (as decoded from `result_xdr`) to a
-    /// tracked failure code. Returns `None` for success or untracked codes.
-    #[must_use]
-    pub fn from_result_code(code: &str) -> Option<Self> {
-        match code {
-            "op_too_few_offers" => Some(Self::OpTooFewOffers),
-            "op_under_dest_min" => Some(Self::OpUnderDestMin),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::OpTooFewOffers => "op_too_few_offers",
-            Self::OpUnderDestMin => "op_under_dest_min",
-        }
-    }
-}
-
-/// Per-corridor breakdown of path-payment failures observed during ingestion.
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct CorridorFailureBreakdown {
-    pub op_too_few_offers: u64,
-    pub op_under_dest_min: u64,
-}
-
-impl CorridorFailureBreakdown {
-    pub fn record(&mut self, code: PathPaymentFailureCode) {
-        match code {
-            PathPaymentFailureCode::OpTooFewOffers => self.op_too_few_offers += 1,
-            PathPaymentFailureCode::OpUnderDestMin => self.op_under_dest_min += 1,
-        }
-    }
-
-    #[must_use]
-    pub const fn total(&self) -> u64 {
-        self.op_too_few_offers + self.op_under_dest_min
-    }
-}
-
-/// Success rate for a corridor that accounts for failed path payments.
-///
-/// `successful` is the number of successful path payments; `failures` is the
-/// breakdown of tracked path-payment failures. Returns a percentage in
-/// `[0.0, 100.0]`, or `0.0` when there is no activity.
-#[must_use]
-pub fn corridor_success_rate(successful: u64, failures: &CorridorFailureBreakdown) -> f64 {
-    let total = successful + failures.total();
-    if total == 0 {
-        return 0.0;
-    }
-    (successful as f64 / total as f64) * 100.0
-}
+// The single path-payment failure taxonomy lives in `failures` (#2766).
+pub use failures::{
+    corridor_success_rate, decode_result_xdr, tally_path_payment_failures,
+    CorridorFailureBreakdown, PathPaymentFailureCode, PathPaymentKind, PathPaymentOutcome,
+};
 
 pub struct DataIngestionService {
     rpc_client: Arc<StellarRpcClient>,
@@ -348,48 +287,33 @@ impl DataIngestionService {
 
 #[cfg(test)]
 mod tests {
+    use super::failures::fixtures::*;
     use super::*;
+    use crate::ingestion::ledger::tally_ledger_transaction;
 
+    /// Whichever ingestion path sees a transaction, the corridor success
+    /// rate must come out identical because both go through `failures`.
     #[test]
-    fn parses_tracked_path_payment_failure_codes() {
-        assert_eq!(
-            PathPaymentFailureCode::from_result_code("op_too_few_offers"),
-            Some(PathPaymentFailureCode::OpTooFewOffers)
-        );
-        assert_eq!(
-            PathPaymentFailureCode::from_result_code("op_under_dest_min"),
-            Some(PathPaymentFailureCode::OpUnderDestMin)
-        );
-    }
+    fn success_rate_identical_across_ingestion_paths() {
+        let txs = [
+            tx_result_xdr(vec![strict_send(None)], false),
+            tx_result_xdr(vec![strict_send(Some(PathPaymentFailureCode::UnderDestmin))], true),
+            tx_result_xdr(vec![strict_receive(Some(PathPaymentFailureCode::OverSendmax))], true),
+            tx_result_xdr(vec![strict_receive(None)], false),
+        ];
 
-    #[test]
-    fn ignores_success_and_untracked_codes() {
-        assert_eq!(PathPaymentFailureCode::from_result_code("op_success"), None);
-        assert_eq!(
-            PathPaymentFailureCode::from_result_code("op_no_issuer"),
-            None
-        );
-    }
+        let mut via_mod = CorridorFailureBreakdown::new("USDC", "NGN");
+        for tx in &txs {
+            tally_path_payment_failures(tx, &mut via_mod).unwrap();
+        }
 
-    #[test]
-    fn breakdown_counts_and_success_rate_includes_failures() {
-        let mut failures = CorridorFailureBreakdown::default();
-        failures.record(PathPaymentFailureCode::OpTooFewOffers);
-        failures.record(PathPaymentFailureCode::OpTooFewOffers);
-        failures.record(PathPaymentFailureCode::OpUnderDestMin);
+        let mut via_ledger = CorridorFailureBreakdown::new("USDC", "NGN");
+        for tx in &txs {
+            tally_ledger_transaction(tx, &mut via_ledger);
+        }
 
-        assert_eq!(failures.op_too_few_offers, 2);
-        assert_eq!(failures.op_under_dest_min, 1);
-        assert_eq!(failures.total(), 3);
-
-        // 6 successes + 3 failures => 66.66...%
-        let rate = corridor_success_rate(6, &failures);
-        assert!((rate - 66.666_666).abs() < 1e-3);
-    }
-
-    #[test]
-    fn success_rate_is_zero_without_activity() {
-        let failures = CorridorFailureBreakdown::default();
-        assert_eq!(corridor_success_rate(0, &failures), 0.0);
+        assert_eq!(via_mod, via_ledger);
+        assert_eq!(via_mod.success_rate(), via_ledger.success_rate());
+        assert!((via_mod.success_rate() - 50.0).abs() < 1e-9);
     }
 }
