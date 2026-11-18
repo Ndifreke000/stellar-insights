@@ -29,6 +29,7 @@ pub mod service_container;
 #[cfg(feature = "slack-bot")]
 pub mod slack_bot;
 pub mod snapshot;
+pub mod snapshot_chain;
 pub mod stellar_toml;
 pub mod trustline_analyzer;
 pub mod verification_rewards;

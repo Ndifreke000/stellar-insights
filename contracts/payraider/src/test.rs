@@ -258,6 +258,7 @@ fn test_snapshot_submitted_event() {
         epoch,
         timestamp: _timestamp,
         submitter: admin.clone(),
+        chain_hash: client.get_chain_head().1,
     };
 
     // Check that our event is in the emitted events with proper topic count
@@ -469,6 +470,11 @@ fn test_error_codes_are_unique() {
         Error::SubmitterAlreadyAuthorized as u32,
         Error::SubmitterNotFound as u32,
         Error::TooManySubmitters as u32,
+        Error::ChainBroken as u32,
+        Error::InvalidRange as u32,
+        Error::InvalidRotationTarget as u32,
+        Error::InvalidOverlap as u32,
+        Error::AdminRoleNotGrantable as u32,
     ];
     codes.sort();
     let unique = codes.windows(2).all(|w| w[0] != w[1]);
@@ -503,6 +509,11 @@ fn test_error_descriptions_are_non_empty() {
         Error::SubmitterAlreadyAuthorized,
         Error::SubmitterNotFound,
         Error::TooManySubmitters,
+        Error::ChainBroken,
+        Error::InvalidRange,
+        Error::InvalidRotationTarget,
+        Error::InvalidOverlap,
+        Error::AdminRoleNotGrantable,
     ];
     for e in errors {
         assert!(
@@ -540,6 +551,11 @@ fn test_error_code_matches_repr() {
     assert_eq!(Error::SubmitterAlreadyAuthorized.code(), 28);
     assert_eq!(Error::SubmitterNotFound.code(), 29);
     assert_eq!(Error::TooManySubmitters.code(), 30);
+    assert_eq!(Error::ChainBroken.code(), 31);
+    assert_eq!(Error::InvalidRange.code(), 32);
+    assert_eq!(Error::InvalidRotationTarget.code(), 33);
+    assert_eq!(Error::InvalidOverlap.code(), 34);
+    assert_eq!(Error::AdminRoleNotGrantable.code(), 35);
 }
 
 #[test]
@@ -1382,7 +1398,9 @@ fn submission_extends_snapshot_and_instance_ttl() {
     client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
 
     env.as_contract(&contract_id, || {
-        assert!(env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1);
+        assert!(
+            env.storage().persistent().get_ttl(&DataKey::Snapshot(1)) >= LEDGERS_TO_EXTEND - 1
+        );
         assert!(env.storage().instance().get_ttl() >= INSTANCE_TTL_THRESHOLD);
     });
 }

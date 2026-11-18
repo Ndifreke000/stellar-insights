@@ -20,6 +20,8 @@ The submitter set is admin-managed and capped at `MAX_SUBMITTERS` (10):
 | `add_submitter(caller, submitter)` | admin | Adds a key |
 | `remove_submitter(caller, submitter)` | admin | Removes a key |
 | `rotate_submitter(caller, old, new)` | admin **and** `new` | Swaps `old` for `new` in one transaction |
+| `rotate_submitter_with_policy(caller, old, new, overlap_ledgers, reason)` | admin **and** `new` | Swap with an optional overlap window (#2786) |
+| `get_outgoing_submitters()` | none | Rotated-out keys still in their window, with expiry ledger |
 | `get_submitters()` | none | Lists the set (the admin is not listed) |
 
 `rotate_submitter` revokes the old key in the same transaction that authorises
@@ -27,6 +29,25 @@ the new one, so there's never a moment when both keys, or neither, can submit.
 The new key must sign too, which proves it is controlled before it's trusted.
 All three management calls work while the contract is paused, so a leaked key
 can be replaced during an incident.
+
+### Submitter rotation policy (#2786)
+
+| Rule | Enforced by |
+|---|---|
+| Only the admin rotates; the **new** key must sign | `require_admin`, `new.require_auth()` |
+| The **old** key's consent is not needed — it may be lost or leaked | by design |
+| `new` must not be `old`, a current submitter, an outgoing key still in its window, or the admin / an `Admin` holder | `InvalidRotationTarget` (#33), `SubmitterAlreadyAuthorized` (#28) |
+| Overlap: `old` keeps submitting until ledger `now + overlap_ledgers` (exclusive), at most `MAX_ROTATION_OVERLAP` (17,280 ≈ 1 day) | `InvalidOverlap` (#34) |
+| `RotationReason::Compromise` ⇒ overlap must be `0` | `InvalidOverlap` (#34) |
+| `remove_submitter(old)` ends an overlap window early | `delete_submitter` |
+| `rotate_submitter` = no overlap, reason `Scheduled` | wrapper |
+
+**Pending epochs.** Soroban transactions are atomic, so there is no half-written
+epoch to clean up. A transaction signed by the old key that lands after its
+window closes fails with `Unauthorized`; the backend resubmits the same epoch
+with the new key, and epoch monotonicity is unaffected. Use an overlap window
+for planned rotations so in-flight submissions still land. Operator steps:
+[`docs/runbooks/submitter-key-rotation.md`](../../docs/runbooks/submitter-key-rotation.md).
 
 `grant_role` / `revoke_role` with `Role::SnapshotSubmitter` add to / remove from
 the same set, and `has_role(addr, SnapshotSubmitter)` reads from it. The set is
@@ -88,6 +109,26 @@ Every key and its TTL policy:
 | `Roles(addr)` (any address, not just the admin) | persistent | every role check on that address (`has_role`, `pause`, `unpause`, `submit_snapshot` by an admin, upgrade auth), `grant_role` / `revoke_role`, `bump_ttl` |
 | `Admin`, `LatestEpoch`, `Paused`, `Version`, `Governance`, `StorageVersion`, `Submitters`, `PendingAdmin`, `PendingUpgrade`, `UpgradeDelay`, `RoleHolders` | instance | every state-changing call, `bump_ttl` |
 
+Older epochs are allowed to expire: the chain head in instance storage commits
+to all of them, so history stays verifiable from archived copies.
+`bump_snapshot_ttl(from, to)` (permissionless, span ≤ `MAX_TTL_BUMP_SPAN` = 200)
+keeps a range live if you want it readable on-chain.
+
+### Restoring an archived epoch
+
+An expired persistent entry is archived, not deleted. Restore it with a
+`RestoreFootprint` operation, then read it as usual:
+
+```bash
+stellar contract restore --id "$SNAPSHOT_CONTRACT_ID" \
+  --key-xdr "$(stellar xdr encode --type ScVal '{"vec":[{"symbol":"Snapshot"},{"u64":"<epoch>"}]}')" \
+  --source "$KEEPER" --network mainnet
+stellar contract invoke --id "$SNAPSHOT_CONTRACT_ID" -- get_snapshot_record --epoch <epoch>
+```
+
+Then `verify_range` or the backend verifier confirms it still links into the
+current chain head.
+
 Each extension pushes the entry about 30 days out (`LEDGERS_TO_EXTEND`, 518,400
 ledgers at 5 s/ledger). The submitter set is in instance storage, so it lives
 exactly as long as the contract instance.
@@ -140,7 +181,24 @@ All carry the second topic `SUBM_SET`.
 |---|---|---|
 | `subm_add` | `(admin, submitter)` | `add_submitter`, `grant_role(SnapshotSubmitter)` |
 | `subm_rm` | `(admin, submitter)` | `remove_submitter`, `revoke_role(SnapshotSubmitter)` |
-| `subm_rot` | `(admin, old_submitter, new_submitter)` | `rotate_submitter` |
+| `subm_rot` | `(admin, old_submitter, new_submitter)` | `rotate_submitter(_with_policy)` |
+| `rot_pol` | `SubmitterRotationPolicy { admin, old_submitter, new_submitter, reason, overlap_until }` | `rotate_submitter(_with_policy)` |
+
+`SNAP_SUB` data gains a `chain_hash` field (#2782). `migr_part` (no second
+topic) carries `(caller, migrated, remaining)` for partial migrations.
+
+## RBAC invariants (#2785)
+
+`contracts/tests/fuzz/rbac_invariants.rs` drives random call sequences against
+a reference model and checks after every step: exactly one admin; a revoked
+submitter can never submit; while paused, snapshot state never changes; and
+every call's outcome matches the model. Found a failure? Its seed is printed —
+add it to `REGRESSION_SEEDS`. Budget is set with `RBAC_FUZZ_CASES` /
+`RBAC_FUZZ_STEPS`; CI runs a larger, time-boxed pass in
+`.github/workflows/contract-fuzzing.yml`.
+
+To keep the single-admin invariant, `Role::Admin` now only moves through
+`set_admin` / `set_admin_by_governance`.
 
 Contract lifecycle events (second topic `CTR_LFE`, #2783):
 
