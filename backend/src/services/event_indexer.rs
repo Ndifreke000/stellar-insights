@@ -309,88 +309,28 @@ const INSERT_EVENT_SQL: &str = r"
 /// Service for indexing and querying contract events
 pub struct EventIndexer {
     db: Arc<Database>,
-    /// Network tag written with every event; part of the idempotency key.
-    network: Option<String>,
+    /// Network whose scan coverage this indexer records and reads (#2765).
+    network: crate::network::StellarNetwork,
 }
 
 impl EventIndexer {
-    /// Create a new event indexer
+    /// Create a new event indexer for mainnet. Prefer
+    /// [`EventIndexer::for_network`] wherever the network is known.
     pub fn new(db: Arc<Database>) -> Self {
-        info!("Initialized EventIndexer");
-        Self { db, network: None }
+        Self::for_network(db, crate::network::StellarNetwork::Mainnet)
     }
 
-    /// Tag every indexed event with `network` (e.g. "mainnet").
+    /// Create an event indexer whose coverage bookkeeping is scoped to
+    /// `network`.
+    pub fn for_network(db: Arc<Database>, network: crate::network::StellarNetwork) -> Self {
+        debug!(%network, "Initialized EventIndexer");
+        Self { db, network }
+    }
+
+    /// Network this indexer is scoped to.
     #[must_use]
-    pub fn with_network(mut self, network: impl Into<String>) -> Self {
-        self.network = Some(network.into());
-        self
-    }
-
-    /// Take a new fencing token for `role`. Call this whenever leadership is
-    /// (re)acquired; any writer holding an older token is fenced off.
-    pub async fn acquire_fencing_token(&self, role: &str, holder: &str) -> Result<FencingToken> {
-        let token: i64 = sqlx::query_scalar(
-            "INSERT INTO indexer_lease (role, token, holder, updated_at) \
-             VALUES (?, 1, ?, CURRENT_TIMESTAMP) \
-             ON CONFLICT(role) DO UPDATE SET token = token + 1, holder = excluded.holder, \
-             updated_at = CURRENT_TIMESTAMP \
-             RETURNING token",
-        )
-        .bind(role)
-        .bind(holder)
-        .fetch_one(self.db.pool())
-        .await
-        .context("Failed to acquire fencing token")?;
-        info!(role, holder, token, "Acquired indexer fencing token");
-        Ok(FencingToken(token))
-    }
-
-    /// Verify `token` is still current for `role` inside `tx`.
-    async fn check_fence(
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        role: &str,
-        token: FencingToken,
-    ) -> Result<()> {
-        let current: Option<i64> =
-            sqlx::query_scalar("SELECT token FROM indexer_lease WHERE role = ?")
-                .bind(role)
-                .fetch_optional(&mut **tx)
-                .await
-                .context("Failed to read fencing token")?;
-        let current = current.unwrap_or(0);
-        if current != token.0 {
-            return Err(StaleLeaderError {
-                presented: token.0,
-                current,
-            }
-            .into());
-        }
-        Ok(())
-    }
-
-    async fn insert_event<'e, E>(&self, executor: E, event: &IndexedEvent) -> Result<u64>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
-    {
-        let res = sqlx::query(INSERT_EVENT_SQL)
-            .bind(&event.id)
-            .bind(&event.contract_id)
-            .bind(&event.event_type)
-            .bind(event.epoch.map(|e| e as i64))
-            .bind(&event.hash)
-            .bind(event.timestamp.map(|t| t as i64))
-            .bind(event.ledger as i64)
-            .bind(&event.transaction_hash)
-            .bind(event.created_at)
-            .bind(&event.verification_status)
-            .bind(&self.network)
-            .bind(i64::from(event.op_index))
-            .bind(i64::from(event.event_index))
-            .execute(executor)
-            .await
-            .context("Failed to index event")?;
-        Ok(res.rows_affected())
+    pub const fn network(&self) -> crate::network::StellarNetwork {
+        self.network
     }
 
     /// Process a batch of events, skipping unknown types and persisting a
@@ -484,27 +424,27 @@ impl EventIndexer {
         events: Vec<IndexedEvent>,
         checkpoint_ledger: u64,
     ) -> Result<()> {
-        self.write_batch(events, checkpoint_ledger, None).await.map(|_| ())
+        self.index_events_with_scan_range(events, checkpoint_ledger, checkpoint_ledger)
+            .await
     }
 
-    /// Like [`Self::index_events_with_checkpoint`] but rejects the whole
-    /// batch with [`StaleLeaderError`] if `token` is no longer the current
-    /// fencing token for [`EVENT_INDEXER_ROLE`]. Returns rows inserted.
-    pub async fn index_events_fenced(
+    /// Index a batch of events that were found while scanning
+    /// `[scan_start, scan_end]`, and in the same transaction record that
+    /// whole range as covered in `ledger_scan_ranges` and advance the
+    /// backfill checkpoint to `scan_end`.
+    ///
+    /// Recording coverage alongside the events means a ledger that was
+    /// scanned but emitted nothing is never reported as a gap (#2765).
+    pub async fn index_events_with_scan_range(
         &self,
         events: Vec<IndexedEvent>,
-        checkpoint_ledger: u64,
-        token: FencingToken,
-    ) -> Result<u64> {
-        self.write_batch(events, checkpoint_ledger, Some(token)).await
-    }
-
-    async fn write_batch(
-        &self,
-        events: Vec<IndexedEvent>,
-        checkpoint_ledger: u64,
-        token: Option<FencingToken>,
-    ) -> Result<u64> {
+        scan_start: u64,
+        scan_end: u64,
+    ) -> Result<()> {
+        if scan_start > scan_end {
+            anyhow::bail!("scan_start ({scan_start}) must be <= scan_end ({scan_end})");
+        }
+        let checkpoint_ledger = scan_end;
         debug!(
             "Indexing {} events and setting checkpoint to {}",
             events.len(),
@@ -549,6 +489,8 @@ impl EventIndexer {
         .execute(&mut *tx)
         .await
         .context("Failed to update backfill checkpoint")?;
+
+        Self::record_scanned_range_tx(&mut tx, self.network, scan_start, scan_end).await?;
 
         tx.commit().await.context("Failed to commit transaction")?;
 
@@ -1012,58 +954,162 @@ impl EventIndexer {
         }))
     }
 
-    /// Detect ledger gaps in the indexed event sequence within `[from, to]`.
+    /// Persist the ledger headers (protocol version) of ledgers fetched from
+    /// RPC so replay can resolve the version per ledger (#2768).
+    pub async fn record_ledger_headers(
+        &self,
+        ledgers: &[crate::rpc::stellar::RpcLedger],
+    ) -> Result<u64> {
+        crate::replay::LedgerHeaderStore::new(self.db.pool().clone())
+            .record_rpc_ledgers(self.network, ledgers)
+            .await
+    }
+
+    /// Record `[start, end]` as scanned for this indexer's network, merging
+    /// it with any overlapping or adjacent ranges already stored.
+    pub async fn record_scanned_range(&self, start: u64, end: u64) -> Result<()> {
+        if start > end {
+            anyhow::bail!("start ({start}) must be <= end ({end})");
+        }
+        let mut tx = self
+            .db
+            .pool()
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
+        Self::record_scanned_range_tx(&mut tx, self.network, start, end).await?;
+        tx.commit()
+            .await
+            .context("Failed to commit scanned range")?;
+        Ok(())
+    }
+
+    async fn record_scanned_range_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        network: crate::network::StellarNetwork,
+        start: u64,
+        end: u64,
+    ) -> Result<()> {
+        let network = network.to_string();
+        let (start_i, end_i) = (start as i64, end as i64);
+
+        // Every stored range that overlaps or touches [start, end].
+        let touching: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ?",
+        )
+        .bind(&network)
+        .bind(end_i.saturating_add(1))
+        .bind(start_i.saturating_sub(1))
+        .fetch_all(&mut **tx)
+        .await
+        .context("Failed to read overlapping scan ranges")?;
+
+        let merged_start = touching.iter().map(|r| r.0).fold(start_i, i64::min);
+        let merged_end = touching.iter().map(|r| r.1).fold(end_i, i64::max);
+
+        sqlx::query(
+            "DELETE FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ?",
+        )
+        .bind(&network)
+        .bind(end_i.saturating_add(1))
+        .bind(start_i.saturating_sub(1))
+        .execute(&mut **tx)
+        .await
+        .context("Failed to delete merged scan ranges")?;
+
+        sqlx::query(
+            "INSERT INTO ledger_scan_ranges (network, start_ledger, end_ledger, scanned_at) \
+             VALUES (?, ?, ?, datetime('now'))",
+        )
+        .bind(&network)
+        .bind(merged_start)
+        .bind(merged_end)
+        .execute(&mut **tx)
+        .await
+        .context("Failed to insert scan range")?;
+
+        Ok(())
+    }
+
+    /// Stored scan ranges for this network that intersect `[from, to]`,
+    /// sorted by start.
+    pub async fn scanned_ranges(&self, from: u64, to: u64) -> Result<Vec<(u64, u64)>> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ? \
+             ORDER BY start_ledger ASC",
+        )
+        .bind(self.network.to_string())
+        .bind(to as i64)
+        .bind(from as i64)
+        .fetch_all(self.db.pool())
+        .await
+        .context("Failed to query scan ranges")?;
+        Ok(rows
+            .into_iter()
+            .map(|(s, e)| (s as u64, e as u64))
+            .collect())
+    }
+
+    /// Detect ledger gaps within `[from, to]`.
     ///
-    /// A gap is a contiguous sub-range of ledgers that have no entry in
-    /// `contract_events`. The returned list is sorted by `start` ascending.
-    ///
-    /// This is used by the backfill job to avoid re-fetching already-indexed
-    /// ledgers.
+    /// A gap is a contiguous sub-range of ledgers that were never scanned.
+    /// Coverage comes from `ledger_scan_ranges`, not from `contract_events`,
+    /// so ledgers that were scanned but emitted no events are not gaps
+    /// (#2765). Runs in time proportional to the number of stored ranges.
+    /// The returned list is sorted by `start` ascending.
     pub async fn detect_ledger_gaps(
         &self,
         from_ledger: u64,
         to_ledger: u64,
     ) -> Result<Vec<crate::jobs::backfill::LedgerGap>> {
-        // Fetch all distinct ledger numbers in the range, sorted ascending.
-        let rows: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT ledger FROM contract_events \
-             WHERE ledger BETWEEN ? AND ? \
-             ORDER BY ledger ASC",
+        let covered = self.scanned_ranges(from_ledger, to_ledger).await?;
+        Ok(
+            crate::services::ledger_coverage::compute_gaps(covered, from_ledger, to_ledger)
+                .into_iter()
+                .map(|(start, end)| crate::jobs::backfill::LedgerGap { start, end })
+                .collect(),
         )
-        .bind(from_ledger as i64)
-        .bind(to_ledger as i64)
+    }
+
+    /// Gaps inside the overall scanned span (first scanned ledger to last
+    /// scanned ledger) for this network. Publishes the `gap_count` and
+    /// `gap_ledgers_total` metrics and is used by the health check.
+    pub async fn coverage_gap_summary(&self) -> Result<LedgerGapSummary> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? ORDER BY start_ledger ASC",
+        )
+        .bind(self.network.to_string())
         .fetch_all(self.db.pool())
         .await
-        .context("Failed to query indexed ledgers for gap detection")?;
+        .context("Failed to query scan ranges")?;
+        let ranges: Vec<(u64, u64)> = rows.into_iter().map(|(s, e)| (s as u64, e as u64)).collect();
 
-        let indexed: std::collections::BTreeSet<u64> =
-            rows.into_iter().map(|(l,)| l as u64).collect();
-
-        let mut gaps = Vec::new();
-        let mut gap_start: Option<u64> = None;
-
-        for ledger in from_ledger..=to_ledger {
-            if indexed.contains(&ledger) {
-                if let Some(start) = gap_start.take() {
-                    gaps.push(crate::jobs::backfill::LedgerGap {
-                        start,
-                        end: ledger - 1,
-                    });
+        let summary = match (ranges.first(), ranges.iter().map(|r| r.1).max()) {
+            (Some(&(first, _)), Some(last)) => {
+                let gaps = crate::services::ledger_coverage::compute_gaps(ranges, first, last);
+                LedgerGapSummary {
+                    network: self.network.to_string(),
+                    first_scanned_ledger: Some(first),
+                    last_scanned_ledger: Some(last),
+                    gap_count: gaps.len() as u64,
+                    gap_ledgers_total: crate::services::ledger_coverage::gap_ledgers_total(&gaps),
                 }
-            } else if gap_start.is_none() {
-                gap_start = Some(ledger);
             }
-        }
-
-        // Close any trailing gap
-        if let Some(start) = gap_start {
-            gaps.push(crate::jobs::backfill::LedgerGap {
-                start,
-                end: to_ledger,
-            });
-        }
-
-        Ok(gaps)
+            _ => LedgerGapSummary {
+                network: self.network.to_string(),
+                ..Default::default()
+            },
+        };
+        crate::observability::metrics::set_ledger_gaps(
+            &summary.network,
+            summary.gap_count,
+            summary.gap_ledgers_total,
+        );
+        Ok(summary)
     }
 
     /// Rebuild indexes for performance
@@ -1088,6 +1134,16 @@ impl EventIndexer {
         info!("Successfully rebuilt event indexes");
         Ok(())
     }
+}
+
+/// Scan coverage gaps for one network (#2765).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+pub struct LedgerGapSummary {
+    pub network: String,
+    pub first_scanned_ledger: Option<u64>,
+    pub last_scanned_ledger: Option<u64>,
+    pub gap_count: u64,
+    pub gap_ledgers_total: u64,
 }
 
 /// Verification summary for UI display
@@ -1126,16 +1182,94 @@ mod tests {
             .execute(&pool)
             .await
             .context("failed to create indexer_state table")?;
-        sqlx::query(Schema::CREATE_INDEXER_LEASE)
+        sqlx::query(Schema::CREATE_LEDGER_SCAN_RANGES)
             .execute(&pool)
             .await
-            .context("failed to create indexer_lease table")?;
+            .context("failed to create ledger_scan_ranges table")?;
         sqlx::query(Schema::CREATE_BACKFILL_STATE)
             .execute(&pool)
             .await
             .context("failed to create backfill_state table")?;
 
         Ok(Arc::new(Database::new(pool)))
+    }
+
+    fn event_at(ledger: u64) -> IndexedEvent {
+        IndexedEvent {
+            id: format!("ev-{ledger}"),
+            contract_id: "c".to_string(),
+            event_type: "SNAP_SUB".to_string(),
+            epoch: None,
+            hash: None,
+            timestamp: None,
+            ledger,
+            transaction_hash: format!("tx-{ledger}"),
+            created_at: Utc::now(),
+            verification_status: None,
+        }
+    }
+
+    /// Regression for #2765: 1,000 ledgers scanned, only 3 with events,
+    /// must report zero gaps.
+    #[tokio::test]
+    async fn scanned_ledgers_without_events_are_not_gaps() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(db);
+
+        // Ten batches of 100 ledgers each; events only at 1, 500 and 1000.
+        for batch in 0..10u64 {
+            let (start, end) = (batch * 100 + 1, batch * 100 + 100);
+            let events: Vec<IndexedEvent> = [1u64, 500, 1000]
+                .into_iter()
+                .filter(|l| (start..=end).contains(l))
+                .map(event_at)
+                .collect();
+            indexer
+                .index_events_with_scan_range(events, start, end)
+                .await?;
+        }
+
+        assert!(indexer.detect_ledger_gaps(1, 1000).await?.is_empty());
+        // Adjacent batches merge into a single stored range.
+        assert_eq!(indexer.scanned_ranges(1, 1000).await?, vec![(1, 1000)]);
+        let summary = indexer.coverage_gap_summary().await?;
+        assert_eq!(summary.gap_count, 0);
+        assert_eq!(summary.gap_ledgers_total, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn only_unscanned_ranges_are_gaps() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(db);
+        indexer.record_scanned_range(10, 20).await?;
+        indexer.record_scanned_range(30, 40).await?;
+        indexer.record_scanned_range(15, 25).await?; // overlap merges with 10..20
+
+        let gaps: Vec<(u64, u64)> = indexer
+            .detect_ledger_gaps(1, 50)
+            .await?
+            .into_iter()
+            .map(|g| (g.start, g.end))
+            .collect();
+        assert_eq!(gaps, vec![(1, 9), (26, 29), (41, 50)]);
+
+        let summary = indexer.coverage_gap_summary().await?;
+        assert_eq!(summary.gap_count, 1);
+        assert_eq!(summary.gap_ledgers_total, 4);
+        assert!(indexer.record_scanned_range(5, 4).await.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_coverage_is_per_network() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let mainnet = EventIndexer::for_network(db.clone(), crate::network::StellarNetwork::Mainnet);
+        let testnet = EventIndexer::for_network(db, crate::network::StellarNetwork::Testnet);
+        mainnet.record_scanned_range(1, 100).await?;
+        assert!(mainnet.detect_ledger_gaps(1, 100).await?.is_empty());
+        assert_eq!(testnet.detect_ledger_gaps(1, 100).await?.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]

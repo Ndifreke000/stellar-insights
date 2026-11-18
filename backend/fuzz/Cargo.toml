@@ -1,0 +1,26 @@
+[package]
+name = "payraider-backend-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+
+[dependencies.payraider-backend]
+path = ".."
+
+# Keep the fuzz crate out of any parent workspace.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "horizon_page"
+path = "fuzz_targets/horizon_page.rs"
+test = false
+doc = false
+bench = false

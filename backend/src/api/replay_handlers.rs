@@ -167,7 +167,11 @@ pub async fn start_replay(
         processor,
         state_builder,
     )
-    .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
+    .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?
+    // Protocol version is resolved per ledger from ingested headers (#2768).
+    .with_protocol_source(Arc::new(crate::replay::LedgerHeaderStore::new(
+        state.db.pool().clone(),
+    )));
 
     // Start replay in background
     let engine_clone = Arc::new(engine);

@@ -1,4 +1,3 @@
-use failsafe::futures::CircuitBreaker as _;
 use std::fmt;
 use std::time::Duration;
 
@@ -10,6 +9,10 @@ pub enum RpcError {
     ParseError(String),
     TimeoutError(String),
     CircuitBreakerOpen,
+    /// The provider's response body exceeded the limit for this call type
+    /// (`limit` bytes, or `limit` records for a Horizon page). Not retried as-is;
+    /// paginated callers retry with a smaller page size.
+    ResponseTooLarge { limit: usize, observed: Option<u64> },
 }
 
 impl fmt::Display for RpcError {
@@ -29,6 +32,13 @@ impl fmt::Display for RpcError {
             Self::ParseError(msg) => write!(f, "Parse error: {msg}"),
             Self::TimeoutError(msg) => write!(f, "Timeout error: {msg}"),
             Self::CircuitBreakerOpen => write!(f, "Circuit breaker is open"),
+            Self::ResponseTooLarge { limit, observed } => {
+                write!(f, "Response too large (limit {limit})")?;
+                if let Some(n) = observed {
+                    write!(f, ", observed {n}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -80,11 +90,12 @@ impl RpcError {
             Self::ParseError(_) => "parse_error",
             Self::TimeoutError(_) => "timeout_error",
             Self::CircuitBreakerOpen => "circuit_breaker_open",
+            Self::ResponseTooLarge { .. } => "response_too_large",
         }
     }
 }
 
-use crate::rpc::circuit_breaker::SharedCircuitBreaker;
+use crate::rpc::circuit_breaker::{CallError, SharedCircuitBreaker};
 
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -117,14 +128,19 @@ where
     loop {
         attempt += 1;
 
-        // Failsafe-wrapped call. Failsafe treats Error::Inner as a failure for the circuit.
-        // We'll map RpcError into failsafe's error tracking.
-        let result: Result<T, failsafe::Error<RpcError>> = circuit_breaker.call(operation()).await;
+        // Every attempt runs through the shared breaker.
+        // An oversize response is the caller's page size being too big, not
+        // the provider being down, so it does not count against the circuit.
+        let result: Result<T, CallError<RpcError>> = circuit_breaker
+            .call_classified(operation(), |e| {
+                !matches!(e, RpcError::ResponseTooLarge { .. })
+            })
+            .await;
 
         match result {
             Ok(val) => return Ok(val),
-            Err(failsafe::Error::Rejected) => return Err(RpcError::CircuitBreakerOpen),
-            Err(failsafe::Error::Inner(e)) => {
+            Err(CallError::Rejected) => return Err(RpcError::CircuitBreakerOpen),
+            Err(CallError::Inner(e)) => {
                 if !e.is_transient() || attempt >= config.max_attempts {
                     return Err(e);
                 }

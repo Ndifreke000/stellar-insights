@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use failsafe::futures::CircuitBreaker as _;
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::rpc::{circuit_breaker::rpc_circuit_breaker, HorizonOperation, StellarRpcClient};
+use crate::services::account_lineage::{AccountLineage, LineageEdge, LineageResolution};
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct AccountMergeEvent {
@@ -37,12 +37,34 @@ pub struct DestinationAccountPattern {
 pub struct AccountMergeDetector {
     pool: Pool<Sqlite>,
     rpc_client: Arc<StellarRpcClient>,
+    lineage: AccountLineage,
 }
 
 impl AccountMergeDetector {
     #[must_use]
-    pub const fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
-        Self { pool, rpc_client }
+    pub fn new(pool: Pool<Sqlite>, rpc_client: Arc<StellarRpcClient>) -> Self {
+        let lineage = AccountLineage::new(pool.clone());
+        Self {
+            pool,
+            rpc_client,
+            lineage,
+        }
+    }
+
+    /// Lineage store backed by the same pool.
+    #[must_use]
+    pub const fn lineage(&self) -> &AccountLineage {
+        &self.lineage
+    }
+
+    /// Resolve an account to the account that survives its merges.
+    pub async fn resolve_lineage(&self, account: &str) -> Result<LineageResolution> {
+        self.lineage.resolve(account).await
+    }
+
+    /// Accounts merged (directly or indirectly) into `account`.
+    pub async fn merged_into(&self, account: &str) -> Result<Vec<LineageEdge>> {
+        self.lineage.merged_into(account).await
     }
 
     /// Fetches operations for a ledger, extracts account merges, and persists merge events.
@@ -56,10 +78,7 @@ impl AccountMergeDetector {
                     .map_err(|e| anyhow::anyhow!(e.to_string()))
             })
             .await
-            .map_err(|e| match e {
-                failsafe::Error::Rejected => anyhow::anyhow!("Circuit breaker open"),
-                failsafe::Error::Inner(err) => err,
-            })?;
+            .map_err(crate::rpc::CallError::into_anyhow)?;
 
         let mut inserted = 0_u64;
 
@@ -122,7 +141,27 @@ impl AccountMergeDetector {
             created_at,
         };
 
-        self.persist_merge_event(&event).await
+        let inserted = self.persist_merge_event(&event).await?;
+        if inserted {
+            // Record the lineage edge; this also queues a corridor-metrics
+            // recompute so the new merge is reflected (#2773).
+            if let Err(e) = self
+                .lineage
+                .record_merge(
+                    &event.source_account,
+                    &event.destination_account,
+                    event.ledger_sequence,
+                    Some(&event.operation_id),
+                )
+                .await
+            {
+                warn!(
+                    "Failed to record lineage for merge {}: {}",
+                    event.operation_id, e
+                );
+            }
+        }
+        Ok(inserted)
     }
 
     async fn resolve_merged_balance(&self, operation_id: &str, destination: &str) -> f64 {

@@ -93,6 +93,18 @@ lazy_static! {
         "Number of active websocket connections"
     )
     .expect("Failed to register active_connections gauge");
+    /// Number of unscanned ledger ranges inside the scanned span (#2765).
+    pub static ref GAP_COUNT: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("gap_count", "Number of ledger scan gaps by network"),
+        &["network"]
+    )
+    .expect("Failed to register gap_count gauge");
+    /// Number of unscanned ledgers inside the scanned span (#2765).
+    pub static ref GAP_LEDGERS_TOTAL: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("gap_ledgers_total", "Number of ledgers inside scan gaps by network"),
+        &["network"]
+    )
+    .expect("Failed to register gap_ledgers_total gauge");
     pub static ref CORRIDORS_TRACKED: IntGauge =
         IntGauge::new("corridors_tracked", "Number of tracked corridors")
             .expect("Failed to register corridors_tracked gauge");
@@ -286,6 +298,8 @@ pub fn init_metrics() {
         BACKGROUND_JOBS_TOTAL,
         ACTIVE_CONNECTIONS,
         CORRIDORS_TRACKED,
+        GAP_COUNT,
+        GAP_LEDGERS_TOTAL,
         HTTP_IN_FLIGHT_REQUESTS,
         DB_POOL_SIZE,
         DB_POOL_IDLE,
@@ -492,16 +506,13 @@ pub fn record_background_job(_job: &str, _status: &str) {
     BACKGROUND_JOBS_TOTAL.inc();
 }
 
-pub fn set_ingestion_lag_ledgers(lag: u64) {
-    INGESTION_LAG_LEDGERS.set(i64::try_from(lag).unwrap_or(i64::MAX));
-}
-
-pub fn set_ingestion_batch_size(size: u32) {
-    INGESTION_BATCH_SIZE.set(i64::from(size));
-}
-
-pub fn record_backfill_unrecoverable_range() {
-    BACKFILL_UNRECOVERABLE_RANGES_TOTAL.inc();
+pub fn set_ledger_gaps(network: &str, gap_count: u64, gap_ledgers_total: u64) {
+    GAP_COUNT
+        .with_label_values(&[network])
+        .set(i64::try_from(gap_count).unwrap_or(i64::MAX));
+    GAP_LEDGERS_TOTAL
+        .with_label_values(&[network])
+        .set(i64::try_from(gap_ledgers_total).unwrap_or(i64::MAX));
 }
 
 pub fn set_corridors_tracked(count: i64) {

@@ -16,6 +16,19 @@ lazy_static! {
         &["endpoint"]
     )
     .expect("circuit_breaker_state metric");
+    static ref CIRCUIT_BREAKER_TRANSITIONS: IntCounterVec = register_int_counter_vec!(
+        "circuit_breaker_transitions_total",
+        "Circuit breaker state transitions by breaker, from-state and to-state",
+        &["breaker", "from", "to"]
+    )
+    .expect("circuit_breaker_transitions_total metric");
+}
+
+/// Record one circuit breaker state transition.
+pub fn record_circuit_breaker_transition(breaker: &str, from: &str, to: &str) {
+    CIRCUIT_BREAKER_TRANSITIONS
+        .with_label_values(&[breaker, from, to])
+        .inc();
 }
 
 /// Record an RPC error for metrics.
