@@ -7,6 +7,7 @@
 //! | POST   | `/admin/backfill`       | Start a backfill for a ledger range  |
 //! | GET    | `/admin/backfill/status`| Poll current backfill progress       |
 //! | POST   | `/admin/backfill/resume`| Resume from persisted cursor, gap-check vs head |
+//! | GET    | `/admin/backfill/health`| Ranges outside RPC retention (`unrecoverable_via_rpc`) |
 
 use crate::jobs::backfill::{BackfillJob, BackfillRequest, BackfillState};
 use axum::{
@@ -223,6 +224,21 @@ pub async fn get_backfill_status(State(job): State<Arc<BackfillJob>>) -> Json<Ba
     Json(job.status().await)
 }
 
+/// GET /admin/backfill/health
+///
+/// Reports every range flagged `unrecoverable_via_rpc` since startup (#2770).
+/// `status` is `"degraded"` when any exist, so operators see data that can
+/// only be filled from a full-history source.
+pub async fn get_backfill_health(State(job): State<Arc<BackfillJob>>) -> Json<Value> {
+    let ranges = job.unrecoverable_ranges().await;
+    let missing: u64 = ranges.iter().map(|r| r.end - r.start + 1).sum();
+    Json(json!({
+        "status": if ranges.is_empty() { "ok" } else { "degraded" },
+        "unrecoverable_ledgers": missing,
+        "unrecoverable_ranges": ranges,
+    }))
+}
+
 /// Build the admin backfill router.
 ///
 /// Mount this at `/admin` in the main router:
@@ -235,5 +251,6 @@ pub fn routes(job: Arc<BackfillJob>) -> Router {
         .route("/backfill", post(start_backfill))
         .route("/backfill/status", get(get_backfill_status))
         .route("/backfill/resume", post(resume_backfill))
+        .route("/backfill/health", get(get_backfill_health))
         .with_state(job)
 }

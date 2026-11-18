@@ -13,10 +13,20 @@
 //! - **Progress tracking**: an in-memory [`BackfillState`] is shared behind an
 //!   `Arc<RwLock<_>>` so the status endpoint can read it without blocking the
 //!   worker.
+//! - **RPC retention window** (#2770): Stellar RPC only keeps events for a
+//!   limited window (~7 days by default). Before backfilling, the job queries
+//!   `getHealth` for `oldestLedger`/`latestLedger` and splits each requested
+//!   range into an in-window part (backfilled from RPC) and an out-of-window
+//!   part. Out-of-window ranges are **never** marked as covered: they are
+//!   recorded as `unrecoverable_via_rpc`, an alert is raised, and they are
+//!   handed to a configured [`HistoricalEventSource`] (e.g. a Galexie/S3
+//!   ledger-meta lake) if one is set. They are surfaced on
+//!   `GET /admin/backfill/health`.
 //! - **Rate limiting**: a configurable delay between RPC page requests prevents
 //!   overwhelming the upstream node.
-//! - **Idempotency**: events are inserted with `INSERT OR REPLACE` so re-running
-//!   a range is safe.
+//! - **Idempotency**: events are inserted with `INSERT … ON CONFLICT DO NOTHING`
+//!   on the `(network, ledger, tx_hash, op_index, event_index)` identity key and
+//!   the checkpoint only moves forward, so re-running a range is safe (#2769).
 
 use crate::observability::job_metrics::JobMetricsCollector;
 use crate::rpc::StellarRpcClient;
@@ -28,7 +38,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -91,6 +100,10 @@ pub struct BackfillState {
     pub finished_at: Option<DateTime<Utc>>,
     /// Error message if status is `Failed`.
     pub error: Option<String>,
+    /// Ranges from this run that fell outside the RPC retention window and
+    /// were not backfilled (#2770).
+    #[serde(default)]
+    pub unrecoverable_ranges: Vec<UnrecoverableRange>,
 }
 
 impl Default for BackfillState {
@@ -107,7 +120,97 @@ impl Default for BackfillState {
             started_at: None,
             finished_at: None,
             error: None,
+            unrecoverable_ranges: Vec::new(),
         }
+    }
+}
+
+/// Why a range could not be backfilled.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UnrecoverableReason {
+    /// The range is older than the RPC's `oldestLedger`.
+    UnrecoverableViaRpc,
+}
+
+/// A ledger range that RPC can no longer serve (#2770).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UnrecoverableRange {
+    pub start: u64,
+    pub end: u64,
+    pub reason: UnrecoverableReason,
+    /// `oldestLedger` reported by RPC when the range was evaluated.
+    pub rpc_oldest_ledger: u64,
+    pub detected_at: DateTime<Utc>,
+}
+
+/// Result of splitting a requested range against the RPC retention window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RetentionSplit {
+    /// Part of the range RPC can still serve.
+    pub in_window: Option<(u64, u64)>,
+    /// Part older than `oldest_ledger` that RPC can no longer serve.
+    pub out_of_window: Option<(u64, u64)>,
+}
+
+/// Split the inclusive range `[start, end]` by the RPC retention window
+/// `[oldest, latest]`. Ledgers newer than `latest` don't exist yet and are
+/// dropped from the in-window part (they'll be picked up by tailing).
+#[must_use]
+pub fn split_by_retention(start: u64, end: u64, oldest: u64, latest: u64) -> RetentionSplit {
+    if start > end {
+        return RetentionSplit::default();
+    }
+    let out_of_window = (start < oldest).then(|| (start, end.min(oldest.saturating_sub(1))));
+    let lo = start.max(oldest);
+    let hi = end.min(latest);
+    let in_window = (lo <= hi).then_some((lo, hi));
+    RetentionSplit {
+        in_window,
+        out_of_window,
+    }
+}
+
+/// A full-history event source used for ranges outside RPC retention
+/// (e.g. Galexie ledger-meta in S3/GCS, or Hubble).
+#[async_trait::async_trait]
+pub trait HistoricalEventSource: Send + Sync {
+    /// Human-readable name for logs/health output.
+    fn name(&self) -> &str;
+
+    /// Fetch events for the inclusive ledger range `[start, end]`.
+    async fn fetch_events(
+        &self,
+        start: u64,
+        end: u64,
+        contract_id: Option<&str>,
+    ) -> Result<Vec<IndexedEvent>>;
+}
+
+/// Stub for a Galexie / S3 ledger-meta source. Configured with the bucket
+/// URL; decoding `LedgerCloseMeta` batches is not implemented yet, so every
+/// call fails and the range stays flagged as unrecoverable (never covered).
+#[derive(Debug, Clone)]
+pub struct GalexieS3Source {
+    pub bucket_url: String,
+}
+
+#[async_trait::async_trait]
+impl HistoricalEventSource for GalexieS3Source {
+    fn name(&self) -> &str {
+        "galexie-s3"
+    }
+
+    async fn fetch_events(
+        &self,
+        start: u64,
+        end: u64,
+        _contract_id: Option<&str>,
+    ) -> Result<Vec<IndexedEvent>> {
+        anyhow::bail!(
+            "Galexie source at {} cannot decode ledger-meta yet (range {start}-{end})",
+            self.bucket_url
+        )
     }
 }
 
@@ -121,6 +224,9 @@ pub struct BackfillJob {
     event_indexer: Arc<EventIndexer>,
     rpc_client: Arc<StellarRpcClient>,
     state: BackfillStateRef,
+    historical_source: Option<Arc<dyn HistoricalEventSource>>,
+    /// All unrecoverable ranges seen since startup, for the health endpoint.
+    unrecoverable: Arc<RwLock<Vec<UnrecoverableRange>>>,
 }
 
 impl BackfillJob {
@@ -135,7 +241,73 @@ impl BackfillJob {
             event_indexer,
             rpc_client,
             state,
+            historical_source: None,
+            unrecoverable: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    /// Use `source` to fill ranges that fall outside RPC retention.
+    #[must_use]
+    pub fn with_historical_source(mut self, source: Arc<dyn HistoricalEventSource>) -> Self {
+        self.historical_source = Some(source);
+        self
+    }
+
+    /// Every range flagged `unrecoverable_via_rpc` since startup.
+    pub async fn unrecoverable_ranges(&self) -> Vec<UnrecoverableRange> {
+        self.unrecoverable.read().await.clone()
+    }
+
+    /// Split `[from, to]` against RPC retention, record and alert on the
+    /// out-of-window part, and return the in-window part (if any).
+    async fn apply_retention(&self, from: u64, to: u64) -> Result<Option<(u64, u64)>> {
+        let health = self
+            .rpc_client
+            .check_health()
+            .await
+            .map_err(|e| anyhow::anyhow!("RPC getHealth failed before backfill: {e}"))?;
+        let split = split_by_retention(from, to, health.oldest_ledger, health.latest_ledger);
+
+        if let Some((start, end)) = split.out_of_window {
+            let range = UnrecoverableRange {
+                start,
+                end,
+                reason: UnrecoverableReason::UnrecoverableViaRpc,
+                rpc_oldest_ledger: health.oldest_ledger,
+                detected_at: Utc::now(),
+            };
+            crate::observability::metrics::record_backfill_unrecoverable_range();
+            error!(
+                alert = "backfill_unrecoverable_via_rpc",
+                start,
+                end,
+                rpc_oldest_ledger = health.oldest_ledger,
+                "Backfill range is outside the RPC retention window; not marking it covered"
+            );
+
+            let recovered = match &self.historical_source {
+                Some(src) => match src.fetch_events(start, end, None).await {
+                    Ok(events) => {
+                        self.event_indexer
+                            .index_events_with_checkpoint(events, end)
+                            .await?;
+                        info!(source = src.name(), start, end, "Recovered range from historical source");
+                        true
+                    }
+                    Err(e) => {
+                        warn!(source = src.name(), start, end, error = %e, "Historical source failed");
+                        false
+                    }
+                },
+                None => false,
+            };
+
+            if !recovered {
+                self.unrecoverable.write().await.push(range.clone());
+                self.state.write().await.unrecoverable_ranges.push(range);
+            }
+        }
+        Ok(split.in_window)
     }
 
     /// The last ledger the indexer has durably processed (its persisted
@@ -197,6 +369,30 @@ impl BackfillJob {
                 started_at: Some(Utc::now()),
                 ..Default::default()
             };
+        }
+
+        // Split against the RPC retention window (#2770). Anything older than
+        // `oldestLedger` is flagged and alerted on, never walked via RPC.
+        let mut req = req;
+        match self.apply_retention(req.from_ledger, req.to_ledger).await {
+            Ok(Some((from, to))) => {
+                req.from_ledger = from;
+                req.to_ledger = to;
+            }
+            Ok(None) => {
+                let mut state = self.state.write().await;
+                state.status = BackfillStatus::Completed;
+                state.finished_at = Some(Utc::now());
+                warn!("Entire backfill range is outside RPC retention; nothing to fetch");
+                return Ok(());
+            }
+            Err(e) => {
+                let mut state = self.state.write().await;
+                state.status = BackfillStatus::Failed;
+                state.error = Some(e.to_string());
+                state.finished_at = Some(Utc::now());
+                return Err(e);
+            }
         }
 
         // Detect gaps before starting so we can report them
@@ -439,7 +635,8 @@ fn extract_events_from_ledger(
 
     // Emit one checkpoint event per ledger so the ledger is marked as indexed.
     vec![IndexedEvent {
-        id: format!("backfill-{}-{}", ledger.sequence, Uuid::new_v4()),
+        // Deterministic id: a retried page must map to the same row (#2769).
+        id: format!("backfill-{}", ledger.sequence),
         contract_id,
         event_type: "LEDGER_CHECKPOINT".to_string(),
         epoch: None,
@@ -449,6 +646,8 @@ fn extract_events_from_ledger(
         transaction_hash: ledger.hash.clone(),
         created_at: timestamp,
         verification_status: Some("backfilled".to_string()),
+        op_index: 0,
+        event_index: 0,
     }]
 }
 
@@ -611,5 +810,114 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("already in progress"));
+    }
+
+    #[test]
+    fn split_fully_in_window() {
+        let s = split_by_retention(150, 180, 100, 200);
+        assert_eq!(s.in_window, Some((150, 180)));
+        assert_eq!(s.out_of_window, None);
+    }
+
+    #[test]
+    fn split_straddles_oldest_ledger() {
+        let s = split_by_retention(50, 150, 100, 200);
+        assert_eq!(s.out_of_window, Some((50, 99)));
+        assert_eq!(s.in_window, Some((100, 150)));
+    }
+
+    #[test]
+    fn split_fully_out_of_window() {
+        let s = split_by_retention(10, 20, 100, 200);
+        assert_eq!(s.out_of_window, Some((10, 20)));
+        assert_eq!(s.in_window, None);
+    }
+
+    #[test]
+    fn split_clamps_future_ledgers_and_rejects_inverted() {
+        let s = split_by_retention(190, 500, 100, 200);
+        assert_eq!(s.in_window, Some((190, 200)));
+        assert_eq!(split_by_retention(5, 1, 0, 10), RetentionSplit::default());
+    }
+
+    async fn job_with_db() -> (BackfillJob, Arc<crate::database::Database>) {
+        use crate::database::Database;
+        use crate::db::schema::Schema;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(":memory:")
+            .await
+            .expect("pool");
+        for q in [
+            Schema::CREATE_CONTRACT_EVENTS,
+            Schema::CREATE_CONTRACT_EVENTS_INDEXES,
+            Schema::CREATE_BACKFILL_STATE,
+        ] {
+            sqlx::query(q).execute(&pool).await.expect("schema");
+        }
+        let db = Arc::new(Database::new(pool));
+        let indexer = Arc::new(EventIndexer::new(Arc::clone(&db)));
+        let rpc = Arc::new(StellarRpcClient::new_with_defaults(true));
+        let state = Arc::new(RwLock::new(BackfillState::default()));
+        (BackfillJob::new(indexer, rpc, state), db)
+    }
+
+    #[tokio::test]
+    async fn out_of_window_range_is_flagged_and_not_covered() {
+        use crate::rpc::mock_stellar::{MOCK_LATEST_LEDGER, MOCK_OLDEST_LEDGER};
+        let _guard = crate::lock_env_test();
+        let (job, db) = job_with_db().await;
+
+        // Mock RPC reports oldestLedger > requested start.
+        let start = MOCK_OLDEST_LEDGER - 100;
+        let in_window = job
+            .apply_retention(start, MOCK_LATEST_LEDGER)
+            .await
+            .expect("retention");
+        assert_eq!(in_window, Some((MOCK_OLDEST_LEDGER, MOCK_LATEST_LEDGER)));
+
+        let flagged = job.unrecoverable_ranges().await;
+        assert_eq!(flagged.len(), 1);
+        assert_eq!(flagged[0].start, start);
+        assert_eq!(flagged[0].end, MOCK_OLDEST_LEDGER - 1);
+        assert_eq!(flagged[0].reason, UnrecoverableReason::UnrecoverableViaRpc);
+        assert_eq!(job.status().await.unrecoverable_ranges.len(), 1);
+
+        // Nothing was written for the out-of-window part.
+        let covered: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events WHERE ledger < ?")
+            .bind(MOCK_OLDEST_LEDGER as i64)
+            .fetch_one(db.pool())
+            .await
+            .expect("count");
+        assert_eq!(covered, 0);
+    }
+
+    #[tokio::test]
+    async fn in_window_range_is_not_flagged() {
+        use crate::rpc::mock_stellar::{MOCK_LATEST_LEDGER, MOCK_OLDEST_LEDGER};
+        let _guard = crate::lock_env_test();
+        let (job, _db) = job_with_db().await;
+        let in_window = job
+            .apply_retention(MOCK_OLDEST_LEDGER, MOCK_LATEST_LEDGER)
+            .await
+            .expect("retention");
+        assert_eq!(in_window, Some((MOCK_OLDEST_LEDGER, MOCK_LATEST_LEDGER)));
+        assert!(job.unrecoverable_ranges().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn failing_historical_source_keeps_range_flagged() {
+        use crate::rpc::mock_stellar::MOCK_OLDEST_LEDGER;
+        let _guard = crate::lock_env_test();
+        let (job, _db) = job_with_db().await;
+        let job = job.with_historical_source(Arc::new(GalexieS3Source {
+            bucket_url: "s3://example/ledgers".into(),
+        }));
+        let in_window = job
+            .apply_retention(1, MOCK_OLDEST_LEDGER - 1)
+            .await
+            .expect("retention");
+        assert_eq!(in_window, None);
+        assert_eq!(job.unrecoverable_ranges().await.len(), 1);
     }
 }

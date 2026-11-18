@@ -90,7 +90,10 @@ impl Schema {
             transaction_hash TEXT NOT NULL,
             verification_status TEXT DEFAULT 'pending',
             verified_at TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            network TEXT,
+            op_index INTEGER NOT NULL DEFAULT 0,
+            event_index INTEGER NOT NULL DEFAULT 0
         );
     ";
 
@@ -101,6 +104,8 @@ impl Schema {
         CREATE INDEX IF NOT EXISTS idx_contract_events_contract_id ON contract_events(contract_id);
         CREATE INDEX IF NOT EXISTS idx_contract_events_verification_status ON contract_events(verification_status);
         CREATE INDEX IF NOT EXISTS idx_contract_events_event_type ON contract_events(event_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_contract_events_identity
+            ON contract_events(IFNULL(network, ''), ledger, transaction_hash, op_index, event_index);
     ";
 
     pub const CREATE_INDEXER_STATE: &'static str = r"

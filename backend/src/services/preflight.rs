@@ -67,7 +67,7 @@ impl PreflightStatus {
         }
     }
 
-    fn max(self, other: PreflightStatus) -> PreflightStatus {
+    pub fn max(self, other: PreflightStatus) -> PreflightStatus {
         if other.severity() > self.severity() {
             other
         } else {

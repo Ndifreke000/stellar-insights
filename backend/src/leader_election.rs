@@ -8,6 +8,16 @@
 //! TTL.
 //!
 //! In single-instance mode (no `REDIS_URL`) every process is the leader.
+//!
+//! # Fencing
+//!
+//! Leadership can briefly overlap (a partitioned old leader keeps running
+//! until its lease expires). Leader-only tasks that write to the database
+//! must therefore fence their writes: on gaining leadership, take a fencing
+//! token (e.g. `EventIndexer::acquire_fencing_token`, which bumps a counter
+//! in `indexer_lease`) and present it with each write. A write carrying an
+//! older token than the one stored is rejected, so a stale leader's batch can
+//! never land after a newer leader has started (#2769).
 
 use std::future::Future;
 use std::sync::Arc;
