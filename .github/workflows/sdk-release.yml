@@ -67,6 +67,8 @@ jobs:
       # nothing to release, so skip cleanly instead of failing main.
       - name: Check publishing credentials
         id: creds
+        # Runs before checkout, so not in the default `sdk` directory.
+        working-directory: ${{ github.workspace }}
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
