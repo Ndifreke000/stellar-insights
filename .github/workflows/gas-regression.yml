@@ -19,6 +19,8 @@ on:
 jobs:
   gas-benchmarks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the refreshed docs/GAS_COSTS.md baseline on main
 
     steps:
       - uses: actions/checkout@v4
