@@ -5,9 +5,10 @@ mod events;
 
 use errors::Error;
 use events::{
-    emit_admin_transferred, emit_contract_initialized, emit_contract_paused,
-    emit_contract_unpaused, emit_snapshot_submitted, emit_submitter_added, emit_submitter_removed,
-    emit_submitter_rotated,
+    emit_admin_proposed, emit_admin_transfer_cancelled, emit_admin_transferred,
+    emit_contract_initialized, emit_contract_paused, emit_contract_unpaused,
+    emit_snapshot_submitted, emit_submitter_added, emit_submitter_removed, emit_submitter_rotated,
+    emit_upgrade_cancelled, emit_upgrade_delay_set, emit_upgrade_executed, emit_upgrade_scheduled,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec,
@@ -23,6 +24,17 @@ const INSTANCE_TTL_EXTEND: u32 = 518_400;
 /// Upper bound on the authorised submitter set. The set lives in instance
 /// storage, which is loaded on every invocation, so it must stay small.
 pub const MAX_SUBMITTERS: u32 = 10;
+
+/// Upper bound on the role-holder index (#2784). The index lives in instance
+/// storage and `bump_ttl` walks it, so it must stay small.
+pub const MAX_ROLE_HOLDERS: u32 = 32;
+
+/// Shortest delay, in ledgers, between `schedule_upgrade` and
+/// `execute_upgrade` (~1 hour at 5 s/ledger) (#2783).
+pub const MIN_UPGRADE_DELAY_LEDGERS: u32 = 720;
+
+/// Upgrade delay used until one is configured (~24 hours at 5 s/ledger).
+pub const DEFAULT_UPGRADE_DELAY_LEDGERS: u32 = 17_280;
 
 fn bump_instance(env: &Env) {
     env.storage()
@@ -69,6 +81,143 @@ fn require_admin(env: &Env, caller: &Address) -> Result<Address, Error> {
         return Err(Error::Unauthorized);
     }
     Ok(admin)
+}
+
+fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+fn load_governance(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Governance)
+}
+
+// ── Role entries and their TTL (#2784) ──────────────────────────────────────
+
+/// Read `user`'s role list, extending the entry's TTL when it exists.
+///
+/// Every authorisation check goes through here, so an address that keeps
+/// using its role keeps its role entry alive.
+fn read_roles(env: &Env, user: &Address) -> Option<Vec<Role>> {
+    let key = DataKey::Roles(user.clone());
+    let roles: Option<Vec<Role>> = env.storage().persistent().get(&key);
+    if roles.is_some() {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGERS_TO_EXTEND, LEDGERS_TO_EXTEND);
+    }
+    roles
+}
+
+/// Write `user`'s role list (removing the entry when empty) and keep the
+/// role-holder index in step with it.
+fn write_roles(env: &Env, user: &Address, roles: &Vec<Role>) -> Result<(), Error> {
+    let key = DataKey::Roles(user.clone());
+    if roles.is_empty() {
+        env.storage().persistent().remove(&key);
+        unindex_role_holder(env, user);
+        return Ok(());
+    }
+    index_role_holder(env, user)?;
+    env.storage().persistent().set(&key, roles);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGERS_TO_EXTEND, LEDGERS_TO_EXTEND);
+    Ok(())
+}
+
+fn load_role_holders(env: &Env) -> Vec<Address> {
+    env.storage()
+        .instance()
+        .get(&DataKey::RoleHolders)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+fn index_role_holder(env: &Env, user: &Address) -> Result<(), Error> {
+    let mut holders = load_role_holders(env);
+    if holders.contains(user) {
+        return Ok(());
+    }
+    if holders.len() >= MAX_ROLE_HOLDERS {
+        return Err(Error::TooManyRoleHolders);
+    }
+    holders.push_back(user.clone());
+    env.storage()
+        .instance()
+        .set(&DataKey::RoleHolders, &holders);
+    Ok(())
+}
+
+fn unindex_role_holder(env: &Env, user: &Address) {
+    let mut holders = load_role_holders(env);
+    if let Some(index) = holders.first_index_of(user) {
+        holders.remove(index);
+        env.storage()
+            .instance()
+            .set(&DataKey::RoleHolders, &holders);
+    }
+}
+
+/// Move the admin from `old_admin` to `new_admin`: instance pointer, role
+/// entries, role-holder index and any pending transfer. Shared by
+/// `accept_admin` and `set_admin_by_governance`.
+fn install_admin(env: &Env, old_admin: &Address, new_admin: &Address) -> Result<(), Error> {
+    env.storage().instance().set(&DataKey::Admin, new_admin);
+    env.storage().instance().remove(&DataKey::PendingAdmin);
+
+    env.storage()
+        .persistent()
+        .remove(&DataKey::Roles(old_admin.clone()));
+    unindex_role_holder(env, old_admin);
+
+    let mut roles = Vec::new(env);
+    roles.push_back(Role::Admin);
+    write_roles(env, new_admin, &roles)?;
+
+    bump_instance(env);
+    emit_admin_transferred(env, old_admin.clone(), new_admin.clone());
+    Ok(())
+}
+
+/// Authenticate `caller` and check it may schedule/execute an upgrade: the
+/// admin, an `UpgradeManager`, or the governance contract.
+fn require_upgrade_authority(env: &Env, caller: &Address) -> Result<(), Error> {
+    caller.require_auth();
+    if !env.storage().instance().has(&DataKey::Admin) {
+        return Err(Error::AdminNotSet);
+    }
+    let allowed = has_role_internal(env, caller, Role::Admin)
+        || has_role_internal(env, caller, Role::UpgradeManager)
+        || load_governance(env).as_ref() == Some(caller);
+    if allowed {
+        Ok(())
+    } else {
+        Err(Error::Unauthorized)
+    }
+}
+
+/// Authenticate `caller` and check it is the admin or the governance contract.
+fn require_admin_or_governance(env: &Env, caller: &Address) -> Result<(), Error> {
+    caller.require_auth();
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(Error::AdminNotSet)?;
+    if *caller == admin || load_governance(env).as_ref() == Some(caller) {
+        Ok(())
+    } else {
+        Err(Error::Unauthorized)
+    }
+}
+
+fn has_role_internal(env: &Env, user: &Address, role: Role) -> bool {
+    if role == Role::SnapshotSubmitter {
+        return is_submitter(env, user);
+    }
+    read_roles(env, user).is_some_and(|roles| roles.iter().any(|r| r == role))
 }
 
 /// Add `submitter` to the set. Errors if already present or the set is full.
@@ -134,6 +283,29 @@ pub enum DataKey {
     /// Authorised snapshot-submitter set, `Vec<Address>` in instance storage (#2600).
     /// The only source of truth for `Role::SnapshotSubmitter`.
     Submitters,
+    /// Address proposed by `propose_admin`, waiting for `accept_admin` (#2783)
+    PendingAdmin,
+    /// Upgrade scheduled by `schedule_upgrade`, waiting for its delay (#2783)
+    PendingUpgrade,
+    /// Ledgers between scheduling and executing an upgrade (#2783)
+    UpgradeDelay,
+    /// Every address with a `Roles(addr)` entry, `Vec<Address>` in instance
+    /// storage, so `bump_ttl` can keep all role entries alive (#2784)
+    RoleHolders,
+}
+
+/// An upgrade waiting out its timelock (#2783).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingUpgrade {
+    /// Hash of the already-uploaded Wasm that will be installed
+    pub wasm_hash: BytesN<32>,
+    /// Who scheduled it
+    pub proposer: Address,
+    /// Ledger sequence at scheduling time
+    pub scheduled_at: u32,
+    /// First ledger sequence at which `execute_upgrade` succeeds
+    pub executable_at: u32,
 }
 
 /// Schema version this build reads and writes.
@@ -226,17 +398,10 @@ impl PayRaiderContract {
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
-        // Grant Admin role to initial admin
+        // Grant Admin role to initial admin (and index it for bump_ttl)
         let mut roles = Vec::new(&env);
         roles.push_back(Role::Admin);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Roles(admin.clone()), &roles);
-        env.storage().persistent().extend_ttl(
-            &DataKey::Roles(admin.clone()),
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
+        write_roles(&env, &admin, &roles)?;
 
         emit_contract_initialized(&env, admin);
 
@@ -374,10 +539,9 @@ impl PayRaiderContract {
 
         // Keep the contract instance (admin, submitter set, latest epoch)
         // and the caller's role entry alive alongside the snapshot (#2599).
+        // The admin's role entry was already extended by the `has_role`
+        // check above (#2784).
         bump_instance(&env);
-        if is_admin {
-            bump_persistent(&env, &DataKey::Roles(caller.clone()));
-        }
 
         // Emit structured event for off-chain indexing
         // Event payload matches stored data exactly:
@@ -479,66 +643,93 @@ impl PayRaiderContract {
             .ok_or(Error::AdminNotSet)
     }
 
-    /// Transfer admin ownership to a new address.
+    /// Propose `new_admin` as the next admin — step one of a two-step
+    /// transfer (#2783). Admin-only.
     ///
-    /// Only the current admin can call this function.
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `caller` - Current admin address (must match stored admin)
-    /// * `new_admin` - Address to transfer admin rights to
+    /// Nothing changes hands until `new_admin` calls [`Self::accept_admin`],
+    /// so a typo'd address can never take control. Proposing again replaces
+    /// the pending proposal.
     ///
     /// # Errors
     /// * `Error::ContractPaused` - If contract is in emergency pause state
     /// * `Error::AdminNotSet` - If admin was not initialized
     /// * `Error::Unauthorized` - If caller is not the current admin
-    pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
-        let is_paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-        if is_paused {
+    ///
+    /// # Events
+    /// * `("adm_prop", CTR_LFE)` with data `(admin, new_admin)`
+    pub fn propose_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        if is_paused(&env) {
             return Err(Error::ContractPaused);
         }
+        let admin = require_admin(&env, &caller)?;
 
-        caller.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+        bump_instance(&env);
 
-        // Check if caller has Admin role
-        if !Self::has_role(env.clone(), caller.clone(), Role::Admin) {
+        emit_admin_proposed(&env, admin, new_admin);
+        Ok(())
+    }
+
+    /// Accept a pending admin transfer — step two (#2783). Must be signed by
+    /// the proposed address.
+    ///
+    /// # Errors
+    /// * `Error::ContractPaused` - If contract is in emergency pause state
+    /// * `Error::NoPendingAdmin` - If no transfer has been proposed
+    /// * `Error::Unauthorized` - If `new_admin` is not the proposed address
+    ///
+    /// # Events
+    /// * `("admin", CTR_LFE)` with an `AdminTransferredEvent`
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        if is_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+        new_admin.require_auth();
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(Error::NoPendingAdmin)?;
+        if pending != new_admin {
             return Err(Error::Unauthorized);
         }
-
         let old_admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
 
-        // Require the new admin to also sign to prevent unilateral transfer
-        new_admin.require_auth();
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        install_admin(&env, &old_admin, &new_admin)
+    }
 
-        // Revoke Admin role from the old admin
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Roles(old_admin.clone()));
-
-        // Grant Admin role to the new admin
-        let mut roles = Vec::new(&env);
-        roles.push_back(Role::Admin);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Roles(new_admin.clone()), &roles);
-        env.storage().persistent().extend_ttl(
-            &DataKey::Roles(new_admin.clone()),
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
-
+    /// Withdraw a pending admin transfer. Admin or governance.
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is neither admin nor governance
+    /// * `Error::NoPendingAdmin` - If no transfer has been proposed
+    ///
+    /// # Events
+    /// * `("adm_cncl", CTR_LFE)` with data `(caller, proposed)`
+    pub fn cancel_admin_transfer(env: Env, caller: Address) -> Result<(), Error> {
+        require_admin_or_governance(&env, &caller)?;
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(Error::NoPendingAdmin)?;
+        env.storage().instance().remove(&DataKey::PendingAdmin);
         bump_instance(&env);
-        emit_admin_transferred(&env, old_admin, new_admin);
+
+        emit_admin_transfer_cancelled(&env, caller, pending);
         Ok(())
+    }
+
+    /// The address proposed as next admin, if a transfer is pending.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     /// Get the latest epoch number
@@ -618,41 +809,28 @@ impl PayRaiderContract {
         Ok(())
     }
 
-    /// Upgrade the contract Wasm. Admin-only.
+    /// Schedule a Wasm upgrade — phase one of a timelocked upgrade (#2783).
     ///
-    /// The contract must not be paused to perform an upgrade.
-    /// After a successful upgrade the new Wasm is active immediately.
-    ///
-    /// # Arguments
-    /// * `env` - Contract environment
-    /// * `new_wasm_hash` - 32-byte hash of the new Wasm blob (must be uploaded first)
+    /// Callable by the admin, an `UpgradeManager` or the governance contract.
+    /// The upgrade can be executed once `get_upgrade_delay()` ledgers have
+    /// passed, giving observers time to inspect the new code. Scheduling again
+    /// replaces the pending upgrade and restarts the delay.
     ///
     /// # Errors
     /// * `Error::AdminNotSet` - If admin was not initialized
-    /// * `Error::Unauthorized` - If caller is not the admin
+    /// * `Error::Unauthorized` - If caller may not upgrade
     /// * `Error::ContractPaused` - If contract is currently paused
-    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
-
-        // Authorisation stays with the admin. `GovernedContract::upgrade`
-        // carries no caller argument, so there is nothing to distinguish a
-        // governance invocation from any other — governance drives an upgrade
-        // by *being* the admin, which `set_admin_by_governance` allows a vote
-        // to arrange.
-        admin.require_auth();
-
-        // Verify contract is not paused
-        let paused: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false);
-
-        if paused {
+    /// * `Error::InvalidWasmHash` - If the hash is all zeros
+    ///
+    /// # Events
+    /// * `("upg_schd", CTR_LFE)` with data `(caller, wasm_hash, executable_at)`
+    pub fn schedule_upgrade(
+        env: Env,
+        caller: Address,
+        new_wasm_hash: BytesN<32>,
+    ) -> Result<PendingUpgrade, Error> {
+        require_upgrade_authority(&env, &caller)?;
+        if is_paused(&env) {
             return Err(Error::ContractPaused);
         }
 
@@ -663,15 +841,124 @@ impl PayRaiderContract {
             return Err(Error::InvalidWasmHash);
         }
 
-        // Perform upgrade
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash.clone());
+        let now = env.ledger().sequence();
+        let pending = PendingUpgrade {
+            wasm_hash: new_wasm_hash.clone(),
+            proposer: caller.clone(),
+            scheduled_at: now,
+            executable_at: now.saturating_add(Self::get_upgrade_delay(env.clone())),
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingUpgrade, &pending);
         bump_instance(&env);
 
-        // Emit event
-        env.events()
-            .publish((symbol_short!("upgrade"),), (admin, new_wasm_hash));
+        emit_upgrade_scheduled(&env, caller, new_wasm_hash, pending.executable_at);
+        Ok(pending)
+    }
 
+    /// Install the scheduled Wasm once its delay has passed — phase two.
+    ///
+    /// Callable by the admin, an `UpgradeManager` or the governance contract.
+    /// Run `migrate()` against the new Wasm afterwards if the storage schema
+    /// changed.
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller may not upgrade
+    /// * `Error::ContractPaused` - If contract is currently paused
+    /// * `Error::NoPendingUpgrade` - If nothing is scheduled
+    /// * `Error::TimelockNotExpired` - If the delay has not yet passed
+    ///
+    /// # Events
+    /// * `("upg_exec", CTR_LFE)` with data `(caller, wasm_hash)`
+    /// * `("upgrade",)` with data `(caller, wasm_hash)` (kept for existing indexers)
+    pub fn execute_upgrade(env: Env, caller: Address) -> Result<(), Error> {
+        require_upgrade_authority(&env, &caller)?;
+        if is_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
+        let pending: PendingUpgrade = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingUpgrade)
+            .ok_or(Error::NoPendingUpgrade)?;
+        if env.ledger().sequence() < pending.executable_at {
+            return Err(Error::TimelockNotExpired);
+        }
+
+        env.storage().instance().remove(&DataKey::PendingUpgrade);
+        bump_instance(&env);
+
+        emit_upgrade_executed(&env, caller.clone(), pending.wasm_hash.clone());
+        env.events().publish(
+            (symbol_short!("upgrade"),),
+            (caller, pending.wasm_hash.clone()),
+        );
+
+        env.deployer()
+            .update_current_contract_wasm(pending.wasm_hash);
+        Ok(())
+    }
+
+    /// Cancel the scheduled upgrade. Admin or governance.
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is neither admin nor governance
+    /// * `Error::NoPendingUpgrade` - If nothing is scheduled
+    ///
+    /// # Events
+    /// * `("upg_cncl", CTR_LFE)` with data `(caller, wasm_hash)`
+    pub fn cancel_upgrade(env: Env, caller: Address) -> Result<(), Error> {
+        require_admin_or_governance(&env, &caller)?;
+        let pending: PendingUpgrade = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingUpgrade)
+            .ok_or(Error::NoPendingUpgrade)?;
+        env.storage().instance().remove(&DataKey::PendingUpgrade);
+        bump_instance(&env);
+
+        emit_upgrade_cancelled(&env, caller, pending.wasm_hash);
+        Ok(())
+    }
+
+    /// The upgrade waiting out its delay, if any.
+    pub fn get_pending_upgrade(env: Env) -> Option<PendingUpgrade> {
+        env.storage().instance().get(&DataKey::PendingUpgrade)
+    }
+
+    /// Ledgers between `schedule_upgrade` and `execute_upgrade`.
+    pub fn get_upgrade_delay(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::UpgradeDelay)
+            .unwrap_or(DEFAULT_UPGRADE_DELAY_LEDGERS)
+    }
+
+    /// Change the upgrade delay. The admin may only lengthen it; governance
+    /// may set any value at or above `MIN_UPGRADE_DELAY_LEDGERS`. An upgrade
+    /// already scheduled keeps its original `executable_at`.
+    ///
+    /// # Errors
+    /// * `Error::Unauthorized` - If caller is neither admin nor governance
+    /// * `Error::InvalidUpgradeDelay` - Below the minimum, or an admin shortening it
+    ///
+    /// # Events
+    /// * `("upg_dely", CTR_LFE)` with data `(caller, old_delay, new_delay)`
+    pub fn set_upgrade_delay(env: Env, caller: Address, ledgers: u32) -> Result<(), Error> {
+        require_admin_or_governance(&env, &caller)?;
+        let current = Self::get_upgrade_delay(env.clone());
+        let is_governance = load_governance(&env).as_ref() == Some(&caller);
+        if ledgers < MIN_UPGRADE_DELAY_LEDGERS || (!is_governance && ledgers < current) {
+            return Err(Error::InvalidUpgradeDelay);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::UpgradeDelay, &ledgers);
+        bump_instance(&env);
+
+        emit_upgrade_delay_set(&env, caller, current, ledgers);
         Ok(())
     }
 
@@ -799,8 +1086,8 @@ impl PayRaiderContract {
     /// Transfer admin as the outcome of a passed governance proposal.
     ///
     /// Callable only by the configured governance contract. This is the
-    /// counterpart of `set_admin`, which requires the current admin — together
-    /// they let control move either by the admin's own hand or by a vote.
+    /// counterpart of `propose_admin`/`accept_admin` — together they let
+    /// control move either by the admin's own hand or by a vote.
     pub fn set_admin_by_governance(
         env: Env,
         caller: Address,
@@ -823,29 +1110,9 @@ impl PayRaiderContract {
             .get(&DataKey::Admin)
             .ok_or(Error::AdminNotSet)?;
 
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-        bump_instance(&env);
-
-        // Revoke Admin role from the old admin
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Roles(old_admin.clone()));
-
-        // Grant Admin role to the new admin so role-based checks work
-        let mut roles = Vec::new(&env);
-        roles.push_back(Role::Admin);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Roles(new_admin.clone()), &roles);
-        env.storage().persistent().extend_ttl(
-            &DataKey::Roles(new_admin.clone()),
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
-
-        emit_admin_transferred(&env, old_admin, new_admin);
-
-        Ok(())
+        // Immediate: the governance vote is the delay. Clears any pending
+        // `propose_admin` so a stale proposal can't later override the vote.
+        install_admin(&env, &old_admin, &new_admin)
     }
 
     /// Pause or unpause as the outcome of a passed governance proposal.
@@ -980,8 +1247,14 @@ impl PayRaiderContract {
     // State archival (#2599)
     // =========================================================================
 
-    /// Extend the TTL of the contract instance, the snapshot store and the
-    /// admin's role entry so anchored hashes stay verifiable.
+    /// Extend the TTL of the contract instance, the snapshot store and every
+    /// role entry, so anchored hashes stay verifiable and no role is silently
+    /// revoked by archival (#2599, #2784).
+    ///
+    /// Role entries are found through the `RoleHolders` index; the admin is
+    /// always included, even on deployments that predate the index. The
+    /// submitter set lives in instance storage and is covered by the instance
+    /// extension.
     ///
     /// Read-only calls (`get_snapshot`, `latest_snapshot`) also extend the
     /// snapshot store, but only when submitted as a transaction — a simulated
@@ -995,13 +1268,25 @@ impl PayRaiderContract {
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         bump_persistent(&env, &DataKey::Snapshots);
+        let holders = load_role_holders(&env);
+        for holder in holders.iter() {
+            bump_persistent(&env, &DataKey::Roles(holder));
+        }
         if let Some(admin) = env
             .storage()
             .instance()
             .get::<DataKey, Address>(&DataKey::Admin)
         {
-            bump_persistent(&env, &DataKey::Roles(admin));
+            if !holders.contains(&admin) {
+                bump_persistent(&env, &DataKey::Roles(admin));
+            }
         }
+    }
+
+    /// Every address holding a per-address role entry (the `RoleHolders`
+    /// index `bump_ttl` walks). Submitters are listed by `get_submitters`.
+    pub fn get_role_holders(env: Env) -> Vec<Address> {
+        load_role_holders(&env)
     }
 
     // =========================================================================
@@ -1047,24 +1332,13 @@ impl PayRaiderContract {
             return Ok(());
         }
 
-        let mut roles = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
-            .unwrap_or_else(|| Vec::new(&env));
+        let mut roles = read_roles(&env, &user).unwrap_or_else(|| Vec::new(&env));
 
         if !roles.iter().any(|r| r == role) {
             roles.push_back(role);
         }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Roles(user.clone()), &roles);
-        env.storage().persistent().extend_ttl(
-            &DataKey::Roles(user.clone()),
-            LEDGERS_TO_EXTEND,
-            LEDGERS_TO_EXTEND,
-        );
+        write_roles(&env, &user, &roles)?;
         bump_instance(&env);
 
         env.events().publish(
@@ -1114,25 +1388,16 @@ impl PayRaiderContract {
             return Ok(());
         }
 
-        if let Some(roles) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user.clone()))
-        {
+        if let Some(roles) = read_roles(&env, &user) {
             let mut new_roles = Vec::new(&env);
             for r in roles.iter() {
                 if r != role {
                     new_roles.push_back(r);
                 }
             }
-            env.storage()
-                .persistent()
-                .set(&DataKey::Roles(user.clone()), &new_roles);
-            env.storage().persistent().extend_ttl(
-                &DataKey::Roles(user.clone()),
-                LEDGERS_TO_EXTEND,
-                LEDGERS_TO_EXTEND,
-            );
+            // An empty list removes the entry and drops `user` from the
+            // role-holder index.
+            write_roles(&env, &user, &new_roles)?;
             bump_instance(&env);
 
             env.events().publish(
@@ -1156,19 +1421,11 @@ impl PayRaiderContract {
     ///
     /// `Role::SnapshotSubmitter` is answered from the submitter set only;
     /// legacy per-address role entries for it are ignored (deny by default).
+    ///
+    /// Reading an existing role entry extends its TTL (#2784), so every
+    /// authorisation check that goes through here keeps the entry alive.
     pub fn has_role(env: Env, user: Address, role: Role) -> bool {
-        if role == Role::SnapshotSubmitter {
-            return is_submitter(&env, &user);
-        }
-        if let Some(roles) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Vec<Role>>(&DataKey::Roles(user))
-        {
-            roles.iter().any(|r| r == role)
-        } else {
-            false
-        }
+        has_role_internal(&env, &user, role)
     }
 
     // =========================================================================
