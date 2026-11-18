@@ -110,4 +110,37 @@ impl Schema {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     ";
+
+    /// Mirrors migration 053 (#2765).
+    pub const CREATE_LEDGER_SCAN_RANGES: &'static str = r"
+        CREATE TABLE IF NOT EXISTS ledger_scan_ranges (
+            network TEXT NOT NULL,
+            start_ledger INTEGER NOT NULL,
+            end_ledger INTEGER NOT NULL,
+            scanned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (network, start_ledger),
+            CHECK (end_ledger >= start_ledger)
+        );
+    ";
+
+    pub const CREATE_BACKFILL_STATE: &'static str = r"
+        CREATE TABLE IF NOT EXISTS backfill_state (
+            id TEXT PRIMARY KEY,
+            current_ledger INTEGER NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    ";
+
+    /// Mirrors migration 054 (#2768).
+    pub const CREATE_LEDGER_HEADERS: &'static str = r"
+        CREATE TABLE IF NOT EXISTS ledger_headers (
+            network TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            protocol_version INTEGER NOT NULL,
+            hash TEXT NOT NULL,
+            close_time TEXT NOT NULL,
+            ingested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (network, sequence)
+        );
+    ";
 }

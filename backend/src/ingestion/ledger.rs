@@ -1,16 +1,10 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
-fn retry_strategy() -> impl Iterator<Item = Duration> {
-    ExponentialBackoff::from_millis(200)
-        .max_delay(Duration::from_secs(30))
-        .map(jitter)
-        .take(10)
-}
+use super::failures::{tally_path_payment_failures, CorridorFailureBreakdown};
+use super::retry_strategy;
 
 use crate::network::StellarNetwork;
 use crate::rpc::StellarRpcClient;
@@ -78,93 +72,17 @@ pub struct ExtractedPayment {
     pub amount: String,
 }
 
-/// Path-payment failure codes we track per corridor (#2562).
-///
-/// These are the two dominant failure modes on thin corridors: a path
-/// payment that could not be routed (`op_too_few_offers`) or that would
-/// have delivered less than the destination minimum (`op_under_dest_min`).
-/// Counting them keeps corridor success rates from being inflated by
-/// silently dropping failed path payments.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PathPaymentFailure {
-    /// `op_too_few_offers` — not enough offers to satisfy the path.
-    TooFewOffers,
-    /// `op_under_dest_min` — the path would deliver under `dest_min`.
-    UnderDestMin,
-}
-
-impl PathPaymentFailure {
-    /// Map a Stellar operation result code string to a tracked failure.
-    /// Returns `None` for any code we do not count (success or unrelated
-    /// failures), so callers can ignore them.
-    #[must_use]
-    pub fn from_result_code(code: &str) -> Option<Self> {
-        match code {
-            "op_too_few_offers" => Some(Self::TooFewOffers),
-            "op_under_dest_min" => Some(Self::UnderDestMin),
-            _ => None,
+/// Fold one transaction's `result_xdr` into the corridor tally using the
+/// canonical taxonomy in `ingestion::failures` (#2766). Undecodable XDR is
+/// logged and skipped rather than silently counted as success.
+pub fn tally_ledger_transaction(result_xdr: &str, counts: &mut CorridorFailureBreakdown) -> u64 {
+    match tally_path_payment_failures(result_xdr, counts) {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!(error = %e, "skipping undecodable result_xdr");
+            0
         }
     }
-
-    /// Stable string used when persisting the failure breakdown.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::TooFewOffers => "op_too_few_offers",
-            Self::UnderDestMin => "op_under_dest_min",
-        }
-    }
-}
-
-/// Per-corridor tally of failed path payments, keyed by the corridor's
-/// source/destination asset pair. Produced during ingestion and consumed by
-/// the corridor API to fold failures into the success rate (#2562).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CorridorFailureCounts {
-    pub source_asset: String,
-    pub destination_asset: String,
-    pub too_few_offers: u64,
-    pub under_dest_min: u64,
-}
-
-impl CorridorFailureCounts {
-    /// Record one observed failure for this corridor.
-    pub fn record(&mut self, failure: PathPaymentFailure) {
-        match failure {
-            PathPaymentFailure::TooFewOffers => self.too_few_offers += 1,
-            PathPaymentFailure::UnderDestMin => self.under_dest_min += 1,
-        }
-    }
-
-    /// Total failed path payments counted for this corridor.
-    #[must_use]
-    pub const fn total_failures(&self) -> u64 {
-        self.too_few_offers + self.under_dest_min
-    }
-}
-
-/// Parse the operation result codes out of a transaction's `result_xdr`
-/// and tally any tracked path-payment failures into `counts` (#2562).
-///
-/// `result_xdr` is the base64-encoded `TransactionResult` envelope. We scan
-/// it for the failure code substrings rather than fully decoding the XDR:
-/// the codes are ASCII and appear verbatim in the encoded payload, which is
-/// enough to attribute failures to a corridor without pulling in an XDR
-/// dependency. Unknown codes are ignored.
-///
-/// Returns the number of tracked failures found.
-pub fn tally_path_payment_failures(result_xdr: &str, counts: &mut CorridorFailureCounts) -> u64 {
-    let mut found = 0u64;
-    for failure in [
-        PathPaymentFailure::TooFewOffers,
-        PathPaymentFailure::UnderDestMin,
-    ] {
-        if result_xdr.contains(failure.as_str()) {
-            counts.record(failure);
-            found += 1;
-        }
-    }
-    found
 }
 
 impl LedgerIngestionService {
@@ -320,47 +238,26 @@ impl LedgerIngestionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ingestion::failures::fixtures::*;
+    use crate::ingestion::failures::PathPaymentFailureCode;
 
     #[test]
-    fn maps_tracked_failure_codes() {
-        assert_eq!(
-            PathPaymentFailure::from_result_code("op_too_few_offers"),
-            Some(PathPaymentFailure::TooFewOffers)
+    fn tallies_failures_per_corridor_from_xdr() {
+        let mut counts = CorridorFailureBreakdown::new("USDC", "NGN");
+        let xdr = tx_result_xdr(
+            vec![strict_receive(Some(PathPaymentFailureCode::TooFewOffers))],
+            true,
         );
-        assert_eq!(
-            PathPaymentFailure::from_result_code("op_under_dest_min"),
-            Some(PathPaymentFailure::UnderDestMin)
-        );
-        assert_eq!(PathPaymentFailure::from_result_code("op_success"), None);
-    }
-
-    #[test]
-    fn tallies_failures_per_corridor() {
-        let mut counts = CorridorFailureCounts {
-            source_asset: "USDC".to_string(),
-            destination_asset: "NGN".to_string(),
-            ..Default::default()
-        };
-
-        // Fixture: a failed path payment with op_too_few_offers.
-        let found = tally_path_payment_failures("AAAA...op_too_few_offers...", &mut counts);
-        assert_eq!(found, 1);
-        assert_eq!(counts.too_few_offers, 1);
-        assert_eq!(counts.under_dest_min, 0);
+        assert_eq!(tally_ledger_transaction(&xdr, &mut counts), 1);
+        assert_eq!(counts.count(PathPaymentFailureCode::TooFewOffers), 1);
         assert_eq!(counts.total_failures(), 1);
-
-        // Fixture: a failed path payment with op_under_dest_min.
-        let found = tally_path_payment_failures("AAAA...op_under_dest_min...", &mut counts);
-        assert_eq!(found, 1);
-        assert_eq!(counts.under_dest_min, 1);
-        assert_eq!(counts.total_failures(), 2);
     }
 
     #[test]
-    fn ignores_unrelated_result_codes() {
-        let mut counts = CorridorFailureCounts::default();
-        let found = tally_path_payment_failures("AAAA...op_success...", &mut counts);
-        assert_eq!(found, 0);
+    fn undecodable_xdr_is_skipped() {
+        let mut counts = CorridorFailureBreakdown::default();
+        assert_eq!(tally_ledger_transaction("AAAA...op_too_few_offers...", &mut counts), 0);
         assert_eq!(counts.total_failures(), 0);
+        assert_eq!(counts.successful, 0);
     }
 }

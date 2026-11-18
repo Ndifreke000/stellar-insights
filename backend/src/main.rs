@@ -302,7 +302,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Build the backfill job (shared state allows the status endpoint to read progress)
     let backfill_state = Arc::new(tokio::sync::RwLock::new(BackfillState::default()));
-    let event_indexer_for_backfill = Arc::new(EventIndexer::new(db.clone()));
+    let event_indexer_for_backfill =
+        Arc::new(EventIndexer::for_network(db.clone(), stellar_network));
     let backfill_job = Arc::new(BackfillJob::new(
         event_indexer_for_backfill,
         rpc_client.clone(),
