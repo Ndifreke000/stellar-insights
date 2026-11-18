@@ -1,5 +1,8 @@
 use crate::network::{NetworkConfig, StellarNetwork};
 use crate::observability::tracing::inject_trace_context;
+use crate::rpc::bounded_body::{
+    read_error_text, read_horizon_records, read_json, with_adaptive_page_size, BodyLimit,
+};
 use crate::rpc::circuit_breaker::{new_rpc_circuit_breaker, rpc_circuit_breaker, CircuitBreaker};
 use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
@@ -474,10 +477,7 @@ async fn map_response_error(response: reqwest::Response) -> RpcError {
         .get("Retry-After")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
-    let body = response
-        .text()
-        .await
-        .unwrap_or_else(|_| "Unknown error".to_string());
+    let body = read_error_text(response).await;
     status_to_rpc_error(status, body, retry_after)
 }
 
@@ -757,10 +757,8 @@ impl StellarRpcClient {
             return Err(map_response_error(response).await);
         }
 
-        let json_response: JsonRpcResponse<HealthResponse> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        let json_response: JsonRpcResponse<HealthResponse> =
+            read_json(response, BodyLimit::Single).await?;
 
         if let Some(error) = json_response.error {
             return Err(RpcError::ServerError {
@@ -798,13 +796,10 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<LedgerInfo> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        horizon_response
-            .embedded
-            .and_then(|e| e.records.into_iter().next())
+        let records: Vec<LedgerInfo> = read_horizon_records(response).await?;
+        records
+            .into_iter()
+            .next()
             .ok_or_else(|| RpcError::ParseError("No ledger data found".to_string()))
     }
 
@@ -838,10 +833,7 @@ impl StellarRpcClient {
         }
         // Horizon returns a single ledger object (not wrapped in _embedded)
         // when querying by sequence directly.
-        response
-            .json::<LedgerInfo>()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))
+        read_json::<LedgerInfo>(response, BodyLimit::Single).await
     }
 
     /// I'm fetching ledgers via RPC getLedgers for sequential ingestion (issue #2)
@@ -903,10 +895,8 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let json_response: JsonRpcResponse<GetLedgersResult> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        let json_response: JsonRpcResponse<GetLedgersResult> =
+            read_json(response, BodyLimit::RpcBatch).await?;
         if let Some(error) = json_response.error {
             return Err(RpcError::ServerError {
                 status: 500,
@@ -930,9 +920,10 @@ impl StellarRpcClient {
 
         info!("Fetching {} payments from Horizon API", limit);
 
-        let result = self
-            .execute_with_retry(|| self.fetch_payments_internal(limit, cursor))
-            .await;
+        let result = with_adaptive_page_size(limit, move |page| {
+            self.execute_with_retry(move || self.fetch_payments_internal(page, cursor))
+        })
+        .await;
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
         })
@@ -959,14 +950,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<Payment> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<Payment>(response).await
     }
 
     /// Fetch recent trades
@@ -979,9 +963,10 @@ impl StellarRpcClient {
             return Ok(super::mock_stellar::mock_trades(limit));
         }
 
-        let result = self
-            .execute_with_retry(|| self.fetch_trades_internal(limit, cursor))
-            .await;
+        let result = with_adaptive_page_size(limit, move |page| {
+            self.execute_with_retry(move || self.fetch_trades_internal(page, cursor))
+        })
+        .await;
 
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1004,14 +989,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<Trade> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<Trade>(response).await
     }
 
     /// Fetch order book for a trading pair
@@ -1060,10 +1038,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))
+        read_json(response, BodyLimit::Single).await
     }
 
     pub async fn fetch_payments_for_ledger(&self, sequence: u64) -> Result<Vec<Payment>, RpcError> {
@@ -1095,14 +1070,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<Payment> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<Payment>(response).await
     }
 
     /// Fetch transactions for a specific ledger
@@ -1138,14 +1106,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<HorizonTransaction> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<HorizonTransaction>(response).await
     }
 
     /// Fetch operations for a specific ledger
@@ -1181,14 +1142,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<HorizonOperation> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<HorizonOperation>(response).await
     }
 
     /// Fetch effects for a specific operation
@@ -1226,14 +1180,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<HorizonEffect> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<HorizonEffect>(response).await
     }
 
     /// Fetch payments for a specific account
@@ -1246,9 +1193,10 @@ impl StellarRpcClient {
             return Ok(super::mock_stellar::mock_payments(limit));
         }
 
-        let result = self
-            .execute_with_retry(|| self.fetch_account_payments_internal(account_id, limit))
-            .await;
+        let result = with_adaptive_page_size(limit, move |page| {
+            self.execute_with_retry(move || self.fetch_account_payments_internal(account_id, page))
+        })
+        .await;
 
         result.inspect_err(|e| {
             metrics::record_rpc_error(e.error_type_label(), "stellar");
@@ -1271,14 +1219,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<Payment> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<Payment>(response).await
     }
 
     // ============================================================================
@@ -1490,15 +1431,9 @@ impl StellarRpcClient {
                 .await
                 .context("Failed to fetch account payments page")?;
 
-            let horizon_response: HorizonResponse<Payment> = response
-                .json()
+            let payments: Vec<Payment> = read_horizon_records(response)
                 .await
                 .context("Failed to parse payments response")?;
-
-            let payments = horizon_response
-                .embedded
-                .map(|e| e.records)
-                .unwrap_or_default();
 
             if payments.is_empty() {
                 info!("No more payments available for account, stopping pagination");
@@ -1606,10 +1541,7 @@ impl StellarRpcClient {
                     self.rate_limiter.on_rate_limited(&headers).await;
                 }
 
-                let error_text = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Unknown error".to_string());
+                let error_text = read_error_text(response).await;
                 warn!(
                     "Request failed with status {} in {} ms: {}",
                     status, elapsed, error_text
@@ -1689,14 +1621,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<HorizonLiquidityPool> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<HorizonLiquidityPool>(response).await
     }
 
     /// Fetch a single liquidity pool by ID
@@ -1734,10 +1659,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))
+        read_json(response, BodyLimit::Single).await
     }
 
     /// Fetch trades for a specific liquidity pool
@@ -1775,14 +1697,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<Trade> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<Trade>(response).await
     }
 
     /// Fetch assets from Horizon API, sorted by rating
@@ -1822,14 +1737,7 @@ impl StellarRpcClient {
         if !response.status().is_success() {
             return Err(map_response_error(response).await);
         }
-        let horizon_response: HorizonResponse<HorizonAsset> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::ParseError(e.to_string()))?;
-        Ok(horizon_response
-            .embedded
-            .map(|e| e.records)
-            .unwrap_or_default())
+        read_horizon_records::<HorizonAsset>(response).await
     }
 
     // ============================================================================

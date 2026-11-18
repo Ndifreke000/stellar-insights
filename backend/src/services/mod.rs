@@ -1,3 +1,4 @@
+pub mod account_lineage;
 pub mod account_merge_detector;
 pub mod aggregation;
 pub mod alert_manager;

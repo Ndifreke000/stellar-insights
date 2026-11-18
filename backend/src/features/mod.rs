@@ -1,5 +1,4 @@
 pub mod api_gateway;
-pub mod circuit_breaker_pattern;
 pub mod distributed_tracing;
 pub mod elasticsearch_integration;
 pub mod graphql_api;
