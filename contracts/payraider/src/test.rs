@@ -258,6 +258,7 @@ fn test_snapshot_submitted_event() {
         epoch,
         timestamp: _timestamp,
         submitter: admin.clone(),
+        chain_hash: client.get_chain_head().1,
     };
 
     // Check that our event is in the emitted events with proper topic count
@@ -469,6 +470,11 @@ fn test_error_codes_are_unique() {
         Error::SubmitterAlreadyAuthorized as u32,
         Error::SubmitterNotFound as u32,
         Error::TooManySubmitters as u32,
+        Error::ChainBroken as u32,
+        Error::InvalidRange as u32,
+        Error::InvalidRotationTarget as u32,
+        Error::InvalidOverlap as u32,
+        Error::AdminRoleNotGrantable as u32,
     ];
     codes.sort();
     let unique = codes.windows(2).all(|w| w[0] != w[1]);
@@ -503,6 +509,11 @@ fn test_error_descriptions_are_non_empty() {
         Error::SubmitterAlreadyAuthorized,
         Error::SubmitterNotFound,
         Error::TooManySubmitters,
+        Error::ChainBroken,
+        Error::InvalidRange,
+        Error::InvalidRotationTarget,
+        Error::InvalidOverlap,
+        Error::AdminRoleNotGrantable,
     ];
     for e in errors {
         assert!(
@@ -540,6 +551,11 @@ fn test_error_code_matches_repr() {
     assert_eq!(Error::SubmitterAlreadyAuthorized.code(), 28);
     assert_eq!(Error::SubmitterNotFound.code(), 29);
     assert_eq!(Error::TooManySubmitters.code(), 30);
+    assert_eq!(Error::ChainBroken.code(), 31);
+    assert_eq!(Error::InvalidRange.code(), 32);
+    assert_eq!(Error::InvalidRotationTarget.code(), 33);
+    assert_eq!(Error::InvalidOverlap.code(), 34);
+    assert_eq!(Error::AdminRoleNotGrantable.code(), 35);
 }
 
 #[test]
@@ -1376,7 +1392,9 @@ fn submission_extends_snapshot_and_instance_ttl() {
     client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
 
     env.as_contract(&contract_id, || {
-        assert!(env.storage().persistent().get_ttl(&DataKey::Snapshots) >= LEDGERS_TO_EXTEND - 1);
+        assert!(
+            env.storage().persistent().get_ttl(&DataKey::Snapshot(1)) >= LEDGERS_TO_EXTEND - 1
+        );
         assert!(env.storage().instance().get_ttl() >= INSTANCE_TTL_THRESHOLD);
     });
 }
@@ -1419,4 +1437,507 @@ fn bump_ttl_is_permissionless() {
 
     // No auths mocked: bump_ttl must not call require_auth.
     client.bump_ttl();
+}
+
+// ============================================================================
+// Per-epoch snapshot storage and migration (#2781)
+// ============================================================================
+
+/// Write a storage-v1 deployment by hand: snapshots in the single legacy map,
+/// version stamped 1, no per-epoch entries or chain tip.
+fn seed_legacy_v1(env: &Env, contract_id: &Address, epochs: &[u64]) -> Map<u64, LegacySnapshot> {
+    let mut legacy: Map<u64, LegacySnapshot> = Map::new(env);
+    for (i, epoch) in epochs.iter().enumerate() {
+        legacy.set(
+            *epoch,
+            LegacySnapshot {
+                hash: create_test_hash(env, *epoch as u32 + 1),
+                epoch: *epoch,
+                timestamp: 1_000 + i as u64,
+            },
+        );
+    }
+    env.as_contract(contract_id, || {
+        env.storage().persistent().set(&DataKey::Snapshots, &legacy);
+        env.storage()
+            .instance()
+            .set(&DataKey::LatestEpoch, &epochs.last().copied().unwrap_or(0));
+        env.storage().instance().set(&DataKey::StorageVersion, &1u32);
+    });
+    legacy
+}
+
+#[test]
+fn snapshots_are_stored_one_entry_per_epoch() {
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &submitter);
+
+    env.as_contract(&contract_id, || {
+        assert!(!env.storage().persistent().has(&DataKey::Snapshots));
+        assert!(env.storage().persistent().has(&DataKey::Snapshot(1)));
+        assert!(env.storage().persistent().has(&DataKey::Snapshot(2)));
+        let latest: Snapshot = env.storage().instance().get(&DataKey::Latest).unwrap();
+        assert_eq!(latest.epoch, 2);
+    });
+}
+
+#[test]
+fn submission_cost_is_flat_in_history_length() {
+    // The previous single-map layout re-wrote the whole history on every
+    // submission. Measure the budget of one submission after a short and a
+    // long history: per-epoch keys must keep them (near) equal.
+    fn cost_after(history: u64) -> u64 {
+        let env = Env::default();
+        let (client, _, _, submitter) = setup_with_submitter(&env);
+        for epoch in 1..=history {
+            client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u32), &submitter);
+        }
+        let mut budget = env.cost_estimate().budget();
+        budget.reset_unlimited();
+        let next = history + 1;
+        client.submit_snapshot(&next, &create_test_hash(&env, next as u32), &submitter);
+        budget.cpu_instruction_cost()
+    }
+
+    let short = cost_after(10);
+    let long = cost_after(1_000);
+    // Allow small noise from instance/footprint size, not linear growth.
+    assert!(
+        long <= short + short / 10,
+        "submission cost grew with history: {short} -> {long}"
+    );
+}
+
+#[test]
+#[ignore = "slow: 10k submissions; run with --ignored"]
+fn ten_thousand_epochs_keep_submission_cost_flat() {
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+    let mut first = 0u64;
+    for epoch in 1..=10_000u64 {
+        let mut budget = env.cost_estimate().budget();
+        budget.reset_unlimited();
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u32), &submitter);
+        let cpu = budget.cpu_instruction_cost();
+        if epoch == 10 {
+            first = cpu;
+        }
+        if epoch > 10 {
+            assert!(cpu <= first + first / 10, "epoch {epoch}: {first} -> {cpu}");
+        }
+    }
+}
+
+#[test]
+fn submission_is_refused_until_legacy_snapshots_are_migrated() {
+    let env = Env::default();
+    let (client, contract_id, admin, submitter) = setup_with_submitter(&env);
+    seed_legacy_v1(&env, &contract_id, &[1, 2, 3]);
+
+    let result = client.try_submit_snapshot(&4u64, &create_test_hash(&env, 4), &submitter);
+    assert_eq!(result, Err(Ok(Error::MigrationRequired)));
+
+    assert_eq!(client.migrate(&admin), CURRENT_STORAGE_VERSION);
+    client.submit_snapshot(&4u64, &create_test_hash(&env, 4), &submitter);
+    assert_eq!(client.verify_range(&1u64, &4u64), client.get_chain_head().1);
+}
+
+#[test]
+fn migration_across_batches_preserves_every_hash() {
+    let env = Env::default();
+    let (client, contract_id, admin, _) = setup_with_submitter(&env);
+    let epochs: std::vec::Vec<u64> = (1..=25u64).map(|e| e * 3).collect();
+    let legacy = seed_legacy_v1(&env, &contract_id, &epochs);
+    assert_eq!(client.pending_migration(), 25);
+
+    // 25 items in batches of 10: two partial calls, then the final one.
+    assert_eq!(client.migrate_batch(&admin, &10u32), 1);
+    assert_eq!(client.pending_migration(), 15);
+    assert_eq!(client.get_storage_version(), 1);
+    assert_eq!(client.migrate_batch(&admin, &10u32), 1);
+    assert_eq!(client.migrate_batch(&admin, &10u32), CURRENT_STORAGE_VERSION);
+    assert_eq!(client.pending_migration(), 0);
+
+    let mut prev_chain = BytesN::from_array(&env, &[0u8; 32]);
+    let mut prev_epoch = 0u64;
+    for epoch in epochs.iter() {
+        let old = legacy.get(*epoch).unwrap();
+        let rec = client.get_snapshot_record(epoch);
+        assert_eq!(rec.hash, old.hash);
+        assert_eq!(rec.timestamp, old.timestamp);
+        assert_eq!(rec.prev_epoch, prev_epoch);
+        assert_eq!(rec.prev_chain_hash, prev_chain);
+        prev_chain = rec.chain_hash.clone();
+        prev_epoch = *epoch;
+    }
+    assert_eq!(client.get_chain_head(), (75u64, prev_chain));
+    assert_eq!(client.latest_snapshot().1, 75);
+    env.as_contract(&contract_id, || {
+        assert!(!env.storage().persistent().has(&DataKey::Snapshots));
+    });
+}
+
+#[test]
+fn migration_batch_size_is_bounded() {
+    let env = Env::default();
+    let (client, contract_id, admin, _) = setup_with_submitter(&env);
+    seed_legacy_v1(&env, &contract_id, &[1]);
+    assert_eq!(
+        client.try_migrate_batch(&admin, &0u32),
+        Err(Ok(Error::InvalidRange))
+    );
+    assert_eq!(
+        client.try_migrate_batch(&admin, &(MAX_MIGRATION_BATCH + 1)),
+        Err(Ok(Error::InvalidRange))
+    );
+}
+
+#[test]
+fn bump_snapshot_ttl_extends_range_and_rejects_wide_spans() {
+    use soroban_sdk::testutils::storage::Persistent as _;
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+    client.submit_snapshot(&5u64, &create_test_hash(&env, 5), &submitter);
+
+    env.ledger().with_mut(|li| li.sequence_number += 100_000);
+    assert_eq!(client.bump_snapshot_ttl(&1u64, &10u64), 2);
+    env.as_contract(&contract_id, || {
+        assert!(env.storage().persistent().get_ttl(&DataKey::Snapshot(1)) >= LEDGERS_TO_EXTEND - 1);
+    });
+
+    assert_eq!(
+        client.try_bump_snapshot_ttl(&1u64, &(1 + MAX_TTL_BUMP_SPAN)),
+        Err(Ok(Error::InvalidRange))
+    );
+    assert_eq!(
+        client.try_bump_snapshot_ttl(&5u64, &1u64),
+        Err(Ok(Error::InvalidRange))
+    );
+}
+
+// ============================================================================
+// Snapshot hash chain (#2782)
+// ============================================================================
+
+#[test]
+fn chain_links_each_epoch_to_its_predecessor() {
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+    let h1 = create_test_hash(&env, 1);
+    let h2 = create_test_hash(&env, 2);
+    client.submit_snapshot(&3u64, &h1, &submitter);
+    client.submit_snapshot(&9u64, &h2, &submitter);
+
+    let zero = BytesN::from_array(&env, &[0u8; 32]);
+    let (c1, c2) = env.as_contract(&contract_id, || {
+        let c1 = chain_link(&env, &zero, 3, &h1);
+        (c1.clone(), chain_link(&env, &c1, 9, &h2))
+    });
+
+    let r1 = client.get_snapshot_record(&3u64);
+    let r2 = client.get_snapshot_record(&9u64);
+    assert_eq!(r1.prev_epoch, 0);
+    assert_eq!(r1.prev_chain_hash, zero);
+    assert_eq!(r1.chain_hash, c1);
+    assert_eq!(r2.prev_epoch, 3);
+    assert_eq!(r2.prev_chain_hash, c1);
+    assert_eq!(r2.chain_hash, c2);
+    assert_eq!(client.get_chain_head(), (9u64, c2.clone()));
+    assert_eq!(client.verify_range(&1u64, &9u64), c2);
+}
+
+#[test]
+fn submission_event_carries_the_chain_hash() {
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+
+    let head = client.get_chain_head().1;
+    let found = env.events().all().events().iter().any(|e| {
+        let soroban_sdk::xdr::ContractEventBody::V0(ref v0) = e.body;
+        <SnapshotSubmitted as TryFromVal<Env, soroban_sdk::xdr::ScVal>>::try_from_val(
+            &env, &v0.data,
+        )
+        .map(|ev| ev.chain_hash == head && ev.epoch == 1)
+        .unwrap_or(false)
+    });
+    assert!(found, "SNAP_SUB event must include the stored chain hash");
+}
+
+#[test]
+fn verify_range_detects_a_rewritten_epoch() {
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+    for epoch in 1..=5u64 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u32), &submitter);
+    }
+    assert!(client.try_verify_range(&1u64, &5u64).is_ok());
+
+    // An upgraded build silently replaces epoch 3's hash.
+    env.as_contract(&contract_id, || {
+        let mut rec: Snapshot = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshot(3))
+            .unwrap();
+        rec.hash = create_test_hash(&env, 999);
+        env.storage().persistent().set(&DataKey::Snapshot(3), &rec);
+    });
+    assert_eq!(
+        client.try_verify_range(&1u64, &5u64),
+        Err(Ok(Error::ChainBroken))
+    );
+    // A range that ends below the tampered epoch still verifies.
+    assert!(client.try_verify_range(&1u64, &2u64).is_ok());
+}
+
+#[test]
+fn verify_range_detects_a_rewritten_chain_link() {
+    let env = Env::default();
+    let (client, contract_id, _, submitter) = setup_with_submitter(&env);
+    for epoch in 1..=3u64 {
+        client.submit_snapshot(&epoch, &create_test_hash(&env, epoch as u32), &submitter);
+    }
+    // Rewrite epoch 2 consistently with itself (hash + its own chain hash)
+    // but not with epoch 3's back-link.
+    env.as_contract(&contract_id, || {
+        let mut rec: Snapshot = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Snapshot(2))
+            .unwrap();
+        rec.hash = create_test_hash(&env, 777);
+        rec.chain_hash = chain_link(&env, &rec.prev_chain_hash, 2, &rec.hash);
+        env.storage().persistent().set(&DataKey::Snapshot(2), &rec);
+    });
+    assert_eq!(
+        client.try_verify_range(&1u64, &3u64),
+        Err(Ok(Error::ChainBroken))
+    );
+}
+
+#[test]
+fn verify_range_validates_bounds() {
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &submitter);
+    assert_eq!(client.try_verify_range(&0u64, &1u64), Err(Ok(Error::InvalidRange)));
+    assert_eq!(client.try_verify_range(&2u64, &1u64), Err(Ok(Error::InvalidRange)));
+    assert_eq!(
+        client.try_verify_range(&1u64, &7u64),
+        Err(Ok(Error::SnapshotNotFound))
+    );
+}
+
+#[test]
+fn chain_is_independent_of_submission_gaps() {
+    // Pseudo-random strictly increasing epochs: the chain must verify end to
+    // end whatever the spacing (fuzzed ordering for #2782).
+    let env = Env::default();
+    let (client, _, _, submitter) = setup_with_submitter(&env);
+    let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut epoch = 0u64;
+    let mut first = 0u64;
+    for i in 0..40u32 {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        epoch += 1 + (x % 1_000);
+        if i == 0 {
+            first = epoch;
+        }
+        client.submit_snapshot(&epoch, &create_test_hash(&env, i + 1), &submitter);
+        // An out-of-order resubmission never extends the chain.
+        assert!(client
+            .try_submit_snapshot(&(epoch - 1), &create_test_hash(&env, 5_000 + i), &submitter)
+            .is_err());
+    }
+    assert_eq!(client.verify_range(&first, &epoch), client.get_chain_head().1);
+}
+
+// ============================================================================
+// Submitter rotation policy (#2786)
+// ============================================================================
+
+#[test]
+fn rotation_rejects_admin_as_new_submitter() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_rotate_submitter(&admin, &old_key, &admin),
+        Err(Ok(Error::InvalidRotationTarget))
+    );
+}
+
+#[test]
+fn rotation_rejects_rotating_a_key_onto_itself() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_rotate_submitter(&admin, &old_key, &old_key),
+        Err(Ok(Error::InvalidRotationTarget))
+    );
+}
+
+#[test]
+fn rotation_overlap_keeps_old_key_valid_until_expiry() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+    let start = env.ledger().sequence();
+
+    let until = client.rotate_submitter_with_policy(
+        &admin,
+        &old_key,
+        &new_key,
+        &100u32,
+        &RotationReason::Scheduled,
+    );
+    assert_eq!(until, start + 100);
+    assert_eq!(client.get_outgoing_submitters().get(old_key.clone()), Some(until));
+
+    // Both keys are valid inside the window.
+    client.submit_snapshot(&1u64, &create_test_hash(&env, 1), &old_key);
+    client.submit_snapshot(&2u64, &create_test_hash(&env, 2), &new_key);
+    assert!(client.has_role(&old_key, &Role::SnapshotSubmitter));
+
+    // At the expiry ledger the old key is refused.
+    env.ledger().with_mut(|li| li.sequence_number = until);
+    assert_eq!(
+        client.try_submit_snapshot(&3u64, &create_test_hash(&env, 3), &old_key),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert!(!client.has_role(&old_key, &Role::SnapshotSubmitter));
+    assert_eq!(client.get_outgoing_submitters().len(), 0);
+    client.submit_snapshot(&3u64, &create_test_hash(&env, 3), &new_key);
+}
+
+#[test]
+fn compromise_rotation_forbids_overlap() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+    assert_eq!(
+        client.try_rotate_submitter_with_policy(
+            &admin,
+            &old_key,
+            &new_key,
+            &1u32,
+            &RotationReason::Compromise
+        ),
+        Err(Ok(Error::InvalidOverlap))
+    );
+    assert_eq!(
+        client.rotate_submitter_with_policy(
+            &admin,
+            &old_key,
+            &new_key,
+            &0u32,
+            &RotationReason::Compromise
+        ),
+        0
+    );
+    assert_eq!(
+        client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &old_key),
+        Err(Ok(Error::Unauthorized))
+    );
+}
+
+#[test]
+fn rotation_overlap_is_capped() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_rotate_submitter_with_policy(
+            &admin,
+            &old_key,
+            &Address::generate(&env),
+            &(MAX_ROTATION_OVERLAP + 1),
+            &RotationReason::Scheduled
+        ),
+        Err(Ok(Error::InvalidOverlap))
+    );
+}
+
+#[test]
+fn rotation_rejects_key_still_in_overlap_window() {
+    let env = Env::default();
+    let (client, _, admin, first) = setup_with_submitter(&env);
+    let second = Address::generate(&env);
+    let third = Address::generate(&env);
+    client.add_submitter(&admin, &third);
+    client.rotate_submitter_with_policy(&admin, &first, &second, &50u32, &RotationReason::Other);
+
+    // `first` is still live as an outgoing key; it cannot come back as a
+    // rotation target under another slot while that window is open.
+    assert_eq!(
+        client.try_rotate_submitter(&admin, &third, &first),
+        Err(Ok(Error::InvalidRotationTarget))
+    );
+}
+
+#[test]
+fn removing_outgoing_key_ends_overlap_early() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    let new_key = Address::generate(&env);
+    client.rotate_submitter_with_policy(&admin, &old_key, &new_key, &500u32, &RotationReason::Scheduled);
+
+    client.remove_submitter(&admin, &old_key);
+    assert_eq!(
+        client.try_submit_snapshot(&1u64, &create_test_hash(&env, 1), &old_key),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert_eq!(client.get_outgoing_submitters().len(), 0);
+}
+
+#[test]
+fn rotation_emits_policy_event() {
+    let env = Env::default();
+    let (client, _, admin, old_key) = setup_with_submitter(&env);
+    client.rotate_submitter_with_policy(
+        &admin,
+        &old_key,
+        &Address::generate(&env),
+        &10u32,
+        &RotationReason::Scheduled,
+    );
+    assert_eq!(
+        count_contract_events_with_topic0(&env, symbol_short!("rot_pol")),
+        1
+    );
+}
+
+// ============================================================================
+// Single-admin invariant (#2785)
+// ============================================================================
+
+#[test]
+fn admin_role_cannot_be_granted_via_grant_role() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    let other = Address::generate(&env);
+    assert_eq!(
+        client.try_grant_role(&admin, &other, &Role::Admin),
+        Err(Ok(Error::AdminRoleNotGrantable))
+    );
+    assert!(!client.has_role(&other, &Role::Admin));
+}
+
+#[test]
+fn admin_cannot_revoke_own_admin_role() {
+    let env = Env::default();
+    let (client, _, admin, _) = setup_with_submitter(&env);
+    assert_eq!(
+        client.try_revoke_role(&admin, &admin, &Role::Admin),
+        Err(Ok(Error::AdminRoleNotGrantable))
+    );
+    assert!(client.has_role(&admin, &Role::Admin));
 }

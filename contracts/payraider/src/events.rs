@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
+use crate::RotationReason;
+
 // ============================================================================
 // Event Topics - Short symbols for efficient on-chain storage
 // ============================================================================
@@ -29,6 +31,7 @@ pub const CONTRACT_LIFECYCLE: Symbol = symbol_short!("CTR_LFE");
 /// - `epoch`: The epoch identifier for this snapshot (positive integer)
 /// - `timestamp`: Ledger timestamp when the snapshot was recorded on-chain
 /// - `submitter`: Address of the admin who submitted the snapshot
+/// - `chain_hash`: `sha256(prev_chain_hash || epoch_be || hash)` (#2782)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotSubmitted {
@@ -40,6 +43,8 @@ pub struct SnapshotSubmitted {
     pub timestamp: u64,
     /// Address of the admin who submitted the snapshot
     pub submitter: Address,
+    /// Rolling hash-chain commitment over every epoch up to this one (#2782)
+    pub chain_hash: BytesN<32>,
 }
 
 impl SnapshotSubmitted {
@@ -55,12 +60,20 @@ impl SnapshotSubmitted {
     /// # Event Format
     /// Topic: (SNAPSHOT_SUBMITTED, SNAPSHOT_LIFECYCLE)
     /// Data: SnapshotSubmitted struct containing hash, epoch, timestamp, submitter
-    pub fn publish(env: &Env, hash: BytesN<32>, epoch: u64, timestamp: u64, submitter: Address) {
+    pub fn publish(
+        env: &Env,
+        hash: BytesN<32>,
+        epoch: u64,
+        timestamp: u64,
+        submitter: Address,
+        chain_hash: BytesN<32>,
+    ) {
         let event = SnapshotSubmitted {
             hash,
             epoch,
             timestamp,
             submitter,
+            chain_hash,
         };
 
         // Publish with multiple topics for flexible filtering
@@ -116,14 +129,16 @@ impl AnalyticsSnapshotSubmitted {
 /// * `epoch` - The exact epoch that was stored
 /// * `timestamp` - The exact timestamp that was stored
 /// * `submitter` - The address of the caller who submitted
+/// * `chain_hash` - The chain commitment stored with this epoch
 pub fn emit_snapshot_submitted(
     env: &Env,
     hash: BytesN<32>,
     epoch: u64,
     timestamp: u64,
     submitter: Address,
+    chain_hash: BytesN<32>,
 ) {
-    SnapshotSubmitted::publish(env, hash, epoch, timestamp, submitter);
+    SnapshotSubmitted::publish(env, hash, epoch, timestamp, submitter, chain_hash);
 }
 
 /// Emit an event when the contract is initialized.
@@ -210,4 +225,34 @@ pub fn emit_submitter_rotated(
         (symbol_short!("subm_rot"), SUBMITTER_SET),
         (admin, old_submitter, new_submitter),
     );
+}
+
+/// Policy details of a submitter rotation (#2786).
+///
+/// Emitted alongside `subm_rot` so indexers that only know the old tuple keep
+/// working. Topic: `("rot_pol", SUBM_SET)`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubmitterRotationPolicy {
+    pub admin: Address,
+    pub old_submitter: Address,
+    pub new_submitter: Address,
+    pub reason: RotationReason,
+    /// Ledger sequence at which the old key stops being accepted; `0` means
+    /// it was revoked immediately.
+    pub overlap_until: u32,
+}
+
+/// Emit the policy event for a rotation.
+pub fn emit_submitter_rotation_policy(env: &Env, event: SubmitterRotationPolicy) {
+    env.events()
+        .publish((symbol_short!("rot_pol"), SUBMITTER_SET), event);
+}
+
+/// Emit progress of a batched legacy-snapshot migration (#2781).
+///
+/// Topic: `("migr_part",)`; data: `(caller, migrated_this_call, remaining)`.
+pub fn emit_migration_progress(env: &Env, caller: Address, migrated: u32, remaining: u32) {
+    env.events()
+        .publish((symbol_short!("migr_part"),), (caller, migrated, remaining));
 }
