@@ -159,9 +159,7 @@ pub async fn health_check(State(app_state): State<AppState>) -> Json<HealthStatu
     .coverage_gap_summary()
     .await
     .ok();
-    let has_ledger_gaps = ledger_coverage
-        .as_ref()
-        .is_some_and(|c| c.gap_count > 0);
+    let has_ledger_gaps = ledger_coverage.as_ref().is_some_and(|c| c.gap_count > 0);
 
     let is_high_lag = freshness_status
         .lag_seconds

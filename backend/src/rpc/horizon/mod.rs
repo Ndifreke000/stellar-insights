@@ -30,8 +30,11 @@ pub trait HorizonApi: Send + Sync {
     ) -> Result<Vec<HorizonTransaction>, RpcError>;
     async fn operations_for_ledger(&self, sequence: u64)
         -> Result<Vec<HorizonOperation>, RpcError>;
-    async fn account_payments(&self, account_id: &str, limit: u32)
-        -> Result<Vec<Payment>, RpcError>;
+    async fn account_payments(
+        &self,
+        account_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Payment>, RpcError>;
     async fn trades(&self, limit: u32, cursor: Option<&str>) -> Result<Vec<Trade>, RpcError>;
     async fn order_book(
         &self,

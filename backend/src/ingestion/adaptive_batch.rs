@@ -147,7 +147,8 @@ impl AimdController {
                 let under_budget = !matches!(self.p95_latency(), Some(p) if p > budget);
 
                 if lag > self.config.lag_threshold && under_budget {
-                    self.current = self.clamp(self.current.saturating_add(self.config.additive_step));
+                    self.current =
+                        self.clamp(self.current.saturating_add(self.config.additive_step));
                 } else if lag <= self.config.lag_threshold && self.current > self.base {
                     // Steady state: step back down toward the requested size.
                     self.current = self
@@ -155,7 +156,8 @@ impl AimdController {
                         .max(self.base);
                 } else if !under_budget {
                     // Latency over budget while catching up: back off gently.
-                    self.current = self.clamp(self.current.saturating_sub(self.config.additive_step));
+                    self.current =
+                        self.clamp(self.current.saturating_sub(self.config.additive_step));
                 }
             }
             FetchOutcome::Congested => {

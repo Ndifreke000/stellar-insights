@@ -11,6 +11,7 @@
 //! `crate::rpc::stellar::*` imports keep compiling for one release.
 
 use crate::network::{NetworkConfig, StellarNetwork};
+use crate::rpc::bounded_body::read_error_text;
 use crate::rpc::circuit_breaker::{new_rpc_circuit_breaker, rpc_circuit_breaker, CircuitBreaker};
 use crate::rpc::config::{initial_backoff_from_env, max_backoff_from_env, max_retries_from_env};
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
@@ -337,7 +338,10 @@ impl StellarRpcClient {
         self.rate_limiter.metrics()
     }
 
-    pub(in crate::rpc) async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, RpcError>
+    pub(in crate::rpc) async fn execute_with_retry<F, Fut, T>(
+        &self,
+        operation: F,
+    ) -> Result<T, RpcError>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<T, RpcError>>,
@@ -380,7 +384,10 @@ impl StellarRpcClient {
     }
 
     /// Retry a request with exponential backoff
-    pub(in crate::rpc) async fn retry_request<F, Fut>(&self, request_fn: F) -> Result<reqwest::Response>
+    pub(in crate::rpc) async fn retry_request<F, Fut>(
+        &self,
+        request_fn: F,
+    ) -> Result<reqwest::Response>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,

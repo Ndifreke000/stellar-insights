@@ -506,6 +506,18 @@ pub fn record_background_job(_job: &str, _status: &str) {
     BACKGROUND_JOBS_TOTAL.inc();
 }
 
+pub fn set_ingestion_lag_ledgers(lag: u64) {
+    INGESTION_LAG_LEDGERS.set(i64::try_from(lag).unwrap_or(i64::MAX));
+}
+
+pub fn set_ingestion_batch_size(size: u32) {
+    INGESTION_BATCH_SIZE.set(i64::from(size));
+}
+
+pub fn record_backfill_unrecoverable_range() {
+    BACKFILL_UNRECOVERABLE_RANGES_TOTAL.inc();
+}
+
 pub fn set_ledger_gaps(network: &str, gap_count: u64, gap_ledgers_total: u64) {
     GAP_COUNT
         .with_label_values(&[network])

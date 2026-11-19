@@ -7,8 +7,9 @@ use errors::Error;
 use events::{
     emit_admin_proposed, emit_admin_transfer_cancelled, emit_admin_transferred,
     emit_contract_initialized, emit_contract_paused, emit_contract_unpaused,
-    emit_snapshot_submitted, emit_submitter_added, emit_submitter_removed, emit_submitter_rotated,
-    emit_upgrade_cancelled, emit_upgrade_delay_set, emit_upgrade_executed, emit_upgrade_scheduled,
+    emit_migration_progress, emit_snapshot_submitted, emit_submitter_added, emit_submitter_removed,
+    emit_submitter_rotated, emit_submitter_rotation_policy, emit_upgrade_cancelled,
+    emit_upgrade_delay_set, emit_upgrade_executed, emit_upgrade_scheduled, SubmitterRotationPolicy,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, String,
@@ -36,6 +37,20 @@ pub const MIN_UPGRADE_DELAY_LEDGERS: u32 = 720;
 
 /// Upgrade delay used until one is configured (~24 hours at 5 s/ledger).
 pub const DEFAULT_UPGRADE_DELAY_LEDGERS: u32 = 17_280;
+/// Longest overlap window `rotate_submitter_with_policy` accepts: ~1 day at
+/// 5 s/ledger. Long enough for a backend redeploy, short enough that a
+/// forgotten old key stops working on its own (#2786).
+pub const MAX_ROTATION_OVERLAP: u32 = 17_280;
+
+/// Legacy snapshots moved per `migrate()` call (#2781).
+pub const DEFAULT_MIGRATION_BATCH: u32 = 100;
+/// Upper bound for `migrate_batch(max_items)`.
+pub const MAX_MIGRATION_BATCH: u32 = 500;
+
+/// Most links `verify_range` walks in one call (#2782).
+pub const MAX_VERIFY_STEPS: u32 = 100;
+/// Widest epoch span `bump_snapshot_ttl` scans in one call (#2781).
+pub const MAX_TTL_BUMP_SPAN: u64 = 200;
 
 fn bump_instance(env: &Env) {
     env.storage()
@@ -86,7 +101,9 @@ fn load_outgoing(env: &Env) -> Map<Address, u32> {
 
 fn store_outgoing(env: &Env, outgoing: &Map<Address, u32>) {
     if outgoing.is_empty() {
-        env.storage().instance().remove(&DataKey::OutgoingSubmitters);
+        env.storage()
+            .instance()
+            .remove(&DataKey::OutgoingSubmitters);
     } else {
         env.storage()
             .instance()
@@ -443,6 +460,16 @@ pub enum DataKey {
     /// Every address with a `Roles(addr)` entry, `Vec<Address>` in instance
     /// storage, so `bump_ttl` can keep all role entries alive (#2784)
     RoleHolders,
+    /// One snapshot per epoch, persistent (#2781).
+    Snapshot(u64),
+    /// Latest `Snapshot`, instance storage, so the tip survives archival of
+    /// older epochs (#2781).
+    Latest,
+    /// Latest chain hash, instance storage (#2782).
+    ChainHead,
+    /// `Map<Address, u32>` of rotated-out keys still inside their overlap
+    /// window, instance storage (#2786).
+    OutgoingSubmitters,
 }
 
 /// An upgrade waiting out its timelock (#2783).
@@ -457,6 +484,20 @@ pub struct PendingUpgrade {
     pub scheduled_at: u32,
     /// First ledger sequence at which `execute_upgrade` succeeds
     pub executable_at: u32,
+}
+
+/// Why a submitter key was rotated (#2786). Recorded in the `rot_pol` event.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum RotationReason {
+    /// Planned rotation; an overlap window is allowed.
+    Scheduled = 0,
+    /// The old key is (suspected) compromised; it is revoked immediately and
+    /// no overlap is allowed.
+    Compromise = 1,
+    /// Anything else, e.g. decommissioning a host.
+    Other = 2,
 }
 
 /// Schema version this build reads and writes.
@@ -1279,7 +1320,9 @@ impl PayRaiderContract {
                 .get(&DataKey::LatestEpoch)
                 .unwrap_or(0);
             env.storage().instance().set(&DataKey::LatestEpoch, &latest);
-            env.storage().instance().set(&DataKey::StorageVersion, &1u32);
+            env.storage()
+                .instance()
+                .set(&DataKey::StorageVersion, &1u32);
         }
 
         if from < 2 {
@@ -1287,7 +1330,9 @@ impl PayRaiderContract {
             // and build the hash chain over them (#2781, #2782).
             let (migrated, remaining) = migrate_legacy_snapshots(&env, max_items);
             if remaining > 0 {
-                env.storage().instance().set(&DataKey::StorageVersion, &1u32);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::StorageVersion, &1u32);
                 bump_instance(&env);
                 emit_migration_progress(&env, caller, migrated, remaining);
                 return Ok(1);
@@ -1539,8 +1584,7 @@ impl PayRaiderContract {
         if submitters.contains(&new_submitter) {
             return Err(Error::SubmitterAlreadyAuthorized);
         }
-        if new_submitter == admin
-            || Self::has_role(env.clone(), new_submitter.clone(), Role::Admin)
+        if new_submitter == admin || Self::has_role(env.clone(), new_submitter.clone(), Role::Admin)
         {
             return Err(Error::InvalidRotationTarget);
         }
@@ -1610,6 +1654,12 @@ impl PayRaiderContract {
     /// always included, even on deployments that predate the index. The
     /// submitter set lives in instance storage and is covered by the instance
     /// extension.
+    /// Extend the TTL of the contract instance, the latest snapshot entry
+    /// and the admin's role entry so anchored hashes stay verifiable.
+    ///
+    /// Older epochs are deliberately *not* bumped here: each lives in its own
+    /// entry and may expire (#2781). Use [`Self::bump_snapshot_ttl`] to keep a
+    /// range alive, or restore an archived entry (see README).
     ///
     /// Read-only calls (`get_snapshot`, `latest_snapshot`) also extend the
     /// snapshot store, but only when submitted as a transaction — a simulated
@@ -1622,7 +1672,10 @@ impl PayRaiderContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-        bump_persistent(&env, &DataKey::Snapshots);
+        let latest = Self::get_latest_epoch(env.clone());
+        if latest > 0 {
+            bump_persistent(&env, &DataKey::Snapshot(latest));
+        }
         let holders = load_role_holders(&env);
         for holder in holders.iter() {
             bump_persistent(&env, &DataKey::Roles(holder));
@@ -1642,6 +1695,35 @@ impl PayRaiderContract {
     /// index `bump_ttl` walks). Submitters are listed by `get_submitters`.
     pub fn get_role_holders(env: Env) -> Vec<Address> {
         load_role_holders(&env)
+    }
+
+    /// Extend the TTL of every stored epoch in `from..=to` (#2781).
+    /// Permissionless; the span is capped at `MAX_TTL_BUMP_SPAN` epochs so a
+    /// call's footprint stays bounded. Missing epochs are skipped. Returns how
+    /// many entries were extended.
+    ///
+    /// # Errors
+    /// * `Error::InvalidRange` - `from > to` or the span exceeds the cap
+    pub fn bump_snapshot_ttl(env: Env, from: u64, to: u64) -> Result<u32, Error> {
+        if from > to || to - from >= MAX_TTL_BUMP_SPAN {
+            return Err(Error::InvalidRange);
+        }
+        let mut bumped = 0u32;
+        let mut epoch = from;
+        loop {
+            let key = DataKey::Snapshot(epoch);
+            if env.storage().persistent().has(&key) {
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&key, LEDGERS_TO_EXTEND, LEDGERS_TO_EXTEND);
+                bumped += 1;
+            }
+            if epoch == to {
+                break;
+            }
+            epoch += 1;
+        }
+        Ok(bumped)
     }
 
     // =========================================================================
@@ -1792,6 +1874,9 @@ impl PayRaiderContract {
     ///
     /// Reading an existing role entry extends its TTL (#2784), so every
     /// authorisation check that goes through here keeps the entry alive.
+    /// `Role::SnapshotSubmitter` is answered from the submitter set (plus
+    /// outgoing keys inside their overlap window) only; legacy per-address
+    /// role entries for it are ignored (deny by default).
     pub fn has_role(env: Env, user: Address, role: Role) -> bool {
         has_role_internal(&env, &user, role)
     }

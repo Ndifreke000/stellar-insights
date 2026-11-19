@@ -381,7 +381,7 @@ impl CacheManager {
 
     /// Invalidate all corridor-related cache entries.
     pub async fn invalidate_corridors(&self) -> anyhow::Result<usize> {
-        let pattern = keys::corridor_pattern();
+        let pattern = keys::corridor_pattern(keys::active_network());
         let deleted = self.invalidate_pattern(&pattern).await?;
         tracing::info!(
             "Invalidated {} corridor cache entries matching pattern: {}",
@@ -393,7 +393,7 @@ impl CacheManager {
 
     /// Invalidate cache entries for a specific corridor and related list views.
     pub async fn invalidate_corridor(&self, corridor_key: &str) -> anyhow::Result<()> {
-        let detail_key = keys::corridor_detail(corridor_key);
+        let detail_key = keys::corridor_detail(keys::active_network(), corridor_key);
         self.delete(&detail_key).await?;
 
         // Corridor list endpoints can include this corridor, so clear list/detail variants.
@@ -453,6 +453,14 @@ impl CacheManager {
 pub mod keys {
     use crate::network::StellarNetwork;
 
+    /// Network this process serves (`STELLAR_NETWORK`, default mainnet). Used
+    /// by request handlers to scope their cache keys.
+    #[must_use]
+    pub fn active_network() -> StellarNetwork {
+        static NETWORK: std::sync::OnceLock<StellarNetwork> = std::sync::OnceLock::new();
+        *NETWORK.get_or_init(|| crate::network::NetworkConfig::from_env().network)
+    }
+
     #[must_use]
     pub fn anchor_list(network: StellarNetwork, limit: i64, offset: i64) -> String {
         format!("{network}:anchor:list:{limit}:{offset}")
@@ -474,7 +482,12 @@ pub mod keys {
     }
 
     #[must_use]
-    pub fn corridor_list(network: StellarNetwork, limit: i64, offset: i64, filters: &str) -> String {
+    pub fn corridor_list(
+        network: StellarNetwork,
+        limit: i64,
+        offset: i64,
+        filters: &str,
+    ) -> String {
         format!("{network}:corridor:list:{limit}:{offset}:{filters}")
     }
 
@@ -581,8 +594,14 @@ mod tests {
     #[test]
     fn test_cache_key_builders() {
         use crate::network::StellarNetwork::Mainnet;
-        assert_eq!(keys::anchor_list(Mainnet, 50, 0), "mainnet:anchor:list:50:0");
-        assert_eq!(keys::anchor_detail(Mainnet, "123"), "mainnet:anchor:detail:123");
+        assert_eq!(
+            keys::anchor_list(Mainnet, 50, 0),
+            "mainnet:anchor:list:50:0"
+        );
+        assert_eq!(
+            keys::anchor_detail(Mainnet, "123"),
+            "mainnet:anchor:detail:123"
+        );
         assert_eq!(
             keys::anchor_by_account(Mainnet, "GA123"),
             "mainnet:anchor:account:GA123"
@@ -638,10 +657,19 @@ mod tests {
     async fn flushing_testnet_keys_never_touches_mainnet() {
         use crate::network::StellarNetwork::{Mainnet, Testnet};
         let cache = CacheManager::new_in_memory_for_tests(CacheConfig::default());
-        cache.set(&keys::anchor_list(Mainnet, 50, 0), &"main", 60).await.unwrap();
-        cache.set(&keys::anchor_list(Testnet, 50, 0), &"test", 60).await.unwrap();
+        cache
+            .set(&keys::anchor_list(Mainnet, 50, 0), &"main", 60)
+            .await
+            .unwrap();
+        cache
+            .set(&keys::anchor_list(Testnet, 50, 0), &"test", 60)
+            .await
+            .unwrap();
 
-        cache.delete_pattern(&keys::network_pattern(Testnet)).await.unwrap();
+        cache
+            .delete_pattern(&keys::network_pattern(Testnet))
+            .await
+            .unwrap();
 
         let main: Option<String> = cache.get(&keys::anchor_list(Mainnet, 50, 0)).await.unwrap();
         let test: Option<String> = cache.get(&keys::anchor_list(Testnet, 50, 0)).await.unwrap();

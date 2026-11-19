@@ -16,7 +16,9 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use serde::de::{self, DeserializeOwned, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde::de::{
+    self, DeserializeOwned, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor,
+};
 
 use crate::rpc::error::RpcError;
 
@@ -392,7 +394,10 @@ mod tests {
         ];
         for body in bodies {
             let err = decode_horizon_page::<Rec>(body, 10).unwrap_err();
-            assert!(matches!(err, RpcError::ParseError(_)), "{body:?} -> {err:?}");
+            assert!(
+                matches!(err, RpcError::ParseError(_)),
+                "{body:?} -> {err:?}"
+            );
         }
     }
 

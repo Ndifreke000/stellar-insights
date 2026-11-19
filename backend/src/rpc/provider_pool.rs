@@ -39,14 +39,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use lazy_static::lazy_static;
 use prometheus::{
-    register_gauge_vec, register_int_counter_vec, register_int_gauge_vec, GaugeVec,
-    IntCounterVec, IntGaugeVec,
+    register_gauge_vec, register_int_counter_vec, register_int_gauge_vec, GaugeVec, IntCounterVec,
+    IntGaugeVec,
 };
 use serde::Serialize;
 
 use crate::network::{NetworkConfig, StellarNetwork};
-use crate::rpc::client_trait::StellarRpcClientTrait;
 use crate::rpc::circuit_breaker::new_rpc_circuit_breaker;
+use crate::rpc::client_trait::StellarRpcClientTrait;
 use crate::rpc::error::RpcError;
 use crate::rpc::stellar::{
     GetLedgersResult, HealthResponse, HorizonAsset, HorizonLiquidityPool, HorizonOperation,
@@ -124,7 +124,9 @@ impl ProviderPoolConfig {
                 .unwrap_or(d.max_ledger_lag),
             ejection_cooldown: parse("RPC_PROVIDER_EJECTION_COOLDOWN_SECS")
                 .and_then(|v| v.parse::<u64>().ok())
-                .map_or(d.ejection_cooldown, |s| Duration::from_secs(s.clamp(1, 3600))),
+                .map_or(d.ejection_cooldown, |s| {
+                    Duration::from_secs(s.clamp(1, 3600))
+                }),
         }
     }
 }
@@ -281,7 +283,10 @@ impl ProviderPool {
         providers: Vec<ProviderConfig>,
         config: ProviderPoolConfig,
     ) -> Self {
-        assert!(!providers.is_empty(), "ProviderPool needs at least one provider");
+        assert!(
+            !providers.is_empty(),
+            "ProviderPool needs at least one provider"
+        );
         let now = Instant::now();
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -439,7 +444,11 @@ impl ProviderPool {
         }
         h.probing = false;
         PROVIDER_REQUESTS
-            .with_label_values(&[self.network.as_str(), self.providers[idx].name.as_str(), "success"])
+            .with_label_values(&[
+                self.network.as_str(),
+                self.providers[idx].name.as_str(),
+                "success",
+            ])
             .inc();
         let snapshot = h.clone();
         drop(health);
@@ -459,7 +468,11 @@ impl ProviderPool {
         h.requests += 1;
         h.failures += 1;
         PROVIDER_REQUESTS
-            .with_label_values(&[self.network.as_str(), self.providers[idx].name.as_str(), "failure"])
+            .with_label_values(&[
+                self.network.as_str(),
+                self.providers[idx].name.as_str(),
+                "failure",
+            ])
             .inc();
         if h.state == ProviderState::HalfOpen {
             self.eject(idx, h, now, "half-open probe failed".to_string());
@@ -481,12 +494,23 @@ impl ProviderPool {
         if let Some(h) = health.get_mut(idx) {
             h.latest_ledger = Some(latest);
         }
-        let freshest = health.iter().filter_map(|h| h.latest_ledger).max().unwrap_or(0);
+        let freshest = health
+            .iter()
+            .filter_map(|h| h.latest_ledger)
+            .max()
+            .unwrap_or(0);
         for (i, h) in health.iter_mut().enumerate() {
-            let Some(seen) = h.latest_ledger else { continue };
+            let Some(seen) = h.latest_ledger else {
+                continue;
+            };
             let lag = freshest.saturating_sub(seen);
             if lag > self.config.max_ledger_lag && h.state == ProviderState::Healthy {
-                self.eject(i, h, now, format!("lagging {lag} ledgers behind {freshest}"));
+                self.eject(
+                    i,
+                    h,
+                    now,
+                    format!("lagging {lag} ledgers behind {freshest}"),
+                );
             }
         }
     }
@@ -522,7 +546,9 @@ impl ProviderPool {
         let mut tried = Vec::new();
         let mut last_err = None;
         while tried.len() < self.providers.len() {
-            let Some(idx) = self.select(&tried) else { break };
+            let Some(idx) = self.select(&tried) else {
+                break;
+            };
             tried.push(idx);
             let start = Instant::now();
             match op(idx).await {
@@ -606,10 +632,9 @@ impl FailoverRpcClient {
         }
         let mut clients: Vec<Arc<dyn StellarRpcClientTrait>> = Vec::new();
         for p in &providers {
-            let client =
-                StellarRpcClient::try_new(p.rpc_url.clone(), p.horizon_url.clone(), false)
-                    .map_err(|e| format!("provider {}: {e}", p.name))?
-                    .with_circuit_breaker(new_rpc_circuit_breaker());
+            let client = StellarRpcClient::try_new(p.rpc_url.clone(), p.horizon_url.clone(), false)
+                .map_err(|e| format!("provider {}: {e}", p.name))?
+                .with_circuit_breaker(new_rpc_circuit_breaker());
             clients.push(Arc::new(client));
         }
         let pool = Arc::new(ProviderPool::new(
@@ -618,7 +643,11 @@ impl FailoverRpcClient {
             ProviderPoolConfig::from_env(),
         ));
         register_pool(pool.clone());
-        Ok(Some(Self::new(pool, clients, NetworkConfig::for_network(network))))
+        Ok(Some(Self::new(
+            pool,
+            clients,
+            NetworkConfig::for_network(network),
+        )))
     }
 
     #[must_use]
@@ -641,7 +670,10 @@ impl FailoverRpcClient {
     }
 
     /// Spawn a background task running [`Self::check_freshness`] every `every`.
-    pub fn spawn_freshness_monitor(self: Arc<Self>, every: Duration) -> tokio::task::JoinHandle<()> {
+    pub fn spawn_freshness_monitor(
+        self: Arc<Self>,
+        every: Duration,
+    ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(every);
             loop {
@@ -671,7 +703,9 @@ impl StellarRpcClientTrait for FailoverRpcClient {
             .await
     }
     async fn fetch_latest_ledger(&self) -> Result<LedgerInfo, RpcError> {
-        self.pool.execute(|i| self.clients[i].fetch_latest_ledger()).await
+        self.pool
+            .execute(|i| self.clients[i].fetch_latest_ledger())
+            .await
     }
     async fn fetch_ledger_by_sequence(&self, sequence: u64) -> Result<LedgerInfo, RpcError> {
         self.pool

@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
+use tracing::warn;
 
 use super::failures::{tally_path_payment_failures, CorridorFailureBreakdown};
 use super::retry_strategy;
@@ -147,8 +150,10 @@ impl LedgerIngestionService {
             .lock()
             .expect("batch controller poisoned")
             .batch_size();
-        *self.batch_controller.lock().expect("batch controller poisoned") =
-            AimdController::new(config, requested);
+        *self
+            .batch_controller
+            .lock()
+            .expect("batch controller poisoned") = AimdController::new(config, requested);
         self
     }
 
@@ -246,7 +251,10 @@ impl LedgerIngestionService {
             }
 
             let limit = {
-                let mut ctrl = self.batch_controller.lock().expect("batch controller poisoned");
+                let mut ctrl = self
+                    .batch_controller
+                    .lock()
+                    .expect("batch controller poisoned");
                 ctrl.set_requested(batch_size);
                 ctrl.batch_size()
             };
@@ -338,13 +346,12 @@ impl LedgerIngestionService {
     }
 
     async fn get_last_ledger(&self) -> Result<Option<u64>> {
-        let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT last_ledger_sequence FROM ingestion_cursor WHERE network = ?",
-        )
-        .bind(self.network.to_string())
-        .fetch_optional(&self.pool)
-        .await
-        .context("read ingestion cursor")?;
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT last_ledger_sequence FROM ingestion_cursor WHERE network = ?")
+                .bind(self.network.to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .context("read ingestion cursor")?;
         Ok(row.and_then(|(v,)| u64::try_from(v).ok()))
     }
 }
@@ -445,7 +452,10 @@ mod tests {
 
         let n = svc.run_ingestion(7).await.unwrap();
         assert_eq!(n, expected);
-        assert_eq!(svc.get_last_ledger().await.unwrap(), Some(MOCK_LATEST_LEDGER));
+        assert_eq!(
+            svc.get_last_ledger().await.unwrap(),
+            Some(MOCK_LATEST_LEDGER)
+        );
         assert_eq!(count(&svc).await as u64, expected);
 
         // A second run (restart) finds nothing new and writes no duplicates.
@@ -458,7 +468,9 @@ mod tests {
         use crate::rpc::mock_stellar::{MOCK_LATEST_LEDGER, MOCK_OLDEST_LEDGER};
         let svc = test_service().await;
         // Simulate a committed first batch, then a crash before the next one.
-        let first: Vec<_> = (MOCK_OLDEST_LEDGER..MOCK_OLDEST_LEDGER + 5).map(ledger).collect();
+        let first: Vec<_> = (MOCK_OLDEST_LEDGER..MOCK_OLDEST_LEDGER + 5)
+            .map(ledger)
+            .collect();
         svc.persist_batch(&first).await.unwrap();
         // Replaying the same batch (retry after crash) is a no-op.
         assert_eq!(svc.persist_batch(&first).await.unwrap(), 0);
@@ -494,7 +506,10 @@ mod tests {
     #[test]
     fn undecodable_xdr_is_skipped() {
         let mut counts = CorridorFailureBreakdown::default();
-        assert_eq!(tally_ledger_transaction("AAAA...op_too_few_offers...", &mut counts), 0);
+        assert_eq!(
+            tally_ledger_transaction("AAAA...op_too_few_offers...", &mut counts),
+            0
+        );
         assert_eq!(counts.total_failures(), 0);
         assert_eq!(counts.successful, 0);
     }

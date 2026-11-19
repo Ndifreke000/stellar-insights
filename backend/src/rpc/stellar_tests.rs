@@ -6,8 +6,8 @@
     clippy::uninlined_format_args
 )]
 use super::*;
-use anyhow::Context;
 use crate::rpc::mock_stellar;
+use anyhow::Context;
 
 #[tokio::test]
 async fn test_mock_health_check() -> Result<()> {
@@ -344,9 +344,7 @@ fn test_new_format_takes_priority_over_legacy() {
         asset_balance_changes: Some(vec![AssetBalanceChange {
             asset_type: "credit_alphanum4".into(),
             asset_code: Some("USDC".into()),
-            asset_issuer: Some(
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".into(),
-            ),
+            asset_issuer: Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".into()),
             change_type: "transfer".into(),
             from: Some("GSRC".into()),
             to: Some("GDEST_NEW".into()),

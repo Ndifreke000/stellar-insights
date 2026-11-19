@@ -290,9 +290,9 @@ pub(crate) mod fixtures {
     use super::*;
     use stellar_xdr::curr::{
         AccountId, AlphaNum4, Asset, AssetCode4, Hash, InnerTransactionResult,
-        InnerTransactionResultExt, InnerTransactionResultPair, PathPaymentStrictReceiveResultSuccess,
-        PathPaymentStrictSendResultSuccess, PublicKey, SimplePaymentResult, TransactionResultExt,
-        Uint256, VecM, WriteXdr,
+        InnerTransactionResultExt, InnerTransactionResultPair,
+        PathPaymentStrictReceiveResultSuccess, PathPaymentStrictSendResultSuccess, PublicKey,
+        SimplePaymentResult, TransactionResultExt, Uint256, VecM, WriteXdr,
     };
 
     fn usdc() -> Asset {
@@ -504,6 +504,9 @@ mod tests {
         b.record_failure(C::NoTrust);
         assert_eq!(b.total_failures(), 3);
         assert!((corridor_success_rate(6, &b) - 66.666_666).abs() < 1e-3);
-        assert_eq!(corridor_success_rate(0, &CorridorFailureBreakdown::default()), 0.0);
+        assert_eq!(
+            corridor_success_rate(0, &CorridorFailureBreakdown::default()),
+            0.0
+        );
     }
 }

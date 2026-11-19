@@ -4,15 +4,23 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub enum RpcError {
     NetworkError(String),
-    RateLimitError { retry_after: Option<Duration> },
-    ServerError { status: u16, message: String },
+    RateLimitError {
+        retry_after: Option<Duration>,
+    },
+    ServerError {
+        status: u16,
+        message: String,
+    },
     ParseError(String),
     TimeoutError(String),
     CircuitBreakerOpen,
     /// The provider's response body exceeded the limit for this call type
     /// (`limit` bytes, or `limit` records for a Horizon page). Not retried as-is;
     /// paginated callers retry with a smaller page size.
-    ResponseTooLarge { limit: usize, observed: Option<u64> },
+    ResponseTooLarge {
+        limit: usize,
+        observed: Option<u64>,
+    },
 }
 
 impl fmt::Display for RpcError {

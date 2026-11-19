@@ -189,10 +189,7 @@ impl StellarRpcClientTrait for Failing {
     ) -> Result<Vec<Payment>, RpcError> {
         Err(RpcError::NetworkError("down".into()))
     }
-    async fn fetch_operations_for_ledger(
-        &self,
-        _: u64,
-    ) -> Result<Vec<HorizonOperation>, RpcError> {
+    async fn fetch_operations_for_ledger(&self, _: u64) -> Result<Vec<HorizonOperation>, RpcError> {
         Err(RpcError::NetworkError("down".into()))
     }
     async fn fetch_trades(&self, _: u32, _: Option<&str>) -> Result<Vec<Trade>, RpcError> {

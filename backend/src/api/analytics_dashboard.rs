@@ -66,7 +66,10 @@ pub async fn analytics_dashboard(
     State(app_state): State<AppState>,
 ) -> Result<Json<AnalyticsDashboardData>, axum::http::StatusCode> {
     // Bump the key so a previously cached sample series is not served.
-    let cache_key = format!("{}:observed", keys::analytics_dashboard());
+    let cache_key = format!(
+        "{}:observed",
+        keys::analytics_dashboard(keys::active_network())
+    );
 
     match cached_query(
         &app_state.cache,

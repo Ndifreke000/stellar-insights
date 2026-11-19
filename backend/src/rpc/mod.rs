@@ -15,7 +15,6 @@ mod stellar_split_tests;
 
 pub use circuit_breaker::{CallError, CircuitBreaker, CircuitBreakerConfig, CircuitState};
 pub use client_trait::{MockStellarRpcClient, StellarRpcClientTrait};
-pub use failsafe::futures::CircuitBreaker as FailsafeCircuitBreaker;
 pub use horizon::HorizonApi;
 pub use provider_pool::{FailoverRpcClient, ProviderConfig, ProviderPool, ProviderPoolConfig};
 pub use rate_limiter::{RpcRateLimitConfig, RpcRateLimitMetrics, RpcRateLimiter};

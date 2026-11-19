@@ -356,7 +356,7 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        for stmt in include_str!("../../migrations/053_create_aggregation_finality.sql")
+        for stmt in include_str!("../../migrations/054_create_aggregation_finality.sql")
             .split(';')
             .map(str::trim)
             .filter(|s| !s.is_empty() && !s.lines().all(|l| l.trim_start().starts_with("--")))

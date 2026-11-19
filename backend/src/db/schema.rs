@@ -116,7 +116,17 @@ impl Schema {
         );
     ";
 
-    /// Mirrors migration 053 (#2765).
+    /// Fencing tokens for leader-only writers (#2769).
+    pub const CREATE_INDEXER_LEASE: &'static str = r"
+        CREATE TABLE IF NOT EXISTS indexer_lease (
+            role TEXT PRIMARY KEY,
+            token INTEGER NOT NULL,
+            holder TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    ";
+
+    /// Mirrors migration 055 (#2765).
     pub const CREATE_LEDGER_SCAN_RANGES: &'static str = r"
         CREATE TABLE IF NOT EXISTS ledger_scan_ranges (
             network TEXT NOT NULL,
@@ -136,7 +146,7 @@ impl Schema {
         );
     ";
 
-    /// Mirrors migration 054 (#2768).
+    /// Mirrors migration 058 (#2768).
     pub const CREATE_LEDGER_HEADERS: &'static str = r"
         CREATE TABLE IF NOT EXISTS ledger_headers (
             network TEXT NOT NULL,

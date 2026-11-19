@@ -301,7 +301,7 @@ fn generate_corridor_list_cache_key(params: &ListCorridorsQuery, page: Page) -> 
         params.time_period,
         params.sort_by
     );
-    keys::corridor_list(page.limit, page.offset, &filter_str)
+    keys::corridor_list(keys::active_network(), page.limit, page.offset, &filter_str)
 }
 
 /// List all payment corridors
@@ -973,7 +973,7 @@ pub async fn get_corridor_detail(
         ));
     }
 
-    let cache_key = keys::corridor_detail(&corridor_key);
+    let cache_key = keys::corridor_detail(keys::active_network(), &corridor_key);
     let response = cached_query(&cache, &cache_key, 300, || async {
         // Fetch payments from RPC
         let circuit_breaker = rpc_client.circuit_breaker();

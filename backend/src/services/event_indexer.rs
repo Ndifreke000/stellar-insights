@@ -55,7 +55,7 @@
 //!
 //! - **Idempotent inserts.** Every event is keyed by
 //!   `(network, ledger, transaction_hash, op_index, event_index)` (unique
-//!   index `idx_contract_events_identity`, migration 053) and written with
+//!   index `idx_contract_events_identity`, migration 056) and written with
 //!   `INSERT … ON CONFLICT DO NOTHING`. Re-indexing the same batch any number
 //!   of times yields the same row count; an existing row is never replaced.
 //! - **Monotonic checkpoints.** Both the `indexer_state.last_processed_ledger`
@@ -333,6 +333,72 @@ impl EventIndexer {
         self.network
     }
 
+    /// Take a new fencing token for `role`. Call this whenever leadership is
+    /// (re)acquired; any writer holding an older token is fenced off.
+    pub async fn acquire_fencing_token(&self, role: &str, holder: &str) -> Result<FencingToken> {
+        let token: i64 = sqlx::query_scalar(
+            "INSERT INTO indexer_lease (role, token, holder, updated_at) \
+             VALUES (?, 1, ?, CURRENT_TIMESTAMP) \
+             ON CONFLICT(role) DO UPDATE SET token = token + 1, holder = excluded.holder, \
+             updated_at = CURRENT_TIMESTAMP \
+             RETURNING token",
+        )
+        .bind(role)
+        .bind(holder)
+        .fetch_one(self.db.pool())
+        .await
+        .context("Failed to acquire fencing token")?;
+        info!(role, holder, token, "Acquired indexer fencing token");
+        Ok(FencingToken(token))
+    }
+
+    /// Verify `token` is still current for `role` inside `tx`.
+    async fn check_fence(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        role: &str,
+        token: FencingToken,
+    ) -> Result<()> {
+        let current: Option<i64> =
+            sqlx::query_scalar("SELECT token FROM indexer_lease WHERE role = ?")
+                .bind(role)
+                .fetch_optional(&mut **tx)
+                .await
+                .context("Failed to read fencing token")?;
+        let current = current.unwrap_or(0);
+        if current != token.0 {
+            return Err(StaleLeaderError {
+                presented: token.0,
+                current,
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    async fn insert_event<'e, E>(&self, executor: E, event: &IndexedEvent) -> Result<u64>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    {
+        let res = sqlx::query(INSERT_EVENT_SQL)
+            .bind(&event.id)
+            .bind(&event.contract_id)
+            .bind(&event.event_type)
+            .bind(event.epoch.map(|e| e as i64))
+            .bind(&event.hash)
+            .bind(event.timestamp.map(|t| t as i64))
+            .bind(event.ledger as i64)
+            .bind(&event.transaction_hash)
+            .bind(event.created_at)
+            .bind(&event.verification_status)
+            .bind(self.network.to_string())
+            .bind(i64::from(event.op_index))
+            .bind(i64::from(event.event_index))
+            .execute(executor)
+            .await
+            .context("Failed to index event")?;
+        Ok(res.rows_affected())
+    }
+
     /// Process a batch of events, skipping unknown types and persisting a
     /// `last_processed_ledger` checkpoint after each successful ledger.
     ///
@@ -424,7 +490,21 @@ impl EventIndexer {
         events: Vec<IndexedEvent>,
         checkpoint_ledger: u64,
     ) -> Result<()> {
-        self.index_events_with_scan_range(events, checkpoint_ledger, checkpoint_ledger)
+        self.write_batch(events, checkpoint_ledger, checkpoint_ledger, None)
+            .await
+            .map(|_| ())
+    }
+
+    /// Like [`Self::index_events_with_checkpoint`] but rejects the whole
+    /// batch with [`StaleLeaderError`] if `token` is no longer the current
+    /// fencing token for [`EVENT_INDEXER_ROLE`]. Returns rows inserted.
+    pub async fn index_events_fenced(
+        &self,
+        events: Vec<IndexedEvent>,
+        checkpoint_ledger: u64,
+        token: FencingToken,
+    ) -> Result<u64> {
+        self.write_batch(events, checkpoint_ledger, checkpoint_ledger, Some(token))
             .await
     }
 
@@ -441,6 +521,18 @@ impl EventIndexer {
         scan_start: u64,
         scan_end: u64,
     ) -> Result<()> {
+        self.write_batch(events, scan_start, scan_end, None)
+            .await
+            .map(|_| ())
+    }
+
+    async fn write_batch(
+        &self,
+        events: Vec<IndexedEvent>,
+        scan_start: u64,
+        scan_end: u64,
+        token: Option<FencingToken>,
+    ) -> Result<u64> {
         if scan_start > scan_end {
             anyhow::bail!("scan_start ({scan_start}) must be <= scan_end ({scan_end})");
         }
@@ -461,13 +553,11 @@ impl EventIndexer {
         if let Some(token) = token {
             // Take the write lock first so the fence check and the writes are
             // serialised against a concurrent token bump.
-            sqlx::query(
-                "UPDATE indexer_lease SET updated_at = updated_at WHERE role = ?",
-            )
-            .bind(EVENT_INDEXER_ROLE)
-            .execute(&mut *tx)
-            .await
-            .context("Failed to lock fencing row")?;
+            sqlx::query("UPDATE indexer_lease SET updated_at = updated_at WHERE role = ?")
+                .bind(EVENT_INDEXER_ROLE)
+                .execute(&mut *tx)
+                .await
+                .context("Failed to lock fencing row")?;
             Self::check_fence(&mut tx, EVENT_INDEXER_ROLE, token).await?;
         }
 
@@ -494,7 +584,10 @@ impl EventIndexer {
 
         tx.commit().await.context("Failed to commit transaction")?;
 
-        debug!(inserted, "Successfully indexed batch and updated checkpoint");
+        debug!(
+            inserted,
+            "Successfully indexed batch and updated checkpoint"
+        );
         Ok(inserted)
     }
 
@@ -1086,7 +1179,10 @@ impl EventIndexer {
         .fetch_all(self.db.pool())
         .await
         .context("Failed to query scan ranges")?;
-        let ranges: Vec<(u64, u64)> = rows.into_iter().map(|(s, e)| (s as u64, e as u64)).collect();
+        let ranges: Vec<(u64, u64)> = rows
+            .into_iter()
+            .map(|(s, e)| (s as u64, e as u64))
+            .collect();
 
         let summary = match (ranges.first(), ranges.iter().map(|r| r.1).max()) {
             (Some(&(first, _)), Some(last)) => {
@@ -1182,6 +1278,10 @@ mod tests {
             .execute(&pool)
             .await
             .context("failed to create indexer_state table")?;
+        sqlx::query(Schema::CREATE_INDEXER_LEASE)
+            .execute(&pool)
+            .await
+            .context("failed to create indexer_lease table")?;
         sqlx::query(Schema::CREATE_LEDGER_SCAN_RANGES)
             .execute(&pool)
             .await
@@ -1204,6 +1304,8 @@ mod tests {
             timestamp: None,
             ledger,
             transaction_hash: format!("tx-{ledger}"),
+            op_index: 0,
+            event_index: 0,
             created_at: Utc::now(),
             verification_status: None,
         }
@@ -1264,7 +1366,8 @@ mod tests {
     #[tokio::test]
     async fn scan_coverage_is_per_network() -> Result<()> {
         let db = setup_contract_event_db().await?;
-        let mainnet = EventIndexer::for_network(db.clone(), crate::network::StellarNetwork::Mainnet);
+        let mainnet =
+            EventIndexer::for_network(db.clone(), crate::network::StellarNetwork::Mainnet);
         let testnet = EventIndexer::for_network(db, crate::network::StellarNetwork::Testnet);
         mainnet.record_scanned_range(1, 100).await?;
         assert!(mainnet.detect_ledger_gaps(1, 100).await?.is_empty());
@@ -1528,7 +1631,8 @@ mod tests {
     #[tokio::test]
     async fn retrying_same_batch_three_times_is_idempotent() -> Result<()> {
         let db = setup_contract_event_db().await?;
-        let indexer = EventIndexer::new(Arc::clone(&db)).with_network("testnet");
+        let indexer =
+            EventIndexer::for_network(Arc::clone(&db), crate::network::StellarNetwork::Testnet);
         // Two events from the same tx/op must both be kept (distinct event_index).
         let batch = || {
             vec![
@@ -1556,8 +1660,14 @@ mod tests {
     #[tokio::test]
     async fn concurrent_indexers_write_no_duplicates_and_checkpoint_is_monotonic() -> Result<()> {
         let db = setup_contract_event_db().await?;
-        let a = Arc::new(EventIndexer::new(Arc::clone(&db)).with_network("testnet"));
-        let b = Arc::new(EventIndexer::new(Arc::clone(&db)).with_network("testnet"));
+        let a = Arc::new(EventIndexer::for_network(
+            Arc::clone(&db),
+            crate::network::StellarNetwork::Testnet,
+        ));
+        let b = Arc::new(EventIndexer::for_network(
+            Arc::clone(&db),
+            crate::network::StellarNetwork::Testnet,
+        ));
 
         let ledgers: u64 = 10_000;
         let chunk = 500u64;

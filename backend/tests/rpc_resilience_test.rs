@@ -74,7 +74,8 @@ async fn test_rpc_retry_on_failure() {
 async fn test_circuit_breaker_opens_on_failures() {
     // Deterministic: the breaker reads time from a manually advanced clock.
     let clock = Arc::new(ManualClock::new());
-    let circuit_breaker = test_circuit_breaker_with_clock(2, Duration::from_millis(100), clock.clone());
+    let circuit_breaker =
+        test_circuit_breaker_with_clock(2, Duration::from_millis(100), clock.clone());
 
     // Fail twice to trip the circuit
     let result1: Result<String, CallError<RpcError>> = circuit_breaker

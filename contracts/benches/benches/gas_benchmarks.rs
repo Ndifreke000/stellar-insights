@@ -25,9 +25,7 @@
 
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env};
 
-use payraider::{
-    PayRaiderContract, PayRaiderContractClient, Role, DEFAULT_UPGRADE_DELAY_LEDGERS,
-};
+use payraider::{PayRaiderContract, PayRaiderContractClient, Role, DEFAULT_UPGRADE_DELAY_LEDGERS};
 
 /// Snapshots stored before measuring, so map-backed reads and writes are
 /// costed at a realistic size rather than against empty storage.
@@ -198,12 +196,18 @@ fn main() {
     {
         let f = fixture();
         let client = f.client();
-        rows.push("get_version", measure(&f.env, || {
+        rows.push(
+            "get_version",
+            measure(&f.env, || {
                 let _ = client.get_version();
-            }));
-        rows.push("get_admin", measure(&f.env, || {
+            }),
+        );
+        rows.push(
+            "get_admin",
+            measure(&f.env, || {
                 let _ = client.get_admin();
-            }));
+            }),
+        );
         rows.push(
             "get_pending_admin",
             measure(&f.env, || {
@@ -240,9 +244,12 @@ fn main() {
                 let _ = client.get_governance();
             }),
         );
-        rows.push("is_paused", measure(&f.env, || {
+        rows.push(
+            "is_paused",
+            measure(&f.env, || {
                 let _ = client.is_paused();
-            }));
+            }),
+        );
         rows.push(
             "get_submitters",
             measure(&f.env, || {
@@ -261,9 +268,12 @@ fn main() {
                 let _ = client.has_role(&f.admin, &Role::Admin);
             }),
         );
-        rows.push("get_metadata", measure(&f.env, || {
+        rows.push(
+            "get_metadata",
+            measure(&f.env, || {
                 let _ = client.get_metadata();
-            }));
+            }),
+        );
         rows.push(
             "get_contract_info",
             measure(&f.env, || {
@@ -358,9 +368,7 @@ fn main() {
             }),
         );
         let delay = client.get_upgrade_delay();
-        f.env
-            .ledger()
-            .with_mut(|li| li.sequence_number += delay);
+        f.env.ledger().with_mut(|li| li.sequence_number += delay);
         // No real Wasm is uploaded in the bench host, so the final install is
         // rejected by the host. Everything the contract itself does — auth,
         // timelock check, state clear, events — is still measured, and the

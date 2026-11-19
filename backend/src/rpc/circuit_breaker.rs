@@ -60,7 +60,10 @@ impl ManualClock {
     }
 
     pub fn advance(&self, by: Duration) {
-        let mut now = self.now.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut now = self
+            .now
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *now += by;
     }
 }
@@ -73,7 +76,10 @@ impl Default for ManualClock {
 
 impl Clock for ManualClock {
     fn now(&self) -> Instant {
-        *self.now.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        *self
+            .now
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -263,9 +269,9 @@ impl CircuitBreaker {
 
     fn maybe_half_open(&self, inner: &mut Inner) {
         if inner.state == CircuitState::Open {
-            let elapsed = inner
-                .opened_at
-                .map_or(Duration::MAX, |t| self.clock.now().saturating_duration_since(t));
+            let elapsed = inner.opened_at.map_or(Duration::MAX, |t| {
+                self.clock.now().saturating_duration_since(t)
+            });
             if elapsed >= self.config.timeout_duration {
                 self.transition(inner, CircuitState::HalfOpen);
             }
@@ -341,7 +347,11 @@ impl CircuitBreaker {
 
     /// Run an async call through the breaker; `is_failure` decides which
     /// errors count against the circuit.
-    pub async fn call_classified<F, T, E, C>(&self, fut: F, is_failure: C) -> Result<T, CallError<E>>
+    pub async fn call_classified<F, T, E, C>(
+        &self,
+        fut: F,
+        is_failure: C,
+    ) -> Result<T, CallError<E>>
     where
         F: std::future::Future<Output = Result<T, E>>,
         C: FnOnce(&E) -> bool,
@@ -523,8 +533,9 @@ mod tests {
     async fn classified_non_failures_do_not_trip() {
         let cb = breaker(Arc::new(ManualClock::new()));
         for _ in 0..10 {
-            let r: Result<(), CallError<&str>> =
-                cb.call_classified(async { Err("too big") }, |_| false).await;
+            let r: Result<(), CallError<&str>> = cb
+                .call_classified(async { Err("too big") }, |_| false)
+                .await;
             assert!(matches!(r, Err(CallError::Inner(_))));
         }
         assert_eq!(cb.state(), CircuitState::Closed);

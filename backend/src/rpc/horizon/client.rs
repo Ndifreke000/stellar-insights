@@ -315,7 +315,9 @@ impl StellarRpcClient {
         sequence: u64,
     ) -> Result<Vec<HorizonOperation>, RpcError> {
         if self.mock_mode {
-            return Ok(crate::rpc::mock_stellar::mock_operations_for_ledger(sequence));
+            return Ok(crate::rpc::mock_stellar::mock_operations_for_ledger(
+                sequence,
+            ));
         }
 
         let result = self

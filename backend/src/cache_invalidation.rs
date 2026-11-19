@@ -26,7 +26,9 @@ impl CacheInvalidationService {
     /// Invalidate all anchor-related caches
     pub async fn invalidate_anchors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating anchor caches");
-        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
+        self.cache
+            .delete_pattern(&keys::anchor_pattern(self.network))
+            .await?;
         Ok(())
     }
 
@@ -36,10 +38,16 @@ impl CacheInvalidationService {
             anchor_id = crate::logging::redaction::redact_user_id(anchor_id),
             "Invalidating cache for anchor"
         );
-        self.cache.delete(&keys::anchor_detail(self.network, anchor_id)).await?;
-        self.cache.delete(&keys::anchor_assets(self.network, anchor_id)).await?;
+        self.cache
+            .delete(&keys::anchor_detail(self.network, anchor_id))
+            .await?;
+        self.cache
+            .delete(&keys::anchor_assets(self.network, anchor_id))
+            .await?;
         // Also invalidate the list caches since they contain this anchor
-        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
+        self.cache
+            .delete_pattern(&keys::anchor_pattern(self.network))
+            .await?;
         Ok(())
     }
 
@@ -49,16 +57,22 @@ impl CacheInvalidationService {
             account = crate::logging::redaction::redact_account(account),
             "Invalidating cache for anchor account"
         );
-        self.cache.delete(&keys::anchor_by_account(self.network, account)).await?;
+        self.cache
+            .delete(&keys::anchor_by_account(self.network, account))
+            .await?;
         // Also invalidate list caches
-        self.cache.delete_pattern(&keys::anchor_pattern(self.network)).await?;
+        self.cache
+            .delete_pattern(&keys::anchor_pattern(self.network))
+            .await?;
         Ok(())
     }
 
     /// Invalidate all corridor-related caches
     pub async fn invalidate_corridors(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating corridor caches");
-        self.cache.delete_pattern(&keys::corridor_pattern(self.network)).await?;
+        self.cache
+            .delete_pattern(&keys::corridor_pattern(self.network))
+            .await?;
         Ok(())
     }
 
@@ -83,7 +97,9 @@ impl CacheInvalidationService {
             .delete(&keys::corridor_detail(self.network, corridor_key))
             .await?;
         // Also invalidate the list caches since they contain this corridor
-        self.cache.delete_pattern(&keys::corridor_pattern(self.network)).await?;
+        self.cache
+            .delete_pattern(&keys::corridor_pattern(self.network))
+            .await?;
         Ok(())
     }
 
@@ -99,7 +115,9 @@ impl CacheInvalidationService {
     /// Invalidate metrics caches
     pub async fn invalidate_metrics(&self) -> anyhow::Result<()> {
         tracing::info!("Invalidating metrics caches");
-        self.cache.delete(&keys::metrics_overview(self.network)).await
+        self.cache
+            .delete(&keys::metrics_overview(self.network))
+            .await
     }
 
     /// Full cache invalidation (use sparingly)
@@ -121,14 +139,23 @@ mod tests {
 
     fn make_service() -> CacheInvalidationService {
         let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
-        CacheInvalidationService::new(cache)
+        CacheInvalidationService::new(cache, StellarNetwork::Mainnet)
     }
 
     #[test]
     fn test_cache_key_patterns() {
-        assert_eq!(keys::anchor_pattern(self.network), "anchor:*");
-        assert_eq!(keys::corridor_pattern(self.network), "corridor:*");
-        assert_eq!(keys::dashboard_pattern(self.network), "dashboard:*");
+        assert_eq!(
+            keys::anchor_pattern(StellarNetwork::Mainnet),
+            "mainnet:anchor:*"
+        );
+        assert_eq!(
+            keys::corridor_pattern(StellarNetwork::Mainnet),
+            "mainnet:corridor:*"
+        );
+        assert_eq!(
+            keys::dashboard_pattern(StellarNetwork::Mainnet),
+            "mainnet:dashboard:*"
+        );
     }
 
     #[test]

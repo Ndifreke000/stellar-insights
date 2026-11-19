@@ -251,7 +251,12 @@ pub fn emit_admin_transfer_cancelled(env: &Env, caller: Address, proposed: Addre
 
 /// Emit when an upgrade is scheduled. Topic `("upg_schd", CTR_LFE)`, data
 /// `(proposer, wasm_hash, executable_at_ledger)`.
-pub fn emit_upgrade_scheduled(env: &Env, proposer: Address, wasm_hash: BytesN<32>, executable_at: u32) {
+pub fn emit_upgrade_scheduled(
+    env: &Env,
+    proposer: Address,
+    wasm_hash: BytesN<32>,
+    executable_at: u32,
+) {
     env.events().publish(
         (symbol_short!("upg_schd"), CONTRACT_LIFECYCLE),
         (proposer, wasm_hash, executable_at),
@@ -283,4 +288,34 @@ pub fn emit_upgrade_delay_set(env: &Env, caller: Address, old_delay: u32, new_de
         (symbol_short!("upg_dely"), CONTRACT_LIFECYCLE),
         (caller, old_delay, new_delay),
     );
+}
+
+/// Policy details of a submitter rotation (#2786).
+///
+/// Emitted alongside `subm_rot` so indexers that only know the old tuple keep
+/// working. Topic: `("rot_pol", SUBM_SET)`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubmitterRotationPolicy {
+    pub admin: Address,
+    pub old_submitter: Address,
+    pub new_submitter: Address,
+    pub reason: RotationReason,
+    /// Ledger sequence at which the old key stops being accepted; `0` means
+    /// it was revoked immediately.
+    pub overlap_until: u32,
+}
+
+/// Emit the policy event for a rotation.
+pub fn emit_submitter_rotation_policy(env: &Env, event: SubmitterRotationPolicy) {
+    env.events()
+        .publish((symbol_short!("rot_pol"), SUBMITTER_SET), event);
+}
+
+/// Emit progress of a batched legacy-snapshot migration (#2781).
+///
+/// Topic: `("migr_part",)`; data: `(caller, migrated_this_call, remaining)`.
+pub fn emit_migration_progress(env: &Env, caller: Address, migrated: u32, remaining: u32) {
+    env.events()
+        .publish((symbol_short!("migr_part"),), (caller, migrated, remaining));
 }

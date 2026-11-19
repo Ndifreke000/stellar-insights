@@ -291,7 +291,10 @@ impl BackfillJob {
                         self.event_indexer
                             .index_events_with_checkpoint(events, end)
                             .await?;
-                        info!(source = src.name(), start, end, "Recovered range from historical source");
+                        info!(
+                            source = src.name(),
+                            start, end, "Recovered range from historical source"
+                        );
                         true
                     }
                     Err(e) => {
@@ -884,11 +887,12 @@ mod tests {
         assert_eq!(job.status().await.unrecoverable_ranges.len(), 1);
 
         // Nothing was written for the out-of-window part.
-        let covered: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events WHERE ledger < ?")
-            .bind(MOCK_OLDEST_LEDGER as i64)
-            .fetch_one(db.pool())
-            .await
-            .expect("count");
+        let covered: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM contract_events WHERE ledger < ?")
+                .bind(MOCK_OLDEST_LEDGER as i64)
+                .fetch_one(db.pool())
+                .await
+                .expect("count");
         assert_eq!(covered, 0);
     }
 

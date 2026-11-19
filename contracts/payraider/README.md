@@ -63,6 +63,71 @@ granted `SnapshotSubmitter` under an earlier build has to be re-added the same
 way, which is a chance to drop keys nobody can account for.
 
 ## Admin transfer is two-step (#2783)
+## Snapshot storage layout (storage v2, #2781)
+
+Storage v1 kept every snapshot in one persistent `DataKey::Snapshots` map. Each
+submission read and re-wrote the whole map, so its fee grew linearly with
+history and the entry would eventually exceed the ledger entry size limit.
+
+**Footprint projection (v1).** One map item is an `ScMap` key (u64, ~12 B) plus a
+3-field struct (32 B hash + 2×u64 + 3 symbol keys, ~110 B XDR): ≈ 120 B per
+epoch. Hourly epochs add 8,760 items ≈ **1.05 MB a year**, far past the
+64 KiB per-entry ledger limit after ~550 epochs (about 3 weeks), after which
+every submission fails.
+
+**v2.** Each epoch is its own persistent entry `DataKey::Snapshot(epoch)` (~250 B
+with chain fields), and the tip — `Latest`, `ChainHead`, `LatestEpoch` — lives
+in instance storage. A submission touches one new persistent entry plus the
+instance, so its cost is independent of history length
+(`submission_cost_is_flat_in_history_length`, and the
+`submit_snapshot_after_history` Criterion group in `contracts/benches`).
+
+### Migrating a v1 deployment
+
+```text
+upgrade(new_wasm_hash)
+migrate(admin)            -> 1   (moved 100, more remain; submissions refused)
+migrate(admin)            -> 1
+...
+migrate(admin)            -> 2   (legacy map deleted, version stamped)
+```
+
+`migrate` moves at most `DEFAULT_MIGRATION_BATCH` (100) epochs per call;
+`migrate_batch(caller, max_items)` takes 1..=`MAX_MIGRATION_BATCH` (500).
+Epochs are moved in ascending order and removed from the legacy map in the same
+transaction, so a failed or repeated call never duplicates or skips one.
+`pending_migration()` reports what is left. Until it reaches 0,
+`submit_snapshot` returns `MigrationRequired` (#26) so no new epoch can chain
+onto an incomplete history. Each partial call emits `migr_part` with
+`(caller, migrated, remaining)`.
+
+## Snapshot hash chain (#2782)
+
+Every stored epoch carries
+
+```text
+chain_hash = sha256(prev_chain_hash || epoch as u64 big-endian || snapshot_hash)
+```
+
+with `prev_chain_hash = 0x00…00` for the first stored epoch (the migration
+chains legacy epochs the same way, oldest first). `prev_epoch` and
+`prev_chain_hash` are stored alongside, and `chain_hash` is included in the
+`SNAP_SUB` event.
+
+| Entrypoint | Effect |
+|---|---|
+| `get_snapshot_record(epoch)` | Full `Snapshot` including chain fields |
+| `get_chain_head()` | `(latest_epoch, chain_hash)` |
+| `verify_range(from, to)` | Recompute every link from `to` back to the first epoch `>= from` (≤ `MAX_VERIFY_STEPS`); returns `ChainBroken` (#31) on any mismatch |
+
+The on-chain view is a convenience. Because an upgrade can change the code, the
+trust anchor is off-chain: keep the latest `chain_hash` you have seen (from
+events or `get_chain_head`) and verify history against it with
+`backend/src/services/snapshot_chain.rs` (`verify_full_history`). Rewriting any
+past epoch changes every later `chain_hash`, so it can't match a head you
+already recorded.
+
+## Storage TTL (#2599, #2781)
 
 `set_admin` is gone. No single transaction can hand the contract to a new key:
 
@@ -108,6 +173,10 @@ Every key and its TTL policy:
 | `Snapshots` (snapshot map) | persistent | `submit_snapshot`, `get_snapshot`, `latest_snapshot`, `bump_ttl` |
 | `Roles(addr)` (any address, not just the admin) | persistent | every role check on that address (`has_role`, `pause`, `unpause`, `submit_snapshot` by an admin, upgrade auth), `grant_role` / `revoke_role`, `bump_ttl` |
 | `Admin`, `LatestEpoch`, `Paused`, `Version`, `Governance`, `StorageVersion`, `Submitters`, `PendingAdmin`, `PendingUpgrade`, `UpgradeDelay`, `RoleHolders` | instance | every state-changing call, `bump_ttl` |
+| Per-epoch snapshot entry | persistent | its own `submit_snapshot`, `get_snapshot(_record)`, `bump_snapshot_ttl` |
+| Latest snapshot entry | persistent | also `latest_snapshot`, `bump_ttl` |
+| Admin, latest snapshot + chain head, submitter set, pause flag | instance | every state-changing call, `bump_ttl` |
+| Admin role entry | persistent | admin `submit_snapshot`, `bump_ttl` |
 
 Older epochs are allowed to expire: the chain head in instance storage commits
 to all of them, so history stays verifiable from archived copies.
@@ -172,6 +241,11 @@ To bring it back:
 | 34 | `TooManyRoleHolders` | Granting a role to a new address past `MAX_ROLE_HOLDERS` |
 
 `execute_upgrade` before its delay returns the existing `TimelockNotExpired` (17).
+| 31 | `ChainBroken` | `verify_range` found a link that does not recompute |
+| 32 | `InvalidRange` | Bad `verify_range` / `bump_snapshot_ttl` range or `migrate_batch` size |
+| 33 | `InvalidRotationTarget` | Rotating to the old key, an admin, or a key in its overlap window |
+| 34 | `InvalidOverlap` | Overlap above `MAX_ROTATION_OVERLAP`, or any overlap on a compromise |
+| 35 | `AdminRoleNotGrantable` | `grant_role(Admin)`, or `revoke_role(Admin)` on the current admin — use `set_admin` |
 
 ## Events added
 

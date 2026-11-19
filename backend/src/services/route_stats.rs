@@ -6,7 +6,7 @@
 //! 1. Decodes the executed route (source asset, intermediates, destination
 //!    asset, amounts and the quoted bound) from a Horizon operation record,
 //!    plus per-hop amounts from the operation's `trade` effects when present.
-//! 2. Persists routes to `executed_routes` (migration 054), idempotently keyed
+//! 2. Persists routes to `executed_routes` (migration 057), idempotently keyed
 //!    on the Horizon operation id.
 //! 3. Aggregates a [`RouteStats`] view per corridor: hop-count distribution,
 //!    most-used intermediate assets, success rate and slippage vs. quoted.
@@ -30,7 +30,12 @@ pub const HISTORICAL_ROUTES_FLAG: &str = "PREFLIGHT_HISTORICAL_ROUTES";
 #[must_use]
 pub fn historical_routes_enabled() -> bool {
     std::env::var(HISTORICAL_ROUTES_FLAG)
-        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "on" | "yes"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -279,9 +284,9 @@ pub fn compare_scoring(
     samples
         .iter()
         .map(|(key, baseline)| {
-            let new_status = stats_by_corridor
-                .get(key)
-                .map_or(*baseline, |s| historical_route_adjustment(*baseline, s, true));
+            let new_status = stats_by_corridor.get(key).map_or(*baseline, |s| {
+                historical_route_adjustment(*baseline, s, true)
+            });
             ScoringComparison {
                 corridor_key: key.clone(),
                 old_status: *baseline,
@@ -453,7 +458,9 @@ mod tests {
 
     #[test]
     fn ignores_non_path_payments_and_reads_strict_receive_quote() {
-        assert!(ExecutedRoute::from_horizon_operation(&json!({"id": "x", "type": "payment"})).is_none());
+        assert!(
+            ExecutedRoute::from_horizon_operation(&json!({"id": "x", "type": "payment"})).is_none()
+        );
 
         let mut v = op("4", json!([]), true);
         v["type"] = json!("path_payment_strict_receive");
@@ -468,8 +475,18 @@ mod tests {
     fn aggregates_hop_distribution_and_intermediates() {
         let routes = vec![
             ExecutedRoute::from_horizon_operation(&op("1", json!([]), true)).unwrap(),
-            ExecutedRoute::from_horizon_operation(&op("2", json!([{ "asset_type": "native" }]), true)).unwrap(),
-            ExecutedRoute::from_horizon_operation(&op("3", json!([{ "asset_type": "native" }]), false)).unwrap(),
+            ExecutedRoute::from_horizon_operation(&op(
+                "2",
+                json!([{ "asset_type": "native" }]),
+                true,
+            ))
+            .unwrap(),
+            ExecutedRoute::from_horizon_operation(&op(
+                "3",
+                json!([{ "asset_type": "native" }]),
+                false,
+            ))
+            .unwrap(),
         ];
         let stats = aggregate_route_stats("k", &routes);
         assert_eq!(stats.total_routes, 3);
@@ -543,17 +560,25 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        sqlx::query(include_str!("../../migrations/054_create_executed_routes.sql"))
-            .execute(&pool)
-            .await
-            .unwrap();
-        let r = ExecutedRoute::from_horizon_operation(&op("9", json!([{ "asset_type": "native" }]), true))
-            .unwrap();
+        sqlx::query(include_str!(
+            "../../migrations/057_create_executed_routes.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let r = ExecutedRoute::from_horizon_operation(&op(
+            "9",
+            json!([{ "asset_type": "native" }]),
+            true,
+        ))
+        .unwrap();
         assert!(record_route(&pool, &r).await.unwrap());
         assert!(!record_route(&pool, &r).await.unwrap());
         let loaded = load_routes(&pool, &r.corridor_key(), 10).await.unwrap();
         assert_eq!(loaded, vec![r.clone()]);
-        let s = corridor_route_stats(&pool, &r.corridor_key()).await.unwrap();
+        let s = corridor_route_stats(&pool, &r.corridor_key())
+            .await
+            .unwrap();
         assert_eq!(s.total_routes, 1);
         assert_eq!(s.hop_count_distribution.get(&2), Some(&1));
     }

@@ -32,8 +32,8 @@ pub mod storage;
 pub use checkpoint::{Checkpoint, CheckpointManager};
 pub use config::{ReplayConfig, ReplayMode, ReplayRange};
 pub use engine::ReplayEngine;
-pub use ledger_headers::{LedgerHeaderStore, ProtocolVersionSource};
 pub use event_processor::{EventProcessor, ProcessingContext, ProcessingResult};
+pub use ledger_headers::{LedgerHeaderStore, ProtocolVersionSource};
 pub use state_builder::StateBuilder;
 pub use storage::{EventStorage, ReplayStorage};
 

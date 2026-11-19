@@ -312,10 +312,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../../migrations/053_create_account_lineage.sql"))
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../../migrations/053_create_account_lineage.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         pool
     }
 
@@ -345,8 +347,9 @@ mod tests {
 
     #[test]
     fn depth_bound_is_enforced() {
-        let pairs: Vec<(String, String)> =
-            (0..40).map(|i| (format!("N{i}"), format!("N{}", i + 1))).collect();
+        let pairs: Vec<(String, String)> = (0..40)
+            .map(|i| (format!("N{i}"), format!("N{}", i + 1)))
+            .collect();
         let e: HashMap<String, String> = pairs.into_iter().collect();
         let r = resolve_in_memory(&e, "N0", 16);
         assert!(r.depth_exceeded);
@@ -357,8 +360,9 @@ mod tests {
     #[test]
     fn payments_from_a_are_attributed_to_cs_anchor() {
         let e = edges(&[("A", "B"), ("B", "C")]);
-        let anchors: HashMap<String, String> =
-            [("C".to_string(), "anchor-c".to_string())].into_iter().collect();
+        let anchors: HashMap<String, String> = [("C".to_string(), "anchor-c".to_string())]
+            .into_iter()
+            .collect();
         assert_eq!(
             attribute_to_anchor(&e, &anchors, "A").map(String::as_str),
             Some("anchor-c")
@@ -371,8 +375,14 @@ mod tests {
     #[tokio::test]
     async fn sql_chain_resolves_and_queues_recompute() {
         let lineage = AccountLineage::new(pool().await);
-        assert!(lineage.record_merge("A", "B", 10, Some("op1")).await.unwrap());
-        assert!(lineage.record_merge("B", "C", 20, Some("op2")).await.unwrap());
+        assert!(lineage
+            .record_merge("A", "B", 10, Some("op1"))
+            .await
+            .unwrap());
+        assert!(lineage
+            .record_merge("B", "C", 20, Some("op2"))
+            .await
+            .unwrap());
 
         let r = lineage.resolve("A").await.unwrap();
         assert_eq!(r.surviving_account, "C");
@@ -385,7 +395,10 @@ mod tests {
 
         let pending = lineage.pending_recomputes().await.unwrap();
         assert_eq!(pending.len(), 2);
-        lineage.mark_recomputed(*pending.last().unwrap()).await.unwrap();
+        lineage
+            .mark_recomputed(*pending.last().unwrap())
+            .await
+            .unwrap();
         assert!(lineage.pending_recomputes().await.unwrap().is_empty());
     }
 

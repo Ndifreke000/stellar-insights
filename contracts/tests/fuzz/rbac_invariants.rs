@@ -30,8 +30,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use payraider::{
-    DataKey, PayRaiderContract, PayRaiderContractClient, Role, RotationReason, MAX_ROTATION_OVERLAP,
-    MAX_SUBMITTERS,
+    DataKey, PayRaiderContract, PayRaiderContractClient, Role, RotationReason,
+    MAX_ROTATION_OVERLAP, MAX_SUBMITTERS,
 };
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -69,16 +69,48 @@ impl Rng {
 
 #[derive(Debug, Clone)]
 enum Op {
-    Submit { caller: usize, delta: u64 },
-    AddSubmitter { caller: usize, who: usize },
-    RemoveSubmitter { caller: usize, who: usize },
-    Rotate { caller: usize, old: usize, new: usize, overlap: u32, compromise: bool },
-    Grant { caller: usize, user: usize, role: Role },
-    Revoke { caller: usize, user: usize, role: Role },
-    Pause { caller: usize },
-    Unpause { caller: usize },
-    SetAdmin { caller: usize, new: usize },
-    Advance { ledgers: u32 },
+    Submit {
+        caller: usize,
+        delta: u64,
+    },
+    AddSubmitter {
+        caller: usize,
+        who: usize,
+    },
+    RemoveSubmitter {
+        caller: usize,
+        who: usize,
+    },
+    Rotate {
+        caller: usize,
+        old: usize,
+        new: usize,
+        overlap: u32,
+        compromise: bool,
+    },
+    Grant {
+        caller: usize,
+        user: usize,
+        role: Role,
+    },
+    Revoke {
+        caller: usize,
+        user: usize,
+        role: Role,
+    },
+    Pause {
+        caller: usize,
+    },
+    Unpause {
+        caller: usize,
+    },
+    SetAdmin {
+        caller: usize,
+        new: usize,
+    },
+    Advance {
+        ledgers: u32,
+    },
 }
 
 fn role_of(n: u64) -> Role {
@@ -92,9 +124,18 @@ fn role_of(n: u64) -> Role {
 
 fn gen_op(rng: &mut Rng) -> Op {
     match rng.below(10) {
-        0 => Op::Submit { caller: rng.pick(), delta: rng.below(3) },
-        1 => Op::AddSubmitter { caller: rng.pick(), who: rng.pick() },
-        2 => Op::RemoveSubmitter { caller: rng.pick(), who: rng.pick() },
+        0 => Op::Submit {
+            caller: rng.pick(),
+            delta: rng.below(3),
+        },
+        1 => Op::AddSubmitter {
+            caller: rng.pick(),
+            who: rng.pick(),
+        },
+        2 => Op::RemoveSubmitter {
+            caller: rng.pick(),
+            who: rng.pick(),
+        },
         3 => Op::Rotate {
             caller: rng.pick(),
             old: rng.pick(),
@@ -102,12 +143,25 @@ fn gen_op(rng: &mut Rng) -> Op {
             overlap: [0u32, 5, 20, MAX_ROTATION_OVERLAP + 1][rng.below(4) as usize],
             compromise: rng.below(4) == 0,
         },
-        4 => Op::Grant { caller: rng.pick(), user: rng.pick(), role: role_of(rng.next()) },
-        5 => Op::Revoke { caller: rng.pick(), user: rng.pick(), role: role_of(rng.next()) },
+        4 => Op::Grant {
+            caller: rng.pick(),
+            user: rng.pick(),
+            role: role_of(rng.next()),
+        },
+        5 => Op::Revoke {
+            caller: rng.pick(),
+            user: rng.pick(),
+            role: role_of(rng.next()),
+        },
         6 => Op::Pause { caller: rng.pick() },
         7 => Op::Unpause { caller: rng.pick() },
-        8 => Op::SetAdmin { caller: rng.pick(), new: rng.pick() },
-        _ => Op::Advance { ledgers: 1 + rng.below(15) as u32 },
+        8 => Op::SetAdmin {
+            caller: rng.pick(),
+            new: rng.pick(),
+        },
+        _ => Op::Advance {
+            ledgers: 1 + rng.below(15) as u32,
+        },
     }
 }
 
@@ -184,7 +238,13 @@ impl Model {
             }
             Op::AddSubmitter { caller, who } => caller == self.admin && self.insert(who),
             Op::RemoveSubmitter { caller, who } => caller == self.admin && self.delete(who),
-            Op::Rotate { caller, old, new, overlap, compromise } => {
+            Op::Rotate {
+                caller,
+                old,
+                new,
+                overlap,
+                compromise,
+            } => {
                 if caller != self.admin {
                     return false;
                 }
@@ -305,7 +365,13 @@ impl Harness {
             Op::RemoveSubmitter { caller, who } => {
                 c.try_remove_submitter(&p[caller], &p[who]).is_ok()
             }
-            Op::Rotate { caller, old, new, overlap, compromise } => {
+            Op::Rotate {
+                caller,
+                old,
+                new,
+                overlap,
+                compromise,
+            } => {
                 let reason = if compromise {
                     RotationReason::Compromise
                 } else {
@@ -322,7 +388,10 @@ impl Harness {
             }
             Op::Pause { caller } => c.try_pause(&p[caller]).is_ok(),
             Op::Unpause { caller } => c.try_unpause(&p[caller]).is_ok(),
-            Op::SetAdmin { caller, new } => c.try_set_admin(&p[caller], &p[new]).is_ok(),
+            Op::SetAdmin { caller, new } => {
+                c.try_propose_admin(&p[caller], &p[new]).is_ok()
+                    && c.try_accept_admin(&p[new]).is_ok()
+            }
             Op::Advance { ledgers } => {
                 self.env
                     .ledger()
@@ -345,14 +414,21 @@ impl Harness {
             .filter(|i| c.has_role(&self.pool[*i], &Role::Admin))
             .collect();
         if admins != [m.admin] {
-            return Err(format!("expected exactly one admin {}, found {admins:?}", m.admin));
+            return Err(format!(
+                "expected exactly one admin {}, found {admins:?}",
+                m.admin
+            ));
         }
         // 4. model agreement
         if c.is_paused() != m.paused {
             return Err("pause flag mismatch".into());
         }
         if c.get_latest_epoch() != m.latest {
-            return Err(format!("latest epoch {} != model {}", c.get_latest_epoch(), m.latest));
+            return Err(format!(
+                "latest epoch {} != model {}",
+                c.get_latest_epoch(),
+                m.latest
+            ));
         }
         let set: std::vec::Vec<Address> = c.get_submitters().iter().collect();
         let want: std::vec::Vec<Address> = m.set.iter().map(|i| self.pool[*i].clone()).collect();
@@ -360,7 +436,11 @@ impl Harness {
             return Err(format!("submitter set mismatch, model {:?}", m.set));
         }
         for i in 0..POOL {
-            for r in [Role::SnapshotSubmitter, Role::PauseManager, Role::UpgradeManager] {
+            for r in [
+                Role::SnapshotSubmitter,
+                Role::PauseManager,
+                Role::UpgradeManager,
+            ] {
                 if c.has_role(&self.pool[i], &r) != m.has(i, r) {
                     return Err(format!("has_role({i}, {r:?}) disagrees with model"));
                 }

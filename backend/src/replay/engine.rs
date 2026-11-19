@@ -14,9 +14,9 @@ use super::{
     checkpoint::{Checkpoint, CheckpointManager},
     config::{ReplayConfig, ReplayMode},
     event_processor::{CompositeEventProcessor, ProcessingContext},
+    ledger_headers::ProtocolVersionSource,
     state_builder::StateBuilder,
     storage::{EventStorage, ReplayStorage},
-    ledger_headers::ProtocolVersionSource,
     ContractEvent, LedgerProtocolVersion, ReplayError, ReplayMetadata, ReplayResult, ReplayStatus,
 };
 use std::collections::HashMap;
@@ -455,7 +455,9 @@ mod tests {
             ReplayError::MissingLedgerHeader { ledger: 42, .. }
         ));
         // No source at all is also an error, not 0.
-        assert!(resolve_protocol_version(0, None, "mainnet", 42).await.is_err());
+        assert!(resolve_protocol_version(0, None, "mainnet", 42)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -463,9 +465,24 @@ mod tests {
         let source = InMemoryProtocolVersions::default()
             .with("mainnet", 10, 22)
             .with("testnet", 10, 23);
-        assert_eq!(resolve_protocol_version(21, Some(&source), "mainnet", 10).await.unwrap(), 21);
-        assert_eq!(resolve_protocol_version(0, Some(&source), "mainnet", 10).await.unwrap(), 22);
-        assert_eq!(resolve_protocol_version(0, Some(&source), "testnet", 10).await.unwrap(), 23);
+        assert_eq!(
+            resolve_protocol_version(21, Some(&source), "mainnet", 10)
+                .await
+                .unwrap(),
+            21
+        );
+        assert_eq!(
+            resolve_protocol_version(0, Some(&source), "mainnet", 10)
+                .await
+                .unwrap(),
+            22
+        );
+        assert_eq!(
+            resolve_protocol_version(0, Some(&source), "testnet", 10)
+                .await
+                .unwrap(),
+            23
+        );
     }
 
     struct Tagging(&'static str);

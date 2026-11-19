@@ -1,3 +1,4 @@
+pub mod adaptive_batch;
 pub mod failures;
 pub mod ledger;
 
@@ -297,8 +298,14 @@ mod tests {
     fn success_rate_identical_across_ingestion_paths() {
         let txs = [
             tx_result_xdr(vec![strict_send(None)], false),
-            tx_result_xdr(vec![strict_send(Some(PathPaymentFailureCode::UnderDestmin))], true),
-            tx_result_xdr(vec![strict_receive(Some(PathPaymentFailureCode::OverSendmax))], true),
+            tx_result_xdr(
+                vec![strict_send(Some(PathPaymentFailureCode::UnderDestmin))],
+                true,
+            ),
+            tx_result_xdr(
+                vec![strict_receive(Some(PathPaymentFailureCode::OverSendmax))],
+                true,
+            ),
             tx_result_xdr(vec![strict_receive(None)], false),
         ];
 

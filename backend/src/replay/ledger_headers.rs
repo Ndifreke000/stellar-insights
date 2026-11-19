@@ -32,7 +32,7 @@ pub fn protocol_version_from_header_xdr(header_xdr: &str) -> Result<u32> {
     Ok(entry.header.ledger_version)
 }
 
-/// SQLite-backed store for `ledger_headers` (migration 054).
+/// SQLite-backed store for `ledger_headers` (migration 058).
 #[derive(Clone)]
 pub struct LedgerHeaderStore {
     pool: SqlitePool,
@@ -234,7 +234,10 @@ mod tests {
 
     #[test]
     fn decodes_protocol_version_from_header_xdr() {
-        assert_eq!(protocol_version_from_header_xdr(&header_xdr(23)).unwrap(), 23);
+        assert_eq!(
+            protocol_version_from_header_xdr(&header_xdr(23)).unwrap(),
+            23
+        );
         assert!(protocol_version_from_header_xdr("garbage").is_err());
     }
 
@@ -264,7 +267,10 @@ mod tests {
                 .unwrap(),
             1
         );
-        assert_eq!(store.protocol_version("mainnet", 10).await.unwrap(), Some(22));
+        assert_eq!(
+            store.protocol_version("mainnet", 10).await.unwrap(),
+            Some(22)
+        );
         assert_eq!(store.protocol_version("mainnet", 11).await.unwrap(), None);
         assert_eq!(store.protocol_version("testnet", 10).await.unwrap(), None);
     }
