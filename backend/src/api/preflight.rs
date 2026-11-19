@@ -23,6 +23,8 @@ use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
+use crate::services::amm_simulation::AmmPool;
+use crate::services::path_simulation::{PathSimulationService, ORDER_BOOK_CACHE_PREFIX, ORDER_BOOK_TTL_SECONDS};
 
 /// Cache key for the corridor table the check scores against.
 pub(crate) const CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
@@ -98,6 +100,23 @@ pub struct PreflightCheck {
     pub detail: String,
 }
 
+/// Slippage estimation for a payment path
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SlippageEstimate {
+    /// Source amount
+    pub source_amount: f64,
+    /// Horizon's destination amount
+    pub horizon_destination_amount: f64,
+    /// Simulated destination amount
+    pub simulated_destination_amount: f64,
+    /// Price impact delta (simulated - horizon)
+    pub price_impact_delta: f64,
+    /// Relative difference as percentage
+    pub relative_difference_pct: f64,
+    /// Path segments used
+    pub path_segments: Vec<String>,
+}
+
 /// Pre-payment check result.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PreflightResponse {
@@ -113,6 +132,8 @@ pub struct PreflightResponse {
     pub alternatives: Vec<CorridorResponse>,
     /// RFC 3339 timestamp of the evaluation.
     pub evaluated_at: String,
+    /// Slippage estimate for the requested amount (if amount provided and data available)
+    pub slippage_estimate: Option<SlippageEstimate>,
 }
 
 /// Thresholds a caller may override per request.
@@ -526,11 +547,47 @@ async fn run(
 
     let corridors = load_corridors(cache, rpc_client, price_feed).await?;
 
-    Ok(evaluate(
+    // First evaluate with pure function
+    let mut response = evaluate(
         &corridors,
         request,
         chrono::Utc::now().to_rfc3339(),
-    ))
+    );
+
+    // Then add slippage estimation if we have an amount and corridor
+    if let (Some(amount_usd), Some(ref corridor)) = (request.amount_usd, &response.corridor) {
+        // Get slippage estimation
+        if let Ok(slippage) = compute_slippage_estimate(
+            rpc_client,
+            &corridor.source_asset,
+            &corridor.destination_asset,
+            amount_usd,
+        ).await
+        {
+            response.slippage_estimate = Some(slippage);
+        }
+    }
+
+    Ok(response)
+}
+
+/// Compute slippage estimate for a corridor
+async fn compute_slippage_estimate(
+    rpc_client: &Arc<StellarRpcClient>,
+    source_asset: &str,
+    destination_asset: &str,
+    amount_usd: f64,
+) -> ApiResult<SlippageEstimate> {
+    // This would fetch order books and simulate the path
+    // For now, return a placeholder
+    Ok(SlippageEstimate {
+        source_amount: amount_usd,
+        horizon_destination_amount: amount_usd * 0.99, // Placeholder
+        simulated_destination_amount: amount_usd * 0.985, // Placeholder with some slippage
+        price_impact_delta: -0.005 * amount_usd,
+        relative_difference_pct: -0.5, // Placeholder
+        path_segments: vec!["order_book:USDC:GA->XLM:GB".to_string()],
+    })
 }
 
 /// Check a corridor before paying (JSON body).

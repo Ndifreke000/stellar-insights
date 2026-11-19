@@ -71,6 +71,9 @@ async fn verify_asset(
         ApiError::internal("VERIFICATION_FAILED", "Failed to verify asset")
     })?;
 
+    // Determine if there are impersonation risks
+    let has_impersonation_risk = !result.impersonation_reports.is_empty();
+
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
@@ -82,7 +85,14 @@ async fn verify_asset(
             "trust_indicators": {
                 "stellar_expert_verified": result.stellar_expert_verified,
                 "stellar_toml_verified": result.stellar_toml_verified,
-                "anchor_registry_verified": result.anchor_registry_verified
+                "anchor_registry_verified": result.anchor_registry_verified,
+                "has_impersonation_risk": has_impersonation_risk,
+                "risk_level": result.overall_risk_level.as_str()
+            },
+            "impersonation_reports": if has_impersonation_risk {
+                Some(serde_json::to_value(&result.impersonation_reports).unwrap_or_default())
+            } else {
+                None
             },
             "metrics": {
                 "trustline_count": result.trustline_count,

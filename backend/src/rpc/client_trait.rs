@@ -5,7 +5,7 @@
 
 use crate::network::NetworkConfig;
 use crate::rpc::stellar::{
-    GetLedgersResult, HealthResponse, HorizonOperation, HorizonTransaction, LedgerInfo, OrderBook,
+    GetLedgersResult, HealthResponse, HorizonOperation, HorizonPath, HorizonTransaction, LedgerInfo, OrderBook,
     Payment, RpcLedger, StellarRpcClient, Trade,
 };
 
@@ -196,6 +196,16 @@ impl StellarRpcClientTrait for StellarRpcClient {
         sponsored: bool,
     ) -> Result<Vec<crate::rpc::stellar::HorizonAsset>, RpcError> {
         StellarRpcClient::fetch_assets(self, limit, sponsored).await
+    }
+
+    /// Fetch paths for a strict-send payment
+    async fn fetch_paths_strict_send(
+        &self,
+        source_asset: &crate::rpc::stellar::Asset,
+        source_amount: &str,
+        destination_asset: &crate::rpc::stellar::Asset,
+    ) -> Result<Vec<crate::rpc::horizon::models::HorizonPath>, RpcError> {
+        StellarRpcClient::fetch_paths_strict_send(self, source_asset, source_amount, destination_asset).await
     }
 }
 

@@ -5,6 +5,7 @@ pub mod alert_manager;
 pub mod alert_service;
 pub mod analytics;
 pub mod anchor_monitor;
+pub mod asset_impersonation_detector;
 pub mod asset_verifier;
 pub mod broadcaster_port;
 pub mod contract;

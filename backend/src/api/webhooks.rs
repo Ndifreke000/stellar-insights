@@ -10,7 +10,8 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::auth_middleware::AuthUser;
-use crate::webhooks::{CreateWebhookRequest, WebhookResponse, WebhookService};
+use crate::webhooks::{CreateWebhookRequest, DeliveryLogResponse, WebhookResponse, WebhookService};
+use axum::extract::Query;
 
 /// POST /webhooks - Register a new webhook
 #[utoipa::path(
@@ -261,11 +262,231 @@ impl IntoResponse for WebhookApiError {
     }
 }
 
+/// GET /webhooks/:id/delivery-logs - Get delivery logs for a webhook
+#[utoipa::path(
+    get,
+    path = "/api/v1/webhooks/{id}/delivery-logs",
+    params(
+        ("id" = String, Path, description = "Webhook ID"),
+        ("limit" = u32, Query, description = "Maximum number of logs to return"),
+        ("offset" = u32, Query, description = "Number of logs to skip")
+    ),
+    responses(
+        (status = 200, description = "Delivery logs retrieved successfully", body = Vec<DeliveryLogResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Webhooks"
+)]
+pub async fn get_delivery_logs(
+    State(db): State<SqlitePool>,
+    auth_user: AuthUser,
+    Path(webhook_id): Path<String>,
+    query: Query<DeliveryLogsQuery>,
+) -> Result<Response, WebhookApiError> {
+    let service = WebhookService::new(db);
+    
+    // Verify webhook ownership
+    let webhook = service
+        .get_webhook(&webhook_id)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?
+        .ok_or_else(|| WebhookApiError::NotFound("Webhook not found".to_string()))?;
+
+    if webhook.user_id != auth_user.user_id {
+        return Err(WebhookApiError::Forbidden);
+    }
+
+    // Get delivery logs
+    let logs = service
+        .get_delivery_logs(&webhook_id, query.limit as usize, query.offset as usize)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
+
+    let response: Vec<DeliveryLogResponse> = logs
+        .into_iter()
+        .map(|l| DeliveryLogResponse {
+            id: l.id,
+            webhook_id: l.webhook_id,
+            event_id: l.event_id,
+            delivery_id: l.delivery_id,
+            status: l.status,
+            http_status: l.http_status,
+            response_body: l.response_body,
+            error_message: l.error_message,
+            signature: l.signature,
+            event_version: l.event_version,
+            timestamp: l.timestamp,
+            created_at: l.created_at,
+        })
+        .collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "delivery_logs": response,
+            "has_more": logs.len() >= query.limit as usize
+        })),
+    )
+        .into_response())
+}
+
+/// Delivery logs query parameters
+#[derive(Debug, serde::Deserialize)]
+pub struct DeliveryLogsQuery {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default = "default_offset")]
+    pub offset: u32,
+}
+
+fn default_limit() -> u32 {
+    50
+}
+
+fn default_offset() -> u32 {
+    0
+}
+
+/// Delivery log response
+#[derive(Debug, Serialize)]
+pub struct DeliveryLogResponse {
+    pub id: String,
+    pub webhook_id: String,
+    pub event_id: Option<String>,
+    pub delivery_id: String,
+    pub status: String,
+    pub http_status: Option<i32>,
+    pub response_body: Option<String>,
+    pub error_message: Option<String>,
+    pub signature: Option<String>,
+    pub event_version: String,
+    pub timestamp: String,
+    pub created_at: String,
+}
+
+/// Enable a webhook that was auto-disabled
+#[utoipa::path(
+    post,
+    path = "/api/v1/webhooks/{id}/enable",
+    params(
+        ("id" = String, Path, description = "Webhook ID")
+    ),
+    responses(
+        (status = 200, description = "Webhook enabled successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Webhooks"
+)]
+pub async fn enable_webhook(
+    State(db): State<SqlitePool>,
+    auth_user: AuthUser,
+    Path(webhook_id): Path<String>,
+) -> Result<Response, WebhookApiError> {
+    let service = WebhookService::new(db);
+    
+    // Verify webhook ownership
+    let webhook = service
+        .get_webhook(&webhook_id)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?
+        .ok_or_else(|| WebhookApiError::NotFound("Webhook not found".to_string()))?;
+
+    if webhook.user_id != auth_user.user_id {
+        return Err(WebhookApiError::Forbidden);
+    }
+
+    // Check if webhook is already active
+    if webhook.is_active {
+        return Err(WebhookApiError::BadRequest(
+            "Webhook is already active".to_string(),
+        ));
+    }
+
+    // Enable the webhook
+    let enabled = service
+        .enable_webhook(&webhook_id, &auth_user.user_id)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
+
+    if !enabled {
+        return Err(WebhookApiError::NotFound("Webhook not found".to_string()));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "message": "Webhook enabled successfully",
+            "webhook_id": webhook_id
+        })),
+    )
+        .into_response())
+}
+
+/// Rotate webhook secrets
+#[utoipa::path(
+    post,
+    path = "/api/v1/webhooks/{id}/rotate-secrets",
+    params(
+        ("id" = String, Path, description = "Webhook ID")
+    ),
+    responses(
+        (status = 200, description = "Secrets rotated successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Webhooks"
+)]
+pub async fn rotate_secrets(
+    State(db): State<SqlitePool>,
+    auth_user: AuthUser,
+    Path(webhook_id): Path<String>,
+) -> Result<Response, WebhookApiError> {
+    let service = WebhookService::new(db);
+    
+    // Verify webhook ownership
+    let webhook = service
+        .get_webhook(&webhook_id)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?
+        .ok_or_else(|| WebhookApiError::NotFound("Webhook not found".to_string()))?;
+
+    if webhook.user_id != auth_user.user_id {
+        return Err(WebhookApiError::Forbidden);
+    }
+
+    // Rotate secrets if needed
+    let rotated = service
+        .rotate_secrets_if_needed(&webhook_id)
+        .await
+        .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "message": if rotated { "Secrets rotated successfully" } else { "No rotation needed" },
+            "webhook_id": webhook_id,
+            "rotated": rotated
+        })),
+    )
+        .into_response())
+}
+
 /// Create webhook routes
 pub fn routes(db: SqlitePool) -> Router {
     Router::new()
         .route("/", post(register_webhook).get(list_webhooks))
         .route("/{id}", get(get_webhook).delete(delete_webhook))
         .route("/{id}/test", post(test_webhook))
+        .route("/{id}/delivery-logs", get(get_delivery_logs))
+        .route("/{id}/enable", post(enable_webhook))
+        .route("/{id}/rotate-secrets", post(rotate_secrets))
         .with_state(db)
 }

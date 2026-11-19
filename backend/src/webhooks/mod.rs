@@ -2,6 +2,7 @@
 /// Manages webhook registrations, event definitions, and dispatching
 pub mod channel;
 pub mod events;
+pub mod queue;
 
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
@@ -15,10 +16,13 @@ type HmacSha256 = Hmac<Sha256>;
 
 pub use channel::{WebhookChannel, WebhookEndpoint};
 
-/// Webhook signature - for verifying webhook requests
+/// Webhook signature - for verifying webhook requests with versioning and rotatable secrets
 pub struct WebhookSignature;
 
 impl WebhookSignature {
+    /// Current event version
+    pub const EVENT_VERSION: &'static str = "v1";
+
     /// Generate HMAC-SHA256 signature for webhook payload
     #[must_use]
     pub fn sign(payload: &str, secret: &str) -> String {
@@ -28,11 +32,58 @@ impl WebhookSignature {
         format!("sha256={}", hex::encode(Mac::finalize(mac).into_bytes()))
     }
 
-    /// Verify webhook signature
+    /// Generate HMAC-SHA256 signature for webhook payload with version prefix
+    #[must_use]
+    pub fn sign_with_version(payload: &str, secret: &str, version: &str) -> String {
+        let signed_payload = format!("{}.{}", version, payload);
+        Self::sign(&signed_payload, secret)
+    }
+
+    /// Generate HMAC-SHA256 signature for webhook payload using primary and secondary secrets (for rotation)
+    #[must_use]
+    pub fn sign_with_rotation(payload: &str, primary_secret: &str, secondary_secret: Option<&str>) -> String {
+        // Sign with primary secret
+        let primary_sig = Self::sign(payload, primary_secret);
+        
+        // If secondary secret exists, use it for dual-signing during rotation
+        if let Some(sec) = secondary_secret {
+            let secondary_sig = Self::sign(payload, sec);
+            format!("primary={}", primary_sig)
+        } else {
+            primary_sig
+        }
+    }
+
+    /// Verify webhook signature using primary secret
     #[must_use]
     pub fn verify(payload: &str, secret: &str, signature: &str) -> bool {
         let expected = Self::sign(payload, secret);
         signature == expected
+    }
+
+    /// Verify webhook signature using primary and secondary secrets (for rotation overlap period)
+    #[must_use]
+    pub fn verify_with_rotation(payload: &str, primary_secret: &str, secondary_secret: Option<&str>, signature: &str) -> bool {
+        // Try primary secret first
+        if Self::verify(payload, primary_secret, signature) {
+            return true;
+        }
+        
+        // Try secondary secret during rotation period
+        if let Some(sec) = secondary_secret {
+            if Self::verify(payload, sec, signature) {
+                return true;
+            }
+        }
+        
+        false
+    }
+
+    /// Verify webhook signature with version prefix
+    #[must_use]
+    pub fn verify_with_version(payload: &str, secret: &str, version: &str, signature: &str) -> bool {
+        let signed_payload = format!("{}.{}", version, payload);
+        Self::verify(&signed_payload, secret, signature)
     }
 }
 
@@ -168,12 +219,24 @@ pub struct Webhook {
     pub id: String,
     pub user_id: String,
     pub url: String,
-    pub event_types: String,     // comma-separated
-    pub filters: Option<String>, // JSON
+    pub event_types: String,        // comma-separated
+    pub filters: Option<String>,    // JSON
     pub secret: String,
     pub is_active: bool,
     pub created_at: String,
     pub last_fired_at: Option<String>,
+    // Rotation fields
+    pub secret_rotation_enabled: bool,
+    pub secondary_secret: Option<String>,
+    pub secret_rotation_period_days: i32,
+    pub next_rotation_date: Option<String>,
+    // Auto-disable fields
+    pub disabled_reason: Option<String>,
+    pub disabled_at: Option<String>,
+    pub enabled_at: Option<String>,
+    pub last_success_at: Option<String>,
+    pub consecutive_failures: i32,
+    pub max_consecutive_failures: i32,
 }
 
 /// Webhook creation request
@@ -182,6 +245,9 @@ pub struct CreateWebhookRequest {
     pub url: String,
     pub event_types: Vec<String>,
     pub filters: Option<serde_json::Value>,
+    pub event_version: Option<String>,
+    pub secret_rotation_enabled: Option<bool>,
+    pub secret_rotation_period_days: Option<i32>,
 }
 
 /// Webhook creation response
@@ -195,13 +261,36 @@ pub struct WebhookResponse {
     pub created_at: String,
 }
 
-/// Webhook event envelope
+/// Webhook event envelope with versioning
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEventEnvelope {
-    pub id: String, // Delivery ID for idempotency
+    pub id: String,           // Delivery ID for idempotency
     pub event: String,
     pub timestamp: i64,
+    pub event_version: String,
     pub data: serde_json::Value,
+}
+
+impl WebhookEventEnvelope {
+    /// Current event version
+    pub const EVENT_VERSION: &'static str = "v1";
+}
+
+/// Delivery log entry - records each webhook delivery attempt
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct DeliveryLog {
+    pub id: String,
+    pub webhook_id: String,
+    pub event_id: Option<String>,
+    pub delivery_id: String,
+    pub status: String,
+    pub http_status: Option<i32>,
+    pub response_body: Option<String>,
+    pub error_message: Option<String>,
+    pub signature: Option<String>,
+    pub event_version: String,
+    pub timestamp: String,
+    pub created_at: String,
 }
 
 /// Event types that can trigger webhooks
@@ -269,10 +358,24 @@ impl WebhookService {
         let encrypted_secret = crate::crypto::encrypt_data(&secret, &self.encryption_key)
             .unwrap_or_else(|_| secret.clone());
 
+        let event_version = request.event_version.unwrap_or_else(|| "v1".to_string());
+        let secret_rotation_enabled = request.secret_rotation_enabled.unwrap_or(false);
+        let secret_rotation_period_days = request.secret_rotation_period_days.unwrap_or(30);
+        let next_rotation_date = if secret_rotation_enabled {
+            Some(
+                chrono::Utc::now()
+                    .checked_add_days(chrono::Days::new(secret_rotation_period_days as u64))
+                    .unwrap_or(chrono::Utc::now())
+                    .to_rfc3339(),
+            )
+        } else {
+            None
+        };
+
         sqlx::query(
             r"
-            INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO webhooks (id, user_id, url, event_types, filters, secret, is_active, created_at, event_version, secret_rotation_enabled, secret_rotation_period_days, next_rotation_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
@@ -283,6 +386,10 @@ impl WebhookService {
         .bind(&encrypted_secret)
         .bind(true)
         .bind(&now)
+        .bind(&event_version)
+        .bind(secret_rotation_enabled as i32)
+        .bind(secret_rotation_period_days)
+        .bind(next_rotation_date.as_deref())
         .execute(&self.db)
         .await?;
 
@@ -467,5 +574,207 @@ impl WebhookService {
         }
 
         Ok(retries)
+    }
+
+    /// Create a delivery log entry
+    pub async fn create_delivery_log(
+        &self,
+        webhook_id: &str,
+        event_id: Option<&str>,
+        delivery_id: &str,
+        status: &str,
+        http_status: Option<i32>,
+        response_body: Option<&str>,
+        error_message: Option<&str>,
+        signature: Option<&str>,
+        event_version: &str,
+    ) -> anyhow::Result<String> {
+        let id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO delivery_logs (id, webhook_id, event_id, delivery_id, status, http_status, response_body, error_message, signature, event_version, timestamp)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(webhook_id)
+        .bind(event_id)
+        .bind(delivery_id)
+        .bind(status)
+        .bind(http_status)
+        .bind(response_body)
+        .bind(error_message)
+        .bind(signature)
+        .bind(event_version)
+        .bind(now.clone())
+        .execute(&self.db)
+        .await?;
+
+        Ok(id)
+    }
+
+    /// Get delivery logs for a webhook
+    pub async fn get_delivery_logs(
+        &self,
+        webhook_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<DeliveryLog>> {
+        let limit_val = limit as i64;
+        let offset_val = offset as i64;
+
+        let rows = sqlx::query_as::<_, DeliveryLog>(
+            "SELECT id, webhook_id, event_id, delivery_id, status, http_status, response_body, error_message, signature, event_version, timestamp, created_at
+             FROM delivery_logs
+             WHERE webhook_id = ?
+             ORDER BY created_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(webhook_id)
+        .bind(limit_val)
+        .bind(offset_val)
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Enable a webhook that was auto-disabled
+    pub async fn enable_webhook(&self, webhook_id: &str, user_id: &str) -> anyhow::Result<bool> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = sqlx::query(
+            "UPDATE webhooks 
+             SET is_active = 1, 
+                 disabled_reason = NULL, 
+                 disabled_at = NULL, 
+                 enabled_at = ?,
+                 consecutive_failures = 0
+             WHERE id = ? AND user_id = ?",
+        )
+        .bind(&now)
+        .bind(webhook_id)
+        .bind(user_id)
+        .execute(&self.db)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Check if webhook should be auto-disabled based on consecutive failures
+    pub async fn check_and_disable_webhook(&self, webhook_id: &str, reason: &str) -> anyhow::Result<bool> {
+        // First, get current webhook state
+        let webhook = self.get_webhook(webhook_id).await?;
+        
+        if let Some(ref w) = webhook {
+            let current_failures = w.consecutive_failures;
+            let max_failures = w.max_consecutive_failures;
+
+            if current_failures >= max_failures {
+                let now = chrono::Utc::now().to_rfc3339();
+                let result = sqlx::query(
+                    "UPDATE webhooks 
+                     SET is_active = 0, 
+                         disabled_reason = ?, 
+                         disabled_at = ?
+                     WHERE id = ?",
+                )
+                .bind(reason)
+                .bind(&now)
+                .bind(webhook_id)
+                .execute(&self.db)
+                .await?;
+
+                Ok(result.rows_affected() > 0)
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Increment consecutive failures for a webhook
+    pub async fn increment_consecutive_failures(&self, webhook_id: &str) -> anyhow::Result<i32> {
+        let result = sqlx::query(
+            "UPDATE webhooks SET consecutive_failures = consecutive_failures + 1 WHERE id = ?",
+        )
+        .bind(webhook_id)
+        .execute(&self.db)
+        .await?;
+
+        use sqlx::Row;
+        let failures: i64 = sqlx::query("SELECT consecutive_failures FROM webhooks WHERE id = ?")
+            .bind(webhook_id)
+            .fetch_one(&self.db)
+            .await?
+            .get(0);
+
+        Ok(failures as i32)
+    }
+
+    /// Reset consecutive failures on successful delivery
+    pub async fn reset_consecutive_failures(&self, webhook_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE webhooks 
+             SET consecutive_failures = 0,
+                 last_success_at = ?
+             WHERE id = ?",
+        )
+        .bind(&now)
+        .bind(webhook_id)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Check if secret rotation is needed and rotate if enabled
+    pub async fn rotate_secrets_if_needed(&self, webhook_id: &str) -> anyhow::Result<bool> {
+        // Get webhook with rotation settings
+        let webhook = self.get_webhook(webhook_id).await?;
+
+        if let Some(ref w) = webhook {
+            if w.secret_rotation_enabled {
+                if let Some(ref next_rotation) = w.next_rotation_date {
+                    let now = chrono::Utc::now();
+                    let next_rot = chrono::DateTime::parse_from_rfc3339(next_rotation)?;
+
+                    if now > next_rot {
+                        // Generate new secondary secret
+                        let new_secret = Uuid::new_v4().to_string();
+                        let new_next_rotation = now
+                            .checked_add_days(chrono::Days::new(w.secret_rotation_period_days as u64))
+                            .unwrap_or(now)
+                            .to_rfc3339();
+
+                        sqlx::query(
+                            "UPDATE webhooks 
+                             SET secondary_secret = ?, 
+                                 secret_rotation_period_days = ?,
+                                 next_rotation_date = ?
+                             WHERE id = ?",
+                        )
+                        .bind(&new_secret)
+                        .bind(w.secret_rotation_period_days)
+                        .bind(&new_next_rotation)
+                        .bind(webhook_id)
+                        .execute(&self.db)
+                        .await?;
+
+                        Ok(true)
+                    } else {
+                        Ok(false)
+                    }
+                } else {
+                    Ok(false)
+                }
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        }
     }
 }

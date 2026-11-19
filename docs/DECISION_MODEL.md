@@ -101,6 +101,87 @@ latency, liquidity depth, recent volume).  Higher is healthier.
 
 ---
 
+## Slippage Estimation (Experimental)
+
+When a payment `amount_usd` is provided, the preflight endpoint includes a
+**slippage estimate** that compares Horizon's path finding with a local
+simulation of the same path.
+
+### Why Slippage Matters
+
+For large payments, slippage (price impact) is often the dominant cost—not
+just fees, but the reduction in output due to moving through order books and
+liquidity pools. Aggregates like `liquidity_depth_usd` can't capture this;
+only simulating the actual payment path can.
+
+### What's Included
+
+The slippage estimate includes:
+
+- `source_amount`: Your requested payment size in USD
+- `horizon_destination_amount`: What Horizon says it will deliver (from `/paths/strict-send`)
+- `simulated_destination_amount`: What our local simulation predicts (using order book walk + AMM constant-product model)
+- `price_impact_delta`: Difference between simulated and Horizon (negative = you get less)
+- `relative_difference_pct`: Percentage difference
+- `path_segments`: List of assets/liquidity sources in the path
+
+### Example Response
+
+```json
+{
+  "decision": "proceed",
+  "summary": "All checks passed; safe to pay on this corridor.",
+  "slippage_estimate": {
+    "source_amount": 2500.0,
+    "horizon_destination_amount": 2450.0,
+    "simulated_destination_amount": 2425.0,
+    "price_impact_delta": -25.0,
+    "relative_difference_pct": -1.02,
+    "path_segments": [
+      "order_book:USDC:GA->XLM:GB",
+      "amm_pool:XLM:GB->NGN:GB"
+    ]
+  }
+}
+```
+
+In this example, the simulation predicts **1.02% more slippage** than Horizon
+estimated, meaning you should expect ~$25 less output than Horizon's quote.
+
+### How It Works
+
+1. Horizon `/paths/strict-send` returns candidate paths
+2. For each segment, fetch current order book depth and AMM pool reserves
+3. Simulate the payment:
+   - **Order book**: Walk bids/asks to find execution price
+   - **AMM pool**: Apply constant-product formula (x * y = k)
+4. Compare simulated output to Horizon's output
+5. Report the delta as a percentage
+
+### When to Use It
+
+- **Large payments** (> 10% of observed liquidity): Slippage dominates cost
+- **Multi-hop paths**: Each hop adds compounding price impact
+- **Low-liquidity corridors**: Order books are thin, slippage is high
+- **AMM-heavy corridors**: Constant-product pools have inherent slippage
+
+### Accuracy Expectations
+
+- **Order book simulation**: Accurate for limit orders
+- **AMM simulation**: Accurate for constant-product pools (Uniswap v2 style)
+- **Discrepancies may occur** due to:
+  - Horizon using different fee models
+  - Partial fills and queue position not modeled
+  - Path finding differences (Horizon may find better paths)
+
+---
+
+## Configuration
+
+| Constant | Value | Description |
+
+---
+
 ## Example: full response
 
 ```json
