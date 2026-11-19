@@ -7,6 +7,7 @@ use tokio::time::{interval, Duration as TokioDuration};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::cache_invalidation::CacheInvalidationService;
 use crate::database::Database;
 use crate::models::corridor::{CorridorMetrics, HourlyCorridorMetrics, VolumeTrend};
 use crate::services::analytics::{compute_metrics_from_payments, filter_merged_accounts};
@@ -34,12 +35,45 @@ impl Default for AggregationConfig {
 pub struct AggregationService {
     db: Arc<Database>,
     config: AggregationConfig,
+    /// Evict corridor and metrics caches immediately after each aggregation
+    /// run so API readers see fresh data without waiting for TTL expiry (#2790).
+    cache_invalidation: Option<Arc<CacheInvalidationService>>,
 }
 
 impl AggregationService {
     #[must_use]
-    pub const fn new(db: Arc<Database>, config: AggregationConfig) -> Self {
-        Self { db, config }
+    pub fn new(db: Arc<Database>, config: AggregationConfig) -> Self {
+        Self {
+            db,
+            config,
+            cache_invalidation: None,
+        }
+    }
+
+    /// Attach a [`CacheInvalidationService`] so each completed aggregation
+    /// run evicts stale corridor/metrics cache keys immediately (#2790).
+    #[must_use]
+    pub fn with_cache_invalidation(mut self, svc: Arc<CacheInvalidationService>) -> Self {
+        self.cache_invalidation = Some(svc);
+        self
+    }
+
+    /// Invalidate corridor and metrics caches after a successful aggregation
+    /// run. Logs but does not propagate errors — a cache miss is preferable
+    /// to masking an aggregation failure (#2790).
+    async fn invalidate_after_aggregation(&self) {
+        let Some(ref svc) = self.cache_invalidation else {
+            return;
+        };
+        if let Err(e) = svc.invalidate_corridors().await {
+            warn!("Cache invalidation (corridors) failed after aggregation: {e}");
+        }
+        if let Err(e) = svc.invalidate_dashboard().await {
+            warn!("Cache invalidation (dashboard) failed after aggregation: {e}");
+        }
+        if let Err(e) = svc.invalidate_metrics().await {
+            warn!("Cache invalidation (metrics) failed after aggregation: {e}");
+        }
     }
 
     /// Start the hourly aggregation job scheduler
@@ -115,6 +149,9 @@ impl AggregationService {
                     metrics_count
                 );
                 self.update_job_status(&job_id, "completed", None).await?;
+                // Evict stale cache entries so API consumers see fresh aggregated
+                // data immediately rather than waiting for TTL expiry (#2790).
+                self.invalidate_after_aggregation().await;
                 Ok(())
             }
             Err(e) => {

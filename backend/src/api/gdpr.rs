@@ -41,6 +41,7 @@ pub fn routes(pool: SqlitePool) -> Router {
         )
         .route("/deletion/{id}", get(get_deletion_request))
         .route("/deletion/{id}/cancel", post(cancel_deletion_request))
+        .route("/deletion/{id}/erasure", get(get_erasure_status))
         .route("/deletion/confirm", post(confirm_deletion))
         .with_state(pool)
 }
@@ -742,4 +743,42 @@ async fn confirm_deletion(
         confirmation_required: false,
         confirmation_token: row.confirmation_token,
     }))
+}
+
+/// GET /api/gdpr/deletion/:id/erasure
+///
+/// Returns the erasure job for a deletion request: per-store step outcomes
+/// and, once finished, the erasure certificate listing everything deleted.
+async fn get_erasure_status(
+    State(pool): State<SqlitePool>,
+    auth_user: AuthUser,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    // Ownership check: the request must belong to the caller.
+    let owner: Option<String> = sqlx::query_scalar(
+        "SELECT user_id FROM data_deletion_requests WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ApiError::from)?;
+
+    match owner {
+        Some(u) if u == auth_user.user_id => {}
+        _ => {
+            return Err(ApiError::not_found(
+                "DELETION_REQUEST_NOT_FOUND",
+                "Deletion request not found",
+            ))
+        }
+    }
+
+    let service = crate::services::erasure::ErasureService::new(pool);
+    match service.latest_job(&id).await.map_err(ApiError::from)? {
+        Some(job) => Ok(Json(job)),
+        None => Err(ApiError::not_found(
+            "ERASURE_NOT_STARTED",
+            "Erasure has not run for this request yet",
+        )),
+    }
 }

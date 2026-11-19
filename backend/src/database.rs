@@ -1633,11 +1633,19 @@ impl Database {
     }
 
     /// Validates an API key using the plaintext key.
+    ///
+    /// Pass `required_scope` to enforce scope checking; `None` skips scope
+    /// validation (for backward compatibility with call sites that do their own
+    /// scope check separately).
     #[tracing::instrument(skip(self, plain_key))]
-    pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
+    pub async fn validate_api_key(
+        &self,
+        plain_key: &str,
+        required_scope: Option<&str>,
+    ) -> Result<Option<ApiKey>> {
         self.execute_with_timing("validate_api_key", async {
             crate::db::api_keys::ApiKeyDb::new(self.pool.clone())
-                .validate_api_key(plain_key)
+                .validate_api_key(plain_key, required_scope)
                 .await
         })
         .await

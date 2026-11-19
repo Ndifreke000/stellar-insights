@@ -84,7 +84,6 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
     };
 
     // OTel layer must be registered on `registry()` first so `LookupSpan` bounds are satisfied.
-    let stdout = std::io::stdout;
 
     if otel_enabled {
         let otel_tracer = init_otel_tracer(service_name)?;
@@ -100,7 +99,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -108,7 +107,10 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(w)
+                    .with_writer({
+                        let w = w.clone();
+                        move || redacting(w.clone())
+                    })
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -119,7 +121,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -127,12 +129,15 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             }
             (false, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(w)
+                    .with_writer({
+                        let w = w.clone();
+                        move || redacting(w.clone())
+                    })
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -140,7 +145,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             }
             (false, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -156,7 +161,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -164,7 +169,10 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(w)
+                    .with_writer({
+                        let w = w.clone();
+                        move || redacting(w.clone())
+                    })
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -175,7 +183,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
                     .json()
                     // Top-level event fields (request_id, http_status, …) for Filebeat/Logstash.
                     .flatten_event(true)
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -183,12 +191,15 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             }
             (false, Some(w)) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
                 let file_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(w)
+                    .with_writer({
+                        let w = w.clone();
+                        move || redacting(w.clone())
+                    })
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -196,7 +207,7 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
             }
             (false, None) => {
                 let stdout_layer = tracing_subscriber::fmt::layer()
-                    .with_writer(stdout)
+                    .with_writer(|| redacting(std::io::stdout()))
                     .with_target(true)
                     .with_level(true)
                     .boxed();
@@ -211,6 +222,50 @@ pub fn init_tracing(service_name: &str) -> Result<Option<WorkerGuard>> {
 pub fn shutdown_tracing() {
     if let Some(provider) = OTEL_PROVIDER.get() {
         let _ = provider.shutdown();
+    }
+}
+
+/// Wraps any `io::Write` sink so every completed log line passes through
+/// [`crate::logging::redaction::redact_pii_line`] before being written.
+/// This is the emission-time PII safety net for GDPR erasure: emails,
+/// Stellar secret keys, JWTs, and sensitive key/value pairs never reach
+/// stdout or the log files, regardless of which code path logged them.
+pub struct RedactingWriter<W> {
+    inner: W,
+    buf: Vec<u8>,
+}
+
+/// Build a redacting writer factory for `fmt::layer().with_writer(...)`.
+///
+/// Pass the result of a call like `redacting(std::io::stdout())` or
+/// `redacting(nonblocking_appender)`; each event gets a fresh writer.
+pub fn redacting<W: std::io::Write>(inner: W) -> RedactingWriter<W> {
+    RedactingWriter {
+        inner,
+        buf: Vec::with_capacity(4096),
+    }
+}
+
+impl<W: std::io::Write> std::io::Write for RedactingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buf.extend_from_slice(buf);
+        while let Some(pos) = self.buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = self.buf.drain(..=pos).collect();
+            let text = String::from_utf8_lossy(&line);
+            self.inner
+                .write_all(crate::logging::redaction::redact_pii_line(&text).as_bytes())?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if !self.buf.is_empty() {
+            let rem = std::mem::take(&mut self.buf);
+            let text = String::from_utf8_lossy(&rem);
+            self.inner
+                .write_all(crate::logging::redaction::redact_pii_line(&text).as_bytes())?;
+        }
+        self.inner.flush()
     }
 }
 

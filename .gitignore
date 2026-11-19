@@ -122,3 +122,6 @@ CHANGES_SUMMARY.md
 # Plugin MCP server bundle: built by `npm run build:plugin` in sdk/mcp-server
 # and published to the plugin-dist branch by .github/workflows/plugin.yml.
 plugins/payraider/server/server.mjs
+
+# Local change summary (not for commit)
+CHANGES_2800_2802.md

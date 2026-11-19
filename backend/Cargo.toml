@@ -46,6 +46,10 @@ gdpr = []
 # NEXT_PUBLIC_ENABLE_NON_PRODUCT_FEATURES flag.
 quests = []
 governance = []
+# AWS KMS transaction signer (services::transaction_signer::AwsKmsSigner).
+# Off by default because aws-sdk-kms/aws-config add a large dependency
+# tree; the gcp-kms and local signer backends need no extra crates.
+aws-kms = ["dep:aws-sdk-kms", "dep:aws-config"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

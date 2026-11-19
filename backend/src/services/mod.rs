@@ -11,6 +11,8 @@ pub mod broadcaster_port;
 pub mod contract;
 pub mod contract_listener;
 pub mod corridor_performance_monitor;
+pub mod envelope_policy;
+pub mod erasure;
 pub mod data_port;
 pub mod event_indexer;
 pub mod fee_bump_tracker;
@@ -27,6 +29,9 @@ pub mod realtime_broadcaster;
 pub mod request_signing;
 pub mod route_stats;
 pub mod service_container;
+pub mod signature_audit;
+pub mod transaction_signer;
+pub mod user_keys;
 /// Optional Slack notification bot. Excluded from the default build to keep
 /// the default binary smaller and its attack surface reduced; enable with
 /// `--features slack-bot`.
