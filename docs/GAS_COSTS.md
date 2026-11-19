@@ -91,6 +91,43 @@ present, the check is skipped until the first push to `main` writes one.
 <!-- GAS_BASELINE_START -->
 | Entrypoint | CPU instructions | Memory bytes | Entries read | Entries written | Bytes read | Bytes written | Max regression |
 |---|---:|---:|---:|---:|---:|---:|---:|
+| `payraider::accept_admin` | 464233 | 166275 | 6 | 4 | 0 | 1180 | 5% |
+| `payraider::add_submitter` | 269609 | 109123 | 4 | 2 | 0 | 1076 | 5% |
+| `payraider::bump_ttl` | 197112 | 97286 | 4 | 0 | 0 | 0 | 5% |
+| `payraider::cancel_admin_transfer` | 271316 | 109271 | 4 | 2 | 0 | 1036 | 5% |
+| `payraider::cancel_upgrade` | 291260 | 116566 | 4 | 2 | 0 | 1076 | 5% |
+| `payraider::execute_upgrade` | 308475 | 131104 | 6 | 1 | 0 | 0 | 5% |
+| `payraider::get_admin` | 100178 | 58844 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_contract_info` | 127628 | 60964 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_governance` | 100952 | 58950 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_latest_epoch` | 102060 | 58951 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_metadata` | 73848 | 56199 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_pending_admin` | 100748 | 58952 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_pending_upgrade` | 100748 | 58954 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_role_holders` | 103406 | 58951 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_snapshot` | 119272 | 75885 | 2 | 0 | 0 | 0 | 5% |
+| `payraider::get_storage_version` | 102060 | 58954 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_submitters` | 100952 | 58950 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_upgrade_delay` | 100014 | 58952 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::get_version` | 99968 | 58844 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::grant_role` | 367196 | 143188 | 5 | 3 | 0 | 1220 | 5% |
+| `payraider::has_role` | 94540 | 66078 | 2 | 0 | 0 | 0 | 5% |
+| `payraider::initialize` | 109337 | 42800 | 3 | 2 | 0 | 572 | 5% |
+| `payraider::is_paused` | 97762 | 58844 | 1 | 0 | 0 | 0 | 5% |
+| `payraider::latest_snapshot` | 139204 | 78189 | 2 | 0 | 0 | 0 | 5% |
+| `payraider::migrate` | 312566 | 119709 | 5 | 2 | 0 | 1036 | 5% |
+| `payraider::pause` | 303605 | 120509 | 5 | 2 | 0 | 1036 | 5% |
+| `payraider::propose_admin` | 265579 | 110881 | 4 | 2 | 0 | 1108 | 5% |
+| `payraider::remove_submitter` | 267409 | 109531 | 4 | 2 | 0 | 1036 | 5% |
+| `payraider::revoke_role` | 320152 | 122250 | 5 | 3 | 0 | 1036 | 5% |
+| `payraider::rotate_submitter` | 416271 | 158046 | 7 | 3 | 0 | 1148 | 5% |
+| `payraider::schedule_upgrade` | 330124 | 134480 | 5 | 2 | 0 | 1300 | 5% |
+| `payraider::set_admin_by_governance` | 430008 | 157973 | 6 | 4 | 0 | 1180 | 5% |
+| `payraider::set_governance` | 257115 | 107473 | 4 | 2 | 0 | 1036 | 5% |
+| `payraider::set_paused_by_governance` | 272749 | 115137 | 4 | 2 | 0 | 1036 | 5% |
+| `payraider::set_upgrade_delay` | 269792 | 110325 | 4 | 2 | 0 | 1076 | 5% |
+| `payraider::submit_snapshot` | 429881 | 154989 | 5 | 3 | 0 | 1412 | 5% |
+| `payraider::unpause` | 306686 | 120781 | 5 | 2 | 0 | 1036 | 5% |
 <!-- GAS_BASELINE_END -->
 
 ## Regression policy
