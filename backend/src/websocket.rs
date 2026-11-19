@@ -604,15 +604,33 @@ impl WsState {
             }
         }
 
+        // Deliver to each subscriber. `try_send` never blocks the broadcast
+        // loop. When the per-connection queue is full we disconnect the slow
+        // consumer rather than dropping messages silently: the connection task
+        // will see the channel closed and clean up (#2792).
+        let mut slow_consumers = Vec::new();
         for connection_id in target_connections {
             if let Some(sender) = self.connections.get(&connection_id) {
-                if sender.try_send(sequenced.clone()).is_err() {
-                    warn!(
-                        "Outgoing queue full for connection {}, dropping message",
-                        connection_id
-                    );
+                match sender.try_send(sequenced.clone()) {
+                    Ok(()) => {}
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                        warn!(
+                            "Slow consumer: outgoing queue full for connection {}, disconnecting",
+                            connection_id
+                        );
+                        slow_consumers.push(connection_id);
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        // Connection is already gone; clean up below.
+                        slow_consumers.push(connection_id);
+                    }
                 }
             }
+        }
+        // Drop slow/closed connections outside the iteration so we don't hold
+        // any DashMap read references while mutating the same map.
+        for connection_id in slow_consumers {
+            self.cleanup_connection(connection_id);
         }
     }
 
@@ -874,6 +892,12 @@ pub enum WsMessage {
         message: String,
     },
     ServerShutdown {
+        message: String,
+    },
+    /// Sent to a slow consumer before the server disconnects it. Clients that
+    /// reconnect and supply `last_seq` per channel will catch up via replay
+    /// (#2792).
+    SlowConsumerDisconnected {
         message: String,
     },
     /// Broadcast when the server switches to a different Stellar network.

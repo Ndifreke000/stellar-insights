@@ -89,8 +89,15 @@ impl RequestSigningService {
         }
     }
 
-    /// Verify request signature
-    /// Returns Ok(true) if valid, Ok(false) if invalid signature, Err on processing errors
+    /// Verify request signature with strict clock-skew enforcement and
+    /// cross-instance nonce replay protection (#2799).
+    ///
+    /// - Returns `Ok(true)` when the signature is valid, the timestamp is
+    ///   within the clock-skew window, and the nonce has not been seen before.
+    /// - Returns `Ok(false)` when the signature itself is invalid.
+    /// - Returns `Err` when the timestamp is stale/ahead or the nonce was
+    ///   already used (replay detected), so callers can distinguish between a
+    ///   bad signature and a replay attempt.
     pub async fn verify_signature(
         &self,
         method: &str,
@@ -102,30 +109,46 @@ impl RequestSigningService {
         signature: &str,
         signing_secret: &str,
         clock_skew_secs: i64,
+        client_id: &str,
     ) -> Result<bool> {
-        // Check timestamp freshness
+        // Enforce timestamp window before anything else. Requests outside the
+        // window are rejected regardless of signature validity so that an
+        // attacker who captures a valid signed request cannot replay it once
+        // the window has passed (#2799).
         let now = Utc::now().timestamp();
-        if (now - timestamp).abs() > clock_skew_secs {
-            return Ok(false); // Timestamp outside acceptable window
+        let skew = (now - timestamp).abs();
+        if skew > clock_skew_secs {
+            return Err(anyhow!(
+                "Request timestamp is outside the acceptable clock-skew window \
+                 (skew={skew}s, max={clock_skew_secs}s)"
+            ));
         }
 
-        // Check for nonce replay
-        if self.check_nonce(nonce, "").await.unwrap_or(false) {
-            return Ok(false); // Nonce already used
+        // Reject nonce reuse before computing the signature so attackers get
+        // no information about signature validity from a replayed request.
+        if self.check_nonce(nonce, client_id).await.unwrap_or(false) {
+            return Err(anyhow!("Nonce has already been used (replay detected)"));
         }
 
-        // Compute expected signature
+        // Compute expected signature.
         let body_hash = Self::body_hash(body);
         let canonical =
             Self::canonical_request(method, path, &query_params, &body_hash, timestamp, nonce);
         let expected_signature = Self::compute_signature(&canonical, signing_secret);
 
-        // Compare signatures (constant-time comparison)
+        // Constant-time comparison to avoid timing-oracle attacks.
         let valid = signature == expected_signature;
 
         if valid {
-            // Record nonce usage
-            let _ = self.record_nonce(nonce, "", clock_skew_secs as usize).await;
+            // Record the nonce with a TTL equal to the full clock-skew window
+            // (2× the allowed skew) so a captured request cannot be replayed
+            // even if the attacker waits until it's nearly expired (#2799).
+            let ttl = clock_skew_secs.unsigned_abs() as usize * 2;
+            if let Err(e) = self.record_nonce(nonce, client_id, ttl).await {
+                // A failure to record the nonce is treated as a hard error:
+                // accepting the request without recording would allow replay.
+                return Err(anyhow!("Failed to record nonce, rejecting request: {e}"));
+            }
         }
 
         Ok(valid)
