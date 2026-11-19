@@ -59,6 +59,14 @@ pub struct VerificationRequest {
     /// UTF-8 bytes of `transaction`. Proves the caller holds that account.
     #[serde(default)]
     pub signature: Option<String>,
+    /// Additional co-signer signatures for multisig accounts (#2797).
+    /// Each entry is a base64-encoded Ed25519 signature over `transaction`.
+    #[serde(default)]
+    pub extra_signatures: Option<Vec<String>>,
+    /// Wallet provider signature proving ownership of the `client_domain`
+    /// value embedded in the challenge (#2797).
+    #[serde(default)]
+    pub client_domain_signature: Option<String>,
 }
 
 /// SEP-10 Verification Response
@@ -176,6 +184,11 @@ impl Sep10Service {
     /// The caller must sign the challenge with the account's Ed25519 key
     /// (#2326). Before this check existed, returning the challenge unsigned
     /// produced a session for any account the caller chose to name.
+    ///
+    /// For multisig accounts the `extra_signatures` field may carry additional
+    /// base64 signatures so that the combined weight meets the account's low
+    /// threshold (#2797).  `client_domain_signature` verifies wallet
+    /// attribution when `client_domain` is present in the challenge (#2797).
     pub async fn verify_challenge(
         &self,
         request: VerificationRequest,
@@ -206,11 +219,78 @@ impl Sep10Service {
             .ok_or_else(|| anyhow!("Missing client account"))?
             .to_string();
 
-        verify_account_signature(
-            &client_account,
-            request.transaction.as_bytes(),
-            request.signature.as_deref(),
-        )?;
+        // ── Multisig threshold check (#2797) ──────────────────────────────────
+        // The challenge may carry an `account_signers` object that lists known
+        // co-signers and their weights, plus the account's `low_threshold`.
+        // When present, we require that the submitted signatures collectively
+        // reach at least that threshold, rather than demanding a single primary
+        // key signature.  When absent (the common single-signer case) we fall
+        // back to the existing single-signature path.
+        let maybe_signers = challenge.get("account_signers");
+        let low_threshold = challenge["low_threshold"].as_u64().unwrap_or(0);
+
+        if let Some(signers_val) = maybe_signers {
+            // Multisig path: iterate over submitted signatures and accumulate weight.
+            let signers = signers_val
+                .as_object()
+                .ok_or_else(|| anyhow!("account_signers must be a JSON object"))?;
+
+            // Primary signature counts for the master key's weight.
+            let mut accumulated_weight: u64 = 0;
+            if let Some(sig) = request.signature.as_deref() {
+                // Try each known signer; the one whose key verifies is the signer.
+                for (signer_key, weight_val) in signers {
+                    if verify_account_signature(signer_key, request.transaction.as_bytes(), Some(sig)).is_ok() {
+                        accumulated_weight +=
+                            weight_val.as_u64().unwrap_or(1);
+                        break;
+                    }
+                }
+            }
+            // Extra co-signer signatures.
+            if let Some(extra) = request.extra_signatures.as_ref() {
+                for extra_sig in extra {
+                    for (signer_key, weight_val) in signers {
+                        if verify_account_signature(signer_key, request.transaction.as_bytes(), Some(extra_sig)).is_ok() {
+                            accumulated_weight +=
+                                weight_val.as_u64().unwrap_or(1);
+                            break;
+                        }
+                    }
+                }
+            }
+            if accumulated_weight < low_threshold.max(1) {
+                return Err(anyhow!(
+                    "Multisig threshold not met: accumulated weight {accumulated_weight} \
+                     is below low_threshold {low_threshold}"
+                ));
+            }
+        } else {
+            // Single-signer path (original behaviour).
+            verify_account_signature(
+                &client_account,
+                request.transaction.as_bytes(),
+                request.signature.as_deref(),
+            )?;
+        }
+
+        // ── client_domain verification (#2797) ───────────────────────────────
+        // When the challenge includes a `client_domain`, the SEP-10 spec
+        // requires a second signature from the wallet provider's signing key,
+        // proving the client_domain value was chosen by the wallet, not forged
+        // by the user.  We fetch the domain's stellar.toml to get its
+        // SIGNING_KEY and verify the supplied `client_domain_signature`.
+        let client_domain = challenge["client_domain"]
+            .as_str()
+            .map(std::string::ToString::to_string);
+        if let Some(ref domain) = client_domain {
+            let cd_sig = request.client_domain_signature.as_deref().ok_or_else(|| {
+                anyhow!("client_domain_signature required when client_domain is present")
+            })?;
+            let signing_key = fetch_client_domain_signing_key(domain).await?;
+            verify_account_signature(&signing_key, request.transaction.as_bytes(), Some(cd_sig))
+                .map_err(|_| anyhow!("client_domain signature verification failed"))?;
+        }
 
         // Validate expiration
         let expires_at = challenge["expires_at"]
@@ -233,9 +313,6 @@ impl Sep10Service {
         let token = self.generate_session_token(&client_account)?;
 
         // Store session
-        let client_domain = challenge["client_domain"]
-            .as_str()
-            .map(std::string::ToString::to_string);
         let session = Sep10Session {
             account: client_account,
             client_domain,
@@ -364,6 +441,48 @@ impl Sep10Service {
         }
         Err(anyhow!("Session not found"))
     }
+}
+
+/// Fetch the SIGNING_KEY from a wallet provider's stellar.toml for
+/// client_domain verification (#2797).
+///
+/// Performs a capped HTTP GET to `https://<domain>/.well-known/stellar.toml`
+/// and extracts the `SIGNING_KEY` field.  Returns an error if the domain is
+/// unreachable, the file is malformed, or no SIGNING_KEY is present.
+async fn fetch_client_domain_signing_key(domain: &str) -> Result<String> {
+    let url = format!("https://{}/.well-known/stellar.toml", domain);
+    let body = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        async {
+            let resp = reqwest::get(&url)
+                .await
+                .map_err(|e| anyhow!("Failed to fetch stellar.toml for {domain}: {e}"))?;
+            if !resp.status().is_success() {
+                return Err(anyhow!(
+                    "stellar.toml fetch returned {} for {domain}",
+                    resp.status()
+                ));
+            }
+            resp.text()
+                .await
+                .map_err(|e| anyhow!("Failed to read stellar.toml body for {domain}: {e}"))
+        },
+    )
+    .await
+    .map_err(|_| anyhow!("Timeout fetching stellar.toml for {domain}"))??;
+
+    // Simple line-by-line TOML parse for SIGNING_KEY = "G..."
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("SIGNING_KEY") {
+            let rest = rest.trim_start_matches([' ', '=']).trim();
+            let key = rest.trim_matches('"');
+            if key.starts_with('G') && key.len() == 56 {
+                return Ok(key.to_string());
+            }
+        }
+    }
+    Err(anyhow!("No valid SIGNING_KEY found in stellar.toml for {domain}"))
 }
 
 /// Check that `signature` (base64) is the Ed25519 signature of `message` by

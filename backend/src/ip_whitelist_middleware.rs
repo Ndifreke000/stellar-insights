@@ -95,42 +95,22 @@ impl IpWhitelistConfig {
 
 /// Extract client IP address from request
 fn extract_client_ip(req: &Request, config: &IpWhitelistConfig) -> Result<IpAddr, String> {
-    // If behind proxy and trust_proxy is enabled, check X-Forwarded-For
-    if config.trust_proxy {
-        if let Some(forwarded_for) = req.headers().get("x-forwarded-for") {
-            if let Ok(forwarded_str) = forwarded_for.to_str() {
-                // X-Forwarded-For format: client, proxy1, proxy2
-                // We want the leftmost (original client) IP
-                let ips: Vec<&str> = forwarded_str
-                    .split(',')
-                    .take(config.max_forwarded_ips)
-                    .map(str::trim)
-                    .collect();
+    // Delegate to the shared client_ip module so the admin whitelist and the
+    // rest of the application use the same trusted-proxy-chain logic (#2801).
+    // The module reads TRUST_PROXY_HEADERS and TRUSTED_PROXY_HOPS from env,
+    // taking the Nth address from the right of X-Forwarded-For rather than
+    // blindly trusting the leftmost (client-supplied) entry.
+    //
+    // IpWhitelistConfig.trust_proxy and max_forwarded_ips are kept for
+    // backward compatibility with any callers that build the config directly,
+    // but the actual extraction now goes through the canonical helper.
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0);
 
-                if let Some(first_ip) = ips.first() {
-                    if let Ok(ip) = IpAddr::from_str(first_ip) {
-                        return Ok(ip);
-                    }
-                }
-            }
-        }
-
-        // Also check X-Real-IP header (common with nginx)
-        if let Some(real_ip) = req.headers().get("x-real-ip") {
-            if let Ok(real_ip_str) = real_ip.to_str() {
-                if let Ok(ip) = IpAddr::from_str(real_ip_str.trim()) {
-                    return Ok(ip);
-                }
-            }
-        }
-    }
-
-    // Fall back to direct connection IP
-    if let Some(connect_info) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
-        return Ok(connect_info.0.ip());
-    }
-
-    Err("Unable to determine client IP address".to_string())
+    crate::client_ip::client_ip(req.headers(), peer)
+        .ok_or_else(|| "Unable to determine client IP address".to_string())
 }
 
 /// IP whitelist middleware for admin endpoints
