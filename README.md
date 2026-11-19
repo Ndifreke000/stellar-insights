@@ -81,6 +81,17 @@ localhost, and a client cannot pick the domain that is validated. The backend
 ignores any client-supplied home domain and always uses its configured value
 (`SEP10_HOME_DOMAIN`).
 
+## GDPR erasure
+
+Confirmed account-deletion requests are executed asynchronously once their
+scheduled date passes (see `docs/GDPR_DATA_INVENTORY.md` for the full
+field → store → retention inventory). Erasure covers the primary database,
+Redis keys, notification stores, and per-user data keys: session IP/user-agent
+fields are encrypted under a per-user DEK, so destroying that key
+crypto-shreds the user's data out of every backup snapshot. Each run writes
+per-store steps and an erasure certificate, retrievable at
+`GET /api/gdpr/deletion/{id}/erasure` (requires the `gdpr` feature).
+
 ## Database
 
 **SQLite only.** This is a compile-time property, not a configuration one:

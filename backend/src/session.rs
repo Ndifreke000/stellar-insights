@@ -32,13 +32,22 @@ pub struct SessionInfo {
     pub is_current: bool,
 }
 
+use crate::services::user_keys::UserKeyService;
+
 pub struct SessionService {
     pool: SqlitePool,
+    user_keys: UserKeyService,
 }
 
 impl SessionService {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let user_keys = UserKeyService::from_env(pool.clone());
+        Self { pool, user_keys }
+    }
+
+    #[cfg(test)]
+    pub fn with_user_keys(pool: SqlitePool, user_keys: UserKeyService) -> Self {
+        Self { pool, user_keys }
     }
 
     /// Create a new session with device tracking
@@ -60,6 +69,14 @@ impl SessionService {
             .checked_add_signed(Duration::seconds(max_lifetime))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?;
 
+        // PII fields are encrypted under the user's DEK so that backup
+        // snapshots only ever contain ciphertext (crypto-shredding).
+        let stored_ua = match &device_user_agent {
+            Some(ua) => Some(self.user_keys.encrypt_field(user_id, ua).await?),
+            None => None,
+        };
+        let stored_ip = self.user_keys.encrypt_field(user_id, ip_address).await?;
+
         sqlx::query(
             r"
             INSERT INTO sessions (
@@ -73,8 +90,8 @@ impl SessionService {
         .bind(&session_id)
         .bind(user_id)
         .bind(refresh_token_jti)
-        .bind(&device_user_agent)
-        .bind(ip_address)
+        .bind(&stored_ua)
+        .bind(&stored_ip)
         .bind(now)
         .bind(now)
         .bind(expires_at)
@@ -162,12 +179,16 @@ impl SessionService {
                 return Ok(None);
             }
 
+            let ip_address = self.user_keys.decrypt_field(&user_id, &ip).await?;
+            let device_user_agent =
+                self.user_keys.decrypt_opt(&user_id, device).await?;
+
             return Ok(Some(Session {
                 id,
                 user_id,
                 refresh_token_jti: jti,
-                device_user_agent: device,
-                ip_address: ip,
+                device_user_agent,
+                ip_address,
                 created_at: created,
                 last_activity_at: last_activity,
                 expires_at: expires,
@@ -248,7 +269,36 @@ impl SessionService {
             )
             .collect();
 
-        Ok(result)
+        // Decrypt PII fields for display. Done after the query so a single
+        // bad row cannot fail the whole listing.
+        let mut out = Vec::with_capacity(result.len());
+        for info in result {
+            let ip_address = self
+                .user_keys
+                .decrypt_field(user_id, &info.ip_address)
+                .await
+                .unwrap_or_else(|_| info.ip_address.clone());
+            let device_user_agent = match &info.device_user_agent {
+                Some(ua) => self
+                    .user_keys
+                    .decrypt_field(user_id, ua)
+                    .await
+                    .ok()
+                    .or_else(|| info.device_user_agent.clone()),
+                None => None,
+            };
+            out.push(SessionInfo {
+                id: info.id,
+                device_user_agent,
+                ip_address,
+                created_at: info.created_at,
+                last_activity_at: info.last_activity_at,
+                expires_at: info.expires_at,
+                is_current: info.is_current,
+            });
+        }
+
+        Ok(out)
     }
 
     /// Revoke all sessions except the current one
@@ -328,12 +378,15 @@ impl SessionService {
             revoked,
         )) = session
         {
+            let ip_address = self.user_keys.decrypt_field(&user_id, &ip).await?;
+            let device_user_agent = self.user_keys.decrypt_opt(&user_id, device).await?;
+
             return Ok(Some(Session {
                 id,
                 user_id,
                 refresh_token_jti: jti,
-                device_user_agent: device,
-                ip_address: ip,
+                device_user_agent,
+                ip_address,
                 created_at: created,
                 last_activity_at: last_activity,
                 expires_at: expires,
