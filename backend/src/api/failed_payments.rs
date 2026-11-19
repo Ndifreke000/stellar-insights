@@ -144,7 +144,7 @@ struct TotalsRow {
 pub async fn failed_payments_analysis(
     State(app_state): State<AppState>,
 ) -> Json<FailedPaymentsAnalysis> {
-    let cache_key = keys::analytics_dashboard(); // reuse key namespace
+    let cache_key = keys::analytics_dashboard(keys::active_network()); // reuse key namespace
     let cache_key = format!("{cache_key}:failed_payments");
 
     let result = cached_query(

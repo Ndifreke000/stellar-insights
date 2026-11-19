@@ -101,6 +101,7 @@ fn extract_client_account(transaction: &str) -> Option<String> {
 #[utoipa::path(
     get,
     path = "/api/sep10/info",
+    operation_id = "sep10_get_info",
     responses(
         (status = 200, description = "SEP-10 server information")
     ),
@@ -221,6 +222,7 @@ pub async fn verify_challenge(
 #[utoipa::path(
     post,
     path = "/api/sep10/logout",
+    operation_id = "sep10_logout",
     responses(
         (status = 200, description = "Logged out successfully"),
         (status = 500, description = "Logout failed")

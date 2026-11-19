@@ -43,13 +43,10 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
       
       - name: Cache Rust dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -60,13 +57,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Install k6
-        run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update
-          sudo apt-get install k6
-      
+        uses: grafana/setup-k6-action@v1
+
       - name: Build backend
         working-directory: backend
         run: cargo build --release
@@ -75,14 +67,27 @@ jobs:
         working-directory: backend
         run: |
           cp .env.example .env
-          echo "DATABASE_URL=sqlite:./test_payraider.db" >> .env
-          echo "REDIS_URL=redis://localhost:6379" >> .env
-          echo "RPC_MOCK_MODE=true" >> .env
+          # Drop placeholder values (the server refuses to start with CHANGE_ME secrets)
+          # and override per-test settings in place: dotenv keeps the first value for a
+          # key, so appending duplicates would be silently ignored.
+          sed -i -E '/^[A-Z0-9_]+=["'"'"']?CHANGE_ME/d' .env
+          set_env() { sed -i "/^$1=/d" .env; echo "$1=$2" >> .env; }
+          set_env DATABASE_URL "sqlite:./test_payraider.db"
+          set_env REDIS_URL redis://localhost:6379
+          set_env RPC_MOCK_MODE true
+          set_env JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+          set_env ENCRYPTION_KEY "$(openssl rand -hex 32)"
+          # Public key only (no secret): enables the SEP-10 wallet sign-in routes.
+          set_env SEP10_SERVER_PUBLIC_KEY GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+          # k6 drives all traffic from this one runner IP; exempt it from the
+          # per-IP API limit (60/min anonymous) so the test measures the server.
+          set_env RATE_LIMIT_WHITELIST_IPS "127.0.0.1,::1"
       
       - name: Run database migrations
         working-directory: backend
         run: |
-          cargo install sqlx-cli --no-default-features --features sqlite
+          cargo install sqlx-cli --no-default-features --features sqlite --locked
+          sqlx database create
           sqlx migrate run
       
       - name: Start backend server

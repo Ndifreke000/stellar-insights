@@ -5,6 +5,7 @@
   "description": "Repo-root tooling for payraider: E2E acceptance tests (Playwright) and commit linting.",
   "scripts": {
     "test:acceptance": "playwright test",
+    "test:a11y": "playwright test tests/acceptance/a11y.test.ts",
     "test:e2e": "playwright test --project=backend-e2e",
     "check:folder-size": "bash scripts/check_folder_size.sh"
   },

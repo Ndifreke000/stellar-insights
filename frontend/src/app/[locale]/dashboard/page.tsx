@@ -333,18 +333,21 @@ export default function DashboardPage() {
             value={`${data.kpi.successRate.value}%`}
             trend={data.kpi.successRate.trend}
             trendDirection={data.kpi.successRate.trendDirection}
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label={t("activeCorridors")}
             value={data.kpi.activeCorridors.value}
             trend={data.kpi.activeCorridors.trend}
             trendDirection={data.kpi.activeCorridors.trendDirection}
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label={t("liquidityDepth")}
             value={formatVolume(data.kpi.liquidityDepth.value)}
             trend={data.kpi.liquidityDepth.trend}
             trendDirection={data.kpi.liquidityDepth.trendDirection}
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label={t("avgSettlementSpeed")}
@@ -352,6 +355,7 @@ export default function DashboardPage() {
             trend={Math.abs(data.kpi.settlementSpeed.trend)}
             trendDirection={data.kpi.settlementSpeed.trendDirection}
             inverse={true}
+            dataAsOf={lastUpdated}
           />
           <BookmarksDashboardWidget />
         </div>

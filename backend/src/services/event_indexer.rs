@@ -48,6 +48,31 @@
 //! - **Pagination**: limit and offset for large result sets
 //! - **Sorting**: multiple sort orders for different use cases
 //!
+//! # Exactly-once guarantees (#2769)
+//!
+//! Indexing is safe under retries and under two workers that both believe
+//! they are leader for a lease TTL window:
+//!
+//! - **Idempotent inserts.** Every event is keyed by
+//!   `(network, ledger, transaction_hash, op_index, event_index)` (unique
+//!   index `idx_contract_events_identity`, migration 056) and written with
+//!   `INSERT … ON CONFLICT DO NOTHING`. Re-indexing the same batch any number
+//!   of times yields the same row count; an existing row is never replaced.
+//! - **Monotonic checkpoints.** Both the `indexer_state.last_processed_ledger`
+//!   checkpoint and `backfill_state.current_ledger` are updated with
+//!   `MAX(current, new)`, so a late or retried batch can never move them
+//!   backwards.
+//! - **Fencing.** A worker that wins leader election calls
+//!   [`EventIndexer::acquire_fencing_token`], which atomically bumps a
+//!   per-role counter in `indexer_lease`. Fenced writes
+//!   ([`EventIndexer::index_events_fenced`]) re-check the token *inside* the
+//!   write transaction and abort with [`StaleLeaderError`] if a newer leader
+//!   has since taken a token, so a stale leader's batch is rejected as a
+//!   whole.
+//!
+//! The guarantee is effectively-once storage: at-least-once delivery from
+//! RPC plus idempotent, fenced, transactional writes.
+//!
 use crate::database::Database;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -91,6 +116,8 @@ use tracing::{debug, info, warn};
 ///     transaction_hash: "TX_123...".to_string(),
 ///     created_at: chrono::Utc::now(),
 ///     verification_status: Some("verified".to_string()),
+///     op_index: 0,
+///     event_index: 0,
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
@@ -105,6 +132,13 @@ pub struct IndexedEvent {
     pub transaction_hash: String,
     pub created_at: DateTime<Utc>,
     pub verification_status: Option<String>,
+    /// Index of the operation within the transaction that emitted the event.
+    /// Part of the idempotency key (#2769).
+    #[serde(default)]
+    pub op_index: u32,
+    /// Index of the event within the operation. Part of the idempotency key.
+    #[serde(default)]
+    pub event_index: u32,
 }
 
 /// Event query filters for searching contract events.
@@ -236,16 +270,133 @@ pub struct EventStats {
 /// upgrades that introduce new event kinds.
 const KNOWN_EVENT_TYPES: &[&str] = &["SNAP_SUB"];
 
+/// Lease role used for fencing event-indexer writes.
+pub const EVENT_INDEXER_ROLE: &str = "event_indexer";
+
+/// Monotonic fencing token handed to a leader when it starts writing (#2769).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FencingToken(pub i64);
+
+/// Returned when a write carries a fencing token older than the current one,
+/// i.e. it comes from a leader that has since been superseded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaleLeaderError {
+    pub presented: i64,
+    pub current: i64,
+}
+
+impl std::fmt::Display for StaleLeaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "stale leader: write fenced with token {} but current token is {}",
+            self.presented, self.current
+        )
+    }
+}
+
+impl std::error::Error for StaleLeaderError {}
+
+const INSERT_EVENT_SQL: &str = r"
+    INSERT INTO contract_events (
+        id, contract_id, event_type, epoch, hash, timestamp,
+        ledger, transaction_hash, created_at, verification_status,
+        network, op_index, event_index
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT DO NOTHING
+";
+
 /// Service for indexing and querying contract events
 pub struct EventIndexer {
     db: Arc<Database>,
+    /// Network whose scan coverage this indexer records and reads (#2765).
+    network: crate::network::StellarNetwork,
 }
 
 impl EventIndexer {
-    /// Create a new event indexer
+    /// Create a new event indexer for mainnet. Prefer
+    /// [`EventIndexer::for_network`] wherever the network is known.
     pub fn new(db: Arc<Database>) -> Self {
-        info!("Initialized EventIndexer");
-        Self { db }
+        Self::for_network(db, crate::network::StellarNetwork::Mainnet)
+    }
+
+    /// Create an event indexer whose coverage bookkeeping is scoped to
+    /// `network`.
+    pub fn for_network(db: Arc<Database>, network: crate::network::StellarNetwork) -> Self {
+        debug!(%network, "Initialized EventIndexer");
+        Self { db, network }
+    }
+
+    /// Network this indexer is scoped to.
+    #[must_use]
+    pub const fn network(&self) -> crate::network::StellarNetwork {
+        self.network
+    }
+
+    /// Take a new fencing token for `role`. Call this whenever leadership is
+    /// (re)acquired; any writer holding an older token is fenced off.
+    pub async fn acquire_fencing_token(&self, role: &str, holder: &str) -> Result<FencingToken> {
+        let token: i64 = sqlx::query_scalar(
+            "INSERT INTO indexer_lease (role, token, holder, updated_at) \
+             VALUES (?, 1, ?, CURRENT_TIMESTAMP) \
+             ON CONFLICT(role) DO UPDATE SET token = token + 1, holder = excluded.holder, \
+             updated_at = CURRENT_TIMESTAMP \
+             RETURNING token",
+        )
+        .bind(role)
+        .bind(holder)
+        .fetch_one(self.db.pool())
+        .await
+        .context("Failed to acquire fencing token")?;
+        info!(role, holder, token, "Acquired indexer fencing token");
+        Ok(FencingToken(token))
+    }
+
+    /// Verify `token` is still current for `role` inside `tx`.
+    async fn check_fence(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        role: &str,
+        token: FencingToken,
+    ) -> Result<()> {
+        let current: Option<i64> =
+            sqlx::query_scalar("SELECT token FROM indexer_lease WHERE role = ?")
+                .bind(role)
+                .fetch_optional(&mut **tx)
+                .await
+                .context("Failed to read fencing token")?;
+        let current = current.unwrap_or(0);
+        if current != token.0 {
+            return Err(StaleLeaderError {
+                presented: token.0,
+                current,
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    async fn insert_event<'e, E>(&self, executor: E, event: &IndexedEvent) -> Result<u64>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    {
+        let res = sqlx::query(INSERT_EVENT_SQL)
+            .bind(&event.id)
+            .bind(&event.contract_id)
+            .bind(&event.event_type)
+            .bind(event.epoch.map(|e| e as i64))
+            .bind(&event.hash)
+            .bind(event.timestamp.map(|t| t as i64))
+            .bind(event.ledger as i64)
+            .bind(&event.transaction_hash)
+            .bind(event.created_at)
+            .bind(&event.verification_status)
+            .bind(self.network.to_string())
+            .bind(i64::from(event.op_index))
+            .bind(i64::from(event.event_index))
+            .execute(executor)
+            .await
+            .context("Failed to index event")?;
+        Ok(res.rows_affected())
     }
 
     /// Process a batch of events, skipping unknown types and persisting a
@@ -276,7 +427,7 @@ impl EventIndexer {
             self.index_event(event.clone()).await?;
             indexed += 1;
 
-            if last_ledger.map_or(true, |l| event.ledger > l) {
+            if last_ledger.is_none_or(|l| event.ledger > l) {
                 last_ledger = Some(event.ledger);
             }
         }
@@ -290,11 +441,14 @@ impl EventIndexer {
 
     /// Write the `last_processed_ledger` checkpoint to persistent storage so
     /// the indexer can resume after a restart without re-processing old events.
+    /// The checkpoint is monotonic: a lower ledger never overwrites a higher one.
     pub async fn persist_checkpoint(&self, ledger: u64) -> Result<()> {
         sqlx::query(
             "INSERT INTO indexer_state (key, value, updated_at) \
              VALUES ('last_processed_ledger', ?, datetime('now')) \
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+             ON CONFLICT(key) DO UPDATE SET \
+               value = CAST(MAX(CAST(value AS INTEGER), CAST(excluded.value AS INTEGER)) AS TEXT), \
+               updated_at = excluded.updated_at",
         )
         .bind(ledger.to_string())
         .execute(self.db.pool())
@@ -319,42 +473,70 @@ impl EventIndexer {
         Ok(row.and_then(|v| v.parse::<u64>().ok()))
     }
 
-    /// Index a contract event
+    /// Index a contract event. Idempotent: re-indexing an event with the
+    /// same identity key is a no-op.
     pub async fn index_event(&self, event: IndexedEvent) -> Result<()> {
         debug!("Indexing event: {}", event.id);
-
-        let query = r"
-            INSERT OR REPLACE INTO contract_events (
-                id, contract_id, event_type, epoch, hash, timestamp,
-                ledger, transaction_hash, created_at, verification_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-
-        sqlx::query(query)
-            .bind(&event.id)
-            .bind(&event.contract_id)
-            .bind(&event.event_type)
-            .bind(event.epoch.map(|e| e as i64))
-            .bind(&event.hash)
-            .bind(event.timestamp.map(|t| t as i64))
-            .bind(event.ledger as i64)
-            .bind(&event.transaction_hash)
-            .bind(event.created_at)
-            .bind(&event.verification_status)
-            .execute(self.db.pool())
-            .await
-            .context("Failed to index event")?;
-
-        debug!("Successfully indexed event: {}", event.id);
+        let inserted = self.insert_event(self.db.pool(), &event).await?;
+        debug!(id = %event.id, inserted, "Indexed event");
         Ok(())
     }
 
-    /// Index a batch of contract events and record a checkpoint ledger in a single transaction
+    /// Index a batch of contract events and record a checkpoint ledger in a
+    /// single transaction. Unfenced; prefer [`Self::index_events_fenced`] when
+    /// running under leader election.
     pub async fn index_events_with_checkpoint(
         &self,
         events: Vec<IndexedEvent>,
         checkpoint_ledger: u64,
     ) -> Result<()> {
+        self.write_batch(events, checkpoint_ledger, checkpoint_ledger, None)
+            .await
+            .map(|_| ())
+    }
+
+    /// Like [`Self::index_events_with_checkpoint`] but rejects the whole
+    /// batch with [`StaleLeaderError`] if `token` is no longer the current
+    /// fencing token for [`EVENT_INDEXER_ROLE`]. Returns rows inserted.
+    pub async fn index_events_fenced(
+        &self,
+        events: Vec<IndexedEvent>,
+        checkpoint_ledger: u64,
+        token: FencingToken,
+    ) -> Result<u64> {
+        self.write_batch(events, checkpoint_ledger, checkpoint_ledger, Some(token))
+            .await
+    }
+
+    /// Index a batch of events that were found while scanning
+    /// `[scan_start, scan_end]`, and in the same transaction record that
+    /// whole range as covered in `ledger_scan_ranges` and advance the
+    /// backfill checkpoint to `scan_end`.
+    ///
+    /// Recording coverage alongside the events means a ledger that was
+    /// scanned but emitted nothing is never reported as a gap (#2765).
+    pub async fn index_events_with_scan_range(
+        &self,
+        events: Vec<IndexedEvent>,
+        scan_start: u64,
+        scan_end: u64,
+    ) -> Result<()> {
+        self.write_batch(events, scan_start, scan_end, None)
+            .await
+            .map(|_| ())
+    }
+
+    async fn write_batch(
+        &self,
+        events: Vec<IndexedEvent>,
+        scan_start: u64,
+        scan_end: u64,
+        token: Option<FencingToken>,
+    ) -> Result<u64> {
+        if scan_start > scan_end {
+            anyhow::bail!("scan_start ({scan_start}) must be <= scan_end ({scan_end})");
+        }
+        let checkpoint_ledger = scan_end;
         debug!(
             "Indexing {} events and setting checkpoint to {}",
             events.len(),
@@ -368,45 +550,45 @@ impl EventIndexer {
             .await
             .context("Failed to begin transaction")?;
 
-        let event_query = r"
-            INSERT OR REPLACE INTO contract_events (
-                id, contract_id, event_type, epoch, hash, timestamp,
-                ledger, transaction_hash, created_at, verification_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
-
-        for event in events {
-            sqlx::query(event_query)
-                .bind(&event.id)
-                .bind(&event.contract_id)
-                .bind(&event.event_type)
-                .bind(event.epoch.map(|e| e as i64))
-                .bind(&event.hash)
-                .bind(event.timestamp.map(|t| t as i64))
-                .bind(event.ledger as i64)
-                .bind(&event.transaction_hash)
-                .bind(event.created_at)
-                .bind(&event.verification_status)
+        if let Some(token) = token {
+            // Take the write lock first so the fence check and the writes are
+            // serialised against a concurrent token bump.
+            sqlx::query("UPDATE indexer_lease SET updated_at = updated_at WHERE role = ?")
+                .bind(EVENT_INDEXER_ROLE)
                 .execute(&mut *tx)
                 .await
-                .context("Failed to insert event in batch")?;
+                .context("Failed to lock fencing row")?;
+            Self::check_fence(&mut tx, EVENT_INDEXER_ROLE, token).await?;
         }
 
-        let state_query = r"
-            INSERT OR REPLACE INTO backfill_state (id, current_ledger, updated_at)
-            VALUES ('default', ?, CURRENT_TIMESTAMP)
-        ";
+        let mut inserted = 0u64;
+        for event in &events {
+            inserted += self.insert_event(&mut *tx, event).await?;
+        }
 
-        sqlx::query(state_query)
-            .bind(checkpoint_ledger as i64)
-            .execute(&mut *tx)
-            .await
-            .context("Failed to update backfill checkpoint")?;
+        sqlx::query(
+            r"
+            INSERT INTO backfill_state (id, current_ledger, updated_at)
+            VALUES ('default', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                current_ledger = MAX(current_ledger, excluded.current_ledger),
+                updated_at = CURRENT_TIMESTAMP
+        ",
+        )
+        .bind(checkpoint_ledger as i64)
+        .execute(&mut *tx)
+        .await
+        .context("Failed to update backfill checkpoint")?;
+
+        Self::record_scanned_range_tx(&mut tx, self.network, scan_start, scan_end).await?;
 
         tx.commit().await.context("Failed to commit transaction")?;
 
-        debug!("Successfully indexed batch and updated checkpoint");
-        Ok(())
+        debug!(
+            inserted,
+            "Successfully indexed batch and updated checkpoint"
+        );
+        Ok(inserted)
     }
 
     /// Query events with filters
@@ -415,7 +597,7 @@ impl EventIndexer {
 
         let mut sql = String::from(
             r"
-            SELECT id, contract_id, event_type, epoch, hash, timestamp,
+            SELECT id, contract_id, event_type, epoch, hash, timestamp, op_index, event_index,
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE 1=1
@@ -490,7 +672,7 @@ impl EventIndexer {
             }
         }
 
-        let mut query_builder = sqlx::query(&sql);
+        let mut query_builder = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
 
         for binding in bindings {
             query_builder = query_builder.bind(binding);
@@ -515,6 +697,8 @@ impl EventIndexer {
                 transaction_hash: row.get("transaction_hash"),
                 created_at: row.get("created_at"),
                 verification_status: row.get("verification_status"),
+                op_index: row.try_get::<i64, _>("op_index").map_or(0, |v| v as u32),
+                event_index: row.try_get::<i64, _>("event_index").map_or(0, |v| v as u32),
             };
             events.push(event);
         }
@@ -528,7 +712,7 @@ impl EventIndexer {
         debug!("Getting event by ID: {}", id);
 
         let query = r"
-            SELECT id, contract_id, event_type, epoch, hash, timestamp,
+            SELECT id, contract_id, event_type, epoch, hash, timestamp, op_index, event_index,
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE id = ?
@@ -552,6 +736,8 @@ impl EventIndexer {
                 transaction_hash: row.get("transaction_hash"),
                 created_at: row.get("created_at"),
                 verification_status: row.get("verification_status"),
+                op_index: row.try_get::<i64, _>("op_index").map_or(0, |v| v as u32),
+                event_index: row.try_get::<i64, _>("event_index").map_or(0, |v| v as u32),
             };
             Ok(Some(event))
         } else {
@@ -685,7 +871,7 @@ impl EventIndexer {
     /// Get recent events from the database
     pub async fn get_recent_events(&self, limit: i64) -> Result<Vec<IndexedEvent>> {
         let query = r"
-            SELECT id, contract_id, event_type, epoch, hash, timestamp, ledger,
+            SELECT id, contract_id, event_type, epoch, hash, timestamp, op_index, event_index, ledger,
                    transaction_hash, created_at, verification_status
             FROM contract_events
             ORDER BY created_at DESC
@@ -710,6 +896,8 @@ impl EventIndexer {
                 transaction_hash: row.get("transaction_hash"),
                 created_at: row.get("created_at"),
                 verification_status: row.try_get("verification_status").ok(),
+                op_index: row.try_get::<i64, _>("op_index").map_or(0, |v| v as u32),
+                event_index: row.try_get::<i64, _>("event_index").map_or(0, |v| v as u32),
             };
             events.push(event);
         }
@@ -777,7 +965,7 @@ impl EventIndexer {
         debug!("Searching events by hash prefix: {}", prefix);
 
         let query = r"
-            SELECT id, contract_id, event_type, epoch, hash, timestamp,
+            SELECT id, contract_id, event_type, epoch, hash, timestamp, op_index, event_index,
                    ledger, transaction_hash, created_at, verification_status
             FROM contract_events
             WHERE hash LIKE ?
@@ -808,6 +996,8 @@ impl EventIndexer {
                 transaction_hash: row.get("transaction_hash"),
                 created_at: row.get("created_at"),
                 verification_status: row.get("verification_status"),
+                op_index: row.try_get::<i64, _>("op_index").map_or(0, |v| v as u32),
+                event_index: row.try_get::<i64, _>("event_index").map_or(0, |v| v as u32),
             };
             events.push(event);
         }
@@ -857,58 +1047,165 @@ impl EventIndexer {
         }))
     }
 
-    /// Detect ledger gaps in the indexed event sequence within `[from, to]`.
+    /// Persist the ledger headers (protocol version) of ledgers fetched from
+    /// RPC so replay can resolve the version per ledger (#2768).
+    pub async fn record_ledger_headers(
+        &self,
+        ledgers: &[crate::rpc::stellar::RpcLedger],
+    ) -> Result<u64> {
+        crate::replay::LedgerHeaderStore::new(self.db.pool().clone())
+            .record_rpc_ledgers(self.network, ledgers)
+            .await
+    }
+
+    /// Record `[start, end]` as scanned for this indexer's network, merging
+    /// it with any overlapping or adjacent ranges already stored.
+    pub async fn record_scanned_range(&self, start: u64, end: u64) -> Result<()> {
+        if start > end {
+            anyhow::bail!("start ({start}) must be <= end ({end})");
+        }
+        let mut tx = self
+            .db
+            .pool()
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
+        Self::record_scanned_range_tx(&mut tx, self.network, start, end).await?;
+        tx.commit()
+            .await
+            .context("Failed to commit scanned range")?;
+        Ok(())
+    }
+
+    async fn record_scanned_range_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        network: crate::network::StellarNetwork,
+        start: u64,
+        end: u64,
+    ) -> Result<()> {
+        let network = network.to_string();
+        let (start_i, end_i) = (start as i64, end as i64);
+
+        // Every stored range that overlaps or touches [start, end].
+        let touching: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ?",
+        )
+        .bind(&network)
+        .bind(end_i.saturating_add(1))
+        .bind(start_i.saturating_sub(1))
+        .fetch_all(&mut **tx)
+        .await
+        .context("Failed to read overlapping scan ranges")?;
+
+        let merged_start = touching.iter().map(|r| r.0).fold(start_i, i64::min);
+        let merged_end = touching.iter().map(|r| r.1).fold(end_i, i64::max);
+
+        sqlx::query(
+            "DELETE FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ?",
+        )
+        .bind(&network)
+        .bind(end_i.saturating_add(1))
+        .bind(start_i.saturating_sub(1))
+        .execute(&mut **tx)
+        .await
+        .context("Failed to delete merged scan ranges")?;
+
+        sqlx::query(
+            "INSERT INTO ledger_scan_ranges (network, start_ledger, end_ledger, scanned_at) \
+             VALUES (?, ?, ?, datetime('now'))",
+        )
+        .bind(&network)
+        .bind(merged_start)
+        .bind(merged_end)
+        .execute(&mut **tx)
+        .await
+        .context("Failed to insert scan range")?;
+
+        Ok(())
+    }
+
+    /// Stored scan ranges for this network that intersect `[from, to]`,
+    /// sorted by start.
+    pub async fn scanned_ranges(&self, from: u64, to: u64) -> Result<Vec<(u64, u64)>> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? AND start_ledger <= ? AND end_ledger >= ? \
+             ORDER BY start_ledger ASC",
+        )
+        .bind(self.network.to_string())
+        .bind(to as i64)
+        .bind(from as i64)
+        .fetch_all(self.db.pool())
+        .await
+        .context("Failed to query scan ranges")?;
+        Ok(rows
+            .into_iter()
+            .map(|(s, e)| (s as u64, e as u64))
+            .collect())
+    }
+
+    /// Detect ledger gaps within `[from, to]`.
     ///
-    /// A gap is a contiguous sub-range of ledgers that have no entry in
-    /// `contract_events`. The returned list is sorted by `start` ascending.
-    ///
-    /// This is used by the backfill job to avoid re-fetching already-indexed
-    /// ledgers.
+    /// A gap is a contiguous sub-range of ledgers that were never scanned.
+    /// Coverage comes from `ledger_scan_ranges`, not from `contract_events`,
+    /// so ledgers that were scanned but emitted no events are not gaps
+    /// (#2765). Runs in time proportional to the number of stored ranges.
+    /// The returned list is sorted by `start` ascending.
     pub async fn detect_ledger_gaps(
         &self,
         from_ledger: u64,
         to_ledger: u64,
     ) -> Result<Vec<crate::jobs::backfill::LedgerGap>> {
-        // Fetch all distinct ledger numbers in the range, sorted ascending.
-        let rows: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT ledger FROM contract_events \
-             WHERE ledger BETWEEN ? AND ? \
-             ORDER BY ledger ASC",
+        let covered = self.scanned_ranges(from_ledger, to_ledger).await?;
+        Ok(
+            crate::services::ledger_coverage::compute_gaps(covered, from_ledger, to_ledger)
+                .into_iter()
+                .map(|(start, end)| crate::jobs::backfill::LedgerGap { start, end })
+                .collect(),
         )
-        .bind(from_ledger as i64)
-        .bind(to_ledger as i64)
+    }
+
+    /// Gaps inside the overall scanned span (first scanned ledger to last
+    /// scanned ledger) for this network. Publishes the `gap_count` and
+    /// `gap_ledgers_total` metrics and is used by the health check.
+    pub async fn coverage_gap_summary(&self) -> Result<LedgerGapSummary> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT start_ledger, end_ledger FROM ledger_scan_ranges \
+             WHERE network = ? ORDER BY start_ledger ASC",
+        )
+        .bind(self.network.to_string())
         .fetch_all(self.db.pool())
         .await
-        .context("Failed to query indexed ledgers for gap detection")?;
+        .context("Failed to query scan ranges")?;
+        let ranges: Vec<(u64, u64)> = rows
+            .into_iter()
+            .map(|(s, e)| (s as u64, e as u64))
+            .collect();
 
-        let indexed: std::collections::BTreeSet<u64> =
-            rows.into_iter().map(|(l,)| l as u64).collect();
-
-        let mut gaps = Vec::new();
-        let mut gap_start: Option<u64> = None;
-
-        for ledger in from_ledger..=to_ledger {
-            if indexed.contains(&ledger) {
-                if let Some(start) = gap_start.take() {
-                    gaps.push(crate::jobs::backfill::LedgerGap {
-                        start,
-                        end: ledger - 1,
-                    });
+        let summary = match (ranges.first(), ranges.iter().map(|r| r.1).max()) {
+            (Some(&(first, _)), Some(last)) => {
+                let gaps = crate::services::ledger_coverage::compute_gaps(ranges, first, last);
+                LedgerGapSummary {
+                    network: self.network.to_string(),
+                    first_scanned_ledger: Some(first),
+                    last_scanned_ledger: Some(last),
+                    gap_count: gaps.len() as u64,
+                    gap_ledgers_total: crate::services::ledger_coverage::gap_ledgers_total(&gaps),
                 }
-            } else if gap_start.is_none() {
-                gap_start = Some(ledger);
             }
-        }
-
-        // Close any trailing gap
-        if let Some(start) = gap_start {
-            gaps.push(crate::jobs::backfill::LedgerGap {
-                start,
-                end: to_ledger,
-            });
-        }
-
-        Ok(gaps)
+            _ => LedgerGapSummary {
+                network: self.network.to_string(),
+                ..Default::default()
+            },
+        };
+        crate::observability::metrics::set_ledger_gaps(
+            &summary.network,
+            summary.gap_count,
+            summary.gap_ledgers_total,
+        );
+        Ok(summary)
     }
 
     /// Rebuild indexes for performance
@@ -935,6 +1232,16 @@ impl EventIndexer {
     }
 }
 
+/// Scan coverage gaps for one network (#2765).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+pub struct LedgerGapSummary {
+    pub network: String,
+    pub first_scanned_ledger: Option<u64>,
+    pub last_scanned_ledger: Option<u64>,
+    pub gap_count: u64,
+    pub gap_ledgers_total: u64,
+}
+
 /// Verification summary for UI display
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerificationSummary {
@@ -954,7 +1261,9 @@ mod tests {
     use std::sync::Arc;
 
     async fn setup_contract_event_db() -> Result<Arc<Database>> {
-        let pool = sqlx::SqlitePool::connect(":memory:")
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(":memory:")
             .await
             .context("failed to create in-memory SQLite pool")?;
         sqlx::query(Schema::CREATE_CONTRACT_EVENTS)
@@ -969,8 +1278,101 @@ mod tests {
             .execute(&pool)
             .await
             .context("failed to create indexer_state table")?;
+        sqlx::query(Schema::CREATE_INDEXER_LEASE)
+            .execute(&pool)
+            .await
+            .context("failed to create indexer_lease table")?;
+        sqlx::query(Schema::CREATE_LEDGER_SCAN_RANGES)
+            .execute(&pool)
+            .await
+            .context("failed to create ledger_scan_ranges table")?;
+        sqlx::query(Schema::CREATE_BACKFILL_STATE)
+            .execute(&pool)
+            .await
+            .context("failed to create backfill_state table")?;
 
         Ok(Arc::new(Database::new(pool)))
+    }
+
+    fn event_at(ledger: u64) -> IndexedEvent {
+        IndexedEvent {
+            id: format!("ev-{ledger}"),
+            contract_id: "c".to_string(),
+            event_type: "SNAP_SUB".to_string(),
+            epoch: None,
+            hash: None,
+            timestamp: None,
+            ledger,
+            transaction_hash: format!("tx-{ledger}"),
+            op_index: 0,
+            event_index: 0,
+            created_at: Utc::now(),
+            verification_status: None,
+        }
+    }
+
+    /// Regression for #2765: 1,000 ledgers scanned, only 3 with events,
+    /// must report zero gaps.
+    #[tokio::test]
+    async fn scanned_ledgers_without_events_are_not_gaps() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(db);
+
+        // Ten batches of 100 ledgers each; events only at 1, 500 and 1000.
+        for batch in 0..10u64 {
+            let (start, end) = (batch * 100 + 1, batch * 100 + 100);
+            let events: Vec<IndexedEvent> = [1u64, 500, 1000]
+                .into_iter()
+                .filter(|l| (start..=end).contains(l))
+                .map(event_at)
+                .collect();
+            indexer
+                .index_events_with_scan_range(events, start, end)
+                .await?;
+        }
+
+        assert!(indexer.detect_ledger_gaps(1, 1000).await?.is_empty());
+        // Adjacent batches merge into a single stored range.
+        assert_eq!(indexer.scanned_ranges(1, 1000).await?, vec![(1, 1000)]);
+        let summary = indexer.coverage_gap_summary().await?;
+        assert_eq!(summary.gap_count, 0);
+        assert_eq!(summary.gap_ledgers_total, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn only_unscanned_ranges_are_gaps() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(db);
+        indexer.record_scanned_range(10, 20).await?;
+        indexer.record_scanned_range(30, 40).await?;
+        indexer.record_scanned_range(15, 25).await?; // overlap merges with 10..20
+
+        let gaps: Vec<(u64, u64)> = indexer
+            .detect_ledger_gaps(1, 50)
+            .await?
+            .into_iter()
+            .map(|g| (g.start, g.end))
+            .collect();
+        assert_eq!(gaps, vec![(1, 9), (26, 29), (41, 50)]);
+
+        let summary = indexer.coverage_gap_summary().await?;
+        assert_eq!(summary.gap_count, 1);
+        assert_eq!(summary.gap_ledgers_total, 4);
+        assert!(indexer.record_scanned_range(5, 4).await.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_coverage_is_per_network() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let mainnet =
+            EventIndexer::for_network(db.clone(), crate::network::StellarNetwork::Mainnet);
+        let testnet = EventIndexer::for_network(db, crate::network::StellarNetwork::Testnet);
+        mainnet.record_scanned_range(1, 100).await?;
+        assert!(mainnet.detect_ledger_gaps(1, 100).await?.is_empty());
+        assert_eq!(testnet.detect_ledger_gaps(1, 100).await?.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
@@ -989,6 +1391,8 @@ mod tests {
             transaction_hash: "tx-hash-1".to_string(),
             created_at: Utc::now(),
             verification_status: Some("verified".to_string()),
+            op_index: 0,
+            event_index: 0,
         };
 
         // Test indexing
@@ -1034,6 +1438,8 @@ mod tests {
             transaction_hash: "tx-hash-2".to_string(),
             created_at: Utc::now(),
             verification_status: None,
+            op_index: 0,
+            event_index: 0,
         };
 
         indexer
@@ -1076,6 +1482,8 @@ mod tests {
             transaction_hash: "tx1".to_string(),
             created_at: Utc::now(),
             verification_status: None,
+            op_index: 0,
+            event_index: 0,
         };
 
         let unknown = IndexedEvent {
@@ -1089,6 +1497,8 @@ mod tests {
             transaction_hash: "tx2".to_string(),
             created_at: Utc::now(),
             verification_status: None,
+            op_index: 0,
+            event_index: 0,
         };
 
         let count = indexer
@@ -1167,6 +1577,8 @@ mod tests {
                 transaction_hash: format!("tx-{i}"),
                 created_at: Utc::now(),
                 verification_status: None,
+                op_index: 0,
+                event_index: 0,
             })
             .collect();
 
@@ -1182,6 +1594,162 @@ mod tests {
                 .context("failed to get last processed ledger")?,
             Some(202)
         );
+        Ok(())
+    }
+
+    fn ev(id: &str, ledger: u64, tx: &str, op: u32, idx: u32) -> IndexedEvent {
+        IndexedEvent {
+            id: id.to_string(),
+            contract_id: "c1".to_string(),
+            event_type: "SNAP_SUB".to_string(),
+            epoch: Some(1),
+            hash: None,
+            timestamp: None,
+            ledger,
+            transaction_hash: tx.to_string(),
+            created_at: Utc::now(),
+            verification_status: None,
+            op_index: op,
+            event_index: idx,
+        }
+    }
+
+    async fn row_count(db: &Database) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
+            .fetch_one(db.pool())
+            .await
+            .expect("count")
+    }
+
+    async fn backfill_checkpoint(db: &Database) -> i64 {
+        sqlx::query_scalar("SELECT current_ledger FROM backfill_state WHERE id = 'default'")
+            .fetch_one(db.pool())
+            .await
+            .expect("checkpoint")
+    }
+
+    #[tokio::test]
+    async fn retrying_same_batch_three_times_is_idempotent() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer =
+            EventIndexer::for_network(Arc::clone(&db), crate::network::StellarNetwork::Testnet);
+        // Two events from the same tx/op must both be kept (distinct event_index).
+        let batch = || {
+            vec![
+                ev("a", 10, "tx1", 0, 0),
+                ev("b", 10, "tx1", 0, 1),
+                ev("c", 11, "tx2", 1, 0),
+            ]
+        };
+        for _ in 0..3 {
+            indexer.index_events_with_checkpoint(batch(), 11).await?;
+        }
+        assert_eq!(row_count(&db).await, 3);
+
+        // Regression: a retry that re-generates ids (old backfill used random
+        // UUIDs) must still be deduplicated by the identity key.
+        let mut retry = batch();
+        for (i, e) in retry.iter_mut().enumerate() {
+            e.id = format!("retry-{i}");
+        }
+        indexer.index_events_with_checkpoint(retry, 11).await?;
+        assert_eq!(row_count(&db).await, 3);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn concurrent_indexers_write_no_duplicates_and_checkpoint_is_monotonic() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let a = Arc::new(EventIndexer::for_network(
+            Arc::clone(&db),
+            crate::network::StellarNetwork::Testnet,
+        ));
+        let b = Arc::new(EventIndexer::for_network(
+            Arc::clone(&db),
+            crate::network::StellarNetwork::Testnet,
+        ));
+
+        let ledgers: u64 = 10_000;
+        let chunk = 500u64;
+        let worker = |ix: Arc<EventIndexer>, reverse: bool| async move {
+            let mut starts: Vec<u64> = (0..ledgers / chunk).map(|c| c * chunk).collect();
+            if reverse {
+                starts.reverse();
+            }
+            for start in starts {
+                let events = (start..start + chunk)
+                    .map(|l| ev(&format!("e-{l}"), l, &format!("tx-{l}"), 0, 0))
+                    .collect();
+                ix.index_events_with_checkpoint(events, start + chunk - 1)
+                    .await
+                    .expect("batch");
+            }
+        };
+        tokio::join!(worker(Arc::clone(&a), false), worker(Arc::clone(&b), true));
+
+        assert_eq!(row_count(&db).await, ledgers as i64);
+        // The reverse worker finished on a low ledger; the checkpoint must not regress.
+        assert_eq!(backfill_checkpoint(&db).await, (ledgers - 1) as i64);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn checkpoints_never_regress() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(Arc::clone(&db));
+        indexer.persist_checkpoint(500).await?;
+        indexer.persist_checkpoint(100).await?;
+        assert_eq!(indexer.get_last_processed_ledger().await?, Some(500));
+
+        indexer.index_events_with_checkpoint(vec![], 900).await?;
+        indexer.index_events_with_checkpoint(vec![], 300).await?;
+        assert_eq!(backfill_checkpoint(&db).await, 900);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_leader_batch_is_rejected() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(Arc::clone(&db));
+
+        let old = indexer
+            .acquire_fencing_token(EVENT_INDEXER_ROLE, "instance-a")
+            .await?;
+        indexer
+            .index_events_fenced(vec![ev("x", 1, "t1", 0, 0)], 1, old)
+            .await?;
+
+        // Leadership flaps: instance-b takes a newer token.
+        let new = indexer
+            .acquire_fencing_token(EVENT_INDEXER_ROLE, "instance-b")
+            .await?;
+        assert!(new > old);
+
+        let err = indexer
+            .index_events_fenced(vec![ev("y", 2, "t2", 0, 0)], 2, old)
+            .await
+            .expect_err("stale leader must be fenced");
+        assert!(err.downcast_ref::<StaleLeaderError>().is_some());
+        // Nothing from the stale batch landed, checkpoint untouched.
+        assert_eq!(row_count(&db).await, 1);
+        assert_eq!(backfill_checkpoint(&db).await, 1);
+
+        indexer
+            .index_events_fenced(vec![ev("y", 2, "t2", 0, 0)], 2, new)
+            .await?;
+        assert_eq!(row_count(&db).await, 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fenced_write_without_any_lease_is_rejected() -> Result<()> {
+        let db = setup_contract_event_db().await?;
+        let indexer = EventIndexer::new(db);
+        let err = indexer
+            .index_events_fenced(vec![], 1, FencingToken(7))
+            .await
+            .expect_err("no lease row");
+        assert!(err.downcast_ref::<StaleLeaderError>().is_some());
         Ok(())
     }
 }

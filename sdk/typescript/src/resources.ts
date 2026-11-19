@@ -20,6 +20,7 @@ import type {
   NetworkInfo,
   PaginatedResponse,
   PaginationParams,
+  PreflightBatchResponse,
   PreflightRequest,
   PreflightResponse,
   Price,
@@ -87,7 +88,7 @@ export class CostCalculatorResource {
   constructor(private http: HttpClient) {}
 
   estimate(req: CostEstimateRequest): Promise<CostEstimateResponse> {
-    return this.http.request("POST", "/api/cost-calculator/estimate", { body: req });
+    return this.http.request("POST", "/api/cost-calculator/estimate", { body: req, idempotent: true });
   }
 }
 
@@ -99,7 +100,16 @@ export class PreflightResource {
   constructor(private http: HttpClient) {}
 
   check(req: PreflightRequest): Promise<PreflightResponse> {
-    return this.http.request("POST", "/api/v1/preflight", { body: req });
+    return this.http.request("POST", "/api/v1/preflight", { body: req, idempotent: true });
+  }
+
+  /**
+   * Check up to 100 payments in one request. Every item is scored against
+   * the same corridor snapshot; an invalid item comes back with an `error`
+   * instead of failing the batch.
+   */
+  checkBatch(items: PreflightRequest[]): Promise<PreflightBatchResponse> {
+    return this.http.request("POST", "/api/v1/preflight/batch", { body: { items } });
   }
 
   /** True only when every check passed. */

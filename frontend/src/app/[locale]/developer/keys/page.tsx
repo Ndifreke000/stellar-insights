@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Key,
   Plus,
@@ -31,6 +32,7 @@ type ModalState =
   | { type: "revoke"; key: ApiKeyInfo };
 
 export default function DeveloperKeysPage() {
+  const t = useTranslations("keys");
   // Keys belong to the wallet proven by its SEP-10 session.
   const { isConnected, address, isAuthenticated, authToken, authenticateWithSep10 } = useWallet();
   const [signingIn, setSigningIn] = useState(false);
@@ -156,17 +158,17 @@ export default function DeveloperKeysPage() {
             </div>
             <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
               <Key className="w-8 h-8 text-accent" />
-              API Keys
+              {t("title")}
             </h2>
           </div>
         </div>
         <div className="text-center py-20">
           <Shield className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-xl font-bold text-foreground mb-2">
-            Connect Your Wallet
+            {t("connectWallet")}
           </h3>
           <p className="text-muted-foreground">
-            Connect your Stellar wallet to manage API keys.
+            {t("authPrompt")}
           </p>
         </div>
       </div>
@@ -182,18 +184,18 @@ export default function DeveloperKeysPage() {
           </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             <Key className="w-8 h-8 text-accent" />
-            API Keys
+            {t("title")}
           </h2>
         </div>
         <p className="text-muted-foreground text-sm max-w-xl">
-          Manage API keys for programmatic access to the PayRaider API.
+          {t("subtitle")}
         </p>
         <button
           onClick={() => setModal({ type: "create" })}
           className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:opacity-90 transition-opacity font-medium shrink-0"
         >
           <Plus className="w-4 h-4" />
-          Create Key
+          {t("createKey")}
         </button>
       </div>
 
@@ -227,18 +229,17 @@ export default function DeveloperKeysPage() {
         <div className="glass rounded-xl p-12 text-center border border-border">
           <Key className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            No API Keys
+            {t("title")}
           </h3>
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-            Create your first API key to start accessing the PayRaider
-            API programmatically.
+            {t("empty")}
           </p>
           <button
             onClick={() => setModal({ type: "create" })}
             className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl hover:opacity-90 transition-opacity font-medium"
           >
             <Plus className="w-4 h-4" />
-            Create Your First Key
+            {t("createKey")}
           </button>
         </div>
       ) : (
@@ -247,26 +248,26 @@ export default function DeveloperKeysPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Name
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.name")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Key
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.prefix")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Scopes
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Status
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.status")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Created
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.created")}
                   </th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Last Used
+                  <th scope="col" className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.lastUsed")}
                   </th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Actions
+                  <th scope="col" className="text-right px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("table.actions")}
                   </th>
                 </tr>
               </thead>

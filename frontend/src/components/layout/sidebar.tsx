@@ -64,6 +64,7 @@ const navGroups = [
   {
     key: "monitoring",
     items: [
+      { key: "status", icon: Activity, path: "/status" },
       { key: "networkHealth", icon: Activity, path: "/health" },
       { key: "alerts", icon: Activity, path: "/alerts" },
       { key: "corridorAlerts", icon: Bell, path: "/corridor-alerts" },

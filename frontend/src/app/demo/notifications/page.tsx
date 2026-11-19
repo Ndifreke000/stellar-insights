@@ -1,5 +1,6 @@
 import React from 'react';
 import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { NotificationCenterDemo } from '@/components/notifications';
 
 export const metadata: Metadata = {
@@ -8,6 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default function NotificationCenterDemoPage() {
+  if (process.env.NEXT_PUBLIC_ENABLE_DEMOS !== 'true') {
+    notFound();
+  }
+
   return React.createElement(
     'div',
     { className: 'min-h-screen bg-gray-50 dark:bg-gray-950' },

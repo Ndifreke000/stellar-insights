@@ -142,17 +142,20 @@ export default function FailedPaymentsPage() {
             label="Total Failed Payments"
             value={data.total_failed.toLocaleString()}
             subLabel="Last 7 days"
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Overall Failure Rate"
             value={`${data.overall_failure_rate.toFixed(2)}%`}
             trend={data.overall_failure_rate > 5 ? data.overall_failure_rate : undefined}
             trendDirection={data.overall_failure_rate > 5 ? "up" : "down"}
+            dataAsOf={lastUpdated}
           />
           <MetricCard
             label="Total Processed"
             value={data.total_processed.toLocaleString()}
             subLabel="Payments analyzed"
+            dataAsOf={lastUpdated}
           />
         </div>
 

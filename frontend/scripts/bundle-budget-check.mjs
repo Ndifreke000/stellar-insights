@@ -25,7 +25,6 @@ const BUDGETS = {
 
 const isCI = process.env.CI === 'true';
 const violations = [];
-const warnings = [];
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes}B`;

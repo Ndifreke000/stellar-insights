@@ -282,7 +282,7 @@ impl crate::database::Database {
             set_clause
         );
 
-        let mut q = sqlx::query_as::<_, CorridorAlertConfig>(&query)
+        let mut q = sqlx::query_as::<_, CorridorAlertConfig>(sqlx::AssertSqlSafe(query.as_str()))
             .bind(id)
             .bind(user_id);
 

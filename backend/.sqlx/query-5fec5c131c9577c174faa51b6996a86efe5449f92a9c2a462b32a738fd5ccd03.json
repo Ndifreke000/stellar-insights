@@ -6,42 +6,90 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "entity_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "entity_id"
+          }
+        }
       },
       {
         "name": "entity_type!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "entity_type"
+          }
+        }
       },
       {
         "name": "data!",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "data"
+          }
+        }
       },
       {
         "name": "hash",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "hash"
+          }
+        }
       },
       {
         "name": "epoch",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "epoch"
+          }
+        }
       },
       {
         "name": "timestamp: _",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "timestamp"
+          }
+        }
       },
       {
         "name": "created_at!: _",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snapshots",
+            "name": "created_at"
+          }
+        }
       }
     ],
     "parameters": {

@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import {
   TrendingUp,
-  Search,
-  Filter,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
@@ -21,7 +20,6 @@ import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
 import type { CorridorFilters, CorridorMetrics } from "@/lib/api/corridors";
 import { useCorridors } from "@/lib/react-query/queries";
-import { mockCorridors } from "@/components/lib//mockCorridorData";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -31,6 +29,7 @@ import {
 } from "@/contexts/UserPreferencesContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BookmarkButton } from "@/components/BookmarkButton";
+import { ObservedDataNotice } from "@/components/corridors/ObservedDataError";
 
 // Lazy-load the heatmap — only rendered when the user switches to heatmap view.
 const CorridorHeatmap = dynamic(
@@ -39,6 +38,7 @@ const CorridorHeatmap = dynamic(
 );
 
 function CorridorsPageContent() {
+  const t = useTranslations("corridors");
   const { prefs, setPrefs } = useUserPreferences();
 
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -64,12 +64,13 @@ function CorridorsPageContent() {
     sort_by: sortBy,
     limit: 200,
   } satisfies CorridorFilters);
-  // Fall back to demo data when the backend is unreachable.
-  const corridors = useMemo(
-    () => corridorQuery.data?.data ?? (corridorQuery.isError ? mockCorridors : []),
-    [corridorQuery.data, corridorQuery.isError],
-  );
-  const loading = corridorQuery.isPending && !corridorQuery.isError;
+  // A failed fetch must not be filled with demo corridors. Cached rows, if
+  // any, stay visible with a warning; otherwise the page shows an error.
+  const corridors = corridorQuery.data?.data ?? [];
+  const loadFailed = corridorQuery.isError;
+  const showStaleWarning = loadFailed && corridors.length > 0;
+  const showErrorPanel = loadFailed && corridors.length === 0;
+  const loading = corridorQuery.isPending && !loadFailed;
 
   const filteredCorridors = useMemo(() => {
     // Apply advanced filters then sort
@@ -111,7 +112,7 @@ function CorridorsPageContent() {
           </div>
           <h2 className="text-4xl font-black tracking-tighter uppercase italic flex items-center gap-3">
             <TrendingUp className="w-8 h-8 text-accent" />
-            Payment Corridors
+            {t("title")}
           </h2>
         </div>
         <div className="flex items-center gap-3">
@@ -132,7 +133,7 @@ function CorridorsPageContent() {
             className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-xl text-[10px] font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-white transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)] hover:shadow-accent/30"
           >
             <Download className="w-3 h-3" />
-            Export Data
+            {t("comparison.exportCsv")}
           </button>
         </div>
       </div>
@@ -141,7 +142,7 @@ function CorridorsPageContent() {
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         type="corridors"
-        title="Payment Corridors"
+        title={t("title")}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -166,7 +167,7 @@ function CorridorsPageContent() {
             ]}
             onChange={setFilterState}
             storageKey="corridors_advanced_filter"
-            placeholder="Search corridors…"
+            placeholder={t("search")}
           />
         </div>
         <div className="lg:col-span-4 flex gap-2">
@@ -191,12 +192,23 @@ function CorridorsPageContent() {
             }
             className="flex-1 bg-slate-900/50 border border-border/50 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-accent/50 appearance-none cursor-pointer"
           >
-            <option value="health_score">Sort: Health</option>
-            <option value="success_rate">Sort: Success</option>
-            <option value="liquidity">Sort: Liquidity</option>
+            <option value="health_score">{t("sort.health")}</option>
+            <option value="success_rate">{t("sort.success")}</option>
+            <option value="liquidity">{t("sort.liquidity")}</option>
           </select>
         </div>
       </div>
+
+      {showStaleWarning && (
+        <ObservedDataNotice
+          variant="warning"
+          message="Some corridor data failed to refresh. Showing the last observed results only."
+          onRetry={() => {
+            void corridorQuery.refetch();
+          }}
+          retrying={corridorQuery.isFetching}
+        />
+      )}
 
       <div className="flex items-center gap-1 p-1 bg-slate-950/50 border border-border/20 rounded-xl w-fit">
         <button
@@ -207,7 +219,7 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Grid
+          {t("views.grid")}
         </button>
         <button
           onClick={() => setViewMode("heatmap")}
@@ -217,11 +229,19 @@ function CorridorsPageContent() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Heatmap
+          {t("views.heatmap")}
         </button>
       </div>
 
-      {loading ? (
+      {showErrorPanel ? (
+        <ObservedDataNotice
+          message="Corridor data is unavailable. Retry the request, or check the status page. Routes stay hidden until observed metrics load."
+          onRetry={() => {
+            void corridorQuery.refetch();
+          }}
+          retrying={corridorQuery.isFetching}
+        />
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <SkeletonCorridorCard key={i} />
@@ -231,7 +251,7 @@ function CorridorsPageContent() {
         <div className="py-20 flex flex-col items-center justify-center glass-card rounded-3xl border-dashed">
           <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
           <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">
-            No matching corridors detected
+            {t("empty")}
           </p>
         </div>
       ) : viewMode === "heatmap" ? (

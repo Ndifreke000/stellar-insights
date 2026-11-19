@@ -74,6 +74,7 @@ async fn new_key(db: &Database) -> (String, String) {
             CreateApiKeyRequest {
                 name: "offramp".to_string(),
                 scopes: None,
+                rate_limit_per_minute: None,
                 expires_at: None,
             },
         )

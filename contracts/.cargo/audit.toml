@@ -6,4 +6,12 @@ ignore = [
                           # controllable dependency of this project -- fixing it requires an
                           # upstream soroban-sdk/arkworks release. No known vulnerability, only
                           # an "unmaintained" advisory.
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5.5 timing variability: pulled in only via the official
+                          # soroban-sdk -> soroban-env-host -> k256/p256 -> elliptic-curve chain
+                          # (`cargo tree -i crypto-bigint@0.5.5`). The patched line (>=0.7.6) needs a
+                          # RustCrypto/soroban-env-host upgrade upstream; contracts here never sign
+                          # with secret keys, so there is no secret-dependent timing to observe.
+    "RUSTSEC-2026-0543", # chrono unmaintained (no fixed release exists): stale Cargo.lock entry,
+                          # not part of the build graph for any target (`cargo tree -i chrono
+                          # --target all` is empty). Informational "unmaintained" advisory only.
 ]

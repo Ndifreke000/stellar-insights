@@ -1,0 +1,33 @@
+{
+  "name": "prices_get_sends_asset_as_query",
+  "description": "The asset goes in the query string, colon included.",
+  "operation": "prices.get",
+  "input": {
+    "asset": "XLM:native"
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/prices",
+    "query": {
+      "asset": "XLM:native"
+    },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "asset": "XLM:native",
+      "price_usd": 0.12,
+      "source": "coingecko",
+      "updated_at": "2026-01-01T00:00:00Z"
+    }
+  },
+  "expect": {
+    "result": {
+      "asset": "XLM:native",
+      "price_usd": 0.12,
+      "source": "coingecko",
+      "updated_at": "2026-01-01T00:00:00Z"
+    }
+  }
+}

@@ -10,7 +10,7 @@
 //!
 //! Nothing here holds keys or moves funds; it only reads the public ledger.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

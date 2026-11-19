@@ -6,67 +6,145 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "name",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "name"
+          }
+        }
       },
       {
         "name": "stellar_account",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "stellar_account"
+          }
+        }
       },
       {
         "name": "home_domain",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "home_domain"
+          }
+        }
       },
       {
         "name": "total_transactions!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "total_transactions"
+          }
+        }
       },
       {
         "name": "successful_transactions!",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "successful_transactions"
+          }
+        }
       },
       {
         "name": "failed_transactions!",
         "ordinal": 6,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "failed_transactions"
+          }
+        }
       },
       {
         "name": "total_volume_usd!",
         "ordinal": 7,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "total_volume_usd"
+          }
+        }
       },
       {
         "name": "avg_settlement_time_ms!",
         "ordinal": 8,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "avg_settlement_time_ms"
+          }
+        }
       },
       {
         "name": "reliability_score!",
         "ordinal": 9,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "reliability_score"
+          }
+        }
       },
       {
         "name": "status!",
         "ordinal": 10,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "status"
+          }
+        }
       },
       {
         "name": "created_at!: _",
         "ordinal": 11,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "updated_at!: _",
         "ordinal": 12,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "anchors",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

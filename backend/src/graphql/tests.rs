@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::resolvers::*;
+
     use super::super::schema::*;
     use super::super::types::*;
     use async_graphql::*;
@@ -563,8 +563,12 @@ mod tests {
         let ws_state = Arc::new(crate::websocket::WsState::new());
         build_schema_with_limits(
             Arc::new(pool),
-            ws_state,
-            GraphqlLimits { max_depth: 3, max_complexity: 50, introspection },
+            tx,
+            GraphqlLimits {
+                max_depth: 3,
+                max_complexity: 50,
+                introspection,
+            },
         )
     }
 
@@ -573,14 +577,30 @@ mod tests {
         let res = limited_schema(true)
             .execute("{ __schema { types { fields { type { name } } } } }")
             .await;
-        assert!(!res.errors.is_empty(), "query deeper than max_depth must fail");
+        assert!(
+            !res.errors.is_empty(),
+            "query deeper than max_depth must fail"
+        );
     }
 
     #[tokio::test]
     async fn test_introspection_disabled_when_turned_off() {
         let query = "{ __schema { queryType { name } } }";
-        assert!(limited_schema(true).execute(query).await.errors.is_empty());
-        assert!(!limited_schema(false).execute(query).await.errors.is_empty());
+        let enabled = limited_schema(true).execute(query).await;
+        assert!(enabled.errors.is_empty());
+        assert_ne!(
+            enabled.data.into_json().unwrap()["__schema"],
+            serde_json::Value::Null
+        );
+
+        // async-graphql 7.2 answers a disabled `__schema` with null data rather
+        // than an error; either way the schema must not be exposed.
+        let disabled = limited_schema(false).execute(query).await;
+        let data = disabled.data.into_json().unwrap();
+        assert!(
+            !disabled.errors.is_empty() || data["__schema"].is_null(),
+            "introspection must not expose the schema when disabled: {data}"
+        );
     }
 
     #[test]

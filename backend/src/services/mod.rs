@@ -1,3 +1,4 @@
+pub mod account_lineage;
 pub mod account_merge_detector;
 pub mod aggregation;
 pub mod alert_manager;
@@ -17,10 +18,13 @@ pub mod gdpr;
 #[cfg(feature = "governance")]
 pub mod governance;
 pub mod indexing;
+pub mod ledger_coverage;
 pub mod liquidity_pool_analyzer;
+pub mod preflight;
 pub mod price_feed;
 pub mod realtime_broadcaster;
 pub mod request_signing;
+pub mod route_stats;
 pub mod service_container;
 /// Optional Slack notification bot. Excluded from the default build to keep
 /// the default binary smaller and its attack surface reduced; enable with

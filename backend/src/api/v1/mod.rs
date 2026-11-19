@@ -1,7 +1,6 @@
 use crate::api::{
-    account_merges, anchors, cache_stats, corridor_alerts, corridors, cost_calculator, digest,
-    fee_bump, liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy,
-    webhooks,
+    account_merges, anchors, cache_stats, corridors, cost_calculator, digest, fee_bump,
+    liquidity_pools, metrics, oauth, price_feed as price_feed_api, rpc, sep24_proxy, webhooks,
 };
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
@@ -17,7 +16,7 @@ use crate::services::price_feed::PriceFeedClient;
 use crate::state::AppState;
 use axum::{
     middleware,
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Serialize;
@@ -129,11 +128,19 @@ pub fn routes(
             "/corridors/{corridor_key}",
             get(corridors::get_corridor_detail),
         )
+        .route(
+            "/corridors/{corridor_key}/failures",
+            get(corridors::get_corridor_failures),
+        )
         // Pre-payment check for off-ramps: public and read-only so an
         // integrator can try it before taking an API key.
         .route(
             "/preflight",
             get(crate::api::preflight::preflight_get).post(crate::api::preflight::preflight_post),
+        )
+        .route(
+            "/preflight/batch",
+            post(crate::api::preflight::preflight_batch),
         )
         .with_state(cached_state);
 
@@ -241,6 +248,10 @@ pub fn routes(
             "/corridor-alerts",
             crate::api::corridor_alerts::routes(app_state.clone()),
         )
+        .nest(
+            "/notifications",
+            crate::api::device_tokens::routes(pool.clone()),
+        )
         .nest("/jobs", job_monitoring_routes(pool.clone()));
 
     // Replay control (start/list/inspect/delete replay sessions, cleanup
@@ -250,7 +261,10 @@ pub fn routes(
     // file). Gated behind auth_middleware like protected_routes above,
     // since these start background jobs and delete data.
     let replay_routes = Router::new()
-        .nest("/replay", crate::api::replay_handlers::routes(app_state.clone()))
+        .nest(
+            "/replay",
+            crate::api::replay_handlers::routes(app_state.clone()),
+        )
         .layer(middleware::from_fn(auth_middleware));
 
     // 5b. Read-only reference modules. Their handlers and OpenAPI entries
@@ -271,7 +285,8 @@ pub fn routes(
     // (see issue #2659); falls back to an empty router so the `.merge()`
     // below doesn't need its own cfg.
     #[cfg(feature = "quests")]
-    let achievements_routes = Router::new().nest("/achievements", crate::api::achievements::routes());
+    let achievements_routes =
+        Router::new().nest("/achievements", crate::api::achievements::routes());
     #[cfg(not(feature = "quests"))]
     let achievements_routes: Router = Router::new();
     let reference_routes = Router::new()
@@ -283,6 +298,11 @@ pub fn routes(
             get(crate::api::network::get_available_networks),
         )
         .merge(achievements_routes)
+        // Public snapshot integrity checks (#2597): read-only, no auth.
+        .nest(
+            "/snapshots",
+            crate::api::snapshots::verify_routes(pool.clone()),
+        )
         .nest(
             "/assets",
             crate::api::asset_verification::routes(pool.clone()),

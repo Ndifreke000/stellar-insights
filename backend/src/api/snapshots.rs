@@ -1,15 +1,27 @@
 //! HTTP handlers for snapshot generation and submission
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use utoipa::ToSchema;
 
 use crate::database::Database;
+use crate::error::ApiError;
 use crate::services::contract::ContractService;
 use crate::services::snapshot::SnapshotService;
+use crate::snapshot::verify::{
+    build_report, load_stored_snapshot, OnChainLookup, SnapshotRef, StoredSnapshot,
+    VerificationReport,
+};
 
 /// Response for snapshot generation
 #[derive(Debug, Serialize, ToSchema)]
@@ -182,4 +194,130 @@ impl IntoResponse for SnapshotError {
         )
             .into_response()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public verification (#2597)
+// ---------------------------------------------------------------------------
+
+/// State for the public, read-only snapshot routes.
+#[derive(Clone)]
+pub struct SnapshotVerifyState {
+    pub pool: SqlitePool,
+    /// `None` when `SNAPSHOT_CONTRACT_ID` is unset; verification then reports
+    /// `chain_unavailable` instead of failing.
+    pub contract: Option<Arc<ContractService>>,
+}
+
+/// Public routes, mounted at `/api/v1/snapshots`. No auth: verification is
+/// meant to be checkable by anyone, and both routes are read-only.
+pub fn verify_routes(pool: SqlitePool) -> Router {
+    let contract = match ContractService::read_only_from_env() {
+        Ok(service) => Some(Arc::new(service)),
+        Err(e) => {
+            warn!("Snapshot verification will not check the chain: {e}");
+            None
+        }
+    };
+    verify_routes_with_state(SnapshotVerifyState { pool, contract })
+}
+
+pub fn verify_routes_with_state(state: SnapshotVerifyState) -> Router {
+    Router::new()
+        .route("/{id}", get(get_snapshot_data))
+        .route("/{id}/verify", get(verify_snapshot))
+        .with_state(state)
+}
+
+async fn find_snapshot(pool: &SqlitePool, raw_id: &str) -> Result<StoredSnapshot, ApiError> {
+    let snapshot_ref = SnapshotRef::parse(raw_id)
+        .map_err(|e| ApiError::bad_request("INVALID_SNAPSHOT_ID", e.0))?;
+    load_stored_snapshot(pool, &snapshot_ref)
+        .await?
+        .ok_or_else(|| ApiError::not_found("SNAPSHOT_NOT_FOUND", "Snapshot not found"))
+}
+
+/// Canonical JSON of a snapshot, byte-for-byte as it was hashed.
+///
+/// GET /api/v1/snapshots/{id}
+///
+/// Third parties hash this body themselves (`sha256`) and compare it with the
+/// on-chain record; see `docs/SNAPSHOT_ANCHORING.md`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/snapshots/{id}",
+    params(("id" = String, Path, description = "Epoch number or snapshot UUID")),
+    responses(
+        (status = 200, description = "Canonical snapshot JSON", content_type = "application/json"),
+        (status = 400, description = "Invalid snapshot id"),
+        (status = 404, description = "Snapshot not found")
+    ),
+    tag = "Snapshots"
+)]
+pub async fn get_snapshot_data(
+    State(state): State<SnapshotVerifyState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let stored = find_snapshot(&state.pool, &id).await?;
+
+    // Return the stored bytes untouched: re-serialising through serde would
+    // change the hash.
+    let mut response = (StatusCode::OK, stored.data).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    if let Ok(v) = HeaderValue::from_str(&stored.hash) {
+        headers.insert("x-snapshot-hash", v);
+    }
+    if let Ok(v) = HeaderValue::from_str(&stored.epoch.to_string()) {
+        headers.insert("x-snapshot-epoch", v);
+    }
+    Ok(response)
+}
+
+/// Verify a stored snapshot against its recomputed hash and on-chain record.
+///
+/// GET /api/v1/snapshots/{id}/verify
+///
+/// Always `200` once the snapshot exists: the verdict is in `verified` and
+/// `status`, so a tampered or unanchored snapshot is a result, not an error.
+#[utoipa::path(
+    get,
+    path = "/api/v1/snapshots/{id}/verify",
+    params(("id" = String, Path, description = "Epoch number or snapshot UUID")),
+    responses(
+        (status = 200, description = "Verification result", body = VerificationReport),
+        (status = 400, description = "Invalid snapshot id"),
+        (status = 404, description = "Snapshot not found")
+    ),
+    tag = "Snapshots"
+)]
+pub async fn verify_snapshot(
+    State(state): State<SnapshotVerifyState>,
+    Path(id): Path<String>,
+) -> Result<Json<VerificationReport>, ApiError> {
+    let stored = find_snapshot(&state.pool, &id).await?;
+
+    let lookup = match &state.contract {
+        None => OnChainLookup::NotConfigured,
+        Some(contract) => match contract.get_snapshot_record(stored.epoch).await {
+            Ok(Some(record)) => OnChainLookup::Found(record),
+            Ok(None) => OnChainLookup::NotAnchored,
+            Err(e) => {
+                warn!("On-chain lookup failed for epoch {}: {e}", stored.epoch);
+                OnChainLookup::Unavailable(e.to_string())
+            }
+        },
+    };
+
+    let report = build_report(&stored, lookup);
+    if !report.checks.stored_hash_matches_data {
+        warn!(
+            "Snapshot {} (epoch {}) failed integrity check: stored={} recomputed={}",
+            report.snapshot_id, report.epoch, report.stored_hash, report.recomputed_hash
+        );
+    }
+    Ok(Json(report))
 }

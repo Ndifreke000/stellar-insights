@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod session_tests {
-    use chrono::Utc;
+
     use payraider_backend::session::SessionService;
     use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
     use std::time::Duration;

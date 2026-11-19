@@ -25,6 +25,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod engine;
 pub mod event_processor;
+pub mod ledger_headers;
 pub mod state_builder;
 pub mod storage;
 
@@ -32,6 +33,7 @@ pub use checkpoint::{Checkpoint, CheckpointManager};
 pub use config::{ReplayConfig, ReplayMode, ReplayRange};
 pub use engine::ReplayEngine;
 pub use event_processor::{EventProcessor, ProcessingContext, ProcessingResult};
+pub use ledger_headers::{LedgerHeaderStore, ProtocolVersionSource};
 pub use state_builder::StateBuilder;
 pub use storage::{EventStorage, ReplayStorage};
 
@@ -59,6 +61,11 @@ pub const PROTOCOL_V20: u32 = 20;
 /// The snapshot-submission handler uses different fee/reserve accounting
 /// depending on whether the ledger was closed under protocol 20 or 21+.
 pub const PROTOCOL_V21: u32 = 21;
+
+/// Protocol 23 unified classic and Soroban events (CAP-0067). Event
+/// handlers that decode event payloads are selected per side of this
+/// boundary (#2768).
+pub const PROTOCOL_V23: u32 = 23;
 
 /// A resolved protocol version for a specific ledger.
 ///
@@ -88,6 +95,12 @@ impl LedgerProtocolVersion {
     #[must_use]
     pub const fn has_v21_fee_semantics(self) -> bool {
         self.0 >= PROTOCOL_V21
+    }
+
+    /// Returns `true` when CAP-67 unified events are active.
+    #[must_use]
+    pub const fn has_unified_events(self) -> bool {
+        self.0 >= PROTOCOL_V23
     }
 }
 
@@ -283,6 +296,9 @@ pub enum ReplayError {
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
+
+    #[error("No ledger header (protocol version) stored for {network} ledger {ledger}")]
+    MissingLedgerHeader { network: String, ledger: u64 },
 
     #[error("State corruption detected: {0}")]
     StateCorruption(String),

@@ -1,6 +1,3 @@
-use sqlx::sqlite::SqlitePool;
-use std::env;
-
 #[tokio::test]
 async fn test_migrations_apply_cleanly() {
     let db_url = "sqlite://test_migration_forward.db?mode=rwc";

@@ -1,102 +1,85 @@
-# PayRaider
+# Stellar Insights
 
-> **PayRaider has moved to the [Pay-Raider organisation](https://github.com/Pay-Raider).**
-> Development continues in separate repositories:
-> [backend](https://github.com/Pay-Raider/payraider-backend) ·
-> [web app](https://github.com/Pay-Raider/payraider-app) ·
-> [plugin & SDKs](https://github.com/Pay-Raider/payraider-plugin) ·
-> [contracts](https://github.com/Pay-Raider/payraider-contracts) ·
-> [mobile](https://github.com/Pay-Raider/payraider-mobile).
-> This repository is kept for its history and is no longer updated.
+Stellar Insights is an analytics and preflight API for Stellar assets, with a Rust backend, a Next.js frontend, and TypeScript/Python SDKs.
 
-[![Coverage](https://codecov.io/gh/Ndifreke000/stellar-insights/branch/main/graph/badge.svg)](https://codecov.io/gh/Ndifreke000/stellar-insights)
-[![Coverage CI](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml/badge.svg)](https://github.com/Ndifreke000/stellar-insights/actions/workflows/coverage.yml)
-
-**Check a Stellar payment corridor before you pay out.**
-
-Off-ramps and payout apps lose money when a payment goes out on a corridor
-that is degraded or too thin for the amount. PayRaider answers one question
-before the money moves: *is this corridor healthy enough to pay on right
-now?*
+## Getting started
 
 ```bash
-curl -s "https://<your-payraider-host>/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+git clone https://github.com/Ndifreke000/stellar-insights.git
+cd stellar-insights
+# backend (Rust, SQLite created on first start)
+cd backend && cp .env.example .env && cargo run
+cargo test
+# frontend
+cd ../frontend && npm install && npm run dev
+# SDKs
+cd ../sdk/typescript && npm install && npm test
+cd ../python && pip install -e .[dev] && pytest
 ```
 
-returns `proceed`, `caution`, `hold` or `unknown`, the checks behind it
-(success rate of recent payments including failed ones, liquidity against the
-amount, sample size, corridor health) and healthier corridors to the same
-currency.
+Try the core endpoint: `curl -s "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"` (port per your `.env`).
 
-- **Observed, not modelled.** Decisions come from recent payments on the
-  Stellar ledger. No data means `unknown`, never a guess.
-- **Free to try.** No API key needed; keys raise the rate limit.
-- **Paid in USDC on Stellar.** The Pro plan is bought with a USDC payment that
-  the API verifies on the ledger.
-- **Fits any stack.** REST, TypeScript and Python SDKs, an MCP server for AI
-  agents, and a Claude plugin.
+## Rate limiting
 
-Integration guide: [docs/PLUGIN.md](docs/PLUGIN.md).
+All API routes are protected by a single rate limiting middleware. Every response — including successful `200` responses and rate-limited `429` responses — carries the standard IETF `RateLimit-*` headers so SDKs and clients can implement backoff without parsing error bodies:
 
-### What is in this repository
-
-| Path | What it is |
+| Header | Description |
 | --- | --- |
-| `backend/` | Rust API (Axum, SQLite): corridor data, the pre-payment check, wallet sign-in, API keys and USDC billing |
-| `sdk/typescript`, `sdk/python` | Client SDKs |
-| `sdk/mcp-server`, `plugins/payraider` | MCP server and Claude plugin |
-| `frontend/` | Next.js dashboard, corridor explorer and self-serve API keys |
-| `contracts/` | The `payraider` Soroban contract that anchors snapshot hashes on-chain |
-| `mobile/` | React Native app ([status](mobile/README.md#current-status)) |
+| `RateLimit-Limit` | Maximum number of requests allowed in the current window. |
+| `RateLimit-Remaining` | Number of requests remaining in the current window. |
+| `RateLimit-Reset` | Seconds until the current window resets. |
 
-The dashboard also carries features from the project's earlier scope
-(governance, quests, GDPR tooling and others). They are kept but are not part
-of the off-ramp product.
+When a request is rate limited, the response is a `429 Too Many Requests` with the same `RateLimit-*` headers (with `RateLimit-Remaining: 0`) plus a `Retry-After` header indicating how long the client should wait before retrying.
 
-## 🔧 Quick start
-
-No database server to install — SQLite runs in-process and the file is created
-on first start.
-
-1. Run backend
+Example:
 
 ```bash
-cd backend
-cp .env.example .env
-# DATABASE_URL already defaults to sqlite:./payraider.db
-# replace the CHANGE_ME placeholders: the backend refuses to start with them
-#   JWT_SECRET=$(openssl rand -base64 48)
-#   ENCRYPTION_KEY=$(openssl rand -hex 32)
-#   SEP10_SERVER_PUBLIC_KEY=<a real Stellar public key>
-# set STELLAR_RPC_URL etc. as needed
-cargo run
+curl -i "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+# HTTP/1.1 200 OK
+# RateLimit-Limit: 60
+# RateLimit-Remaining: 59
+# RateLimit-Reset: 42
 ```
 
-2. Run frontend
+A bare `CODE` (e.g. `USDC`) is still accepted and resolves to the corridor for
+that code; when several issuers exist for the same code, use `CODE:ISSUER` to
+select the one you mean. Malformed asset strings are rejected at the boundary
+with the standard error response.
 
-```bash
-cd frontend
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL must point at the backend
-pnpm install
-pnpm dev
-```
+## Pro subscription renewal and grace period
 
-## Plugin: check a corridor before you pay
+Pro access is time-limited. To avoid silent expiry — where an integrator's
+production traffic suddenly drops to free-tier limits — the backend sends
+renewal reminders and keeps a short grace period after expiry.
 
-Off-ramp and payout apps can ask whether a corridor is healthy enough to pay
-on right now. The check is public and read-only, and needs no API key:
+- **Reminders.** A scheduler notifies the account owner (email and/or webhook)
+  **7 days** and **1 day** before the Pro subscription expires. Each reminder
+  is sent at most once per window, so restarts do not duplicate notifications.
+- **Grace period.** After the expiry timestamp passes, Pro entitlements remain
+  active for a configurable grace window (default **3 days**) so a late renewal
+  does not interrupt production. Once the grace period ends, the account falls
+  back to free-tier limits.
 
-```bash
-curl -s -X POST http://localhost:8080/api/v1/preflight \
-  -H 'content-type: application/json' \
-  -d '{"source_asset":"USDC","destination_asset":"NGN","amount_usd":2500}'
-```
+Both are configured via environment variables:
 
-It returns `proceed`, `caution`, `hold` or `unknown` with the checks behind the
-decision and healthier alternative corridors. The same check is available
-through the TypeScript and Python SDKs, as an MCP server you can host
-(`sdk/mcp-server`), and as a Claude plugin (`plugins/payraider`). See
-[docs/PLUGIN.md](docs/PLUGIN.md).
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `SUBSCRIPTION_REMINDER_DAYS` | `7,1` | Comma-separated days-before-expiry at which reminders fire |
+| `SUBSCRIPTION_GRACE_PERIOD_DAYS` | `3` | Days Pro stays active after expiry before falling back to free tier |
+
+Reminders are delivered through the same notification channel used for other
+account events (email when configured, otherwise the account's webhook).
+
+## Wallet sign-in (SEP-10)
+
+The dashboard signs wallets in with [SEP-10](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md).
+The **home domain is server-authoritative**: the frontend fetches it from the
+backend config endpoint (`GET /api/v1/auth/config`) and passes it to the SEP-10
+challenge request. The client no longer derives the home domain from
+`window.location.hostname`, so sign-in works on preview deployments and
+localhost, and a client cannot pick the domain that is validated. The backend
+ignores any client-supplied home domain and always uses its configured value
+(`SEP10_HOME_DOMAIN`).
 
 ## Database
 
@@ -120,58 +103,8 @@ The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
 |---|---|---|
 | PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
 
-Other contract crates under `contracts/` are archived and not built in CI.
-See [`contracts/archive/README.md`](contracts/archive/README.md).
+All other contract crates live under `c
 
-## 🧪 Local safety checks (already built)
+## 🧪 Local safety chec
 
-- `scripts/check_folder_size.sh` (fails if any folder >200MB)
-- [`.github/workflows/enforce-folder-size.yml`](.github/workflows/enforce-folder-size.yml)
-
-## 📁 Structure
-
-| Path | Contents |
-|---|---|
-| `backend/` | Rust analytics engine — REST, GraphQL and WebSocket API |
-| `frontend/` | Next.js dashboard |
-| `mobile/` | React Native (Expo) app — [current status](mobile/README.md#current-status) |
-| `contracts/` | Soroban contracts (Rust, `no_std`) |
-| `sdk/` | TypeScript and Python API clients |
-| `docs/` | Project documentation |
-| `scripts/` | Build, deploy and maintenance scripts |
-| `tests/` | Cross-cutting / end-to-end tests |
-| `k8s/`, `terraform/` | Deployment manifests and infrastructure as code — **`terraform/` is not used by the actual deployment** (Render Blueprint + SQLite, see `docs/DEPLOY.md`); kept as a reference, see issue #2650 |
-| `elk/`, `monitoring/` | Logging and observability stack configs — **`elk/` is not used by the actual deployment**; kept as a reference, see issue #2650 |
-
-## 📌 Notes
-
-- History has been cleaned to reduce clone size.
-- Use `git lfs` for large binaries.
-- For full operational details, see `docs/` and module READMEs.
-
-## SDK status
-
-`sdk/` ships four packages: `typescript`, `python`, `react`, and `mcp-server`.
-**Neither the mobile app nor the web frontend currently consumes any of them.**
-The mobile app makes API calls via its own internal `axios`-based `apiClient`
-(`mobile/src/services/api.ts`); the frontend has its own `src/lib/api-client.ts`.
-The TypeScript SDK is published publicly (`"publishConfig": {"access": "public"}`)
-but its correctness against the real backend API is therefore untested by any
-internal usage.
-
-Known gaps:
-- **`@payraider/sdk` (typescript):** public, but not imported by mobile or frontend.
-- **`@payraider/react`:** wraps the TypeScript SDK, also not consumed internally.
-- **`@payraider/mcp-server`:** a separate product surface (AI-agent tooling);
-  candidate for extraction into its own repository. See
-  [`sdk/mcp-server/README.md`](sdk/mcp-server/README.md).
-
-The storage library situation in mobile is intentionally kept simple:
-`react-native-mmkv` (encrypted, MMKV-based) for general key-value storage,
-`react-native-keychain` for the MMKV encryption key and auth tokens,
-and `react-native-biometrics` for biometric prompts. All three are actively used.
-
-## Handsoff notes
-
-<!-- handsoff-issue-2354 -->
-- #2354: 🟡 MEDIUM: Health Check Too Simple
+/* … truncated 1537 chars — edit only what you need near the top … */

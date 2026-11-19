@@ -42,54 +42,86 @@ export function SuccessRateCompareChart({ corridors }: CompareChartsProps) {
   });
 
   return (
-    <div className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700">
+    <div
+      className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700"
+      role="region"
+      aria-label="Success Rate Comparison chart"
+    >
       <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
         Success Rate Comparison (%)
       </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke="#334155"
-            opacity={0.1}
-          />
-          <XAxis
-            dataKey="timestamp"
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            domain={[0, 100]}
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "none",
-              borderRadius: "8px",
-              color: "#f8fafc",
-            }}
-            itemStyle={{ fontSize: "12px" }}
-          />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
-          {corridors.map((c, i) => (
-            <Line
-              key={c.corridor.id}
-              type="monotone"
-              dataKey={c.corridor.id}
-              stroke={COLORS[i % COLORS.length]}
-              dot={false}
-              strokeWidth={3}
-              name={c.corridor.id}
-              animationDuration={1500}
+      <div aria-hidden="true">
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#334155"
+              opacity={0.1}
             />
+            <XAxis
+              dataKey="timestamp"
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, 100]}
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#1e293b",
+                border: "none",
+                borderRadius: "8px",
+                color: "#f8fafc",
+              }}
+              itemStyle={{ fontSize: "12px" }}
+            />
+            <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
+            {corridors.map((c, i) => (
+              <Line
+                key={c.corridor.id}
+                type="monotone"
+                dataKey={c.corridor.id}
+                stroke={COLORS[i % COLORS.length]}
+                dot={false}
+                strokeWidth={3}
+                name={c.corridor.id}
+                animationDuration={1500}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <table className="sr-only">
+        <caption>Success Rate Comparison by Corridor over time</caption>
+        <thead>
+          <tr>
+            <th scope="col">Timestamp</th>
+            {corridors.map((c) => (
+              <th key={c.corridor.id} scope="col">
+                {c.corridor.id}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((row) => (
+            <tr key={String(row.timestamp)}>
+              <th scope="row">{row.timestamp}</th>
+              {corridors.map((c) => (
+                <td key={c.corridor.id}>
+                  {row[c.corridor.id] !== undefined ? `${row[c.corridor.id]}%` : "N/A"}
+                </td>
+              ))}
+            </tr>
           ))}
-        </LineChart>
-      </ResponsiveContainer>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -113,54 +145,86 @@ export function VolumeCompareChart({ corridors }: CompareChartsProps) {
   });
 
   return (
-    <div className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700">
+    <div
+      className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700"
+      role="region"
+      aria-label="Volume Comparison chart"
+    >
       <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
         Volume Comparison (USD)
       </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke="#334155"
-            opacity={0.1}
-          />
-          <XAxis
-            dataKey="timestamp"
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            formatter={(value?: TooltipValueType) => {
-              if (typeof value !== "number") return ["-", "Volume"];
-              return [`$${value.toLocaleString()}`, "Volume"];
-            }}
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "none",
-              borderRadius: "8px",
-              color: "#f8fafc",
-            }}
-          />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
-          {corridors.map((c, i) => (
-            <Bar
-              key={c.corridor.id}
-              dataKey={c.corridor.id}
-              fill={COLORS[i % COLORS.length]}
-              name={c.corridor.id}
-              radius={[4, 4, 0, 0]}
+      <div aria-hidden="true">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={chartData}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#334155"
+              opacity={0.1}
             />
+            <XAxis
+              dataKey="timestamp"
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              formatter={(value?: TooltipValueType) => {
+                if (typeof value !== "number") return ["-", "Volume"];
+                return [`$${value.toLocaleString()}`, "Volume"];
+              }}
+              contentStyle={{
+                backgroundColor: "#1e293b",
+                border: "none",
+                borderRadius: "8px",
+                color: "#f8fafc",
+              }}
+            />
+            <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
+            {corridors.map((c, i) => (
+              <Bar
+                key={c.corridor.id}
+                dataKey={c.corridor.id}
+                fill={COLORS[i % COLORS.length]}
+                name={c.corridor.id}
+                radius={[4, 4, 0, 0]}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <table className="sr-only">
+        <caption>Volume Comparison by Corridor over time (USD)</caption>
+        <thead>
+          <tr>
+            <th scope="col">Timestamp</th>
+            {corridors.map((c) => (
+              <th key={c.corridor.id} scope="col">
+                {c.corridor.id}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((row) => (
+            <tr key={String(row.timestamp)}>
+              <th scope="row">{row.timestamp}</th>
+              {corridors.map((c) => (
+                <td key={c.corridor.id}>
+                  {row[c.corridor.id] !== undefined ? `$${Number(row[c.corridor.id]).toLocaleString()}` : "N/A"}
+                </td>
+              ))}
+            </tr>
           ))}
-        </BarChart>
-      </ResponsiveContainer>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -184,51 +248,83 @@ export function SlippageCompareChart({ corridors }: CompareChartsProps) {
   });
 
   return (
-    <div className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700">
+    <div
+      className="w-full bg-white dark:bg-slate-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-slate-700"
+      role="region"
+      aria-label="Slippage Comparison chart"
+    >
       <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
         Slippage Comparison (bps)
       </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke="#334155"
-            opacity={0.1}
-          />
-          <XAxis
-            dataKey="timestamp"
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip
-            formatter={(value?: TooltipValueType) => {
-              if (typeof value !== "number") return ["-", "Slippage"];
-              return [`${value.toFixed(2)} bps`, "Slippage"];
-            }}
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "none",
-              borderRadius: "8px",
-              color: "#f8fafc",
-            }}
-          />
-          <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
-          {corridors.map((c, i) => (
-            <Line
-              key={c.corridor.id}
-              type="stepAfter"
-              dataKey={c.corridor.id}
-              stroke={COLORS[i % COLORS.length]}
-              dot={false}
-              strokeWidth={3}
-              name={c.corridor.id}
+      <div aria-hidden="true">
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#334155"
+              opacity={0.1}
             />
+            <XAxis
+              dataKey="timestamp"
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <Tooltip
+              formatter={(value?: TooltipValueType) => {
+                if (typeof value !== "number") return ["-", "Slippage"];
+                return [`${value.toFixed(2)} bps`, "Slippage"];
+              }}
+              contentStyle={{
+                backgroundColor: "#1e293b",
+                border: "none",
+                borderRadius: "8px",
+                color: "#f8fafc",
+              }}
+            />
+            <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
+            {corridors.map((c, i) => (
+              <Line
+                key={c.corridor.id}
+                type="stepAfter"
+                dataKey={c.corridor.id}
+                stroke={COLORS[i % COLORS.length]}
+                dot={false}
+                strokeWidth={3}
+                name={c.corridor.id}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <table className="sr-only">
+        <caption>Slippage Comparison by Corridor over time (bps)</caption>
+        <thead>
+          <tr>
+            <th scope="col">Timestamp</th>
+            {corridors.map((c) => (
+              <th key={c.corridor.id} scope="col">
+                {c.corridor.id}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((row) => (
+            <tr key={String(row.timestamp)}>
+              <th scope="row">{row.timestamp}</th>
+              {corridors.map((c) => (
+                <td key={c.corridor.id}>
+                  {row[c.corridor.id] !== undefined ? `${Number(row[c.corridor.id]).toFixed(2)} bps` : "N/A"}
+                </td>
+              ))}
+            </tr>
           ))}
-        </LineChart>
-      </ResponsiveContainer>
+        </tbody>
+      </table>
     </div>
   );
 }

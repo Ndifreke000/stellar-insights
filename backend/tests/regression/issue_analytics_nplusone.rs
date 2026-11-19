@@ -144,7 +144,7 @@ async fn batch_load_assets(
         "SELECT anchor_id, asset_code FROM assets WHERE anchor_id IN ({placeholders}) ORDER BY anchor_id, asset_code ASC"
     );
 
-    let mut query = sqlx::query_as::<_, (String, String)>(&query_str);
+    let mut query = sqlx::query_as::<_, (String, String)>(sqlx::AssertSqlSafe(query_str.as_str()));
     for id in anchor_ids {
         query = query.bind(id);
     }

@@ -54,7 +54,7 @@ impl RequestSigningService {
     }
 
     /// Check if nonce has been used before (replay detection)
-    pub async fn check_nonce(&self, nonce: &str, client_id: &str) -> Result<bool> {
+    pub async fn check_nonce(&self, nonce: &str, _client_id: &str) -> Result<bool> {
         let redis_conn = self.redis_connection.read().await;
 
         if let Some(mut conn) = redis_conn.clone() {

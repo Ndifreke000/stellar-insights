@@ -33,7 +33,7 @@ pub mod token_refresh {
 }
 
 use anyhow::{anyhow, Result};
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::{password_hash::phc::PasswordHash, Argon2, PasswordVerifier};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::aio::MultiplexedConnection;

@@ -37,3 +37,6 @@ jobs:
 
       - name: TypeScript Type Check
         run: npx tsc --noEmit
+
+      - name: Check missing translations
+        run: node scripts/i18n-audit.js

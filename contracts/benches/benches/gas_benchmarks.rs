@@ -1,33 +1,101 @@
-//! Gas (CPU instruction / memory) benchmarks using the Soroban host budget.
+//! Gas (CPU instruction / memory / ledger I/O) benchmarks using the Soroban
+//! host budget and invocation metering.
 //!
 //! Run with `cargo bench -p contract-benches --bench gas_benchmarks`.
-//! Prints per-operation costs and exits non-zero if a scaling check fails:
-//! - batching N snapshots must be cheaper than N single submissions
-//! - voting cost must not grow with the number of existing voters
-//! - finalizing a proposal must not grow with the number of existing proposals
+//!
+//! Measures **every public entrypoint** of the `payraider` contract once,
+//! against realistic pre-populated state, and prints one machine-readable line
+//! per entrypoint (#2787):
+//!
+//! ```text
+//! GAS payraider::submit_snapshot cpu=123456 mem=7890 read_entries=3 write_entries=2 read_bytes=0 write_bytes=812
+//! ```
+//!
+//! Host budget figures are deterministic (no wall-clock noise), so CI can hold
+//! each entrypoint to a tight threshold. `scripts/check_gas_regression.py`
+//! compares these lines against the baseline in `docs/GAS_COSTS.md` using the
+//! thresholds in `contracts/benches/gas-thresholds.toml`, and writes a JSON
+//! result file and a markdown diff table.
+//!
+//! `read_entries` counts every ledger entry the invocation touched (disk and
+//! in-memory), since live Soroban state is in memory and disk reads are almost
+//! always zero in the test host. `read_bytes` is the disk-read figure.
 //!
 //! Set `GAS_MAX_CPU` to also enforce an absolute per-invocation CPU instruction ceiling.
 
-use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
-    Address, BytesN, Env, String, Vec,
-};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env};
 
-use analytics::{AnalyticsContract, AnalyticsContractClient};
-use governance::{GovernanceContract, GovernanceContractClient, VoteChoice};
+use payraider::{PayRaiderContract, PayRaiderContractClient, Role, DEFAULT_UPGRADE_DELAY_LEDGERS};
+
+/// Snapshots stored before measuring, so map-backed reads and writes are
+/// costed at a realistic size rather than against empty storage.
+const HISTORY: u64 = 50;
+
+/// Every public entrypoint of the contract. The benchmark refuses to report if
+/// one of these was not measured, so a new entrypoint must be added here and
+/// measured below (and given a threshold in gas-thresholds.toml).
+const ENTRYPOINTS: &[&str] = &[
+    "initialize",
+    "get_version",
+    "submit_snapshot",
+    "get_snapshot",
+    "latest_snapshot",
+    "get_admin",
+    "propose_admin",
+    "accept_admin",
+    "cancel_admin_transfer",
+    "get_pending_admin",
+    "get_latest_epoch",
+    "pause",
+    "unpause",
+    "schedule_upgrade",
+    "execute_upgrade",
+    "cancel_upgrade",
+    "get_pending_upgrade",
+    "get_upgrade_delay",
+    "set_upgrade_delay",
+    "get_storage_version",
+    "migrate",
+    "set_governance",
+    "get_governance",
+    "set_admin_by_governance",
+    "set_paused_by_governance",
+    "is_paused",
+    "add_submitter",
+    "remove_submitter",
+    "rotate_submitter",
+    "get_submitters",
+    "bump_ttl",
+    "get_role_holders",
+    "grant_role",
+    "revoke_role",
+    "has_role",
+    "get_metadata",
+    "get_contract_info",
+];
 
 struct Cost {
     cpu: u64,
     mem: u64,
+    read_entries: u64,
+    write_entries: u64,
+    read_bytes: u64,
+    write_bytes: u64,
 }
 
+/// Run `f` (exactly one top-level contract invocation) and record its cost.
 fn measure(env: &Env, f: impl FnOnce()) -> Cost {
     let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     f();
+    let res = env.cost_estimate().resources();
     Cost {
         cpu: budget.cpu_instruction_cost(),
         mem: budget.memory_bytes_cost(),
+        read_entries: u64::from(res.disk_read_entries) + u64::from(res.memory_read_entries),
+        write_entries: u64::from(res.write_entries),
+        read_bytes: u64::from(res.disk_read_bytes),
+        write_bytes: u64::from(res.write_bytes),
     }
 }
 
@@ -38,138 +106,355 @@ fn hash(env: &Env, seed: u64) -> BytesN<32> {
     BytesN::from_array(env, &bytes)
 }
 
-fn analytics(env: &Env) -> (AnalyticsContractClient, Address) {
-    let id = env.register(AnalyticsContract, ());
-    let client = AnalyticsContractClient::new(env, &id);
-    let admin = Address::generate(env);
-    client.initialize(&admin, &None);
-    (client, admin)
+struct Fixture {
+    env: Env,
+    id: Address,
+    admin: Address,
+    submitter: Address,
+    governance: Address,
 }
 
-fn governance(env: &Env) -> (GovernanceContractClient, Address) {
-    let id = env.register(GovernanceContract, ());
-    let client = GovernanceContractClient::new(env, &id);
-    let admin = Address::generate(env);
-    client.initialize(&admin, &1, &3600);
-    (client, admin)
+impl Fixture {
+    fn client(&self) -> PayRaiderContractClient<'_> {
+        PayRaiderContractClient::new(&self.env, &self.id)
+    }
+}
+
+/// Initialised contract with one authorised submitter, a governance address
+/// and `HISTORY` snapshots.
+fn fixture() -> Fixture {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register(PayRaiderContract, ());
+    let client = PayRaiderContractClient::new(&env, &id);
+    let admin = Address::generate(&env);
+    let submitter = Address::generate(&env);
+    let governance = Address::generate(&env);
+    client.initialize(&admin);
+    client.add_submitter(&admin, &submitter);
+    client.set_governance(&admin, &governance);
+    for epoch in 1..=HISTORY {
+        client.submit_snapshot(&epoch, &hash(&env, epoch), &submitter);
+    }
+    Fixture {
+        env,
+        id,
+        admin,
+        submitter,
+        governance,
+    }
+}
+
+struct Rows(std::vec::Vec<(&'static str, Cost)>);
+
+impl Rows {
+    fn push(&mut self, entrypoint: &'static str, cost: Cost) {
+        self.0.push((entrypoint, cost));
+    }
 }
 
 fn main() {
-    let mut rows: std::vec::Vec<(&str, Cost)> = std::vec::Vec::new();
-    let mut failures: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+    let mut rows = Rows(std::vec::Vec::new());
 
-    // ── Analytics: single vs batch submission ──────────────────────────────
-    const BATCH: u64 = 10;
-    let single = {
+    // ── initialize ──────────────────────────────────────────────────────────
+    {
         let env = Env::default();
         env.mock_all_auths();
-        let (client, admin) = analytics(&env);
-        // Pre-populate history so map size is realistic
-        let mut pre = Vec::new(&env);
-        for e in 1..=50u64 {
-            pre.push_back((e, hash(&env, e)));
-        }
-        client.batch_submit_snapshots(&admin, &pre);
-        measure(&env, || {
-            client.submit_snapshot(&51, &hash(&env, 51), &admin);
-        })
-    };
-    let batch = {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (client, admin) = analytics(&env);
-        let mut pre = Vec::new(&env);
-        for e in 1..=50u64 {
-            pre.push_back((e, hash(&env, e)));
-        }
-        client.batch_submit_snapshots(&admin, &pre);
-        let mut input = Vec::new(&env);
-        for e in 51..51 + BATCH {
-            input.push_back((e, hash(&env, e)));
-        }
-        measure(&env, || {
-            client.batch_submit_snapshots(&admin, &input);
-        })
-    };
-    if batch.cpu >= single.cpu * BATCH {
-        failures.push(format!(
-            "batch_submit_snapshots({BATCH}) = {} cpu is not cheaper than {BATCH} x submit_snapshot = {}",
-            batch.cpu,
-            single.cpu * BATCH
-        ));
+        let id = env.register(PayRaiderContract, ());
+        let client = PayRaiderContractClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        rows.push("initialize", measure(&env, || client.initialize(&admin)));
     }
-    rows.push(("analytics::submit_snapshot", single));
-    rows.push(("analytics::batch_submit_snapshots(10)", batch));
 
-    // ── Governance: vote / finalize cost vs existing state ─────────────────
-    let vote_cost = |existing_voters: u32, existing_proposals: u32| -> (Cost, Cost) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (client, admin) = governance(&env);
-        let target = Address::generate(&env);
-        let title = String::from_str(&env, "Upgrade");
-        for i in 0..existing_proposals {
-            client.create_proposal(&admin, &title, &target, &hash(&env, u64::from(i)));
-        }
-        let id = client.create_proposal(&admin, &title, &target, &hash(&env, 999));
-        for _ in 0..existing_voters {
-            client.vote(&Address::generate(&env), &id, &VoteChoice::For);
-        }
-        let voter = Address::generate(&env);
-        let vote = measure(&env, || {
-            client.vote(&voter, &id, &VoteChoice::For);
+    // ── snapshot write / read path ──────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        let next = HISTORY + 1;
+        rows.push(
+            "submit_snapshot",
+            measure(&f.env, || {
+                client.submit_snapshot(&next, &hash(&f.env, next), &f.submitter);
+            }),
+        );
+        rows.push(
+            "get_snapshot",
+            measure(&f.env, || {
+                client.get_snapshot(&(HISTORY / 2));
+            }),
+        );
+        rows.push(
+            "latest_snapshot",
+            measure(&f.env, || {
+                client.latest_snapshot();
+            }),
+        );
+        rows.push("bump_ttl", measure(&f.env, || client.bump_ttl()));
+    }
+
+    // ── views ───────────────────────────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        rows.push(
+            "get_version",
+            measure(&f.env, || {
+                let _ = client.get_version();
+            }),
+        );
+        rows.push(
+            "get_admin",
+            measure(&f.env, || {
+                let _ = client.get_admin();
+            }),
+        );
+        rows.push(
+            "get_pending_admin",
+            measure(&f.env, || {
+                let _ = client.get_pending_admin();
+            }),
+        );
+        rows.push(
+            "get_latest_epoch",
+            measure(&f.env, || {
+                let _ = client.get_latest_epoch();
+            }),
+        );
+        rows.push(
+            "get_pending_upgrade",
+            measure(&f.env, || {
+                let _ = client.get_pending_upgrade();
+            }),
+        );
+        rows.push(
+            "get_upgrade_delay",
+            measure(&f.env, || {
+                let _ = client.get_upgrade_delay();
+            }),
+        );
+        rows.push(
+            "get_storage_version",
+            measure(&f.env, || {
+                let _ = client.get_storage_version();
+            }),
+        );
+        rows.push(
+            "get_governance",
+            measure(&f.env, || {
+                let _ = client.get_governance();
+            }),
+        );
+        rows.push(
+            "is_paused",
+            measure(&f.env, || {
+                let _ = client.is_paused();
+            }),
+        );
+        rows.push(
+            "get_submitters",
+            measure(&f.env, || {
+                let _ = client.get_submitters();
+            }),
+        );
+        rows.push(
+            "get_role_holders",
+            measure(&f.env, || {
+                let _ = client.get_role_holders();
+            }),
+        );
+        rows.push(
+            "has_role",
+            measure(&f.env, || {
+                let _ = client.has_role(&f.admin, &Role::Admin);
+            }),
+        );
+        rows.push(
+            "get_metadata",
+            measure(&f.env, || {
+                let _ = client.get_metadata();
+            }),
+        );
+        rows.push(
+            "get_contract_info",
+            measure(&f.env, || {
+                let _ = client.get_contract_info();
+            }),
+        );
+    }
+
+    // ── submitter set (#2600) ───────────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        let added = Address::generate(&f.env);
+        let rotated_in = Address::generate(&f.env);
+        rows.push(
+            "add_submitter",
+            measure(&f.env, || client.add_submitter(&f.admin, &added)),
+        );
+        rows.push(
+            "rotate_submitter",
+            measure(&f.env, || {
+                client.rotate_submitter(&f.admin, &f.submitter, &rotated_in)
+            }),
+        );
+        rows.push(
+            "remove_submitter",
+            measure(&f.env, || client.remove_submitter(&f.admin, &added)),
+        );
+    }
+
+    // ── roles / pause ───────────────────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        let user = Address::generate(&f.env);
+        rows.push(
+            "grant_role",
+            measure(&f.env, || {
+                client.grant_role(&f.admin, &user, &Role::PauseManager)
+            }),
+        );
+        rows.push(
+            "revoke_role",
+            measure(&f.env, || {
+                client.revoke_role(&f.admin, &user, &Role::PauseManager)
+            }),
+        );
+        rows.push("pause", measure(&f.env, || client.pause(&f.admin)));
+        rows.push("unpause", measure(&f.env, || client.unpause(&f.admin)));
+    }
+
+    // ── two-step admin transfer (#2783) ─────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        let cancelled = Address::generate(&f.env);
+        client.propose_admin(&f.admin, &cancelled);
+        rows.push(
+            "cancel_admin_transfer",
+            measure(&f.env, || client.cancel_admin_transfer(&f.admin)),
+        );
+        let next = Address::generate(&f.env);
+        rows.push(
+            "propose_admin",
+            measure(&f.env, || client.propose_admin(&f.admin, &next)),
+        );
+        rows.push(
+            "accept_admin",
+            measure(&f.env, || client.accept_admin(&next)),
+        );
+    }
+
+    // ── timelocked upgrades (#2783) ─────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        rows.push(
+            "set_upgrade_delay",
+            measure(&f.env, || {
+                client.set_upgrade_delay(&f.admin, &(DEFAULT_UPGRADE_DELAY_LEDGERS * 2))
+            }),
+        );
+        client.schedule_upgrade(&f.admin, &hash(&f.env, 1));
+        rows.push(
+            "cancel_upgrade",
+            measure(&f.env, || client.cancel_upgrade(&f.admin)),
+        );
+        rows.push(
+            "schedule_upgrade",
+            measure(&f.env, || {
+                let _ = client.schedule_upgrade(&f.admin, &hash(&f.env, 2));
+            }),
+        );
+        let delay = client.get_upgrade_delay();
+        f.env.ledger().with_mut(|li| li.sequence_number += delay);
+        // No real Wasm is uploaded in the bench host, so the final install is
+        // rejected by the host. Everything the contract itself does — auth,
+        // timelock check, state clear, events — is still measured, and the
+        // figure is deterministic.
+        rows.push(
+            "execute_upgrade",
+            measure(&f.env, || {
+                let _ = client.try_execute_upgrade(&f.admin);
+            }),
+        );
+    }
+
+    // ── governance and migration ────────────────────────────────────────────
+    {
+        let f = fixture();
+        let client = f.client();
+        rows.push(
+            "set_governance",
+            measure(&f.env, || client.set_governance(&f.admin, &f.governance)),
+        );
+        rows.push(
+            "set_paused_by_governance",
+            measure(&f.env, || {
+                client.set_paused_by_governance(&f.governance, &false)
+            }),
+        );
+        // Migration from pre-versioning (v0) storage.
+        f.env.as_contract(&f.id, || {
+            f.env
+                .storage()
+                .instance()
+                .remove(&payraider::DataKey::StorageVersion);
         });
-        env.ledger().with_mut(|l| l.timestamp += 3601);
-        let finalize = measure(&env, || {
-            client.finalize(&id, &1_000);
-        });
-        (vote, finalize)
-    };
+        rows.push(
+            "migrate",
+            measure(&f.env, || {
+                let _ = client.migrate(&f.admin);
+            }),
+        );
+        let voted = Address::generate(&f.env);
+        rows.push(
+            "set_admin_by_governance",
+            measure(&f.env, || {
+                client.set_admin_by_governance(&f.governance, &voted)
+            }),
+        );
+    }
 
-    let (vote_small, finalize_small) = vote_cost(1, 1);
-    let (vote_large, finalize_large) = vote_cost(50, 50);
-    // Allow 50% slack for key/encoding size noise; O(n) storage would be far above this.
-    if vote_large.cpu * 2 > vote_small.cpu * 3 {
-        failures.push(format!(
-            "governance::vote grows with voter count: {} -> {} cpu",
-            vote_small.cpu, vote_large.cpu
-        ));
+    // ── Coverage: every public entrypoint measured exactly once ─────────────
+    let mut problems: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+    for name in ENTRYPOINTS {
+        let n = rows.0.iter().filter(|(r, _)| r == name).count();
+        if n != 1 {
+            problems.push(format!("payraider::{name} measured {n} times (expected 1)"));
+        }
     }
-    if finalize_large.cpu * 2 > finalize_small.cpu * 3 {
-        failures.push(format!(
-            "governance::finalize grows with proposal count: {} -> {} cpu",
-            finalize_small.cpu, finalize_large.cpu
-        ));
+    for (name, _) in &rows.0 {
+        if !ENTRYPOINTS.contains(name) {
+            problems.push(format!("payraider::{name} measured but not in ENTRYPOINTS"));
+        }
     }
-    rows.push(("governance::vote (1 prior voter)", vote_small));
-    rows.push(("governance::vote (50 prior voters)", vote_large));
-    rows.push(("governance::finalize (1 proposal)", finalize_small));
-    rows.push(("governance::finalize (50 proposals)", finalize_large));
 
     // ── Report ──────────────────────────────────────────────────────────────
     let max_cpu: Option<u64> = std::env::var("GAS_MAX_CPU")
         .ok()
         .and_then(|v| v.parse().ok());
-    println!(
-        "{:<42} {:>14} {:>14}",
-        "operation", "cpu_insns", "mem_bytes"
-    );
-    for (name, cost) in &rows {
-        println!("{name:<42} {:>14} {:>14}", cost.cpu, cost.mem);
+
+    for (name, c) in &rows.0 {
+        println!(
+            "GAS payraider::{name} cpu={} mem={} read_entries={} write_entries={} read_bytes={} write_bytes={}",
+            c.cpu, c.mem, c.read_entries, c.write_entries, c.read_bytes, c.write_bytes
+        );
         if let Some(max) = max_cpu {
-            if cost.cpu > max {
-                failures.push(format!(
-                    "{name} = {} cpu exceeds GAS_MAX_CPU={max}",
-                    cost.cpu
+            if c.cpu > max {
+                problems.push(format!(
+                    "payraider::{name} = {} cpu exceeds GAS_MAX_CPU={max}",
+                    c.cpu
                 ));
             }
         }
     }
 
-    if !failures.is_empty() {
+    if !problems.is_empty() {
         eprintln!("\nGas benchmark failures:");
-        for f in &failures {
-            eprintln!("  - {f}");
+        for p in &problems {
+            eprintln!("  - {p}");
         }
         std::process::exit(1);
     }

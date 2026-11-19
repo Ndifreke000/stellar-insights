@@ -30,6 +30,9 @@ pub enum DomainError {
 
     #[error("Calculation error: {0}")]
     CalculationError(String),
+
+    #[error("Payment already used: {0}")]
+    PaymentAlreadyUsed(String),
 }
 
 /// Structured error response format
@@ -63,6 +66,11 @@ pub enum ApiError {
         message: String,
         details: Option<HashMap<String, serde_json::Value>>,
     },
+    Conflict {
+        code: String,
+        message: String,
+        details: Option<HashMap<String, serde_json::Value>>,
+    },
     InternalError {
         code: String,
         message: String,
@@ -87,6 +95,10 @@ pub enum ApiError {
 }
 
 pub type AppError = ApiError;
+
+/// Error code returned when a transaction hash has already been consumed to
+/// confirm an invoice. Prevents replaying one payment across many invoices.
+pub const PAYMENT_ALREADY_USED: &str = "PAYMENT_ALREADY_USED";
 
 impl ApiError {
     /// Create a `NotFound` error with a specific code
@@ -129,6 +141,46 @@ impl ApiError {
         Self::BadRequest {
             code: code.into(),
             message: message.into(),
+            details: Some(details),
+        }
+    }
+
+    /// Create a `Conflict` error
+    pub fn conflict(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Conflict {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
+    /// Create a `Conflict` error with details
+    pub fn conflict_with_details(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        details: HashMap<String, serde_json::Value>,
+    ) -> Self {
+        Self::Conflict {
+            code: code.into(),
+            message: message.into(),
+            details: Some(details),
+        }
+    }
+
+    /// Create the standard `PAYMENT_ALREADY_USED` conflict error.
+    ///
+    /// Returned when a transaction hash has already been consumed to confirm
+    /// an invoice, so a single payment cannot be replayed across invoices.
+    pub fn payment_already_used(tx_hash: impl Into<String>) -> Self {
+        let tx_hash = tx_hash.into();
+        let mut details = HashMap::new();
+        details.insert(
+            "tx_hash".to_string(),
+            serde_json::Value::String(tx_hash.clone()),
+        );
+        Self::Conflict {
+            code: PAYMENT_ALREADY_USED.to_string(),
+            message: "This payment has already been used to confirm an invoice".to_string(),
             details: Some(details),
         }
     }
@@ -176,6 +228,7 @@ impl ApiError {
         match &mut self {
             Self::NotFound { details: d, .. }
             | Self::BadRequest { details: d, .. }
+            | Self::Conflict { details: d, .. }
             | Self::InternalError { details: d, .. }
             | Self::Unauthorized { details: d, .. }
             | Self::Forbidden { details: d, .. }
@@ -191,6 +244,7 @@ impl ApiError {
         match self {
             Self::NotFound { .. } => StatusCode::NOT_FOUND,
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
+            Self::Conflict { .. } => StatusCode::CONFLICT,
             Self::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
             Self::Forbidden { .. } => StatusCode::FORBIDDEN,
@@ -210,6 +264,11 @@ impl ApiError {
                 details,
             } => (code.clone(), message.clone(), details.clone(), None),
             Self::BadRequest {
+                code,
+                message,
+                details,
+            } => (code.clone(), message.clone(), details.clone(), None),
+            Self::Conflict {
                 code,
                 message,
                 details,
@@ -259,6 +318,7 @@ impl std::fmt::Display for ApiError {
         match self {
             Self::NotFound { message, .. } => write!(f, "{}", message),
             Self::BadRequest { message, .. } => write!(f, "{}", message),
+            Self::Conflict { message, .. } => write!(f, "{}", message),
             Self::InternalError { message, .. } => write!(f, "{}", message),
             Self::Unauthorized { message, .. } => write!(f, "{}", message),
             Self::Forbidden { message, .. } => write!(f, "{}", message),
@@ -267,13 +327,48 @@ impl std::fmt::Display for ApiError {
     }
 }
 
+impl std::error::Error for ApiError {}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status_code();
-        let error_response = self.to_error_response(None);
-        (status, Json(error_response)).into_response()
+        let body = self.to_error_response(None);
+        (status, Json(body)).into_response()
     }
 }
+
+impl From<DomainError> for ApiError {
+    fn from(err: DomainError) -> Self {
+        match err {
+            DomainError::CorridorNotFound(id) => {
+                Self::not_found("CORRIDOR_NOT_FOUND", format!("Corridor not found: {id}"))
+            }
+            DomainError::AnchorNotFound(id) => {
+                Self::not_found("ANCHOR_NOT_FOUND", format!("Anchor not found: {id}"))
+            }
+            DomainError::InvalidAsset(asset) => {
+                Self::bad_request("INVALID_ASSET", format!("Invalid asset format: {asset}"))
+            }
+            DomainError::InvalidTimeRange { start, end } => Self::bad_request(
+                "INVALID_TIME_RANGE",
+                format!("Invalid time range: {start} to {end}"),
+            ),
+            DomainError::InvalidConfiguration(msg) => {
+                Self::bad_request("INVALID_CONFIGURATION", msg)
+            }
+            DomainError::UnsupportedCurrency(currency) => Self::bad_request(
+                "UNSUPPORTED_CURRENCY",
+                format!("Unsupported currency or asset: {currency}"),
+            ),
+            DomainError::CalculationError(msg) => {
+                Self::internal("CALCULATION_ERROR", format!("Calculation error: {msg}"))
+            }
+            DomainError::PaymentAlreadyUsed(tx_hash) => Self::payment_already_used(tx_hash),
+        }
+    }
+}
+
+pub type ApiResult<T> = Result<T, ApiError>;
 
 /// Extract request ID from request extensions and create error response
 pub fn error_response_with_request_id(error: ApiError, req: &Request) -> Response {
@@ -343,37 +438,6 @@ impl From<sqlx::Error> for ApiError {
     }
 }
 
-/// Convert domain errors into API errors with stable error codes.
-impl From<DomainError> for ApiError {
-    fn from(err: DomainError) -> Self {
-        match err {
-            DomainError::CorridorNotFound(id) => Self::NotFound {
-                code: "CORRIDOR_NOT_FOUND".to_string(),
-                message: format!("Corridor not found: {id}"),
-                details: None,
-            },
-            DomainError::AnchorNotFound(id) => Self::NotFound {
-                code: "ANCHOR_NOT_FOUND".to_string(),
-                message: format!("Anchor not found: {id}"),
-                details: None,
-            },
-            DomainError::InvalidAsset(msg)
-            | DomainError::InvalidConfiguration(msg)
-            | DomainError::UnsupportedCurrency(msg)
-            | DomainError::CalculationError(msg) => Self::BadRequest {
-                code: "DOMAIN_VALIDATION_ERROR".to_string(),
-                message: msg,
-                details: None,
-            },
-            DomainError::InvalidTimeRange { start, end } => Self::BadRequest {
-                code: "INVALID_TIME_RANGE".to_string(),
-                message: format!("Invalid time range: {start} to {end}"),
-                details: None,
-            },
-        }
-    }
-}
-
 /// Convert RPC errors into API errors so handlers can use `?` consistently.
 impl From<crate::rpc::error::RpcError> for ApiError {
     fn from(err: crate::rpc::error::RpcError) -> Self {
@@ -385,8 +449,6 @@ impl From<crate::rpc::error::RpcError> for ApiError {
         }
     }
 }
-
-pub type ApiResult<T> = Result<T, ApiError>;
 
 /// Typed database error for pool exhaustion and other DB-level failures.
 #[derive(Debug, thiserror::Error)]
@@ -419,48 +481,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_not_found_error() {
-        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found");
-        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
+    fn payment_already_used_maps_to_conflict() {
+        let err = ApiError::payment_already_used("abc123");
+        assert_eq!(err.status_code(), StatusCode::CONFLICT);
+
+        let body = err.to_error_response(None);
+        assert_eq!(body.error.code, PAYMENT_ALREADY_USED);
+        let details = body.error.details.expect("details should be present");
+        assert_eq!(
+            details.get("tx_hash"),
+            Some(&serde_json::Value::String("abc123".to_string()))
+        );
+    }
+
+    #[test]
+    fn domain_payment_already_used_converts_to_api_error() {
+        let api: ApiError = DomainError::PaymentAlreadyUsed("deadbeef".to_string()).into();
+        assert_eq!(api.status_code(), StatusCode::CONFLICT);
+        assert_eq!(api.to_error_response(None).error.code, PAYMENT_ALREADY_USED);
     }
 
     #[test]
     fn test_bad_request_error() {
         let error = ApiError::bad_request("INVALID_INPUT", "Invalid input provided");
         assert_eq!(error.status_code(), StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn test_internal_error() {
-        let error = ApiError::internal("INTERNAL_ERROR", "Something went wrong");
-        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[test]
-    fn test_unauthorized_error() {
-        let error = ApiError::unauthorized("INVALID_TOKEN", "Invalid authentication token");
-        assert_eq!(error.status_code(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn test_error_with_details() {
-        let mut details = HashMap::new();
-        details.insert(
-            "corridor_id".to_string(),
-            serde_json::Value::String("USDC-XLM".to_string()),
-        );
-
-        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found")
-            .with_details(details.clone());
-
-        match error {
-            ApiError::NotFound {
-                details: Some(d), ..
-            } => {
-                assert_eq!(d.get("corridor_id"), details.get("corridor_id"));
-            }
-            _ => panic!("Expected NotFound error with details"),
-        }
     }
 
     #[test]
@@ -493,6 +537,27 @@ mod tests {
     }
 
     #[test]
+    fn test_error_with_details() {
+        let mut details = HashMap::new();
+        details.insert(
+            "corridor_id".to_string(),
+            serde_json::Value::String("USDC-XLM".to_string()),
+        );
+
+        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found")
+            .with_details(details.clone());
+
+        match error {
+            ApiError::NotFound {
+                details: Some(d), ..
+            } => {
+                assert_eq!(d.get("corridor_id"), details.get("corridor_id"));
+            }
+            _ => panic!("Expected NotFound error with details"),
+        }
+    }
+
+    #[test]
     fn test_from_anyhow_error() {
         let anyhow_err = anyhow::anyhow!("Test error");
         let api_error: ApiError = anyhow_err.into();
@@ -503,5 +568,23 @@ mod tests {
             }
             _ => panic!("Expected InternalError"),
         }
+    }
+
+    #[test]
+    fn test_internal_error() {
+        let error = ApiError::internal("INTERNAL_ERROR", "Something went wrong");
+        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_not_found_error() {
+        let error = ApiError::not_found("CORRIDOR_NOT_FOUND", "Corridor not found");
+        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_unauthorized_error() {
+        let error = ApiError::unauthorized("INVALID_TOKEN", "Invalid authentication token");
+        assert_eq!(error.status_code(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use failsafe::futures::CircuitBreaker as _;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use tracing::info;
@@ -80,10 +79,7 @@ impl TrustlineAnalyzer {
                     .map_err(|e| anyhow::anyhow!(e.to_string()))
             })
             .await
-            .map_err(|e| match e {
-                failsafe::Error::Rejected => anyhow::anyhow!("Circuit breaker open"),
-                failsafe::Error::Inner(err) => err,
-            })?;
+            .map_err(crate::rpc::CallError::into_anyhow)?;
 
         let mut synced_count = 0;
         let mut tx = self.pool.begin().await?;

@@ -90,7 +90,10 @@ impl Schema {
             transaction_hash TEXT NOT NULL,
             verification_status TEXT DEFAULT 'pending',
             verified_at TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            network TEXT,
+            op_index INTEGER NOT NULL DEFAULT 0,
+            event_index INTEGER NOT NULL DEFAULT 0
         );
     ";
 
@@ -101,6 +104,8 @@ impl Schema {
         CREATE INDEX IF NOT EXISTS idx_contract_events_contract_id ON contract_events(contract_id);
         CREATE INDEX IF NOT EXISTS idx_contract_events_verification_status ON contract_events(verification_status);
         CREATE INDEX IF NOT EXISTS idx_contract_events_event_type ON contract_events(event_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_contract_events_identity
+            ON contract_events(IFNULL(network, ''), ledger, transaction_hash, op_index, event_index);
     ";
 
     pub const CREATE_INDEXER_STATE: &'static str = r"
@@ -108,6 +113,49 @@ impl Schema {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    ";
+
+    /// Fencing tokens for leader-only writers (#2769).
+    pub const CREATE_INDEXER_LEASE: &'static str = r"
+        CREATE TABLE IF NOT EXISTS indexer_lease (
+            role TEXT PRIMARY KEY,
+            token INTEGER NOT NULL,
+            holder TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    ";
+
+    /// Mirrors migration 055 (#2765).
+    pub const CREATE_LEDGER_SCAN_RANGES: &'static str = r"
+        CREATE TABLE IF NOT EXISTS ledger_scan_ranges (
+            network TEXT NOT NULL,
+            start_ledger INTEGER NOT NULL,
+            end_ledger INTEGER NOT NULL,
+            scanned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (network, start_ledger),
+            CHECK (end_ledger >= start_ledger)
+        );
+    ";
+
+    pub const CREATE_BACKFILL_STATE: &'static str = r"
+        CREATE TABLE IF NOT EXISTS backfill_state (
+            id TEXT PRIMARY KEY,
+            current_ledger INTEGER NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    ";
+
+    /// Mirrors migration 058 (#2768).
+    pub const CREATE_LEDGER_HEADERS: &'static str = r"
+        CREATE TABLE IF NOT EXISTS ledger_headers (
+            network TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            protocol_version INTEGER NOT NULL,
+            hash TEXT NOT NULL,
+            close_time TEXT NOT NULL,
+            ingested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (network, sequence)
         );
     ";
 }

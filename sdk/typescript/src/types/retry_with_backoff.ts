@@ -5,9 +5,9 @@ export interface RetryWithBackoffParams<T = unknown> {
   maxRetries?: number;
   /** Initial backoff delay in ms (default: 500) */
   initialDelayMs?: number;
-  /** Cap for backoff delay in ms */
+  /** Cap for backoff delay in ms; a longer Retry-After fails fast (default: 30000) */
   maxDelayMs?: number;
-  /** Add random jitter to backoff delays (default: true) */
+  /** Use full-jitter backoff (default: true). Retry-After, when sent, always wins */
   jitter?: boolean;
   /** HTTP status codes that should trigger a retry */
   retryableStatuses?: number[];

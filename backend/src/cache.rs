@@ -367,7 +367,13 @@ impl CacheManager {
 
             Ok(deleted_count)
         } else {
-            Ok(0)
+            let mut store = self.in_memory_store.write().await;
+            let before = store.len();
+            store.retain(|k, _| !glob_match(pattern, k));
+            let deleted = before - store.len();
+            self.invalidations
+                .fetch_add(deleted as u64, Ordering::Relaxed);
+            Ok(deleted)
         }
     }
 
@@ -378,7 +384,7 @@ impl CacheManager {
 
     /// Invalidate all corridor-related cache entries.
     pub async fn invalidate_corridors(&self) -> anyhow::Result<usize> {
-        let pattern = keys::corridor_pattern();
+        let pattern = keys::corridor_pattern(keys::active_network());
         let deleted = self.invalidate_pattern(&pattern).await?;
         tracing::info!(
             "Invalidated {} corridor cache entries matching pattern: {}",
@@ -390,7 +396,7 @@ impl CacheManager {
 
     /// Invalidate cache entries for a specific corridor and related list views.
     pub async fn invalidate_corridor(&self, corridor_key: &str) -> anyhow::Result<()> {
-        let detail_key = keys::corridor_detail(corridor_key);
+        let detail_key = keys::corridor_detail(keys::active_network(), corridor_key);
         self.delete(&detail_key).await?;
 
         // Corridor list endpoints can include this corridor, so clear list/detail variants.
@@ -441,70 +447,127 @@ impl CacheManager {
     }
 }
 
-/// Cache key builders for consistency
+/// Cache key builders for consistency.
+///
+/// Every key is prefixed with the Stellar network (`mainnet:` / `testnet:`)
+/// so that, in multi-network mode, testnet data can never be served from a
+/// mainnet key and flushing one network's keys never touches the other's
+/// (#2772). The network is a required argument, never an ambient default.
 pub mod keys {
+    use crate::network::StellarNetwork;
+
+    /// Network this process serves (`STELLAR_NETWORK`, default mainnet). Used
+    /// by request handlers to scope their cache keys.
     #[must_use]
-    pub fn anchor_list(limit: i64, offset: i64) -> String {
-        format!("anchor:list:{limit}:{offset}")
+    pub fn active_network() -> StellarNetwork {
+        static NETWORK: std::sync::OnceLock<StellarNetwork> = std::sync::OnceLock::new();
+        *NETWORK.get_or_init(|| crate::network::NetworkConfig::from_env().network)
     }
 
     #[must_use]
-    pub fn anchor_detail(id: &str) -> String {
-        format!("anchor:detail:{id}")
+    pub fn anchor_list(network: StellarNetwork, limit: i64, offset: i64) -> String {
+        format!("{network}:anchor:list:{limit}:{offset}")
     }
 
     #[must_use]
-    pub fn anchor_by_account(account: &str) -> String {
-        format!("anchor:account:{account}")
+    pub fn anchor_detail(network: StellarNetwork, id: &str) -> String {
+        format!("{network}:anchor:detail:{id}")
     }
 
     #[must_use]
-    pub fn anchor_assets(anchor_id: &str) -> String {
-        format!("anchor:assets:{anchor_id}")
+    pub fn anchor_by_account(network: StellarNetwork, account: &str) -> String {
+        format!("{network}:anchor:account:{account}")
     }
 
     #[must_use]
-    pub fn corridor_list(limit: i64, offset: i64, filters: &str) -> String {
-        format!("corridor:list:{limit}:{offset}:{filters}")
+    pub fn anchor_assets(network: StellarNetwork, anchor_id: &str) -> String {
+        format!("{network}:anchor:assets:{anchor_id}")
     }
 
     #[must_use]
-    pub fn corridor_detail(corridor_key: &str) -> String {
-        format!("corridor:detail:{corridor_key}")
+    pub fn corridor_list(
+        network: StellarNetwork,
+        limit: i64,
+        offset: i64,
+        filters: &str,
+    ) -> String {
+        format!("{network}:corridor:list:{limit}:{offset}:{filters}")
     }
 
     #[must_use]
-    pub fn dashboard_stats() -> String {
-        "dashboard:stats".to_string()
+    pub fn corridor_detail(network: StellarNetwork, corridor_key: &str) -> String {
+        format!("{network}:corridor:detail:{corridor_key}")
     }
 
     #[must_use]
-    pub fn metrics_overview() -> String {
-        "metrics:overview".to_string()
+    pub fn dashboard_stats(network: StellarNetwork) -> String {
+        format!("{network}:dashboard:stats")
     }
 
     #[must_use]
-    pub fn analytics_dashboard() -> String {
-        "analytics:dashboard".to_string()
+    pub fn metrics_overview(network: StellarNetwork) -> String {
+        format!("{network}:metrics:overview")
     }
 
-    /// Pattern for invalidating all anchor-related caches
     #[must_use]
-    pub fn anchor_pattern() -> String {
-        "anchor:*".to_string()
+    pub fn analytics_dashboard(network: StellarNetwork) -> String {
+        format!("{network}:analytics:dashboard")
     }
 
-    /// Pattern for invalidating all corridor-related caches
+    /// Preflight corridor table, scoped per network.
     #[must_use]
-    pub fn corridor_pattern() -> String {
-        "corridor:*".to_string()
+    pub fn preflight_corridors(network: StellarNetwork) -> String {
+        format!("{network}:preflight:corridors")
     }
 
-    /// Pattern for invalidating all dashboard caches
+    /// Pattern for invalidating all anchor-related caches of one network
     #[must_use]
-    pub fn dashboard_pattern() -> String {
-        "dashboard:*".to_string()
+    pub fn anchor_pattern(network: StellarNetwork) -> String {
+        format!("{network}:anchor:*")
     }
+
+    /// Pattern for invalidating all corridor-related caches of one network
+    #[must_use]
+    pub fn corridor_pattern(network: StellarNetwork) -> String {
+        format!("{network}:corridor:*")
+    }
+
+    /// Pattern for invalidating all dashboard caches of one network
+    #[must_use]
+    pub fn dashboard_pattern(network: StellarNetwork) -> String {
+        format!("{network}:dashboard:*")
+    }
+
+    /// Pattern matching every key of one network
+    #[must_use]
+    pub fn network_pattern(network: StellarNetwork) -> String {
+        format!("{network}:*")
+    }
+}
+
+/// Minimal glob match supporting `*` (any run of characters), matching the
+/// subset of Redis `MATCH` syntax our key patterns use.
+fn glob_match(pattern: &str, key: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == key;
+    }
+    let mut rest = key;
+    for (i, part) in parts.iter().enumerate() {
+        if i == 0 {
+            let Some(r) = rest.strip_prefix(part) else {
+                return false;
+            };
+            rest = r;
+        } else if i == parts.len() - 1 {
+            return rest.ends_with(part);
+        } else if let Some(pos) = rest.find(part) {
+            rest = &rest[pos + part.len()..];
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -533,15 +596,87 @@ mod tests {
 
     #[test]
     fn test_cache_key_builders() {
-        assert_eq!(keys::anchor_list(50, 0), "anchor:list:50:0");
-        assert_eq!(keys::anchor_detail("123"), "anchor:detail:123");
-        assert_eq!(keys::anchor_by_account("GA123"), "anchor:account:GA123");
+        use crate::network::StellarNetwork::Mainnet;
         assert_eq!(
-            keys::corridor_detail("USDC:issuer->XLM:native"),
-            "corridor:detail:USDC:issuer->XLM:native"
+            keys::anchor_list(Mainnet, 50, 0),
+            "mainnet:anchor:list:50:0"
         );
-        assert_eq!(keys::corridor_pattern(), "corridor:*");
-        assert_eq!(keys::dashboard_stats(), "dashboard:stats");
-        assert_eq!(keys::anchor_pattern(), "anchor:*");
+        assert_eq!(
+            keys::anchor_detail(Mainnet, "123"),
+            "mainnet:anchor:detail:123"
+        );
+        assert_eq!(
+            keys::anchor_by_account(Mainnet, "GA123"),
+            "mainnet:anchor:account:GA123"
+        );
+        assert_eq!(
+            keys::corridor_detail(Mainnet, "USDC:issuer->XLM:native"),
+            "mainnet:corridor:detail:USDC:issuer->XLM:native"
+        );
+        assert_eq!(keys::corridor_pattern(Mainnet), "mainnet:corridor:*");
+        assert_eq!(keys::dashboard_stats(Mainnet), "mainnet:dashboard:stats");
+        assert_eq!(keys::anchor_pattern(Mainnet), "mainnet:anchor:*");
+    }
+
+    /// Enumerates every `keys::*` builder: each must be prefixed with the
+    /// network it was built for (#2772).
+    #[test]
+    fn every_cache_key_is_network_prefixed() {
+        use crate::network::StellarNetwork;
+        for net in [StellarNetwork::Mainnet, StellarNetwork::Testnet] {
+            let all = [
+                keys::anchor_list(net, 1, 2),
+                keys::anchor_detail(net, "a"),
+                keys::anchor_by_account(net, "G"),
+                keys::anchor_assets(net, "a"),
+                keys::corridor_list(net, 1, 2, "f"),
+                keys::corridor_detail(net, "c"),
+                keys::dashboard_stats(net),
+                keys::metrics_overview(net),
+                keys::analytics_dashboard(net),
+                keys::preflight_corridors(net),
+                keys::anchor_pattern(net),
+                keys::corridor_pattern(net),
+                keys::dashboard_pattern(net),
+                keys::network_pattern(net),
+            ];
+            let prefix = format!("{net}:");
+            for key in all {
+                assert!(key.starts_with(&prefix), "{key} not scoped to {net}");
+            }
+        }
+    }
+
+    #[test]
+    fn glob_match_basics() {
+        assert!(glob_match("testnet:*", "testnet:anchor:list:1:2"));
+        assert!(!glob_match("testnet:*", "mainnet:anchor:list:1:2"));
+        assert!(glob_match("a:*:c", "a:b:c"));
+        assert!(glob_match("exact", "exact"));
+        assert!(!glob_match("exact", "exact2"));
+    }
+
+    #[tokio::test]
+    async fn flushing_testnet_keys_never_touches_mainnet() {
+        use crate::network::StellarNetwork::{Mainnet, Testnet};
+        let cache = CacheManager::new_in_memory_for_tests(CacheConfig::default());
+        cache
+            .set(&keys::anchor_list(Mainnet, 50, 0), &"main", 60)
+            .await
+            .unwrap();
+        cache
+            .set(&keys::anchor_list(Testnet, 50, 0), &"test", 60)
+            .await
+            .unwrap();
+
+        cache
+            .delete_pattern(&keys::network_pattern(Testnet))
+            .await
+            .unwrap();
+
+        let main: Option<String> = cache.get(&keys::anchor_list(Mainnet, 50, 0)).await.unwrap();
+        let test: Option<String> = cache.get(&keys::anchor_list(Testnet, 50, 0)).await.unwrap();
+        assert_eq!(main.as_deref(), Some("main"));
+        assert_eq!(test, None);
     }
 }

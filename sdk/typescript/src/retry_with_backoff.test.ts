@@ -90,7 +90,7 @@ describe("RetryWithBackoff", () => {
   it("throws SDKError after exhausting max retries", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValue(new PayRaiderError(500, "SERVER_ERROR", "Server error"));
+      .mockRejectedValue(new PayRaiderError(503, "UNAVAILABLE", "Unavailable"));
 
     const resultPromise = retry.execute({ operation, maxRetries: 2, initialDelayMs: 10 });
     const expectation = expect(resultPromise).rejects.toBeInstanceOf(SDKError);
@@ -132,9 +132,10 @@ describe("RetryWithBackoff", () => {
     expect(RetryWithBackoff.calculateDelay(10, 100, 1000, false)).toBe(1000);
   });
 
-  it("calculateDelay adds jitter when enabled", () => {
+  it("calculateDelay uses full jitter when enabled", () => {
     const withJitter = RetryWithBackoff.calculateDelay(1, 100, 10_000, true);
-    expect(withJitter).toBeGreaterThanOrEqual(200);
+    expect(withJitter).toBeGreaterThanOrEqual(0);
+    expect(withJitter).toBeLessThan(200);
   });
 
   // ── isRetryableError ───────────────────────────────────────────────────────
@@ -156,7 +157,7 @@ describe("RetryWithBackoff", () => {
   it("tracks retry metrics", async () => {
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(new PayRaiderError(500, "ERR", "fail"))
+      .mockRejectedValueOnce(new PayRaiderError(503, "ERR", "fail"))
       .mockResolvedValue("done");
 
     const resultPromise = retry.execute({ operation, initialDelayMs: 10 });

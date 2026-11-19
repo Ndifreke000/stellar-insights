@@ -3,6 +3,7 @@
  * Handles all liquidity pool data fetching from the backend
  */
 import { logger } from "@/lib/logger";
+import type { LiquidityDataPoint } from "@/lib/analytics-api";
 
 export interface LiquidityPool {
   pool_id: string;
@@ -76,6 +77,82 @@ async function safeFetch<T>(url: string, fallback: T): Promise<T> {
     }
     return fallback;
   }
+}
+
+export interface ObservedLiquidity {
+  points: LiquidityDataPoint[];
+  stats: PoolStats | null;
+  pools: LiquidityPool[];
+  partialWarning: string | null;
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+/**
+ * Live pool data for the liquidity page. Failures throw instead of returning
+ * the demo pools used by other callers.
+ */
+export async function fetchObservedLiquidity(): Promise<ObservedLiquidity> {
+  const payload = await fetchJson<LiquidityPool[] | { pools?: LiquidityPool[] }>(
+    `${API_BASE}/api/liquidity-pools/`,
+  );
+  const pools = Array.isArray(payload) ? payload : payload.pools ?? [];
+
+  let stats: PoolStats | null = null;
+  try {
+    stats = await fetchJson<PoolStats>(`${API_BASE}/api/liquidity-pools/stats`);
+  } catch (error) {
+    logger.warn("Liquidity pool stats unavailable", { error });
+  }
+
+  const points: LiquidityDataPoint[] = [];
+  let failedSnapshots = 0;
+  for (const pool of pools.slice(0, 5)) {
+    const corridorKey = `${pool.reserve_a_asset_code}-${pool.reserve_b_asset_code}`;
+    try {
+      const snaps = await fetchJson<PoolSnapshot[]>(
+        `${API_BASE}/api/liquidity-pools/${encodeURIComponent(pool.pool_id)}/snapshots?limit=48`,
+      );
+      if (Array.isArray(snaps) && snaps.length > 0) {
+        for (const snap of snaps) {
+          points.push({
+            timestamp: snap.snapshot_at,
+            liquidity_usd: snap.total_value_usd,
+            corridor_key: corridorKey,
+          });
+        }
+        continue;
+      }
+    } catch {
+      failedSnapshots += 1;
+    }
+    if (Number.isFinite(pool.total_value_usd)) {
+      points.push({
+        timestamp: pool.last_synced_at || pool.updated_at,
+        liquidity_usd: pool.total_value_usd,
+        corridor_key: corridorKey,
+      });
+    }
+  }
+
+  return {
+    points,
+    stats,
+    pools,
+    partialWarning:
+      failedSnapshots > 0
+        ? "Some pool histories failed to load. Showing the pools that responded."
+        : null,
+  };
 }
 
 export async function fetchPools(): Promise<LiquidityPool[]> {

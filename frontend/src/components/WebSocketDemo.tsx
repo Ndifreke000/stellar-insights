@@ -13,6 +13,9 @@ import type { WebSocketNotificationPayload } from "@/types/notifications";
  * 2. Display connection status
  * 3. Listen for different message types
  * 4. Display received messages
+ *
+ * Demo-only: gated behind NEXT_PUBLIC_ENABLE_DEMOS so it is not
+ * reachable in production builds.
  */
 export function WebSocketDemo() {
   const [messages, setMessages] = useState<WebSocketNotificationPayload[]>([]);
@@ -231,21 +234,19 @@ export function WebSocketDemo() {
         {messages.length === 0 ? (
           <p className="text-muted-foreground text-sm">No messages yet</p>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {messages.map((message, i) => (
-              <div
+              <li
                 key={i}
-                className="p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm font-mono"
+                className="text-sm border-l-2 border-gray-400 pl-2"
               >
-                <div className="font-semibold text-blue-600 dark:text-link-primary mb-1">
-                  {message.type}
+                <div className="font-medium">{message.type}</div>
+                <div className="text-muted-foreground dark:text-muted-foreground text-xs">
+                  {message.data?.title ?? ""}
                 </div>
-                <pre className="text-xs overflow-auto">
-                  {JSON.stringify(message, null, 2)}
-                </pre>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </div>

@@ -5,14 +5,27 @@ on:
     branches: [main, develop]
     paths:
       - 'contracts/**'
+      - '!contracts/archive/**'
+      - 'scripts/check_gas_regression.py'
+      - 'scripts/tests/test_check_gas_regression.py'
+      - '.github/workflows/gas-regression.yml'
+      - 'docs/GAS_COSTS.md'
   pull_request:
     branches: [main, develop]
     paths:
       - 'contracts/**'
+      - '!contracts/archive/**'
+      - 'scripts/check_gas_regression.py'
+      - 'scripts/tests/test_check_gas_regression.py'
+      - '.github/workflows/gas-regression.yml'
+      - 'docs/GAS_COSTS.md'
 
 jobs:
   gas-benchmarks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the refreshed docs/GAS_COSTS.md baseline on main
+      pull-requests: write # post the gas diff table on PRs
 
     steps:
       - uses: actions/checkout@v4
@@ -27,32 +40,73 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             contracts/target
-          key: contracts-bench-${{ hashFiles('contracts/Cargo.lock') }}
-          restore-keys: contracts-bench-
+          key: contracts-gas-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: contracts-gas-
 
-      - name: Run benchmarks and save output
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test the regression checker
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_gas_regression.py'
+
+      # Host-budget CPU instructions / memory bytes per payraider entrypoint.
+      # Deterministic, unlike wall-clock timings, so a tight threshold is safe.
+      - name: Measure gas per entrypoint
         working-directory: ./contracts
+        shell: bash  # enables pipefail so tee doesn't mask a failed build
         run: |
-          cargo bench --package contract-benches 2>&1 | tee bench_output.txt
+          cargo bench -p contract-benches --bench gas_benchmarks | tee gas_output.txt
 
-      # Extract ns/iter values and fail if any benchmark regressed by >20%
-      # compared to the baseline stored in docs/GAS_COSTS.md.
+      # Fails if any entrypoint's CPU, memory, entries read/written or bytes
+      # read/written rose by more than its threshold in
+      # contracts/benches/gas-thresholds.toml (5% by default) over the baseline
+      # in docs/GAS_COSTS.md. Writes JSON results and a markdown diff table.
       - name: Check for gas regressions
+        id: gascheck
         working-directory: ./contracts
         run: |
           python3 ../scripts/check_gas_regression.py \
-            bench_output.txt \
+            gas_output.txt \
             ../docs/GAS_COSTS.md \
-            --threshold 0.20
+            --thresholds benches/gas-thresholds.toml \
+            --json-out gas_results.json \
+            --markdown-out gas_diff.md
 
-      - name: Upload benchmark results
+      - name: Add gas diff to job summary
+        if: always()
+        run: |
+          if [ -f contracts/gas_diff.md ]; then cat contracts/gas_diff.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Comment gas diff on PR
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'contracts/gas_diff.md';
+            if (!fs.existsSync(path)) return;
+            const marker = '<!-- gas-regression-report -->';
+            const body = `${marker}\n${fs.readFileSync(path, 'utf8')}`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Upload gas results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-results-${{ github.sha }}
+          name: gas-results-${{ github.sha }}
           path: |
-            contracts/bench_output.txt
-            contracts/target/criterion/
+            contracts/gas_output.txt
+            contracts/gas_results.json
+            contracts/gas_diff.md
           retention-days: 30
 
       # On pushes to main, update the baseline in docs/GAS_COSTS.md
@@ -61,8 +115,9 @@ jobs:
         working-directory: ./contracts
         run: |
           python3 ../scripts/check_gas_regression.py \
-            bench_output.txt \
+            gas_output.txt \
             ../docs/GAS_COSTS.md \
+            --thresholds benches/gas-thresholds.toml \
             --update-baseline
 
       - name: Commit updated baseline

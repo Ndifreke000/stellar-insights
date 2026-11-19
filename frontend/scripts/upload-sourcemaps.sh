@@ -1,42 +1,43 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Upload source maps to Sentry after build
-# Usage: ./scripts/upload-sourcemaps.sh
+# PayRaider Frontend Sentry Release & Source Map Upload
+# Uploads Next.js source maps to Sentry for readable stack traces.
 
-set -e
+VERSION="${NEXT_PUBLIC_APP_VERSION:-${APP_VERSION:-$(git rev-parse HEAD 2>/dev/null || echo "0.1.0")}}"
+ORG="${SENTRY_ORG:-payraider}"
+PROJECT="${SENTRY_PROJECT:-payraider-frontend}"
 
-# Check required environment variables
-if [ -z "$SENTRY_AUTH_TOKEN" ]; then
-  echo "Error: SENTRY_AUTH_TOKEN not set"
-  exit 1
+if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+  echo "[Sentry] SENTRY_AUTH_TOKEN is not set. Skipping source map upload."
+  exit 0
 fi
 
-if [ -z "$SENTRY_ORG" ]; then
-  echo "Error: SENTRY_ORG not set"
-  exit 1
+echo "[Sentry] Uploading source maps for release ${VERSION} (${ORG}/${PROJECT})..."
+
+if command -v sentry-cli >/dev/null 2>&1; then
+  SENTRY_CMD="sentry-cli"
+else
+  SENTRY_CMD="npx @sentry/cli"
 fi
-
-if [ -z "$SENTRY_PROJECT" ]; then
-  echo "Error: SENTRY_PROJECT not set"
-  exit 1
-fi
-
-RELEASE="${NEXT_PUBLIC_APP_VERSION:-$(git rev-parse --short HEAD)}"
-
-echo "Uploading source maps to Sentry..."
-echo "Release: $RELEASE"
-echo "Organization: $SENTRY_ORG"
-echo "Project: $SENTRY_PROJECT"
 
 # Create release
-sentry-cli releases -o "$SENTRY_ORG" -p "$SENTRY_PROJECT" create "$RELEASE" || true
+$SENTRY_CMD releases new "$VERSION" --org "$ORG" --project "$PROJECT"
 
-# Upload source maps
-sentry-cli releases -o "$SENTRY_ORG" -p "$SENTRY_PROJECT" files "$RELEASE" upload-sourcemaps \
-  --url-prefix "~/app" \
-  .next/static
+# Associate commits if git repository is available
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  $SENTRY_CMD releases set-commits "$VERSION" --auto --org "$ORG" --ignore-missing || true
+fi
+
+# Upload source maps from .next build output
+if [ -d ".next" ]; then
+  $SENTRY_CMD releases files "$VERSION" upload-sourcemaps .next \
+    --org "$ORG" \
+    --project "$PROJECT" \
+    --url-prefix '~/_next' || true
+fi
 
 # Finalize release
-sentry-cli releases -o "$SENTRY_ORG" -p "$SENTRY_PROJECT" finalize "$RELEASE"
+$SENTRY_CMD releases finalize "$VERSION" --org "$ORG" --project "$PROJECT"
 
-echo "Source maps uploaded successfully!"
+echo "[Sentry] Successfully completed source map upload for release ${VERSION}."

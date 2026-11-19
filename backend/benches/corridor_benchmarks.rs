@@ -91,6 +91,8 @@ fn bench_payment_record_operations(c: &mut Criterion) {
             timestamp: chrono::Utc::now(),
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         });
     });
 
@@ -105,6 +107,8 @@ fn bench_payment_record_operations(c: &mut Criterion) {
         timestamp: chrono::Utc::now(),
         submission_time: Some(chrono::Utc::now() - chrono::Duration::seconds(5)),
         confirmation_time: Some(chrono::Utc::now()),
+        source_account: "GSOURCEACCOUNT".to_string(),
+        destination_account: "GDESTINATIONACCOUNT".to_string(),
     };
 
     group.bench_function("payment_get_corridor", |b| {

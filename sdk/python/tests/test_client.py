@@ -127,6 +127,32 @@ async def test_prices_convert_to_usd(client):
 
 # ── Preflight (pre-payment check) ────────────────────────────────────────────
 
+CORRIDOR = {
+    "id": "USDC:GA->NGN:GB",
+    "source_asset": "USDC",
+    "destination_asset": "NGN",
+    "success_rate": 99.0,
+    "total_attempts": 100,
+    "successful_payments": 99,
+    "failed_payments": 1,
+    "average_latency_ms": 400.0,
+    "median_latency_ms": 380.0,
+    "p95_latency_ms": 800.0,
+    "p99_latency_ms": 1200.0,
+    "liquidity_depth_usd": 1_000_000.0,
+    "liquidity_volume_24h_usd": 100_000.0,
+    "liquidity_trend": "stable",
+    "health_score": 95.0,
+    "last_updated": "2026-01-01T00:00:00Z",
+}
+
+CORRIDOR_DETAIL = {
+    "corridor": CORRIDOR,
+    "historical_success_rate": [],
+    "latency_distribution": [],
+    "liquidity_trends": [],
+}
+
 PREFLIGHT_OK = {
     "decision": "proceed",
     "summary": "All checks passed; safe to pay on this corridor.",
@@ -179,7 +205,7 @@ async def test_is_safe_to_pay_is_false_unless_decision_is_proceed(client):
 @respx.mock
 async def test_corridor_get_uses_the_corridor_key(client):
     route = respx.get(url__regex=rf"{BASE}/api/corridors/.*").mock(
-        return_value=httpx.Response(200, json={})
+        return_value=httpx.Response(200, json=CORRIDOR_DETAIL)
     )
     await client.corridors.get("USDC:GA", "NGN:GB")
     assert route.calls[0].request.url.raw_path == b"/api/corridors/USDC%3AGA-%3ENGN%3AGB"

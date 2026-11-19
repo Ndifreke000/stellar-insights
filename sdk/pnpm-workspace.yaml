@@ -1,0 +1,8 @@
+# Read by changesets (@manypkg/get-packages) to discover the SDK packages.
+# npm ignores this file, so `npm ci` inside each SDK keeps using that SDK's
+# own package-lock.json. Nothing here requires pnpm to be installed.
+packages:
+  - typescript
+  - react
+  - mcp-server
+  - python

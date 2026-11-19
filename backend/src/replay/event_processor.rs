@@ -200,8 +200,34 @@ pub trait EventProcessor: Send + Sync {
 }
 
 /// Composite processor that delegates to specific processors based on event type
+///
+/// Processors are registered for a protocol-version range (#2768) and only
+/// those whose range contains `ProcessingContext::protocol_version` are
+/// tried, so event decoding rules can change across upgrades (e.g. CAP-67
+/// in protocol 23) without one handler branching on every version.
 pub struct CompositeEventProcessor {
-    processors: Vec<Arc<dyn EventProcessor>>,
+    processors: Vec<VersionedProcessor>,
+}
+
+/// Inclusive protocol range a processor handles; `max: None` is open-ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProtocolRange {
+    pub min: u32,
+    pub max: Option<u32>,
+}
+
+impl ProtocolRange {
+    pub const ALL: Self = Self { min: 0, max: None };
+
+    #[must_use]
+    pub fn contains(self, version: u32) -> bool {
+        version >= self.min && self.max.is_none_or(|m| version <= m)
+    }
+}
+
+struct VersionedProcessor {
+    range: ProtocolRange,
+    processor: Arc<dyn EventProcessor>,
 }
 
 impl CompositeEventProcessor {
@@ -213,9 +239,27 @@ impl CompositeEventProcessor {
         }
     }
 
-    /// Add a processor
+    /// Add a processor that handles every protocol version.
     pub fn add_processor(mut self, processor: Arc<dyn EventProcessor>) -> Self {
-        self.processors.push(processor);
+        self.processors.push(VersionedProcessor {
+            range: ProtocolRange::ALL,
+            processor,
+        });
+        self
+    }
+
+    /// Add a processor that only handles ledgers closed under a protocol
+    /// version in `[min, max]` (`max: None` = no upper bound).
+    pub fn add_versioned_processor(
+        mut self,
+        min: u32,
+        max: Option<u32>,
+        processor: Arc<dyn EventProcessor>,
+    ) -> Self {
+        self.processors.push(VersionedProcessor {
+            range: ProtocolRange { min, max },
+            processor,
+        });
         self
     }
 
@@ -272,8 +316,13 @@ impl CompositeEventProcessor {
     ) -> Result<ProcessingResult> {
         let start = std::time::Instant::now();
 
-        // Find appropriate processor
-        for processor in &self.processors {
+        // Find appropriate processor for this ledger's protocol version
+        for versioned in self
+            .processors
+            .iter()
+            .filter(|p| p.range.contains(context.protocol_version))
+        {
+            let processor = &versioned.processor;
             // Check idempotency
             if processor.is_processed(event).await? {
                 debug!("Event {} already processed, skipping", event.unique_id());
@@ -516,6 +565,19 @@ mod tests {
 
         let versioned = replay_ctx.with_protocol_version(21);
         assert_eq!(versioned.protocol_version, 21);
+    }
+
+    #[test]
+    fn protocol_range_contains() {
+        let r = ProtocolRange {
+            min: 20,
+            max: Some(22),
+        };
+        assert!(!r.contains(19));
+        assert!(r.contains(20) && r.contains(22));
+        assert!(!r.contains(23));
+        assert!(ProtocolRange { min: 23, max: None }.contains(30));
+        assert!(ProtocolRange::ALL.contains(0));
     }
 
     #[test]

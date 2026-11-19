@@ -1,0 +1,28 @@
+{
+  "name": "anchors_get_raises_not_found",
+  "description": "A 404 surfaces as the SDK's API error.",
+  "operation": "anchors.get",
+  "input": {
+    "id": "missing"
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/anchors/missing",
+    "query": {},
+    "body": null
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "error": "NOT_FOUND",
+      "message": "Anchor not found"
+    }
+  },
+  "expect": {
+    "error": {
+      "status": 404,
+      "code": "NOT_FOUND",
+      "message": "Anchor not found"
+    }
+  }
+}

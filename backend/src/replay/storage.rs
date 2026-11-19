@@ -96,7 +96,7 @@ impl EventStorage {
                 DateTime<Utc>,
                 String,
             ),
-        >(&query)
+        >(sqlx::AssertSqlSafe(query.as_str()))
         .bind(start_ledger as i64)
         .bind(end_ledger as i64);
 
@@ -278,7 +278,9 @@ impl ReplayStorage {
             DateTime<Utc>,
             Option<DateTime<Utc>>,
             String,
-        )> = sqlx::query_as(&query).fetch_all(&self.pool).await?;
+        )> = sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
+            .fetch_all(&self.pool)
+            .await?;
 
         let sessions = rows
             .into_iter()

@@ -85,10 +85,7 @@ impl MessageQueueSystem {
 
         self.messages.insert(message_id.clone(), message);
 
-        let mut queue = self
-            .queues
-            .entry(self.config.name.clone())
-            .or_insert_with(Vec::new);
+        let mut queue = self.queues.entry(self.config.name.clone()).or_default();
         queue.push(message_id.clone());
 
         let mut metrics = self.metrics.write().await;
@@ -165,16 +162,13 @@ impl MessageQueueSystem {
 
                 if self.config.dead_letter_queue_enabled {
                     let dlq_name = format!("{}-dlq", self.config.name);
-                    let mut dlq = self.queues.entry(dlq_name).or_insert_with(Vec::new);
+                    let mut dlq = self.queues.entry(dlq_name).or_default();
                     dlq.push(message_id.to_string());
                     info!("Message moved to DLQ: {}", message_id);
                 }
             } else {
                 message.status = MessageStatus::Retrying;
-                let mut queue = self
-                    .queues
-                    .entry(self.config.name.clone())
-                    .or_insert_with(Vec::new);
+                let mut queue = self.queues.entry(self.config.name.clone()).or_default();
                 queue.push(message_id.to_string());
 
                 let mut metrics = self.metrics.write().await;

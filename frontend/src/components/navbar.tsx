@@ -7,12 +7,23 @@ import { Info, Phone, BookOpen, X, Menu } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./notifications";
 import { NetworkSwitcher } from "./NetworkSwitcher";
+import { NON_PRODUCT_FEATURES_ENABLED } from "@/lib/featureFlags";
 
 const navLinkKeys = [
   { key: "aboutUs", href: "/about", icon: Info, descKey: "learnAbout" },
   { key: "howToUse", href: "/how-to-use", icon: BookOpen, descKey: "getStarted" },
   { key: "contactUs", href: "/contact", icon: Phone, descKey: "reachOut" },
 ];
+
+const nonProductNavLinkKeys = [
+  { key: "quests", href: "/quests", icon: BookOpen, descKey: "questsDesc" },
+  { key: "governance", href: "/governance", icon: Info, descKey: "governanceDesc" },
+  { key: "game", href: "/game", icon: Info, descKey: "gameDesc" },
+];
+
+const visibleNavLinkKeys = NON_PRODUCT_FEATURES_ENABLED
+  ? [...navLinkKeys, ...nonProductNavLinkKeys]
+  : navLinkKeys;
 
 export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } = {}) {
   const pathname = usePathname();
@@ -92,7 +103,7 @@ export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } =
           </div>
 
           <ul className="navbar-links hidden md:flex items-center gap-1" role="menubar">
-            {navLinkKeys.map((link) => {
+            {visibleNavLinkKeys.map((link) => {
               const isActive = pathname === link.href;
               const Icon = link.icon;
               return (
@@ -161,7 +172,7 @@ export function Navbar({ onMobileMenuOpen }: { onMobileMenuOpen?: () => void } =
           <div className="px-4 pb-3 sm:hidden">
             <NetworkSwitcher className="w-full" />
           </div>
-          {navLinkKeys.map((link) => {
+          {visibleNavLinkKeys.map((link) => {
             const isActive = pathname === link.href;
             const Icon = link.icon;
             return (

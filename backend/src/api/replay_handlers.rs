@@ -167,7 +167,11 @@ pub async fn start_replay(
         processor,
         state_builder,
     )
-    .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?;
+    .map_err(|e| ApiError::internal("INTERNAL_ERROR", e.to_string()))?
+    // Protocol version is resolved per ledger from ingested headers (#2768).
+    .with_protocol_source(Arc::new(crate::replay::LedgerHeaderStore::new(
+        state.db.pool().clone(),
+    )));
 
     // Start replay in background
     let engine_clone = Arc::new(engine);
@@ -273,10 +277,7 @@ pub async fn cleanup_checkpoints(
     State(state): State<AppState>,
     Query(params): Query<CleanupCheckpointsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    info!(
-        "Cleaning up checkpoints older than {} days",
-        params.days
-    );
+    info!("Cleaning up checkpoints older than {} days", params.days);
 
     let checkpoint_manager = CheckpointManager::new(state.db.pool().clone());
 
@@ -298,7 +299,10 @@ pub async fn cleanup_checkpoints(
 pub fn routes(app_state: AppState) -> Router {
     Router::new()
         .route("/", post(start_replay).get(list_replays))
-        .route("/{session_id}", get(get_replay_status).delete(delete_replay))
+        .route(
+            "/{session_id}",
+            get(get_replay_status).delete(delete_replay),
+        )
         .route("/{session_id}/checkpoints", get(list_checkpoints))
         .route("/checkpoints/cleanup", delete(cleanup_checkpoints))
         .with_state(app_state)

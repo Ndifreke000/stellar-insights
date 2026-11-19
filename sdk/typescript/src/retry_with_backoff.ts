@@ -6,11 +6,15 @@ import type {
 } from "./types/retry_with_backoff.js";
 import { PayRaiderError } from "./http.js";
 import { SDKError } from "./sdk_error.js";
+import {
+  DEFAULT_BASE_DELAY_MS as DEFAULT_INITIAL_DELAY_MS,
+  DEFAULT_MAX_DELAY_MS,
+  DEFAULT_MAX_RETRIES,
+  RETRYABLE_STATUSES,
+  fullJitterDelay,
+} from "./retry_policy.js";
 
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_INITIAL_DELAY_MS = 500;
-const DEFAULT_MAX_DELAY_MS = 30_000;
-const DEFAULT_RETRYABLE_STATUSES = [429, 500, 502, 503, 504];
+const DEFAULT_RETRYABLE_STATUSES = [...RETRYABLE_STATUSES];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -76,7 +80,18 @@ export class RetryWithBackoff {
           }, { cause: error });
         }
 
-        const delayMs = RetryWithBackoff.calculateDelay(attempt, initialDelayMs, maxDelayMs, jitter);
+        const retryAfterMs = error instanceof PayRaiderError ? error.retryAfterMs : undefined;
+        if (retryAfterMs !== undefined && retryAfterMs > maxDelayMs) {
+          // Server asked us to wait longer than we are willing to; surface it.
+          this.totalFailures++;
+          throw new SDKError("Retry-After exceeds maxDelayMs", {
+            params,
+            attempts: attempt + 1,
+            operationKey: params.operationKey,
+          }, { cause: error });
+        }
+        const delayMs =
+          retryAfterMs ?? RetryWithBackoff.calculateDelay(attempt, initialDelayMs, maxDelayMs, jitter);
         totalDelayMs += delayMs;
         attempt++;
         await sleep(delayMs);
@@ -84,17 +99,19 @@ export class RetryWithBackoff {
     }
   }
 
-  /** Calculate exponential backoff delay with optional jitter. */
+  /**
+   * Calculate the backoff delay. With jitter (default) this is full jitter:
+   * random(0, min(maxDelayMs, initialDelayMs * 2^attempt)). Without jitter it is
+   * the capped exponential value.
+   */
   public static calculateDelay(
     attempt: number,
     initialDelayMs: number,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     jitter = true,
   ): number {
-    const exponential = initialDelayMs * 2 ** attempt;
-    const capped = Math.min(exponential, maxDelayMs);
-    if (!jitter) return capped;
-    return capped + Math.floor(Math.random() * Math.min(100, capped * 0.1));
+    if (jitter) return fullJitterDelay(attempt, initialDelayMs, maxDelayMs);
+    return Math.min(initialDelayMs * 2 ** attempt, maxDelayMs);
   }
 
   /** Determine whether an error should be retried. */
@@ -107,22 +124,12 @@ export class RetryWithBackoff {
     }
 
     if (error instanceof PayRaiderError) {
-      if (retryableStatuses.has(error.status)) {
-        return true;
-      }
-      if (error.status >= 400 && error.status < 500) {
-        return false;
-      }
-      return error.status >= 500;
+      return retryableStatuses.has(error.status);
     }
 
     if (error instanceof SDKError) {
       const status = error.details?.status;
-      if (typeof status === "number") {
-        if (retryableStatuses.has(status)) return true;
-        if (status >= 400 && status < 500) return false;
-        return status >= 500;
-      }
+      if (typeof status === "number") return retryableStatuses.has(status);
     }
 
     return false;

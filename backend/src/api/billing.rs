@@ -286,3 +286,318 @@ pub fn routes(
         .merge(protected)
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::billing::MAINNET_USDC_ISSUER;
+    use crate::database::Database;
+    use crate::models::api_key::CreateApiKeyRequest;
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const WALLET: &str = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+    const OTHER_WALLET: &str = "GCJROW3RGUJNOUJZTFSKLWS4YVEROS5A7YBH5JABGW4HK4QN3A37HIKX";
+    const TREASURY: &str = "GCJROW3RGUJNOUJZTFSKLWS4YVEROS5A7YBH5JABGW4HK4QN3A37HIKX";
+
+    fn config(horizon_url: String) -> Arc<BillingConfig> {
+        Arc::new(BillingConfig {
+            treasury: TREASURY.to_string(),
+            asset_code: "USDC".to_string(),
+            asset_issuer: MAINNET_USDC_ISSUER.to_string(),
+            price_usdc: Decimal::from_str("50.00").unwrap(),
+            period_days: 30,
+            limit_per_minute: 1000,
+            horizon_url,
+        })
+    }
+
+    async fn state(config: Option<Arc<BillingConfig>>) -> BillingState {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        BillingState {
+            pool,
+            config,
+            http: reqwest::Client::new(),
+        }
+    }
+
+    async fn new_key(pool: &SqlitePool) -> String {
+        Database::new(pool.clone())
+            .create_api_key(
+                WALLET,
+                CreateApiKeyRequest {
+                    name: "offramp".to_string(),
+                    scopes: None,
+                    rate_limit_per_minute: None,
+                    expires_at: None,
+                },
+            )
+            .await
+            .unwrap()
+            .key
+            .id
+    }
+
+    fn user(account: &str) -> Option<Extension<Sep10User>> {
+        Some(Extension(Sep10User {
+            account: account.to_string(),
+            client_domain: None,
+        }))
+    }
+
+    async fn body(response: Response) -> (StatusCode, serde_json::Value) {
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    async fn horizon_paying(hash: &str, memo: &str, amount: &str) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!("/transactions/{hash}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "hash": hash,
+                "successful": true,
+                "memo_type": "text",
+                "memo": memo,
+                "created_at": chrono::Utc::now().to_rfc3339(),
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/transactions/{hash}/operations")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": { "records": [{
+                    "type": "payment",
+                    "to": TREASURY,
+                    "asset_type": "credit_alphanum4",
+                    "asset_code": "USDC",
+                    "asset_issuer": MAINNET_USDC_ISSUER,
+                    "amount": amount,
+                }]}
+            })))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn plan_describes_the_configured_tier() {
+        let (status, plan) =
+            body(get_plan(State(state(Some(config(String::new()))).await)).await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(plan["plan"], "pro");
+        assert_eq!(plan["price"], "50");
+        assert_eq!(plan["destination"], TREASURY);
+        assert_eq!(plan["limit_per_minute"], 1000);
+        assert_eq!(plan["free_limit_per_minute"], 200);
+        assert_eq!(plan["anonymous_limit_per_minute"], 60);
+    }
+
+    #[tokio::test]
+    async fn every_paid_endpoint_reports_when_billing_is_off() {
+        let s = state(None).await;
+        let (status, err) = body(get_plan(State(s.clone())).await).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(err["error"], "BILLING_NOT_CONFIGURED");
+
+        let request = CreateInvoiceRequest {
+            api_key_id: "k".to_string(),
+        };
+        let (status, _) =
+            body(create_invoice(State(s.clone()), user(WALLET), Json(request)).await).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+
+        let confirm = ConfirmInvoiceRequest {
+            transaction_hash: "a".repeat(64),
+        };
+        let (status, _) = body(
+            confirm_invoice(State(s), user(WALLET), Path("i".to_string()), Json(confirm)).await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn wallet_endpoints_require_a_session() {
+        let s = state(Some(config(String::new()))).await;
+        let request = CreateInvoiceRequest {
+            api_key_id: "k".to_string(),
+        };
+        let (status, err) = body(create_invoice(State(s.clone()), None, Json(request)).await).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(err["error"], "UNAUTHORIZED");
+
+        let (status, _) =
+            body(get_invoice(State(s.clone()), None, Path("i".to_string())).await).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let confirm = ConfirmInvoiceRequest {
+            transaction_hash: "a".repeat(64),
+        };
+        let (status, _) = body(
+            confirm_invoice(State(s.clone()), None, Path("i".to_string()), Json(confirm)).await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (status, _) = body(get_subscription(State(s), None, Path("k".to_string())).await).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn invoices_are_scoped_to_the_owning_wallet() {
+        let s = state(Some(config(String::new()))).await;
+        let key_id = new_key(&s.pool).await;
+
+        // Another wallet cannot invoice this key.
+        let request = CreateInvoiceRequest {
+            api_key_id: key_id.clone(),
+        };
+        let (status, err) =
+            body(create_invoice(State(s.clone()), user(OTHER_WALLET), Json(request)).await).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(err["error"], "NOT_FOUND");
+
+        let request = CreateInvoiceRequest {
+            api_key_id: key_id.clone(),
+        };
+        let (status, invoice) =
+            body(create_invoice(State(s.clone()), user(WALLET), Json(request)).await).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(invoice["api_key_id"], key_id.as_str());
+        assert_eq!(invoice["status"], "pending");
+        let id = invoice["id"].as_str().unwrap().to_string();
+
+        let (status, read) =
+            body(get_invoice(State(s.clone()), user(WALLET), Path(id.clone())).await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(read["id"], id.as_str());
+
+        let (status, _) = body(get_invoice(State(s), user(OTHER_WALLET), Path(id)).await).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn confirming_a_payment_activates_the_subscription() {
+        let placeholder = state(Some(config(String::new()))).await;
+        let key_id = new_key(&placeholder.pool).await;
+
+        let (status, _) = body(
+            get_subscription(
+                State(placeholder.clone()),
+                user(WALLET),
+                Path(key_id.clone()),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let request = CreateInvoiceRequest {
+            api_key_id: key_id.clone(),
+        };
+        let (_, invoice) =
+            body(create_invoice(State(placeholder.clone()), user(WALLET), Json(request)).await)
+                .await;
+        let id = invoice["id"].as_str().unwrap().to_string();
+        let memo = invoice["memo"].as_str().unwrap().to_string();
+
+        let hash = "c".repeat(64);
+        let horizon = horizon_paying(&hash, &memo, "50.0000000").await;
+        let s = BillingState {
+            config: Some(config(horizon.uri())),
+            ..placeholder
+        };
+
+        // A transaction that underpays is rejected without changing anything.
+        let short = "d".repeat(64);
+        let underpaid = horizon_paying(&short, &memo, "1").await;
+        let cheap = BillingState {
+            config: Some(config(underpaid.uri())),
+            ..s.clone()
+        };
+        let confirm = ConfirmInvoiceRequest {
+            transaction_hash: short,
+        };
+        let (status, err) = body(
+            confirm_invoice(State(cheap), user(WALLET), Path(id.clone()), Json(confirm)).await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(err["error"], "PAYMENT_NOT_VALID");
+
+        let confirm = ConfirmInvoiceRequest {
+            transaction_hash: hash.clone(),
+        };
+        let (status, paid) = body(
+            confirm_invoice(
+                State(s.clone()),
+                user(WALLET),
+                Path(id.clone()),
+                Json(confirm),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(paid["invoice"]["status"], "paid");
+        assert_eq!(paid["subscription"]["limit_per_minute"], 1000);
+
+        // Paying twice is a conflict.
+        let confirm = ConfirmInvoiceRequest {
+            transaction_hash: hash,
+        };
+        let (status, err) =
+            body(confirm_invoice(State(s.clone()), user(WALLET), Path(id), Json(confirm)).await)
+                .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(err["error"], "CONFLICT");
+
+        let (status, subscription) =
+            body(get_subscription(State(s), user(WALLET), Path(key_id)).await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(subscription["limit_per_minute"], 1000);
+    }
+
+    #[tokio::test]
+    async fn billing_errors_map_to_http_statuses() {
+        let cases = [
+            (
+                BillingError::NotFound("x".into()),
+                StatusCode::NOT_FOUND,
+                "NOT_FOUND",
+            ),
+            (
+                BillingError::Invalid("x".into()),
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "PAYMENT_NOT_VALID",
+            ),
+            (
+                BillingError::Conflict("x".into()),
+                StatusCode::CONFLICT,
+                "CONFLICT",
+            ),
+            (
+                BillingError::Upstream("x".into()),
+                StatusCode::BAD_GATEWAY,
+                "HORIZON_UNAVAILABLE",
+            ),
+            (
+                BillingError::Internal(anyhow::anyhow!("boom")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL",
+            ),
+        ];
+        for (error, status, code) in cases {
+            let (got, json) = body(billing_error(error)).await;
+            assert_eq!(got, status);
+            assert_eq!(json["error"], code);
+        }
+    }
+}

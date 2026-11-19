@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: Stellar Insights API
+  version: 1.0.0
+  description: API for Stellar Insights preflight and related endpoints.
+paths:
+  /api/v1/preflight:
+    get:
+      summary: Run preflight checks for a payment corridor
+      operationId: getPreflight
+      parameters:
+        - name: source_asset
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: destination_asset
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: amount_usd
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Preflight result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreflightResult'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    PreflightResult:
+      type: object
+      required:
+        - checks
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreflightCheck'
+    PreflightCheck:
+      type: object
+      required:
+        - name
+        - passed
+        - code
+        - detail
+      properties:
+        name:
+          type: string
+          description: Human-readable name of the check.
+        passed:
+          type: boolean
+          description: Whether the check passed.
+        code:
+          type: string
+          description: >-
+            Machine-readable reason code for the check outcome. Integrators
+            should branch on this value rather than parsing `detail`.
+          enum:
+            - LOW_SUCCESS_RATE
+            - THIN_LIQUIDITY
+            - SMALL_SAMPLE
+            - UNKNOWN_CORRIDOR
+        detail:
+          type: string
+          description: Free-text human-readable explanation of the check outcome.
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string

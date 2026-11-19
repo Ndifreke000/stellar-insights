@@ -6,67 +6,83 @@
 
 use payraider_backend::cache::{keys, CacheConfig, CacheManager, CacheStats};
 use payraider_backend::cache_invalidation::CacheInvalidationService;
+use payraider_backend::network::StellarNetwork::Mainnet;
 use std::sync::Arc;
 
 // ── key-builder helpers ───────────────────────────────────────────────────────
 
 #[test]
 fn test_cache_key_anchor_list_format() {
-    assert_eq!(keys::anchor_list(50, 0), "anchor:list:50:0");
-    assert_eq!(keys::anchor_list(10, 100), "anchor:list:10:100");
-    assert_eq!(keys::anchor_list(0, 0), "anchor:list:0:0");
+    assert_eq!(
+        keys::anchor_list(Mainnet, 50, 0),
+        "mainnet:anchor:list:50:0"
+    );
+    assert_eq!(
+        keys::anchor_list(Mainnet, 10, 100),
+        "mainnet:anchor:list:10:100"
+    );
+    assert_eq!(keys::anchor_list(Mainnet, 0, 0), "mainnet:anchor:list:0:0");
 }
 
 #[test]
 fn test_cache_key_anchor_detail_format() {
-    assert_eq!(keys::anchor_detail("abc-123"), "anchor:detail:abc-123");
-    assert_eq!(keys::anchor_detail(""), "anchor:detail:");
+    assert_eq!(
+        keys::anchor_detail(Mainnet, "abc-123"),
+        "mainnet:anchor:detail:abc-123"
+    );
+    assert_eq!(keys::anchor_detail(Mainnet, ""), "mainnet:anchor:detail:");
 }
 
 #[test]
 fn test_cache_key_anchor_by_account_format() {
     assert_eq!(
-        keys::anchor_by_account("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"),
-        "anchor:account:GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"
+        keys::anchor_by_account(
+            Mainnet,
+            "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"
+        ),
+        "mainnet:anchor:account:GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"
     );
 }
 
 #[test]
 fn test_cache_key_anchor_assets_format() {
-    assert_eq!(keys::anchor_assets("anchor-99"), "anchor:assets:anchor-99");
+    assert_eq!(
+        keys::anchor_assets(Mainnet, "anchor-99"),
+        "mainnet:anchor:assets:anchor-99"
+    );
 }
 
 #[test]
 fn test_cache_key_corridor_list_format() {
     assert_eq!(
-        keys::corridor_list(20, 40, "active"),
-        "corridor:list:20:40:active"
+        keys::corridor_list(Mainnet, 20, 40, "active"),
+        "mainnet:corridor:list:20:40:active"
     );
 }
 
 #[test]
 fn test_cache_key_corridor_detail_format() {
     assert_eq!(
-        keys::corridor_detail("USDC->XLM"),
-        "corridor:detail:USDC->XLM"
+        keys::corridor_detail(Mainnet, "USDC->XLM"),
+        "mainnet:corridor:detail:USDC->XLM"
     );
 }
 
 #[test]
 fn test_cache_key_dashboard_stats_format() {
-    assert_eq!(keys::dashboard_stats(), "dashboard:stats");
+    assert_eq!(keys::dashboard_stats(Mainnet), "mainnet:dashboard:stats");
 }
 
 #[test]
 fn test_cache_key_metrics_overview_format() {
-    assert_eq!(keys::metrics_overview(), "metrics:overview");
+    assert_eq!(keys::metrics_overview(Mainnet), "mainnet:metrics:overview");
 }
 
 #[test]
 fn test_cache_key_patterns() {
-    assert_eq!(keys::anchor_pattern(), "anchor:*");
-    assert_eq!(keys::corridor_pattern(), "corridor:*");
-    assert_eq!(keys::dashboard_pattern(), "dashboard:*");
+    assert_eq!(keys::anchor_pattern(Mainnet), "mainnet:anchor:*");
+    assert_eq!(keys::corridor_pattern(Mainnet), "mainnet:corridor:*");
+    assert_eq!(keys::dashboard_pattern(Mainnet), "mainnet:dashboard:*");
 }
 
 // ── CacheConfig TTL logic ─────────────────────────────────────────────────────
@@ -165,14 +181,14 @@ async fn make_offline_cache() -> Arc<CacheManager> {
 #[tokio::test]
 async fn test_invalidate_anchors_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_anchors().await.expect("should succeed");
 }
 
 #[tokio::test]
 async fn test_invalidate_anchor_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_anchor("anchor-001")
         .await
         .expect("should succeed");
@@ -181,7 +197,7 @@ async fn test_invalidate_anchor_succeeds_without_redis() {
 #[tokio::test]
 async fn test_invalidate_anchor_by_account_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_anchor_by_account("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN")
         .await
         .expect("should succeed");
@@ -190,14 +206,14 @@ async fn test_invalidate_anchor_by_account_succeeds_without_redis() {
 #[tokio::test]
 async fn test_invalidate_corridors_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_corridors().await.expect("should succeed");
 }
 
 #[tokio::test]
 async fn test_invalidate_corridor_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_corridor("USDC:issuer->XLM:native")
         .await
         .expect("should succeed");
@@ -206,21 +222,21 @@ async fn test_invalidate_corridor_succeeds_without_redis() {
 #[tokio::test]
 async fn test_invalidate_dashboard_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_dashboard().await.expect("should succeed");
 }
 
 #[tokio::test]
 async fn test_invalidate_metrics_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_metrics().await.expect("should succeed");
 }
 
 #[tokio::test]
 async fn test_invalidate_all_succeeds_without_redis() {
     let cache = make_offline_cache().await;
-    let svc = CacheInvalidationService::new(Arc::clone(&cache));
+    let svc = CacheInvalidationService::new(Arc::clone(&cache), Mainnet);
     svc.invalidate_all().await.expect("should succeed");
 }
 

@@ -14,10 +14,12 @@ use super::{
     checkpoint::{Checkpoint, CheckpointManager},
     config::{ReplayConfig, ReplayMode},
     event_processor::{CompositeEventProcessor, ProcessingContext},
+    ledger_headers::ProtocolVersionSource,
     state_builder::StateBuilder,
     storage::{EventStorage, ReplayStorage},
     ContractEvent, LedgerProtocolVersion, ReplayError, ReplayMetadata, ReplayResult, ReplayStatus,
 };
+use std::collections::HashMap;
 
 /// Main replay engine
 pub struct ReplayEngine {
@@ -28,6 +30,35 @@ pub struct ReplayEngine {
     processor: Arc<CompositeEventProcessor>,
     state_builder: Arc<RwLock<StateBuilder>>,
     session_id: String,
+    /// Per-ledger protocol versions recorded at ingestion (#2768).
+    protocol_source: Option<Arc<dyn ProtocolVersionSource>>,
+}
+
+/// Resolve the protocol version active for `ledger` on `network`.
+///
+/// 1. A non-zero `override_version` (from `ReplayConfig`) wins.
+/// 2. Otherwise the version is looked up in the ledger headers recorded at
+///    ingestion.
+/// 3. A missing header is an explicit [`ReplayError::MissingLedgerHeader`],
+///    never a silent `0`.
+pub async fn resolve_protocol_version(
+    override_version: u32,
+    source: Option<&dyn ProtocolVersionSource>,
+    network: &str,
+    ledger: u64,
+) -> ReplayResult<u32> {
+    if override_version != 0 {
+        return Ok(override_version);
+    }
+    let missing = || ReplayError::MissingLedgerHeader {
+        network: network.to_string(),
+        ledger,
+    };
+    let source = source.ok_or_else(missing)?;
+    source
+        .protocol_version(network, ledger)
+        .await?
+        .ok_or_else(missing)
 }
 
 impl ReplayEngine {
@@ -55,7 +86,16 @@ impl ReplayEngine {
             processor,
             state_builder,
             session_id,
+            protocol_source: None,
         })
+    }
+
+    /// Attach the per-ledger protocol version source (normally
+    /// [`super::LedgerHeaderStore`]).
+    #[must_use]
+    pub fn with_protocol_source(mut self, source: Arc<dyn ProtocolVersionSource>) -> Self {
+        self.protocol_source = Some(source);
+        self
     }
 
     /// Start the replay process
@@ -175,39 +215,39 @@ impl ReplayEngine {
 
             info!("Fetched {} events in batch", events.len());
 
-            // Resolve the protocol version for this batch.
-            //
-            // Priority:
-            //   1. Explicit override in config (set by caller / tests)
-            //   2. Per-event ledger data (if the event carries it)
-            //   3. Config default (0 → treat as protocol 20 floor)
-            //
-            // We resolve once per batch rather than per-event because all
-            // events in a batch come from the same ledger range and Stellar
-            // protocol upgrades happen at ledger boundaries, not mid-batch.
-            let resolved_protocol = self.resolve_protocol_version(current_ledger, &events);
+            // Resolve the protocol version per event ledger (#2768): a batch
+            // can straddle a protocol upgrade, so each event is decoded with
+            // the rules active when its own ledger closed. Lookups are
+            // cached per ledger within the batch.
+            let mut versions: HashMap<(String, u64), u32> = HashMap::new();
 
-            let proto = LedgerProtocolVersion(resolved_protocol);
-
-            // Skip the entire batch if Soroban is not active for this range.
-            // This preserves existing behaviour for pre-protocol-20 ledgers.
-            if !proto.supports_soroban() {
-                info!(
-                    ledger_range = %format!("{current_ledger}..{batch_end}"),
-                    protocol = resolved_protocol,
-                    "Skipping batch — Soroban not active for this protocol version"
-                );
-                current_ledger = batch_end + 1;
-                continue;
-            }
-
-            // Build a context for this batch that carries the resolved version.
-            let context = base_context
-                .clone()
-                .with_protocol_version(resolved_protocol);
-
-            // Process events
             for event in &events {
+                let key = (event.network.clone(), event.ledger_sequence);
+                let resolved_protocol = if let Some(v) = versions.get(&key) {
+                    *v
+                } else {
+                    let v = self
+                        .resolve_protocol_version(&event.network, event.ledger_sequence)
+                        .await?;
+                    versions.insert(key, v);
+                    v
+                };
+
+                // Soroban not active for this ledger: nothing to replay.
+                if !LedgerProtocolVersion(resolved_protocol).supports_soroban() {
+                    info!(
+                        ledger = event.ledger_sequence,
+                        protocol = resolved_protocol,
+                        "Skipping event — Soroban not active for this protocol version"
+                    );
+                    continue;
+                }
+
+                let mut context = base_context
+                    .clone()
+                    .with_protocol_version(resolved_protocol);
+                context.current_ledger = event.ledger_sequence;
+
                 match self.process_event(event, &context).await {
                     Ok(result) => {
                         if result.success {
@@ -265,37 +305,20 @@ impl ReplayEngine {
         Ok((total_processed, total_failed))
     }
 
-    /// Resolve the Stellar protocol version for a ledger batch.
-    ///
-    /// Resolution order:
-    /// 1. Explicit override in `self.config.protocol_version` (non-zero wins).
-    /// 2. The `protocol_version` field stored on the first event in the batch
-    ///    that carries one (events ingested after the field was added).
-    /// 3. Fall back to the config value as-is (0 means "use floor / legacy").
-    fn resolve_protocol_version(&self, _current_ledger: u64, events: &[ContractEvent]) -> u32 {
-        // Explicit caller override always wins.
-        if self.config.protocol_version != 0 {
-            return self.config.protocol_version;
-        }
-
-        // Try to infer from event metadata stored during ingestion.
-        // `ContractEvent` does not currently carry a `protocol_version` field
-        // on its own — that information lives in the ledger header.  When the
-        // ingestion pipeline is extended to store it, the lookup below will
-        // pick it up automatically.  Until then we fall back gracefully.
-        for event in events {
-            if let Some(v) = event
-                .data
-                .get("__protocol_version")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32)
-            {
-                return v;
-            }
-        }
-
-        // No version resolved — return 0 so callers apply the default floor.
-        0
+    /// Resolve the Stellar protocol version for `current_ledger` from the
+    /// ledger headers stored at ingestion. See [`resolve_protocol_version`].
+    async fn resolve_protocol_version(
+        &self,
+        network: &str,
+        current_ledger: u64,
+    ) -> ReplayResult<u32> {
+        resolve_protocol_version(
+            self.config.protocol_version,
+            self.protocol_source.as_deref(),
+            network,
+            current_ledger,
+        )
+        .await
     }
 
     /// Process a single event
@@ -414,9 +437,117 @@ impl ReplayEngine {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_replay_engine_creation() {
-        // Placeholder for actual tests
-        // Would require mock implementations of dependencies
+    use super::*;
+    use crate::replay::event_processor::{
+        CompositeEventProcessor, EventProcessor, ProcessingContext, ProcessingResult,
+    };
+    use crate::replay::ledger_headers::InMemoryProtocolVersions;
+    use async_trait::async_trait;
+
+    #[tokio::test]
+    async fn missing_header_is_an_explicit_error() {
+        let source = InMemoryProtocolVersions::default();
+        let err = resolve_protocol_version(0, Some(&source), "mainnet", 42)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ReplayError::MissingLedgerHeader { ledger: 42, .. }
+        ));
+        // No source at all is also an error, not 0.
+        assert!(resolve_protocol_version(0, None, "mainnet", 42)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn override_wins_and_lookup_is_per_network() {
+        let source = InMemoryProtocolVersions::default()
+            .with("mainnet", 10, 22)
+            .with("testnet", 10, 23);
+        assert_eq!(
+            resolve_protocol_version(21, Some(&source), "mainnet", 10)
+                .await
+                .unwrap(),
+            21
+        );
+        assert_eq!(
+            resolve_protocol_version(0, Some(&source), "mainnet", 10)
+                .await
+                .unwrap(),
+            22
+        );
+        assert_eq!(
+            resolve_protocol_version(0, Some(&source), "testnet", 10)
+                .await
+                .unwrap(),
+            23
+        );
+    }
+
+    struct Tagging(&'static str);
+
+    #[async_trait]
+    impl EventProcessor for Tagging {
+        async fn process_event(
+            &self,
+            _event: &ContractEvent,
+            _context: &ProcessingContext,
+        ) -> anyhow::Result<ProcessingResult> {
+            Ok(ProcessingResult::success().with_change(
+                crate::replay::event_processor::StateChange {
+                    change_type: "decoded".into(),
+                    entity_type: "event".into(),
+                    entity_id: self.0.into(),
+                    previous_value: None,
+                    new_value: None,
+                },
+            ))
+        }
+        async fn is_processed(&self, _event: &ContractEvent) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        async fn mark_processed(&self, _event: &ContractEvent) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn name(&self) -> &str {
+            self.0
+        }
+    }
+
+    fn event_at(ledger: u64) -> ContractEvent {
+        ContractEvent {
+            id: format!("e{ledger}"),
+            ledger_sequence: ledger,
+            transaction_hash: "tx".into(),
+            contract_id: "c".into(),
+            event_type: "t".into(),
+            data: serde_json::json!({}),
+            timestamp: Utc::now(),
+            network: "mainnet".into(),
+        }
+    }
+
+    /// Fixture spanning the protocol 22 -> 23 (CAP-67) boundary at ledger
+    /// 1000: each side must be decoded by its own handler.
+    #[tokio::test]
+    async fn replay_across_protocol_boundary_selects_handler_per_ledger() {
+        let source = InMemoryProtocolVersions::default()
+            .with("mainnet", 999, 22)
+            .with("mainnet", 1000, 23);
+        let processor = CompositeEventProcessor::new()
+            .add_versioned_processor(20, Some(22), Arc::new(Tagging("legacy")))
+            .add_versioned_processor(23, None, Arc::new(Tagging("cap67")));
+
+        let mut seen = Vec::new();
+        for ev in [event_at(999), event_at(1000)] {
+            let v = resolve_protocol_version(0, Some(&source), &ev.network, ev.ledger_sequence)
+                .await
+                .unwrap();
+            let ctx = ProcessingContext::for_replay("s".into(), true).with_protocol_version(v);
+            let result = processor.process_with_retry(&ev, &ctx, 0).await.unwrap();
+            seen.push(result.state_changes[0].entity_id.clone());
+        }
+        assert_eq!(seen, vec!["legacy", "cap67"]);
     }
 }

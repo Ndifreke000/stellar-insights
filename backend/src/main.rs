@@ -56,10 +56,10 @@ use payraider_backend::{
 // Telegram and Slack notification bots are optional: they're excluded from
 // the default binary (smaller artifact, smaller attack surface) and only
 // compiled in when their feature is explicitly enabled.
-#[cfg(feature = "telegram-bot")]
-use payraider_backend::telegram::{SubscriptionService, TelegramBot};
 #[cfg(feature = "slack-bot")]
 use payraider_backend::services::slack_bot::SlackBotService;
+#[cfg(feature = "telegram-bot")]
+use payraider_backend::telegram::{SubscriptionService, TelegramBot};
 
 const DB_POOL_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const DB_POOL_IDLE_LOW_WATERMARK: usize = 2;
@@ -244,7 +244,6 @@ async fn main() -> anyhow::Result<()> {
     let account_merge_detector = services.account_merge_detector;
     let lp_analyzer = services.lp_analyzer;
     let price_feed = services.price_feed.clone();
-    let webhook_event_service = services.webhook_event_service.clone();
 
     // Start the realtime broadcaster background task
     let mut broadcaster = services.realtime_broadcaster;
@@ -303,7 +302,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Build the backfill job (shared state allows the status endpoint to read progress)
     let backfill_state = Arc::new(tokio::sync::RwLock::new(BackfillState::default()));
-    let event_indexer_for_backfill = Arc::new(EventIndexer::new(db.clone()));
+    let event_indexer_for_backfill =
+        Arc::new(EventIndexer::for_network(db.clone(), stellar_network));
     let backfill_job = Arc::new(BackfillJob::new(
         event_indexer_for_backfill,
         rpc_client.clone(),

@@ -1,0 +1,27 @@
+{
+  "name": "network_info_returns_body",
+  "description": "A plain GET with no parameters returns the body unchanged.",
+  "operation": "network.info",
+  "input": {},
+  "request": {
+    "method": "GET",
+    "path": "/api/network/info",
+    "query": {},
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "network": "testnet",
+      "rpc_url": "https://soroban-testnet.stellar.org",
+      "horizon_url": "https://horizon-testnet.stellar.org"
+    }
+  },
+  "expect": {
+    "result": {
+      "network": "testnet",
+      "rpc_url": "https://soroban-testnet.stellar.org",
+      "horizon_url": "https://horizon-testnet.stellar.org"
+    }
+  }
+}

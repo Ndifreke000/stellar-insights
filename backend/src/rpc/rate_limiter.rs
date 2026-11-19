@@ -1,3 +1,10 @@
+//! Token-bucket rate limiter for outbound RPC/Horizon calls.
+//!
+//! This module only shapes request *rate* (token bucket + `Retry-After`
+//! cooldown on HTTP 429). It deliberately has no open/half-open/closed state:
+//! failure isolation is the job of [`crate::rpc::circuit_breaker::CircuitBreaker`],
+//! the single circuit breaker implementation in the codebase.
+
 use reqwest::header::HeaderMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};

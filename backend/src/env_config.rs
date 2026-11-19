@@ -357,7 +357,7 @@ fn validate_db_pool_connect_timeout(value: &str) -> bool {
 fn validate_db_pool_idle_timeout(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 60 && n <= 3600)
+        .map(|n| (60..=3600).contains(&n))
         .unwrap_or(false)
 }
 
@@ -365,7 +365,7 @@ fn validate_db_pool_idle_timeout(value: &str) -> bool {
 fn validate_db_pool_max_lifetime(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 300 && n <= 7200)
+        .map(|n| (300..=7200).contains(&n))
         .unwrap_or(false)
 }
 
@@ -373,7 +373,7 @@ fn validate_db_pool_max_lifetime(value: &str) -> bool {
 fn validate_db_busy_timeout(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 100 && n <= 30_000)
+        .map(|n| (100..=30_000).contains(&n))
         .unwrap_or(false)
 }
 
@@ -421,7 +421,7 @@ fn validate_rpc_max_retries(value: &str) -> bool {
 fn validate_rpc_initial_backoff_ms(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 10 && n <= 10_000)
+        .map(|n| (10..=10_000).contains(&n))
         .unwrap_or(false)
 }
 
@@ -429,7 +429,7 @@ fn validate_rpc_initial_backoff_ms(value: &str) -> bool {
 fn validate_rpc_max_backoff_ms(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 100 && n <= 60_000)
+        .map(|n| (100..=60_000).contains(&n))
         .unwrap_or(false)
 }
 
@@ -453,7 +453,7 @@ fn validate_slow_query_threshold(value: &str) -> bool {
 fn validate_cache_ttl(value: &str) -> bool {
     value
         .parse::<u64>()
-        .map(|n| n >= 10 && n <= 86_400)
+        .map(|n| (10..=86_400).contains(&n))
         .unwrap_or(false)
 }
 
@@ -466,7 +466,7 @@ fn validate_max_in_flight_requests(value: &str) -> bool {
 fn validate_compression_min_size(value: &str) -> bool {
     value
         .parse::<u16>()
-        .map(|n| n >= 100 && n <= 65_535)
+        .map(|n| (100..=65_535).contains(&n))
         .unwrap_or(false)
 }
 

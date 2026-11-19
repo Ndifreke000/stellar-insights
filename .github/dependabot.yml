@@ -28,6 +28,19 @@ updates:
       - "javascript"
       - "frontend"
     groups:
+      # react and react-dom must always be the exact same version.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      # next and its companion packages share one version.
+      nextjs:
+        patterns:
+          - "next"
+          - "@next/*"
+          - "eslint-config-next"
       npm-patch-updates:
         update-types:
           - "patch"
@@ -67,6 +80,10 @@ updates:
       - "dependencies"
       - "javascript"
       - "sdk"
+    ignore:
+      # openapi-typescript (types generator) only supports TypeScript 5.x.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # SDK Python dependencies
   - package-ecosystem: "pip"

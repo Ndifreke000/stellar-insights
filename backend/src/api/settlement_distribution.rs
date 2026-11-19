@@ -85,7 +85,10 @@ struct TrendRow {
 pub async fn settlement_distribution(
     State(app_state): State<AppState>,
 ) -> Json<SettlementDistributionResponse> {
-    let cache_key = format!("{}:settlement_distribution", keys::analytics_dashboard());
+    let cache_key = format!(
+        "{}:settlement_distribution",
+        keys::analytics_dashboard(keys::active_network())
+    );
 
     let result = cached_query(
         &app_state.cache,
@@ -257,7 +260,7 @@ fn fallback_data() -> SettlementDistributionResponse {
                 p50_ms: base,
                 p95_ms: base * 2.0,
                 p99_ms: base * 3.0,
-                sample_count: 15 + (h % 10) as i64,
+                sample_count: 15 + (h % 10),
             }
         })
         .collect();

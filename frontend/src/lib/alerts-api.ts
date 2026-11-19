@@ -102,6 +102,9 @@ export interface CorridorAlertConfig {
     latency_increase_pct: number;
     liquidity_drop_pct: number;
     cooldown_seconds: number;
+    email?: string;
+    webhook_url?: string;
+    alert_on_status_change?: boolean;
     notify_email: boolean;
     notify_webhook: boolean;
     notify_in_app: boolean;
@@ -119,7 +122,7 @@ export interface CorridorAlertEvent {
     user_id: string;
     corridor_key: string;
     alert_type: string;
-    severity: "warning" | "critical";
+    severity: "warning" | "critical" | "info";
     message: string;
     old_value?: number;
     new_value?: number;
@@ -154,6 +157,9 @@ export interface CorridorPerformanceTimeline {
 export interface CreateCorridorAlertConfigRequest {
     corridor_key?: string;
     name: string;
+    email?: string;
+    webhook_url?: string;
+    alert_on_status_change?: boolean;
     success_rate_threshold?: number;
     latency_threshold_ms?: number;
     liquidity_threshold_usd?: number;
@@ -170,6 +176,9 @@ export interface CreateCorridorAlertConfigRequest {
 
 export interface UpdateCorridorAlertConfigRequest {
     name?: string;
+    email?: string;
+    webhook_url?: string;
+    alert_on_status_change?: boolean;
     success_rate_threshold?: number;
     latency_threshold_ms?: number;
     liquidity_threshold_usd?: number;
@@ -228,4 +237,11 @@ export const corridorAlertsApi = {
     acknowledgeEvent: (id: string) =>
         api.post<void>(`/corridor-alerts/events/${id}/acknowledge`),
     getUnreadCount: () => api.get<{ count: number }>("/corridor-alerts/unread-count"),
+
+    // Simulation
+    simulateStatusChange: (corridor_key: string, target_status: string) =>
+        api.post<CorridorAlertEvent>("/corridor-alerts/simulate-status-change", {
+            corridor_key,
+            target_status,
+        }),
 };

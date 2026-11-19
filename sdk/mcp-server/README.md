@@ -30,11 +30,56 @@ corridors to the same destination asset.
 It works **without an API key**. The backend's anonymous rate-limit tier
 applies; set `PAYRAIDER_API_KEY` for a higher limit.
 
+`preflight_batch` runs the same check on up to 100 payouts in one call, e.g.
+before releasing a payout batch. Every payment is scored against the same
+corridor snapshot. Each payment may carry your own `id`, which is echoed back:
+
+```json
+{
+  "payments": [
+    { "id": "payout-1", "source_asset": "USDC", "destination_asset": "NGN", "amount_usd": 2500 },
+    { "id": "payout-2", "source_asset": "USDC", "destination_asset": "KES", "amount_usd": 900 }
+  ]
+}
+```
+
+An invalid payment is reported in place with an error code and does not fail
+the rest. Only an empty batch or one over 100 payments is rejected outright.
+
+## Structured results
+
+`preflight_payment` and `preflight_batch` declare an `outputSchema` and return
+`structuredContent`, so an agent can branch on fields instead of parsing prose.
+The text content carries the same object as JSON (first block, unchanged
+position for older clients) followed by a one-line summary.
+
+Both include `reason_codes`:
+
+| Code | Meaning |
+| --- | --- |
+| `ALL_CHECKS_PASSED` | Decision is `proceed` |
+| `NO_RECENT_DATA` | Decision is `unknown` |
+| `<CHECK>_MARGINAL` | That check warned, e.g. `SAMPLE_SIZE_MARGINAL` |
+| `<CHECK>_FAILED` | That check failed, e.g. `LIQUIDITY_FAILED` |
+| `INVALID_ASSET`, `INVALID_AMOUNT`, `INVALID_THRESHOLD` | Batch only: the payment was rejected; `decision` is `null` |
+
+`<CHECK>` is one of `SUCCESS_RATE`, `LIQUIDITY`, `SAMPLE_SIZE`, `HEALTH_SCORE`.
+
+`preflight_payment` returns the full API response plus `reason_codes`.
+`preflight_batch` returns `counts` per decision (and `error`) and, per payment,
+`index`, `id`, `decision`, `reason_codes`, `summary`, `score`, `corridor_id`,
+`alternative_corridor_ids` and `error`. Call `preflight_payment` for the full
+checks and alternatives of one payment.
+
+Every other tool also returns `structuredContent`: the API response object,
+or `{ "result": ... }` when the response is an array.
+
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
 | `preflight_payment` | Proceed / caution / hold decision for a corridor and amount |
+| `preflight_batch` | The same decision for up to 100 payouts at once |
 | `list_corridors`, `get_corridor` | Corridor health, latency, liquidity and history |
 | `list_anchors`, `get_anchor`, `get_anchor_by_account` | Anchor directory and reliability |
 | `get_price`, `get_prices`, `convert_to_usd` | USD prices and conversion |
@@ -136,8 +181,13 @@ from this repository.
 npm run lint        # type-check src and tests
 npm test            # unit and integration tests against a local fake backend
 npm run smoke-test  # real MCP handshake over stdio, no backend needed
-npm run build:plugin  # rebuild the bundle shipped in plugins/payraider
+npm run build:plugin  # build the bundle into plugins/payraider/server (gitignored)
 ```
+
+The plugin's `server/server.mjs` is not committed. CI builds it from this
+package on every change, and on `main` publishes the plugin to the
+`plugin-dist` branch, which is what `/plugin install` fetches. Each commit
+there names the `main` commit it was built from.
 
 ## Limits
 

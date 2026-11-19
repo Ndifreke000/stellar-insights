@@ -49,7 +49,8 @@
         "developer": "开发者"
       },
       "failedPayments": "失败的付款",
-      "settlementDistribution": "结算分布"
+      "settlementDistribution": "结算分布",
+      "status": "系统状态"
     }
   },
   "navbar": {
@@ -187,5 +188,137 @@
     "waitingAsset": "等待资产数据...",
     "waitingCorridor": "等待走廊数据...",
     "waitingSettlement": "等待结算数据..."
+  },
+  "preflight": {
+    "title": "通道成功率预测器",
+    "subtitle": "发送前预测支付成功率",
+    "form": {
+      "sourceAsset": "源资产",
+      "destinationAsset": "目标资产",
+      "amount": "金额",
+      "timeOfDay": "时间段",
+      "submit": "预测成功率",
+      "submitting": "正在检测通道..."
+    },
+    "results": {
+      "title": "预检预测结果",
+      "successProbability": "成功概率",
+      "riskLevel": "风险等级",
+      "lowRisk": "低风险",
+      "mediumRisk": "中风险",
+      "highRisk": "高风险",
+      "estimatedLatency": "预估延迟",
+      "liquidityDepth": "流动性深度",
+      "alternativeRoutes": "替代通道",
+      "recommendedAction": "建议操作",
+      "routeSummary": "{source} 至 {destination}，金额 {amount}"
+    },
+    "empty": "选择资产和金额以运行预检测试。",
+    "error": "无法连接到 PayRaider API 检查该通道，请重试。"
+  },
+  "corridors": {
+    "title": "支付通道",
+    "subtitle": "监控恒星网络支付通道的实时健康度、成功率和流动性深度。",
+    "search": "按资产对搜索通道...",
+    "views": {
+      "grid": "网格",
+      "table": "表格",
+      "heatmap": "热力图"
+    },
+    "sort": {
+      "label": "排序方式",
+      "health": "排序：健康度",
+      "success": "排序：成功率",
+      "liquidity": "排序：流动性"
+    },
+    "metrics": {
+      "successRate": "成功率",
+      "healthScore": "健康评分",
+      "avgLatency": "平均延迟",
+      "liquidityDepth": "流动性深度",
+      "volume24h": "24小时交易量",
+      "avgSlippage": "平均滑点"
+    },
+    "comparison": {
+      "title": "详细对比",
+      "exportCsv": "导出 CSV",
+      "corridor": "通道",
+      "recordsCount": "共 {count} 条记录",
+      "rowsPerPage": "每页行数",
+      "jumpTo": "跳至",
+      "pageOf": "/ {total} 页",
+      "bestPerformance": "最佳表现",
+      "worstPerformance": "最差表现"
+    },
+    "empty": "未检测到匹配的通道",
+    "error": "加载支付通道失败"
+  },
+  "keys": {
+    "title": "API 密钥",
+    "subtitle": "管理用于以编程方式访问 PayRaider 服务的 API 密钥。",
+    "authPrompt": "请通过 SEP-10 认证连接您的钱包以管理 API 密钥。",
+    "connectWallet": "连接钱包",
+    "createKey": "创建 API 密钥",
+    "table": {
+      "name": "密钥名称",
+      "prefix": "前缀",
+      "created": "创建时间",
+      "lastUsed": "最后使用",
+      "status": "状态",
+      "actions": "操作",
+      "active": "有效",
+      "revoked": "已撤销"
+    },
+    "actions": {
+      "rotate": "轮换",
+      "revoke": "撤销",
+      "copy": "复制密钥"
+    },
+    "modals": {
+      "createTitle": "生成新 API 密钥",
+      "keyNameLabel": "密钥描述 / 名称",
+      "keyNamePlaceholder": "例如：生产环境后台工作进程",
+      "cancel": "取消",
+      "confirm": "确认",
+      "revealTitle": "您的新 API 密钥",
+      "revealWarning": "请务必立即复制您的 API 密钥。之后您将无法再次查看！",
+      "done": "完成"
+    },
+    "empty": "尚未生成任何 API 密钥。立即创建一个开始使用。",
+    "loading": "正在加载 API 密钥...",
+    "error": "加载 API 密钥失败"
+  },
+  "billing": {
+    "title": "订阅与账单",
+    "subtitle": "管理您的 PayRaider 服务等级和加密货币账单发票。",
+    "currentPlan": "当前方案",
+    "tier": {
+      "free": "免费版",
+      "pro": "专业版",
+      "enterprise": "企业版"
+    },
+    "limits": {
+      "rateLimit": "每分钟 {count} 次请求",
+      "monthlyRequests": "每月 {count} 次请求"
+    },
+    "upgrade": {
+      "button": "升级方案",
+      "title": "升级至专业版",
+      "description": "解锁更高请求频率上限、优先技术支持和多通道高级分析。",
+      "price": "每月 99 美元（USDC 支付）",
+      "payWithCrypto": "使用 USDC 支付",
+      "success": "订阅方案升级成功！"
+    },
+    "invoices": {
+      "title": "账单发票历史",
+      "empty": "暂无账单发票记录。",
+      "invoiceId": "发票编号",
+      "amount": "金额",
+      "status": "状态",
+      "paid": "已支付",
+      "pending": "待支付"
+    },
+    "loading": "正在加载账单信息...",
+    "error": "加载账单方案失败"
   }
 }

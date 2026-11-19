@@ -4,6 +4,7 @@ import { setupNetworkMonitoring } from './network';
 import { loadStoredAuth } from './auth';
 import { initializeDatabase } from './database';
 import { initializeStorage } from './storage';
+import { logger } from '@utils/logger';
 
 export async function initializeApp(): Promise<void> {
   try {
@@ -25,8 +26,8 @@ export async function initializeApp(): Promise<void> {
       await setupNotifications();
     }
 
-    console.log('App initialized successfully');
+    logger.info('[App]', 'App initialized successfully');
   } catch (error) {
-    console.error('Failed to initialize app:', error);
+    logger.error('[App]', 'Failed to initialize app:', error);
   }
 }

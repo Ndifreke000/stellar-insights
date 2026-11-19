@@ -2,23 +2,36 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use failsafe::futures::CircuitBreaker as _;
-use failsafe::{backoff, failure_policy, Config};
 use uuid::Uuid;
 
 use payraider_backend::api::anchors::{get_anchor_metrics_with_fallback, AnchorMetrics};
 use payraider_backend::cache::{CacheConfig, CacheManager};
 use payraider_backend::rpc::circuit_breaker::{
-    rpc_circuit_breaker, CircuitBreaker, SharedCircuitBreaker,
+    rpc_circuit_breaker, CallError, CircuitBreaker, CircuitBreakerConfig, ManualClock,
+    SharedCircuitBreaker,
 };
 use payraider_backend::rpc::error::{with_retry, RetryConfig, RpcError};
 use payraider_backend::rpc::stellar::StellarRpcClient;
 
+fn test_circuit_breaker_with_clock(
+    failure_threshold: u32,
+    timeout: Duration,
+    clock: Arc<ManualClock>,
+) -> SharedCircuitBreaker {
+    Arc::new(CircuitBreaker::with_clock(
+        "test",
+        CircuitBreakerConfig {
+            failure_threshold,
+            success_threshold: 1,
+            timeout_duration: timeout,
+            half_open_max_calls: 1,
+        },
+        clock,
+    ))
+}
+
 fn test_circuit_breaker(failure_threshold: u32, timeout: Duration) -> SharedCircuitBreaker {
-    let backoff = backoff::constant(timeout);
-    let policy = failure_policy::consecutive_failures(failure_threshold, backoff);
-    let breaker: CircuitBreaker = Config::new().failure_policy(policy).build();
-    Arc::new(breaker)
+    test_circuit_breaker_with_clock(failure_threshold, timeout, Arc::new(ManualClock::new()))
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -59,32 +72,33 @@ async fn test_rpc_retry_on_failure() {
 
 #[tokio::test]
 async fn test_circuit_breaker_opens_on_failures() {
-    // Circuit breaker uses failsafe which relies on std::time::Instant,
-    // so we use tokio::time::sleep for the backoff period
-    let circuit_breaker = test_circuit_breaker(2, Duration::from_millis(100));
+    // Deterministic: the breaker reads time from a manually advanced clock.
+    let clock = Arc::new(ManualClock::new());
+    let circuit_breaker =
+        test_circuit_breaker_with_clock(2, Duration::from_millis(100), clock.clone());
 
     // Fail twice to trip the circuit
-    let result1: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+    let result1: Result<String, CallError<RpcError>> = circuit_breaker
         .call(async { Err(RpcError::NetworkError("fail".to_string())) })
         .await;
-    assert!(matches!(result1, Err(failsafe::Error::Inner(_))));
+    assert!(matches!(result1, Err(CallError::Inner(_))));
 
-    let result2: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+    let result2: Result<String, CallError<RpcError>> = circuit_breaker
         .call(async { Err(RpcError::NetworkError("fail".to_string())) })
         .await;
-    assert!(matches!(result2, Err(failsafe::Error::Inner(_))));
+    assert!(matches!(result2, Err(CallError::Inner(_))));
 
     // Circuit should now be open
-    let result3: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+    let result3: Result<String, CallError<RpcError>> = circuit_breaker
         .call(async { Ok("success".to_string()) })
         .await;
-    assert!(matches!(result3, Err(failsafe::Error::Rejected)));
+    assert!(matches!(result3, Err(CallError::Rejected)));
 
     // Wait for the circuit to transition to half-open
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    clock.advance(Duration::from_millis(150));
 
     // In half-open state, success should close the circuit
-    let result4: Result<String, failsafe::Error<RpcError>> = circuit_breaker
+    let result4: Result<String, CallError<RpcError>> = circuit_breaker
         .call(async { Ok("recovered".to_string()) })
         .await;
     assert_eq!(result4.unwrap(), "recovered");
@@ -100,10 +114,10 @@ async fn test_circuit_breaker_fallback() {
     // Open the circuit with repeated failures
     let mut tripped = false;
     for _ in 0..128 {
-        let r: Result<(), failsafe::Error<RpcError>> = circuit_breaker
+        let r: Result<(), CallError<RpcError>> = circuit_breaker
             .call(async { Err(RpcError::NetworkError("fail".to_string())) })
             .await;
-        if matches!(r, Err(failsafe::Error::Rejected)) {
+        if matches!(r, Err(CallError::Rejected)) {
             tripped = true;
             break;
         }
@@ -137,6 +151,6 @@ async fn test_circuit_breaker_fallback() {
     // Best-effort: nudge shared breaker toward closed so other tests are not starved.
     // In half-open state, one success closes the circuit.
     for _ in 0..8 {
-        let _: Result<(), failsafe::Error<RpcError>> = circuit_breaker.call(async { Ok(()) }).await;
+        let _: Result<(), CallError<RpcError>> = circuit_breaker.call(async { Ok(()) }).await;
     }
 }

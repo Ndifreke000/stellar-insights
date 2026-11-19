@@ -70,6 +70,7 @@ pub struct ErrorResponse {
 #[utoipa::path(
     post,
     path = "/api/verifications/verify",
+    operation_id = "verify_snapshot_for_reward",
     request_body = VerifySnapshotRequest,
     responses(
         (status = 200, description = "Snapshot verified and reward issued"),

@@ -68,6 +68,7 @@ pub struct InfoQuery {
 #[utoipa::path(
     get,
     path = "/api/sep31/info",
+    operation_id = "sep31_get_info",
     params(
         ("transfer_server" = String, Query, description = "SEP-31 transfer server URL")
     ),
@@ -233,6 +234,7 @@ pub struct ListTransactionsQuery {
 #[utoipa::path(
     get,
     path = "/api/sep31/transactions",
+    operation_id = "sep31_get_transactions",
     params(
         ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
         ("jwt" = Option<String>, Query, description = "JWT authentication token"),
@@ -302,6 +304,7 @@ pub struct GetTransactionQuery {
 #[utoipa::path(
     get,
     path = "/api/sep31/transactions/{id}",
+    operation_id = "sep31_get_transaction",
     params(
         ("id" = String, Path, description = "Transaction ID"),
         ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
@@ -479,6 +482,7 @@ pub struct Sep31AnchorInfo {
 #[utoipa::path(
     get,
     path = "/api/sep31/anchors",
+    operation_id = "sep31_list_anchors",
     responses(
         (status = 200, description = "List of configured SEP-31 anchors")
     ),

@@ -501,7 +501,7 @@ pub async fn get_anchors(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     let page = params.page()?;
-    let cache_key = keys::anchor_list(page.limit, page.offset);
+    let cache_key = keys::anchor_list(keys::active_network(), page.limit, page.offset);
 
     let response = cached_query(
         &cache,
@@ -635,7 +635,6 @@ mod tests {
     use crate::cache::{CacheConfig, CacheManager};
     use crate::rpc::circuit_breaker::rpc_circuit_breaker;
     use crate::rpc::StellarRpcClient;
-    use failsafe::CircuitBreaker as _;
 
     #[tokio::test]
     async fn test_circuit_breaker_opens_on_failures() {
@@ -645,8 +644,9 @@ mod tests {
 
         let circuit_breaker = rpc_circuit_breaker();
         while matches!(
-            circuit_breaker.call(|| Err::<(), anyhow::Error>(anyhow::anyhow!("forced failure"))),
-            Err(failsafe::Error::Inner(_))
+            circuit_breaker
+                .call_sync(|| Err::<(), anyhow::Error>(anyhow::anyhow!("forced failure"))),
+            Err(crate::rpc::CallError::Inner(_))
         ) {}
 
         for _ in 0..5 {
@@ -698,8 +698,8 @@ mod tests {
 
     #[test]
     fn test_cache_key_generation() {
-        let key = keys::anchor_list(50, 0);
-        assert_eq!(key, "anchor:list:50:0");
+        let key = keys::anchor_list(crate::network::StellarNetwork::Mainnet, 50, 0);
+        assert_eq!(key, "mainnet:anchor:list:50:0");
     }
 
     #[test]

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import withPWA from "@ducanh2912/next-pwa";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -53,6 +53,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: 'standalone',
   compress: true,
+  productionBrowserSourceMaps: true,
   async headers() {
     return [
       {
@@ -169,6 +170,6 @@ export default withSentryConfig(finalConfig, {
   silent: !process.env.CI,
   widenClientFileUpload: true,
   sourcemaps: { deleteSourcemapsAfterUpload: true },
-  disableLogger: true,
-  automaticVercelMonitors: true,
+  bundleSizeOptimizations: { excludeDebugStatements: true },
+  webpack: { automaticVercelMonitors: true },
 });

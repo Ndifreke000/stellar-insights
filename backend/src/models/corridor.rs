@@ -298,6 +298,8 @@ mod tests {
             timestamp: Utc::now(),
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         };
 
         let corridor = payment.get_corridor();
@@ -321,6 +323,8 @@ mod tests {
             timestamp: now,
             submission_time: Some(submitted),
             confirmation_time: Some(now),
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         };
 
         assert_eq!(payment.settlement_latency_ms(), Some(1500));
@@ -339,6 +343,8 @@ mod tests {
             timestamp: Utc::now(),
             submission_time: None,
             confirmation_time: None,
+            source_account: "GSOURCEACCOUNT".to_string(),
+            destination_account: "GDESTINATIONACCOUNT".to_string(),
         };
 
         assert_eq!(payment.settlement_latency_ms(), None);

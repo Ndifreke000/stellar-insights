@@ -1,17 +1,13 @@
 use async_graphql::http::GraphiQLSource;
-use async_graphql::Schema;
 use axum::{
-    extract::{State, WebSocketUpgrade},
+    extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
-use std::sync::Arc;
 
-use super::resolvers::{MutationRoot, QueryRoot};
 use super::schema::AppSchema;
-use super::subscription::SubscriptionRoot;
 
 /// GraphQL query/mutation handler.
 ///
@@ -20,7 +16,7 @@ pub async fn graphql_handler(
     State(schema): State<AppSchema>,
     req: Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
-    Json(schema.execute(req.0).await.into())
+    Json(schema.execute(req.0).await)
 }
 
 /// GraphQL Playground (GraphiQL) handler.

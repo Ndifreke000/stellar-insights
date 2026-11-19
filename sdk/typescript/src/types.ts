@@ -7,10 +7,12 @@ export interface PayRaiderConfig {
   accessToken?: string;
   /** Override base URL (default: https://api.payraider.io) */
   baseUrl?: string;
-  /** Max retry attempts on 429/5xx (default: 3) */
+  /** Max retries on network errors and 429/502/503/504, idempotent methods only (default: 3) */
   maxRetries?: number;
-  /** Initial retry delay in ms (default: 500) */
+  /** Base delay in ms for full-jitter backoff (default: 500) */
   retryDelay?: number;
+  /** Cap on any single retry delay in ms; a longer Retry-After is not waited out (default: 30000) */
+  maxRetryDelay?: number;
   /** Request timeout in ms (default: 30000) */
   timeout?: number;
 }
@@ -176,10 +178,19 @@ export interface PreflightRequest {
 export type PreflightDecision = "proceed" | "caution" | "hold" | "unknown";
 export type PreflightCheckStatus = "pass" | "warn" | "fail";
 
+/** Machine-readable reason a preflight check did not pass. */
+export type PreflightReasonCode =
+  | "LOW_SUCCESS_RATE"
+  | "THIN_LIQUIDITY"
+  | "SMALL_SAMPLE"
+  | "UNKNOWN_CORRIDOR";
+
 export interface PreflightCheck {
   name: "success_rate" | "liquidity" | "sample_size" | "health_score";
   status: PreflightCheckStatus;
   detail: string;
+  /** Present when the server reports a machine-readable reason. */
+  code?: PreflightReasonCode;
 }
 
 export interface PreflightCorridor {
@@ -211,6 +222,27 @@ export interface PreflightResponse {
   checks: PreflightCheck[];
   /** Healthier corridors to the same destination asset, best first. */
   alternatives: PreflightCorridor[];
+  evaluated_at: string;
+}
+
+export interface PreflightItemError {
+  /** "INVALID_ASSET" | "INVALID_AMOUNT" | "INVALID_THRESHOLD" */
+  code: string;
+  message: string;
+}
+
+/** Outcome for one batch item. Exactly one of `result` and `error` is set. */
+export interface PreflightBatchItem {
+  /** Position of the item in the request. */
+  index: number;
+  result: PreflightResponse | null;
+  error: PreflightItemError | null;
+}
+
+export interface PreflightBatchResponse {
+  /** One entry per requested payment, in request order. */
+  results: PreflightBatchItem[];
+  /** Every item is scored against the same corridor snapshot. */
   evaluated_at: string;
 }
 

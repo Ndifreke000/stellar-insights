@@ -1,0 +1,30 @@
+{
+  "name": "preflight_check_batch_raises_on_empty_batch",
+  "description": "A whole-batch rejection surfaces as an API error.",
+  "operation": "preflight.check_batch",
+  "input": {
+    "items": []
+  },
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/preflight/batch",
+    "query": {},
+    "body": {
+      "items": []
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "EMPTY_BATCH",
+      "message": "items must contain at least one payment"
+    }
+  },
+  "expect": {
+    "error": {
+      "status": 400,
+      "code": "EMPTY_BATCH",
+      "message": "items must contain at least one payment"
+    }
+  }
+}

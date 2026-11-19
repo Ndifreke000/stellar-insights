@@ -35,7 +35,7 @@ pub async fn metrics_overview(
     State(cache): State<Arc<CacheManager>>,
     headers: HeaderMap,
 ) -> Response {
-    let cache_key = keys::metrics_overview();
+    let cache_key = keys::metrics_overview(keys::active_network());
 
     let overview = cached_query(
         &cache,

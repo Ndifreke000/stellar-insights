@@ -31,6 +31,10 @@ export interface NetworkStats {
 export interface AnalyticsDashboardData {
   stats: NetworkStats;
   time_series_data: NetworkVolumeDataPoint[];
+  /** Hourly observed volume. Empty when `data_available` is false. */
+  series?: NetworkVolumeDataPoint[];
+  /** False when the last day has no stored payments. */
+  data_available?: boolean;
   corridor_performance: CorridorPerformanceMetric[];
 }
 
@@ -51,6 +55,13 @@ function normalizeDashboardData(raw: AnalyticsDashboardData): AnalyticsDashboard
       corridors: Number(p.corridors),
       anchors: Number(p.anchors),
     })),
+    series: (raw.series ?? raw.time_series_data ?? []).map((p) => ({
+      time: p.time,
+      volume: Number(p.volume),
+      corridors: Number(p.corridors),
+      anchors: Number(p.anchors),
+    })),
+    data_available: Boolean(raw.data_available),
     corridor_performance: (raw.corridor_performance ?? []).map((c) => ({
       corridor: c.corridor,
       success_rate: Number(c.success_rate),
