@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
-use ed25519_dalek::{Signer, SigningKey};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use stellar_xdr::curr::{
     ContractDataDurability, ContractId, DecoratedSignature, Hash, LedgerEntryData, LedgerKey,
     LedgerKeyContractData, Limits, ReadXdr, ScAddress, ScSymbol, ScVal, ScVec, Signature,
@@ -13,42 +13,14 @@ use stellar_xdr::curr::{
     TransactionSignaturePayloadTaggedTransaction, WriteXdr,
 };
 
+use crate::services::envelope_policy;
+use crate::services::signature_audit::{SignatureAuditor, SignatureStatus};
+use crate::services::transaction_signer::{
+    self, signature_hint_from_public_key, verify_ed25519_signature, LocalSeedSigner,
+    TransactionSigner,
+};
 use crate::snapshot::verify::OnChainRecord;
 use tracing::{debug, error, info, warn};
-
-/// Minimal Stellar keypair sufficient for signing transaction hashes.
-///
-/// `stellar_sdk` 0.1 does not export usable `KeyPair`/`Network` types (see the
-/// now-resolved FIXME below), so signing is implemented directly on top of
-/// `stellar-strkey` (StrKey encode/decode) and `ed25519-dalek` (the actual
-/// signature scheme Stellar accounts use), which are both already exact,
-/// minimal, well-maintained building blocks for this.
-struct StellarKeyPair {
-    signing_key: SigningKey,
-}
-
-impl StellarKeyPair {
-    /// Decodes a StrKey secret seed ("S...") into a signing key.
-    fn from_secret_seed(seed: &str) -> Result<Self> {
-        let raw = stellar_strkey::ed25519::PrivateKey::from_string(seed)
-            .map_err(|e| anyhow::anyhow!("Invalid source secret key: {e}"))?;
-        Ok(Self {
-            signing_key: SigningKey::from_bytes(&raw.0),
-        })
-    }
-
-    fn sign(&self, data: &[u8]) -> [u8; 64] {
-        self.signing_key.sign(data).to_bytes()
-    }
-
-    /// The last 4 bytes of the public key, used as the `DecoratedSignature` hint.
-    fn signature_hint(&self) -> SignatureHint {
-        let public = self.signing_key.verifying_key().to_bytes();
-        let mut hint = [0u8; 4];
-        hint.copy_from_slice(&public[28..32]);
-        SignatureHint(hint)
-    }
-}
 
 /// Computes the Stellar `NETWORK_ID` for a given network passphrase, per the
 /// Stellar protocol's transaction signature base definition
@@ -82,6 +54,11 @@ pub struct ContractConfig {
 pub struct ContractService {
     client: Client,
     config: ContractConfig,
+    /// Transaction signing backend. `None` on read-only clients; submitting
+    /// without one fails with an explicit error.
+    signer: Option<Arc<dyn TransactionSigner>>,
+    /// Audit trail for every signature attempt (tracing + optional DB).
+    auditor: SignatureAuditor,
 }
 
 /// RPC request structure for Soroban
@@ -134,11 +111,48 @@ impl ContractService {
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .expect("Failed to build HTTP client");
-        Self { client, config }
+
+        // Backwards-compatible construction: a non-empty secret seed becomes
+        // a local signer. `from_env` is the production entry point and picks
+        // the backend via TX_SIGNER_BACKEND instead.
+        let signer = if config.source_secret_key.trim().is_empty() {
+            None
+        } else {
+            LocalSeedSigner::from_secret_seed(&config.source_secret_key)
+                .ok()
+                .map(|s| Arc::new(s) as Arc<dyn TransactionSigner>)
+        };
+
+        Self {
+            client,
+            config,
+            signer,
+            auditor: SignatureAuditor::default(),
+        }
     }
 
-    /// Create from environment variables
-    pub fn from_env() -> Result<Self> {
+    /// Attach a specific signer (tests, or callers that built one themselves).
+    #[must_use]
+    pub fn with_signer(mut self, signer: Arc<dyn TransactionSigner>) -> Self {
+        self.signer = Some(signer);
+        self
+    }
+
+    /// Persist signature audit records to the given database pool, in
+    /// addition to the always-on tracing events.
+    #[must_use]
+    pub fn with_audit_pool(mut self, pool: sqlx::SqlitePool) -> Self {
+        self.auditor = SignatureAuditor::new(Some(pool));
+        self
+    }
+
+    /// Create from environment variables.
+    ///
+    /// The signing backend is selected by `TX_SIGNER_BACKEND`
+    /// (`local` default, `gcp-kms`, `aws-kms`); see
+    /// `services::transaction_signer` for the full variable list. With a KMS
+    /// backend no secret seed is loaded into process memory.
+    pub async fn from_env() -> Result<Self> {
         let config = ContractConfig {
             rpc_url: std::env::var("SOROBAN_RPC_URL")
                 .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string()),
@@ -146,18 +160,20 @@ impl ContractService {
                 .context("SNAPSHOT_CONTRACT_ID environment variable not set")?,
             network_passphrase: std::env::var("STELLAR_NETWORK_PASSPHRASE")
                 .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string()),
-            source_secret_key: std::env::var("STELLAR_SOURCE_SECRET_KEY")
-                .context("STELLAR_SOURCE_SECRET_KEY environment variable not set")?,
+            // Only used by the local signer backend; KMS backends ignore it.
+            source_secret_key: std::env::var("STELLAR_SOURCE_SECRET_KEY").unwrap_or_default(),
         };
 
-        Ok(Self::new(config))
+        let signer = transaction_signer::signer_from_env().await?;
+        Ok(Self::new(config).with_signer(signer))
     }
 
     /// Create a read-only client from environment variables.
     ///
-    /// Reads go through `getLedgerEntries`, which needs no source account, so
-    /// only `SNAPSHOT_CONTRACT_ID` is required. Calling the submit path on a
-    /// read-only client fails when the empty secret key is decoded.
+    /// Reads go through `getLedgerEntries`, which needs no source account and
+    /// no signer, so only `SNAPSHOT_CONTRACT_ID` is required. Calling the
+    /// submit path on a read-only client fails with an explicit "no signer"
+    /// error.
     pub fn read_only_from_env() -> Result<Self> {
         let config = ContractConfig {
             rpc_url: std::env::var("SOROBAN_RPC_URL")
@@ -166,7 +182,7 @@ impl ContractService {
                 .context("SNAPSHOT_CONTRACT_ID environment variable not set")?,
             network_passphrase: std::env::var("STELLAR_NETWORK_PASSPHRASE")
                 .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string()),
-            source_secret_key: std::env::var("STELLAR_SOURCE_SECRET_KEY").unwrap_or_default(),
+            source_secret_key: String::new(),
         };
 
         Ok(Self::new(config))
@@ -251,7 +267,7 @@ impl ContractService {
 
         // Step 3: Prepare and sign the transaction
         debug!("Preparing and signing transaction");
-        let signed_xdr = self.prepare_and_sign_transaction(&simulated)?;
+        let signed_xdr = self.prepare_and_sign_transaction(&simulated, hash, epoch)?;
 
         // Step 4: Send the transaction
         debug!("Sending transaction to network");
@@ -330,12 +346,20 @@ impl ContractService {
     /// Prepare and sign the transaction using the Soroban RPC simulation result.
     ///
     /// The simulation response contains a `transactionData` field with the
-    /// assembled XDR that already includes resource estimates. This decodes
-    /// that envelope, computes the transaction signature base
-    /// (`SHA256(NETWORK_ID ++ XDR(TransactionSignaturePayload))`), signs it
-    /// with the configured source account's ed25519 key, attaches the
-    /// resulting `DecoratedSignature`, and re-encodes the envelope.
-    fn prepare_and_sign_transaction(&self, simulated: &serde_json::Value) -> Result<String> {
+    /// assembled XDR that already includes resource estimates. Before any
+    /// signature is produced, the decoded envelope is checked against the
+    /// envelope policy (`services::envelope_policy`): it must be exactly the
+    /// `submit_snapshot(hash, epoch)` call on the configured contract.
+    /// Only then is the transaction signature base
+    /// (`SHA256(NETWORK_ID ++ XDR(TransactionSignaturePayload))`) handed to
+    /// the configured [`TransactionSigner`], which never sees anything but
+    /// the 32-byte hash.
+    async fn prepare_and_sign_transaction(
+        &self,
+        simulated: &serde_json::Value,
+        hash: [u8; 32],
+        epoch: u64,
+    ) -> Result<String> {
         let transaction_xdr = simulated
             .get("transactionData")
             .and_then(|t| t.as_str())
@@ -344,9 +368,6 @@ impl ContractService {
         if transaction_xdr.is_empty() {
             return Err(anyhow::anyhow!("Simulation returned empty transactionData"));
         }
-
-        let keypair = StellarKeyPair::from_secret_seed(&self.config.source_secret_key)
-            .context("Failed to load source signing key")?;
 
         // Decode the transaction envelope returned by simulation.
         let xdr_bytes = general_purpose::STANDARD
@@ -361,6 +382,16 @@ impl ContractService {
             _ => return Err(anyhow::anyhow!("Unsupported transaction envelope version")),
         };
 
+        // Envelope policy gate: refuse to sign anything that is not exactly
+        // the submit_snapshot(hash, epoch) call we asked the RPC to simulate.
+        if let Err(e) =
+            envelope_policy::validate_submit_snapshot_envelope(&tx, &self.config.contract_id, &hash, epoch)
+        {
+            self.audit(SignatureStatus::PolicyRejected, "", epoch, None, Some(e.to_string()))
+                .await;
+            return Err(e.context("Envelope policy rejected the simulated transaction"));
+        }
+
         // Build the transaction signature base per the Stellar protocol:
         // SHA256(NETWORK_ID ++ XDR(TransactionSignaturePayload)).
         let payload = TransactionSignaturePayload {
@@ -373,14 +404,72 @@ impl ContractService {
         let mut hasher = Sha256::new();
         hasher.update(&payload_bytes);
         let tx_hash: [u8; 32] = hasher.finalize().into();
+        let tx_hash_hex = hex::encode(tx_hash);
 
-        let signature = keypair.sign(&tx_hash);
+        let signer = self.signer.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "No transaction signer configured; cannot submit snapshots \
+                 (read-only client or missing TX_SIGNER_BACKEND credentials)"
+            )
+        })?;
 
+        // The signer only ever sees the 32-byte signature base.
+        let started = Instant::now();
+        let signature = match signer.sign(&tx_hash).await {
+            Ok(sig) => sig,
+            Err(e) => {
+                self.audit(
+                    SignatureStatus::SignError,
+                    &tx_hash_hex,
+                    epoch,
+                    None,
+                    Some(format!("{}: {e}", signer.backend())),
+                )
+                .await;
+                return Err(e.context("Transaction signing failed"));
+            }
+        };
+        let latency_ms = started.elapsed().as_millis() as u64;
+
+        if signature.len() != 64 {
+            self.audit(
+                SignatureStatus::SignError,
+                &tx_hash_hex,
+                epoch,
+                None,
+                Some(format!("{}: bad signature length {}", signer.backend(), signature.len())),
+            )
+            .await;
+            return Err(anyhow::anyhow!(
+                "Signer returned {} bytes; expected a 64-byte Ed25519 signature",
+                signature.len()
+            ));
+        }
+
+        // Defense in depth: verify the signature against the signer's public
+        // key before attaching it, so a misbehaving KMS cannot produce a
+        // transaction that will fail on-chain.
+        let public_key = signer
+            .public_key()
+            .await
+            .context("Failed to fetch signer public key")?;
+        if let Err(e) = verify_ed25519_signature(&public_key, &tx_hash, &signature) {
+            self.audit(
+                SignatureStatus::SignError,
+                &tx_hash_hex,
+                epoch,
+                None,
+                Some(format!("{}: signature self-check failed: {e}", signer.backend())),
+            )
+            .await;
+            return Err(e.context("Signer produced an invalid signature"));
+        }
+
+        let hint = signature_hint_from_public_key(&public_key);
         let decorated_sig = DecoratedSignature {
-            hint: keypair.signature_hint(),
+            hint: SignatureHint(hint),
             signature: Signature(
                 signature
-                    .to_vec()
                     .try_into()
                     .map_err(|_| anyhow::anyhow!("Unexpected signature length"))?,
             ),
@@ -396,6 +485,15 @@ impl ContractService {
                 .map_err(|e| anyhow::anyhow!("Failed to attach signature: {e}"))?;
         }
 
+        self.audit(
+            SignatureStatus::Signed,
+            &tx_hash_hex,
+            epoch,
+            Some(latency_ms),
+            None,
+        )
+        .await;
+
         let signed_xdr = envelope
             .to_xdr_base64(Limits::none())
             .context("Failed to re-encode signed transaction XDR")?;
@@ -403,6 +501,35 @@ impl ContractService {
         debug!("Signed transaction XDR ({} chars)", signed_xdr.len());
 
         Ok(signed_xdr)
+    }
+
+    /// Emit a signature audit event for the current signer.
+    async fn audit(
+        &self,
+        status: SignatureStatus,
+        tx_hash: &str,
+        epoch: u64,
+        latency_ms: Option<u64>,
+        error: Option<String>,
+    ) {
+        let (backend, key_id) = self
+            .signer
+            .as_ref()
+            .map(|s| (s.backend().to_string(), s.key_id().to_string()))
+            .unwrap_or_else(|| ("none".to_string(), "none".to_string()));
+        self.auditor
+            .record(&crate::services::signature_audit::SignatureAuditEvent {
+                signer_backend: backend,
+                signer_key_id: key_id,
+                tx_hash: tx_hash.to_string(),
+                contract_id: self.config.contract_id.clone(),
+                function_name: envelope_policy::SUBMIT_SNAPSHOT_FUNCTION.to_string(),
+                epoch: Some(epoch),
+                status,
+                error,
+                latency_ms: latency_ms.unwrap_or(0),
+            })
+            .await;
     }
 
     async fn send_transaction(&self, signed_xdr: &str) -> Result<String> {

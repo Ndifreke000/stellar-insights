@@ -300,6 +300,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Backup scheduler enabled");
     }
 
+    // GDPR erasure: execute confirmed deletion requests once their
+    // scheduled_deletion_at passes. Per-store steps + certificate are
+    // persisted by services::erasure.
+    let erasure_service = Arc::new(payraider_backend::services::erasure::ErasureService::new(
+        pool.clone(),
+    ));
+    std::mem::drop(erasure_service.spawn_scheduler());
+    tracing::info!("GDPR erasure scheduler enabled");
+
     // Build the backfill job (shared state allows the status endpoint to read progress)
     let backfill_state = Arc::new(tokio::sync::RwLock::new(BackfillState::default()));
     let event_indexer_for_backfill =

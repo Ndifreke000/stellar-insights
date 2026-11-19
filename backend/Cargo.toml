@@ -46,6 +46,10 @@ gdpr = []
 # NEXT_PUBLIC_ENABLE_NON_PRODUCT_FEATURES flag.
 quests = []
 governance = []
+# AWS KMS transaction signer (services::transaction_signer::AwsKmsSigner).
+# Off by default because aws-sdk-kms/aws-config add a large dependency
+# tree; the gcp-kms and local signer backends need no extra crates.
+aws-kms = ["dep:aws-sdk-kms", "dep:aws-config"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -109,6 +113,10 @@ tokio-retry = "0.3"
 async-graphql = { version = "7.0", features = ["chrono", "uuid"] }
 async-graphql-axum = { version = "7.0" }
 async-stream = "0.3"
+# Optional deps for the aws-kms transaction signer backend. Pinned to
+# releases at least a week old; enable with `--features aws-kms`.
+aws-sdk-kms = { version = "=1.129.0", optional = true }
+aws-config = { version = "=1.13.2", optional = true, features = ["behavior-version-latest"] }
 
 
 
