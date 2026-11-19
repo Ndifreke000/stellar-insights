@@ -1,10 +1,10 @@
 use async_graphql::Schema;
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::broadcast;
 
 use super::resolvers::{MutationRoot, QueryRoot};
 use super::subscription::SubscriptionRoot;
+use crate::websocket::WsState;
 
 /// The consolidated application schema type.
 ///
@@ -64,28 +64,23 @@ pub fn introspection_enabled(env_mode: Option<&str>, explicit: Option<&str>) -> 
 
 /// Build the consolidated GraphQL schema with database access.
 ///
-/// This is the primary schema builder used in production. It includes:
-/// - Query resolvers for all entities (anchors, corridors, payments, etc.)
-/// - Mutation resolvers for create/update/delete operations
-/// - Subscription resolvers for real-time updates via WebSocket
-///
-/// Depth/complexity limits and the introspection toggle come from the env.
-pub fn build_schema(pool: Arc<SqlitePool>, broadcast_tx: broadcast::Sender<String>) -> AppSchema {
-    build_schema_with_limits(pool, broadcast_tx, GraphqlLimits::from_env())
+/// GraphQL subscriptions share the `WsState` broadcast channel with the native
+/// WebSocket handler, so a single publisher pipeline services both transports
+/// (issue #2794). Pass the same `Arc<WsState>` that the WebSocket handler uses.
+pub fn build_schema(pool: Arc<SqlitePool>, ws_state: Arc<WsState>) -> AppSchema {
+    build_schema_with_limits(pool, ws_state, GraphqlLimits::from_env())
 }
 
 /// Build the schema with explicit query limits.
 pub fn build_schema_with_limits(
     pool: Arc<SqlitePool>,
-    broadcast_tx: broadcast::Sender<String>,
+    ws_state: Arc<WsState>,
     limits: GraphqlLimits,
 ) -> AppSchema {
     let builder = Schema::build(
         QueryRoot { pool: pool.clone() },
         MutationRoot { pool },
-        SubscriptionRoot {
-            broadcast_rx: broadcast_tx,
-        },
+        SubscriptionRoot { ws_state },
     )
     .limit_depth(limits.max_depth)
     .limit_complexity(limits.max_complexity);

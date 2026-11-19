@@ -311,8 +311,14 @@ impl CacheManager {
         }
     }
 
-    /// Delete multiple cache keys matching a pattern
-    /// Uses SCAN instead of KEYS to avoid blocking Redis
+    /// Delete multiple cache keys matching a pattern.
+    ///
+    /// Uses SCAN … MATCH so it never blocks Redis, then deletes each matching
+    /// key with an individual UNLINK command. Pipelining UNLINKs inside a
+    /// MULTI/EXEC is intentionally avoided: on Redis Cluster a MULTI that
+    /// spans more than one hash slot is rejected with CROSSSLOT, and SCAN
+    /// on a single node only covers that node's key-space. Sending one
+    /// UNLINK per key is safe on both standalone Redis and Redis Cluster.
     pub async fn delete_pattern(&self, pattern: &str) -> anyhow::Result<usize> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
@@ -329,21 +335,18 @@ impl CacheManager {
                     .query_async(&mut conn)
                     .await?;
 
-                if !keys.is_empty() {
-                    let mut pipe = redis::pipe();
-                    pipe.atomic();
-
-                    // non-blocking delete
-                    for key in &keys {
-                        pipe.cmd("UNLINK").arg(key);
+                for key in &keys {
+                    // UNLINK is non-blocking and works key-by-key on Cluster.
+                    if let Err(e) = redis::cmd("UNLINK")
+                        .arg(key)
+                        .query_async::<i64>(&mut conn)
+                        .await
+                    {
+                        tracing::warn!("UNLINK failed for key {}: {}", key, e);
+                    } else {
+                        deleted_count += 1;
+                        self.invalidations.fetch_add(1, Ordering::Relaxed);
                     }
-
-                    pipe.query_async::<()>(&mut conn).await?;
-
-                    self.invalidations
-                        .fetch_add(keys.len() as u64, Ordering::Relaxed);
-
-                    deleted_count += keys.len();
                 }
 
                 cursor = new_cursor;

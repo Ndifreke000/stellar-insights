@@ -509,8 +509,9 @@ mod tests {
 
     #[test]
     fn test_schema_type_is_constructible() {
-        // Verify the schema type alias resolves correctly
-        let _: fn(Arc<sqlx::SqlitePool>, tokio::sync::broadcast::Sender<String>) -> AppSchema =
+        // Verify the schema type alias resolves correctly — now takes WsState
+        // so GraphQL and native WebSocket share a single broadcast channel (#2794).
+        let _: fn(Arc<sqlx::SqlitePool>, Arc<crate::websocket::WsState>) -> AppSchema =
             build_schema;
     }
 
@@ -559,10 +560,10 @@ mod tests {
 
     fn limited_schema(introspection: bool) -> AppSchema {
         let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
-        let (tx, _rx) = tokio::sync::broadcast::channel(1);
+        let ws_state = Arc::new(crate::websocket::WsState::new());
         build_schema_with_limits(
             Arc::new(pool),
-            tx,
+            ws_state,
             GraphqlLimits { max_depth: 3, max_complexity: 50, introspection },
         )
     }
