@@ -608,11 +608,11 @@ async fn main() -> anyhow::Result<()> {
     // full database-backed schema from `graphql/schema.rs`. It includes:
     //   - Query resolvers for all entities (anchors, corridors, payments, etc.)
     //   - Mutation resolvers for create/update/delete operations
-    //   - Subscription resolvers for real-time updates via WebSocket
+    //   - Subscription resolvers for real-time updates via WebSocket (shared
+    //     with the native WS handler via ws_state.tx — issue #2794)
     //   - Query complexity/depth limiting via async-graphql
-    let (broadcast_tx, _) = tokio::sync::broadcast::channel::<String>(100);
     let graphql_schema =
-        payraider_backend::graphql::build_schema(Arc::new(pool.clone()), broadcast_tx);
+        payraider_backend::graphql::build_schema(Arc::new(pool.clone()), Arc::clone(&ws_state));
     let graphql_routes = Router::new()
         .route(
             "/graphql",

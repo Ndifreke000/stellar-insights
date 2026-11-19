@@ -7,6 +7,31 @@ pub mod oauth;
 /// removed. All handler wiring must use `crate::auth::sep10_simple::Sep10Service`.
 pub mod sep10_simple;
 
+/// JWT middleware helpers (token validation, revocation, `AuthUser` extractor).
+///
+/// Re-exported here so callers can import from `crate::auth::middleware` rather
+/// than the top-level `crate::auth_middleware` module, keeping auth concerns in
+/// one place (issue #2795).
+pub mod middleware {
+    pub use crate::auth_middleware::*;
+}
+
+/// SEP-10 mobile-specific challenge/verify wrapper.
+///
+/// Re-exported from `crate::middleware::sep10_for_mobile` so the canonical
+/// import path is `crate::auth::sep10_mobile` (issue #2795).
+pub mod sep10_mobile {
+    pub use crate::middleware::sep10_for_mobile::*;
+}
+
+/// Network-aware JWT token refresh service.
+///
+/// Re-exported from `crate::middleware::jwt_token_refresh` so it lives under
+/// the auth namespace alongside the other token primitives (issue #2795).
+pub mod token_refresh {
+    pub use crate::middleware::jwt_token_refresh::*;
+}
+
 use anyhow::{anyhow, Result};
 use argon2::{password_hash::phc::PasswordHash, Argon2, PasswordVerifier};
 use chrono::{Duration, Utc};

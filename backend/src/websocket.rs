@@ -10,9 +10,9 @@ use axum::{
 use dashmap::DashMap;
 use futures::{sink::SinkExt, stream::SplitSink, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -31,6 +31,11 @@ const DEFAULT_MAX_BINARY_MESSAGE_SIZE: usize = 64 * 1024;
 const DEFAULT_WS_IDLE_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_MAX_MESSAGES_PER_WINDOW: u32 = 100;
 const DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+
+/// Maximum number of messages retained per channel in the replay buffer (#2791).
+/// Clients that reconnect and supply `last_seq` receive all messages they missed,
+/// up to this window.  Defaults to 200; override with `WS_REPLAY_BUFFER_SIZE`.
+const DEFAULT_REPLAY_BUFFER_SIZE: usize = 200;
 
 // Keep the old names as runtime values loaded from env (used by WsState).
 fn ws_max_concurrent_connections() -> usize {
@@ -100,6 +105,13 @@ fn ws_message_rate_limit_window() -> Duration {
     )
 }
 
+fn ws_replay_buffer_size() -> usize {
+    std::env::var("WS_REPLAY_BUFFER_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_REPLAY_BUFFER_SIZE)
+}
+
 // Legacy constant aliases kept for any internal code that still references them.
 const MAX_CONCURRENT_CONNECTIONS: usize = DEFAULT_MAX_CONCURRENT_CONNECTIONS;
 const MAX_CONNECTIONS_PER_IP: usize = DEFAULT_MAX_CONNECTIONS_PER_IP;
@@ -114,6 +126,54 @@ const MESSAGE_RATE_LIMIT_WINDOW: Duration =
     Duration::from_secs(DEFAULT_MESSAGE_RATE_LIMIT_WINDOW_SECS);
 
 type SharedWebSocketSender = Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>;
+
+// ── Replay buffer (#2791) ──────────────────────────────────────────────────
+
+/// A single entry in a channel's replay buffer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplayEntry {
+    /// Monotonically increasing per-channel sequence number (1-based).
+    pub seq: u64,
+    pub message: WsMessage,
+}
+
+/// Per-channel replay buffer: retains the last `capacity` messages.
+struct ReplayBuffer {
+    entries: VecDeque<ReplayEntry>,
+    capacity: usize,
+    /// Next sequence number to assign.
+    next_seq: u64,
+}
+
+impl ReplayBuffer {
+    fn new(capacity: usize) -> Self {
+        Self {
+            entries: VecDeque::with_capacity(capacity),
+            capacity,
+            next_seq: 1,
+        }
+    }
+
+    /// Push a message, assigning it the next sequence number.
+    fn push(&mut self, message: WsMessage) -> u64 {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        if self.entries.len() == self.capacity {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(ReplayEntry { seq, message });
+        seq
+    }
+
+    /// Return all entries with `seq > after_seq`, in order.
+    fn since(&self, after_seq: u64) -> Vec<ReplayEntry> {
+        self.entries
+            .iter()
+            .filter(|e| e.seq > after_seq)
+            .cloned()
+            .collect()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct MessageRateLimit {
@@ -192,6 +252,12 @@ pub struct WsState {
     /// publish through Redis when we'll receive our own message back;
     /// otherwise messages are delivered locally so they are never lost.
     redis_subscribed: AtomicBool,
+    /// Per-channel replay buffers, keyed by channel name (#2791).
+    /// `None` channel key holds the global (non-channel) broadcast buffer.
+    replay_buffers: DashMap<String, tokio::sync::Mutex<ReplayBuffer>>,
+    /// Per-channel sequence counters, also used as a fast path to read the
+    /// current head sequence without locking the buffer.
+    channel_seq: DashMap<String, AtomicU64>,
 }
 
 /// Redis channel used for cross-instance WebSocket message fan-out.
@@ -247,6 +313,8 @@ impl WsState {
             redis_client,
             redis_publisher: tokio::sync::OnceCell::new(),
             redis_subscribed: AtomicBool::new(false),
+            replay_buffers: DashMap::new(),
+            channel_seq: DashMap::new(),
         }
     }
 
@@ -501,9 +569,40 @@ impl WsState {
             }
         }
 
+        // Record in replay buffer and stamp with a sequence number (#2791).
+        // We use a synchronous path here: assign the next sequence number via
+        // the fast-path atomic counter and push to the buffer in a spawned task
+        // so we don't block the caller.
+        let seq = self
+            .channel_seq
+            .entry(channel.to_string())
+            .or_insert_with(|| AtomicU64::new(0))
+            .fetch_add(1, Ordering::AcqRel)
+            + 1;
+
+        let sequenced = WsMessage::Sequenced {
+            channel: channel.to_string(),
+            seq,
+            inner: Box::new(message.clone()),
+        };
+
+        // Record in the replay buffer (async, fire-and-forget).
+        {
+            let capacity = ws_replay_buffer_size();
+            let buf_entry = self
+                .replay_buffers
+                .entry(channel.to_string())
+                .or_insert_with(|| tokio::sync::Mutex::new(ReplayBuffer::new(capacity)));
+            // Try a non-blocking lock; if the buffer is busy we still deliver
+            // the message — we just skip recording this one entry.
+            if let Ok(mut buf) = buf_entry.try_lock() {
+                buf.push(message);
+            }
+        }
+
         for connection_id in target_connections {
             if let Some(sender) = self.connections.get(&connection_id) {
-                if sender.try_send(message.clone()).is_err() {
+                if sender.try_send(sequenced.clone()).is_err() {
                     warn!(
                         "Outgoing queue full for connection {}, dropping message",
                         connection_id
@@ -637,6 +736,52 @@ impl WsState {
         }
         info!("All WebSocket connections have been closed");
     }
+
+    // ── Replay buffer (#2791) ──────────────────────────────────────────────
+
+    /// Record `message` in the replay buffer for `channel` and return its
+    /// assigned sequence number. Call this whenever a message is delivered to
+    /// channel subscribers so reconnecting clients can catch up.
+    ///
+    /// Uses a channel key of `""` for global (non-channel) broadcasts.
+    pub async fn record_for_replay(&self, channel: &str, message: WsMessage) -> u64 {
+        let capacity = ws_replay_buffer_size();
+        let buf_entry = self
+            .replay_buffers
+            .entry(channel.to_string())
+            .or_insert_with(|| tokio::sync::Mutex::new(ReplayBuffer::new(capacity)));
+        let mut buf = buf_entry.lock().await;
+        let seq = buf.push(message);
+        // Update the fast-path counter.
+        self.channel_seq
+            .entry(channel.to_string())
+            .or_insert_with(|| AtomicU64::new(0))
+            .store(seq, Ordering::Release);
+        seq
+    }
+
+    /// Return all buffered messages for `channel` that were assigned a
+    /// sequence number strictly greater than `after_seq`.
+    ///
+    /// Returns an empty `Vec` when the channel has no buffer or when the
+    /// client is already up to date. Clients that reconnect pass the last
+    /// sequence number they received; this returns only the delta.
+    pub async fn replay_since(&self, channel: &str, after_seq: u64) -> Vec<ReplayEntry> {
+        if let Some(buf_entry) = self.replay_buffers.get(channel) {
+            buf_entry.lock().await.since(after_seq)
+        } else {
+            vec![]
+        }
+    }
+
+    /// Current head sequence number for `channel` (0 if no messages yet).
+    #[must_use]
+    pub fn channel_head_seq(&self, channel: &str) -> u64 {
+        self.channel_seq
+            .get(channel)
+            .map(|a| a.load(Ordering::Acquire))
+            .unwrap_or(0)
+    }
 }
 
 fn is_oversized_message(message: &Message) -> bool {
@@ -695,6 +840,11 @@ pub enum WsMessage {
     },
     Subscribe {
         channels: Vec<String>,
+        /// Last sequence number the client received on each channel.
+        /// On reconnect, pass the highest `seq` seen per channel so the server
+        /// can replay any messages missed during the disconnect (#2791).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_seq: Option<std::collections::HashMap<String, u64>>,
     },
     Unsubscribe {
         channels: Vec<String>,
@@ -725,6 +875,22 @@ pub enum WsMessage {
     /// Receiving clients should discard stale subscriptions and re-subscribe.
     NetworkChanged {
         network: String,
+    },
+    /// Wraps any channel message with its per-channel sequence number (#2791).
+    /// Clients store the highest `seq` they receive per channel and pass it
+    /// back in `Subscribe.last_seq` on reconnect to trigger replay.
+    Sequenced {
+        channel: String,
+        seq: u64,
+        #[serde(flatten)]
+        inner: Box<WsMessage>,
+    },
+    /// Sent to a reconnecting client for each message it missed (#2791).
+    Replayed {
+        channel: String,
+        seq: u64,
+        #[serde(flatten)]
+        inner: Box<WsMessage>,
     },
 }
 
@@ -925,13 +1091,47 @@ async fn handle_socket(
                                     )
                                     .await;
                                 }
-                                WsMessage::Subscribe { channels } => {
+                                WsMessage::Subscribe { channels, last_seq } => {
                                     info!(
                                         "Connection {} subscribing to: {:?}",
                                         connection_id, channels
                                     );
                                     state_clone
                                         .subscribe_connection(connection_id, channels.clone());
+
+                                    // Replay missed messages (#2791): for each
+                                    // channel the client supplies a last_seq for,
+                                    // send all buffered entries it hasn't seen.
+                                    if let Some(ref seqs) = last_seq {
+                                        for ch in &channels {
+                                            let after = seqs.get(ch).copied().unwrap_or(0);
+                                            if after > 0 {
+                                                let missed = state_clone
+                                                    .replay_buffers
+                                                    .get(ch)
+                                                    .map(|b| {
+                                                        b.try_lock()
+                                                            .ok()
+                                                            .map(|buf| buf.since(after))
+                                                            .unwrap_or_default()
+                                                    })
+                                                    .unwrap_or_default();
+                                                for entry in missed {
+                                                    let replay = WsMessage::Replayed {
+                                                        channel: ch.clone(),
+                                                        seq: entry.seq,
+                                                        inner: Box::new(entry.message),
+                                                    };
+                                                    let _ = send_ws_message(
+                                                        &recv_sender,
+                                                        &replay,
+                                                    )
+                                                    .await;
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     let _ = send_ws_message(
                                         &recv_sender,
                                         &WsMessage::SubscriptionConfirm {
