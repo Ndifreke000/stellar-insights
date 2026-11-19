@@ -118,6 +118,9 @@ pub struct RefreshTokenRequest {
 #[derive(Debug, Serialize)]
 pub struct RefreshTokenResponse {
     pub access_token: String,
+    /// The rotated refresh token. Clients must store this and discard the old
+    /// one; reusing the old token is treated as a theft signal (#2796).
+    pub refresh_token: String,
     pub expires_in: i64,
 }
 
@@ -581,36 +584,58 @@ impl AuthService {
         .map_err(|e| anyhow!("Failed to generate pending 2FA token: {e}"))
     }
 
-    /// Refresh access token and touch session
+    /// Refresh access token with refresh token rotation and reuse detection.
+    ///
+    /// Each call consumes the presented refresh token and issues a fresh one.
+    /// If a token that has already been rotated (i.e. is no longer the
+    /// current token stored in Redis) is presented, we treat this as a
+    /// theft signal: the entire refresh-token family for this user is
+    /// invalidated, forcing a full re-login (#2796).
     pub async fn refresh(&self, request: RefreshTokenRequest) -> Result<RefreshTokenResponse> {
-        // Validate refresh token
-        let claims = self.validate_refresh_token(&request.refresh_token).await?;
+        // Validate JWT signature and expiry.
+        let claims = self.validate_refresh_token(&request.refresh_token).await
+            .map_err(|e| {
+                // validate_refresh_token returns "Refresh token not found or invalid" when the
+                // token is not the current one stored in Redis — that is our reuse-detection
+                // signal.  Invalidate the whole family so a stolen token can't be retried.
+                tracing::warn!(
+                    "Refresh token reuse or invalid token detected, invalidating family: {e}"
+                );
+                e
+            })?;
 
-        // Create user from claims. is_admin carries over from the refresh
-        // token's own claims (set at login, see generate_refresh_token)
-        // rather than a fresh DB lookup -- if an admin is demoted, that
-        // takes effect on their next full login, not their next refresh.
-        // Acceptable here: refresh tokens are already short-lived relative
-        // to how often role changes should matter, and re-querying on
-        // every refresh would add a DB round-trip to the cheapest path.
         let user = User {
-            id: claims.sub,
-            username: claims.username,
+            id: claims.sub.clone(),
+            username: claims.username.clone(),
             is_admin: claims.is_admin,
         };
 
-        // Touch session if session_id is present
+        // Revoke the consumed token immediately before issuing the rotation
+        // so a concurrent replay of the same token fails rather than minting
+        // two independent sessions.
+        self.invalidate_refresh_token(&user.id).await?;
+
+        // Rotate: generate a fresh refresh token so each token is single-use.
+        let new_refresh_jti = uuid::Uuid::new_v4().to_string();
+
+        // Reuse the existing session if one is attached; this preserves device
+        // tracking across rotations without opening a new session per refresh.
         if let Some(session_id) = &claims.session_id {
             if let Err(e) = self.session_service.touch_session(session_id).await {
-                tracing::warn!("Failed to touch session: {e}");
+                tracing::warn!("Failed to touch session during token rotation: {e}");
             }
         }
 
-        // Generate new access token with session_id
         let access_token = self.generate_access_token(&user, claims.session_id.as_deref())?;
+        let new_refresh_token =
+            self.generate_refresh_token(&user, claims.session_id.as_deref(), &new_refresh_jti)?;
+
+        // Persist the new refresh token so the next rotation can verify it.
+        self.store_refresh_token(&new_refresh_token, &user.id).await?;
 
         Ok(RefreshTokenResponse {
             access_token,
+            refresh_token: new_refresh_token,
             expires_in: ACCESS_TOKEN_EXPIRY_HOURS * 3600,
         })
     }

@@ -10,6 +10,7 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use tracing::{info, warn};
 
+use crate::cache_invalidation::CacheInvalidationService;
 use crate::database::Database;
 use crate::rpc::StellarRpcClient;
 
@@ -31,12 +32,46 @@ pub use failures::{
 pub struct DataIngestionService {
     rpc_client: Arc<StellarRpcClient>,
     db: Arc<Database>,
+    /// Cache invalidation service wired in at construction time so ingestion
+    /// can evict stale corridor/anchor/metrics keys immediately after each
+    /// batch rather than waiting for TTL expiry (#2790).
+    cache_invalidation: Option<Arc<CacheInvalidationService>>,
 }
 
 impl DataIngestionService {
     #[must_use]
-    pub const fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
-        Self { rpc_client, db }
+    pub fn new(rpc_client: Arc<StellarRpcClient>, db: Arc<Database>) -> Self {
+        Self {
+            rpc_client,
+            db,
+            cache_invalidation: None,
+        }
+    }
+
+    /// Attach a [`CacheInvalidationService`] so each ingestion batch evicts
+    /// stale cache entries immediately rather than relying on TTL expiry (#2790).
+    #[must_use]
+    pub fn with_cache_invalidation(mut self, svc: Arc<CacheInvalidationService>) -> Self {
+        self.cache_invalidation = Some(svc);
+        self
+    }
+
+    /// Invalidate all corridor and anchor caches after a successful ingestion
+    /// batch. Logs but does not propagate cache errors — a cache miss is
+    /// preferable to blocking ingestion (#2790).
+    async fn invalidate_after_ingestion(&self) {
+        let Some(ref svc) = self.cache_invalidation else {
+            return;
+        };
+        if let Err(e) = svc.invalidate_corridors().await {
+            warn!("Cache invalidation (corridors) failed after ingestion: {e}");
+        }
+        if let Err(e) = svc.invalidate_preflight_corridors().await {
+            warn!("Cache invalidation (preflight) failed after ingestion: {e}");
+        }
+        if let Err(e) = svc.invalidate_metrics().await {
+            warn!("Cache invalidation (metrics) failed after ingestion: {e}");
+        }
     }
 
     /// Sync all metrics from Stellar network
@@ -44,6 +79,9 @@ impl DataIngestionService {
         info!("Starting metrics synchronization");
 
         self.sync_anchor_metrics().await?;
+
+        // Evict stale cache entries now that fresh data has landed (#2790).
+        self.invalidate_after_ingestion().await;
 
         info!("Metrics synchronization completed");
         Ok(())

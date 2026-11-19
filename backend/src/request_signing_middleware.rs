@@ -84,7 +84,19 @@ pub async fn request_signing_middleware(
         .await
         .map_err(|_| SigningError::InvalidRequest)?;
 
-    // Verify signature
+    // Extract the client identifier from the X-Client-Id header (optional).
+    // Used to scope the nonce store so collisions between different clients
+    // are impossible even when they choose the same nonce value (#2799).
+    let client_id = parts
+        .headers
+        .get("X-Client-Id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    // Verify signature with clock-skew enforcement and nonce replay protection.
+    // The service now returns Err for clock-skew and replay violations so we
+    // can log them distinctly from a bad signature (#2799).
     let valid = service
         .verify_signature(
             &method,
@@ -96,9 +108,13 @@ pub async fn request_signing_middleware(
             &signature,
             signing_secret.as_ref(),
             CLOCK_SKEW_SECS,
+            &client_id,
         )
         .await
-        .map_err(|_| SigningError::InvalidRequest)?;
+        .map_err(|e| {
+            tracing::warn!("Request signing enforcement rejected request: {e}");
+            SigningError::InvalidRequest
+        })?;
 
     if !valid {
         return Err(SigningError::InvalidRequest);
