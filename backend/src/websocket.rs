@@ -258,6 +258,9 @@ pub struct WsState {
     /// Per-channel sequence counters, also used as a fast path to read the
     /// current head sequence without locking the buffer.
     channel_seq: DashMap<String, AtomicU64>,
+    /// Authenticated Stellar account for each connection, populated when the
+    /// client supplies a valid SEP-10 token at upgrade time (#2793).
+    pub authenticated_accounts: DashMap<Uuid, String>,
 }
 
 /// Redis channel used for cross-instance WebSocket message fan-out.
@@ -315,6 +318,7 @@ impl WsState {
             redis_subscribed: AtomicBool::new(false),
             replay_buffers: DashMap::new(),
             channel_seq: DashMap::new(),
+            authenticated_accounts: DashMap::new(),
         }
     }
 
@@ -653,6 +657,7 @@ impl WsState {
         self.subscriptions.remove(&connection_id);
         self.message_rate_limits.remove(&connection_id);
         self.cleanup_rate_limit(&connection_id.to_string());
+        self.authenticated_accounts.remove(&connection_id);
     }
 
     fn try_acquire_connection_permit(self: &Arc<Self>, ip: IpAddr) -> Option<ConnectionPermit> {
@@ -894,10 +899,19 @@ pub enum WsMessage {
     },
 }
 
+// ── Private channel prefix ────────────────────────────────────────────────────
+
+/// Channels whose names begin with this prefix are private and require a
+/// validated SEP-10 session token before the subscription is accepted (#2793).
+/// Example private channel names: `private:alerts:GABC…`, `private:account:GABC…`
+pub const PRIVATE_CHANNEL_PREFIX: &str = "private:";
+
 // ── Query params ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct WsQueryParams {
+    /// Optional SEP-10 session token. Required when subscribing to any channel
+    /// whose name starts with `private:` (#2793).
     pub token: Option<String>,
 }
 
@@ -956,17 +970,33 @@ pub async fn ws_handler(
     };
 
     // Validate authentication token if provided.
-    if let Some(token) = params.token {
-        if !validate_token(&token) {
-            return (
-                axum::http::StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({"error": "Unauthorized"})),
-            )
-                .into_response();
+    // A token is *required* to subscribe to private channels later; we validate
+    // it here at upgrade time so unauthenticated clients get a clean 401 (#2793).
+    let authenticated_account: Option<String> = if let Some(ref token) = params.token {
+        // Prefer SEP-10 session validation when WS_SEP10_REDIS_URL / REDIS_URL
+        // is configured; fall back to the legacy static WS_AUTH_TOKEN env var.
+        match validate_sep10_token(token).await {
+            Ok(account) => Some(account),
+            Err(_) => {
+                // Legacy static-token path: reject if WS_AUTH_TOKEN is set and
+                // doesn't match; allow if neither mechanism is configured.
+                if !validate_token(token) {
+                    return (
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({"error": "Unauthorized"})),
+                    )
+                        .into_response();
+                }
+                None
+            }
         }
-    }
+    } else {
+        None
+    };
 
-    ws.on_upgrade(move |socket| handle_socket(socket, state, connection_permit))
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, state, connection_permit, authenticated_account)
+    })
 }
 
 fn validate_token(token: &str) -> bool {
@@ -978,10 +1008,35 @@ fn validate_token(token: &str) -> bool {
     }
 }
 
+/// Validate a SEP-10 session token and return the authenticated Stellar account.
+///
+/// Uses a lightweight Redis GET to check the session created by `Sep10Service`.
+/// Returns `Err` when Redis is unreachable or the token is invalid/expired (#2793).
+async fn validate_sep10_token(token: &str) -> Result<String, ()> {
+    use redis::AsyncCommands;
+    let redis_url = std::env::var("REDIS_URL").map_err(|_| ())?;
+    let client = redis::Client::open(redis_url.as_str()).map_err(|_| ())?;
+    let mut conn = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| ())?;
+    let key = format!("sep10:session:{token}");
+    let session_json: Option<String> = conn.get(&key).await.map_err(|_| ())?;
+    let json = session_json.ok_or(())?;
+    let session: serde_json::Value = serde_json::from_str(&json).map_err(|_| ())?;
+    let expires_at = session["expires_at"].as_i64().ok_or(())?;
+    if chrono::Utc::now().timestamp() > expires_at {
+        return Err(());
+    }
+    let account = session["account"].as_str().ok_or(())?.to_string();
+    Ok(account)
+}
+
 async fn handle_socket(
     socket: WebSocket,
     state: Arc<WsState>,
     connection_permit: ConnectionPermit,
+    authenticated_account: Option<String>,
 ) {
     let connection_id = Uuid::new_v4();
     let client_id = connection_id.to_string();
@@ -992,6 +1047,12 @@ async fn handle_socket(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(ws_max_pending_outgoing_messages());
 
     state.connections.insert(connection_id, tx);
+    // Record authenticated account so private-channel guards can check it (#2793).
+    if let Some(ref account) = authenticated_account {
+        state
+            .authenticated_accounts
+            .insert(connection_id, account.clone());
+    }
     crate::observability::metrics::set_active_connections(state.connection_count() as i64);
 
     let mut broadcast_rx = state.tx.subscribe();
@@ -1096,6 +1157,33 @@ async fn handle_socket(
                                         "Connection {} subscribing to: {:?}",
                                         connection_id, channels
                                     );
+
+                                    // Private channels require a valid SEP-10 session (#2793).
+                                    let is_authenticated = state_clone
+                                        .authenticated_accounts
+                                        .contains_key(&connection_id);
+                                    let private_denied: Vec<&String> = channels
+                                        .iter()
+                                        .filter(|ch| {
+                                            ch.starts_with(PRIVATE_CHANNEL_PREFIX)
+                                                && !is_authenticated
+                                        })
+                                        .collect();
+                                    if !private_denied.is_empty() {
+                                        warn!(
+                                            "Connection {} denied subscription to private channels {:?}: unauthenticated",
+                                            connection_id, private_denied
+                                        );
+                                        let _ = send_ws_message(
+                                            &recv_sender,
+                                            &WsMessage::Error {
+                                                message: "Authentication required for private channels. Supply a valid SEP-10 token as the `token` query parameter.".to_string(),
+                                            },
+                                        )
+                                        .await;
+                                        continue;
+                                    }
+
                                     state_clone
                                         .subscribe_connection(connection_id, channels.clone());
 

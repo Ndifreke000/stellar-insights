@@ -280,12 +280,28 @@ impl ApiKeyDb {
 
     /// Validates an API key using the plaintext key.
     ///
-    /// Looks up candidates by stored prefix (fast), then verifies each one
-    /// with Argon2 (slow, intentional). This avoids a full-table scan while
-    /// keeping Argon2's brute-force resistance.
+    /// # Security audit (#2798)
+    ///
+    /// **Storage**: raw keys are never stored. `generate_api_key` returns a
+    /// one-time plaintext which is immediately hashed with Argon2id; only the
+    /// PHC-format hash and a fixed-length display prefix (`si_live_<16 chars>…`)
+    /// are persisted.
+    ///
+    /// **Lookup**: the prefix narrows candidates to a tiny set before Argon2
+    /// verification, so we avoid a full-table scan without exposing the secret.
+    /// Argon2 `verify_password` is constant-time against the specific hash it
+    /// loads, which prevents timing-based key enumeration.
+    ///
+    /// **Scope enforcement**: the caller may supply `required_scope`; when
+    /// set, keys that do not carry that scope are rejected after hash
+    /// verification so scope-bypass is impossible without a valid key.
     #[tracing::instrument(skip(self, plain_key))]
-    pub async fn validate_api_key(&self, plain_key: &str) -> Result<Option<ApiKey>> {
-        use crate::models::api_key::{extract_key_prefix, verify_api_key};
+    pub async fn validate_api_key(
+        &self,
+        plain_key: &str,
+        required_scope: Option<&str>,
+    ) -> Result<Option<ApiKey>> {
+        use crate::models::api_key::{extract_key_prefix, has_scope, verify_api_key};
 
         let prefix = extract_key_prefix(plain_key);
 
@@ -315,6 +331,19 @@ impl ApiKeyDb {
             }
 
             if verify_api_key(plain_key, &k.key_hash) {
+                // Scope check: enforce before granting access (#2798).
+                if let Some(scope) = required_scope {
+                    if !has_scope(&k.scopes, scope) {
+                        tracing::warn!(
+                            api_key_id = %k.id,
+                            required = scope,
+                            granted = %k.scopes,
+                            "API key scope insufficient"
+                        );
+                        return Ok(None);
+                    }
+                }
+
                 // best-effort last_used_at update
                 let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE id = $2")
                     .bind(Utc::now().to_rfc3339())
