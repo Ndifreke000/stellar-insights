@@ -224,11 +224,12 @@ spec:
             exec:
               command: ["sleep", "10"]
 
-        # Health check endpoints
+        # Health check endpoints (#2828): /livez = process up, /readyz = critical
+        # deps only (Redis/RPC outages mark the pod degraded, not unready).
         # Threshold increased to tolerate GC pauses under mainnet load (was failureThreshold: 2, periodSeconds: 10)
         livenessProbe:
           httpGet:
-            path: /health
+            path: /livez
             port: http
             scheme: HTTP
           initialDelaySeconds: 30
@@ -239,7 +240,7 @@ spec:
         
         readinessProbe:
           httpGet:
-            path: /health
+            path: /readyz
             port: http
             scheme: HTTP
           initialDelaySeconds: 10
@@ -251,7 +252,7 @@ spec:
         # Startup probe for slow-starting containers
         startupProbe:
           httpGet:
-            path: /health
+            path: /livez
             port: http
             scheme: HTTP
           initialDelaySeconds: 0

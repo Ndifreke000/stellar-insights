@@ -21,6 +21,7 @@ use crate::rpc::StellarRpcClient;
 use crate::state::AppState;
 
 pub mod job_monitoring;
+pub mod probes;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
