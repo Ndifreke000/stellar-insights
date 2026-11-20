@@ -10,6 +10,10 @@ use uuid::Uuid;
 use crate::models::asset_verification::{
     StellarTomlData, VerificationResult, VerificationStatus, VerifiedAsset,
 };
+use crate::services::asset_impersonation_detector::{
+    AssetImpersonationDetector, CanonicalIssuerAllowlist, EditDistance, HomoglyphDetector,
+    ImpersonationReport, ImpersonationReportType, RiskLevel,
+};
 
 const STELLAR_EXPERT_API: &str = "https://api.stellar.expert/explorer/public";
 const REQUEST_TIMEOUT_SECS: u64 = 10;
@@ -55,6 +59,84 @@ impl SepSupport {
 pub struct AssetVerifier {
     http_client: Client,
     pool: SqlitePool,
+    impersonation_detector: AssetImpersonationDetector,
+}
+
+impl AssetVerifier {
+    pub fn new(pool: SqlitePool) -> Result<Self> {
+        let http_client = Client::builder()
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .user_agent("PayRaider/1.0")
+            .build()
+            .context("Failed to create HTTP client")?;
+
+        Ok(Self {
+            http_client,
+            pool,
+            impersonation_detector: AssetImpersonationDetector::new(),
+        })
+    }
+
+    /// Set the impersonation detector with custom canonical issuers
+    pub fn with_impersonation_detector(mut self, detector: AssetImpersonationDetector) -> Self {
+        self.impersonation_detector = detector;
+        self
+    }
+
+    /// Main verification method that checks all sources including impersonation
+    pub async fn verify_asset(
+        &self,
+        asset_code: &str,
+        asset_issuer: &str,
+    ) -> Result<VerificationWithImpersonation> {
+        info!(
+            "Starting verification for asset: {}:{}",
+            asset_code, asset_issuer
+        );
+
+        // Check Stellar Expert
+        let stellar_expert_verified = self
+            .check_stellar_expert(asset_code, asset_issuer)
+            .await
+            .unwrap_or(false);
+
+        // Check stellar.toml
+        let (stellar_toml_verified, stellar_toml_data) =
+            self.check_stellar_toml(asset_issuer).await;
+
+        // Check anchor registry (placeholder - would integrate with actual registry)
+        let anchor_registry_verified = self
+            .check_anchor_registry(asset_code, asset_issuer)
+            .unwrap_or(false);
+
+        // Get on-chain metrics
+        let (trustline_count, transaction_count, total_volume_usd) =
+            self.get_on_chain_metrics(asset_code, asset_issuer).await;
+
+        // Get home domain for impersonation check
+        let home_domain = match self.get_home_domain_from_account(asset_issuer).await {
+            Ok(Some(domain)) => Some(domain.as_str()),
+            _ => None,
+        };
+
+        // Run impersonation check
+        let impersonation_result = self
+            .impersonation_detector
+            .verify_with_impersonation_check(asset_code, asset_issuer, home_domain)
+            .await;
+
+        Ok(VerificationWithImpersonation {
+            stellar_expert_verified,
+            stellar_toml_verified,
+            stellar_toml_data,
+            anchor_registry_verified,
+            trustline_count,
+            transaction_count,
+            total_volume_usd,
+            impersonation_reports: impersonation_result.impersonation_reports,
+            overall_risk_level: impersonation_result.overall_risk_level,
+        })
+    }
 }
 
 impl AssetVerifier {
@@ -688,12 +770,78 @@ impl AssetVerifier {
     }
 }
 
+/// Verification result with impersonation check
+#[derive(Debug, Clone)]
+pub struct VerificationWithImpersonation {
+    pub stellar_expert_verified: bool,
+    pub stellar_toml_verified: bool,
+    pub stellar_toml_data: Option<StellarTomlData>,
+    pub anchor_registry_verified: bool,
+    pub trustline_count: i64,
+    pub transaction_count: i64,
+    pub total_volume_usd: f64,
+    pub impersonation_reports: Vec<ImpersonationReport>,
+    pub overall_risk_level: RiskLevel,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parses_sep24_and_currencies() {
+    fn test_impersonation_detector_creation() {
+        let detector = AssetImpersonationDetector::new();
+        assert_eq!(detector.get_canonical_issuers().len(), 5);
+    }
+
+    #[test]
+    fn test_risk_level_conversion() {
+        assert_eq!(RiskLevel::Low.as_str(), "low");
+        assert_eq!(RiskLevel::Medium.as_str(), "medium");
+        assert_eq!(RiskLevel::High.as_str(), "high");
+        assert_eq!(RiskLevel::Critical.as_str(), "critical");
+    }
+
+    #[test]
+    fn test_edit_distance_similarity() {
+        let ed = EditDistance::new();
+        assert_eq!(ed.similarity("USDC", "USDC"), 100);
+        assert!(ed.similarity("USDC", "USDc") >= 90);
+        assert!(ed.similarity("USDC", "USDE") >= 90);
+    }
+
+    #[test]
+    fn test_homoglyph_detection() {
+        let detector = HomoglyphDetector;
+        assert!(detector.is_homoglyph_similar("usdc", "usdc"));
+    }
+
+    #[test]
+    fn test_canonical_issuer_allowlist() {
+        let mut allowlist = CanonicalIssuerAllowlist::new();
+        allowlist.add_canonical_issuer("CUSTOM", "GTEST123");
+
+        assert!(allowlist.is_canonical_issuer("CUSTOM", "GTEST123"));
+        assert!(!allowlist.is_canonical_issuer("USDC", "GUNKNOWN"));
+    }
+
+    #[test]
+    fn test_same_code_different_issuer() {
+        let detector = AssetImpersonationDetector::new();
+        let report = detector.check_same_code_different_issuer("USDC", "GUNKNOWN");
+
+        assert!(report.is_some());
+        assert_eq!(report.unwrap().report_type, ImpersonationReportType::SameCodeDifferentIssuer);
+    }
+
+    #[test]
+    fn test_lookalike_domain() {
+        let detector = AssetImpersonationDetector::new();
+        let report = detector.check_lookalike_domain("usdc.com", "u5dc.com");
+
+        assert!(report.is_some());
+        assert_eq!(report.unwrap().report_type, ImpersonationReportType::HomoglyphDomain);
+    }
         let toml = r#"
             TRANSFER_SERVER_SEP0024 = "https://anchor.example/sep24"
             [[CURRENCIES]]

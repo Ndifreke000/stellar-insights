@@ -297,6 +297,38 @@ pub struct EmbeddedRecords<T> {
 }
 
 // ============================================================================
+// Path Finding Models (Horizon /paths/strict-send)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonPath {
+    pub source_asset_type: String,
+    pub source_asset_code: Option<String>,
+    pub source_asset_issuer: Option<String>,
+    pub source_amount: String,
+    pub destination_asset_type: String,
+    pub destination_asset_code: Option<String>,
+    pub destination_asset_issuer: Option<String>,
+    pub destination_amount: String,
+    pub path: Vec<HorizonPathEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonPathEntry {
+    pub asset_type: String,
+    pub asset_code: Option<String>,
+    pub asset_issuer: Option<String>,
+    pub amount: String,
+    pub price: String,
+    pub price_scale: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonPathsResponse {
+    pub _embedded: EmbeddedRecords<HorizonPath>,
+}
+
+// ============================================================================
 // Liquidity Pool Models (Horizon API)
 // ============================================================================
 

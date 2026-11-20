@@ -443,4 +443,57 @@ impl StellarRpcClient {
             .map(|e| e.records)
             .unwrap_or_default())
     }
+
+    /// Fetch paths for a strict-send payment
+    pub async fn fetch_paths_strict_send(
+        &self,
+        source_asset: &Asset,
+        source_amount: &str,
+        destination_asset: &Asset,
+    ) -> Result<Vec<HorizonPath>, RpcError> {
+        if self.mock_mode {
+            return Ok(vec![]);
+        }
+
+        let result = self
+            .execute_with_retry(|| {
+                self.fetch_paths_strict_send_internal(source_asset, source_amount, destination_asset)
+            })
+            .await;
+
+        result.inspect_err(|e| {
+            metrics::record_rpc_error(e.error_type_label(), "stellar");
+        })
+    }
+
+    async fn fetch_paths_strict_send_internal(
+        &self,
+        source_asset: &Asset,
+        source_amount: &str,
+        destination_asset: &Asset,
+    ) -> Result<Vec<HorizonPath>, RpcError> {
+        let source_params = Self::asset_to_query_params("source_asset", source_asset)
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        let dest_params = Self::asset_to_query_params("destination_asset", destination_asset)
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        let url = format!(
+            "{}/paths/strict-send?{}&source_amount={}&{}",
+            self.horizon_url, source_params, source_amount, dest_params
+        );
+        let response = inject_trace_context(self.client.get(&url))
+            .send()
+            .await
+            .map_err(|e| RpcError::NetworkError(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(map_response_error(response).await);
+        }
+        let horizon_response: HorizonResponse<HorizonPath> = response
+            .json()
+            .await
+            .map_err(|e| RpcError::ParseError(e.to_string()))?;
+        Ok(horizon_response
+            .embedded
+            .map(|e| e.records)
+            .unwrap_or_default())
+    }
 }
