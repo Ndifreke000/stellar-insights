@@ -147,6 +147,8 @@ pub fn routes(
     // 2. Public anchor routes
     let public_anchor_routes = Router::new()
         .route("/health", get(crate::handlers::health_check))
+        .route("/livez", get(crate::handlers::probes::livez))
+        .route("/readyz", get(crate::handlers::probes::readyz))
         .route("/db/pool-metrics", get(crate::handlers::pool_metrics))
         .route("/anchors/{id}", get(anchors::get_anchor))
         .route(
