@@ -8,6 +8,8 @@ pub mod api_deprecation_middleware;
 pub mod api_v1_middleware;
 pub mod deprecation_middleware;
 pub mod distributed_lock;
+
+pub use distributed_lock::{FencingToken, instance_id, DistributedLock, LockGuard};
 pub mod monitor;
 pub mod multisig;
 
@@ -72,7 +74,7 @@ pub mod rpc;
 
 /// Tests that read or mutate process-global env vars (`STELLAR_NETWORK`,
 /// `STELLAR_RPC_URL_MAINNET`, etc.) race under `cargo test`'s default
-/// multi-threaded runner, since `std::env::set_var`/`remove_var` affect the
+/// multi-threaded runner, since `std::env::set_var`/`remove_var` affects the
 /// whole process. Acquiring this lock serializes them against each other and
 /// ensures the mainnet RPC vars are set before `NetworkConfig::for_network`
 /// panics on a fresh/parallel run where no other test has set them yet.

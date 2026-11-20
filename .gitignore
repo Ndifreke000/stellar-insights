@@ -124,3 +124,6 @@ plugins/payraider/server/server.mjs
 
 # Local change summary (not for commit)
 CHANGES_2800_2802.md
+
+# Internal change-log notes (not part of the tracked repo)
+docs/changes-2809-2812.md
