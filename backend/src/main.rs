@@ -296,8 +296,16 @@ async fn main() -> anyhow::Result<()> {
     let backup_config = BackupConfig::from_env();
     if backup_config.enabled {
         let backup_manager = Arc::new(BackupManager::new(backup_config));
+        
+        // Spawn the backup scheduler (runs daily at configured hour)
         std::mem::drop(backup_manager.spawn_scheduler());
-        tracing::info!("Backup scheduler enabled");
+        
+        // Spawn the restore drill job (runs nightly at 4 AM UTC to verify backups)
+        std::mem::drop(backup_manager.spawn_restore_drill());
+        
+        tracing::info!(
+            "Backup scheduler enabled with restore drill verification"
+        );
     }
 
     // GDPR erasure: execute confirmed deletion requests once their

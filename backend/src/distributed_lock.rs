@@ -5,6 +5,19 @@
 //! can never delete or extend a lock that expired and was taken by another
 //! instance.
 //!
+//! # Fencing
+//!
+//! Each lock acquisition also returns a **fencing token** (monotonically
+//! increasing counter) that must be presented with any side-effecting
+//! operation. When leadership transfers:
+//! 1. The new leader calls `increment_fence_token()` for the role
+//! 2. Any writes bearing an older token are rejected by the storage layer
+//! 3. A paused old leader's writes are fenced out even if its Redis lock
+//!    hasn't expired yet
+//!
+//! This implements the classic Redlock fencing pattern (see Martin Kleppmann's
+//! "How to do distributed locking") to prevent stale leaders from writing.
+//!
 //! # Fallback policy
 //!
 //! - `REDIS_URL` **unset**: single-instance mode. Locks always succeed
@@ -12,16 +25,6 @@
 //! - `REDIS_URL` **set** but Redis unreachable: locks fail ("fail closed"). Other
 //!   replicas may be running, and silently running the job everywhere would
 //!   duplicate work (double webhook deliveries, double backups).
-//!
-//! # Usage
-//!
-//! ```ignore
-//! let lock = DistributedLock::shared().await;
-//! if let Some(guard) = lock.try_acquire("job:corridor-refresh", Duration::from_secs(290)).await {
-//!     run_job().await;
-//!     guard.release().await;
-//! }
-//! ```
 
 use redis::aio::ConnectionManager;
 use std::sync::{Arc, OnceLock};
@@ -45,6 +48,27 @@ if redis.call("GET", KEYS[1]) == ARGV[1] then
 else
     return 0
 end
+"#;
+
+/// Get current fencing token for a role.
+const GET_FENCE_TOKEN_SCRIPT: &str = r#"
+local current = redis.call("GET", KEYS[1])
+if current then
+    return tonumber(current)
+else
+    return 0
+end
+"#;
+
+/// Increment and return new fencing token for a role.
+const INCREMENT_FENCE_TOKEN_SCRIPT: &str = r#"
+local current = redis.call("GET", KEYS[1])
+local new_val = 1
+if current then
+    new_val = tonumber(current) + 1
+end
+redis.call("SET", KEYS[1], new_val)
+return new_val
 "#;
 
 /// Stable identifier for this process, used in lock tokens and logs.
@@ -86,6 +110,9 @@ pub struct LockGuard {
     key: String,
     /// `None` in single-instance mode (nothing to release).
     token: Option<String>,
+    /// Monotonically increasing fencing token assigned at acquisition.
+    /// Present in distributed mode, `None` in single-instance mode.
+    fence_token: Option<i64>,
 }
 
 impl DistributedLock {
@@ -151,12 +178,18 @@ impl DistributedLock {
 
     /// Try to acquire `key` for `ttl`. Returns `None` if another instance holds
     /// it, or if Redis is configured but unavailable.
+    ///
+    /// When acquired, returns a [`LockGuard`] containing a **fencing token**.
+    /// Present this token with any side-effecting operation; the storage layer
+    /// should reject operations bearing an older token than the current one
+    /// for the role.
     pub async fn try_acquire(self: &Arc<Self>, key: &str, ttl: Duration) -> Option<LockGuard> {
         if matches!(self.backend, Backend::SingleInstance) {
             return Some(LockGuard {
                 lock: Arc::clone(self),
                 key: key.to_string(),
                 token: None,
+                fence_token: None,
             });
         }
         let mut conn = self.connection().await?;
@@ -172,11 +205,24 @@ impl DistributedLock {
             .await;
 
         match result {
-            Ok(Some(_)) => Some(LockGuard {
-                lock: Arc::clone(self),
-                key: key.to_string(),
-                token: Some(token),
-            }),
+            Ok(Some(_)) => {
+                // Increment the fencing token for this role
+                let fence_key = format!("fence:{}", key);
+                let script = redis::Script::new(INCREMENT_FENCE_TOKEN_SCRIPT);
+                let new_token: i64 = match script.key(&fence_key).invoke_async(&mut conn).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        warn!(key = %fence_key, "DistributedLock: fence increment failed ({})", e);
+                        0
+                    }
+                };
+                Some(LockGuard {
+                    lock: Arc::clone(self),
+                    key: key.to_string(),
+                    token: Some(token),
+                    fence_token: Some(new_token),
+                })
+            }
             Ok(None) => None,
             Err(e) => {
                 warn!(key, "DistributedLock: SET NX failed ({}); not acquiring", e);
@@ -212,6 +258,33 @@ impl DistributedLock {
             }
         }
     }
+
+    /// Get the current fencing token for a role.
+    ///
+    /// Returns 0 if no token exists yet.
+    pub async fn get_fence_token(&self, role: &str) -> Result<i64, &'static str> {
+        if matches!(self.backend, Backend::SingleInstance) {
+            return Ok(0);
+        }
+        let mut conn = self.connection().await.map_err(|_| "Redis unavailable")?;
+        let script = redis::Script::new(GET_FENCE_TOKEN_SCRIPT);
+        let current: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
+        Ok(current)
+    }
+
+    /// Increment the fencing token for a role and return the new value.
+    ///
+    /// This should be called whenever leadership is gained to ensure any
+    /// previous leader is fenced off.
+    pub async fn increment_fence_token(&self, role: &str) -> Result<i64, &'static str> {
+        if matches!(self.backend, Backend::SingleInstance) {
+            return Ok(1);
+        }
+        let mut conn = self.connection().await.map_err(|_| "Redis unavailable")?;
+        let script = redis::Script::new(INCREMENT_FENCE_TOKEN_SCRIPT);
+        let new_val: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
+        Ok(new_val)
+    }
 }
 
 impl LockGuard {
@@ -235,6 +308,14 @@ impl LockGuard {
                 .run_script(RELEASE_SCRIPT, &self.key, token, None)
                 .await;
         }
+    }
+
+    /// The fencing token assigned at acquisition.
+    ///
+    /// `None` in single-instance mode. Present in distributed mode.
+    #[must_use]
+    pub fn fence_token(&self) -> Option<i64> {
+        self.fence_token
     }
 
     #[must_use]

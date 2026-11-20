@@ -99,6 +99,183 @@ per-store steps and an erasure certificate, retrievable at
 `SqlitePool`/`SqliteConnectOptions` directly, and every migration is written in
 SQLite-flavoured SQL.
 
+## Distributed Locking and Fencing
+
+### Lock Acquisition
+
+Distributed locks use Redis `SET key value NX PX ttl` to acquire a lock, with
+a Lua script for atomic release/extension. In single-instance mode (no
+`REDIS_URL`), locks always succeed for local development.
+
+### Fencing Tokens
+
+When a lock is acquired in distributed mode, a **fencing token** is assigned:
+
+1. The token is a monotonically increasing integer stored in Redis under
+   `fence:<lock-key>`
+2. Each new lock acquisition increments the token
+3. The token is returned in the [`LockGuard`](crate::distributed_lock::LockGuard)
+
+### Why Fencing is Required
+
+Without fencing, a paused leader can continue writing after its lease expires
+and another leader is elected. This classic Redlock pitfall leads to:
+
+- **Duplicate snapshot submissions** (same data submitted twice)
+- **Duplicate digests** (same calculation run multiple times)
+- **Data inconsistencies** from interleaved writes
+
+### Usage Pattern
+
+```ignore
+// Acquire lock and get fencing token
+let guard = lock.try_acquire("role:myjob", Duration::from_secs(30)).await?;
+let token = guard.fence_token().expect("distributed mode");
+
+// Present token with side-effecting operations
+db.write_with_fencing(data, token).await?;
+
+// On extension failure, stop immediately
+if !guard.extend(ttl).await {
+    return; // Stop writing - we lost leadership
+}
+```
+
+### Storage Layer Enforcement
+
+The storage layer should reject operations with stale tokens:
+
+```ignore
+async fn write_with_fencing(&self, data: Data, token: i64) -> Result<()> {
+    let current = self.get_fence_token("role:myjob").await?;
+    if token < current {
+        return Err(StaleLeaderError { token, current }.into());
+    }
+    // Proceed with write...
+}
+```
+
+## Job Scheduling
+
+### Persistent Job Runs
+
+Jobs now run with persistence through the `job_runs` and `job_run_configs` tables:
+
+| Table | Description |
+| --- | --- |
+| `job_runs` | Tracks each scheduled execution with status, attempt, lease, and timing |
+| `job_run_configs` | Stores scheduling configuration (interval, catch-up policy, enabled) |
+
+### Exactly-Once Semantics
+
+Jobs are claimed using a lease mechanism:
+1. **Claim**: Workers attempt to claim a pending run with a 30-minute lease
+2. **Extend**: The lease is extended every `ttl/3` while the job runs
+3. **Retry**: Expired leases can be claimed by another instance
+4. **Complete**: On success/failure, the run is marked and lease is cleared
+
+This ensures:
+- **Exactly-once execution** under normal conditions
+- **Automatic failover** when a leader dies mid-job
+- **Idempotent retries** with attempt counting
+
+### Catch-Up Policy
+
+When an instance misses scheduled runs (e.g., during downtime):
+
+| Policy | Behavior |
+| --- | --- |
+| `all` | Schedules all missed runs |
+| `latest_only` | Schedules only the most recent missed run (default) |
+
+Configured per-job via `job_run_configs.catch_up_policy`.
+
+### Configuration
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `JOB_*_ENABLED` | `true` | Enable/disable specific jobs |
+| `JOB_*_INTERVAL_SECONDS` | per-job | Interval between runs |
+
+Jobs automatically record runs in `job_runs` table.
+
+### Admin API
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /admin/jobs/runs` | List job runs (with pagination) |
+| `GET /admin/jobs/runs/{id}` | Get specific run details |
+| `GET /admin/jobs/config` | List all job configurations |
+| `GET /admin/jobs/config/{job_name}` | Get job configuration |
+| `PUT /admin/jobs/config/{job_name}` | Update job configuration |
+| `POST /admin/jobs/schedule` | Schedule a manual run |
+| `GET /admin/jobs/runs/counts` | Get run counts by status |
+
+## Backups and Restore Verification
+
+### Consistent Online Backups
+
+Backups are created using SQLite's online backup API (`BACKUP TO` command) which
+produces a consistent snapshot even while writes are happening on the source
+database. This avoids the corruption risk of simple file copies taken during
+concurrent writes.
+
+- **Backup schedule:** Daily at `BACKUP_SCHEDULE_HOUR_UTC` (default: 2 AM UTC)
+- **Restore drill:** Nightly at 4 AM UTC to verify backups are restorable
+
+### Configuration
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `BACKUP_ENABLED` | `false` | Enable backup system |
+| `BACKUP_DB_PATH` | (derived from `DATABASE_URL`) | Path to source database |
+| `BACKUP_DIR` | `./backups` | Directory to store backups |
+| `BACKUP_RETENTION_DAYS` | `30` | Days to retain backups |
+| `BACKUP_SCHEDULE_HOUR_UTC` | `2` | Hour (UTC) to run backup |
+| `BACKUP_ENCRYPTION_KEY` | (none) | 64-char hex AES-256 key for encrypted backups |
+
+### What Backups Include
+
+1. **Consistent snapshot** via SQLite `BACKUP TO` command
+2. **SHA-256 checksum** in `.sha256` sidecar file
+3. **Optional encryption** with AES-256-GCM when `BACKUP_ENCRYPTION_KEY` is set
+
+### Verification Process
+
+Every backup is verified automatically:
+1. Compute SHA-256 and compare to sidecar
+2. Open as read-only SQLite and run `PRAGMA integrity_check`
+3. For encrypted backups, decrypt to temp file first
+
+### Restore Drill
+
+The nightly restore drill job:
+1. Finds the latest backup
+2. Restores to a scratch database in the temp directory
+3. Runs `PRAGMA integrity_check` on the restored DB
+4. Reports results and alerts on failure
+
+### Monitoring
+
+Prometheus metrics:
+- `backup_verifications_total{result="success\|integrity_check_failed\|checksum_mismatch\|stored_checksum_mismatch"}`
+- `backup_last_success_timestamp_seconds`
+- `backup_size_bytes`
+
+### Recovery Steps
+
+If a backup fails verification or the restore drill detects corruption:
+
+1. **Check logs** for the specific failure reason
+2. **Alerts** are sent via the configured webhook system
+3. **Retry** with the previous backup (rotation happens daily)
+4. **Investigate** the source of corruption before accepting a failed backup
+
+### Alerting
+
+- **Backup failure:** Logged with `ALERT: Backup failed` and sent to webhook
+- **Restore drill failure:** Logged with `ALERT: Restore drill failed` and sent to webhook
+
 Setting a `postgresql://` `DATABASE_URL` does **not** switch databases — it
 fails to parse as `SqliteConnectOptions` and the backend refuses to start.
 Adding Postgres support is a code change. Whether to make it is being tracked
@@ -114,8 +291,18 @@ The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.
 |---|---|---|
 | PayRaider | `PAYRAIDER_CONTRACT_ID` / `SNAPSHOT_CONTRACT_ID` | `CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL` |
 
-All other contract crates live under `c
+All other contract crates live under `contracts/` and are versioned
+independently.
 
-## 🧪 Local safety chec
+## 🧪 Local safety checks
 
-/* … truncated 1537 chars — edit only what you need near the top … */
+Run `./scripts/safety-checks.sh` to verify:
+
+- No secrets in source (via `.secrets.baseline`)
+- No `unwrap`/`expect` in production code
+- No debug prints (`eprintln!`, `println!`)
+- No hardcoded credentials
+
+## License
+
+MIT — see [`LICENSE`](LICENSE) for details.
