@@ -1,6 +1,7 @@
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::ingestion::DataIngestionService;
+use crate::middleware::cost_rate_limiter::CostRateLimiter;
 use crate::multi_network::{MultiNetworkConfig, NetworkContext};
 use crate::network::StellarNetwork;
 use crate::rpc::StellarRpcClient;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub server_start_time: Arc<AtomicU64>,
     pub multi_network_config: Arc<MultiNetworkConfig>,
     pub network_context: Arc<NetworkContext>,
+    pub cost_rate_limiter: Arc<CostRateLimiter>,
 }
 
 impl AppState {
@@ -32,6 +34,7 @@ impl AppState {
     ) -> Self {
         let multi_network_config = Arc::new(MultiNetworkConfig::from_env());
         let network_context = Arc::new(multi_network_config.get_primary_context());
+        let cost_rate_limiter = Arc::new(CostRateLimiter::new());
 
         Self {
             db,
@@ -47,6 +50,7 @@ impl AppState {
             )),
             multi_network_config,
             network_context,
+            cost_rate_limiter,
         }
     }
 
@@ -66,6 +70,7 @@ impl AppState {
                 .get_context(network)
                 .unwrap_or_else(|| multi_network_config.get_primary_context()),
         );
+        let cost_rate_limiter = Arc::new(CostRateLimiter::new());
 
         Self {
             db,
@@ -81,6 +86,7 @@ impl AppState {
             )),
             multi_network_config,
             network_context,
+            cost_rate_limiter,
         }
     }
 }
@@ -99,8 +105,8 @@ impl FromRef<AppState> for Arc<CacheManager> {
     }
 }
 
-impl FromRef<AppState> for Arc<StellarRpcClient> {
+impl FromRef<AppState> for Arc<CostRateLimiter> {
     fn from_ref(state: &AppState) -> Self {
-        state.rpc_client.clone()
+        state.cost_rate_limiter.clone()
     }
 }

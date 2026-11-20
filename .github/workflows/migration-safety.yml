@@ -1,0 +1,143 @@
+name: Migration Safety
+
+on:
+  pull_request:
+    paths:
+      - 'backend/migrations/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/migrations/**'
+
+jobs:
+  lint-migrations:
+    name: Lint migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install sqlx CLI
+        run: |
+          pip install sqlx-cli
+          sqlx --version
+      
+      - name: Run migration linter
+        run: |
+          chmod +x backend/scripts/lint-migrations.sh
+          cd backend
+          ./scripts/lint-migrations.sh
+      
+      - name: Check for contract-phase markers
+        run: |
+          echo "Checking for contract-phase markers..."
+          cd backend/migrations
+          
+          # Count migrations with contract-phase markers
+          CONTRACT_MARKERS=$(grep -l "contract-phase:" *.sql 2>/dev/null | wc -l)
+          TOTAL_MIGRATIONS=$(ls *.sql 2>/dev/null | wc -l)
+          
+          echo "Total migrations: $TOTAL_MIGRATIONS"
+          echo "Migrations with contract-phase: $CONTRACT_MARKERS"
+          
+          if [[ $TOTAL_MIGRATIONS -gt 0 ]]; then
+            echo "Contract phase coverage: $(echo "scale=2; $CONTRACT_MARKERS * 100 / $TOTAL_MIGRATIONS" | bc)%"
+          fi
+
+  test-schema-compatibility:
+    name: Test schema compatibility
+    runs-on: ubuntu-latest
+    needs: lint-migrations
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rust-src
+      
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+      
+      - name: Apply migrations to in-memory database
+        run: |
+          cd backend
+          # Create a temporary SQLite database for testing
+          DATABASE_URL=sqlite::memory: cargo test --test schema_compatibility -- --test-threads=1
+        env:
+          DATABASE_URL: sqlite::memory:
+      
+      - name: Build backend
+        run: |
+          cd backend
+          cargo build --release --bin payraider-backend
+      
+      - name: Test old version against new schema
+        run: |
+          cd backend
+          # This would be run against a previous release tag
+          # For now, we test that the current code compiles with migrations
+          echo "Testing that backend compiles with current migrations..."
+          cargo build --release --bin payraider-backend
+        env:
+          DATABASE_URL: sqlite::memory:
+
+  check-no-destructive-without-marker:
+    name: Verify no destructive migrations without marker
+    runs-on: ubuntu-latest
+    needs: lint-migrations
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check for destructive migrations
+        run: |
+          cd backend/migrations
+          
+          echo "Checking for destructive migrations without contract-phase marker..."
+          
+          # Find migrations with destructive statements
+          DESTRUCTIVE=$(grep -l -iE "^\s*(DROP\s+(TABLE|COLUMN|INDEX|CONSTRAINT)|ALTER\s+TABLE\s+.*\bDROP\s+(COLUMN|CONSTRAINT)|RENAME\s+COLUMN)" *.sql 2>/dev/null || true)
+          
+          if [[ -z "$DESTRUCTIVE" ]]; then
+            echo "✅ No destructive migrations found"
+            exit 0
+          fi
+          
+          # Check each one for contract-phase marker
+          MISSING_MARKER=""
+          for file in $DESTRUCTIVE; do
+            if ! grep -q "contract-phase:" "$file"; then
+              MISSING_MARKER="$MISSING_MARKER $file"
+            fi
+          done
+          
+          if [[ -n "$MISSING_MARKER" ]]; then
+            echo "❌ ERROR: Found destructive migrations without contract-phase marker:"
+            echo "$MISSING_MARKER"
+            echo ""
+            echo "See backend/docs/MIGRATION_SAFETY.md for details"
+            exit 1
+          fi
+          
+          echo "✅ All destructive migrations have contract-phase markers"
