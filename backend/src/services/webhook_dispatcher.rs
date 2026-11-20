@@ -3,17 +3,19 @@
 use anyhow::Result;
 use reqwest::Client;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::rpc::circuit_breaker::{integration_circuit_breaker, SharedCircuitBreaker};
-use crate::webhooks::{WebhookEventEnvelope, WebhookService, WebhookSignature};
+use crate::webhooks::queue::{WebhookJob, WebhookQueueManager};
+use crate::webhooks::{WebhookEventEnvelope, WebhookService};
+use crate::webhooks::{MAX_DISPATCH_RETRIES, WebhookSignature};
 
 /// Webhook dispatcher - sends events to webhooks asynchronously
 pub struct WebhookDispatcher {
     db: SqlitePool,
     http_client: Client,
-    breaker: SharedCircuitBreaker,
+    queue_manager: Option<WebhookQueueManager>,
 }
 
 impl WebhookDispatcher {
@@ -28,29 +30,41 @@ impl WebhookDispatcher {
         Self {
             db,
             http_client,
-            breaker: integration_circuit_breaker("webhook_dispatcher"),
+            queue_manager: None,
         }
     }
 
-    /// Run dispatcher loop - processes pending webhook events
-    pub async fn run(&self) -> Result<()> {
+    /// Initialize the dispatcher with queue manager
+    pub fn with_queue_manager(mut self, queue_manager: WebhookQueueManager) -> Self {
+        self.queue_manager = Some(queue_manager);
+        self
+    }
+
+    /// Start the webhook dispatcher
+    pub async fn run(&mut self) -> Result<()> {
         tracing::info!("Starting webhook dispatcher");
+
+        // If queue manager is configured, start it
+        if let Some(ref mut qm) = self.queue_manager {
+            qm.start().await;
+        }
+
+        let service = WebhookService::new(self.db.clone());
 
         let mut interval = tokio::time::interval(Duration::from_secs(5));
 
         loop {
             interval.tick().await;
 
-            if let Err(e) = self.process_pending_events().await {
+            // Process pending events from database (for events that need immediate dispatch)
+            if let Err(e) = self.process_pending_events(&service).await {
                 tracing::error!("Error processing webhook events: {}", e);
             }
         }
     }
 
     /// Process all pending webhook events
-    async fn process_pending_events(&self) -> Result<()> {
-        let service = WebhookService::new(self.db.clone());
-
+    async fn process_pending_events(&self, service: &WebhookService) -> Result<()> {
         // Fetch pending events (max 10 per run)
         let events = service.get_pending_events(10).await?;
 
@@ -73,129 +87,185 @@ impl WebhookDispatcher {
                 continue;
             }
 
-            // Attempt delivery
-            match self
-                .deliver_webhook(&webhook.url, &payload_str, &webhook.secret, &event_type)
-                .await
-            {
-                Ok(()) => {
-                    // Success
-                    let _ = service
-                        .update_event_status(&event_id, "delivered", None, 0)
-                        .await;
+            // Create job for the event
+            let job = WebhookJob {
+                job_id: Uuid::new_v4().to_string(),
+                webhook_id: webhook_id.clone(),
+                webhook,
+                event_id: event_id.clone(),
+                event_type,
+                payload: payload_str,
+                event_version: WebhookEventEnvelope::EVENT_VERSION.to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            };
 
-                    // Update webhook's last_fired_at
-                    let _ = service.update_last_fired(&webhook_id).await;
-
-                    tracing::info!(
-                        "Webhook delivered successfully: webhook_id={}, event={}",
-                        webhook_id,
-                        event_type
-                    );
-                }
-                Err(e) => {
-                    // Determine retry count from event
-                    let current_retries = self.get_event_retries(&event_id).await.unwrap_or(0);
-
-                    if current_retries < 3 {
-                        // Retry later
-                        let _ = service
-                            .update_event_status(
-                                &event_id,
-                                "pending",
-                                Some(&e.to_string()),
-                                current_retries + 1,
-                            )
-                            .await;
-
-                        tracing::warn!(
-                            "Webhook delivery failed (will retry): webhook_id={}, error={}, retries={}",
-                            webhook_id,
-                            e,
-                            current_retries + 1
-                        );
-                    } else {
-                        // Max retries exceeded
-                        let _ = service
-                            .update_event_status(&event_id, "failed", Some(&e.to_string()), 3)
-                            .await;
-
-                        tracing::error!(
-                            "Webhook delivery failed (max retries): webhook_id={}, error={}",
-                            webhook_id,
-                            e
-                        );
-                    }
-                }
+            // Queue the job
+            if let Some(ref qm) = self.queue_manager {
+                qm.add_job(job).await;
+            } else {
+                // Fallback to direct delivery if queue manager not configured
+                self.deliver_webhook_directly(service, &job).await?;
             }
         }
 
         Ok(())
     }
 
-    /// Deliver webhook to URL
-    async fn deliver_webhook(
+    /// Direct delivery fallback (when queue manager not configured)
+    async fn deliver_webhook_directly(
         &self,
-        url: &str,
-        payload: &str,
-        secret: &str,
-        event_type: &str,
+        service: &WebhookService,
+        job: &WebhookJob,
     ) -> Result<()> {
+        let webhook = &job.webhook;
+
         let delivery_id = Uuid::new_v4().to_string();
         let timestamp = chrono::Utc::now().timestamp();
 
-        // Create envelope
+        // Create envelope with version
         let envelope = WebhookEventEnvelope {
             id: delivery_id.clone(),
-            event: event_type.to_string(),
+            event: job.event_type.clone(),
             timestamp,
-            data: serde_json::from_str(payload)?,
+            event_version: job.event_version.clone(),
+            data: serde_json::from_str(&job.payload)?,
         };
 
         let body = serde_json::to_string(&envelope)?;
-        let signature = WebhookSignature::sign(&body, secret);
 
-        tracing::debug!(
-            "Sending webhook to {}: delivery_id={}, signature={}...",
-            url,
-            delivery_id,
-            &signature[..20]
+        // Sign with rotation support
+        let signature = WebhookSignature::sign_with_rotation(
+            &body,
+            &webhook.secret,
+            webhook.secondary_secret.as_deref(),
         );
+
+        // Log delivery attempt
+        let _ = service
+            .create_delivery_log(
+                &job.webhook_id,
+                Some(&job.event_id),
+                &delivery_id,
+                "pending",
+                None,
+                None,
+                None,
+                &signature,
+                &job.event_version,
+            )
+            .await;
 
         let request = self
             .http_client
-            .post(url)
-            .header("X-Zapier-Event", event_type)
-            .header("X-Zapier-Signature", signature)
+            .post(&webhook.url)
+            .header("X-Zapier-Event", &job.event_type)
+            .header("X-Zapier-Signature", &signature)
             .header("X-Zapier-Timestamp", timestamp.to_string())
-            .header("X-Zapier-Delivery-ID", delivery_id)
+            .header("X-Zapier-Delivery-ID", &delivery_id)
+            .header("X-Zapier-Event-Version", &job.event_version)
             .header("Content-Type", "application/json")
-            .body(body);
+            .body(body.clone());
 
-        self.breaker
-            .call(async move {
-                let response = request.send().await?;
-                if response.status().is_success() {
-                    Ok(())
-                } else {
-                    anyhow::bail!(
-                        "Webhook failed with status {}: {}",
-                        response.status(),
-                        response.text().await.unwrap_or_default()
+        let response = request.send().await?;
+
+        // Log delivery result
+        let status = if response.status().is_success() {
+            "delivered"
+        } else {
+            "failed"
+        };
+
+        let response_body = response.text().await.ok();
+        let http_status = response.status().as_u16().try_into().ok();
+
+        let _ = service
+            .create_delivery_log(
+                &job.webhook_id,
+                Some(&job.event_id),
+                &delivery_id,
+                status,
+                http_status,
+                response_body.as_deref(),
+                None,
+                &signature,
+                &job.event_version,
+            )
+            .await;
+
+        // Update event status
+        if response.status().is_success() {
+            service
+                .update_event_status(&job.event_id, "delivered", None, 0)
+                .await?;
+
+            // Reset consecutive failures
+            service.reset_consecutive_failures(&job.webhook_id).await?;
+
+            // Update last_fired_at
+            service.update_last_fired(&job.webhook_id).await?;
+
+            tracing::info!(
+                "Webhook delivered successfully: webhook_id={}, event={}",
+                job.webhook_id,
+                job.event_type
+            );
+        } else {
+            // Increment consecutive failures
+            let failures = service.increment_consecutive_failures(&job.webhook_id).await?;
+
+            // Check if webhook should be auto-disabled
+            if failures >= webhook.max_consecutive_failures {
+                service
+                    .check_and_disable_webhook(
+                        &job.webhook_id,
+                        &format!("max_failures_exceeded: {}", failures),
                     )
-                }
-            })
-            .await
-            .map_err(crate::rpc::CallError::into_anyhow)
+                    .await?;
+            }
+
+            // Determine retry count from event
+            let current_retries = self.get_event_retries(&job.event_id).await.unwrap_or(0);
+
+            if current_retries < 3 {
+                // Retry later
+                service
+                    .update_event_status(
+                        &job.event_id,
+                        "pending",
+                        Some(&format!(
+                            "HTTP {}: {}",
+                            response.status(),
+                            response_body.unwrap_or_default()
+                        )),
+                        current_retries + 1,
+                    )
+                    .await?;
+            } else {
+                // Max retries exceeded
+                service
+                    .update_event_status(
+                        &job.event_id,
+                        "failed",
+                        Some(&format!(
+                            "HTTP {}: {}",
+                            response.status(),
+                            response_body.unwrap_or_default()
+                        )),
+                        3,
+                    )
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Get current retry count for an event
     async fn get_event_retries(&self, event_id: &str) -> Result<i32> {
-        let retries: Option<i64> =
-            sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
-                .bind(event_id)
-                .fetch_optional(&self.db)
-                .await?;
+        let retries: Option<i64> = sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+            .bind(event_id)
+            .fetch_optional(&self.db)
+            .await?;
 
         Ok(retries.unwrap_or(0) as i32)
     }

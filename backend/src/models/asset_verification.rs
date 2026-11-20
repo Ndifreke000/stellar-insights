@@ -76,6 +76,28 @@ impl VerifiedAsset {
     }
 }
 
+/// Asset risk level for impersonation detection
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetRiskLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl AssetRiskLevel {
+    #[must_use]
+    pub const fn as_str(&self) -> &str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiedAssetResponse {
     pub asset_code: String,
@@ -86,6 +108,8 @@ pub struct VerifiedAssetResponse {
     pub toml_info: Option<TomlInfo>,
     pub metrics: AssetMetrics,
     pub last_verified_at: Option<DateTime<Utc>>,
+    /// Impersonation risk level (low, medium, high, critical)
+    pub risk_level: Option<AssetRiskLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +118,7 @@ pub struct TrustIndicators {
     pub stellar_toml_verified: bool,
     pub anchor_registry_verified: bool,
     pub has_suspicious_reports: bool,
+    pub has_impersonation_risk: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +261,17 @@ pub struct StellarTomlData {
 
 impl From<VerifiedAsset> for VerifiedAssetResponse {
     fn from(asset: VerifiedAsset) -> Self {
+        // Determine risk level based on various factors
+        let risk_level = if asset.suspicious_reports_count >= 3 {
+            Some(AssetRiskLevel::Critical)
+        } else if asset.stellar_expert_verified && asset.stellar_toml_verified {
+            Some(AssetRiskLevel::Low)
+        } else if asset.reputation_score >= 60.0 {
+            Some(AssetRiskLevel::Medium)
+        } else {
+            None
+        };
+
         Self {
             asset_code: asset.asset_code.clone(),
             asset_issuer: asset.asset_issuer.clone(),
@@ -246,6 +282,7 @@ impl From<VerifiedAsset> for VerifiedAssetResponse {
                 stellar_toml_verified: asset.stellar_toml_verified,
                 anchor_registry_verified: asset.anchor_registry_verified,
                 has_suspicious_reports: asset.suspicious_reports_count > 0,
+                has_impersonation_risk: asset.suspicious_reports_count >= 1,
             },
             toml_info: asset.toml_home_domain.map(|home_domain| TomlInfo {
                 home_domain,
@@ -261,6 +298,7 @@ impl From<VerifiedAsset> for VerifiedAssetResponse {
                 total_volume_usd: asset.total_volume_usd,
             },
             last_verified_at: asset.last_verified_at,
+            risk_level,
         }
     }
 }

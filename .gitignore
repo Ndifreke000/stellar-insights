@@ -103,6 +103,7 @@ AGENTS.md
 somzilla.md
 pr-*.md
 PR_ISSUE_*.md
+CHANGES_SUMMARY.md
 
 # ============================================
 # Local AI / editor tooling — NEVER commit!
@@ -125,5 +126,5 @@ plugins/payraider/server/server.mjs
 # Local change summary (not for commit)
 CHANGES_2800_2802.md
 
-# Local change-summary file (not part of the project history)
-CHANGES_2805_2808.md
+# Internal change-log notes (not part of the tracked repo)
+docs/changes-2809-2812.md
