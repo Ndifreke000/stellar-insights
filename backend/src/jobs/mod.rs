@@ -12,3 +12,6 @@ pub use contract_event_listener::{
     ContractEventListenerStats,
 };
 pub use scheduler::{JobConfig, JobScheduler};
+pub mod retention;
+
+pub use retention::{RetentionJob, RetentionJobConfig};

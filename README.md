@@ -119,3 +119,258 @@ All other contract crates live under `c
 ## 🧪 Local safety chec
 
 /* … truncated 1537 chars — edit only what you need near the top … */
+## Rate limiting
+
+All API routes are protected by a single rate limiting middleware. Every response — including successful `200` responses and rate-limited `429` responses — carries the standard IETF `RateLimit-*` headers so SDKs and clients can implement backoff without parsing error bodies:
+
+| Header | Description |
+| --- | --- |
+| `RateLimit-Limit` | Maximum number of requests allowed in the current window. |
+| `RateLimit-Remaining` | Number of requests remaining in the current window. |
+| `RateLimit-Reset` | Seconds until the current window resets. |
+
+When a request is rate limited, the response is a `429 Too Many Requests` with the same `RateLimit-*` headers (with `RateLimit-Remaining: 0`) plus a `Retry-After` header indicating how long the client should wait before retrying.
+
+Example:
+
+```bash
+curl -i "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+# HTTP/1.1 200 OK
+# RateLimit-Limit: 60
+# RateLimit-Remaining: 59
+# RateLimit-Reset: 42
+```
+
+## Cost-based rate limiting for expensive exports
+
+Export endpoints (`/api/v1/export/*`) use cost-based rate limiting instead of simple request counting. This better reflects the actual database load of different export requests.
+
+Each export is assigned a cost in "units" based on:
+- Number of corridors requested (single vs all)
+- Date range width (days × cost-per-day)
+
+Clients receive a daily budget based on their tier:
+- **Anonymous**: 100 units/day
+- **Authenticated** (JWT/API key): 1,000 units/day  
+- **Premium**: 10,000 units/day
+
+### Cost examples
+
+| Request | Cost |
+|---------|------|
+| Single corridor, 30 days | 40 units |
+| Single corridor, 365 days | 375 units |
+| All corridors, 1 day | ~10,000 units |
+| Analytics dashboard | 5 units |
+
+### Response headers
+
+All export responses include cost information:
+
+| Header | Description |
+|--------|-------------|
+| `X-Cost-Estimate` | Estimated cost units for this request |
+| `X-Remaining-Budget` | Budget remaining after this request |
+| `X-Total-Budget` | Client's total daily budget |
+| `X-Tier` | Client's tier |
+| `X-Budget-Refresh-At` | Unix timestamp of budget refresh |
+
+### Budget exhaustion
+
+If a client exceeds their budget, the response is `429 Too Many Requests` with:
+- `Retry-After: 86400` (budget refreshes daily)
+- Cost information in headers
+- JSON error body explaining the limit
+
+### Example
+
+```bash
+# Single corridor export (30-day range)
+curl -i "http://localhost:8080/api/v1/export/corridors?format=csv&start_date=2024-11-01&end_date=2024-11-30"
+
+# Response includes cost info:
+# X-Cost-Estimate: 40
+# X-Remaining-Budget: 960
+# X-Total-Budget: 1000
+```
+
+For full details, see `docs/COST_RATE_LIMITING.md`.
+## Rate limiting
+
+All API routes are protected by a single rate limiting middleware. Every response — including successful `200` responses and rate-limited `429` responses — carries the standard IETF `RateLimit-*` headers so SDKs and clients can implement backoff without parsing error bodies:
+
+| Header | Description |
+| --- | --- |
+| `RateLimit-Limit` | Maximum number of requests allowed in the current window. |
+| `RateLimit-Remaining` | Number of requests remaining in the current window. |
+| `RateLimit-Reset` | Seconds until the current window resets. |
+
+When a request is rate limited, the response is a `429 Too Many Requests` with the same `RateLimit-*` headers (with `RateLimit-Remaining: 0`) plus a `Retry-After` header indicating how long the client should wait before retrying.
+
+Example:
+
+```bash
+curl -i "http://localhost:8080/api/v1/preflight?source_asset=USDC&destination_asset=NGN&amount_usd=2500"
+# HTTP/1.1 200 OK
+# RateLimit-Limit: 60
+# RateLimit-Remaining: 59
+# RateLimit-Reset: 42
+```
+
+## Cost-based rate limiting for expensive exports
+
+Export endpoints (`/api/v1/export/*`) use cost-based rate limiting instead of simple request counting. This better reflects the actual database load of different export requests.
+
+Each export is assigned a cost in "units" based on:
+- Number of corridors requested (single vs all)
+- Date range width (days × cost-per-day)
+
+Clients receive a daily budget based on their tier:
+- **Anonymous**: 100 units/day
+- **Authenticated** (JWT/API key): 1,000 units/day  
+- **Premium**: 10,000 units/day
+
+### Cost examples
+
+| Request | Cost |
+|---------|------|
+| Single corridor, 30 days | 40 units |
+| Single corridor, 365 days | 375 units |
+| All corridors, 1 day | ~10,000 units |
+| Analytics dashboard | 5 units |
+
+### Response headers
+
+All export responses include cost information:
+
+| Header | Description |
+|--------|-------------|
+| `X-Cost-Estimate` | Estimated cost units for this request |
+| `X-Remaining-Budget` | Budget remaining after this request |
+| `X-Total-Budget` | Client's total daily budget |
+| `X-Tier` | Client's tier |
+| `X-Budget-Refresh-At` | Unix timestamp of budget refresh |
+
+### Budget exhaustion
+
+If a client exceeds their budget, the response is `429 Too Many Requests` with:
+- `Retry-After: 86400` (budget refreshes daily)
+- Cost information in headers
+- JSON error body explaining the limit
+
+### Example
+
+```bash
+# Single corridor export (30-day range)
+curl -i "http://localhost:8080/api/v1/export/corridors?format=csv&start_date=2024-11-01&end_date=2024-11-30"
+
+# Response includes cost info:
+# X-Cost-Estimate: 40
+# X-Remaining-Budget: 960
+# X-Total-Budget: 1000
+```
+
+For full details, see `docs/COST_RATE_LIMITING.md`.
+
+## Database retention
+
+The backend implements non-blocking retention for event data to prevent SQLite lock contention. Instead of a single large `DELETE` query that can lock the database for seconds, retention runs in bounded batches with configurable delays.
+
+### Features
+
+- **Batch deletion**: Deletes rows in configurable batches (default 1,000 per batch)
+- **Sleep between batches**: 100ms default to allow concurrent reads
+- **Incremental VACUUM**: Reclaims space gradually without extended write locks
+- **Analytics preservation**: Automatically rolls up events to corridor metrics before deletion
+- **Configurable retention**: Per-table retention with environment variables
+
+### Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `JOB_RETENTION_ENABLED` | `true` | Enable retention job |
+| `JOB_RETENTION_INTERVAL_SECONDS` | `86400` | Run interval (24h) |
+| `RETENTION_DEFAULT_DAYS` | `30` | Default retention days |
+| `RETENTION_BATCH_SIZE` | `1000` | Rows per deletion batch |
+| `RETENTION_SLEEP_MS` | `100` | Sleep between batches |
+| `VACUUM_ENABLED` | `true` | Enable incremental VACUUM |
+| `VACUUM_PAGES_PER_BATCH` | `100` | Pages to vacuum per batch |
+| `VACUUM_MAX_PAGES` | `10000` | Maximum pages to vacuum |
+
+### Example
+
+```bash
+# Retention runs automatically every 24 hours
+# Logs show batch progress:
+# "Deleted 1000 rows from contract_events (batch 42)"
+# "Completed retention: 50000 rows deleted in 50 batches, 5234ms"
+```
+
+For full details, see `docs/RETENTION.md`.
+## Database retention
+
+The backend implements non-blocking retention for event data to prevent SQLite lock contention. Instead of a single large `DELETE` query that can lock the database for seconds, retention runs in bounded batches with configurable delays.
+
+### Features
+
+- **Batch deletion**: Deletes rows in configurable batches (default 1,000 per batch)
+- **Sleep between batches**: 100ms default to allow concurrent reads
+- **Incremental VACUUM**: Reclaims space gradually without extended write locks
+- **Analytics preservation**: Automatically rolls up events to corridor metrics before deletion
+- **Configurable retention**: Per-table retention with environment variables
+
+### Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `JOB_RETENTION_ENABLED` | `true` | Enable retention job |
+| `JOB_RETENTION_INTERVAL_SECONDS` | `86400` | Run interval (24h) |
+| `RETENTION_DEFAULT_DAYS` | `30` | Default retention days |
+| `RETENTION_BATCH_SIZE` | `1000` | Rows per deletion batch |
+| `RETENTION_SLEEP_MS` | `100` | Sleep between batches |
+| `VACUUM_ENABLED` | `true` | Enable incremental VACUUM |
+| `VACUUM_PAGES_PER_BATCH` | `100` | Pages to vacuum per batch |
+| `VACUUM_MAX_PAGES` | `10000` | Maximum pages to vacuum |
+
+### Example
+
+```bash
+# Retention runs automatically every 24 hours
+# Logs show batch progress:
+# "Deleted 1000 rows from contract_events (batch 42)"
+# "Completed retention: 50000 rows deleted in 50 batches, 5234ms"
+```
+
+For full details, see `docs/RETENTION.md`.
+
+## Database migrations
+
+The backend uses SQLite migrations to manage schema changes. We follow the **expand/contract pattern** to support rolling deployments without downtime.
+
+### Expand/Contract Pattern
+
+- **Expand phase**: Add new columns/tables (safe during rolling deployments)
+- **Contract phase**: Remove old columns/tables (requires all pods upgraded)
+
+### Migration Safety
+
+All destructive migrations (DROP, RENAME) must include a `contract-phase:` marker:
+
+```sql
+-- contract-phase: after all pods are upgraded to v1.2.0
+-- This migration removes legacy_trust_score after all pods use trust_score
+ALTER TABLE anchors DROP COLUMN legacy_trust_score;
+```
+
+### Linting
+
+Run the migration linter before committing:
+
+```bash
+cd backend
+./scripts/lint-migrations.sh
+```
+
+CI automatically checks migrations for safety issues.
+
+For full details, see `docs/MIGRATION_SAFETY.md` and `CONTRIBUTING.md`.
