@@ -27,6 +27,10 @@ This index covers documentation that is still relevant to understanding or runni
 | [backend-modules.md](backend-modules.md) | Backend module map |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Top-level directory layout |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Key dependencies and why they were chosen |
+| [design/2856-async-data-export.md](design/2856-async-data-export.md) | Design note #2856: async export jobs, Parquet/CSV, signed resumable downloads |
+| [design/2857-trustless-snapshot-verification.md](design/2857-trustless-snapshot-verification.md) | Design note #2857: browser-side snapshot verification against the chain |
+| [design/2858-contract-event-listener-cursor.md](design/2858-contract-event-listener-cursor.md) | Design note #2858: contract event cursor expiry, pagination, gap recording |
+| [design/2859-admin-rbac.md](design/2859-admin-rbac.md) | Design note #2859: admin roles, permissions matrix, enforcement and audit |
 
 ## Operations & infrastructure
 
