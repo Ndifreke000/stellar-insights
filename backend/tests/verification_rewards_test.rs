@@ -81,9 +81,43 @@ async fn setup_test_db() -> Result<SqlitePool> {
         "CREATE INDEX idx_verifications_epoch ON snapshot_verifications(epoch DESC)",
         "CREATE INDEX idx_verifications_verified_at ON snapshot_verifications(verified_at DESC)",
         "CREATE INDEX idx_user_rewards_points ON user_rewards(total_points DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshot_verifications_epoch_user ON snapshot_verifications(epoch, user_id)",
     ] {
         sqlx::query(index_sql).execute(&pool).await?;
     }
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS verifier_account_clusters (
+            user_id TEXT PRIMARY KEY,
+            cluster_id TEXT NOT NULL,
+            funding_account TEXT,
+            risk_score REAL NOT NULL DEFAULT 0.0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS cluster_reward_caps (
+            cluster_id TEXT PRIMARY KEY,
+            daily_reward_cap INTEGER NOT NULL DEFAULT 100,
+            current_day_rewards INTEGER NOT NULL DEFAULT 0,
+            last_reset_date TEXT NOT NULL DEFAULT (DATE('now'))
+        );
+        CREATE TABLE IF NOT EXISTS verification_review_queue (
+            id TEXT PRIMARY KEY,
+            verification_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            epoch INTEGER NOT NULL,
+            cluster_id TEXT,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at DATETIME,
+            reviewed_by TEXT
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
 
     sqlx::query(
         r#"
@@ -319,6 +353,100 @@ async fn test_verification_history() -> Result<()> {
     assert_eq!(history.len(), 5);
     // History should be in reverse chronological order
     assert!(history[0].epoch >= history[4].epoch);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_double_claim_prevention() -> Result<()> {
+    let pool = setup_test_db().await?;
+    let db = Arc::new(Database::new(pool.clone()));
+    let service = VerificationRewardsService::new(db);
+
+    let user_id = "test-user-double-claim";
+    create_test_user(&pool, user_id).await?;
+
+    let snapshot_id = "snapshot-double-claim";
+    let hash = "valid_hash_12345";
+    create_test_snapshot(&pool, snapshot_id, hash, 100).await?;
+
+    let req1 = VerifySnapshotRequest {
+        snapshot_id: snapshot_id.to_string(),
+        submitted_hash: hash.to_string(),
+    };
+    let res1 = service.verify_and_reward(user_id, req1).await?;
+    assert!(res1.is_match);
+    assert_eq!(res1.reward_points, 15); // base 10 + early 5
+
+    // Second claim attempt for the same epoch should be rejected
+    let req2 = VerifySnapshotRequest {
+        snapshot_id: snapshot_id.to_string(),
+        submitted_hash: hash.to_string(),
+    };
+    let res2 = service.verify_and_reward(user_id, req2).await;
+    assert!(res2.is_err(), "Second claim for same epoch must fail");
+    let err_str = res2.unwrap_err().to_string();
+    assert!(err_str.contains("already claimed"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sybil_cluster_cap_and_review_queue() -> Result<()> {
+    let pool = setup_test_db().await?;
+    let db = Arc::new(Database::new(pool.clone()));
+    let service = VerificationRewardsService::new(db);
+
+    let user1 = "sybil-user-1";
+    let user2 = "sybil-user-2";
+    let funding_parent = "parent-funder-account";
+    create_test_user(&pool, user1).await?;
+    create_test_user(&pool, user2).await?;
+
+    // Link both users to the same funding account cluster
+    let c1 = service.set_account_funding_source(user1, funding_parent).await?;
+    let c2 = service.set_account_funding_source(user2, funding_parent).await?;
+    assert_eq!(c1, c2);
+
+    let cluster_info = service.get_cluster_info(user1).await?;
+    assert_eq!(cluster_info.accounts_in_cluster, 2);
+    assert_eq!(cluster_info.daily_reward_cap, 100);
+
+    // Manually fill cluster cap to near limit (95 points)
+    sqlx::query(
+        "INSERT INTO cluster_reward_caps (cluster_id, daily_reward_cap, current_day_rewards, last_reset_date) VALUES (?, 100, 95, DATE('now'))",
+    )
+    .bind(&c1)
+    .execute(&pool)
+    .await?;
+
+    // Verification attempt by user2: 15 points will exceed cap of 100 => routed to review queue
+    let snapshot_id = "snapshot-sybil-cap";
+    let hash = "hash_sybil_test";
+    create_test_snapshot(&pool, snapshot_id, hash, 999).await?;
+
+    let req = VerifySnapshotRequest {
+        snapshot_id: snapshot_id.to_string(),
+        submitted_hash: hash.to_string(),
+    };
+    let res = service.verify_and_reward(user2, req).await?;
+    assert!(res.is_match);
+    assert_eq!(res.reward_points, 0); // Withheld
+    assert!(res.message.contains("Flagged for anti-sybil review"));
+
+    // Check review queue
+    let queue = service.get_review_queue(Some("pending"), 10).await?;
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0].user_id, user2);
+    assert!(queue[0].reason.contains("Cluster reward cap exceeded"));
+
+    // Admin approves review
+    service.approve_review(&queue[0].id, "admin-reviewer").await?;
+    let remaining_pending = service.get_review_queue(Some("pending"), 10).await?;
+    assert_eq!(remaining_pending.len(), 0);
+
+    let stats = service.get_user_stats(user2).await?;
+    assert_eq!(stats.total_points, 10); // Base points granted upon review approval
 
     Ok(())
 }

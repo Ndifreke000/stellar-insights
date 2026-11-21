@@ -14,7 +14,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::models::{TrustlineMetrics, TrustlineSnapshot, TrustlineStat};
+use crate::models::{TrustlineCohortMatrix, TrustlineMetrics, TrustlineSnapshot, TrustlineStat};
 use crate::services::trustline_analyzer::TrustlineAnalyzer;
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -59,6 +59,16 @@ const fn default_history_limit() -> i64 {
     30 // 30 days
 }
 
+#[derive(Deserialize)]
+pub struct CohortParams {
+    #[serde(default = "default_cohort_weeks")]
+    weeks: i64,
+}
+
+const fn default_cohort_weeks() -> i64 {
+    12
+}
+
 pub fn routes(analyzer: Arc<TrustlineAnalyzer>) -> Router {
     Router::new()
         .route("/stats", get(get_trustline_metrics))
@@ -66,6 +76,10 @@ pub fn routes(analyzer: Arc<TrustlineAnalyzer>) -> Router {
         .route(
             "/{asset_code}/{asset_issuer}/history",
             get(get_trustline_history),
+        )
+        .route(
+            "/{asset_code}/{asset_issuer}/cohorts",
+            get(get_trustline_cohorts),
         )
         .with_state(analyzer)
 }
@@ -142,4 +156,38 @@ async fn get_trustline_history(
         .await
         .unwrap_or_default();
     Ok(Json(history))
+}
+
+/// GET /api/trustlines/{asset_code}/{asset_issuer}/cohorts - Get trustline cohort retention matrix
+#[utoipa::path(
+    get,
+    path = "/api/trustlines/{asset_code}/{asset_issuer}/cohorts",
+    params(
+        ("asset_code" = String, Path, description = "Asset code (e.g., 'USDC')"),
+        ("asset_issuer" = String, Path, description = "Asset issuer account ID"),
+        ("weeks" = Option<i64>, Query, description = "Number of cohort weeks to return (1-52, default 12)")
+    ),
+    responses(
+        (status = 200, description = "Trustline cohort retention matrix", body = TrustlineCohortMatrix),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Trustlines"
+)]
+async fn get_trustline_cohorts(
+    State(analyzer): State<Arc<TrustlineAnalyzer>>,
+    Path((asset_code, asset_issuer)): Path<(String, String)>,
+    Query(params): Query<CohortParams>,
+) -> ApiResult<Json<TrustlineCohortMatrix>> {
+    let weeks = params.weeks.clamp(1, 52);
+    let matrix = analyzer
+        .get_cohort_retention(&asset_code, &asset_issuer, weeks)
+        .await
+        .unwrap_or(TrustlineCohortMatrix {
+            asset_code,
+            asset_issuer,
+            total_tracked_accounts: 0,
+            spam_accounts_excluded: 0,
+            cohorts: Vec::new(),
+        });
+    Ok(Json(matrix))
 }
