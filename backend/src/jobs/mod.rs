@@ -6,7 +6,10 @@ pub mod contract_event_listener;
 pub mod persistence;
 pub mod scheduler;
 
-pub use api::{routes, RunsQuery, RunsResponse, JobRun, JobConfigResponse, ScheduleRunRequest, ScheduleRunResponse, UpdateJobConfigRequest};
+pub use api::{routes, RunsQuery, RunsResponse};
+pub use config::{
+    JobConfigResponse, ScheduleRunRequest, ScheduleRunResponse, UpdateJobConfigRequest,
+};
 pub use asset_revalidation::{AssetRevalidationJob, RevalidationConfig, RevalidationStats};
 pub use backfill::{
     BackfillJob, BackfillRequest, BackfillState, BackfillStateRef, BackfillStatus, LedgerGap,

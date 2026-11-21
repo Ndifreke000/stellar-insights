@@ -601,7 +601,7 @@ impl WsState {
             // the message — we just skip recording this one entry.
             if let Ok(mut buf) = buf_entry.try_lock() {
                 buf.push(message);
-            }
+            };
         }
 
         // Deliver to each subscriber. `try_send` never blocks the broadcast
@@ -911,14 +911,12 @@ pub enum WsMessage {
     Sequenced {
         channel: String,
         seq: u64,
-        #[serde(flatten)]
         inner: Box<WsMessage>,
     },
     /// Sent to a reconnecting client for each message it missed (#2791).
     Replayed {
         channel: String,
         seq: u64,
-        #[serde(flatten)]
         inner: Box<WsMessage>,
     },
 }

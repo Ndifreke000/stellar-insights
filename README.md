@@ -281,6 +281,39 @@ fails to parse as `SqliteConnectOptions` and the backend refuses to start.
 Adding Postgres support is a code change. Whether to make it is being tracked
 in issue #1876.
 
+## API versioning & deprecation
+
+All `/api/*` routes pass through a single consolidated versioning middleware (`backend/src/middleware/api_versioning.rs`) backed by a declarative route metadata table (`ApiVersionPolicy`).
+
+- **Version resolution:** Explicit URL prefix (`/api/v1/...`, `/api/v2/...`) takes precedence over `Accept: application/vnd.stellar-insights.v<N>+json` negotiation. Unsupported versions return `400 UNSUPPORTED_API_VERSION` and past-sunset endpoints return `410 ENDPOINT_SUNSET` in the standard error shape.
+- **Standard headers:** Current routes emit `API-Version`, `X-API-Version`, and `Vary: Accept`. Deprecated routes additionally emit RFC 9745 `Deprecation: @<unix-timestamp>`, RFC 8594 `Sunset: <HTTP-date>`, and `Link: <...>; rel="deprecation"`.
+- Full policy and migration guide: [`docs/API_VERSIONING.md`](docs/API_VERSIONING.md).
+
+## Batch endpoints & field selection security
+
+`POST /api/v1/batch` and `POST /api/preflight/batch` re-enforce every outer security control per sub-request:
+
+- **No middleware bypass:** Each sub-request is dispatched through the full Axum router with the verified outer caller identity (`Authorization` / `ConnectInfo<SocketAddr>`), stripping spoofable headers (`X-Forwarded-For`, `X-Real-IP`, `X-User-Id`, etc.), blocking nested `/batch` recursion and path traversal, and enforcing admin IP whitelists and RBAC (`AdminUser` → `403` for non-admin callers).
+- **Per-item rate limiting & cost caps:** A batch of `N` sub-requests consumes `N` rate-limit units across both the caller bucket and API key bucket, and rejects oversized or overly costly batches at the boundary (`BATCH_SIZE_EXCEEDED`, `BATCH_COST_EXCEEDED`).
+- **Role-aware field selection:** `?fields=...` validates field syntax and enforces `FieldAccessPolicy` so forbidden secrets and admin-only fields cannot be extracted by non-admin callers (`403 FORBIDDEN_FIELD_SELECTION`).
+- Full security model and audit notes: [`docs/BATCH_ENDPOINTS_SECURITY.md`](docs/BATCH_ENDPOINTS_SECURITY.md).
+
+## Shared frontend realtime client
+
+The frontend maintains **one WebSocket connection per browser tab** via the `RealtimeClient` singleton and `RealtimeProvider` context (`frontend/src/lib/websocket.ts`, `frontend/src/contexts/RealtimeContext.tsx`).
+
+- All realtime hooks (`useWebSocket`, `useRealtimeCorridors`, `useRealtimeAnchors`, `useRealtimeCollaboration`, `NotificationContext`) share that single socket using ref-counted channel subscriptions that automatically unsubscribe on unmount.
+- Reconnection uses jittered exponential backoff and pauses when the tab is hidden (`visibilitychange`) or offline, while incoming messages patch the React Query cache in place.
+- Architecture details: [`docs/REALTIME_CLIENT.md`](docs/REALTIME_CLIENT.md).
+
+## Virtualised streaming tables
+
+Corridor (`/corridors` table view) and live transaction (`/transactions`) tables use `@tanstack/react-virtual` (`VirtualizedCorridorTable`, `VirtualizedTransactionTable`) with:
+
+- Stable row keys, `React.memo` rows/cells, and normalized row patching (`usePatchableRows`) so live WebSocket updates re-render **only** the affected row instead of the full table.
+- Server-driven sorting, filtering, and cursor pagination across `/api/corridors` and `/api/rpc/payments`.
+- Profiling benchmarks and design notes: [`docs/VIRTUALIZED_TABLES.md`](docs/VIRTUALIZED_TABLES.md).
+
 ## Deployed contracts
 
 The backend integrates with **`payraider`** via `SNAPSHOT_CONTRACT_ID`.

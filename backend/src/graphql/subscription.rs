@@ -1,5 +1,6 @@
 use async_graphql::*;
 use futures::{Stream, StreamExt};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::websocket::{WsMessage, WsState};

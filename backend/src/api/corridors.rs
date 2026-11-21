@@ -224,6 +224,9 @@ pub struct ListCorridorsQuery {
     /// Sort by field (`success_rate`, `volume`/`liquidity`, or `health_score`)
     #[serde(default)]
     pub sort_by: SortBy,
+    /// Sort direction (`desc` default, or `asc`)
+    #[param(example = "desc")]
+    pub sort_order: Option<String>,
     /// Minimum success rate filter
     #[param(example = 95.0)]
     pub success_rate_min: Option<f64>,
@@ -236,9 +239,21 @@ pub struct ListCorridorsQuery {
     /// Maximum volume filter (USD)
     #[param(example = 10_000_000.0)]
     pub volume_max: Option<f64>,
-    /// Filter by asset code
+    /// Filter by asset code (matches either source or destination)
     #[param(example = "USDC")]
     pub asset_code: Option<String>,
+    /// Filter by source asset code
+    #[param(example = "USDC")]
+    pub source_asset: Option<String>,
+    /// Filter by destination asset code
+    #[param(example = "NGN")]
+    pub destination_asset: Option<String>,
+    /// Filter by derived corridor health status (`active`, `degraded`, `inactive`)
+    #[param(example = "active")]
+    pub status: Option<String>,
+    /// Free-text search across corridor ID and asset codes
+    #[param(example = "USDC")]
+    pub search: Option<String>,
     /// Time period for metrics (24h, 7d, 30d)
     #[param(example = "24h")]
     pub time_period: Option<String>,
@@ -292,14 +307,19 @@ fn get_liquidity_trend(volume_usd: f64) -> String {
 /// Generate cache key for corridor list with filters
 fn generate_corridor_list_cache_key(params: &ListCorridorsQuery, page: Page) -> String {
     let filter_str = format!(
-        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_period:{:?}_sort:{:?}",
+        "sr_min:{:?}_sr_max:{:?}_vol_min:{:?}_vol_max:{:?}_asset:{:?}_src:{:?}_dst:{:?}_status:{:?}_q:{:?}_period:{:?}_sort:{:?}_dir:{:?}",
         params.success_rate_min,
         params.success_rate_max,
         params.volume_min,
         params.volume_max,
         params.asset_code,
+        params.source_asset,
+        params.destination_asset,
+        params.status,
+        params.search,
         params.time_period,
-        params.sort_by
+        params.sort_by,
+        params.sort_order
     );
     keys::corridor_list(keys::active_network(), page.limit, page.offset, &filter_str)
 }
@@ -396,12 +416,55 @@ pub async fn list_corridors(
                             return false;
                         }
                     }
+                    if let Some(src) = &params.source_asset {
+                        if !src.is_empty()
+                            && !c.source_asset.to_lowercase().contains(&src.to_lowercase())
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(dst) = &params.destination_asset {
+                        if !dst.is_empty()
+                            && !c
+                                .destination_asset
+                                .to_lowercase()
+                                .contains(&dst.to_lowercase())
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(status) = &params.status {
+                        let derived = if c.total_attempts <= 0 {
+                            "inactive"
+                        } else if c.health_score >= 75.0 {
+                            "active"
+                        } else {
+                            "degraded"
+                        };
+                        if !status.is_empty() && !derived.eq_ignore_ascii_case(status) {
+                            return false;
+                        }
+                    }
+                    if let Some(q) = &params.search {
+                        let q_lower = q.trim().to_lowercase();
+                        if !q_lower.is_empty()
+                            && !c.id.to_lowercase().contains(&q_lower)
+                            && !c.source_asset.to_lowercase().contains(&q_lower)
+                            && !c.destination_asset.to_lowercase().contains(&q_lower)
+                        {
+                            return false;
+                        }
+                    }
                     true
                 })
                 .collect();
 
             // Corridors come out of a HashMap, so impose a stable order before
             // paging or cursors would skip/repeat items between requests.
+            let ascending = params
+                .sort_order
+                .as_deref()
+                .is_some_and(|dir| dir.eq_ignore_ascii_case("asc"));
             let mut filtered = filtered;
             filtered.sort_by(|a, b| {
                 let (x, y) = match params.sort_by {
@@ -409,7 +472,12 @@ pub async fn list_corridors(
                     SortBy::Volume => (a.liquidity_depth_usd, b.liquidity_depth_usd),
                     SortBy::HealthScore => (a.health_score, b.health_score),
                 };
-                y.total_cmp(&x).then_with(|| a.id.cmp(&b.id))
+                let primary = if ascending {
+                    x.total_cmp(&y)
+                } else {
+                    y.total_cmp(&x)
+                };
+                primary.then_with(|| a.id.cmp(&b.id))
             });
 
             let total = filtered.len() as i64;

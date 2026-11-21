@@ -516,6 +516,7 @@ impl Clone for AggregationService {
         Self {
             db: Arc::clone(&self.db),
             config: self.config.clone(),
+            cache_invalidation: self.cache_invalidation.clone(),
         }
     }
 }

@@ -6,11 +6,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use serde::Serialize;
 use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::auth_middleware::AuthUser;
-use crate::webhooks::{CreateWebhookRequest, DeliveryLogResponse, WebhookResponse, WebhookService};
+use crate::webhooks::{CreateWebhookRequest, WebhookResponse, WebhookService};
 use axum::extract::Query;
 
 /// POST /webhooks - Register a new webhook
@@ -305,6 +306,7 @@ pub async fn get_delivery_logs(
         .await
         .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
 
+    let has_more = logs.len() >= query.limit as usize;
     let response: Vec<DeliveryLogResponse> = logs
         .into_iter()
         .map(|l| DeliveryLogResponse {
@@ -327,7 +329,7 @@ pub async fn get_delivery_logs(
         StatusCode::OK,
         Json(json!({
             "delivery_logs": response,
-            "has_more": logs.len() >= query.limit as usize
+            "has_more": has_more
         })),
     )
         .into_response())
@@ -351,7 +353,7 @@ fn default_offset() -> u32 {
 }
 
 /// Delivery log response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DeliveryLogResponse {
     pub id: String,
     pub webhook_id: String,

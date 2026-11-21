@@ -8,7 +8,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
-use sqlx::{sqlite::SqliteQueryResult, SqlitePool};
+use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -32,7 +32,7 @@ impl Default for CatchUpPolicy {
 }
 
 /// Represents a scheduled job run
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct JobRun {
     pub id: i64,
     pub job_name: String,
@@ -166,7 +166,7 @@ impl JobPersistence {
         }
 
         // Create a new pending run
-        let result: SqliteQueryResult = sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO job_runs (job_name, scheduled_for, status)
             VALUES (?, ?, 'pending')
@@ -427,12 +427,18 @@ impl JobPersistence {
         }
 
         let last_scheduled = config.last_scheduled_for.unwrap_or_else(|| now - Duration::days(365));
-        let interval = Duration::seconds(config.interval_seconds as i64);
-        let policy = config.catch_up_policy;
+        let policy = match config.policy.as_str() {
+            "all" => CatchUpPolicy::All,
+            _ => CatchUpPolicy::LatestOnly,
+        };
 
         // Calculate how many runs were missed
         let duration_since_last = now - last_scheduled;
-        let missed_count = (duration_since_last / interval).num_seconds();
+        let missed_count = if config.interval_seconds > 0 {
+            duration_since_last.num_seconds() / config.interval_seconds
+        } else {
+            0
+        };
 
         if missed_count <= 0 {
             return Ok(vec![]);
@@ -442,8 +448,9 @@ impl JobPersistence {
         match policy {
             CatchUpPolicy::All => {
                 // Schedule all missed runs
-                for i in 1..=missed_count as i64 {
-                    let scheduled_for = last_scheduled + (interval * i);
+                for i in 1..=missed_count {
+                    let scheduled_for = last_scheduled
+                        + Duration::seconds(config.interval_seconds.saturating_mul(i));
                     if scheduled_for <= now {
                         missed_schedules.push(scheduled_for);
                     }
@@ -451,7 +458,8 @@ impl JobPersistence {
             }
             CatchUpPolicy::LatestOnly => {
                 // Only schedule the most recent missed run
-                let scheduled_for = last_scheduled + (interval * missed_count);
+                let scheduled_for = last_scheduled
+                    + Duration::seconds(config.interval_seconds.saturating_mul(missed_count));
                 if scheduled_for <= now {
                     missed_schedules.push(scheduled_for);
                 }

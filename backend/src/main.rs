@@ -29,11 +29,11 @@ use payraider_backend::{
     jobs::backfill::{BackfillJob, BackfillState},
     leader_election::{spawn_leader_task, DEFAULT_LEASE_TTL},
     middleware::{
-        concurrency_limit_middleware, panic_recovery_middleware, ApiVersioning, BatchEndpoints,
-        ConcurrencyLimitState, DatabaseSchemaSeparation, ETagCachingSupport,
-        FieldSelectionParameter, MobilePaginationEndpoints, MobileRequestLogging,
-        NetworkAwareRpcClient, NetworkContextMiddleware, PushNotificationRegistration,
-        PushNotificationService, ResponseCompression, Sep10ForMobile, WebSocketRealTimeUpdates,
+        concurrency_limit_middleware, panic_recovery_middleware, ConcurrencyLimitState,
+        DatabaseSchemaSeparation, ETagCachingSupport, MobilePaginationEndpoints,
+        MobileRequestLogging, NetworkAwareRpcClient, NetworkContextMiddleware,
+        PushNotificationRegistration, PushNotificationService, ResponseCompression,
+        Sep10ForMobile, WebSocketRealTimeUpdates,
     },
     network::StellarNetwork,
     observability::logging::request_response_logging_middleware,
@@ -258,11 +258,8 @@ async fn main() -> anyhow::Result<()> {
     let _mobile_pagination_endpoints = MobilePaginationEndpoints::new(Default::default());
     let _database_schema_separation = DatabaseSchemaSeparation::new(Default::default());
     let _websocket_real_time_updates = WebSocketRealTimeUpdates::new(Default::default());
-    let _api_versioning = ApiVersioning::new(Default::default());
     let _mobile_request_logging = MobileRequestLogging::new(Default::default());
-    let _field_selection_parameter = FieldSelectionParameter::new(Default::default());
     let _etag_caching_support = ETagCachingSupport::new(Default::default());
-    let _batch_endpoints = BatchEndpoints::new(Default::default());
     let _response_compression = ResponseCompression::new(
         payraider_backend::models::response_compression::CompressionConfig::from_env(),
     );
@@ -298,7 +295,7 @@ async fn main() -> anyhow::Result<()> {
         let backup_manager = Arc::new(BackupManager::new(backup_config));
         
         // Spawn the backup scheduler (runs daily at configured hour)
-        std::mem::drop(backup_manager.spawn_scheduler());
+        std::mem::drop(Arc::clone(&backup_manager).spawn_scheduler());
         
         // Spawn the restore drill job (runs nightly at 4 AM UTC to verify backups)
         std::mem::drop(backup_manager.spawn_restore_drill());
@@ -431,7 +428,7 @@ async fn main() -> anyhow::Result<()> {
                 async move {
                     let mut restarts: u32 = 0;
                     loop {
-                        let dispatcher = WebhookDispatcher::new(webhook_pool.clone());
+                        let mut dispatcher = WebhookDispatcher::new(webhook_pool.clone());
                         match dispatcher.run().await {
                             Ok(()) => {
                                 tracing::warn!("Webhook dispatcher exited cleanly; restarting");
@@ -660,9 +657,6 @@ async fn main() -> anyhow::Result<()> {
         )
         .layer(middleware::from_fn(
             payraider_backend::payload_limit::payload_limit_middleware,
-        ))
-        .layer(middleware::from_fn(
-            payraider_backend::api_deprecation_middleware::deprecation_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             db.clone(),

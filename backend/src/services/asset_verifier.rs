@@ -84,7 +84,7 @@ impl AssetVerifier {
     }
 
     /// Main verification method that checks all sources including impersonation
-    pub async fn verify_asset(
+    pub async fn verify_asset_with_impersonation(
         &self,
         asset_code: &str,
         asset_issuer: &str,
@@ -114,15 +114,16 @@ impl AssetVerifier {
             self.get_on_chain_metrics(asset_code, asset_issuer).await;
 
         // Get home domain for impersonation check
-        let home_domain = match self.get_home_domain_from_account(asset_issuer).await {
-            Ok(Some(domain)) => Some(domain.as_str()),
-            _ => None,
-        };
+        let home_domain = self
+            .get_home_domain_from_account(asset_issuer)
+            .await
+            .ok()
+            .flatten();
 
         // Run impersonation check
         let impersonation_result = self
             .impersonation_detector
-            .verify_with_impersonation_check(asset_code, asset_issuer, home_domain)
+            .verify_with_impersonation_check(asset_code, asset_issuer, home_domain.as_deref())
             .await;
 
         Ok(VerificationWithImpersonation {
@@ -140,16 +141,6 @@ impl AssetVerifier {
 }
 
 impl AssetVerifier {
-    pub fn new(pool: SqlitePool) -> Result<Self> {
-        let http_client = Client::builder()
-            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("PayRaider/1.0")
-            .build()
-            .context("Failed to create HTTP client")?;
-
-        Ok(Self { http_client, pool })
-    }
-
     /// Main verification method that checks all sources
     pub async fn verify_asset(
         &self,
@@ -842,6 +833,9 @@ mod tests {
         assert!(report.is_some());
         assert_eq!(report.unwrap().report_type, ImpersonationReportType::HomoglyphDomain);
     }
+
+    #[test]
+    fn parses_sep24_endpoint_and_currencies() {
         let toml = r#"
             TRANSFER_SERVER_SEP0024 = "https://anchor.example/sep24"
             [[CURRENCIES]]

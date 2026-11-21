@@ -79,7 +79,7 @@ impl LeaderElection {
         let (tx, rx) = watch::channel(false);
         let key = format!("leader:{role}");
         let role_name = role.to_string();
-        let renew_every = (ttl * LEASE_EXTENSION_INTERVAL).max(Duration::from_millis(500));
+        let renew_every = ttl.mul_f64(LEASE_EXTENSION_INTERVAL).max(Duration::from_millis(500));
 
         let handle = tokio::spawn(async move {
             let mut lease: Option<LockGuard> = None;

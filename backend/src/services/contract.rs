@@ -267,7 +267,7 @@ impl ContractService {
 
         // Step 3: Prepare and sign the transaction
         debug!("Preparing and signing transaction");
-        let signed_xdr = self.prepare_and_sign_transaction(&simulated, hash, epoch)?;
+        let signed_xdr = self.prepare_and_sign_transaction(&simulated, hash, epoch).await?;
 
         // Step 4: Send the transaction
         debug!("Sending transaction to network");

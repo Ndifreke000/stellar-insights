@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { memo, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   TrendingUp,
   TrendingDown,
@@ -161,39 +162,111 @@ const METRICS: MetricConfig[] = [
   { label: 'Avg Slippage', key: 'average_slippage_bps', format: (v) => `${v.toFixed(2)} bps`, higherIsBetter: false },
 ];
 
+interface MetricBounds {
+  best: number;
+  worst: number;
+}
+
+const ComparisonTableRow = memo(function ComparisonTableRow({
+  corridor,
+  rowIndex,
+  boundsMap,
+}: {
+  corridor: CorridorMetrics;
+  rowIndex: number;
+  boundsMap: Record<MetricKey, MetricBounds>;
+}) {
+  return (
+    <tr
+      className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${
+        rowIndex % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-gray-50/50 dark:bg-slate-800/50'
+      }`}
+    >
+      <th
+        scope="row"
+        className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-inherit z-10"
+      >
+        <div>
+          <div className="font-semibold">
+            {corridor.source_asset} → {corridor.destination_asset}
+          </div>
+          <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono">
+            {corridor.id}
+          </div>
+        </div>
+      </th>
+      {METRICS.map((metric) => {
+        const value = corridor[metric.key] as number;
+        const { best, worst } = boundsMap[metric.key];
+        const range = Math.abs(best - worst);
+        const position = range > 0 ? Math.abs(value - worst) / range : 0.5;
+        const cellColor =
+          value === best
+            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700'
+            : value === worst
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'
+              : 'bg-white dark:bg-slate-800';
+
+        return (
+          <td
+            key={metric.key}
+            className={`px-4 py-4 whitespace-nowrap text-sm border-l border-gray-100 dark:border-slate-700 ${cellColor}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">
+                <span className="sr-only">{metric.label}: </span>
+                {metric.format(value)}
+              </span>
+              <div className="flex items-center gap-1">
+                {position > 0.8 ? (
+                  <TrendingUp className="w-4 h-4 text-green-500" aria-label="Trending high" />
+                ) : position < 0.3 ? (
+                  <TrendingDown className="w-4 h-4 text-red-500" aria-label="Trending low" />
+                ) : (
+                  <Minus className="w-4 h-4 text-muted-foreground" aria-label="Stable" />
+                )}
+                {value === best ? (
+                  <Trophy className="w-4 h-4 text-yellow-500" aria-label="Best performance in category" />
+                ) : value === worst ? (
+                  <AlertTriangle className="w-4 h-4 text-red-500" aria-label="Worst performance in category" />
+                ) : null}
+              </div>
+            </div>
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
+const COMPARISON_VIRTUAL_THRESHOLD = 40;
+
 export function CorridorComparisonTable({ corridors, onExport }: CorridorComparisonTableProps) {
   const [sortBy, setSortBy] = useState<MetricKey>('success_rate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const getBestWorst = (metric: MetricConfig) => {
-    const values = corridors.map((c) => c[metric.key] as number);
-    const best = metric.higherIsBetter ? Math.max(...values) : Math.min(...values);
-    const worst = metric.higherIsBetter ? Math.min(...values) : Math.max(...values);
-    return { best, worst };
-  };
-
-  const getIndicator = (value: number, metric: MetricConfig) => {
-    const { best, worst } = getBestWorst(metric);
-    if (value === best) return <Trophy className="w-4 h-4 text-yellow-500" aria-label="Best performance in category" />;
-    if (value === worst) return <AlertTriangle className="w-4 h-4 text-red-500" aria-label="Worst performance in category" />;
-    return null;
-  };
-
-  const getTrendIndicator = (value: number, metric: MetricConfig) => {
-    const { best, worst } = getBestWorst(metric);
-    const range = Math.abs(best - worst);
-    const position = Math.abs(value - worst) / range;
-    if (position > 0.8) return <TrendingUp className="w-4 h-4 text-green-500" aria-label="Trending high" />;
-    if (position < 0.3) return <TrendingDown className="w-4 h-4 text-red-500" aria-label="Trending low" />;
-    return <Minus className="w-4 h-4 text-muted-foreground" aria-label="Stable" />;
-  };
-
-  const getCellColor = (value: number, metric: MetricConfig) => {
-    const { best, worst } = getBestWorst(metric);
-    if (value === best) return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700';
-    if (value === worst) return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700';
-    return 'bg-white dark:bg-slate-800';
-  };
+  // Precompute best/worst per metric once in O(N * M) instead of per cell O(N^2 * M).
+  const boundsMap = useMemo(() => {
+    const result = {} as Record<MetricKey, MetricBounds>;
+    for (const metric of METRICS) {
+      if (corridors.length === 0) {
+        result[metric.key] = { best: 0, worst: 0 };
+        continue;
+      }
+      let minVal = Infinity;
+      let maxVal = -Infinity;
+      for (const c of corridors) {
+        const v = c[metric.key] as number;
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      result[metric.key] = metric.higherIsBetter
+        ? { best: maxVal, worst: minVal }
+        : { best: minVal, worst: maxVal };
+    }
+    return result;
+  }, [corridors]);
 
   const handleSort = (key: MetricKey) => {
     if (sortBy === key) {
@@ -204,10 +277,23 @@ export function CorridorComparisonTable({ corridors, onExport }: CorridorCompari
     }
   };
 
-  const sortedCorridors = [...corridors].sort((a, b) => {
-    const aVal = a[sortBy] as number;
-    const bVal = b[sortBy] as number;
-    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+  const sortedCorridors = useMemo(() => {
+    return [...corridors].sort((a, b) => {
+      const aVal = a[sortBy] as number;
+      const bVal = b[sortBy] as number;
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+  }, [corridors, sortBy, sortOrder]);
+
+  const shouldVirtualize = sortedCorridors.length > COMPARISON_VIRTUAL_THRESHOLD;
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? sortedCorridors.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 64,
+    getItemKey: (index) => sortedCorridors[index]?.id ?? String(index),
+    overscan: 10,
+    initialRect: { width: 1000, height: 520 },
   });
 
   return (
@@ -228,9 +314,12 @@ export function CorridorComparisonTable({ corridors, onExport }: CorridorCompari
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      <div
+        ref={scrollContainerRef}
+        className={shouldVirtualize ? 'overflow-auto max-h-[520px]' : 'overflow-x-auto'}
+      >
         <table className="w-full" aria-labelledby="table-caption">
-          <thead className="bg-gray-50 dark:bg-slate-900">
+          <thead className="bg-gray-50 dark:bg-slate-900 sticky top-0 z-20">
             <tr>
               <th
                 scope="col"
@@ -262,51 +351,27 @@ export function CorridorComparisonTable({ corridors, onExport }: CorridorCompari
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-            {sortedCorridors.map((corridor, idx) => (
-              <tr
-                key={corridor.id}
-                className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${
-                  idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-gray-50/50 dark:bg-slate-800/50'
-                }`}
-              >
-                <th
-                  scope="row"
-                  className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-inherit z-10"
-                >
-                  <div>
-                    <div className="font-semibold">
-                      {corridor.source_asset} → {corridor.destination_asset}
-                    </div>
-                    <div className="text-xs text-muted-foreground dark:text-muted-foreground font-mono">
-                      {corridor.id}
-                    </div>
-                  </div>
-                </th>
-                {METRICS.map((metric) => {
-                  const value = corridor[metric.key] as number;
+            {shouldVirtualize
+              ? rowVirtualizer.getVirtualItems().map((vItem) => {
+                  const corridor = sortedCorridors[vItem.index];
+                  if (!corridor) return null;
                   return (
-                    <td
-                      key={metric.key}
-                      className={`px-4 py-4 whitespace-nowrap text-sm border-l border-gray-100 dark:border-slate-700 ${getCellColor(
-                        value,
-                        metric
-                      )}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          <span className="sr-only">{metric.label}: </span>
-                          {metric.format(value)}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {getTrendIndicator(value, metric)}
-                          {getIndicator(value, metric)}
-                        </div>
-                      </div>
-                    </td>
+                    <ComparisonTableRow
+                      key={corridor.id}
+                      corridor={corridor}
+                      rowIndex={vItem.index}
+                      boundsMap={boundsMap}
+                    />
                   );
-                })}
-              </tr>
-            ))}
+                })
+              : sortedCorridors.map((corridor, idx) => (
+                  <ComparisonTableRow
+                    key={corridor.id}
+                    corridor={corridor}
+                    rowIndex={idx}
+                    boundsMap={boundsMap}
+                  />
+                ))}
           </tbody>
         </table>
       </div>

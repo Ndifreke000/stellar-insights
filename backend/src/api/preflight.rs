@@ -9,18 +9,23 @@
 //! without an API key; the anonymous rate-limit tier applies.
 
 use axum::{
-    extract::{Query, State},
+    extract::{ConnectInfo, Extension, Query, State},
+    http::{header, HeaderMap},
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::api::corridors::{compute_live_corridors, CorridorResponse};
+use crate::auth_middleware::AuthUser;
 use crate::cache::helpers::cached_query;
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
+use crate::rate_limit::{OuterRateLimitCharged, RateLimitError, RateLimiter};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 use crate::services::amm_simulation::AmmPool;
@@ -402,6 +407,7 @@ pub fn evaluate(
             corridor: None,
             checks: Vec::new(),
             alternatives,
+            slippage_estimate: None,
             evaluated_at,
         };
     };
@@ -415,6 +421,7 @@ pub fn evaluate(
         corridor: Some(corridor.clone()),
         checks,
         alternatives,
+        slippage_estimate: None,
         evaluated_at,
     }
 }
@@ -647,27 +654,82 @@ pub async fn preflight_get(
 )]
 pub async fn preflight_batch(
     State((_db, cache, rpc_client, price_feed)): State<PreflightState>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
+    auth_user: Option<Extension<AuthUser>>,
+    rate_limiter: Option<Extension<Arc<RateLimiter>>>,
+    outer_rate_limit: Option<Extension<OuterRateLimitCharged>>,
     Json(request): Json<PreflightBatchRequest>,
-) -> ApiResult<Json<PreflightBatchResponse>> {
+) -> Result<Response, Response> {
     if request.items.is_empty() {
         return Err(ApiError::bad_request(
             "EMPTY_BATCH",
             "items must contain at least one payment",
-        ));
+        )
+        .into_response());
     }
     if request.items.len() > MAX_BATCH_ITEMS {
         return Err(ApiError::bad_request(
             "BATCH_TOO_LARGE",
             format!("items may contain at most {MAX_BATCH_ITEMS} payments"),
-        ));
+        )
+        .into_response());
     }
 
-    let corridors = load_corridors(&cache, &rpc_client, &price_feed).await?;
+    // Charge each item in the batch against the caller's rate-limit bucket so
+    // a batch of N payments counts as N requests instead of 1 (#2832).
+    if let Some(Extension(limiter)) = rate_limiter {
+        let already_charged = usize::from(outer_rate_limit.is_some());
+        let extra_units = request.items.len().saturating_sub(already_charged) as u32;
+        if extra_units > 0 {
+            let bearer = headers
+                .get(header::AUTHORIZATION)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|h| h.strip_prefix("Bearer "))
+                .map(str::to_owned);
+            let ip = connect_info.map_or_else(
+                || "unknown".to_string(),
+                |Extension(ci)| ci.0.ip().to_string(),
+            );
+            let endpoint = outer_rate_limit
+                .as_ref()
+                .map_or("/api/v1/preflight/batch", |Extension(m)| m.endpoint.as_str());
+            let client = limiter
+                .resolve_client_identifier(
+                    bearer.clone(),
+                    auth_user.map(|Extension(u)| u.user_id),
+                    ip.clone(),
+                )
+                .await;
+            let (allowed, info) = limiter
+                .check_rate_limit_units_for_client(&client, endpoint, &ip, extra_units)
+                .await;
+            if !allowed {
+                return Err(RateLimitError { info }.into_response());
+            }
+            if let Some(token) = bearer.as_deref() {
+                if let Some(key_id) = limiter.resolve_api_key_id(token).await {
+                    let limit = limiter.get_api_key_limit_per_minute(&key_id).await;
+                    let (key_allowed, key_info) = limiter
+                        .rate_limit_api_key_units(&key_id, limit, extra_units)
+                        .await;
+                    if !key_allowed {
+                        return Err(RateLimitError { info: key_info }.into_response());
+                    }
+                }
+            }
+        }
+    }
+
+    let corridors = load_corridors(&cache, &rpc_client, &price_feed)
+        .await
+        .map_err(IntoResponse::into_response)?;
     Ok(Json(evaluate_batch(
         &corridors,
         &request.items,
         chrono::Utc::now().to_rfc3339(),
-    )))
+    ))
+    .into_response())
 }
 
 #[cfg(test)]

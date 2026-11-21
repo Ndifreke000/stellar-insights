@@ -262,7 +262,7 @@ pub struct Price {
     pub d: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrderBook {
     pub bids: Vec<OrderBookEntry>,
     pub asks: Vec<OrderBookEntry>,
@@ -270,17 +270,32 @@ pub struct OrderBook {
     pub counter: Asset,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrderBookEntry {
     pub price: String,
     pub amount: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Asset {
     pub asset_type: String,
     pub asset_code: Option<String>,
     pub asset_issuer: Option<String>,
+}
+
+impl std::fmt::Display for Asset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.asset_type == "native" {
+            write!(f, "XLM")
+        } else {
+            write!(
+                f,
+                "{}:{}",
+                self.asset_code.as_deref().unwrap_or(&self.asset_type),
+                self.asset_issuer.as_deref().unwrap_or("")
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

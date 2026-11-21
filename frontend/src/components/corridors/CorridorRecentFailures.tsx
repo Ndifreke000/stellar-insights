@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { memo, useEffect, useState, useCallback, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertCircle,
   ChevronLeft,
@@ -55,6 +56,77 @@ const RESULT_CODE_VARIANTS: Record<string, { bg: string; text: string; border: s
   },
 };
 
+interface FailureRowProps {
+  fail: CorridorFailedPayment;
+  isCopied: boolean;
+  onCopy: (hash: string, id: string) => void;
+}
+
+const FailureTableRow = memo(function FailureTableRow({
+  fail,
+  isCopied,
+  onCopy,
+}: FailureRowProps) {
+  const style = RESULT_CODE_VARIANTS[fail.result_code] ?? {
+    bg: "bg-slate-500/10",
+    text: "text-slate-700 dark:text-slate-300",
+    border: "border-slate-500/30",
+  };
+
+  return (
+    <tr className="hover:bg-gray-50/60 dark:hover:bg-slate-750/50 transition-colors">
+      <td className="py-3 px-3 whitespace-nowrap text-muted-foreground">
+        {new Date(fail.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}
+      </td>
+      <td className="py-3 px-3 whitespace-nowrap">
+        <span
+          className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${style.bg} ${style.text} ${style.border}`}
+        >
+          {fail.result_code}
+        </span>
+      </td>
+      <td className="py-3 px-3 whitespace-nowrap text-muted-foreground capitalize">
+        {fail.category.replace(/_/g, " ")}
+      </td>
+      <td className="py-3 px-3 whitespace-nowrap font-bold text-gray-900 dark:text-white">
+        ${fail.amount.toFixed(2)}
+      </td>
+      <td className="py-3 px-3 whitespace-nowrap">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <span>
+            {fail.transaction_hash.slice(0, 6)}...
+            {fail.transaction_hash.slice(-4)}
+          </span>
+          <button
+            onClick={() => onCopy(fail.transaction_hash, fail.id)}
+            className="p-1 hover:text-foreground transition-colors"
+            title="Copy transaction hash"
+            aria-label="Copy transaction hash"
+          >
+            {isCopied ? (
+              <Check className="w-3 h-3 text-emerald-500" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+          </button>
+        </div>
+      </td>
+      <td
+        className="py-3 px-3 max-w-xs truncate text-muted-foreground"
+        title={fail.error_message}
+      >
+        {fail.error_message}
+      </td>
+    </tr>
+  );
+});
+
+const FAILURE_VIRTUAL_THRESHOLD = 25;
+
 export function CorridorRecentFailures({ corridorKey }: CorridorRecentFailuresProps) {
   const [data, setData] = useState<PaginatedCorridorFailures | null>(null);
   const [page, setPage] = useState(1);
@@ -62,6 +134,20 @@ export function CorridorRecentFailures({ corridorKey }: CorridorRecentFailuresPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const items = data?.items ?? [];
+  const shouldVirtualize = items.length > FAILURE_VIRTUAL_THRESHOLD;
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? items.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 46,
+    getItemKey: (index) => items[index]?.id ?? String(index),
+    overscan: 8,
+    initialRect: { width: 800, height: 360 },
+  });
 
   const fetchFailures = useCallback(async (targetPage: number) => {
     setLoading(true);
@@ -86,11 +172,11 @@ export function CorridorRecentFailures({ corridorKey }: CorridorRecentFailuresPr
     fetchFailures(newPage);
   };
 
-  const copyTxHash = (hash: string, id: string) => {
+  const copyTxHash = useCallback((hash: string, id: string) => {
     navigator.clipboard.writeText(hash);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
-  };
+  }, []);
 
   return (
     <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl p-6 shadow-sm mb-8 space-y-4">
@@ -155,7 +241,10 @@ export function CorridorRecentFailures({ corridorKey }: CorridorRecentFailuresPr
       ) : (
         /* Table of Failures */
         <div className="space-y-4">
-          <div className="overflow-x-auto">
+          <div
+            ref={scrollRef}
+            className={shouldVirtualize ? "overflow-auto max-h-[360px]" : "overflow-x-auto"}
+          >
             <table className="w-full text-left text-sm" data-testid="failures-table">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-slate-700 text-xs font-mono uppercase text-muted-foreground">
@@ -168,59 +257,27 @@ export function CorridorRecentFailures({ corridorKey }: CorridorRecentFailuresPr
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-slate-800 font-mono text-xs">
-                {data.items.map((fail: CorridorFailedPayment) => {
-                  const style = RESULT_CODE_VARIANTS[fail.result_code] ?? {
-                    bg: "bg-slate-500/10",
-                    text: "text-slate-700 dark:text-slate-300",
-                    border: "border-slate-500/30",
-                  };
-                  return (
-                    <tr key={fail.id} className="hover:bg-gray-50/60 dark:hover:bg-slate-750/50 transition-colors">
-                      <td className="py-3 px-3 whitespace-nowrap text-muted-foreground">
-                        {new Date(fail.timestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${style.bg} ${style.text} ${style.border}`}
-                        >
-                          {fail.result_code}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap text-muted-foreground capitalize">
-                        {fail.category.replace(/_/g, " ")}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap font-bold text-gray-900 dark:text-white">
-                        ${fail.amount.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <span>
-                            {fail.transaction_hash.slice(0, 6)}...{fail.transaction_hash.slice(-4)}
-                          </span>
-                          <button
-                            onClick={() => copyTxHash(fail.transaction_hash, fail.id)}
-                            className="p-1 hover:text-foreground transition-colors"
-                            title="Copy transaction hash"
-                            aria-label="Copy transaction hash"
-                          >
-                            {copiedId === fail.id ? (
-                              <Check className="w-3 h-3 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 max-w-xs truncate text-muted-foreground" title={fail.error_message}>
-                        {fail.error_message}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {shouldVirtualize
+                  ? rowVirtualizer.getVirtualItems().map((vItem) => {
+                      const fail = items[vItem.index];
+                      if (!fail) return null;
+                      return (
+                        <FailureTableRow
+                          key={fail.id}
+                          fail={fail}
+                          isCopied={copiedId === fail.id}
+                          onCopy={copyTxHash}
+                        />
+                      );
+                    })
+                  : items.map((fail: CorridorFailedPayment) => (
+                      <FailureTableRow
+                        key={fail.id}
+                        fail={fail}
+                        isCopied={copiedId === fail.id}
+                        onCopy={copyTxHash}
+                      />
+                    ))}
               </tbody>
             </table>
           </div>

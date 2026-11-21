@@ -96,11 +96,16 @@ export interface CorridorFilters {
   volume_min?: number;
   volume_max?: number;
   asset_code?: string;
+  source_asset?: string;
+  destination_asset?: string;
+  status?: string;
+  search?: string;
   time_period?: "7d" | "30d" | "90d" | "";
   limit?: number;
   /** Opaque cursor from `pagination.next_cursor`. */
   cursor?: string;
   sort_by?: "success_rate" | "health_score" | "liquidity";
+  sort_order?: "asc" | "desc";
 }
 
 /**

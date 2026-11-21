@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo } from "react";
+import { useWebSocket, type WsMessage } from "./useWebSocket";
 
-interface CollaborativeUser {
+export interface CollaborativeUser {
   id: string;
   name: string;
   color: string;
@@ -8,7 +9,7 @@ interface CollaborativeUser {
   isOnline: boolean;
 }
 
-interface CollaborativeMessage {
+export interface CollaborativeMessage {
   id: string;
   userId: string;
   userName: string;
@@ -17,92 +18,142 @@ interface CollaborativeMessage {
   userColor: string;
 }
 
-interface UseRealtimeCollaborationOptions {
+export interface UseRealtimeCollaborationOptions {
   sessionId: string;
   userId: string;
   userName: string;
   autoConnect?: boolean;
 }
 
-export const useRealtimeCollaboration = (options: UseRealtimeCollaborationOptions) => {
+/**
+ * Collaborative session hook multiplexed onto the shared tab-wide WebSocket
+ * client via the ref-counted `collaboration:<sessionId>` channel (Issue #2834).
+ */
+export const useRealtimeCollaboration = (
+  options: UseRealtimeCollaborationOptions,
+) => {
   const { sessionId, userId, userName, autoConnect = true } = options;
 
   const [messages, setMessages] = useState<CollaborativeMessage[]>([]);
   const [activeUsers, setActiveUsers] = useState<CollaborativeUser[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>(
-    () => (autoConnect ? 'connecting' : 'disconnected'),
-  );
+  const [manualJoined, setManualJoined] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
 
-  // Opens the WebSocket and wires up its listeners. Does not itself set the
-  // 'connecting' status, so it can be called from the mount effect without
-  // triggering a synchronous setState from within the effect body.
-  const openConnection = useCallback(() => {
-    try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${sessionId}`;
+  const joined = manualJoined ?? autoConnect;
 
-      wsRef.current = new WebSocket(wsUrl);
+  const sessionChannel = useMemo(
+    () => (sessionId ? `collaboration:${sessionId}` : ""),
+    [sessionId],
+  );
 
-      wsRef.current.onopen = () => {
-        setIsConnected(true);
-        setConnectionStatus('connected');
-        setError(null);
-      };
+  const channels = useMemo(
+    () => (joined && sessionChannel ? [sessionChannel] : []),
+    [joined, sessionChannel],
+  );
 
-      wsRef.current.onerror = () => {
-        setError('Connection error');
-        setConnectionStatus('disconnected');
-        setIsConnected(false);
-      };
+  const handleMessage = useCallback(
+    (msg: WsMessage) => {
+      if (msg.sessionId && msg.sessionId !== sessionId) {
+        return;
+      }
+      if (
+        msg.type === "collaboration_message" ||
+        (msg.type === "message" && msg.channel === sessionChannel)
+      ) {
+        const incoming: CollaborativeMessage = {
+          id:
+            typeof msg.id === "string"
+              ? msg.id
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: String(msg.userId ?? ""),
+          userName: String(msg.userName ?? "Anonymous"),
+          content: String(msg.content ?? ""),
+          timestamp: msg.timestamp ? new Date(String(msg.timestamp)) : new Date(),
+          userColor: String(msg.userColor ?? "#6366f1"),
+        };
+        setMessages((prev) => [...prev, incoming]);
+      } else if (msg.type === "collaboration_presence" && Array.isArray(msg.users)) {
+        const users = (msg.users as Array<Record<string, unknown>>).map((u) => ({
+          id: String(u.id ?? ""),
+          name: String(u.name ?? ""),
+          color: String(u.color ?? "#6366f1"),
+          lastActive: u.lastActive ? new Date(String(u.lastActive)) : new Date(),
+          isOnline: Boolean(u.isOnline ?? true),
+        }));
+        setActiveUsers(users);
+      }
+    },
+    [sessionId, sessionChannel],
+  );
 
-      wsRef.current.onclose = () => {
-        setConnectionStatus('disconnected');
-        setIsConnected(false);
-      };
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Connection failed';
-      setError(errorMsg);
-      setConnectionStatus('disconnected');
-    }
-  }, [sessionId]);
+  const {
+    isConnected: socketConnected,
+    isConnecting: socketConnecting,
+    send,
+    subscribe,
+    unsubscribe,
+  } = useWebSocket(undefined, {
+    channels,
+    onMessage: handleMessage,
+    onOpen: () => {
+      setError(null);
+    },
+    onError: () => {
+      setError("Connection error");
+    },
+  });
+
+  const isConnected = joined && socketConnected;
+  const connectionStatus: "connecting" | "connected" | "disconnected" = !joined
+    ? "disconnected"
+    : socketConnected
+      ? "connected"
+      : socketConnecting
+        ? "connecting"
+        : "disconnected";
 
   const connect = useCallback(() => {
-    setConnectionStatus('connecting');
-    openConnection();
-  }, [openConnection]);
+    setError(null);
+    setManualJoined(true);
+    if (sessionChannel) {
+      subscribe([sessionChannel]);
+    }
+  }, [sessionChannel, subscribe]);
 
   const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    setManualJoined(false);
+    if (sessionChannel) {
+      unsubscribe([sessionChannel]);
     }
-    setIsConnected(false);
-    setConnectionStatus('disconnected');
-  }, []);
+  }, [sessionChannel, unsubscribe]);
 
-  const sendMessage = useCallback((content: string) => {
-    if (!isConnected || !wsRef.current) {
-      setError('Not connected');
-      return false;
-    }
+  const sendMessage = useCallback(
+    (content: string) => {
+      if (!isConnected) {
+        setError("Not connected");
+        return false;
+      }
 
-    try {
-      wsRef.current.send(JSON.stringify({
-        type: 'message',
-        content,
-        userId,
-        userName,
-      }));
-      return true;
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to send message';
-      setError(errorMsg);
-      return false;
-    }
-  }, [isConnected, userId, userName]);
+      try {
+        send({
+          type: "collaboration_message",
+          channel: sessionChannel,
+          sessionId,
+          content,
+          userId,
+          userName,
+          timestamp: new Date().toISOString(),
+        });
+        return true;
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Failed to send message";
+        setError(errorMsg);
+        return false;
+      }
+    },
+    [isConnected, send, sessionChannel, sessionId, userId, userName],
+  );
 
   const addMessage = useCallback((message: CollaborativeMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -119,27 +170,22 @@ export const useRealtimeCollaboration = (options: UseRealtimeCollaborationOption
     });
   }, []);
 
-  const removeUser = useCallback((userId: string) => {
-    setActiveUsers((prev) => prev.filter((u) => u.id !== userId));
+  const removeUser = useCallback((targetUserId: string) => {
+    setActiveUsers((prev) => prev.filter((u) => u.id !== targetUserId));
   }, []);
 
-  const updateUserStatus = useCallback((userId: string, isOnline: boolean) => {
-    setActiveUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId ? { ...u, isOnline, lastActive: new Date() } : u
-      )
-    );
-  }, []);
-
-  useEffect(() => {
-    if (autoConnect) {
-      openConnection();
-    }
-
-    return () => {
-      disconnect();
-    };
-  }, [autoConnect, openConnection, disconnect]);
+  const updateUserStatus = useCallback(
+    (targetUserId: string, isOnline: boolean) => {
+      setActiveUsers((prev) =>
+        prev.map((u) =>
+          u.id === targetUserId
+            ? { ...u, isOnline, lastActive: new Date() }
+            : u,
+        ),
+      );
+    },
+    [],
+  );
 
   return {
     messages,

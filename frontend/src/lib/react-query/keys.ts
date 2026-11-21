@@ -10,6 +10,7 @@
  */
 import type { CorridorFilters } from "@/lib/api/corridors";
 import type { ListAnchorsParams } from "@/lib/api/anchor";
+import type { TransactionFilters } from "@/lib/api/transactions";
 
 export const queryKeys = {
   // Anchors
@@ -26,9 +27,17 @@ export const queryKeys = {
   corridorLists: ["corridors", "list"] as const,
   corridorList: (filters: CorridorFilters = {}) =>
     ["corridors", "list", filters] as const,
+  corridorInfiniteList: (filters: Omit<CorridorFilters, "cursor"> = {}) =>
+    ["corridors", "list", "infinite", filters] as const,
   corridorDetail: (id: string) => ["corridors", "detail", id] as const,
   corridor: (id: string) => ["corridors", id] as const,
   corridorMetrics: (id: string) => ["corridors", id, "metrics"] as const,
+
+  // Transactions
+  transactions: ["transactions"] as const,
+  transactionStreams: ["transactions", "stream"] as const,
+  transactionStream: (filters: Omit<TransactionFilters, "cursor"> = {}) =>
+    ["transactions", "stream", filters] as const,
 
   // Governance
   governance: ["governance"] as const,

@@ -28,7 +28,7 @@ pub struct WebhookQueueManager {
     // Number of parallel dispatchers
     parallelism: usize,
     // Dispatcher running flag
-    running: std::sync::Arc<tokio::sync::atomic::AtomicBool>,
+    running: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl WebhookQueueManager {
@@ -38,7 +38,7 @@ impl WebhookQueueManager {
             endpoint_queues: Arc::new(Mutex::new(HashMap::new())),
             service: Arc::new(service),
             parallelism,
-            running: std::sync::Arc::new(tokio::sync::atomic::AtomicBool::new(false)),
+            running: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -272,7 +272,7 @@ async fn deliver_webhook(service: &WebhookService, job: &WebhookJob) -> anyhow::
             None,
             None,
             None,
-            &signature,
+            Some(signature.as_str()),
             &job.event_version,
         )
         .await;
@@ -296,14 +296,15 @@ async fn deliver_webhook(service: &WebhookService, job: &WebhookJob) -> anyhow::
     let response = request.send().await?;
 
     // Log delivery result
-    let status = if response.status().is_success() {
+    let resp_status = response.status();
+    let status = if resp_status.is_success() {
         "delivered"
     } else {
         "failed"
     };
 
+    let http_status = resp_status.as_u16().try_into().ok();
     let response_body = response.text().await.ok();
-    let http_status = response.status().as_u16().try_into().ok();
 
     service
         .create_delivery_log(
@@ -314,17 +315,17 @@ async fn deliver_webhook(service: &WebhookService, job: &WebhookJob) -> anyhow::
             http_status,
             response_body.as_deref(),
             None,
-            &signature,
+            Some(signature.as_str()),
             &job.event_version,
         )
         .await;
 
-    if response.status().is_success() {
+    if resp_status.is_success() {
         Ok(())
     } else {
         Err(anyhow::anyhow!(
             "Webhook failed with status {}: {}",
-            response.status(),
+            resp_status,
             response_body.unwrap_or_default()
         ))
     }

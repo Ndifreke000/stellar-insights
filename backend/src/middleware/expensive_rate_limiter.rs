@@ -133,7 +133,9 @@ impl ExpensiveRateLimiter {
     ) -> Option<(u32, u32)> {
         let key = (endpoint_category.to_string(), identifier.to_string());
         let windows = self.windows.read().await;
-        windows.get(&key).map(|entry| (entry.count, entry.window_start.elapsed().as_secs()))
+        windows
+            .get(&key)
+            .map(|entry| (entry.count, entry.window_start.elapsed().as_secs() as u32))
     }
 }
 

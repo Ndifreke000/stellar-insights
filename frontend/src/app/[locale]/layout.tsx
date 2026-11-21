@@ -65,8 +65,8 @@ export default async function LocaleLayout({ children, params }: Props) {
             <KeyboardShortcutsProvider>
               <CommandPaletteProvider>
               <WalletProvider>
-                <NotificationProvider>
-                  <StateProvider>
+                <StateProvider>
+                  <NotificationProvider>
                     <NetworkProvider>
                     <OfflineBanner />
                     <ShortcutsInitializer />
@@ -78,8 +78,8 @@ export default async function LocaleLayout({ children, params }: Props) {
                   <ShortcutHelpOverlay />
                   <CommandPalette />
                     </NetworkProvider>
-                  </StateProvider>
-                </NotificationProvider>
+                  </NotificationProvider>
+                </StateProvider>
               </WalletProvider>
               </CommandPaletteProvider>
             </KeyboardShortcutsProvider>

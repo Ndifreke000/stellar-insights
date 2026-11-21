@@ -80,12 +80,12 @@ pub fn routes(db: Database, persistence: Arc<JobPersistence>) -> axum::Router {
         .route("/admin/jobs/config/{job_name}", axum::routing::put(update_config))
         .route("/admin/jobs/schedule", axum::routing::post(schedule_run))
         .route("/admin/jobs/runs/counts", axum::routing::get(get_run_counts))
-        .with_state((db, persistence))
+        .with_state((Arc::new(db), persistence))
 }
 
 /// List job runs
 async fn list_runs(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Query(params): Query<RunsQuery>,
 ) -> Result<Json<RunsResponse>, (axum::http::StatusCode, String)> {
     let limit = params.limit.unwrap_or(50);
@@ -93,16 +93,25 @@ async fn list_runs(
 
     let (runs, total) = match &params.job_name {
         Some(job_name) => {
-            let runs = persistence.get_all_runs(job_name, limit, offset).await?;
+            let runs = persistence
+                .get_all_runs(job_name, limit, offset)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let total = runs.len() as i64;
             (runs, total)
         }
         None => {
             // List all jobs' runs
-            let job_names = persistence.get_all_configs().await?;
+            let job_names = persistence
+                .get_all_configs()
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let mut all_runs = vec![];
             for config in job_names {
-                let runs = persistence.get_all_runs(&config.job_name, limit, offset).await?;
+                let runs = persistence
+                    .get_all_runs(&config.job_name, limit, offset)
+                    .await
+                    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 all_runs.extend(runs);
             }
             let total = all_runs.len() as i64;
@@ -122,7 +131,7 @@ async fn list_runs(
 
 /// Get a specific job run
 async fn get_run(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((db, _persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Path(run_id): Path<i64>,
 ) -> Result<Json<JobRun>, (axum::http::StatusCode, String)> {
     let run: Option<crate::jobs::persistence::JobRun> = sqlx::query_as(
@@ -135,7 +144,7 @@ async fn get_run(
         "#,
     )
     .bind(run_id)
-    .fetch_optional(&db.pool)
+    .fetch_optional(db.pool())
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -146,7 +155,7 @@ async fn get_run(
 
 /// List all job configurations
 async fn list_configs(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
 ) -> Result<Json<Vec<JobConfigResponse>>, (axum::http::StatusCode, String)> {
     let configs = persistence.get_all_configs().await.map_err(|e| {
         (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
@@ -157,7 +166,7 @@ async fn list_configs(
 
 /// Get a specific job configuration
 async fn get_config(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Path(job_name): Path<String>,
 ) -> Result<Json<JobConfigResponse>, (axum::http::StatusCode, String)> {
     let config = persistence.get_config(&job_name).await.map_err(|e| {
@@ -172,7 +181,7 @@ async fn get_config(
 
 /// Update a job configuration
 async fn update_config(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Path(job_name): Path<String>,
     Json(payload): Json<crate::jobs::config::UpdateJobConfigRequest>,
 ) -> Result<Json<JobConfigResponse>, (axum::http::StatusCode, String)> {
@@ -206,7 +215,7 @@ async fn update_config(
     .bind(&config.policy)
     .bind(config.updated_at)
     .bind(&config.job_name)
-    .execute(&db.pool)
+    .execute(db.pool())
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -215,7 +224,7 @@ async fn update_config(
 
 /// Schedule a manual run
 async fn schedule_run(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Json(payload): Json<ScheduleRunRequest>,
 ) -> Result<Json<ScheduleRunResponse>, (axum::http::StatusCode, String)> {
     // For manual scheduling, we'll use the current time as the job name
@@ -235,7 +244,7 @@ async fn schedule_run(
 
 /// Get run counts by status
 async fn get_run_counts(
-    State((db, persistence)): State<(Database, Arc<JobPersistence>)>,
+    State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     let job_names = persistence.get_all_configs().await.map_err(|e| {
         (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())

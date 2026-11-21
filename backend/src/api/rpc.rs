@@ -18,6 +18,14 @@ pub struct PaginationQuery {
     #[serde(default = "default_limit")]
     pub limit: u32,
     pub cursor: Option<String>,
+    /// Optional asset code filter (e.g. `USDC` or `XLM`).
+    pub asset_code: Option<String>,
+    /// Optional status filter (`successful` or `failed`).
+    pub status: Option<String>,
+    /// Optional free-text search across transaction hash, source, and destination.
+    pub search: Option<String>,
+    /// Optional sort direction (`desc` default, or `asc`).
+    pub sort_order: Option<String>,
 }
 
 const fn default_limit() -> u32 {
@@ -125,11 +133,71 @@ pub async fn get_payments(
         ));
     }
     match client.fetch_payments(limit, cursor).await {
-        Ok(payments) => {
+        Ok(mut payments) => {
             // Results are newest-first; a full page means older records may remain.
+            // Derive next_cursor from the unfiltered Horizon page so cursor
+            // advancement stays monotonic even when client filters narrow rows.
             let next_cursor = (payments.len() as u32 >= limit)
                 .then(|| payments.last().map(|p| p.paging_token.clone()))
                 .flatten();
+
+            if let Some(asset_code) = params
+                .asset_code
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                let wanted = asset_code.to_ascii_lowercase();
+                payments.retain(|p| {
+                    let code = if p.asset_type == "native" {
+                        "xlm".to_string()
+                    } else {
+                        p.get_asset_code().unwrap_or_default().to_ascii_lowercase()
+                    };
+                    code.contains(&wanted)
+                });
+            }
+
+            if let Some(status) = params
+                .status
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                if status.eq_ignore_ascii_case("successful") {
+                    payments.retain(crate::rpc::Payment::succeeded);
+                } else if status.eq_ignore_ascii_case("failed") {
+                    payments.retain(|p| !p.succeeded());
+                }
+            }
+
+            if let Some(search) = params
+                .search
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                let q = search.to_ascii_lowercase();
+                payments.retain(|p| {
+                    p.transaction_hash.to_ascii_lowercase().contains(&q)
+                        || p.from
+                            .as_deref()
+                            .is_some_and(|s| s.to_ascii_lowercase().contains(&q))
+                        || p.to
+                            .as_deref()
+                            .is_some_and(|s| s.to_ascii_lowercase().contains(&q))
+                        || p.id.to_ascii_lowercase().contains(&q)
+                });
+            }
+
+            if params
+                .sort_order
+                .as_deref()
+                .is_some_and(|dir| dir.eq_ignore_ascii_case("asc"))
+            {
+                payments.reverse();
+            }
+
             Ok(Json(
                 PaginatedResponse::from_tokens(payments, i64::from(limit), next_cursor, None)
                     .with_links(&uri),

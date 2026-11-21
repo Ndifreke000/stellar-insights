@@ -12,6 +12,7 @@
 import { useCallback } from "react";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useQueries,
   useQuery,
   useQueryClient,
@@ -29,9 +30,15 @@ import {
   getAnchorDetail,
   type ListAnchorsParams,
 } from "@/lib/api/anchor";
+import {
+  getStreamingTransactions,
+  type TransactionFilters,
+} from "@/lib/api/transactions";
+import { getNextCursor } from "@/lib/api/pagination";
 import { getProposals } from "@/lib/governance-api";
 import type { ProposalStatus } from "@/types/governance";
 import type { CorridorUpdate } from "@/hooks/useRealtimeCorridors";
+import { syncRealtimeMessageToQueryCache } from "@/contexts/RealtimeContext";
 import { queryKeys } from "./keys";
 
 /** Metrics refresh server-side every few minutes; don't refetch more often. */
@@ -45,6 +52,49 @@ export function useCorridors(filters: CorridorFilters = {}) {
     queryFn: () => getCorridors(filters),
     staleTime: METRICS_STALE_TIME,
     // Keep showing the previous result while a new filter combination loads.
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Cursor-paginated infinite query for virtualised corridor tables (#2835).
+ * Server-driven sorting and filtering reset the cursor chain cleanly.
+ */
+export function useInfiniteCorridors(
+  filters: Omit<CorridorFilters, "cursor"> = {},
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.corridorInfiniteList(filters),
+    queryFn: ({ pageParam }) =>
+      getCorridors({
+        ...filters,
+        limit: filters.limit ?? 50,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: getNextCursor,
+    staleTime: METRICS_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Cursor-paginated infinite query for virtualised transaction tables (#2835).
+ */
+export function useInfiniteTransactions(
+  filters: Omit<TransactionFilters, "cursor"> = {},
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.transactionStream(filters),
+    queryFn: ({ pageParam }) =>
+      getStreamingTransactions({
+        ...filters,
+        limit: filters.limit ?? 50,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: getNextCursor,
+    staleTime: 15 * 1000,
     placeholderData: keepPreviousData,
   });
 }
@@ -127,32 +177,24 @@ export function useRealtimeCacheSync() {
 
   const onCorridorUpdate = useCallback(
     (update: CorridorUpdate) => {
-      // Patch the detail view in place — the event carries the new numbers.
-      queryClient.setQueryData<CorridorDetailData>(
-        queryKeys.corridorDetail(update.corridor_key),
-        (prev) =>
-          prev && {
-            ...prev,
-            corridor: {
-              ...prev.corridor,
-              success_rate: update.success_rate ?? prev.corridor.success_rate,
-              health_score: update.health_score ?? prev.corridor.health_score,
-              last_updated: update.last_updated ?? prev.corridor.last_updated,
-            },
-          },
-      );
-      // Lists are filtered/sorted server-side, so just mark them stale; active
-      // lists refetch in the background, inactive ones on next use.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.corridorLists });
+      syncRealtimeMessageToQueryCache(queryClient, {
+        type: "corridor_update",
+        ...update,
+      });
     },
     [queryClient],
   );
 
   const onAnchorUpdate = useCallback(
-    (update: { anchor_id: string }) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.anchorLists });
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.anchorDetail(update.anchor_id),
+    (update: {
+      anchor_id: string;
+      name?: string;
+      reliability_score?: number;
+      status?: string;
+    }) => {
+      syncRealtimeMessageToQueryCache(queryClient, {
+        type: "anchor_update",
+        ...update,
       });
     },
     [queryClient],

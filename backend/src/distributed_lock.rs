@@ -103,6 +103,10 @@ pub struct DistributedLock {
     backend: Backend,
 }
 
+/// Monotonic fencing token handed to a leader when it acquires a distributed lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FencingToken(pub i64);
+
 /// Proof of lock ownership. Call [`LockGuard::release`] when done; if dropped
 /// without releasing, the lock simply expires after its TTL.
 pub struct LockGuard {
@@ -266,7 +270,7 @@ impl DistributedLock {
         if matches!(self.backend, Backend::SingleInstance) {
             return Ok(0);
         }
-        let mut conn = self.connection().await.map_err(|_| "Redis unavailable")?;
+        let mut conn = self.connection().await.ok_or("Redis unavailable")?;
         let script = redis::Script::new(GET_FENCE_TOKEN_SCRIPT);
         let current: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
         Ok(current)
@@ -280,7 +284,7 @@ impl DistributedLock {
         if matches!(self.backend, Backend::SingleInstance) {
             return Ok(1);
         }
-        let mut conn = self.connection().await.map_err(|_| "Redis unavailable")?;
+        let mut conn = self.connection().await.ok_or("Redis unavailable")?;
         let script = redis::Script::new(INCREMENT_FENCE_TOKEN_SCRIPT);
         let new_val: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
         Ok(new_val)

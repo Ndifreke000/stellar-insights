@@ -150,7 +150,7 @@ impl WebhookDispatcher {
                 None,
                 None,
                 None,
-                &signature,
+                Some(signature.as_str()),
                 &job.event_version,
             )
             .await;
@@ -169,14 +169,15 @@ impl WebhookDispatcher {
         let response = request.send().await?;
 
         // Log delivery result
-        let status = if response.status().is_success() {
+        let resp_status = response.status();
+        let status = if resp_status.is_success() {
             "delivered"
         } else {
             "failed"
         };
 
+        let http_status = resp_status.as_u16().try_into().ok();
         let response_body = response.text().await.ok();
-        let http_status = response.status().as_u16().try_into().ok();
 
         let _ = service
             .create_delivery_log(
@@ -187,13 +188,13 @@ impl WebhookDispatcher {
                 http_status,
                 response_body.as_deref(),
                 None,
-                &signature,
+                Some(signature.as_str()),
                 &job.event_version,
             )
             .await;
 
         // Update event status
-        if response.status().is_success() {
+        if resp_status.is_success() {
             service
                 .update_event_status(&job.event_id, "delivered", None, 0)
                 .await?;
@@ -234,7 +235,7 @@ impl WebhookDispatcher {
                         "pending",
                         Some(&format!(
                             "HTTP {}: {}",
-                            response.status(),
+                            resp_status,
                             response_body.unwrap_or_default()
                         )),
                         current_retries + 1,
@@ -248,7 +249,7 @@ impl WebhookDispatcher {
                         "failed",
                         Some(&format!(
                             "HTTP {}: {}",
-                            response.status(),
+                            resp_status,
                             response_body.unwrap_or_default()
                         )),
                         3,

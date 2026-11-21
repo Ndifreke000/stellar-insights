@@ -6,7 +6,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 // ─── Preference Types ────────────────────────────────────────────────────────
 
 export type CorridorsSortBy = "health_score" | "success_rate" | "liquidity";
-export type CorridorsViewMode = "grid" | "heatmap";
+export type CorridorsViewMode = "grid" | "table" | "heatmap";
 export type CorridorsTimePeriod = "7d" | "30d" | "90d" | "";
 export type Locale = "en" | "es" | "zh";
 

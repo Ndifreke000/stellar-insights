@@ -5,8 +5,19 @@ use crate::api::{
 use crate::auth_middleware::auth_middleware;
 use crate::cache::CacheManager;
 use crate::database::Database;
-use crate::deprecation_middleware::{default_deprecation_map, deprecation_middleware};
 use crate::handlers::job_monitoring;
+use crate::ip_whitelist_middleware::IpWhitelistConfig;
+use crate::middleware::api_versioning::{
+    api_versioning_middleware, ApiVersionPolicy, ApiVersionSummary,
+};
+use crate::middleware::batch_endpoints::{
+    batch_http_handler, BatchDispatcher, BatchHandlerState,
+};
+use crate::middleware::field_selection_parameter::{
+    field_selection_middleware, FieldSelectionParameter,
+};
+use crate::models::batch_endpoints::BatchConfig;
+use crate::models::field_selection_parameter::FieldSelectionConfig;
 use crate::rate_limit::{api_key_rate_limit_middleware, rate_limit_middleware, RateLimiter};
 use crate::rpc::StellarRpcClient;
 use crate::services::account_merge_detector::AccountMergeDetector;
@@ -19,8 +30,6 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
@@ -62,27 +71,8 @@ fn job_monitoring_routes(pool: sqlx::SqlitePool) -> Router {
         .with_state(Arc::new(Database::new(pool)))
 }
 
-#[derive(Serialize)]
-struct ApiVersion {
-    current: String,
-    supported: Vec<String>,
-    deprecated: Vec<String>,
-    sunset_dates: HashMap<String, String>,
-}
-
-async fn get_api_version() -> Json<ApiVersion> {
-    let mut sunset_dates = HashMap::new();
-    // Sunset date is intentionally far-future until v2 is fully implemented.
-    // Update this once v2 reaches feature parity with v1.
-    // See docs/API_V2_COVERAGE_1864.md for the current gap analysis.
-    sunset_dates.insert("v1".to_string(), "2026-12-31T00:00:00Z".to_string());
-
-    Json(ApiVersion {
-        current: "v1".to_string(),
-        supported: vec!["v1".to_string(), "v2".to_string()],
-        deprecated: vec![],
-        sunset_dates,
-    })
+async fn get_api_version() -> Json<ApiVersionSummary> {
+    Json(ApiVersionPolicy::default().version_summary())
 }
 
 async fn v2_not_implemented() -> Json<serde_json::Value> {
@@ -443,6 +433,13 @@ pub fn routes(
     ));
     let auth_routes = crate::api::auth::routes(auth_service.clone());
 
+    let field_selection = Arc::new(FieldSelectionParameter::new(FieldSelectionConfig::default()));
+    let version_policy = Arc::new(ApiVersionPolicy::default());
+    let admin_ip_whitelist = IpWhitelistConfig::from_env().ok().map(Arc::new);
+    let jwt_secret_ext = crate::auth_middleware::JwtSecret(Arc::from(auth_service.jwt_secret()));
+    let revocation_store_ext =
+        crate::auth_middleware::TokenRevocationStore(Arc::new(auth_service.db_pool().clone()));
+
     // V1 router (mounted at /api/v1 and also preserved at root for compatibility)
     let v1_router = Router::new()
         .merge(cached_routes)
@@ -466,6 +463,10 @@ pub fn routes(
         .merge(audit_log_routes)
         .merge(twofa_routes)
         .merge(replay_routes)
+        .layer(middleware::from_fn_with_state(
+            field_selection.clone(),
+            field_selection_middleware,
+        ))
         // auth_middleware (layered on protected_routes, protected_webhook_routes,
         // gdpr_routes, digest_routes, admin_ip_whitelist_routes,
         // audit_log_routes, and the protected half of auth_routes, above)
@@ -475,15 +476,43 @@ pub fn routes(
         // before this -- every one of those "protected" groups would 500
         // (Extension rejection), not 401, on every call. Applied here so
         // one Extension layer covers all of them via the merged router.
-        .layer(axum::Extension(crate::auth_middleware::JwtSecret(
-            Arc::from(auth_service.jwt_secret()),
-        )))
-        .layer(axum::Extension(
-            crate::auth_middleware::TokenRevocationStore(Arc::new(auth_service.db_pool().clone())),
+        .layer(axum::Extension(jwt_secret_ext.clone()))
+        .layer(axum::Extension(revocation_store_ext.clone()))
+        .layer(axum::Extension(rate_limiter.clone()));
+
+    // Sub-router executed for each sub-request inside POST /api/v1/batch.
+    // Built from v1_router WITHOUT the /batch route itself so recursive batch
+    // calls are structurally impossible and every sub-request traverses the
+    // exact same auth, RBAC, versioning, and field-selection middleware stack.
+    let batch_sub_router = Router::new()
+        .nest("/api/v1", v1_router.clone())
+        .nest("/api/v2", v2_routes())
+        .nest("/api", v1_router.clone())
+        .merge(v1_router.clone())
+        .layer(middleware::from_fn_with_state(
+            version_policy.clone(),
+            api_versioning_middleware,
         ));
+
+    let batch_dispatcher = Arc::new(BatchDispatcher::new(
+        BatchConfig::default(),
+        rate_limiter.clone(),
+        field_selection,
+        admin_ip_whitelist,
+    ));
+    let batch_routes = Router::new()
+        .route("/api/v1/batch", post(batch_http_handler))
+        .route("/api/batch", post(batch_http_handler))
+        .with_state(BatchHandlerState {
+            dispatcher: batch_dispatcher,
+            sub_router: batch_sub_router,
+        })
+        .layer(axum::Extension(jwt_secret_ext))
+        .layer(axum::Extension(revocation_store_ext));
 
     // Combine all routes
     Router::new()
+        .merge(batch_routes)
         .nest("/api/v1", v1_router.clone())
         .nest("/api/v2", v2_routes())
         .route("/api/version", get(get_api_version))
@@ -511,12 +540,9 @@ pub fn routes(
         .layer(middleware::from_fn(
             crate::request_id::request_id_middleware,
         ))
-        .layer(middleware::from_fn(
-            crate::api_v1_middleware::version_middleware,
-        ))
         .layer(middleware::from_fn_with_state(
-            default_deprecation_map(),
-            deprecation_middleware,
+            version_policy,
+            api_versioning_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             rate_limiter.clone(),
