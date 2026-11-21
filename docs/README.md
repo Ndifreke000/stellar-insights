@@ -82,6 +82,15 @@ This index covers documentation that is still relevant to understanding or runni
 | [MULTISIG_COORDINATION_SERVICE.md](MULTISIG_COORDINATION_SERVICE.md) | Multisig signature collection and submission (#2854) |
 | [IP_WHITELIST.md](IP_WHITELIST.md) | IP whitelist |
 | [API_REQUEST_SIGNING.md](API_REQUEST_SIGNING.md) | Request signing |
+| [SUPPLY_CHAIN_SECURITY.md](SUPPLY_CHAIN_SECURITY.md) | SBOMs, SLSA provenance, signed images, npm/PyPI provenance (#2848) |
+
+## CI & testing
+
+| Document | What it covers |
+| --- | --- |
+| [CI_PIPELINE.md](CI_PIPELINE.md) | Workflow inventory and consolidation into reusable, path-filtered pipelines (#2849) |
+| [PROPERTY_BASED_TESTING.md](PROPERTY_BASED_TESTING.md) | Aggregation invariants and proptest strategy (#2850) |
+| [MUTATION_TESTING.md](MUTATION_TESTING.md) | cargo-mutants on auth, 2FA, crypto and the contract (#2851) |
 
 ## Contracts & on-chain
 
