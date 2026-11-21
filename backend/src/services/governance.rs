@@ -44,6 +44,37 @@ pub struct ProposalsListResponse {
     pub total: i64,
 }
 
+/// Discrepancy between off-chain database tallies and indexed on-chain events (#2822)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct GovernanceDiscrepancy {
+    pub id: String,
+    pub proposal_id: String,
+    pub db_votes_for: i64,
+    pub chain_votes_for: i64,
+    pub db_votes_against: i64,
+    pub chain_votes_against: i64,
+    pub db_votes_abstain: i64,
+    pub chain_votes_abstain: i64,
+    pub discrepancy_type: String,
+    pub details: Option<String>,
+    pub detected_at: String,
+    pub resolved: bool,
+}
+
+/// Tally reconciliation report comparing DB votes and chain events (#2822)
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ReconciliationReport {
+    pub proposal_id: String,
+    pub db_votes_for: i64,
+    pub db_votes_against: i64,
+    pub db_votes_abstain: i64,
+    pub chain_votes_for: i64,
+    pub chain_votes_against: i64,
+    pub chain_votes_abstain: i64,
+    pub is_reconciled: bool,
+    pub discrepancy_note: Option<String>,
+}
+
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CastVoteRequest {
     pub choice: String,
@@ -512,6 +543,167 @@ impl GovernanceService {
 
         info!("Updated proposal {} status to {}", proposal_id, status);
         Ok(())
+    }
+
+    // ========================================================================
+    // On-Chain Event Indexing & Tally Reconciliation (#2822)
+    // ========================================================================
+
+    /// Index an on-chain vote event into governance_chain_events
+    pub async fn index_chain_vote_event(
+        &self,
+        proposal_id: &str,
+        voter: &str,
+        choice: &str,
+        weight: i64,
+        ledger: i64,
+        tx_hash: Option<&str>,
+    ) -> Result<()> {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r"
+            INSERT INTO governance_chain_events (
+                id, proposal_id, event_type, voter_address, choice, weight, ledger_sequence, tx_hash, recorded_at
+            )
+            VALUES (?, ?, 'vote_cast', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ",
+        )
+        .bind(&id)
+        .bind(proposal_id)
+        .bind(voter)
+        .bind(choice)
+        .bind(weight)
+        .bind(ledger)
+        .bind(tx_hash)
+        .execute(self.db.pool())
+        .await?;
+
+        let _ = self.invalidate_proposal_cache(proposal_id).await;
+        Ok(())
+    }
+
+    /// Compute votes for, against, and abstain directly from indexed chain events
+    pub async fn compute_tallies_from_chain_events(
+        &self,
+        proposal_id: &str,
+    ) -> Result<(i64, i64, i64)> {
+        let rows = sqlx::query(
+            r"
+            SELECT choice, SUM(weight) as total_weight
+            FROM (
+                SELECT voter_address, choice, weight,
+                       ROW_NUMBER() OVER(PARTITION BY voter_address ORDER BY ledger_sequence DESC, recorded_at DESC) as rn
+                FROM governance_chain_events
+                WHERE proposal_id = ? AND event_type = 'vote_cast'
+            ) latest_votes
+            WHERE rn = 1
+            GROUP BY choice
+            ",
+        )
+        .bind(proposal_id)
+        .fetch_all(self.db.pool())
+        .await?;
+
+        let mut votes_for = 0i64;
+        let mut votes_against = 0i64;
+        let mut votes_abstain = 0i64;
+
+        for r in rows {
+            let choice: String = r.get("choice");
+            let weight: i64 = r.get("total_weight");
+            match choice.to_lowercase().as_str() {
+                "for" | "yes" => votes_for += weight,
+                "against" | "no" => votes_against += weight,
+                "abstain" => votes_abstain += weight,
+                _ => {}
+            }
+        }
+
+        Ok((votes_for, votes_against, votes_abstain))
+    }
+
+    /// Reconcile DB vote tallies against on-chain event tallies (#2822)
+    pub async fn reconcile_proposal(&self, proposal_id: &str) -> Result<ReconciliationReport> {
+        let proposal = self.get_proposal(proposal_id).await?;
+        let (chain_for, chain_against, chain_abstain) = self
+            .compute_tallies_from_chain_events(proposal_id)
+            .await?;
+
+        let db_for = proposal.votes_for;
+        let db_against = proposal.votes_against;
+        let db_abstain = proposal.votes_abstain;
+
+        let has_chain_events = chain_for > 0 || chain_against > 0 || chain_abstain > 0;
+        let is_reconciled = if has_chain_events {
+            db_for == chain_for && db_against == chain_against && db_abstain == chain_abstain
+        } else {
+            true // No chain events to conflict with
+        };
+
+        let mut discrepancy_note = None;
+
+        if !is_reconciled {
+            let note = format!(
+                "Tally mismatch for proposal {}: DB (for={}, against={}) vs Chain (for={}, against={})",
+                proposal_id, db_for, db_against, chain_for, chain_against
+            );
+            discrepancy_note = Some(note.clone());
+
+            let disc_id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                r"
+                INSERT INTO governance_reconciliation_discrepancies (
+                    id, proposal_id, db_votes_for, chain_votes_for, db_votes_against, chain_votes_against,
+                    db_votes_abstain, chain_votes_abstain, discrepancy_type, details, detected_at, resolved
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'tally_mismatch', ?, CURRENT_TIMESTAMP, 0)
+                ",
+            )
+            .bind(&disc_id)
+            .bind(proposal_id)
+            .bind(db_for)
+            .bind(chain_for)
+            .bind(db_against)
+            .bind(chain_against)
+            .bind(db_abstain)
+            .bind(chain_abstain)
+            .bind(&note)
+            .execute(self.db.pool())
+            .await?;
+        }
+
+        Ok(ReconciliationReport {
+            proposal_id: proposal_id.to_string(),
+            db_votes_for: db_for,
+            db_votes_against: db_against,
+            db_votes_abstain: db_abstain,
+            chain_votes_for: chain_for,
+            chain_votes_against: chain_against,
+            chain_votes_abstain: chain_abstain,
+            is_reconciled,
+            discrepancy_note,
+        })
+    }
+
+    /// Retrieve reconciliation discrepancies for admin dashboard (#2822)
+    pub async fn get_reconciliation_discrepancies(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<GovernanceDiscrepancy>> {
+        let rows = sqlx::query_as::<_, GovernanceDiscrepancy>(
+            r"
+            SELECT id, proposal_id, db_votes_for, chain_votes_for, db_votes_against, chain_votes_against,
+                   db_votes_abstain, chain_votes_abstain, discrepancy_type, details, detected_at, resolved
+            FROM governance_reconciliation_discrepancies
+            ORDER BY detected_at DESC
+            LIMIT ?
+            ",
+        )
+        .bind(limit)
+        .fetch_all(self.db.pool())
+        .await?;
+
+        Ok(rows)
     }
 }
 

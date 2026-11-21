@@ -629,6 +629,106 @@ pub async fn get_anchors(
     Ok(response)
 }
 
+/// GET /api/anchors/:id/score - Get transparent anchor health score explanation (#2816)
+#[utoipa::path(
+    get,
+    path = "/api/anchors/{id}/score",
+    params(
+        ("id" = String, Path, description = "Anchor UUID")
+    ),
+    responses(
+        (status = 200, description = "Transparent health score explanation", body = AnchorHealthScoreExplanation),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
+pub async fn get_anchor_health_score(
+    State(app_state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<crate::models::AnchorHealthScoreExplanation>> {
+    let explanation = crate::services::anchor_monitor::AnchorMonitor::get_score_explanation_for_db(
+        &app_state.db,
+        &id,
+    )
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    Ok(Json(explanation))
+}
+
+/// GET /api/anchors/:id/settlement-stages - Get end-to-end settlement stage latencies (#2814)
+#[utoipa::path(
+    get,
+    path = "/api/anchors/{id}/settlement-stages",
+    params(
+        ("id" = String, Path, description = "Anchor UUID")
+    ),
+    responses(
+        (status = 200, description = "Stage latency statistics retrieved successfully", body = AnchorSettlementStagesResponse),
+        (status = 404, description = "Anchor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Anchors"
+)]
+pub async fn get_anchor_settlement_stages(
+    State(app_state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<crate::models::AnchorSettlementStagesResponse>> {
+    let stages = crate::services::anchor_monitor::AnchorMonitor::get_settlement_stages_for_db(
+        &app_state.db,
+        &id,
+    )
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    Ok(Json(stages))
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct ValidateTomlRequest {
+    pub content: String,
+}
+
+/// POST /api/toml/validate - Validate raw stellar.toml text (#2818)
+#[utoipa::path(
+    post,
+    path = "/api/toml/validate",
+    request_body = ValidateTomlRequest,
+    responses(
+        (status = 200, description = "Validation report", body = TomlValidationReport)
+    ),
+    tag = "StellarToml"
+)]
+pub async fn validate_toml_content(
+    Json(payload): Json<ValidateTomlRequest>,
+) -> ApiResult<Json<crate::services::stellar_toml::TomlValidationReport>> {
+    let report = crate::services::stellar_toml::validate_sep1_content(&payload.content);
+    Ok(Json(report))
+}
+
+/// GET /api/toml/validate/{domain} - Fetch and validate stellar.toml for a domain (#2818)
+#[utoipa::path(
+    get,
+    path = "/api/toml/validate/{domain}",
+    params(
+        ("domain" = String, Path, description = "Home domain of anchor/organization")
+    ),
+    responses(
+        (status = 200, description = "Validation report", body = TomlValidationReport),
+        (status = 500, description = "Validation or network error")
+    ),
+    tag = "StellarToml"
+)]
+pub async fn validate_toml_domain(
+    Path(domain): Path<String>,
+) -> ApiResult<Json<crate::services::stellar_toml::TomlValidationReport>> {
+    let report = crate::services::stellar_toml::validate_domain_toml(&domain)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    Ok(Json(report))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -20,7 +20,8 @@ use crate::auth::sep10_simple::Sep10Service;
 use crate::auth::{sep10_auth_middleware, Sep10User};
 use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::services::governance::{
-    AddCommentRequest, CastVoteRequest, CreateProposalRequest, GovernanceService,
+    AddCommentRequest, CastVoteRequest, CreateProposalRequest, GovernanceDiscrepancy,
+    GovernanceService, ReconciliationReport,
 };
 
 pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>) -> Router {
@@ -37,6 +38,8 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
         ))
         // Public routes
         .route("/proposals", get(list_proposals))
+        .route("/proposals/reconciliation", get(get_reconciliation_discrepancies))
+        .route("/proposals/{id}/reconcile", post(reconcile_proposal))
         .route("/proposals/{id}", get(get_proposal))
         .route("/proposals/{id}/votes", get(get_votes))
         .route("/proposals/{id}/comments", get(get_comments))
@@ -401,6 +404,59 @@ async fn get_comments(
         .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DiscrepancyQuery {
+    pub limit: Option<i64>,
+}
+
+/// GET /api/governance/proposals/reconciliation - Get governance vote tally discrepancies (#2822)
+#[utoipa::path(
+    get,
+    path = "/api/governance/proposals/reconciliation",
+    params(
+        ("limit" = Option<i64>, Query, description = "Maximum results (1-100, default 50)")
+    ),
+    responses(
+        (status = 200, description = "List of reconciliation discrepancies", body = Vec<GovernanceDiscrepancy>)
+    ),
+    tag = "Governance"
+)]
+async fn get_reconciliation_discrepancies(
+    State(service): State<Arc<GovernanceService>>,
+    Query(query): Query<DiscrepancyQuery>,
+) -> Result<Response, GovernanceError> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let discrepancies = service
+        .get_reconciliation_discrepancies(limit)
+        .await
+        .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
+    Ok((StatusCode::OK, Json(discrepancies)).into_response())
+}
+
+/// POST /api/governance/proposals/:id/reconcile - Reconcile proposal database tallies against indexed chain events (#2822)
+#[utoipa::path(
+    post,
+    path = "/api/governance/proposals/{id}/reconcile",
+    params(
+        ("id" = String, Path, description = "Proposal ID")
+    ),
+    responses(
+        (status = 200, description = "Reconciliation report", body = ReconciliationReport),
+        (status = 404, description = "Proposal not found")
+    ),
+    tag = "Governance"
+)]
+async fn reconcile_proposal(
+    State(service): State<Arc<GovernanceService>>,
+    Path(id): Path<String>,
+) -> Result<Response, GovernanceError> {
+    let report = service
+        .reconcile_proposal(&id)
+        .await
+        .map_err(|e| GovernanceError::DatabaseError(e.to_string()))?;
+    Ok((StatusCode::OK, Json(report)).into_response())
 }
 
 #[derive(Debug)]
