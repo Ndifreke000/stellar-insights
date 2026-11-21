@@ -27,6 +27,9 @@ This index covers documentation that is still relevant to understanding or runni
 | [backend-modules.md](backend-modules.md) | Backend module map |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Top-level directory layout |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Key dependencies and why they were chosen |
+| [REACT_SDK_SSR_SUSPENSE.md](REACT_SDK_SSR_SUSPENSE.md) | Proposed: React SDK server rendering, Suspense and hydration (#2844) |
+| [MOBILE_OFFLINE_SYNC.md](MOBILE_OFFLINE_SYNC.md) | Proposed: offline watchlist sync and conflict resolution (#2846) |
+| [PUSH_NOTIFICATION_PIPELINE.md](PUSH_NOTIFICATION_PIPELINE.md) | Proposed: push outbox, delivery receipts, token pruning (#2847) |
 
 ## Operations & infrastructure
 
@@ -67,6 +70,7 @@ This index covers documentation that is still relevant to understanding or runni
 | [security/ARCHITECTURE.md](security/ARCHITECTURE.md) | Security architecture |
 | [security/THREAT_MODEL.md](security/THREAT_MODEL.md) | Threat model |
 | [security/KNOWN_GAPS.md](security/KNOWN_GAPS.md) | Known security gaps |
+| [security/MOBILE_SEP10_KEY_STORAGE.md](security/MOBILE_SEP10_KEY_STORAGE.md) | Proposed: mobile SEP-10 key custody, biometric-gated signing, threat model (#2845) |
 | [security/SECURITY_TESTING_SCOPE.md](security/SECURITY_TESTING_SCOPE.md) | Security testing scope |
 | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) | Secrets management |
 | [AUDIT_LOG.md](AUDIT_LOG.md) | Audit logging |
