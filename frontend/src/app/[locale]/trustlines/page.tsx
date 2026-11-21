@@ -15,9 +15,11 @@ import {
   TrustlineStat,
   TrustlineSnapshot,
   TrustlineMetrics,
+  TrustlineCohortMatrix,
   fetchTrustlineStats,
   fetchTrustlineRankings,
   fetchTrustlineHistory,
+  fetchTrustlineCohorts,
 } from "@/lib/trustline-api";
 import { logger } from "@/lib/logger";
 
@@ -28,6 +30,7 @@ export default function TrustlinesPage() {
     null,
   );
   const [history, setHistory] = useState<TrustlineSnapshot[]>([]);
+  const [cohorts, setCohorts] = useState<TrustlineCohortMatrix | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,11 +48,12 @@ export default function TrustlinesPage() {
         if (rankingsData.length > 0) {
           const topAsset = rankingsData[0];
           setSelectedAsset(topAsset);
-          const historyData = await fetchTrustlineHistory(
-            topAsset.asset_code,
-            topAsset.asset_issuer,
-          );
+          const [historyData, cohortData] = await Promise.all([
+            fetchTrustlineHistory(topAsset.asset_code, topAsset.asset_issuer),
+            fetchTrustlineCohorts(topAsset.asset_code, topAsset.asset_issuer),
+          ]);
           setHistory(historyData);
+          setCohorts(cohortData);
         }
       } catch (error) {
         logger.error("Error loading trustline data:", error);
@@ -63,11 +67,12 @@ export default function TrustlinesPage() {
 
   const handleSelectAsset = async (asset: TrustlineStat) => {
     setSelectedAsset(asset);
-    const historyData = await fetchTrustlineHistory(
-      asset.asset_code,
-      asset.asset_issuer,
-    );
+    const [historyData, cohortData] = await Promise.all([
+      fetchTrustlineHistory(asset.asset_code, asset.asset_issuer),
+      fetchTrustlineCohorts(asset.asset_code, asset.asset_issuer),
+    ]);
     setHistory(historyData);
+    setCohorts(cohortData);
   };
 
   const formatNumber = (value: number) => {
@@ -308,6 +313,67 @@ export default function TrustlinesPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Cohort Retention & Churn (#2819) */}
+              {cohorts && cohorts.cohorts.length > 0 && (
+                <div className="glass-card rounded-2xl p-6 border border-border/50">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold uppercase tracking-wider">
+                        Cohort Retention & Churn
+                      </h3>
+                      <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
+                        Weekly cohorts tracked: {cohorts.total_tracked_accounts} accounts ({cohorts.spam_accounts_excluded} spam excluded)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-xs font-mono">
+                      <thead>
+                        <tr className="border-b border-border/50 text-muted-foreground">
+                          <th className="text-left pb-2 font-medium">Cohort</th>
+                          <th className="text-center pb-2 font-medium">Size</th>
+                          <th className="text-center pb-2 font-medium">W+0</th>
+                          <th className="text-center pb-2 font-medium">W+1</th>
+                          <th className="text-center pb-2 font-medium">W+2</th>
+                          <th className="text-center pb-2 font-medium">W+3</th>
+                          <th className="text-center pb-2 font-medium">W+4</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/20">
+                        {cohorts.cohorts.map((c) => (
+                          <tr key={c.cohort_week} className="hover:bg-white/5 transition-colors">
+                            <td className="py-2.5 font-bold text-accent">{c.cohort_week}</td>
+                            <td className="py-2.5 text-center text-muted-foreground">{c.cohort_size}</td>
+                            {[0, 1, 2, 3, 4].map((wk) => {
+                              const ret = c.retention.find((r) => r.week_number === wk);
+                              if (!ret) {
+                                return (
+                                  <td key={wk} className="py-2.5 text-center text-muted-foreground/40">
+                                    -
+                                  </td>
+                                );
+                              }
+                              const isHealthy = ret.retention_rate >= 70;
+                              return (
+                                <td
+                                  key={wk}
+                                  className={`py-2.5 text-center font-semibold ${
+                                    isHealthy ? "text-emerald-400" : "text-amber-400"
+                                  }`}
+                                >
+                                  {ret.retention_rate.toFixed(0)}%
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="glass-card rounded-2xl p-6 border border-border/50 flex flex-col items-center justify-center h-full">

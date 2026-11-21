@@ -50,6 +50,28 @@ async fn setup_trustline_test_db() -> SqlitePool {
     .await
     .unwrap();
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS trustline_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id TEXT NOT NULL,
+            asset_code TEXT NOT NULL,
+            asset_issuer TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            balance REAL NOT NULL DEFAULT 0.0,
+            recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS trustline_spam_accounts (
+            account_id TEXT PRIMARY KEY,
+            reason TEXT NOT NULL,
+            flagged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
 }
 
@@ -96,4 +118,101 @@ async fn test_trustlines_snapshots() {
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].asset_code, asset.asset_code);
     assert_eq!(history[0].total_trustlines, asset.total_trustlines);
+}
+
+#[tokio::test]
+async fn test_trustlines_cohort_retention_and_spam() {
+    use chrono::{Duration, Utc};
+
+    let pool = setup_trustline_test_db().await;
+    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let analyzer = TrustlineAnalyzer::new(pool.clone(), rpc_client);
+
+    let asset_code = "USDC";
+    let asset_issuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+    let now = Utc::now();
+    let three_weeks_ago = now - Duration::days(21);
+    let two_weeks_ago = now - Duration::days(14);
+    let one_week_ago = now - Duration::days(7);
+
+    // Account 1: Created 3 weeks ago, maintains balance
+    analyzer
+        .record_event(
+            "GB_ACCT_1",
+            asset_code,
+            asset_issuer,
+            "create",
+            100.0,
+            Some(three_weeks_ago),
+        )
+        .await
+        .unwrap();
+
+    // Account 2: Created 3 weeks ago, removed 1 week ago (churn)
+    analyzer
+        .record_event(
+            "GB_ACCT_2",
+            asset_code,
+            asset_issuer,
+            "create",
+            50.0,
+            Some(three_weeks_ago),
+        )
+        .await
+        .unwrap();
+    analyzer
+        .record_event(
+            "GB_ACCT_2",
+            asset_code,
+            asset_issuer,
+            "remove",
+            0.0,
+            Some(one_week_ago),
+        )
+        .await
+        .unwrap();
+
+    // Account 3: Spam account created 3 weeks ago
+    analyzer
+        .record_event(
+            "GB_SPAM_3",
+            asset_code,
+            asset_issuer,
+            "create",
+            10.0,
+            Some(three_weeks_ago),
+        )
+        .await
+        .unwrap();
+    analyzer
+        .flag_spam_account("GB_SPAM_3", "Known airdrop bot")
+        .await
+        .unwrap();
+    assert!(analyzer.is_spam_account("GB_SPAM_3").await.unwrap());
+
+    // Account 4: Created 2 weeks ago
+    analyzer
+        .record_event(
+            "GB_ACCT_4",
+            asset_code,
+            asset_issuer,
+            "create",
+            200.0,
+            Some(two_weeks_ago),
+        )
+        .await
+        .unwrap();
+
+    // Compute cohort retention matrix
+    let matrix = analyzer
+        .get_cohort_retention(asset_code, asset_issuer, 12)
+        .await
+        .unwrap();
+
+    assert_eq!(matrix.asset_code, asset_code);
+    assert_eq!(matrix.asset_issuer, asset_issuer);
+    // 3 non-spam accounts tracked
+    assert_eq!(matrix.total_tracked_accounts, 3);
+    assert_eq!(matrix.spam_accounts_excluded, 1);
+    assert!(!matrix.cohorts.is_empty());
 }

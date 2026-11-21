@@ -50,6 +50,15 @@ pub struct PriceResponse {
     /// Whether the oracle data is stale (>15 min since last update)
     #[schema(example = false)]
     pub stale: bool,
+    /// Confidence score from multi-source aggregation (0.0 to 1.0)
+    #[schema(example = 1.0)]
+    pub price_confidence: f64,
+    /// Confidence category: high, medium, low, stale
+    #[schema(example = "high")]
+    pub confidence_level: String,
+    /// Price sources that contributed to the median
+    #[schema(example = "[\"CoinGecko\", \"DexVwap\", \"ReflectorOracle\"]")]
+    pub sources: Vec<String>,
     /// Timestamp of the response
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
@@ -61,6 +70,11 @@ pub struct PricesResponse {
     pub prices: std::collections::HashMap<String, f64>,
     /// Whether any of the oracle data is stale
     pub stale: bool,
+    /// Confidence category for aggregate
+    #[schema(example = "high")]
+    pub confidence_level: String,
+    /// Price sources that contributed
+    pub sources: Vec<String>,
     /// Timestamp of the response
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub timestamp: String,
@@ -123,9 +137,9 @@ pub async fn get_price(
     State(price_feed): State<Arc<PriceFeedClient>>,
     Query(params): Query<GetPriceQuery>,
 ) -> impl IntoResponse {
-    match price_feed.get_price_with_staleness(&params.asset).await {
-        Ok((price, stale)) => {
-            if stale {
+    match price_feed.get_aggregated_price(&params.asset).await {
+        Ok(agg) => {
+            if agg.is_stale {
                 PRICE_FEED_STALE_ASSETS
                     .with_label_values(&[&params.asset])
                     .set(1);
@@ -136,8 +150,11 @@ pub async fn get_price(
             }
             let response = PriceResponse {
                 asset: params.asset,
-                price_usd: price,
-                stale,
+                price_usd: agg.price,
+                stale: agg.is_stale,
+                price_confidence: agg.confidence,
+                confidence_level: agg.confidence_level,
+                sources: agg.contributing_sources,
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
             (StatusCode::OK, Json(response)).into_response()
@@ -155,7 +172,7 @@ pub async fn get_price(
 ///
 /// Returns the current USD prices for multiple Stellar assets.
 ///
-/// **DATA SOURCE: `CoinGecko` API**
+/// **DATA SOURCE: Multi-source aggregated median (CoinGecko, DEX VWAP, Reflector)**
 #[utoipa::path(
     get,
     path = "/api/prices/batch",
@@ -195,9 +212,22 @@ pub async fn get_prices(
             .set(if is_stale { 1 } else { 0 });
     }
 
+    let has_stale = !stale.is_empty();
+    let confidence_level = if has_stale {
+        "stale".to_string()
+    } else {
+        "high".to_string()
+    };
+
     let response = PricesResponse {
         prices,
-        stale: !stale.is_empty(),
+        stale: has_stale,
+        confidence_level,
+        sources: vec![
+            "CoinGecko".to_string(),
+            "DexVwap".to_string(),
+            "ReflectorOracle".to_string(),
+        ],
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 

@@ -56,6 +56,30 @@ export interface PoolDetailResponse {
   snapshots: PoolSnapshot[];
 }
 
+export interface LpSnapshotReturn {
+  snapshot_at: string;
+  fee_apr: number;
+  impermanent_loss_pct: number;
+  net_apr: number;
+  cumulative_fees_usd: number;
+}
+
+export interface LpReturnsAnalytics {
+  pool_id: string;
+  fee_apr: number;
+  impermanent_loss_pct: number;
+  net_apr: number;
+  fee_income_24h_usd: number;
+  fee_income_7d_usd: number;
+  fee_income_30d_usd: number;
+  price_source: string;
+  initial_price_ratio: number;
+  current_price_ratio: number;
+  hodl_value_usd: number;
+  pool_value_usd: number;
+  historical_returns: LpSnapshotReturn[];
+}
+
 import { config } from '@/config';
 const API_BASE = config.apiUrl;
 
@@ -179,6 +203,15 @@ export async function fetchPoolDetail(
   return safeFetch(
     `${API_BASE}/api/liquidity-pools/${poolId}`,
     getMockPoolDetail(poolId),
+  );
+}
+
+export async function fetchLpAnalytics(
+  poolId: string,
+): Promise<LpReturnsAnalytics | null> {
+  return safeFetch<LpReturnsAnalytics | null>(
+    `${API_BASE}/api/liquidity-pools/${encodeURIComponent(poolId)}/analytics`,
+    null,
   );
 }
 
