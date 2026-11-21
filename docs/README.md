@@ -55,6 +55,7 @@ This index covers documentation that is still relevant to understanding or runni
 | [API_SLOS.md](API_SLOS.md) | API SLOs |
 | [SLOs_AND_ALERTING.md](SLOs_AND_ALERTING.md) | SLOs and alerting rules |
 | [DEPLOYMENT_SLOS_AND_ALERTING.md](DEPLOYMENT_SLOS_AND_ALERTING.md) | Deployment-level SLOs |
+| [CORRIDOR_ALERT_RULES_ENGINE.md](CORRIDOR_ALERT_RULES_ENGINE.md) | Composable corridor alert rules and backtesting (#2855) |
 | [APM_INTEGRATION.md](APM_INTEGRATION.md) | APM integration |
 | [SENTRY_INTEGRATION.md](SENTRY_INTEGRATION.md) | Sentry error tracking |
 | [ELK_LOG_AGGREGATION.md](ELK_LOG_AGGREGATION.md) | ELK log aggregation |
@@ -76,6 +77,9 @@ This index covers documentation that is still relevant to understanding or runni
 | [AUDIT_LOG.md](AUDIT_LOG.md) | Audit logging |
 | [SESSION_MANAGEMENT.md](SESSION_MANAGEMENT.md) | Session management |
 | [TWO_FACTOR_AUTHENTICATION.md](TWO_FACTOR_AUTHENTICATION.md) | 2FA implementation |
+| [2FA_WEBAUTHN_AND_RECOVERY_CODES.md](2FA_WEBAUTHN_AND_RECOVERY_CODES.md) | WebAuthn/passkeys, recovery codes, admin 2FA (#2852) |
+| [OAUTH_PKCE_STATE_AND_ACCOUNT_LINKING.md](OAUTH_PKCE_STATE_AND_ACCOUNT_LINKING.md) | OAuth PKCE, state binding, account linking (#2853) |
+| [MULTISIG_COORDINATION_SERVICE.md](MULTISIG_COORDINATION_SERVICE.md) | Multisig signature collection and submission (#2854) |
 | [IP_WHITELIST.md](IP_WHITELIST.md) | IP whitelist |
 | [API_REQUEST_SIGNING.md](API_REQUEST_SIGNING.md) | Request signing |
 
