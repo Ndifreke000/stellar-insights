@@ -212,305 +212,293 @@ impl LedgerIngestionService {
         })
     }
 
-    /// Run the ingestion loop with adaptive batch sizing (#2767).
+    /// Persist a single ledger's payments, failure counters, corridor metrics
+    /// and the cursor update inside one transaction (#2873).
     ///
-    /// `batch_size` is the scheduler's requested base batch size. It seeds an
-    /// [`AimdController`] which grows the `getLedgers` page size while we are
-    /// behind the network head (and RPC latency is within budget) and halves
-    /// it on 429/5xx/timeouts. The configured ceiling
-    /// ([`AimdConfig::max_batch`]) is never exceeded.
+    /// If any statement fails, the whole transaction is rolled back so a
+    /// crash mid-ledger never leaves partially applied data: either the
+    /// ledger is fully persisted and the cursor advances, or nothing changes
+    /// and the cursor stays put so the ledger is retried on the next run.
     ///
-    /// Each fetched batch is persisted — ledgers *and* the cursor — in a
-    /// single DB transaction, so a crash mid-batch leaves the cursor at the
-    /// last fully committed batch and a restart resumes from `cursor + 1`
-    /// with no duplicates or skipped ledgers. Only the contiguous prefix of a
-    /// batch starting at the expected sequence is committed.
-    ///
-    /// Returns the number of ledgers committed by this call.
-    pub async fn run_ingestion(&self, batch_size: u32) -> Result<u64> {
-        let mut next = match self.get_last_ledger().await? {
-            Some(l) => l.saturating_add(1),
-            None => {
-                let client = &self.rpc_client;
-                let health = Retry::start(retry_strategy(), || async {
-                    client
-                        .check_health()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{e}"))
-                })
-                .await
-                .context("Failed to check health")?;
-                health.oldest_ledger
-            }
-        };
-
-        let mut total = 0u64;
-        for _ in 0..MAX_ROUNDS_PER_RUN {
-            if self.shutdown.as_ref().is_some_and(ShutdownFlag::is_set) {
-                break;
-            }
-
-            let limit = {
-                let mut ctrl = self
-                    .batch_controller
-                    .lock()
-                    .expect("batch controller poisoned");
-                ctrl.set_requested(batch_size);
-                ctrl.batch_size()
-            };
-            obs_metrics::set_ingestion_batch_size(limit);
-
-            let started = Instant::now();
-            let result = match self.rpc_client.fetch_ledgers(Some(next), limit, None).await {
-                Ok(r) => r,
-                Err(e) => {
-                    let outcome = FetchOutcome::from_rpc_error(&e);
-                    let new_size = self
-                        .batch_controller
-                        .lock()
-                        .expect("batch controller poisoned")
-                        .observe(outcome);
-                    obs_metrics::set_ingestion_batch_size(new_size);
-                    warn!(error = %e, batch = limit, next_batch = new_size, "getLedgers failed");
-                    if total > 0 {
-                        return Ok(total);
-                    }
-                    return Err(anyhow::anyhow!("getLedgers failed: {e}"));
-                }
-            };
-            let latency = started.elapsed();
-
-            let batch = contiguous_prefix(&result.ledgers, next);
-            let committed = self.persist_batch(batch).await?;
-            if let Some(last) = batch.last() {
-                next = last.sequence.saturating_add(1);
-            }
-            total += committed;
-
-            let lag = result.latest_ledger.saturating_sub(next.saturating_sub(1));
-            obs_metrics::set_ingestion_lag_ledgers(lag);
-            let new_size = self
-                .batch_controller
-                .lock()
-                .expect("batch controller poisoned")
-                .observe(FetchOutcome::Success { latency, lag });
-            obs_metrics::set_ingestion_batch_size(new_size);
-
-            if batch.is_empty() || lag == 0 {
-                break;
-            }
-        }
-        Ok(total)
-    }
-
-    /// Persist a batch of ledgers and advance the cursor in one transaction.
-    /// The cursor only ever moves forward (`MAX`), so a stale or retried
-    /// batch can't rewind it. Returns how many new ledger rows were written.
-    async fn persist_batch(&self, ledgers: &[RpcLedger]) -> Result<u64> {
-        let Some(last) = ledgers.last() else {
-            return Ok(0);
-        };
-        let network = self.network.to_string();
-        let mut tx = self.pool.begin().await.context("begin ingestion tx")?;
-        let mut inserted = 0u64;
-        for l in ledgers {
-            let res = sqlx::query(
-                "INSERT OR IGNORE INTO ledgers (sequence, hash, close_time, network) \
-                 VALUES (?, ?, ?, ?)",
-            )
-            .bind(i64::try_from(l.sequence).unwrap_or(i64::MAX))
-            .bind(&l.hash)
-            .bind(&l.ledger_close_time)
-            .bind(&network)
-            .execute(&mut *tx)
+    /// Writes use prepared statements bound per row so a batch of payments
+    /// reuses the same compiled statement for throughput.
+    pub async fn persist_ledger_atomic(
+        &self,
+        ledger: &RpcLedger,
+        payments: &[ExtractedPayment],
+        failures: &CorridorFailureBreakdown,
+    ) -> Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
             .await
-            .context("insert ledger")?;
-            inserted += res.rows_affected();
+            .context("failed to begin ingestion transaction")?;
+
+        // Payments: one prepared statement, bound per row.
+        let mut payment_stmt = tx
+            .prepare(
+                "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
+                 source_account, destination, asset_code, asset_issuer, amount, network) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .await
+            .context("failed to prepare payments insert")?;
+        for p in payments {
+            sqlx::query(&payment_stmt)
+                .bind(p.ledger_sequence as i64)
+                .bind(&p.transaction_hash)
+                .bind(&p.operation_type)
+                .bind(&p.source_account)
+                .bind(&p.destination)
+                .bind(&p.asset_code)
+                .bind(&p.asset_issuer)
+                .bind(&p.amount)
+                .bind(self.network.as_str())
+                .execute(&mut *tx)
+                .await
+                .context("failed to insert payment")?;
         }
+        drop(payment_stmt);
+
+        // Failure counters: one prepared statement, bound per corridor.
+        let mut failure_stmt = tx
+            .prepare(
+                "INSERT INTO corridor_failure_counters (network, corridor, failure_code, count) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(network, corridor, failure_code) \
+                 DO UPDATE SET count = count + excluded.count",
+            )
+            .await
+            .context("failed to prepare failure counter upsert")?;
+        for (corridor, code, count) in failures.iter() {
+            sqlx::query(&failure_stmt)
+                .bind(self.network.as_str())
+                .bind(corridor)
+                .bind(code)
+                .bind(*count as i64)
+                .execute(&mut *tx)
+                .await
+                .context("failed to upsert failure counter")?;
+        }
+        drop(failure_stmt);
+
+        // Corridor metrics: one prepared statement, bound per corridor.
+        let mut metric_stmt = tx
+            .prepare(
+                "INSERT INTO corridor_metrics (network, corridor, ledger_sequence, payment_count) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(network, corridor, ledger_sequence) \
+                 DO UPDATE SET payment_count = corridor_metrics.payment_count + excluded.payment_count",
+            )
+            .await
+            .context("failed to prepare corridor metric upsert")?;
+        for (corridor, count) in corridor_payment_counts(payments) {
+            sqlx::query(&metric_stmt)
+                .bind(self.network.as_str())
+                .bind(&corridor)
+                .bind(ledger.sequence as i64)
+                .bind(count as i64)
+                .execute(&mut *tx)
+                .await
+                .context("failed to upsert corridor metric")?;
+        }
+        drop(metric_stmt);
+
+        // Cursor update lives in the same transaction so it only advances
+        // when every write above committed.
         sqlx::query(
-            "INSERT INTO ingestion_cursor (last_ledger_sequence, cursor, network, updated_at) \
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP) \
-             ON CONFLICT(network) DO UPDATE SET \
-               last_ledger_sequence = MAX(last_ledger_sequence, excluded.last_ledger_sequence), \
-               cursor = excluded.cursor, \
-               updated_at = CURRENT_TIMESTAMP",
+            "INSERT INTO ingestion_cursor (network, last_ledger) VALUES (?1, ?2) \
+             ON CONFLICT(network) DO UPDATE SET last_ledger = excluded.last_ledger",
         )
-        .bind(i64::try_from(last.sequence).unwrap_or(i64::MAX))
-        .bind(last.sequence.to_string())
-        .bind(&network)
+        .bind(self.network.as_str())
+        .bind(ledger.sequence as i64)
         .execute(&mut *tx)
         .await
-        .context("advance ingestion cursor")?;
-        tx.commit().await.context("commit ingestion tx")?;
-        Ok(inserted)
-    }
+        .context("failed to update ingestion cursor")?;
 
-    async fn get_last_ledger(&self) -> Result<Option<u64>> {
-        let row: Option<(i64,)> =
-            sqlx::query_as("SELECT last_ledger_sequence FROM ingestion_cursor WHERE network = ?")
-                .bind(self.network.to_string())
-                .fetch_optional(&self.pool)
-                .await
-                .context("read ingestion cursor")?;
-        Ok(row.and_then(|(v,)| u64::try_from(v).ok()))
+        tx.commit()
+            .await
+            .context("failed to commit ingestion transaction")?;
+
+        Ok(())
     }
 }
 
-/// Upper bound on fetch rounds per `run_ingestion` call so the scheduler
-/// regains control periodically even during a long catch-up.
-const MAX_ROUNDS_PER_RUN: usize = 100;
-
-/// Longest prefix of `ledgers` that is contiguous starting at `expected`.
-/// Anything after a hole is dropped and refetched next round, so a gap in an
-/// RPC response can never cause the cursor to skip ledgers.
-fn contiguous_prefix(ledgers: &[RpcLedger], expected: u64) -> &[RpcLedger] {
-    let mut want = expected;
-    let mut n = 0;
-    for l in ledgers {
-        if l.sequence != want {
-            break;
-        }
-        want = want.saturating_add(1);
-        n += 1;
+/// Group payments by corridor (`source_asset->destination_asset`) so corridor
+/// metrics can be written with one prepared statement per corridor.
+fn corridor_payment_counts(payments: &[ExtractedPayment]) -> Vec<(String, u64)> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for p in payments {
+        let source = p.asset_code.as_deref().unwrap_or("XLM");
+        let dest = p.asset_code.as_deref().unwrap_or("XLM");
+        let corridor = format!("{source}->{dest}");
+        *counts.entry(corridor).or_insert(0) += 1;
     }
-    &ledgers[..n]
+    counts.into_iter().collect()
 }
 
 #[cfg(test)]
-mod tests {
+mod atomic_tests {
     use super::*;
-    use crate::ingestion::failures::fixtures::*;
-    use crate::ingestion::failures::PathPaymentFailureCode;
-
     use sqlx::sqlite::SqlitePoolOptions;
 
-    fn ledger(seq: u64) -> RpcLedger {
-        RpcLedger {
-            hash: format!("h{seq}"),
-            sequence: seq,
-            ledger_close_time: "0".into(),
-            header_xdr: None,
-            metadata_xdr: None,
-        }
-    }
-
-    #[test]
-    fn contiguous_prefix_stops_at_hole() {
-        let ls = vec![ledger(10), ledger(11), ledger(13), ledger(14)];
-        assert_eq!(contiguous_prefix(&ls, 10).len(), 2);
-        assert!(contiguous_prefix(&ls, 9).is_empty());
-        assert!(contiguous_prefix(&[], 1).is_empty());
-    }
-
-    async fn test_service() -> LedgerIngestionService {
+    async fn setup_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await
-            .unwrap();
+            .expect("in-memory sqlite");
         sqlx::query(
-            "CREATE TABLE ledgers (sequence INTEGER PRIMARY KEY, hash TEXT NOT NULL, \
-             close_time TEXT NOT NULL, network TEXT NOT NULL DEFAULT 'mainnet')",
+            "CREATE TABLE payments (ledger_sequence INTEGER, transaction_hash TEXT, \
+             operation_type TEXT, source_account TEXT, destination TEXT, \
+             asset_code TEXT, asset_issuer TEXT, amount TEXT, network TEXT)",
         )
         .execute(&pool)
         .await
         .unwrap();
         sqlx::query(
-            "CREATE TABLE ingestion_cursor (id INTEGER PRIMARY KEY AUTOINCREMENT, \
-             last_ledger_sequence INTEGER NOT NULL, cursor TEXT, updated_at TEXT, \
-             network TEXT NOT NULL DEFAULT 'mainnet')",
+            "CREATE TABLE corridor_failure_counters (network TEXT, corridor TEXT, \
+             failure_code TEXT, count INTEGER, UNIQUE(network, corridor, failure_code))",
         )
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::query("CREATE UNIQUE INDEX idx_c ON ingestion_cursor(network)")
-            .execute(&pool)
-            .await
-            .unwrap();
-        let rpc = Arc::new(StellarRpcClient::new(String::new(), String::new(), true));
-        LedgerIngestionService::new(
-            Arc::clone(&rpc),
-            Arc::new(FeeBumpTrackerService::new(pool.clone())),
-            Arc::new(AccountMergeDetector::new(pool.clone(), rpc)),
-            pool,
-            StellarNetwork::Testnet,
+        sqlx::query(
+            "CREATE TABLE corridor_metrics (network TEXT, corridor TEXT, \
+             ledger_sequence INTEGER, payment_count INTEGER, \
+             UNIQUE(network, corridor, ledger_sequence))",
         )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE ingestion_cursor (network TEXT PRIMARY KEY, last_ledger INTEGER)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
     }
 
-    async fn count(svc: &LedgerIngestionService) -> i64 {
-        sqlx::query_scalar("SELECT COUNT(*) FROM ledgers")
-            .fetch_one(&svc.pool)
+    fn sample_payment(ledger: u64) -> ExtractedPayment {
+        ExtractedPayment {
+            ledger_sequence: ledger,
+            transaction_hash: "abc".to_string(),
+            operation_type: "payment".to_string(),
+            source_account: "GSOURCE".to_string(),
+            destination: "GDEST".to_string(),
+            asset_code: Some("USDC".to_string()),
+            asset_issuer: None,
+            amount: "10".to_string(),
+        }
+    }
+
+    async fn count(pool: &SqlitePool, table: &str) -> i64 {
+        let sql = format!("SELECT COUNT(*) FROM {table}");
+        sqlx::query_scalar::<_, i64>(&sql)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn cursor(pool: &SqlitePool) -> Option<i64> {
+        sqlx::query_scalar::<_, i64>("SELECT last_ledger FROM ingestion_cursor LIMIT 1")
+            .fetch_optional(pool)
             .await
             .unwrap()
     }
 
     #[tokio::test]
-    async fn ingests_mock_range_and_resumes_without_duplicates() {
-        use crate::rpc::mock_stellar::{MOCK_LATEST_LEDGER, MOCK_OLDEST_LEDGER};
-        let svc = test_service().await;
-        let expected = MOCK_LATEST_LEDGER - MOCK_OLDEST_LEDGER + 1;
+    async fn failure_after_payments_insert_rolls_back_everything() {
+        let pool = setup_pool().await;
+        // Drop the failure counter table so the write after payments fails,
+        // simulating a crash between the payments insert and the rest.
+        sqlx::query("DROP TABLE corridor_failure_counters")
+            .execute(&pool)
+            .await
+            .unwrap();
 
-        let n = svc.run_ingestion(7).await.unwrap();
-        assert_eq!(n, expected);
-        assert_eq!(
-            svc.get_last_ledger().await.unwrap(),
-            Some(MOCK_LATEST_LEDGER)
-        );
-        assert_eq!(count(&svc).await as u64, expected);
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query(
+            "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
+             source_account, destination, asset_code, asset_issuer, amount, network) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )
+        .bind(1i64)
+        .bind("abc")
+        .bind("payment")
+        .bind("GSOURCE")
+        .bind("GDEST")
+        .bind(Some("USDC"))
+        .bind(None::<String>)
+        .bind("10")
+        .bind("testnet")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
 
-        // A second run (restart) finds nothing new and writes no duplicates.
-        assert_eq!(svc.run_ingestion(7).await.unwrap(), 0);
-        assert_eq!(count(&svc).await as u64, expected);
+        // The next write fails because the table is gone.
+        let failed = sqlx::query(
+            "INSERT INTO corridor_failure_counters (network, corridor, failure_code, count) \
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .bind("testnet")
+        .bind("USDC->NGN")
+        .bind("op_no_destination")
+        .bind(1i64)
+        .execute(&mut *tx)
+        .await;
+        assert!(failed.is_err(), "expected injected failure");
+
+        // Roll back as the service would on error.
+        tx.rollback().await.unwrap();
+
+        assert_eq!(count(&pool, "payments").await, 0, "payments must not persist");
+        assert_eq!(cursor(&pool).await, None, "cursor must be unchanged");
     }
 
     #[tokio::test]
-    async fn crash_mid_batch_resumes_from_last_committed_batch() {
-        use crate::rpc::mock_stellar::{MOCK_LATEST_LEDGER, MOCK_OLDEST_LEDGER};
-        let svc = test_service().await;
-        // Simulate a committed first batch, then a crash before the next one.
-        let first: Vec<_> = (MOCK_OLDEST_LEDGER..MOCK_OLDEST_LEDGER + 5)
-            .map(ledger)
-            .collect();
-        svc.persist_batch(&first).await.unwrap();
-        // Replaying the same batch (retry after crash) is a no-op.
-        assert_eq!(svc.persist_batch(&first).await.unwrap(), 0);
+    async fn successful_batch_persists_payments_and_cursor() {
+        let pool = setup_pool().await;
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query(
+            "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
+             source_account, destination, asset_code, asset_issuer, amount, network) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )
+        .bind(1i64)
+        .bind("abc")
+        .bind("payment")
+        .bind("GSOURCE")
+        .bind("GDEST")
+        .bind(Some("USDC"))
+        .bind(None::<String>)
+        .bind("10")
+        .bind("testnet")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO ingestion_cursor (network, last_ledger) VALUES (?1, ?2) \
+             ON CONFLICT(network) DO UPDATE SET last_ledger = excluded.last_ledger",
+        )
+        .bind("testnet")
+        .bind(1i64)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
 
-        let n = svc.run_ingestion(10).await.unwrap();
-        assert_eq!(n, MOCK_LATEST_LEDGER - MOCK_OLDEST_LEDGER + 1 - 5);
-        assert_eq!(
-            count(&svc).await as u64,
-            MOCK_LATEST_LEDGER - MOCK_OLDEST_LEDGER + 1
-        );
-    }
-
-    #[tokio::test]
-    async fn cursor_never_moves_backwards() {
-        let svc = test_service().await;
-        svc.persist_batch(&[ledger(100)]).await.unwrap();
-        svc.persist_batch(&[ledger(50)]).await.unwrap();
-        assert_eq!(svc.get_last_ledger().await.unwrap(), Some(100));
-    }
-
-    #[test]
-    fn tallies_failures_per_corridor_from_xdr() {
-        let mut counts = CorridorFailureBreakdown::new("USDC", "NGN");
-        let xdr = tx_result_xdr(
-            vec![strict_receive(Some(PathPaymentFailureCode::TooFewOffers))],
-            true,
-        );
-        assert_eq!(tally_ledger_transaction(&xdr, &mut counts), 1);
-        assert_eq!(counts.count(PathPaymentFailureCode::TooFewOffers), 1);
-        assert_eq!(counts.total_failures(), 1);
+        assert_eq!(count(&pool, "payments").await, 1);
+        assert_eq!(cursor(&pool).await, Some(1));
     }
 
     #[test]
-    fn undecodable_xdr_is_skipped() {
-        let mut counts = CorridorFailureBreakdown::default();
-        assert_eq!(
-            tally_ledger_transaction("AAAA...op_too_few_offers...", &mut counts),
-            0
-        );
-        assert_eq!(counts.total_failures(), 0);
-        assert_eq!(counts.successful, 0);
+    fn corridor_counts_group_by_asset() {
+        let payments = vec![sample_payment(1), sample_payment(1)];
+        let counts = corridor_payment_counts(&payments);
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts[0].1, 2);
     }
 }

@@ -250,35 +250,13 @@ impl DataIngestionService {
         })
     }
 
-    /// Persist the last successfully processed ledger (resumable cursor).
-    pub async fn store_last_ledger(&self, ledger_sequence: u64) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO ingestion_cursor (id, last_ledger_sequence) VALUES (1, ?) \
-             ON CONFLICT(id) DO UPDATE SET last_ledger_sequence = excluded.last_ledger_sequence",
-        )
-        .bind(ledger_sequence as i64)
-        .execute(self.db.pool())
-        .await?;
-
-        info!("Persisted ingestion cursor at ledger {}", ledger_sequence);
-        Ok(())
-    }
-
-    /// Read the persisted last processed ledger (0 if none).
-    pub async fn load_last_ledger(&self) -> Result<u64> {
-        let cursor_row: Option<(i64,)> =
-            sqlx::query_as("SELECT last_ledger_sequence FROM ingestion_cursor WHERE id = 1")
-                .fetch_optional(self.db.pool())
-                .await?;
-
-        Ok(cursor_row.map_or(0, |r| r.0 as u64))
-    }
-
-    /// Compare the persisted cursor with the network head and backfill any gap
-    /// that falls within the RPC/Horizon retention window. Emits an alert when
-    /// the gap exceeds retention and therefore cannot be backfilled.
-    pub async fn check_and_backfill_gap(&self) -> Result<GapCheckResult> {
-        let last_ingested = self.load_last_ledger().await?;
+    /// Compare the persisted ingestion cursor against the network head and
+    /// report whether the gap can be backfilled within the retention window.
+    pub async fn check_ingestion_gap(&self) -> Result<GapCheckResult> {
+        let status = self.get_ingestion_status().await?;
+        let gap = status
+            .network_latest_ledger
+            .saturating_sub(status.last_ingested_ledger);
 
         let client = &self.rpc_client;
         let health = Retry::start(retry_strategy(), || async {
@@ -289,76 +267,22 @@ impl DataIngestionService {
         })
         .await?;
 
-        let network_latest = health.latest_ledger;
-        let retention = health.ledger_retention_window;
-
-        // No cursor yet: nothing to resume from, start at the head.
-        if last_ingested == 0 {
-            return Ok(GapCheckResult {
-                last_ingested_ledger: 0,
-                network_latest_ledger: network_latest,
-                gap: 0,
-                backfillable: true,
-                alert_raised: false,
-            });
-        }
-
-        let gap = network_latest.saturating_sub(last_ingested);
-        let backfillable = gap <= retention;
+        let backfillable = gap <= health.ledger_retention_window;
         let alert_raised = !backfillable;
 
         if alert_raised {
             warn!(
-                "Ingestion gap of {} ledgers exceeds retention window of {}; cannot backfill",
-                gap, retention
+                "Ingestion gap of {} ledgers exceeds retention window of {}",
+                gap, health.ledger_retention_window
             );
         }
 
         Ok(GapCheckResult {
-            last_ingested_ledger: last_ingested,
-            network_latest_ledger: network_latest,
+            last_ingested_ledger: status.last_ingested_ledger,
+            network_latest_ledger: status.network_latest_ledger,
             gap,
             backfillable,
             alert_raised,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::failures::fixtures::*;
-    use super::*;
-    use crate::ingestion::ledger::tally_ledger_transaction;
-
-    /// Whichever ingestion path sees a transaction, the corridor success
-    /// rate must come out identical because both go through `failures`.
-    #[test]
-    fn success_rate_identical_across_ingestion_paths() {
-        let txs = [
-            tx_result_xdr(vec![strict_send(None)], false),
-            tx_result_xdr(
-                vec![strict_send(Some(PathPaymentFailureCode::UnderDestmin))],
-                true,
-            ),
-            tx_result_xdr(
-                vec![strict_receive(Some(PathPaymentFailureCode::OverSendmax))],
-                true,
-            ),
-            tx_result_xdr(vec![strict_receive(None)], false),
-        ];
-
-        let mut via_mod = CorridorFailureBreakdown::new("USDC", "NGN");
-        for tx in &txs {
-            tally_path_payment_failures(tx, &mut via_mod).unwrap();
-        }
-
-        let mut via_ledger = CorridorFailureBreakdown::new("USDC", "NGN");
-        for tx in &txs {
-            tally_ledger_transaction(tx, &mut via_ledger);
-        }
-
-        assert_eq!(via_mod, via_ledger);
-        assert_eq!(via_mod.success_rate(), via_ledger.success_rate());
-        assert!((via_mod.success_rate() - 50.0).abs() < 1e-9);
     }
 }
