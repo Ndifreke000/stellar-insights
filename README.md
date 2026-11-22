@@ -339,3 +339,8 @@ Run `./scripts/safety-checks.sh` to verify:
 ## License
 
 MIT — see [`LICENSE`](LICENSE) for details.
+
+## Handsoff notes
+
+<!-- handsoff-issue-2883 -->
+- #2883: Notification center: unified inbox across alerts, digests and system notices

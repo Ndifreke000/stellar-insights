@@ -26,6 +26,9 @@ panic = "deny"
 soroban-sdk = "29.0.1"
 soroban-token-sdk = "27.0.2"
 
+# Reproducible release profile for deployable WASM (issue #2880).
+# These flags are what make two independent builds produce an identical
+# WASM hash; do not relax them without updating the verification docs.
 [profile.release]
 opt-level = "z"
 overflow-checks = true
@@ -35,6 +38,9 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
+# Deterministic output: no incremental artifacts, no build-path leakage.
+incremental = false
+rpath = false
 
 [profile.bench]
 opt-level = 3

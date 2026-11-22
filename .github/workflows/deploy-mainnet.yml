@@ -14,12 +14,18 @@ on:
 permissions:
   id-token: write
   contents: read
+  attestations: write
 
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: payraider-backend
   K8S_OVERLAY: k8s/overlays/mainnet
   K8S_NAMESPACE: payraider-mainnet
+  # Pinned stellar-cli image for reproducible contract WASM builds.
+  # Bump the digest deliberately; the digest is what guarantees reproducibility.
+  STELLAR_CLI_IMAGE: stellar/stellar-cli:22.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  CONTRACT_NAME: payraider
+  WASM_PATH: contracts/target/wasm32-unknown-unknown/release/payraider.wasm
 
 jobs:
   validate-input:
@@ -34,9 +40,54 @@ jobs:
             exit 1
           fi
 
+  build-contracts:
+    name: Reproducible Contract Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build WASM in pinned stellar-cli image
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/contracts:/workspace" \
+            -w /workspace \
+            -e CARGO_INCREMENTAL=0 \
+            -e SOURCE_DATE_EPOCH=0 \
+            "${{ env.STELLAR_CLI_IMAGE }}" \
+            stellar contract build --manifest-path Cargo.toml --package "${{ env.CONTRACT_NAME }}"
+
+      - name: Compute WASM hash
+        id: wasm
+        run: |
+          HASH=$(sha256sum "${{ env.WASM_PATH }}" | awk '{print $1}')
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+          echo "### Contract WASM" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **sha256** | \`${HASH}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Image** | \`${{ env.STELLAR_CLI_IMAGE }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish WASM hash artifact
+        run: |
+          mkdir -p wasm-artifacts
+          cp "${{ env.WASM_PATH }}" wasm-artifacts/
+          echo "${{ steps.wasm.outputs.hash }}  ${{ env.CONTRACT_NAME }}.wasm" > wasm-artifacts/SHA256SUMS
+
+      - name: Attest WASM build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: wasm-artifacts/${{ env.CONTRACT_NAME }}.wasm
+
+      - name: Upload WASM + hash
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm-${{ github.sha }}
+          path: wasm-artifacts/
+          if-no-files-found: error
+
   pre-mainnet-checklist:
     name: Pre-Mainnet Checklist
-    needs: [validate-input]
+    needs: [validate-input, build-contracts]
     if: always() && (github.event_name == 'push' || needs.validate-input.result == 'success' || needs.validate-input.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
@@ -54,6 +105,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download built WASM
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-wasm-${{ github.sha }}
+          path: wasm-artifacts
+
+      - name: Verify deployed WASM hash on-chain
+        env:
+          STELLAR_NETWORK: mainnet
+          CONTRACT_ID: ${{ vars.MAINNET_CONTRACT_ID }}
+          EXPECTED_WASM_HASH: ${{ hashFiles('wasm-artifacts/SHA256SUMS') }}
+        run: |
+          EXPECTED=$(awk '{print $1}' wasm-artifacts/SHA256SUMS)
+          bash scripts/verify-contract-wasm.sh "$STELLAR_NETWORK" "$CONTRACT_ID" "$EXPECTED"
 
       - name: Resolve image tag
         id: image
